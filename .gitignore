@@ -1,0 +1,14 @@
+node_modules/
+dist/
+**/dist/
+**/target/
+coverage/
+playwright-report/
+test-results/
+*.openfilm/
+.env*
+!.env.example
+*.log
+.DS_Store
+apps/desktop/src-tauri/gen/
+fixtures/sample-media/generated/

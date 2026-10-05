@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openfilm.dev/schemas/media-asset-1.0.0.schema.json",
+  "title": "OpenFilm Media Asset 1.0.0",
+  "$ref": "openfilm-project-1.0.0.schema.json#/$defs/mediaAsset"
+}

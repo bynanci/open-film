@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openfilm.dev/schemas/plugin-manifest-1.schema.json",
+  "title": "OpenFilm Plugin API 1",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "apiVersion": {
+      "const": "1"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "source",
+          "metadata",
+          "analysis",
+          "story-template",
+          "scorer",
+          "solver",
+          "effect",
+          "exporter",
+          "renderer",
+          "ui-extension"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    }
+  },
+  "required": ["id", "name", "version", "apiVersion", "capabilities"]
+}

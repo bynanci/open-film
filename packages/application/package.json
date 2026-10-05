@@ -1,0 +1,22 @@
+{
+  "name": "@openfilm/application",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openfilm/core": "workspace:*",
+    "@openfilm/plugin-sdk": "workspace:*",
+    "@openfilm/metadata": "workspace:*",
+    "@openfilm/events": "workspace:*",
+    "@openfilm/story": "workspace:*",
+    "@openfilm/solver": "workspace:*",
+    "@openfilm/exporters": "workspace:*",
+    "@openfilm/catalog": "workspace:*",
+    "@openfilm/media": "workspace:*",
+    "@openfilm/render": "workspace:*",
+    "@openfilm/template-proposal": "workspace:*"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@openfilm/media",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openfilm/core": "workspace:*",
+    "@openfilm/metadata": "workspace:*",
+    "exiftool-vendored.pl": "13.59.3",
+    "@openfilm/plugin-sdk": "workspace:*"
+  }
+}

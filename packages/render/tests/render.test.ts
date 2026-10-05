@@ -1,0 +1,303 @@
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Composition } from "@openfilm/core";
+import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import { FFmpegRenderer } from "../src/index";
+
+const directories: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+async function frame(path: string, time: number): Promise<number> {
+  const result = await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-ss",
+    String(time),
+    "-i",
+    path,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=1:1,format=rgb24",
+    "-f",
+    "rawvideo",
+    "-",
+  ]);
+  return result.stdout[0]!;
+}
+
+describe("real FFmpeg preview renderer", () => {
+  it("honors trim, speed, audio volume, title and crossfade while preserving source bytes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-render-"));
+    directories.push(directory);
+    const source = join(directory, "source.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=160x90:r=20,drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='gte(t,1.5)'",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000",
+      "-t",
+      "3",
+      "-c:v",
+      "libx264",
+      "-threads",
+      "1",
+      "-c:a",
+      "aac",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "source.mp4",
+    });
+    const originalHash = await hashFile(source);
+    const composition: Composition = {
+      id: "timeline",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "trimmed",
+              assetId: asset.id,
+              sourceIn: 1,
+              sourceOut: 3,
+              timelineStart: 0,
+              timelineDuration: 1,
+              transform: {
+                speed: 2,
+                volume: 0.3,
+                scale: 1,
+                rotation: 0,
+                x: 0,
+                y: 0,
+              },
+              transition: { type: "crossfade", duration: 0.05 },
+            },
+          ],
+        },
+        {
+          id: "titles",
+          type: "titles",
+          clips: [
+            {
+              id: "title",
+              assetId: "",
+              title: "A title: 100% 'safe'",
+              timelineStart: 0.65,
+              timelineDuration: 0.3,
+            },
+          ],
+        },
+      ],
+    };
+    const before = structuredClone(composition);
+    const output = join(directory, "preview.mp4");
+    await new FFmpegRenderer().render(composition, [asset], output, {
+      width: 160,
+      height: 90,
+      frameRate: 20,
+    });
+    expect(await frame(output, 0.15)).toBeGreaterThan(170);
+    expect(await frame(output, 0.4)).toBeLessThan(20);
+    const probe = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration:stream=codec_type",
+      "-of",
+      "json",
+      output,
+    ]);
+    const metadata = JSON.parse(probe.stdout.toString()) as {
+      format: { duration: string };
+      streams: { codec_type: string }[];
+    };
+    expect(Number(metadata.format.duration)).toBeCloseTo(1, 1);
+    expect(metadata.streams.map((stream) => stream.codec_type)).toEqual([
+      "video",
+      "audio",
+    ]);
+    expect(await hashFile(source)).toBe(originalHash);
+    expect(composition).toEqual(before);
+    expect(
+      (await readdir(directory)).some((name) => name.startsWith(".render-")),
+    ).toBe(false);
+    await expect(
+      new FFmpegRenderer().render(composition, [asset], source),
+    ).rejects.toThrow("overwrite");
+  }, 30000);
+
+  it("blends overlapping crossfades and keeps encoded duration within a fractional limit", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-crossfade-"));
+    directories.push(directory);
+    const assets = [];
+    for (const color of ["red", "blue"]) {
+      const path = join(directory, `${color}.png`);
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=${color}:s=160x90`,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-update",
+        "1",
+        "-y",
+        path,
+      ]);
+      assets.push(
+        await inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${color}.png`,
+        }),
+      );
+    }
+    const composition: Composition = {
+      id: "crossfade",
+      storyId: "story",
+      duration: 2.03,
+      tracks: [
+        {
+          id: "visual",
+          type: "video",
+          clips: [
+            {
+              id: "red",
+              assetId: assets[0]!.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+            },
+            {
+              id: "blue",
+              assetId: assets[1]!.id,
+              timelineStart: 1,
+              timelineDuration: 1.03,
+              transition: { type: "crossfade", duration: 0.3 },
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "preview.mp4");
+    await new FFmpegRenderer().render(composition, assets, output, {
+      width: 160,
+      height: 90,
+      frameRate: 20,
+    });
+    const blended = await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-ss",
+      "1.15",
+      "-i",
+      output,
+      "-frames:v",
+      "1",
+      "-vf",
+      "scale=1:1,format=rgb24",
+      "-f",
+      "rawvideo",
+      "-",
+    ]);
+    expect(blended.stdout[0]).toBeGreaterThan(60);
+    expect(blended.stdout[2]).toBeGreaterThan(60);
+    expect(await frame(output, 1.6)).toBeLessThan(20);
+    const probe = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "json",
+      output,
+    ]);
+    expect(
+      Number(
+        (
+          JSON.parse(probe.stdout.toString()) as {
+            format: { duration: string };
+          }
+        ).format.duration,
+      ),
+    ).toBeLessThanOrEqual(2.03);
+  });
+
+  it("renders literal title text under apostrophe, punctuation and backslash project paths", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-title-path-"));
+    directories.push(directory);
+    const composition: Composition = {
+      id: "titles",
+      storyId: "story",
+      duration: 0.3,
+      tracks: [
+        {
+          id: "text",
+          type: "titles",
+          clips: [
+            {
+              id: "literal",
+              assetId: "",
+              title: "Literal: 100% 'quoted' [title]",
+              timelineStart: 0,
+              timelineDuration: 0.3,
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "Jo's:film\\[cut].openfilm", "preview.mp4");
+    await expect(
+      new FFmpegRenderer().render(composition, [], output, {
+        width: 160,
+        height: 90,
+        frameRate: 20,
+      }),
+    ).resolves.toBe(output);
+    const probe = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "json",
+      output,
+    ]);
+    expect(
+      Number(
+        (
+          JSON.parse(probe.stdout.toString()) as {
+            format: { duration: string };
+          }
+        ).format.duration,
+      ),
+    ).toBeCloseTo(0.3, 2);
+  });
+});

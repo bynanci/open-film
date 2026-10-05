@@ -1,0 +1,698 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openfilm.dev/schemas/openfilm-project-1.0.0.schema.json",
+  "title": "OpenFilm Project 1.0.0",
+  "description": "Durations are seconds. Assets are stored in the catalog; originals are referenced by URI. Semantic bounds and references are also checked by validateProject.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "mediaLibraries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mediaLibrary"
+      }
+    },
+    "stories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/story"
+      }
+    },
+    "timelines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/composition"
+      }
+    },
+    "settings": {
+      "$ref": "#/$defs/projectSettings"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "createdAt",
+    "updatedAt",
+    "mediaLibraries",
+    "stories",
+    "timelines",
+    "settings"
+  ],
+  "$defs": {
+    "geoPoint": {
+      "type": "object",
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "required": ["latitude", "longitude"]
+    },
+    "geoRegion": {
+      "type": "object",
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "radiusKm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "required": ["latitude", "longitude"]
+    },
+    "mediaAsset": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "mediaType": {
+          "enum": ["image", "video", "audio", "360-video"]
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "device": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "manufacturer": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "application": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": []
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "capturedAtConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "capturedAtSource": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "dimensions": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": ["width", "height"]
+        },
+        "frameRate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "codec": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "colorSpace": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "hdr": {
+          "type": "boolean"
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "perceptualHash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "rating": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "state": {
+          "type": "object",
+          "properties": {
+            "favorite": {
+              "type": "boolean"
+            },
+            "rejected": {
+              "type": "boolean"
+            },
+            "locked": {
+              "type": "boolean"
+            }
+          },
+          "required": []
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "thumbnailUri": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "proxyUri": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "gps": {
+          "$ref": "#/$defs/geoPoint"
+        }
+      },
+      "required": [
+        "id",
+        "uri",
+        "name",
+        "mediaType",
+        "tags",
+        "state",
+        "metadata"
+      ]
+    },
+    "mediaLibrary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "required": ["id", "uri", "name"]
+    },
+    "projectSettings": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frameRate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": ["width", "height", "frameRate"]
+    },
+    "storyConstraint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": ["must-include", "must-exclude", "asset-order"]
+            },
+            "assetIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["type", "assetIds"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "chronological"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": ["type"]
+        }
+      ]
+    },
+    "storyBeat": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "targetDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minDuration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "candidateAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "uniqueItems": true
+        },
+        "selectedAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "uniqueItems": true
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/storyConstraint"
+          }
+        }
+      },
+      "required": ["id", "title"]
+    },
+    "story": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "targetDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "beats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/storyBeat"
+          }
+        }
+      },
+      "required": ["id", "title", "beats"]
+    },
+    "clipTransform": {
+      "type": "object",
+      "properties": {
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "speed": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": []
+    },
+    "clip": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "assetId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "beatId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "sourceIn": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sourceOut": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "timelineStart": {
+          "type": "number",
+          "minimum": 0
+        },
+        "timelineDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "transform": {
+          "$ref": "#/$defs/clipTransform"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "transition": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "crossfade"
+            },
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": ["type", "duration"]
+        }
+      },
+      "required": ["id", "assetId", "timelineStart", "timelineDuration"]
+    },
+    "track": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "type": {
+          "enum": ["video", "audio", "music", "titles", "overlay"]
+        },
+        "clips": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/clip"
+          }
+        }
+      },
+      "required": ["id", "type", "clips"]
+    },
+    "composition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "storyId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        }
+      },
+      "required": ["id", "storyId", "duration", "tracks"]
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "startAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "endAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "assetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "uniqueItems": true
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "location": {
+          "$ref": "#/$defs/geoRegion"
+        }
+      },
+      "required": ["id", "assetIds", "labels"]
+    },
+    "similarityGroup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "kind": {
+          "enum": ["exact", "perceptual"]
+        },
+        "assetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "uniqueItems": true,
+          "minItems": 2
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": ["id", "kind", "assetIds", "confidence"]
+    },
+    "job": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "status": {
+          "enum": ["queued", "running", "completed", "failed", "cancelled"]
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uri": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "stage": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "required": ["uri", "stage", "message"]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        }
+      },
+      "required": ["id", "type", "status"]
+    }
+  }
+}

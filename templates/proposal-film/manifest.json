@@ -1,0 +1,9 @@
+{
+  "id": "proposal-film",
+  "name": "Proposal Film",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "capabilities": ["story-template"],
+  "entry": "./src/index.ts",
+  "description": "An offline chronological relationship film with an emotional story arc."
+}
