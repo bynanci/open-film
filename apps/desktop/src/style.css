@@ -2078,3 +2078,23 @@ td {
     flex-direction: column;
   }
 }
+
+.asset-device {
+  color: var(--faded-ink);
+  font-size: 9px;
+}
+.asset-capability-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.asset-capability-badges > span {
+  padding: 3px 5px;
+  border: 1px solid #ddccbc;
+  border-radius: 3px;
+  color: #865334;
+  background: #f7eee4;
+  font-size: 8px;
+  font-weight: 550;
+  line-height: 1.3;
+}

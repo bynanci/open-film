@@ -148,6 +148,13 @@ function sourceDuration(asset: MediaAsset): number {
     );
   return asset.duration;
 }
+function renderable(asset: MediaAsset): boolean {
+  return (
+    asset.mediaType !== "360-video" &&
+    (asset.metadata["openfilm.preview"] as { supported?: boolean } | undefined)
+      ?.supported !== false
+  );
+}
 function sourceBounds(
   clip: Clip,
   asset: MediaAsset,
@@ -206,6 +213,10 @@ function replace(
 ): void {
   const old = findAsset(assets, clip.assetId),
     asset = findAsset(assets, assetId);
+  if (!renderable(asset))
+    fail(
+      `Source "${asset.name}" requires a compatible flat export before it can replace a clip.`,
+    );
   if (asset.state.rejected)
     fail(`Asset "${asset.name}" is rejected. Unreject it before replacement.`);
   if ((old.mediaType === "audio") !== (asset.mediaType === "audio"))
@@ -634,6 +645,7 @@ function regenerate(
   );
   const pool = assets.filter(
     (asset) =>
+      renderable(asset) &&
       !unavailable.has(asset.id) &&
       !excluded.has(asset.id) &&
       !asset.state.rejected &&

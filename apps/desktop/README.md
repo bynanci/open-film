@@ -83,3 +83,26 @@ server commits a relink, the editor refreshes source references and rebuilds onl
 the selected source player. Asset identities, ratings, selections, locks, source
 trims, and effects remain intact. Status checks use filesystem inspection through
 the local service; they do not open a decoder for every media item.
+
+## Camera formats and preview capabilities
+
+The media inspector shows the detected device, codec, dimensions, frame rate,
+color information, and available camera evidence without removing rating or
+selection controls. Pixel identification uses the source adapter's recognition
+result; uncertain sources retain their generic identity. Motion Photo detection
+is marked Experimental and includes its evidence. Detection does not imply that
+embedded motion has been extracted.
+
+Insta360 exported flat media can preview normally. Raw 360 sources show
+**360 source / Requires reframed export**, with instructions to create a flat
+export in the source application. Original-source associations are shown with
+their recorded evidence. A raw source or `openfilm.preview.supported: false`
+never opens an original image/video decoder in the editor; an existing cached
+thumbnail or placeholder remains visible, and metadata and editing controls stay
+available. The same capability handles undecodable DNG files.
+
+HDR, HEVC, and higher bit depth are visible with the preserved color metadata.
+Preview warnings report the local media pipeline's actual capabilities, including
+an SDR tone-mapped preview when supplied. The original source metadata remains
+available for finishing; the UI does not claim native camera extraction,
+stitching, reframing, or verified HDR display appearance.

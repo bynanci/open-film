@@ -24,6 +24,7 @@ import {
   type MediaAsset,
   type Story,
 } from "@openfilm/core";
+import { previewIssue } from "@openfilm/media";
 
 type Body = Record<string, unknown>;
 class HttpError extends Error {
@@ -410,17 +411,24 @@ export async function startServer(
               404,
               "Source asset was not found in this project.",
             );
-          if (asset.mediaType === "360-video")
-            throw new HttpError(
-              422,
-              "360 source requires a reframed export before playback.",
-            );
+          const issue = previewIssue(asset);
+          if (issue) throw new HttpError(422, issue);
           if (!asset.uri.startsWith("file:"))
             throw new HttpError(
               422,
               "Only imported local media can be previewed.",
             );
-          const file = fileURLToPath(asset.uri);
+          const useProxy = asset.mediaType === "video" && !!asset.proxyUri;
+          const file = useProxy
+            ? asset.proxyUri!.startsWith("file:")
+              ? fileURLToPath(asset.proxyUri!)
+              : resolve(application.directory, asset.proxyUri!)
+            : fileURLToPath(asset.uri);
+          if (!useProxy && (asset.hdr || asset.codec === "hevc"))
+            throw new HttpError(
+              422,
+              "A compatible preview proxy is required for this HDR/HEVC source. Import it again with proxies enabled.",
+            );
           const mime = (
             {
               ".jpg": "image/jpeg",
@@ -443,12 +451,22 @@ export async function startServer(
             );
           try {
             // The path comes exclusively from this project's catalog, never a request path.
-            await streamFile(request, response, file, dirname(file), mime);
+            await streamFile(
+              request,
+              response,
+              file,
+              useProxy
+                ? resolve(application.directory, "cache")
+                : dirname(file),
+              mime,
+            );
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT")
               throw new HttpError(
                 404,
-                "Missing Media: reconnect the disk or relink this source.",
+                useProxy
+                  ? "Preview proxy missing: import this media again to rebuild its cached preview."
+                  : "Missing Media: reconnect the disk or relink this source.",
               );
             throw error;
           }

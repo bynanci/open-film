@@ -25,6 +25,7 @@ import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
 import TimelineEditor from "./components/TimelineEditor.vue";
 import RelinkMedia from "./components/RelinkMedia.vue";
+import SourceDetails from "./components/SourceDetails.vue";
 
 type Tab = "Library" | "Stories" | "Timeline" | "Export";
 type AssetState = "favorite" | "rejected" | "locked";
@@ -1293,6 +1294,7 @@ onUnmounted(() => {
                   </dd>
                 </div>
               </dl>
+              <SourceDetails :asset="selectedAsset" />
               <div class="rating-control">
                 <span>How much does this matter?</span>
                 <div>

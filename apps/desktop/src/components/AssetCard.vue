@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { MediaAsset } from "@openfilm/core";
 import { thumbnailUrl, duration, dateLabel, type SourceStatus } from "../api";
 import Icon from "./Icon.vue";
+import { sourcePresentation } from "../sourcePresentation";
 const props = defineProps<{
   asset: MediaAsset;
   selected?: boolean;
@@ -15,6 +16,7 @@ defineEmits<{
   toggle: [asset: MediaAsset, key: "favorite" | "rejected" | "locked"];
 }>();
 const failed = ref(false);
+const sourceInfo = computed(() => sourcePresentation(props.asset));
 watch(
   () => `${props.asset.id}:${props.asset.uri}:${props.asset.thumbnailUri}`,
   () => {
@@ -55,17 +57,23 @@ watch(
           :name="asset.mediaType === 'audio' ? 'volume' : 'film'"
           :size="30"
         /><span>{{
-          asset.mediaType === "audio"
-            ? "Audio recording"
-            : "No preview available"
+          sourceInfo.requiresReframedExport
+            ? "360 source"
+            : !sourceInfo.previewSupported
+              ? "Preview unavailable"
+              : asset.mediaType === "audio"
+                ? "Audio recording"
+                : "No preview available"
         }}</span>
       </div>
       <span class="asset-type">{{
-        asset.mediaType === "image"
-          ? "PHOTO"
-          : asset.mediaType === "audio"
-            ? "AUDIO"
-            : "VIDEO"
+        sourceInfo.requiresReframedExport
+          ? "360 SOURCE"
+          : asset.mediaType === "image"
+            ? "PHOTO"
+            : asset.mediaType === "audio"
+              ? "AUDIO"
+              : "VIDEO"
       }}</span>
       <span v-if="asset.duration !== undefined" class="asset-duration">{{
         duration(asset.duration)
@@ -89,6 +97,17 @@ watch(
     <div class="asset-caption">
       <span class="asset-name" :title="asset.name">{{ asset.name }}</span
       ><span class="asset-date">{{ dateLabel(asset.capturedAt) }}</span>
+      <span v-if="sourceInfo.adapter !== 'generic'" class="asset-device">{{
+        sourceInfo.deviceLabel
+      }}</span>
+      <span v-if="sourceInfo.badges.length" class="asset-capability-badges"
+        ><span
+          v-for="badge in sourceInfo.badges.slice(0, 2)"
+          :key="badge"
+          :title="sourceInfo.previewReason"
+          >{{ badge }}</span
+        ></span
+      >
     </div>
     <div v-if="!choice" class="asset-actions">
       <button

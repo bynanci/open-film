@@ -1,0 +1,15 @@
+{
+  "name": "@openfilm/source-insta360",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openfilm/core": "workspace:*",
+    "@openfilm/plugin-sdk": "workspace:*",
+    "@openfilm/media": "workspace:*",
+    "@openfilm/metadata": "workspace:*"
+  }
+}

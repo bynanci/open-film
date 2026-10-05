@@ -18,7 +18,15 @@ import {
   rename,
   rm,
 } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createProject,
@@ -39,6 +47,12 @@ import { compose as solve } from "@openfilm/solver";
 import { exportTimeline } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import { FFmpegRenderer } from "@openfilm/render";
+import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
+import {
+  enrichInsta360Asset,
+  inspectInsta360Raw,
+  isInsta360Raw,
+} from "@openfilm/source-insta360";
 import {
   checkAbort,
   createProxy,
@@ -51,6 +65,8 @@ import {
   safeProjectCachePath,
   referenceFor,
   sourceStatus,
+  previewIssue,
+  previewVideoFilters,
   type MediaCandidate,
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
@@ -276,7 +292,7 @@ export class OpenFilmApplication {
           createHash("sha256").update(candidate.uri).digest("hex").slice(0, 32);
         const originalHash = await hashFile(candidate.path, options.signal);
         const previous = this.catalog.getAsset(assetId);
-        const stem = `${assetId}-${originalHash.slice(0, 16)}`;
+        const stem = `${assetId}-${originalHash.slice(0, 16)}-v2`;
         const thumbnail = await safeProjectCachePath(
           this.directory,
           "thumbnails",
@@ -289,6 +305,7 @@ export class OpenFilmApplication {
         );
         const derivedComplete =
           previous &&
+          previous.metadata["openfilm.importPipeline"] === 2 &&
           (previous.mediaType === "audio" || existsSync(thumbnail)) &&
           (options.proxies === false ||
             !["video", "360-video"].includes(previous.mediaType) ||
@@ -298,14 +315,23 @@ export class OpenFilmApplication {
           return;
         }
         stage = "inspect";
-        const asset = await inspectMedia(candidate, options.signal);
+        const inspected = isInsta360Raw(candidate.uri)
+          ? await inspectInsta360Raw(candidate, options.signal)
+          : extname(candidate.path).toLowerCase() === ".dng"
+            ? await inspectPixelDng(candidate, options.signal)
+            : await inspectMedia(candidate, options.signal);
+        const asset = await enrichInsta360Asset(
+          await enrichPixelAsset(inspected),
+        );
         asset.id = assetId;
         asset.contentHash = originalHash;
         if (previous) {
           asset.state = structuredClone(previous.state);
           asset.tags = [...previous.tags];
           if (previous.rating !== undefined) asset.rating = previous.rating;
-          asset.metadata = { ...previous.metadata, ...asset.metadata };
+          const previousMetadata = { ...previous.metadata };
+          delete previousMetadata["openfilm.preview"];
+          asset.metadata = { ...previousMetadata, ...asset.metadata };
         }
         const reference = referenceFor(
           previous ?? asset,
@@ -317,7 +343,19 @@ export class OpenFilmApplication {
           fileSize: (asset.metadata["openfilm.filesystem"] as { size?: number })
             .size,
         };
-        if (asset.mediaType !== "audio") {
+        asset.metadata["openfilm.importPipeline"] = 2;
+        if (!previewIssue(asset)) {
+          try {
+            await previewVideoFilters(asset, options.signal);
+          } catch (error) {
+            checkAbort(options.signal);
+            asset.metadata["openfilm.preview"] = {
+              supported: false,
+              reason: String(error instanceof Error ? error.message : error),
+            };
+          }
+        }
+        if (asset.mediaType !== "audio" && !previewIssue(asset)) {
           stage = "perceptual-fingerprint";
           asset.perceptualHash = await perceptualHash(
             candidate.path,
@@ -340,6 +378,7 @@ export class OpenFilmApplication {
         }
         if (
           options.proxies !== false &&
+          !previewIssue(asset) &&
           ["video", "360-video"].includes(asset.mediaType)
         ) {
           stage = "proxy";
@@ -501,7 +540,18 @@ export class OpenFilmApplication {
       }
     }
     if (!assets.length) throw new Error("Import media before creating a story");
-    const story = createStory(options.title ?? this.project.title, assets, {
+    for (const asset of assets)
+      if (
+        previewIssue(asset) &&
+        (asset.state.locked || options.assetIds?.includes(asset.id))
+      )
+        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+    const usable = assets.filter((asset) => !previewIssue(asset));
+    if (!usable.length)
+      throw new Error(
+        "No renderable media is available. Import flat exported photos/videos before creating a story.",
+      );
+    const story = createStory(options.title ?? this.project.title, usable, {
       ...(options.template === "proposal-film"
         ? { template: proposalTemplate }
         : {}),
@@ -539,7 +589,24 @@ export class OpenFilmApplication {
       if (!asset) throw new Error(`Story asset not found: ${id}`);
       assets.push(asset);
     }
-    const composition = solve(story, assets);
+    const required = new Set(
+      story.beats.flatMap((beat) => [
+        ...(beat.selectedAssetIds ?? []),
+        ...(beat.constraints ?? []).flatMap((constraint) =>
+          constraint.type === "must-include" ||
+          constraint.type === "asset-order"
+            ? constraint.assetIds
+            : [],
+        ),
+      ]),
+    );
+    for (const asset of assets)
+      if (previewIssue(asset) && (asset.state.locked || required.has(asset.id)))
+        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+    const composition = solve(
+      story,
+      assets.filter((asset) => !previewIssue(asset)),
+    );
     this.project.timelines.push(composition);
     this.saveSync();
     return structuredClone(composition);

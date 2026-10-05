@@ -10,6 +10,61 @@ export type ExportFormat = "json" | "otio" | "fcpxml" | "edl";
 export interface ExportResult {
   extension: string;
   content: string;
+  warnings?: string[];
+}
+
+export interface OtioCompatibilityReport {
+  format: "otio";
+  realNleVerified: false;
+  advancedEdits: "metadata-only";
+  warnings: string[];
+  metadataOnlyEdits: { clipId: string; features: string[] }[];
+}
+
+/** This report travels with the file; metadata does not recreate an NLE effect. */
+export function otioCompatibilityReport(
+  composition: Composition,
+): OtioCompatibilityReport {
+  const warnings: string[] = [];
+  const metadataOnlyEdits: OtioCompatibilityReport["metadataOnlyEdits"] = [];
+  const defaults = { scale: 1, rotation: 0, x: 0, y: 0, speed: 1, volume: 1 };
+  for (const track of composition.tracks) {
+    if (track.type === "titles" || track.type === "overlay")
+      warnings.push(
+        `Track ${track.id}: ${track.type} semantics are METADATA ONLY; the OTIO file contains a Video cut track. Recreate title/compositing behavior manually.`,
+      );
+    for (const clip of track.clips) {
+      const features = Object.entries(clip.transform ?? {})
+        .filter(
+          ([key, value]) => value !== defaults[key as keyof typeof defaults],
+        )
+        .map(([key]) => key);
+      if (clip.title !== undefined) features.push("title");
+      if (clip.transition) features.push(clip.transition.type);
+      if (clip.locked) features.push("clip lock");
+      if (!features.length) continue;
+      metadataOnlyEdits.push({ clipId: clip.id, features });
+      warnings.push(
+        `Clip ${clip.id}: ${features.join(", ")} are METADATA ONLY and must be recreated manually in the NLE. Exact original source/timeline ranges and effects are preserved in metadata.openfilm.clip and the full composition metadata.`,
+      );
+      const speed = clip.transform?.speed ?? 1;
+      if (speed !== 1) {
+        const sourceIn = clip.sourceIn ?? 0;
+        const sourceOut =
+          clip.sourceOut ?? sourceIn + clip.timelineDuration * speed;
+        warnings.push(
+          `Clip ${clip.id}: native OTIO plays an unretimed cut excerpt, not the ${speed}x speed edit. Recreate source ${sourceIn}s–${sourceOut}s in the ${clip.timelineDuration}s slot at ${clip.timelineStart}s; a slower-than-1x video/audio slot includes a labeled padding gap after the source excerpt.`,
+        );
+      }
+    }
+  }
+  return {
+    format: "otio",
+    realNleVerified: false,
+    advancedEdits: "metadata-only",
+    warnings,
+    metadataOnlyEdits,
+  };
 }
 
 function xml(value: string): string {
@@ -164,6 +219,51 @@ export function exportTimeline(
         ) + "\n",
     };
   }
+  if (format === "otio") {
+    for (const track of composition.tracks) {
+      let end = 0;
+      for (const clip of sortedClips(track)) {
+        if (clip.timelineStart < end - 1e-6)
+          throw new Error(
+            `otio cannot export overlapping clips in track ${track.id}. Split them onto separate tracks or use JSON.`,
+          );
+        const speed = clip.transform?.speed ?? 1;
+        if (
+          speed <= 0 ||
+          (clip.transform?.scale ?? 1) <= 0 ||
+          (clip.transform?.volume ?? 1) < 0 ||
+          (clip.transform?.volume ?? 1) > 1
+        )
+          throw new Error(
+            `Clip ${clip.id} has invalid speed, scale or volume values.`,
+          );
+        if (
+          clip.transition &&
+          (!Number.isFinite(clip.transition.duration) ||
+            clip.transition.duration <= 0 ||
+            clip.transition.duration > clip.timelineDuration)
+        )
+          throw new Error(`Clip ${clip.id} has invalid transition duration.`);
+        const sourceSpan =
+          (clip.sourceOut ??
+            (clip.sourceIn ?? 0) + clip.timelineDuration * speed) -
+          (clip.sourceIn ?? 0);
+        if (Math.abs(sourceSpan / speed - clip.timelineDuration) > 1e-6)
+          throw new Error(
+            `otio source/timeline durations imply an inconsistent speed change on clip ${clip.id}. Correct its source bounds or use JSON.`,
+          );
+        end = clip.timelineStart + clip.timelineDuration;
+      }
+    }
+    const report = otioCompatibilityReport(composition);
+    return {
+      extension: "otio",
+      content:
+        JSON.stringify(otio(composition, byId, settings, report), null, 2) +
+        "\n",
+      warnings: report.warnings,
+    };
+  }
   for (const track of composition.tracks) {
     if (track.type === "titles" || track.type === "overlay")
       throw new Error(
@@ -189,12 +289,6 @@ export function exportTimeline(
       end = clip.timelineStart + clip.timelineDuration;
     }
   }
-  if (format === "otio")
-    return {
-      extension: "otio",
-      content:
-        JSON.stringify(otio(composition, byId, settings), null, 2) + "\n",
-    };
   if (format === "fcpxml")
     return {
       extension: "fcpxml",
@@ -207,6 +301,7 @@ function otio(
   composition: Composition,
   assets: Map<string, MediaAsset>,
   settings: ProjectSettings,
+  report: OtioCompatibilityReport,
 ): unknown {
   const [numerator, denominator] = rateFraction(settings.frameRate),
     rate = numerator / denominator;
@@ -234,29 +329,69 @@ function otio(
           source_range: range(0, clip.timelineStart - end),
         });
       const asset = assets.get(clip.assetId)!;
+      const sourceIn = clip.sourceIn ?? 0;
+      const sourceSpan =
+        (clip.sourceOut ??
+          sourceIn + clip.timelineDuration * (clip.transform?.speed ?? 1)) -
+        sourceIn;
+      // OTIO duration() does not evaluate LinearTimeWarp. Preserve native cut
+      // timing without inventing source frames; original retimes remain explicit.
+      const cutDuration =
+        asset.mediaType === "image"
+          ? clip.timelineDuration
+          : Math.min(clip.timelineDuration, sourceSpan);
       children.push({
         OTIO_SCHEMA: "Clip.1",
         name: asset.name,
         metadata: {
-          openfilm: { clipId: clip.id, assetId: asset.id, beatId: clip.beatId },
+          openfilm: {
+            clipId: clip.id,
+            assetId: asset.id,
+            beatId: clip.beatId,
+            clip,
+            nativeCutDuration: cutDuration,
+            advancedEdits: "metadata-only",
+          },
         },
         effects: [],
         markers: [],
-        source_range: range(clip.sourceIn ?? 0, clip.timelineDuration),
+        source_range: range(sourceIn, cutDuration),
         media_reference: {
           OTIO_SCHEMA: "ExternalReference.1",
           name: asset.name,
           target_url: asset.uri,
-          available_range: range(
-            0,
-            Math.max(
-              asset.duration ?? 0,
-              (clip.sourceIn ?? 0) + clip.timelineDuration,
-            ),
-          ),
-          metadata: { openfilm: { mediaType: asset.mediaType } },
+          available_range:
+            asset.mediaType === "image"
+              ? range(0, sourceIn + cutDuration)
+              : asset.duration === undefined
+                ? null
+                : range(0, asset.duration),
+          metadata: {
+            openfilm: {
+              assetId: asset.id,
+              mediaType: asset.mediaType,
+              contentHash: asset.contentHash,
+              portableReference: asset.metadata["openfilm.reference"],
+            },
+          },
         },
       });
+      if (cutDuration < clip.timelineDuration - 1e-6)
+        children.push({
+          OTIO_SCHEMA: "Gap.1",
+          name: `Retime padding for ${clip.id}`,
+          effects: [],
+          markers: [],
+          metadata: {
+            openfilm: {
+              clipId: clip.id,
+              reason: "metadata-only-speed-padding",
+              timelineStart: clip.timelineStart + cutDuration,
+              duration: clip.timelineDuration - cutDuration,
+            },
+          },
+          source_range: range(0, clip.timelineDuration - cutDuration),
+        });
       end = clip.timelineStart + clip.timelineDuration;
     }
     if (composition.duration > end + 1e-6)
@@ -271,7 +406,8 @@ function otio(
     return {
       OTIO_SCHEMA: "Track.1",
       name: track.id,
-      kind: track.type === "video" ? "Video" : "Audio",
+      kind:
+        track.type === "audio" || track.type === "music" ? "Audio" : "Video",
       children,
       effects: [],
       markers: [],
@@ -287,6 +423,8 @@ function otio(
         compositionId: composition.id,
         storyId: composition.storyId,
         settings,
+        composition,
+        compatibility: report,
       },
     },
     global_start_time: time(0),

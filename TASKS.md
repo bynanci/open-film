@@ -57,7 +57,8 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Media relinking and logical-volume-aware library portability; native Windows
       remount checks remain manual.
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.
-- [ ] Pixel/Insta360/other device adapters beyond generic filesystem inspection.
+- [x] Pixel and Insta360 adapters with metadata, safe previews and explicit raw
+      source limitations; other camera-specific adapters remain future work.
 - [ ] Local vision, embeddings, transcript, and language implementations.
 - [ ] Incremental analysis/background worker scheduling at archive scale.
 - [ ] Reproducible 10,000–100,000-asset performance benchmarks.
@@ -72,8 +73,8 @@ Hardware and real NLE verification are recorded separately.
 - [x] P0: scoped beat editing/regeneration, duration feedback and explainable fit.
 - [x] P0: undo/redo, debounced durable autosave, recoverable errors and reopen tests.
 - [x] P1: missing/offline state, single/folder relink and portable library references.
-- [ ] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
-- [ ] P2: Insta360 exported media plus raw-source recognition/association.
+- [x] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
+- [x] P2: Insta360 exported media plus raw-source recognition/association.
 - [ ] P3: generated Proposal reference dataset, documented workflow and full E2E.
 - [ ] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
 - [ ] P5: all regression gates and branch CI green.

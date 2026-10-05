@@ -18,6 +18,8 @@ import {
 } from "../api";
 import { useTimelineEditor } from "../composables/useTimelineEditor";
 import Icon from "./Icon.vue";
+import SourceDetails from "./SourceDetails.vue";
+import { sourcePresentation } from "../sourcePresentation";
 
 const props = defineProps<{
   projectId: string;
@@ -93,6 +95,9 @@ const assetMap = computed(
 );
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
+);
+const selectedSourceInfo = computed(() =>
+  selectedAsset.value ? sourcePresentation(selectedAsset.value) : undefined,
 );
 const selectedSourceStatus = computed(() =>
   selectedAsset.value
@@ -323,6 +328,7 @@ function stopAtOut() {
   }
 }
 function togglePlayback() {
+  if (selectedSourceInfo.value?.previewSupported === false) return;
   const player = sourcePlayer.value;
   if (!player) {
     emit("playback");
@@ -652,6 +658,34 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                   ><span>Cached preview · Your edits are still available.</span>
                 </div>
               </div>
+              <div
+                v-else-if="selectedSourceInfo?.previewSupported === false"
+                class="editor-unsupported-source"
+              >
+                <img
+                  v-if="selectedAsset.thumbnailUri"
+                  :src="thumbnailUrl(selectedAsset.id)"
+                  alt=""
+                />
+                <div>
+                  <Icon name="film" :size="28" /><strong>{{
+                    selectedSourceInfo.requiresReframedExport
+                      ? "360 source"
+                      : "Preview unavailable"
+                  }}</strong
+                  ><span>{{
+                    selectedSourceInfo.requiresReframedExport
+                      ? "Requires reframed export"
+                      : selectedSourceInfo.kindLabel
+                  }}</span>
+                  <p>
+                    {{
+                      selectedSourceInfo.previewReason ||
+                      "Export a supported image or video from the source application, then import that file to continue."
+                    }}
+                  </p>
+                </div>
+              </div>
               <img
                 v-else-if="selectedAsset.mediaType === 'image'"
                 :key="sourcePlaybackKey"
@@ -705,6 +739,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
               v-if="
                 selectedAsset &&
                 !sourceUnavailable &&
+                selectedSourceInfo?.previewSupported !== false &&
                 selectedAsset.mediaType !== 'image'
               "
               class="editor-button"
@@ -878,6 +913,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                 }}
               </button>
             </div>
+            <SourceDetails :asset="selectedAsset" compact />
             <div class="editor-stat-grid">
               <div class="editor-stat">
                 <small>Source</small
