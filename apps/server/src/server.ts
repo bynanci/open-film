@@ -13,6 +13,8 @@ import {
   OpenFilmApplication,
   TimelineEditor,
   TimelineEditorError,
+  MediaRelinker,
+  MediaRelinkError as RelinkError,
   type TimelineEditInput,
 } from "@openfilm/application";
 import {
@@ -134,6 +136,15 @@ export async function startServer(
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
   const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
+  const relinkers = new WeakMap<OpenFilmApplication, MediaRelinker>();
+  const relinkerFor = (application: OpenFilmApplication) => {
+    let relinker = relinkers.get(application);
+    if (!relinker) {
+      relinker = new MediaRelinker(application);
+      relinkers.set(application, relinker);
+    }
+    return relinker;
+  };
   const editorFor = (application: OpenFilmApplication) => {
     let editor = editors.get(application);
     if (!editor) {
@@ -197,11 +208,17 @@ export async function startServer(
         if ((method === "POST" || method === "PATCH") && !cancellation) {
           if (
             active.size &&
-            (route === "/api/project/create" || route === "/api/project/open")
+            [
+              "/api/project/create",
+              "/api/project/open",
+              "/api/project/close",
+              "/api/media/relink/plan",
+              "/api/media/relink/apply",
+            ].includes(route)
           )
             throw new HttpError(
               409,
-              "Wait for running jobs before switching projects.",
+              "Wait for running jobs before switching projects or relinking media.",
             );
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -354,6 +371,33 @@ export async function startServer(
             throw new HttpError(400, "Tags must be strings.");
           application.catalog.updateAsset(id, data as Partial<MediaAsset>);
           json(response, 200, { asset: application.catalog.getAsset(id) });
+          return;
+        }
+        if (method === "GET" && route === "/api/media/status") {
+          const assetIds = url.searchParams.has("assetIds")
+            ? url.searchParams.get("assetIds")!.split(",")
+            : undefined;
+          json(response, 200, await relinkerFor(application).status(assetIds));
+          return;
+        }
+        if (
+          method === "POST" &&
+          (route === "/api/media/relink/plan" ||
+            route === "/api/media/relink/apply")
+        ) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for import or rendering to finish before relinking media.",
+            );
+          const data = await body(request);
+          const relinker = relinkerFor(application);
+          const result = route.endsWith("/plan")
+            ? await relinker.plan(data as Parameters<MediaRelinker["plan"]>[0])
+            : await relinker.apply(
+                data as unknown as Parameters<MediaRelinker["apply"]>[0],
+              );
+          json(response, 200, result);
           return;
         }
         const source = /^\/api\/source\/([^/]+)$/.exec(route);
@@ -641,7 +685,9 @@ export async function startServer(
       } catch (error) {
         if (response.headersSent || response.destroyed) return;
         const status =
-          error instanceof HttpError || error instanceof TimelineEditorError
+          error instanceof HttpError ||
+          error instanceof TimelineEditorError ||
+          error instanceof RelinkError
             ? error.status
             : 400;
         json(response, status, {

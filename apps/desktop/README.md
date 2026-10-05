@@ -61,3 +61,25 @@ Space plays the selected source (or available film preview for a still), arrow
 keys select adjacent clips, Delete removes an unlocked clip, and Cmd/Ctrl Z and
 Cmd/Ctrl Shift Z undo and redo. These shortcuts leave text and number fields to
 normal typing. Originals are never modified.
+
+## Moved or disconnected media
+
+Library checks source availability when a project opens, when returning to the
+Library, after an import finishes, and after relinking. Check again refreshes it
+on demand. Missing Media, Inaccessible Media, and Library offline describe current
+source access; they never remove cached thumbnails or disable timeline editing.
+
+Relink Media accepts a new folder or a single-file path. Native desktop buttons
+open the scoped folder/file picker. Choose a library or selected asset to narrow
+the search, review each candidate's matching evidence, and apply the chosen
+sources. Only content-hash matches can be automatically selected. Relative path,
+filename/size, and manual matches require an explicit choice and confirmation;
+ambiguous matches require choosing a candidate. A known hash mismatch cannot be
+confirmed through the interface. A failed application keeps its review visible so
+the choices can be checked or a different location can be tried.
+
+Relinking flushes pending timeline edits before planning or applying. After the
+server commits a relink, the editor refreshes source references and rebuilds only
+the selected source player. Asset identities, ratings, selections, locks, source
+trims, and effects remain intact. Status checks use filesystem inspection through
+the local service; they do not open a decoder for every media item.

@@ -583,3 +583,11 @@ export async function createProxy(
     { signal, timeoutMs: 600000 },
   );
 }
+
+export { referenceFor, sourceStatus, planMediaRelink } from "./relink.js";
+export type {
+  PortableReference,
+  SourceStatus,
+  RelinkCandidate,
+  RelinkMatch,
+} from "./relink.js";

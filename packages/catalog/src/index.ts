@@ -17,6 +17,39 @@ export interface AssetListOptions {
   state?: { favorite?: boolean; rejected?: boolean; locked?: boolean };
 }
 
+export interface CatalogRelinkChange {
+  assetId: string;
+  expectedUri: string;
+  expectedContentHash?: string;
+  newUri: string;
+  reference: Record<string, unknown>;
+}
+
+function relinkError(
+  status: number,
+  message: string,
+): Error & { status: number } {
+  return Object.assign(new Error(message), { status });
+}
+
+function fileUri(value: unknown): asserts value is string {
+  if (
+    typeof value === "string" &&
+    ![...value].some((character) => character.charCodeAt(0) < 32)
+  ) {
+    try {
+      if (new URL(value).protocol === "file:") return;
+    } catch {
+      // Report malformed URLs through the same validation error below.
+    }
+  }
+  throw relinkError(400, "Relinking requires local file URIs");
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function id(value: string): void {
   if (
     typeof value !== "string" ||
@@ -184,6 +217,122 @@ export class ProjectCatalog {
       .prepare("SELECT data FROM assets WHERE id=?")
       .get(assetId);
     return row ? (JSON.parse(String(row.data)) as MediaAsset) : undefined;
+  }
+
+  getAssetByUri(uri: string): MediaAsset | undefined {
+    fileUri(uri);
+    const row = this.database
+      .prepare("SELECT data FROM assets WHERE uri=?")
+      .get(uri);
+    return row ? (JSON.parse(String(row.data)) as MediaAsset) : undefined;
+  }
+
+  /** Recheck planned identities and merge only source locations in one transaction. */
+  relinkAssets(changes: CatalogRelinkChange[]): MediaAsset[] {
+    if (!Array.isArray(changes) || !changes.length)
+      throw relinkError(400, "Relinking requires at least one change");
+    const assetIds = new Set<string>();
+    const destinations = new Set<string>();
+    for (const change of changes) {
+      if (!record(change)) throw relinkError(400, "Invalid relink change");
+      try {
+        id(change.assetId);
+      } catch {
+        throw relinkError(400, "Invalid relink asset ID");
+      }
+      if (assetIds.has(change.assetId))
+        throw relinkError(400, `Duplicate relink asset: ${change.assetId}`);
+      assetIds.add(change.assetId);
+      fileUri(change.expectedUri);
+      fileUri(change.newUri);
+      if (destinations.has(change.newUri))
+        throw relinkError(
+          409,
+          "Multiple assets cannot share a destination URI",
+        );
+      destinations.add(change.newUri);
+      if (
+        change.expectedContentHash !== undefined &&
+        (typeof change.expectedContentHash !== "string" ||
+          !change.expectedContentHash.trim())
+      )
+        throw relinkError(400, "Invalid expected content hash");
+      if (!record(change.reference))
+        throw relinkError(400, "Relinking requires reference metadata");
+      fileUri(change.reference.originalUri);
+      if (
+        change.reference.contentHash !== undefined &&
+        (typeof change.reference.contentHash !== "string" ||
+          !change.reference.contentHash.trim())
+      )
+        throw relinkError(400, "Invalid reference content hash");
+    }
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const nextAssets = changes.map((change) => {
+        const latest = this.getAsset(change.assetId);
+        if (!latest)
+          throw relinkError(404, `Asset not found: ${change.assetId}`);
+        const storedReference = latest.metadata["openfilm.reference"];
+        const previous = record(storedReference) ? storedReference : undefined;
+        const referenceHash =
+          typeof previous?.contentHash === "string"
+            ? previous.contentHash
+            : undefined;
+        const contentHash = latest.contentHash ?? referenceHash;
+        if (
+          latest.uri !== change.expectedUri ||
+          contentHash !== change.expectedContentHash
+        )
+          throw relinkError(409, `Asset changed since planning: ${latest.id}`);
+        if (
+          (contentHash !== undefined &&
+            change.reference.contentHash !== contentHash) ||
+          (referenceHash !== undefined &&
+            change.reference.contentHash !== referenceHash)
+        )
+          throw relinkError(409, `Content hash must not change: ${latest.id}`);
+        const existing = this.getAssetByUri(change.newUri);
+        if (existing && existing.id !== latest.id)
+          throw relinkError(
+            409,
+            `Destination URI belongs to asset: ${existing.id}`,
+          );
+        const next: MediaAsset = {
+          ...latest,
+          uri: change.newUri,
+          metadata: {
+            ...latest.metadata,
+            "openfilm.reference": {
+              ...change.reference,
+              ...(typeof previous?.originalUri === "string"
+                ? { originalUri: previous.originalUri }
+                : {}),
+            },
+          },
+        };
+        try {
+          validateAsset(next);
+        } catch (error) {
+          throw relinkError(
+            400,
+            error instanceof Error ? error.message : "Invalid relink metadata",
+          );
+        }
+        return next;
+      });
+      const update = this.database.prepare(
+        "UPDATE assets SET uri=?,data=? WHERE id=?",
+      );
+      for (const asset of nextAssets)
+        update.run(asset.uri, JSON.stringify(asset), asset.id);
+      this.database.exec("COMMIT");
+      return nextAssets;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   listAssets(options: AssetListOptions = {}): MediaAsset[] {

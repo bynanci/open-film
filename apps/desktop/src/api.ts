@@ -16,6 +16,42 @@ export interface EditorState extends EditorDocument {
   canRedo: boolean;
 }
 
+export interface SourceStatus {
+  assetId: string;
+  status: "available" | "missing" | "inaccessible";
+  message?: string;
+}
+export interface MediaStatus {
+  assets: SourceStatus[];
+  libraries: {
+    id: string;
+    name: string;
+    status: "online" | "offline" | "partial";
+    roots: string[];
+  }[];
+}
+export interface RelinkCandidate {
+  id: string;
+  path: string;
+  uri: string;
+  fileSize: number;
+  contentHash: string;
+  match: "content-hash" | "relative-path" | "filename-size" | "manual";
+  automatic: boolean;
+  reason: string;
+}
+export interface RelinkMatch {
+  assetId: string;
+  candidates: RelinkCandidate[];
+  suggestedId?: string;
+  reason?: string;
+}
+export interface RelinkPlan {
+  id: string;
+  createdAt: string;
+  matches: RelinkMatch[];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -70,8 +106,8 @@ export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
-export const sourceUrl = (id: string): string =>
-  `${prefix}/source/${encodeURIComponent(id)}`;
+export const sourceUrl = (id: string, version?: string | number): string =>
+  `${prefix}/source/${encodeURIComponent(id)}${version === undefined ? "" : `?v=${encodeURIComponent(version)}`}`;
 export const api = {
   project: () =>
     request<{ project: OpenFilmProject | null; path: string | null }>(
@@ -99,6 +135,20 @@ export const api = {
     post<EditorState>(`/compositions/${encodeURIComponent(id)}/${direction}`, {
       baseRevision,
     }),
+  mediaStatus: (assetIds?: string[]) =>
+    request<MediaStatus>(
+      `/media/status${assetIds?.length ? `?${new URLSearchParams({ assetIds: assetIds.join(",") })}` : ""}`,
+    ),
+  relinkPlan: (body: {
+    assetIds?: string[];
+    libraryId?: string;
+    folder?: string;
+    file?: string;
+  }) => post<RelinkPlan>("/media/relink/plan", body),
+  relinkApply: (body: {
+    planId: string;
+    selections: { assetId: string; candidateId: string; confirm?: boolean }[];
+  }) => post<{ assets: MediaAsset[] }>("/media/relink/apply", body),
 };
 
 export function duration(value: number | undefined): string {

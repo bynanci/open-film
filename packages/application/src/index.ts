@@ -49,8 +49,11 @@ import {
   localPath,
   perceptualHash,
   safeProjectCachePath,
+  referenceFor,
+  sourceStatus,
   type MediaCandidate,
 } from "@openfilm/media";
+import { portableCacheUri } from "./portable-cache.js";
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -165,6 +168,21 @@ export class OpenFilmApplication {
       }
     }
     const application = new OpenFilmApplication(canonical, project);
+    // Cache references are relative to the project, so its complete directory can move.
+    for (const summary of application.catalog.iterateAssetSummaries()) {
+      const asset = application.catalog.getAsset(summary.id)!;
+      const thumbnailUri =
+        asset.thumbnailUri &&
+        portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
+      const proxyUri =
+        asset.proxyUri && portableCacheUri(asset, asset.proxyUri, "proxies");
+      if (thumbnailUri !== asset.thumbnailUri || proxyUri !== asset.proxyUri)
+        application.catalog.upsertAsset({
+          ...asset,
+          ...(thumbnailUri ? { thumbnailUri } : {}),
+          ...(proxyUri ? { proxyUri } : {}),
+        });
+    }
     for (const job of application.catalog.listJobs()) {
       if (job.status === "running" || job.status === "queued")
         application.catalog.saveJob({
@@ -196,6 +214,10 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  get hasActiveJobs(): boolean {
+    return this.activeJobs > 0;
   }
 
   close(): void {
@@ -238,6 +260,7 @@ export class OpenFilmApplication {
     publish();
     this.activeJobs++;
     const pending = new Set<Promise<void>>();
+    let library: OpenFilmProject["mediaLibraries"][number] | undefined;
     const process = async (candidate: MediaCandidate): Promise<void> => {
       let stage = "fingerprint";
       const partials: string[] = [];
@@ -247,10 +270,10 @@ export class OpenFilmApplication {
           result.skipped++;
           return;
         }
-        const assetId = createHash("sha256")
-          .update(candidate.uri)
-          .digest("hex")
-          .slice(0, 32);
+        const locationMatch = this.catalog.getAssetByUri(candidate.uri);
+        const assetId =
+          locationMatch?.id ??
+          createHash("sha256").update(candidate.uri).digest("hex").slice(0, 32);
         const originalHash = await hashFile(candidate.path, options.signal);
         const previous = this.catalog.getAsset(assetId);
         const stem = `${assetId}-${originalHash.slice(0, 16)}`;
@@ -276,6 +299,7 @@ export class OpenFilmApplication {
         }
         stage = "inspect";
         const asset = await inspectMedia(candidate, options.signal);
+        asset.id = assetId;
         asset.contentHash = originalHash;
         if (previous) {
           asset.state = structuredClone(previous.state);
@@ -283,6 +307,16 @@ export class OpenFilmApplication {
           if (previous.rating !== undefined) asset.rating = previous.rating;
           asset.metadata = { ...previous.metadata, ...asset.metadata };
         }
+        const reference = referenceFor(
+          previous ?? asset,
+          library ? [library] : this.project.mediaLibraries,
+        );
+        asset.metadata["openfilm.reference"] = {
+          ...reference,
+          contentHash: originalHash,
+          fileSize: (asset.metadata["openfilm.filesystem"] as { size?: number })
+            .size,
+        };
         if (asset.mediaType !== "audio") {
           stage = "perceptual-fingerprint";
           asset.perceptualHash = await perceptualHash(
@@ -300,7 +334,9 @@ export class OpenFilmApplication {
             await createThumbnail(asset, temporary, options.signal);
             await rename(temporary, thumbnail);
           }
-          asset.thumbnailUri = pathToFileURL(thumbnail).href;
+          asset.thumbnailUri = relative(this.directory, thumbnail)
+            .split(sep)
+            .join("/");
         }
         if (
           options.proxies !== false &&
@@ -317,7 +353,7 @@ export class OpenFilmApplication {
             await createProxy(asset, temporary, options.signal);
             await rename(temporary, proxy);
           }
-          asset.proxyUri = pathToFileURL(proxy).href;
+          asset.proxyUri = relative(this.directory, proxy).split(sep).join("/");
         }
         stage = "index";
         checkAbort(options.signal);
@@ -352,6 +388,28 @@ export class OpenFilmApplication {
     };
     try {
       checkAbort(options.signal);
+      const uri = pathToFileURL(await realpath(sourceFolder)).href;
+      library = this.project.mediaLibraries.find((item) => item.uri === uri);
+      if (!library) {
+        for (const summary of this.catalog.iterateAssetSummaries()) {
+          const reference = referenceFor(
+            this.catalog.getAsset(summary.id)!,
+            this.project.mediaLibraries,
+          );
+          if (reference.rootUri === uri) {
+            library = this.project.mediaLibraries.find(
+              (item) => item.id === reference.mediaLibraryId,
+            );
+            if (library) break;
+          }
+        }
+      }
+      if (!library) {
+        library = { id: randomUUID(), uri, name: basename(sourceFolder) };
+        this.project.mediaLibraries.push(library);
+        this.saveSync();
+      }
+      library = { ...library, uri };
       job.status = "running";
       publish();
       for await (const candidate of new FilesystemSource().discover(
@@ -371,13 +429,6 @@ export class OpenFilmApplication {
       await Promise.all(pending);
       job.status = options.signal?.aborted ? "cancelled" : "completed";
       if (!options.signal?.aborted) job.progress = 1;
-      const uri = pathToFileURL(await realpath(sourceFolder)).href;
-      if (!this.project.mediaLibraries.some((library) => library.uri === uri))
-        this.project.mediaLibraries.push({
-          id: randomUUID(),
-          uri,
-          name: basename(sourceFolder),
-        });
       this.saveSync();
     } catch (error) {
       await Promise.all(pending);
@@ -529,7 +580,7 @@ export class OpenFilmApplication {
       composition.duration > story.maxDuration + 0.00001
     )
       throw new Error(
-        "Timeline exceeds the story maximum duration; compose again before rendering",
+        "Timeline exceeds the story maximum duration; use Fit to Duration or shorten clips before rendering",
       );
     const output = await safeProjectCachePath(this.directory, "preview.mp4");
     const job: Job = {
@@ -542,9 +593,18 @@ export class OpenFilmApplication {
     this.catalog.saveJob(job);
     this.activeJobs++;
     try {
+      const assets = this.compositionAssets(composition);
+      for (const asset of assets) {
+        checkAbort(options.signal);
+        const status = await sourceStatus(asset);
+        if (status.status !== "available")
+          throw new Error(
+            `${status.status === "missing" ? "Missing Media" : "Source inaccessible"}: ${asset.name}. Reconnect the disk or relink this source before rendering.`,
+          );
+      }
       const path = await new FFmpegRenderer().render(
         composition,
-        this.compositionAssets(composition),
+        assets,
         output,
         this.project.settings,
         options,
@@ -604,3 +664,12 @@ export {
   type TimelineEditorState,
   type TimelineEditInput,
 } from "./editor.js";
+
+export {
+  MediaRelinker,
+  MediaRelinkError,
+  type MediaSourceStatus,
+  type RelinkPlan,
+  type RelinkPlanInput,
+  type RelinkApplyInput,
+} from "./relink.js";

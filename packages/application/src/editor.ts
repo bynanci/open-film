@@ -306,7 +306,23 @@ export class TimelineEditor {
         );
       return asset;
     });
-    const revision = digest({ composition, story, assets });
+    const revision = digest({
+      composition,
+      story,
+      assets: assets.map((asset) => {
+        const {
+          uri: _uri,
+          name: _name,
+          thumbnailUri: _thumbnail,
+          proxyUri: _proxy,
+          metadata,
+          ...editing
+        } = asset;
+        const { "openfilm.reference": _reference, ...contentMetadata } =
+          metadata;
+        return { ...editing, metadata: contentMetadata };
+      }),
+    });
     const history = this.histories.get(compositionId);
     return structuredClone({
       composition,

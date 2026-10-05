@@ -18,10 +18,13 @@ import {
   duration,
   dateLabel,
   type EditorState,
+  type MediaStatus,
+  type SourceStatus,
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
 import TimelineEditor from "./components/TimelineEditor.vue";
+import RelinkMedia from "./components/RelinkMedia.vue";
 
 type Tab = "Library" | "Stories" | "Timeline" | "Export";
 type AssetState = "favorite" | "rejected" | "locked";
@@ -41,6 +44,41 @@ const importOpen = ref(false);
 const importFolder = ref("");
 const assets = ref<MediaAsset[]>([]);
 const assetCache = ref<Record<string, MediaAsset>>({});
+const mediaStatus = ref<MediaStatus | null>(null);
+const mediaStatusError = ref("");
+const checkingMedia = ref(false);
+const relinkOpen = ref(false);
+const relinkAssetIds = ref<string[] | undefined>();
+const relinkLibraryId = ref<string | undefined>();
+const relinkPanelBusy = ref(false);
+const relinkRefreshing = ref(false);
+const relinkBusy = computed(
+  () => relinkPanelBusy.value || relinkRefreshing.value,
+);
+const sourceVersion = ref(0);
+let statusGeneration = 0;
+const sourceStatuses = computed<Record<string, SourceStatus>>(() =>
+  Object.fromEntries(
+    mediaStatus.value?.assets.map((item) => [item.assetId, item]) ?? [],
+  ),
+);
+const missingCount = computed(
+  () =>
+    mediaStatus.value?.assets.filter((item) => item.status === "missing")
+      .length ?? 0,
+);
+const inaccessibleCount = computed(
+  () =>
+    mediaStatus.value?.assets.filter((item) => item.status === "inaccessible")
+      .length ?? 0,
+);
+const offlineLibraries = computed(
+  () =>
+    mediaStatus.value?.libraries.filter(
+      (library) => library.status !== "online",
+    ) ?? [],
+);
+
 const total = ref(0);
 const offset = ref(0);
 const pageSize = 60;
@@ -147,7 +185,7 @@ async function flushEditor() {
   return saved;
 }
 async function changeTab(next: Tab) {
-  if (next === tab.value) return;
+  if (next === tab.value || relinkBusy.value) return;
   if (next === "Timeline") {
     tab.value = next;
     if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
@@ -156,6 +194,7 @@ async function changeTab(next: Tab) {
   if (!(await flushEditor())) return;
   tab.value = next;
   if (next === "Stories" && !beatDirty.value) hydrateBeat();
+  if (next === "Library") await checkMediaStatus();
 }
 async function changeComposition(event: globalThis.Event) {
   const select = event.target as HTMLSelectElement;
@@ -186,6 +225,57 @@ function cacheAssets(incoming: MediaAsset[]) {
   const next = { ...assetCache.value };
   for (const asset of incoming) next[asset.id] = asset;
   assetCache.value = next;
+}
+async function checkMediaStatus() {
+  const projectId = project.value?.id;
+  if (!projectId) return;
+  const generation = ++statusGeneration;
+  checkingMedia.value = true;
+  mediaStatusError.value = "";
+  try {
+    const result = await api.mediaStatus();
+    if (project.value?.id === projectId && generation === statusGeneration)
+      mediaStatus.value = result;
+  } catch (cause) {
+    if (generation === statusGeneration)
+      mediaStatusError.value =
+        cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    if (generation === statusGeneration) checkingMedia.value = false;
+  }
+}
+async function openRelink(assetId?: string, libraryId?: string) {
+  if (relinkBusy.value || busy.value || activeJobs.value.length) return;
+  if (!(await flushEditor())) return;
+  relinkAssetIds.value = assetId ? [assetId] : undefined;
+  relinkLibraryId.value = libraryId;
+  relinkOpen.value = true;
+  importOpen.value = false;
+  tab.value = "Library";
+  await checkMediaStatus();
+}
+async function beforeRelink() {
+  if (busy.value || activeJobs.value.length) {
+    error.value =
+      "Wait for import or rendering to finish before relinking media.";
+    return false;
+  }
+  return flushEditor();
+}
+async function mediaRelinked(updated: MediaAsset[]) {
+  relinkRefreshing.value = true;
+  try {
+    cacheAssets(updated);
+    const byId = new Map(updated.map((asset) => [asset.id, asset]));
+    assets.value = assets.value.map((asset) => byId.get(asset.id) ?? asset);
+    sourceVersion.value += 1;
+    if (previewVersion.value) previewStale.value = true;
+    await timelineEditor.value?.reload();
+    await checkMediaStatus();
+    notice.value = `${updated.length} ${updated.length === 1 ? "source is" : "sources are"} connected again. Your edits and selections are preserved.`;
+  } finally {
+    relinkRefreshing.value = false;
+  }
 }
 async function refreshProject() {
   const result = await api.project();
@@ -237,6 +327,7 @@ async function boot() {
     if (project.value) {
       await reloadAssets();
       jobs.value = (await api.jobs()).jobs;
+      await checkMediaStatus();
     }
   });
   loading.value = false;
@@ -272,6 +363,9 @@ async function openProject() {
       });
       offset.value = 0;
       assetCache.value = {};
+      mediaStatus.value = null;
+      relinkOpen.value = false;
+      sourceVersion.value += 1;
       selectedAssetId.value = "";
       groupSelection.value = null;
       events.value = [];
@@ -282,10 +376,12 @@ async function openProject() {
       await reloadAssets();
       jobs.value = (await api.jobs()).jobs;
       tab.value = "Library";
+      await checkMediaStatus();
     },
   );
 }
 async function beginImport() {
+  if (relinkBusy.value) return;
   if (!importFolder.value.trim()) {
     error.value = "Choose the folder containing your media.";
     return;
@@ -303,6 +399,13 @@ async function pollJobs() {
   polling = true;
   try {
     const result = await api.jobs();
+    const newlyImported = result.jobs.some(
+      (job) =>
+        job.type === "import" &&
+        ["completed", "failed", "cancelled"].includes(job.status) &&
+        jobs.value.find((previous) => previous.id === job.id)?.status !==
+          job.status,
+    );
     jobs.value = result.jobs;
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
@@ -311,6 +414,7 @@ async function pollJobs() {
       lastJobSignature = signature;
       await reloadAssets();
       await refreshProject();
+      if (newlyImported) await checkMediaStatus();
     }
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
@@ -576,8 +680,12 @@ function progress(job: Job) {
   return Math.round(Math.max(0, Math.min(1, job.progress ?? 0)) * 100);
 }
 async function changeWorkspace() {
-  if (busy.value || activeJobs.value.length) return;
+  if (busy.value || activeJobs.value.length || relinkBusy.value) return;
   if (!(await flushEditor())) return;
+  statusGeneration += 1;
+  mediaStatus.value = null;
+  checkingMedia.value = false;
+  relinkOpen.value = false;
   project.value = null;
   projectPath.value = null;
   folder.value = "";
@@ -628,6 +736,7 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
+          :disabled="relinkBusy"
           @click="changeTab(item)"
         >
           {{ item }}
@@ -792,17 +901,27 @@ onUnmounted(() => {
         <div class="project-heading-actions">
           <button
             class="text-button project-switch"
-            :disabled="!!busy || activeJobs.length > 0"
+            :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
             @click="changeWorkspace"
           >
             <Icon name="folder" :size="15" /> Switch project</button
           ><button
             v-if="tab === 'Library'"
             class="primary"
-            :disabled="!!busy"
+            :disabled="!!busy || relinkBusy"
             @click="importOpen = !importOpen"
           >
             <Icon name="plus" /> Add media</button
+          ><button
+            v-if="
+              tab === 'Library' &&
+              (total > 0 || (mediaStatus?.assets.length ?? 0) > 0)
+            "
+            class="secondary"
+            :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+            @click="openRelink()"
+          >
+            <Icon name="refresh" :size="16" />Relink Media</button
           ><button
             v-if="tab === 'Stories'"
             class="primary"
@@ -813,6 +932,20 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <RelinkMedia
+        v-if="relinkOpen && tab === 'Library'"
+        :key="`${project.id}:${relinkAssetIds?.join(',') ?? relinkLibraryId ?? 'all'}`"
+        :assets="Object.values(assetCache)"
+        :asset-ids="relinkAssetIds"
+        :library-id="relinkLibraryId"
+        :libraries="mediaStatus?.libraries"
+        :blocked="!!busy || activeJobs.length > 0"
+        :before-action="beforeRelink"
+        @close="relinkOpen = false"
+        @applied="mediaRelinked"
+        @working="relinkPanelBusy = $event"
+      />
 
       <section v-if="importOpen" class="inline-form" aria-label="Import media">
         <div>
@@ -926,6 +1059,76 @@ onUnmounted(() => {
       </section>
 
       <template v-if="tab === 'Library'">
+        <section
+          v-if="
+            total > 0 ||
+            (mediaStatus?.assets.length ?? 0) > 0 ||
+            mediaStatusError
+          "
+          class="media-availability"
+          :class="{
+            unavailable:
+              missingCount || inaccessibleCount || offlineLibraries.length,
+          }"
+          aria-label="Media availability"
+        >
+          <div class="media-availability-summary">
+            <div>
+              <strong v-if="missingCount || inaccessibleCount"
+                >{{ missingCount ? `${missingCount} Missing Media` : ""
+                }}{{ missingCount && inaccessibleCount ? " · " : ""
+                }}{{
+                  inaccessibleCount ? `${inaccessibleCount} inaccessible` : ""
+                }}</strong
+              ><strong v-else>{{
+                checkingMedia
+                  ? "Checking source files…"
+                  : mediaStatus
+                    ? "All media available"
+                    : "Source status not checked"
+              }}</strong>
+              <p v-if="missingCount || inaccessibleCount">
+                Reconnect the drive or locate moved files. Cached thumbnails and
+                your edits stay available.
+              </p>
+              <p v-else-if="mediaStatus">
+                {{ mediaStatus.assets.length }} source files checked.
+              </p>
+              <p v-if="mediaStatusError" role="alert">{{ mediaStatusError }}</p>
+            </div>
+            <button
+              class="secondary"
+              :disabled="checkingMedia || relinkBusy"
+              @click="checkMediaStatus"
+            >
+              <Icon name="refresh" :size="14" />{{
+                checkingMedia ? "Checking…" : "Check again"
+              }}
+            </button>
+          </div>
+          <div
+            v-for="library in offlineLibraries"
+            :key="library.id"
+            class="library-availability"
+          >
+            <span
+              ><strong>{{
+                library.status === "offline"
+                  ? "Library offline"
+                  : "Some library files unavailable"
+              }}</strong>
+              · {{ library.name
+              }}<small>{{ library.roots.join(" · ") }}</small></span
+            ><button
+              class="text-button"
+              :aria-label="`Relink library ${library.name}`"
+              :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+              @click="openRelink(undefined, library.id)"
+            >
+              Locate library<Icon name="arrow" :size="14" />
+            </button>
+          </div>
+        </section>
         <div class="library-toolbar">
           <div class="collection-tabs" aria-label="Library view">
             <button
@@ -1008,6 +1211,7 @@ onUnmounted(() => {
                 v-for="asset in assets"
                 :key="asset.id"
                 :asset="asset"
+                :source-status="sourceStatuses[asset.id]"
                 :selected="selectedAssetId === asset.id"
                 @select="inspectAsset"
                 @toggle="toggleAsset"
@@ -1136,6 +1340,33 @@ onUnmounted(() => {
                       ? "Restore to story"
                       : "Leave out"
                   }}
+                </button>
+              </div>
+              <div
+                class="selected-source-status"
+                :class="{
+                  unavailable:
+                    sourceStatuses[selectedAsset.id]?.status !== 'available' &&
+                    sourceStatuses[selectedAsset.id],
+                }"
+              >
+                <strong v-if="sourceStatuses[selectedAsset.id]">{{
+                  sourceStatuses[selectedAsset.id]?.status === "missing"
+                    ? "Missing Media"
+                    : sourceStatuses[selectedAsset.id]?.status ===
+                        "inaccessible"
+                      ? "Inaccessible Media"
+                      : "Source available"
+                }}</strong>
+                <p v-if="sourceStatuses[selectedAsset.id]?.message">
+                  {{ sourceStatuses[selectedAsset.id]?.message }}
+                </p>
+                <button
+                  class="secondary"
+                  :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+                  @click="openRelink(selectedAsset.id)"
+                >
+                  Relink selected media
                 </button>
               </div>
               <p class="source-path" :title="selectedAsset.uri">
@@ -1460,6 +1691,7 @@ onUnmounted(() => {
                   v-for="asset in candidateAssets"
                   :key="asset.id"
                   :asset="asset"
+                  :source-status="sourceStatuses[asset.id]"
                   choice
                   :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
                   @select="chooseCandidate"
@@ -1609,6 +1841,9 @@ onUnmounted(() => {
             :project-id="project.id"
             :composition-id="activeComposition.id"
             :active="tab === 'Timeline'"
+            :source-statuses="sourceStatuses"
+            :source-version="sourceVersion"
+            @relink="openRelink($event)"
             @change="editorChanged"
             @edited="editorEdited"
             @playback="toggleRenderedPlayback"

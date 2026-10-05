@@ -1095,3 +1095,71 @@ button.editor-beat-heading:hover {
     margin-left: 0;
   }
 }
+
+.editor-missing-source {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 230px;
+  overflow: hidden;
+}
+.editor-source-screen .editor-missing-source > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  opacity: 0.28;
+}
+.editor-missing-source > div {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 6px;
+  background: #141719cc;
+}
+.editor-missing-source strong {
+  color: var(--editor-text);
+  font-size: 14px;
+}
+.editor-missing-source span {
+  color: var(--editor-muted);
+  font-size: 11px;
+}
+.editor-source-warning {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid #675041;
+  border-radius: 5px;
+  color: #e3bc9e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.editor-source-warning p {
+  overflow-wrap: anywhere;
+}
+.editor-source-warning button {
+  flex-shrink: 0;
+}
+.editor-clip-source-status {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 3px 5px;
+  color: #ffdcbe;
+  background: #32251eec;
+  border-radius: 3px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+.editor-clip.locked .editor-clip-source-status {
+  top: 29px;
+}

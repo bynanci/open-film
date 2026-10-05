@@ -9,7 +9,13 @@ import {
 } from "vue";
 import type { Clip, StoryBeat } from "@openfilm/core";
 import { suggestShortening, type TimelineCommand } from "@openfilm/solver";
-import { duration, sourceUrl, thumbnailUrl, type EditorState } from "../api";
+import {
+  duration,
+  sourceUrl,
+  thumbnailUrl,
+  type EditorState,
+  type SourceStatus,
+} from "../api";
 import { useTimelineEditor } from "../composables/useTimelineEditor";
 import Icon from "./Icon.vue";
 
@@ -17,11 +23,14 @@ const props = defineProps<{
   projectId: string;
   compositionId: string;
   active: boolean;
+  sourceStatuses?: Record<string, SourceStatus>;
+  sourceVersion?: number;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
   edited: [];
   playback: [];
+  relink: [assetId: string];
 }>();
 const {
   state,
@@ -51,6 +60,8 @@ const draggedClipId = ref("");
 const replacementId = ref("");
 const sourcePlayer = ref<HTMLVideoElement | null>(null);
 const sourceError = ref("");
+const unsupportedSpeedMessage =
+  "This speed cannot be previewed in the browser. Render a preview to watch the edit.";
 const playing = ref(false);
 const clipFields = ref({
   sourceIn: 0,
@@ -82,6 +93,20 @@ const assetMap = computed(
 );
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
+);
+const selectedSourceStatus = computed(() =>
+  selectedAsset.value
+    ? props.sourceStatuses?.[selectedAsset.value.id]
+    : undefined,
+);
+const sourceUnavailable = computed(
+  () =>
+    selectedSourceStatus.value &&
+    selectedSourceStatus.value.status !== "available",
+);
+const sourcePlaybackKey = computed(
+  () =>
+    `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
 const selectedBeat = computed(() =>
   state.value?.story.beats.find((beat) => beat.id === selectedBeatId.value),
@@ -279,10 +304,10 @@ function configurePlayer() {
   player.currentTime = clip.sourceIn ?? 0;
   try {
     player.playbackRate = clip.transform?.speed ?? 1;
+    if (sourceError.value === unsupportedSpeedMessage) sourceError.value = "";
   } catch {
     player.pause();
-    sourceError.value =
-      "This speed cannot be previewed in the browser. Render a preview to watch the edit.";
+    sourceError.value = unsupportedSpeedMessage;
   }
   player.volume = clip.transform?.volume ?? 1;
 }
@@ -420,13 +445,10 @@ watch(selectedBeat, (beat, previous) => {
     beatFields.value = { ...beatFields.value, ...changed };
   }
 });
-watch(
-  () => selectedAsset.value?.id,
-  () => {
-    sourceError.value = "";
-    playing.value = false;
-  },
-);
+watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
+  sourceError.value = "";
+  playing.value = false;
+});
 watch(
   () => props.active,
   (active) => {
@@ -615,9 +637,25 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
         <div class="editor-stage">
           <div class="editor-source-screen">
             <template v-if="selectedAsset">
+              <div v-if="sourceUnavailable" class="editor-missing-source">
+                <img
+                  v-if="selectedAsset.thumbnailUri"
+                  :src="thumbnailUrl(selectedAsset.id)"
+                  alt=""
+                />
+                <div>
+                  <Icon name="folder" :size="24" /><strong>{{
+                    selectedSourceStatus?.status === "inaccessible"
+                      ? "Inaccessible Media"
+                      : "Missing Media"
+                  }}</strong
+                  ><span>Cached preview · Your edits are still available.</span>
+                </div>
+              </div>
               <img
-                v-if="selectedAsset.mediaType === 'image'"
-                :src="sourceUrl(selectedAsset.id)"
+                v-else-if="selectedAsset.mediaType === 'image'"
+                :key="sourcePlaybackKey"
+                :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
                 :alt="selectedAsset.name"
                 :style="{
                   transform: `translate(${clipFields.x}px, ${clipFields.y}px) rotate(${clipFields.rotation}deg) scale(${clipFields.scale})`,
@@ -630,8 +668,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
               <video
                 v-else
                 ref="sourcePlayer"
-                :key="selectedAsset.id"
-                :src="sourceUrl(selectedAsset.id)"
+                :key="sourcePlaybackKey"
+                :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
                 :poster="
                   selectedAsset.thumbnailUri
                     ? thumbnailUrl(selectedAsset.id)
@@ -664,16 +702,38 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
               >{{ selectedAsset?.name ?? "Your story" }}
               <small>· Selected source</small></span
             ><button
-              v-if="selectedAsset && selectedAsset.mediaType !== 'image'"
+              v-if="
+                selectedAsset &&
+                !sourceUnavailable &&
+                selectedAsset.mediaType !== 'image'
+              "
               class="editor-button"
               @click="togglePlayback"
             >
               {{ playing ? "Pause clip" : "Play clip" }}
             </button>
           </div>
-          <p v-if="sourceError" class="editor-note" role="status">
-            {{ sourceError }}
-          </p>
+          <div
+            v-if="sourceUnavailable || sourceError"
+            class="editor-source-warning"
+            role="status"
+          >
+            <p>
+              {{
+                selectedSourceStatus?.message ||
+                sourceError ||
+                "Reconnect the source drive or locate this file in its new folder."
+              }}
+            </p>
+            <button
+              v-if="selectedAsset && sourceError !== unsupportedSpeedMessage"
+              class="editor-button"
+              aria-label="Relink selected clip source"
+              @click="emit('relink', selectedAsset.id)"
+            >
+              Locate source<Icon name="arrow" :size="14" />
+            </button>
+          </div>
           <div class="editor-beats" aria-label="Story beat timeline">
             <section
               v-for="(group, index) in groups"
@@ -740,6 +800,19 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                           : 'film'
                       "
                   /></span>
+                  <span
+                    v-if="
+                      sourceStatuses?.[clip.assetId] &&
+                      sourceStatuses[clip.assetId]?.status !== 'available'
+                    "
+                    class="editor-clip-source-status"
+                    :title="sourceStatuses[clip.assetId]?.message"
+                    >{{
+                      sourceStatuses[clip.assetId]?.status === "missing"
+                        ? "Missing"
+                        : "Inaccessible"
+                    }}</span
+                  >
                   <span v-if="clip.locked" class="editor-clip-badge"
                     ><Icon name="lock" :size="11" />Locked</span
                   ><span class="editor-clip-meta"

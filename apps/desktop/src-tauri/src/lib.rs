@@ -28,6 +28,23 @@ async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
 
 struct LocalService(Mutex<Option<Child>>);
 
+#[tauri::command]
+async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .blocking_pick_file()
+            .map(|file| {
+                file.into_path()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .map_err(|error| error.to_string())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn configured_service() -> Result<Option<Child>, String> {
     let Some(script) = std::env::var_os("OPENFILM_SERVER_PATH") else {
         // Development starts the server through `pnpm dev`; an already-running
@@ -59,7 +76,7 @@ fn configured_service() -> Result<Option<Child>, String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![pick_folder])
+        .invoke_handler(tauri::generate_handler![pick_folder, pick_file])
         .setup(|app| {
             let child = configured_service().map_err(std::io::Error::other)?;
             app.manage(LocalService(Mutex::new(child)));

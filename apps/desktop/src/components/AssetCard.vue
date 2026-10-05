@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import type { MediaAsset } from "@openfilm/core";
-import { thumbnailUrl, duration, dateLabel } from "../api";
+import { thumbnailUrl, duration, dateLabel, type SourceStatus } from "../api";
 import Icon from "./Icon.vue";
 const props = defineProps<{
   asset: MediaAsset;
   selected?: boolean;
   choice?: boolean;
   chosen?: boolean;
+  sourceStatus?: SourceStatus;
 }>();
 defineEmits<{
   select: [asset: MediaAsset];
@@ -15,7 +16,7 @@ defineEmits<{
 }>();
 const failed = ref(false);
 watch(
-  () => props.asset.id,
+  () => `${props.asset.id}:${props.asset.uri}:${props.asset.thumbnailUri}`,
   () => {
     failed.value = false;
   },
@@ -69,6 +70,16 @@ watch(
       <span v-if="asset.duration !== undefined" class="asset-duration">{{
         duration(asset.duration)
       }}</span>
+      <span
+        v-if="sourceStatus && sourceStatus.status !== 'available'"
+        class="asset-source-status"
+        :title="sourceStatus.message"
+        >{{
+          sourceStatus.status === "missing"
+            ? "Missing Media"
+            : "Inaccessible Media"
+        }}</span
+      >
       <span v-if="choice" class="choice-mark"
         ><Icon v-if="chosen" name="check" :size="14" /><span v-else
           >+</span

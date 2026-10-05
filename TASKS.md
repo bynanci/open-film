@@ -54,7 +54,8 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] README, contribution/conduct/security policies, architecture, format docs,
       changelog, roadmap, and ADRs.
 - [ ] Self-contained native installer and multi-platform installation validation.
-- [ ] Media relinking and volume-aware library portability.
+- [x] Media relinking and logical-volume-aware library portability; native Windows
+      remount checks remain manual.
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.
 - [ ] Pixel/Insta360/other device adapters beyond generic filesystem inspection.
 - [ ] Local vision, embeddings, transcript, and language implementations.
@@ -70,7 +71,7 @@ Hardware and real NLE verification are recorded separately.
       order, speed, volume, cut/crossfade, transform and explicit clip locks.
 - [x] P0: scoped beat editing/regeneration, duration feedback and explainable fit.
 - [x] P0: undo/redo, debounced durable autosave, recoverable errors and reopen tests.
-- [ ] P1: missing/offline state, single/folder relink and portable library references.
+- [x] P1: missing/offline state, single/folder relink and portable library references.
 - [ ] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
 - [ ] P2: Insta360 exported media plus raw-source recognition/association.
 - [ ] P3: generated Proposal reference dataset, documented workflow and full E2E.
