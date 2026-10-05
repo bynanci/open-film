@@ -79,7 +79,7 @@ Hardware and real NLE verification are recorded separately.
 - [x] P3: generated Proposal reference dataset, documented workflow and full E2E.
 - [x] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
 - [x] P5: all local regression gates, including a 500-clip browser playback check.
-- [ ] P5: final branch CI green.
+- [x] P5: branch CI green; source/media/browser/interchange and native jobs pass.
 - [ ] Manual: actual DaVinci Resolve import.
 - [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 

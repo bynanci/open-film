@@ -7,6 +7,11 @@ on `codex/real-editing-workflow`. The review is
 validated commit. The original foundation record remains in
 [validation.md](validation.md).
 
+The complete workflow at `2174e49728e7167f2406ce87cb85b8c257974c60` passed both
+source/media/browser and native jobs in
+[Verify run 37345829780](https://github.com/bynanci/open-film/actions/runs/37345829780).
+The PR checks remain the source of truth for subsequent commits.
+
 ## Environment and gates
 
 Local verification uses Linux x86_64, Node 24.14.0, pnpm 11.11.0, FFmpeg/FFprobe

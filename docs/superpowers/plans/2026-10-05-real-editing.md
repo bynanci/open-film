@@ -58,4 +58,4 @@ or Resolve certification without those fixtures/applications. main stays green.
 
 - [x] Run format, lint, typecheck, test, build, e2e, interchange and native gates.
 - [x] Review actual UI screenshots and independently audit regressions.
-- [ ] Update TASKS/ROADMAP/README, create PR, verify its CI against exact head.
+- [x] Update TASKS/ROADMAP/README, create PR, verify its CI against exact head.

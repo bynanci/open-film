@@ -1015,7 +1015,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                 /></label>
                 <div class="editor-presets">
                   <button
-                    v-for="speed in [0.5, 1, 1.5, 2]"
+                    v-for="speed in [0.5, 0.75, 1, 1.25, 1.5, 2]"
                     :key="speed"
                     class="editor-button"
                     :class="{ selected: clipFields.speed === speed }"
