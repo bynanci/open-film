@@ -50,6 +50,7 @@ import { FFmpegRenderer } from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
 import {
   enrichInsta360Asset,
+  Insta360ImportContext,
   inspectInsta360Raw,
   isInsta360Raw,
 } from "@openfilm/source-insta360";
@@ -283,6 +284,7 @@ export class OpenFilmApplication {
     publish();
     this.activeJobs++;
     const pending = new Set<Promise<void>>();
+    const insta360Context = new Insta360ImportContext();
     let library: OpenFilmProject["mediaLibraries"][number] | undefined;
     const process = async (candidate: MediaCandidate): Promise<void> => {
       let stage = "fingerprint";
@@ -317,25 +319,32 @@ export class OpenFilmApplication {
           "proxies",
           `${stem}.mp4`,
         );
+        const audioProxy = await safeProjectCachePath(
+          this.directory,
+          "proxies",
+          `${stem}.mp3`,
+        );
         const derivedComplete =
           previous &&
           previous.metadata["openfilm.importPipeline"] === 2 &&
           (previous.mediaType === "audio" || existsSync(thumbnail)) &&
           (options.proxies === false ||
-            !["video", "360-video"].includes(previous.mediaType) ||
-            existsSync(proxy));
+            !["video", "360-video", "audio"].includes(previous.mediaType) ||
+            (!!previous.proxyUri &&
+              existsSync(previous.mediaType === "audio" ? audioProxy : proxy)));
         if (previous?.contentHash === originalHash && derivedComplete) {
           result.skipped++;
           return;
         }
         stage = "inspect";
         const inspected = isInsta360Raw(candidate.uri)
-          ? await inspectInsta360Raw(candidate, options.signal)
+          ? await inspectInsta360Raw(candidate, options.signal, insta360Context)
           : extname(candidate.path).toLowerCase() === ".dng"
             ? await inspectPixelDng(candidate, options.signal)
             : await inspectMedia(candidate, options.signal);
         const asset = await enrichInsta360Asset(
           await enrichPixelAsset(inspected),
+          { signal: options.signal, context: insta360Context },
         );
         asset.id = assetId;
         asset.contentHash = originalHash;
@@ -405,20 +414,24 @@ export class OpenFilmApplication {
         if (
           options.proxies !== false &&
           !previewIssue(asset) &&
-          ["video", "360-video"].includes(asset.mediaType)
+          ["video", "360-video", "audio"].includes(asset.mediaType)
         ) {
           stage = "proxy";
-          if (!existsSync(proxy)) {
+          const mediaProxy = asset.mediaType === "audio" ? audioProxy : proxy;
+          const extension = asset.mediaType === "audio" ? "mp3" : "mp4";
+          if (!existsSync(mediaProxy)) {
             const temporary = await safeProjectCachePath(
               this.directory,
               "proxies",
-              `${stem}-${job.id}.partial.mp4`,
+              `${stem}-${job.id}.partial.${extension}`,
             );
             partials.push(temporary);
             await createProxy(asset, temporary, options.signal);
-            await rename(temporary, proxy);
+            await rename(temporary, mediaProxy);
           }
-          asset.proxyUri = relative(this.directory, proxy).split(sep).join("/");
+          asset.proxyUri = relative(this.directory, mediaProxy)
+            .split(sep)
+            .join("/");
         }
         stage = "index";
         checkAbort(options.signal);

@@ -70,6 +70,17 @@ source edits, order, duration and effects survive; ripple timeline offsets may
 change. Suggestions are a sequential plan; applying all listed commands reaches
 the best feasible target without silently dropping protected clips.
 
+For individual Fit actions, `prepareShorteningPlan(document, assets, targetDuration)`
+returns `suggestions` measured independently against the current cut. Each preview
+contains its command, actual saving, before/after duration, and a snapshot of the
+document, revision when present, target and source assets. Zero-saving or invalid
+individual actions are omitted. `shorteningCommands(document, assets, targetDuration,
+preview)` rejects stale state or changed commands before returning commands to the
+normal editor queue. The prepared plan's `commands` and `secondsSaved` retain the
+original sequential Apply-all plan; independent row savings are alternatives and
+must never be added together. Individual Apply enqueues only its reviewed command;
+the existing persistence batching and undo behavior are unchanged.
+
 ## Application service — packages/application/src/editor.ts
 
 Export via @openfilm/application:

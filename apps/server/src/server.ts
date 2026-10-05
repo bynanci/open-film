@@ -423,11 +423,31 @@ export async function startServer(
               422,
               "Only imported local media can be previewed.",
             );
-          const useProxy = asset.mediaType === "video" && !!asset.proxyUri;
-          const file = useProxy
-            ? asset.proxyUri!.startsWith("file:")
-              ? fileURLToPath(asset.proxyUri!)
-              : resolve(application.directory, asset.proxyUri!)
+          const sourceExtension = extname(
+            fileURLToPath(asset.uri),
+          ).toLowerCase();
+          const needsImagePreview =
+            asset.mediaType === "image" &&
+            (asset.hdr ||
+              asset.codec === "hevc" ||
+              ![".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"].includes(
+                sourceExtension,
+              ));
+          if (needsImagePreview && !asset.thumbnailUri)
+            throw new HttpError(
+              422,
+              "A compatible image preview is missing. Import this media again to rebuild its cached preview.",
+            );
+          const derivedUri = needsImagePreview
+            ? asset.thumbnailUri
+            : ["video", "audio"].includes(asset.mediaType)
+              ? asset.proxyUri
+              : undefined;
+          const useProxy = !!derivedUri;
+          const file = derivedUri
+            ? derivedUri.startsWith("file:")
+              ? fileURLToPath(derivedUri)
+              : resolve(application.directory, derivedUri)
             : fileURLToPath(asset.uri);
           if (!useProxy && (asset.hdr || asset.codec === "hevc"))
             throw new HttpError(
@@ -440,19 +460,25 @@ export async function startServer(
               ".jpeg": "image/jpeg",
               ".png": "image/png",
               ".webp": "image/webp",
+              ".gif": "image/gif",
+              ".bmp": "image/bmp",
               ".mp4": "video/mp4",
+              ".m4v": "video/mp4",
               ".mov": "video/quicktime",
               ".webm": "video/webm",
               ".mp3": "audio/mpeg",
               ".wav": "audio/wav",
               ".m4a": "audio/mp4",
               ".ogg": "audio/ogg",
+              ".opus": "audio/ogg",
+              ".flac": "audio/flac",
+              ".aac": "audio/aac",
             } as Record<string, string>
           )[extname(file).toLowerCase()];
           if (!mime)
             throw new HttpError(
               422,
-              "This source format needs a compatible preview proxy.",
+              "This source format needs a compatible preview. Import it again with proxies enabled, or add a JPEG, MP4 or MP3 copy.",
             );
           try {
             // The path comes exclusively from this project's catalog, never a request path.

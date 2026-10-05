@@ -97,4 +97,49 @@ describe("real SQLite catalog", () => {
     );
     reopened.close();
   });
+
+  it("optionally pages portable references without materializing other metadata", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-summary-"));
+    directories.push(directory);
+    const catalog = new ProjectCatalog(directory);
+    const reference = {
+      mediaLibraryId: "library",
+      rootUri: "file:///current/mount",
+      originalUri: "file:///original/mount/source.jpg",
+    };
+    for (let index = 0; index < 501; index++) {
+      const item = asset(
+        `asset-${String(index).padStart(4, "0")}`,
+        "2024-01-01T00:00:00Z",
+      );
+      item.metadata = {
+        "openfilm.exif": { opaque: "x".repeat(1024) },
+        ...(index === 1
+          ? {}
+          : { "openfilm.reference": index === 2 ? "legacy value" : reference }),
+      };
+      catalog.upsertAsset(item);
+    }
+    expect(
+      [...catalog.iterateAssetSummaries()].every(
+        (item) => Object.keys(item.metadata).length === 0,
+      ),
+    ).toBe(true);
+    const summaries = [
+      ...catalog.iterateAssetSummaries({ includeReference: true }),
+    ];
+    expect(summaries).toHaveLength(501);
+    expect(summaries[0]!.metadata).toEqual({ "openfilm.reference": reference });
+    expect(summaries[1]!.metadata).toEqual({});
+    expect(summaries[2]!.metadata).toEqual({
+      "openfilm.reference": "legacy value",
+    });
+    expect(summaries[500]!.metadata).toEqual({
+      "openfilm.reference": reference,
+    });
+    expect(summaries.every((item) => !("openfilm.exif" in item.metadata))).toBe(
+      true,
+    );
+    catalog.close();
+  });
 });

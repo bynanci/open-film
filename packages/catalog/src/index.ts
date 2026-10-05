@@ -378,7 +378,9 @@ export class ProjectCatalog {
   }
 
   /** Paged descriptors omit heavyweight EXIF/probe extension blobs for analysis. */
-  *iterateAssetSummaries(): Generator<MediaAsset> {
+  *iterateAssetSummaries(
+    options: { includeReference?: boolean } = {},
+  ): Generator<MediaAsset> {
     let after = "";
     while (true) {
       const rows = this.database
@@ -387,6 +389,7 @@ export class ProjectCatalog {
         json_extract(data,'$.duration') AS duration,json_extract(data,'$.dimensions') AS dimensions,
         json_extract(data,'$.gps') AS gps,json_extract(data,'$.contentHash') AS content_hash,
         json_extract(data,'$.perceptualHash') AS perceptual_hash,json_extract(data,'$.tags') AS tags
+        ${options.includeReference ? `,data -> '$.metadata."openfilm.reference"' AS portable_reference` : ""}
         FROM assets WHERE id > ? ORDER BY id LIMIT 500`,
         )
         .all(after);
@@ -417,7 +420,13 @@ export class ProjectCatalog {
             ? { perceptualHash: String(row.perceptual_hash) }
             : {}),
           tags: JSON.parse(String(row.tags ?? "[]")) as string[],
-          metadata: {},
+          metadata: row.portable_reference
+            ? {
+                "openfilm.reference": JSON.parse(
+                  String(row.portable_reference),
+                ),
+              }
+            : {},
           state: {
             favorite: Boolean(row.favorite),
             rejected: Boolean(row.rejected),

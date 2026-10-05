@@ -80,7 +80,11 @@ Hardware and real NLE verification are recorded separately.
 - [x] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
 - [x] P5: all local regression gates, including a 500-clip browser playback check.
 - [x] P5: branch CI green; source/media/browser/interchange and native jobs pass.
-- [ ] Manual: actual DaVinci Resolve import.
+- [x] Review regressions: import-scoped Insta360 directory indexes, accepted image
+      and audio previews, current-state Fit savings, and paged media status beyond
+      2,000 assets. Covered by unit, media/HTTP integration and browser tests.
+- [ ] Manual: actual DaVinci Resolve import. The Global UX preflight found no real
+      application QA evidence; see [the QA record](docs/resolve-qa-record.md).
 - [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 
 Keep this file current when a pending capability gains working behavior and

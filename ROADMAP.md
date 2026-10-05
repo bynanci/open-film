@@ -29,6 +29,8 @@ workflow and independent OTIO/Resolve preparation make these capabilities testab
 - Perform actual Resolve import QA first, including manual recreation of advanced
   edits currently stored only in OTIO metadata. Expand native effect support only
   with tested preservation; other NLEs follow later.
+  The Global Product Experience preflight found no application QA evidence; the
+  [Resolve record](docs/resolve-qa-record.md) remains not run.
 - Validate removable volumes on Windows hardware and representative Pixel HDR,
   Motion Photo and Insta360 source files.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event

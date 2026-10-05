@@ -67,6 +67,26 @@ export interface ShorteningSuggestion {
   command: TimelineCommand;
 }
 
+interface PreparedShorteningEdit {
+  commands: TimelineCommand[];
+  secondsSaved: number;
+  beforeDuration: number;
+  afterDuration: number;
+  targetDuration: number;
+  /** Exact state and command snapshots reject stale previews, including asset locks. */
+  baseState: string;
+  commandFingerprint: string;
+}
+export interface ShorteningSuggestionPreview extends PreparedShorteningEdit {
+  id: string;
+  clipId: string;
+  reason: string;
+}
+export interface PreparedShorteningPlan extends PreparedShorteningEdit {
+  /** Independent alternatives measured from the current document; never sum these. */
+  suggestions: ShorteningSuggestionPreview[];
+}
+
 export class TimelineEditingError extends Error {
   override name = "TimelineEditingError";
 }
@@ -485,6 +505,141 @@ export function suggestShortening(
   finite(targetDuration, "Target duration", 0, true);
   return shorteningPlan(document, assets, targetDuration);
 }
+
+function shorteningState(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  targetDuration: number,
+): string {
+  return JSON.stringify({
+    composition: document.composition,
+    story: document.story,
+    revision: "revision" in document ? document.revision : undefined,
+    assets,
+    targetDuration,
+  });
+}
+
+function applyShorteningCommands(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  commands: TimelineCommand[],
+): EditorDocument {
+  let current = document;
+  for (const command of commands) {
+    if (
+      command.type !== "trim" &&
+      command.type !== "duration" &&
+      command.type !== "delete"
+    )
+      fail(
+        "A shortening suggestion must trim, shorten a photo, or remove optional media.",
+      );
+    const clip = findClip(current, command.clipId).clip;
+    if (protectedClip(current, assets, clip))
+      fail("This shortening suggestion would change locked or required media.");
+    const next = applyTimelineCommand(current, assets, command);
+    if (
+      command.type !== "delete" &&
+      findClip(next, clip.id).clip.timelineDuration >
+        clip.timelineDuration + EPSILON
+    )
+      fail("This shortening suggestion would lengthen a clip.");
+    const beat = current.story.beats.find((beat) => beat.id === clip.beatId);
+    if (beat && beatLength(next, beat.id) < (beat.minDuration ?? 0) - EPSILON)
+      fail("This shortening suggestion would go below the beat minimum.");
+    current = next;
+  }
+  return current;
+}
+
+/** Individual previews are alternatives; Apply all uses the original sequential commands and total. */
+export function prepareShorteningPlan(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  targetDuration: number,
+): PreparedShorteningPlan {
+  const steps = suggestShortening(document, assets, targetDuration);
+  const baseState = shorteningState(document, assets, targetDuration);
+  const beforeDuration = document.composition.duration;
+  const prepare = (
+    commands: TimelineCommand[],
+    secondsSaved: number,
+  ): PreparedShorteningEdit => ({
+    commands: structuredClone(commands),
+    secondsSaved,
+    beforeDuration,
+    afterDuration: beforeDuration - secondsSaved,
+    targetDuration,
+    baseState,
+    commandFingerprint: JSON.stringify(commands),
+  });
+  const suggestions = steps.flatMap((step) => {
+    let next: EditorDocument;
+    try {
+      next = applyShorteningCommands(document, assets, [step.command]);
+    } catch (error) {
+      if (error instanceof TimelineEditingError) return [];
+      throw error;
+    }
+    const secondsSaved = beforeDuration - next.composition.duration;
+    if (secondsSaved <= EPSILON) return [];
+    const asset = findAsset(
+      assets,
+      findClip(document, step.clipId).clip.assetId,
+    );
+    const action =
+      step.command.type === "delete"
+        ? "Remove optional media"
+        : asset.mediaType === "image"
+          ? "Shorten photo display"
+          : "Shorten source out";
+    return [
+      {
+        ...prepare([step.command], secondsSaved),
+        id: step.id,
+        clipId: step.clipId,
+        reason: `${action} for "${asset.name}". Saves ${secondsSaved.toFixed(2)}s from the current cut.`,
+      },
+    ];
+  });
+  return {
+    ...prepare(
+      steps.map((step) => step.command),
+      steps.reduce((sum, step) => sum + step.secondsSaved, 0),
+    ),
+    suggestions,
+  };
+}
+
+/** Resolve a reviewed preview immediately before enqueueing it; this does not change history. */
+export function shorteningCommands(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  targetDuration: number,
+  preview: PreparedShorteningPlan | ShorteningSuggestionPreview,
+): TimelineCommand[] {
+  if (
+    preview.baseState !== shorteningState(document, assets, targetDuration) ||
+    preview.commandFingerprint !== JSON.stringify(preview.commands)
+  )
+    fail(
+      "This shortening suggestion is stale. Review the suggestions for the current cut and try again.",
+    );
+  const next = applyShorteningCommands(document, assets, preview.commands);
+  if (
+    Math.abs(
+      document.composition.duration -
+        next.composition.duration -
+        preview.secondsSaved,
+    ) > EPSILON
+  )
+    fail(
+      "This shortening suggestion has changed. Review its current saving before applying it.",
+    );
+  return structuredClone(preview.commands);
+}
+
 function shorteningPlan(
   document: EditorDocument,
   assets: MediaAsset[],

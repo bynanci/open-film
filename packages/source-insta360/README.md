@@ -36,6 +36,15 @@ Sibling associations require the same source/export stem, or a matching
 files and their exports; filename evidence does not establish content identity,
 optical correctness or production camera support. Symlinks are excluded.
 
+Application imports share an `Insta360ImportContext` for association lookups.
+Each directory is read and sorted once, including concurrent lookups, then indexed
+by source stem and capture sequence. Only the first 10,000 sorted entries are
+considered, preserving the existing safety bound. Matching files are still
+checked for symlinks before being associated. The context belongs to one import;
+a later import creates a fresh inventory so newly copied raw files are visible.
+SDK candidates returned by one `Insta360Source.scan()` share that scan's context.
+Standalone enrichment accepts `{ context, signal }` as an optional second argument.
+
 Tests use generated decodable media and explicitly synthetic raw recognition
 fixtures. Real Insta360 camera payloads and native Studio output remain a manual
 compatibility check.

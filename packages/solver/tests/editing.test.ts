@@ -3,6 +3,8 @@ import type { Clip, MediaAsset } from "@openfilm/core";
 import {
   applyTimelineCommand,
   suggestShortening,
+  prepareShorteningPlan,
+  shorteningCommands,
   type EditorDocument,
   type TimelineCommand,
 } from "../src/index.js";
@@ -498,6 +500,207 @@ describe("scoped automatic editing", () => {
 });
 
 describe("explainable fit suggestions", () => {
+  it("measures a later deletion from the current cut instead of the shortened intermediate clip", () => {
+    const before = document();
+    clip(before, "next-clip").locked = true;
+    const sequential = suggestShortening(before, assets, 4);
+    const step = sequential.find(
+      (step) => step.command.type === "delete" && step.clipId === "photo-clip",
+    )!;
+    expect(step.secondsSaved).toBe(1);
+    const prepared = prepareShorteningPlan(before, assets, 4);
+    const preview = prepared.suggestions.find(
+      (suggestion) => suggestion.id === step.id,
+    )!;
+    expect(preview.secondsSaved).toBe(4);
+    expect(preview.reason).toContain("Saves 4.00s from the current cut");
+    expect(preview.beforeDuration).toBe(14);
+    expect(preview.afterDuration).toBe(10);
+    const commands = shorteningCommands(before, assets, 4, preview);
+    expect(commands).toEqual([{ type: "delete", clipId: "photo-clip" }]);
+    const after = commands.reduce(
+      (current, command) => edit(current, command),
+      before,
+    );
+    expect(before.composition.duration - after.composition.duration).toBe(
+      preview.secondsSaved,
+    );
+    expect(withoutStart(clip(after, "next-clip"))).toEqual(
+      withoutStart(clip(before, "next-clip")),
+    );
+    expect(clip(after, "video-clip").timelineDuration).toBe(6);
+    expect(before.composition.duration).toBe(14);
+    expect(prepared.secondsSaved).toBe(10);
+    expect(
+      prepared.suggestions.reduce(
+        (sum, suggestion) => sum + suggestion.secondsSaved,
+        0,
+      ),
+    ).not.toBe(prepared.secondsSaved);
+    const combined = shorteningCommands(before, assets, 4, prepared).reduce(
+      (current, command) => edit(current, command),
+      before,
+    );
+    expect(combined.composition.duration).toBe(prepared.afterDuration);
+    expect(combined.composition.duration).toBe(4);
+  });
+  it("recomputes independent previews after an earlier trim and preserves the reviewed saving", () => {
+    const before = document();
+    clip(before, "next-clip").locked = true;
+    const prepared = prepareShorteningPlan(before, assets, 4);
+    const first = prepared.suggestions.find(
+      (suggestion) => suggestion.commands[0]?.type === "duration",
+    )!;
+    const afterTrim = shorteningCommands(before, assets, 4, first).reduce(
+      (current, command) => edit(current, command),
+      before,
+    );
+    const refreshed = prepareShorteningPlan(afterTrim, assets, 4);
+    const removal = refreshed.suggestions.find(
+      (suggestion) =>
+        suggestion.commands[0]?.type === "delete" &&
+        suggestion.clipId === "photo-clip",
+    )!;
+    expect(removal.secondsSaved).toBe(1);
+    const afterDelete = shorteningCommands(
+      afterTrim,
+      assets,
+      4,
+      removal,
+    ).reduce((current, command) => edit(current, command), afterTrim);
+    expect(
+      afterTrim.composition.duration - afterDelete.composition.duration,
+    ).toBe(1);
+    expect(() => shorteningCommands(afterTrim, assets, 4, first)).toThrow(
+      "stale",
+    );
+  });
+  it("rejects stale state, revisions, targets, source updates and changed prepared commands", () => {
+    const before = { ...document(), revision: "reviewed-revision" };
+    const prepared = prepareShorteningPlan(before, assets, 5);
+    const preview = prepared.suggestions[0]!;
+    const unrelatedEdit = edit(before, {
+      type: "volume",
+      clipId: "next-clip",
+      volume: 0.6,
+    });
+    expect(() => shorteningCommands(unrelatedEdit, assets, 5, preview)).toThrow(
+      "stale",
+    );
+    const revised = { ...before, revision: "new-revision" };
+    expect(() => shorteningCommands(revised, assets, 5, preview)).toThrow(
+      "stale",
+    );
+    expect(() => shorteningCommands(before, assets, 6, preview)).toThrow(
+      "stale",
+    );
+    expect(() =>
+      shorteningCommands(
+        before,
+        assets.map((asset) =>
+          asset.id === "photo"
+            ? { ...asset, uri: "file:///relinked-photo.jpg" }
+            : asset,
+        ),
+        5,
+        preview,
+      ),
+    ).toThrow("stale");
+    const changedCommand = structuredClone(preview);
+    changedCommand.commands[0] = { type: "delete", clipId: preview.clipId };
+    expect(() => shorteningCommands(before, assets, 5, changedCommand)).toThrow(
+      "stale",
+    );
+    expect(() =>
+      shorteningCommands(before, assets, 5, {
+        ...preview,
+        secondsSaved: preview.secondsSaved + 1,
+      }),
+    ).toThrow("changed");
+  });
+  it("protects newly locked or required media even if the preview predates the change", () => {
+    const before = document();
+    const preview = prepareShorteningPlan(before, assets, 5).suggestions.find(
+      (suggestion) => suggestion.clipId === "photo-clip",
+    )!;
+    const locked = edit(before, {
+      type: "lock",
+      clipId: "photo-clip",
+      locked: true,
+    });
+    expect(() => shorteningCommands(locked, assets, 5, preview)).toThrow(
+      "stale",
+    );
+    expect(
+      prepareShorteningPlan(locked, assets, 5).suggestions.some(
+        (suggestion) => suggestion.clipId === "photo-clip",
+      ),
+    ).toBe(false);
+    const lockedAssets = assets.map((asset) =>
+      asset.id === "photo" ? { ...asset, state: { locked: true } } : asset,
+    );
+    expect(() => shorteningCommands(before, lockedAssets, 5, preview)).toThrow(
+      "stale",
+    );
+    const required = structuredClone(before);
+    required.story.beats[0]!.selectedAssetIds = ["photo"];
+    expect(() => shorteningCommands(required, assets, 5, preview)).toThrow(
+      "stale",
+    );
+    expect(
+      prepareShorteningPlan(required, assets, 5).suggestions.some(
+        (suggestion) => suggestion.clipId === "photo-clip",
+      ),
+    ).toBe(false);
+  });
+  it("omits zero-saving individual alternatives while retaining a useful combined overlap plan", () => {
+    const before = document();
+    before.composition = {
+      ...before.composition,
+      duration: 10,
+      tracks: [
+        {
+          id: "visual",
+          type: "video",
+          clips: [
+            {
+              id: "video-clip",
+              assetId: "video",
+              beatId: "intro",
+              sourceIn: 0,
+              sourceOut: 10,
+              timelineStart: 0,
+              timelineDuration: 10,
+            },
+          ],
+        },
+        {
+          id: "sound",
+          type: "audio",
+          clips: [
+            {
+              id: "audio-clip",
+              assetId: "audio",
+              beatId: "intro",
+              sourceIn: 0,
+              sourceOut: 10,
+              timelineStart: 0,
+              timelineDuration: 10,
+            },
+          ],
+        },
+      ],
+    };
+    const prepared = prepareShorteningPlan(before, assets, 6);
+    expect(prepared.suggestions).toEqual([]);
+    expect(prepared.commands).toHaveLength(2);
+    expect(prepared.secondsSaved).toBe(4);
+    const after = shorteningCommands(before, assets, 6, prepared).reduce(
+      (current, command) => edit(current, command),
+      before,
+    );
+    expect(after.composition.duration).toBe(6);
+  });
   it("provides a sequential plan with actual savings and reaches the target exactly", () => {
     const before = document();
     const plan = suggestShortening(before, assets, 5);

@@ -315,11 +315,16 @@ export async function inspectMedia(
       avg_frame_rate?: string;
       duration?: string;
       color_space?: string;
+      disposition?: { attached_pic?: number };
       tags?: Record<string, unknown>;
     }[];
   };
-  const video = result.streams?.find((stream) => stream.codec_type === "video");
   const audio = result.streams?.find((stream) => stream.codec_type === "audio");
+  const video = result.streams?.find(
+    (stream) =>
+      stream.codec_type === "video" &&
+      (!audio || stream.disposition?.attached_pic !== 1),
+  );
   const color = probeColor(video);
   if (!video && !audio)
     throw new Error("No decodable image, video or audio stream was found");
@@ -566,6 +571,37 @@ export async function createProxy(
   signal?: AbortSignal,
 ): Promise<void> {
   await ensureDerivedOutput(asset, output);
+  if (asset.mediaType === "audio") {
+    const issue = previewIssue(asset);
+    if (issue) throw new Error(issue);
+    await runProcess(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-nostdin",
+        "-threads",
+        "1",
+        "-i",
+        localPath(asset.uri),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "192k",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
+        "-y",
+        output,
+      ],
+      { signal, timeoutMs: 600000 },
+    );
+    return;
+  }
   if (asset.mediaType !== "video" && asset.mediaType !== "360-video") return;
   const filters = await previewVideoFilters(asset, signal);
   await runProcess(

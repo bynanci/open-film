@@ -45,3 +45,25 @@ never rewritten by this pipeline.
 All committed fixture definitions are generated/public-domain. See
 [`fixtures/proposal-film`](../fixtures/proposal-film/README.md) for provenance and
 reproduction. No real personal camera media is bundled.
+
+## Browser previews of ordinary media
+
+Native JPEG, PNG, WebP, GIF and BMP sources are served with their matching image
+MIME type. TIFF, AVIF, successfully decoded HEIC/DNG, and HDR images use the cached
+JPEG preview. Unsupported or missing derivatives give a specific rebuild or
+conversion instruction instead of sending undecodable source bytes to the player.
+
+Imported audio uses a project-relative MP3 preview cache, including AAC, M4A,
+FLAC, Ogg and Opus. Embedded album artwork remains metadata and does not turn an
+audio file into a video clip. Rendering and timeline exports retain the original
+audio references; preview conversion never rewrites the source. Reimporting an
+older audio-only import builds its missing preview. Disabling proxies explicitly
+uses the original audio and therefore depends on the browser's native codec support.
+
+`tests/integration/preview-formats.test.ts` generates real GIF, BMP, TIFF, AVIF
+and audio files, including MP3/FLAC with embedded cover art. It checks HTTP MIME,
+served bytes, audio codec, byte ranges, missing-cache recovery, project relocation
+and unchanged source hashes. HEIC coverage is a catalog/cache routing fixture:
+it does **not** establish real HEIC decoding support or camera compatibility.
+A representative HEIC import still needs verification with the installed FFmpeg
+build.

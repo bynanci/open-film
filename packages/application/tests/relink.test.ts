@@ -511,6 +511,126 @@ describe("media relinking application", () => {
     ]);
   });
 
+  it("checks catalogs beyond the relink plan limit using current roots and lightweight summaries", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-large-status-"));
+    directories.push(directory);
+    const mounted = join(directory, "current-mount");
+    const offline = join(directory, "offline-mount");
+    const empty = join(directory, "empty-library");
+    await mkdir(mounted);
+    await mkdir(empty);
+    await writeFile(join(mounted, "asset-0000.jpg"), "status needs no decoder");
+    const app = await OpenFilmApplication.create(
+      join(directory, "film.openfilm"),
+      "Large catalog",
+    );
+    applications.add(app);
+    app.project.mediaLibraries.push(
+      {
+        id: "mounted",
+        name: "Moved",
+        uri: pathToFileURL(join(directory, "old-mount")).href,
+      },
+      {
+        id: "offline",
+        name: "Offline",
+        uri: pathToFileURL(join(directory, "old-offline")).href,
+      },
+      { id: "empty", name: "Empty", uri: pathToFileURL(empty).href },
+    );
+    const ids: string[] = [];
+    for (let index = 0; index < 2001; index++) {
+      const id = `asset-${String(index).padStart(4, "0")}`;
+      ids.push(id);
+      const libraryId = index < 1000 ? "mounted" : "offline";
+      const root = libraryId === "mounted" ? mounted : offline;
+      const asset: MediaAsset = {
+        id,
+        uri: pathToFileURL(join(root, `${id}.jpg`)).href,
+        name: `${id}.jpg`,
+        mediaType: "image",
+        tags: [],
+        state: {},
+        metadata: { "openfilm.exif": { opaque: "x".repeat(1024) } },
+      };
+      asset.metadata["openfilm.reference"] = {
+        ...referenceFor(asset, []),
+        mediaLibraryId: libraryId,
+        rootUri: pathToFileURL(root).href,
+      };
+      app.catalog.upsertAsset(asset);
+    }
+    const relinker = new MediaRelinker(app);
+    const getAsset = vi.spyOn(app.catalog, "getAsset");
+    const listAssets = vi.spyOn(app.catalog, "listAssets");
+    const media = await import("@openfilm/media");
+    const inspectSource = media.sourceStatus;
+    let pending = 0;
+    let maximum = 0;
+    vi.spyOn(media, "sourceStatus").mockImplementation(async (asset) => {
+      pending++;
+      maximum = Math.max(maximum, pending);
+      try {
+        return await inspectSource(asset);
+      } finally {
+        pending--;
+      }
+    });
+    const status = await relinker.status();
+    expect(status.assets).toHaveLength(2001);
+    expect(
+      status.assets.filter((asset) => asset.status === "available"),
+    ).toEqual([{ assetId: "asset-0000", status: "available" }]);
+    expect(status.libraries).toEqual([
+      {
+        id: "mounted",
+        name: "Moved",
+        status: "partial",
+        roots: [pathToFileURL(mounted).href],
+      },
+      {
+        id: "offline",
+        name: "Offline",
+        status: "offline",
+        roots: [pathToFileURL(offline).href],
+      },
+      {
+        id: "empty",
+        name: "Empty",
+        status: "online",
+        roots: [pathToFileURL(empty).href],
+      },
+    ]);
+    expect((await relinker.status(ids)).assets).toEqual(status.assets);
+    const scoped = await relinker.status(["asset-2000", "asset-0000"]);
+    expect(scoped.assets.map((asset) => asset.assetId)).toEqual([
+      "asset-2000",
+      "asset-0000",
+    ]);
+    expect(scoped.libraries.map((library) => library.status)).toEqual([
+      "online",
+      "offline",
+      "online",
+    ]);
+    await expect(relinker.status(["unknown"])).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(getAsset).not.toHaveBeenCalled();
+    expect(listAssets).not.toHaveBeenCalled();
+    expect(maximum).toBeGreaterThan(1);
+    expect(maximum).toBeLessThanOrEqual(16);
+    await expect(relinker.plan({ folder: mounted })).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("2000"),
+    });
+    await expect(
+      relinker.plan({ folder: mounted, assetIds: ids }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("2000"),
+    });
+  });
+
   it("rejects direct relinking while jobs are active, including jobs started before commit", async () => {
     const { app, relinker } = await fixture();
     const input = { assetIds: ["photo"], file: join(sources, "01-photo.png") };

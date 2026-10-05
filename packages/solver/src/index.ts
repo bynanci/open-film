@@ -545,10 +545,14 @@ function orderedAssets(plan: BeatPlan): MediaAsset[] {
 export {
   applyTimelineCommand,
   suggestShortening,
+  prepareShorteningPlan,
+  shorteningCommands,
   TimelineEditingError,
 } from "./editing.js";
 export type {
   EditorDocument,
   TimelineCommand,
   ShorteningSuggestion,
+  ShorteningSuggestionPreview,
+  PreparedShorteningPlan,
 } from "./editing.js";

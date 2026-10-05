@@ -8,7 +8,13 @@ import {
   watch,
 } from "vue";
 import type { Clip, StoryBeat } from "@openfilm/core";
-import { suggestShortening, type TimelineCommand } from "@openfilm/solver";
+import {
+  prepareShorteningPlan,
+  shorteningCommands,
+  type PreparedShorteningPlan,
+  type ShorteningSuggestionPreview,
+  type TimelineCommand,
+} from "@openfilm/solver";
 import {
   duration,
   sourceUrl,
@@ -157,14 +163,32 @@ const overLimit = computed(
   () =>
     !!state.value && state.value.composition.duration > maximum.value + 0.001,
 );
-const fitSuggestions = computed(() => {
-  if (!state.value || !showFit.value || target.value <= 0) return [];
+const fitPlan = computed(() => {
+  if (!state.value || !showFit.value || target.value <= 0) return null;
   try {
-    return suggestShortening(state.value, state.value.assets, target.value);
+    return prepareShorteningPlan(state.value, state.value.assets, target.value);
   } catch {
-    return [];
+    return null;
   }
 });
+const fitSuggestions = computed(() => fitPlan.value?.suggestions ?? []);
+function applyFit(
+  preview: PreparedShorteningPlan | ShorteningSuggestionPreview | null,
+) {
+  if (!state.value || !preview) return;
+  try {
+    command(
+      shorteningCommands(
+        state.value,
+        state.value.assets,
+        target.value,
+        preview,
+      ),
+    );
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : String(error);
+  }
+}
 const replacements = computed(
   () =>
     state.value?.assets.filter(
@@ -596,19 +620,21 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
             <h3>A little more room for the story.</h3>
             <p>
               Review each suggestion. Locked and required moments stay
-              protected.
+              protected. Each saving is measured from the current cut; these
+              alternatives do not add together.
             </p>
           </div>
           <button
             class="editor-button primary"
-            :disabled="!fitSuggestions.length || historyBusy"
-            @click="
-              command(fitSuggestions.map((suggestion) => suggestion.command))
-            "
+            :disabled="!fitPlan?.commands.length || historyBusy"
+            @click="applyFit(fitPlan)"
           >
             Apply all suggestions
           </button>
         </div>
+        <p v-if="fitPlan?.commands.length" class="editor-note">
+          The combined plan saves {{ duration(fitPlan.secondsSaved) }}.
+        </p>
         <div
           v-for="suggestion in fitSuggestions"
           :key="suggestion.id"
@@ -626,7 +652,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
           ><button
             class="editor-button"
             :aria-label="`Apply suggestion: ${suggestion.reason}`"
-            @click="command(suggestion.command)"
+            :disabled="historyBusy"
+            @click="applyFit(suggestion)"
           >
             Apply
           </button>
@@ -635,7 +662,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
           {{
             state.composition.duration <= target + 0.001
               ? "Your cut already fits the target."
-              : "No further automatic shortening is available. Adjust unlocked clips or your story target."
+              : fitPlan?.commands.length
+                ? "Overlapping clips need the combined plan. Apply all suggestions to shorten them together."
+                : "No further automatic shortening is available. Adjust unlocked clips or your story target."
           }}
         </p>
       </section>

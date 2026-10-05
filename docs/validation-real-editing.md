@@ -25,7 +25,7 @@ its packaged FFmpeg and Playwright Chromium.
 | `pnpm format:check`                | Passed; repository formatting.                                                                                                                                                 |
 | `pnpm lint`                        | Passed with zero warnings.                                                                                                                                                     |
 | `pnpm typecheck`                   | Passed strict TypeScript and Vue checks.                                                                                                                                       |
-| `pnpm test`                        | Passed 276 tests across 27 files, including actual media/SQLite/HTTP integration regressions.                                                                                  |
+| `pnpm test`                        | Passed 306 tests across 30 files, including actual media/SQLite/HTTP integration regressions.                                                                                  |
 | `pnpm build`                       | Passed CLI, server and Vue production builds.                                                                                                                                  |
 | `pnpm test:e2e`                    | Passed eight browser journeys covering editing, save recovery, cancellation, relinking, the Proposal reference workflow and a 500-clip timeline.                               |
 | `pnpm test:interchange`            | Passed official OTIO 0.18.1 read/write/read, real source URL/hash/bounds validation and existing FCPXML XML/resource checks. A missing-source negative case fails as intended. |
@@ -36,6 +36,12 @@ The local browser command uses `OPENFILM_CHROMIUM=/usr/bin/chromium` and
 `OPENFILM_OTIO_PYTHON` pointing to an isolated Python environment containing the
 official pinned parser. Local native checks use the documented workspace sysroot;
 CI installs Tauri dependencies and additionally runs `cargo build --locked`.
+
+The Global UX preflight repeated these gates after the four review fixes. Seven
+browser journeys passed in the full run; the Proposal journey reached its final
+parser check but failed because that invocation omitted `OPENFILM_OTIO_PYTHON`.
+It passed when rerun with the installed parser environment. The failure was a
+test environment selection error, not a waived product assertion.
 
 ## Behavior verified
 
@@ -69,6 +75,11 @@ and official-parser evidence under `test-results/`; CI uploads that directory fo
 review. These are generated CC0 assets, not private user media.
 
 ## Manual verification still required
+
+The subsequent Global Product Experience preflight found no real Resolve import
+evidence in the repository, PR discussion or accessible workspace artifacts.
+Generated/parser fixtures are not application QA. The
+[Resolve QA record](resolve-qa-record.md) remains explicitly **not run**.
 
 1. Actual DaVinci Resolve import, playback and reopen. Speed, volume/mute,
    transforms, crossfades and titles are **metadata only** in OTIO and require

@@ -21,7 +21,12 @@ export function portableCacheUri(
     : path.includes(marker)
       ? path.slice(path.lastIndexOf(marker) + marker.length)
       : "";
-  const extension = kind === "thumbnails" ? ".jpg" : ".mp4";
+  const extension =
+    kind === "thumbnails"
+      ? ".jpg"
+      : asset.mediaType === "audio"
+        ? ".mp3"
+        : ".mp4";
   // Only the application's generated cache filename convention is relocatable.
   if (
     !suffix ||

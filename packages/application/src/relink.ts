@@ -59,6 +59,7 @@ export class MediaRelinkError extends Error {
 }
 
 const ASSET_LIMIT = 2000;
+const STATUS_CONCURRENCY = 16;
 const PLAN_LIMIT = 20;
 const PLAN_LIFETIME = 15 * 60 * 1000;
 
@@ -107,11 +108,13 @@ function text(value: unknown, path: string, maximum = 256): string {
   return value;
 }
 
-function assetIds(value: unknown): string[] | undefined {
+function assetIds(value: unknown, bounded = true): string[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > ASSET_LIMIT)
+  if (!Array.isArray(value) || (bounded && value.length > ASSET_LIMIT))
     throw new MediaRelinkError(
-      `assetIds must be an array of at most ${ASSET_LIMIT} IDs`,
+      bounded
+        ? `assetIds must be an array of at most ${ASSET_LIMIT} IDs`
+        : "assetIds must be an array",
     );
   const result = Array.from(value, (id) => text(id, "assetId"));
   if (new Set(result).size !== result.length)
@@ -189,20 +192,27 @@ export class MediaRelinker {
   constructor(private readonly application: OpenFilmApplication) {}
 
   async status(selectedIds?: string[]): Promise<MediaSourceStatus> {
-    const selected = this.assets(assetIds(selectedIds));
+    const ids = assetIds(selectedIds, false);
+    const selected = ids === undefined ? undefined : new Set(ids);
     const statuses: SourceStatus[] = [];
-    // Bound parallel filesystem work without keeping media decoders alive.
-    for (let offset = 0; offset < selected.length; offset += 16)
-      statuses.push(
-        ...(await Promise.all(
-          selected.slice(offset, offset + 16).map(sourceStatus),
-        )),
-      );
-    const byAsset = new Map(statuses.map((status) => [status.assetId, status]));
     const rootsByLibrary = new Map<string, Set<string>>();
     const missingByLibrary = new Set<string>();
-    for (const summary of this.application.catalog.iterateAssetSummaries()) {
-      const asset = this.application.catalog.getAsset(summary.id)!;
+    const batch: { asset: MediaAsset; libraryId: string }[] = [];
+    const checkBatch = async () => {
+      const results = await Promise.all(
+        batch.map(({ asset }) => sourceStatus(asset)),
+      );
+      for (const [index, status] of results.entries()) {
+        statuses.push(status);
+        if (status.status !== "available")
+          missingByLibrary.add(batch[index]!.libraryId);
+      }
+      batch.length = 0;
+    };
+    // Page lightweight descriptors and bound filesystem work without decoding media.
+    for (const asset of this.application.catalog.iterateAssetSummaries({
+      includeReference: true,
+    })) {
       const reference = referenceFor(
         asset,
         this.application.project.mediaLibraries,
@@ -211,17 +221,33 @@ export class MediaRelinker {
         rootsByLibrary.get(reference.mediaLibraryId) ?? new Set<string>();
       roots.add(reference.rootUri);
       rootsByLibrary.set(reference.mediaLibraryId, roots);
-      const status = byAsset.get(asset.id);
-      if (status && status.status !== "available")
-        missingByLibrary.add(reference.mediaLibraryId);
+      if (!selected || selected.has(asset.id)) {
+        batch.push({ asset, libraryId: reference.mediaLibraryId });
+        if (batch.length === STATUS_CONCURRENCY) await checkBatch();
+      }
     }
-    const libraries = await Promise.all(
-      this.application.project.mediaLibraries.map(async (library) => {
-        const roots = [
-          ...(rootsByLibrary.get(library.id) ?? new Set([library.uri])),
-        ];
+    if (batch.length) await checkBatch();
+    const byAsset = ids
+      ? new Map(statuses.map((status) => [status.assetId, status]))
+      : undefined;
+    const ordered = ids?.map((id) => {
+      const status = byAsset!.get(id);
+      if (!status) throw new MediaRelinkError(`Asset not found: ${id}`, 404);
+      return status;
+    });
+    const libraries: MediaSourceStatus["libraries"] = [];
+    for (const library of this.application.project.mediaLibraries) {
+      const roots = [
+        ...(rootsByLibrary.get(library.id) ?? new Set([library.uri])),
+      ];
+      let online = 0;
+      for (
+        let offset = 0;
+        offset < roots.length;
+        offset += STATUS_CONCURRENCY
+      ) {
         const mounted = await Promise.all(
-          roots.map(async (uri) => {
+          roots.slice(offset, offset + STATUS_CONCURRENCY).map(async (uri) => {
             try {
               const path = localPath(uri);
               const info = await lstat(path);
@@ -235,20 +261,20 @@ export class MediaRelinker {
             }
           }),
         );
-        const online = mounted.filter(Boolean).length;
-        return {
-          id: library.id,
-          name: library.name,
-          status: (!online
-            ? "offline"
-            : online < roots.length || missingByLibrary.has(library.id)
-              ? "partial"
-              : "online") as "online" | "partial" | "offline",
-          roots,
-        };
-      }),
-    );
-    return { assets: statuses, libraries };
+        online += mounted.filter(Boolean).length;
+      }
+      libraries.push({
+        id: library.id,
+        name: library.name,
+        status: !online
+          ? "offline"
+          : online < roots.length || missingByLibrary.has(library.id)
+            ? "partial"
+            : "online",
+        roots,
+      });
+    }
+    return { assets: ordered ?? statuses, libraries };
   }
 
   async plan(input: RelinkPlanInput): Promise<RelinkPlan> {

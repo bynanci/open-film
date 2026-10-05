@@ -220,9 +220,103 @@ function exportedStem(filename: string): string {
   );
 }
 
-async function associations(asset: MediaAsset): Promise<Insta360Association[]> {
+interface RawSibling {
+  name: string;
+  capture?: string;
+}
+
+interface DirectoryInventory {
+  byStem: Map<string, RawSibling[]>;
+  byCapture: Map<string, RawSibling[]>;
+}
+
+/** One import owns one context. Reusing it across imports would hide newly added sources. */
+export class Insta360ImportContext {
+  private readonly directories = new Map<string, Promise<DirectoryInventory>>();
+
+  async siblings(
+    path: string,
+    mediaType: MediaAsset["mediaType"],
+    signal?: AbortSignal,
+  ): Promise<RawSibling[]> {
+    checkAbort(signal);
+    const directory = dirname(path);
+    let inventory = this.directories.get(directory);
+    if (!inventory) {
+      inventory = this.readDirectory(directory, signal);
+      // Store the pending promise too: concurrent imports share a single scan.
+      this.directories.set(directory, inventory);
+    }
+    const { byStem, byCapture } = await inventory;
+    checkAbort(signal);
+    const extension = mediaType === "image" ? ".insp" : ".insv";
+    const capture = captureKey(basename(path));
+    const matches = [
+      ...(byStem.get(`${exportedStem(path)}${extension}`) ?? []),
+      ...(capture ? (byCapture.get(`${capture}${extension}`) ?? []) : []),
+    ];
+    return [...new Map(matches.map((entry) => [entry.name, entry])).values()];
+  }
+
+  private async readDirectory(
+    directory: string,
+    signal?: AbortSignal,
+  ): Promise<DirectoryInventory> {
+    const inventory: DirectoryInventory = {
+      byStem: new Map(),
+      byCapture: new Map(),
+    };
+    if ((await realpath(directory)) !== resolve(directory)) return inventory;
+    checkAbort(signal);
+    const entries = await readdir(directory, { withFileTypes: true });
+    checkAbort(signal);
+    const add = (
+      map: Map<string, RawSibling[]>,
+      key: string,
+      entry: RawSibling,
+    ) => {
+      const existing = map.get(key);
+      if (existing) existing.push(entry);
+      else map.set(key, [entry]);
+    };
+    // Keep the established deterministic safety bound, applied once per folder.
+    for (const entry of entries
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 10000)) {
+      checkAbort(signal);
+      if (
+        !entry.isFile() ||
+        entry.isSymbolicLink() ||
+        !isInsta360Raw(entry.name)
+      )
+        continue;
+      const extension = extname(entry.name).toLowerCase();
+      const sibling = { name: entry.name, capture: captureKey(entry.name) };
+      add(
+        inventory.byStem,
+        `${basename(entry.name, extname(entry.name))}${extension}`,
+        sibling,
+      );
+      if (sibling.capture)
+        add(inventory.byCapture, `${sibling.capture}${extension}`, sibling);
+    }
+    return inventory;
+  }
+}
+
+interface EnrichmentOptions {
+  signal?: AbortSignal;
+  context?: Insta360ImportContext;
+}
+
+async function associations(
+  asset: MediaAsset,
+  { signal, context = new Insta360ImportContext() }: EnrichmentOptions,
+): Promise<Insta360Association[]> {
+  checkAbort(signal);
   const found = new Map<string, Insta360Association>();
   const add = async (value: string, evidence: string): Promise<void> => {
+    checkAbort(signal);
     const uri = sourceUri(value, asset);
     if (!uri || uri === asset.uri || found.has(uri)) return;
     let available = false;
@@ -232,6 +326,7 @@ async function associations(asset: MediaAsset): Promise<Insta360Association[]> {
     } catch {
       /* Keep explicitly recorded offline provenance. */
     }
+    checkAbort(signal);
     found.set(uri, { kind: "explicit-metadata", uri, evidence, available });
   };
   const explicit = record(
@@ -256,31 +351,14 @@ async function associations(asset: MediaAsset): Promise<Insta360Association[]> {
   try {
     const path = localPath(asset.uri);
     const directory = dirname(path);
-    if ((await realpath(directory)) !== resolve(directory))
-      return [...found.values()];
-    const filename = basename(path);
-    const key = captureKey(filename);
-    const stem = exportedStem(filename);
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 10000)) {
-      if (
-        !entry.isFile() ||
-        entry.isSymbolicLink() ||
-        !isInsta360Raw(entry.name)
-      )
-        continue;
-      const sameCapture = key !== undefined && key === captureKey(entry.name);
-      const sameStem = stem === basename(entry.name, extname(entry.name));
-      if (!sameCapture && !sameStem) continue;
-      if (asset.mediaType === "image" && !/\.insp$/iu.test(entry.name))
-        continue;
-      if (asset.mediaType !== "image" && !/\.insv$/iu.test(entry.name))
-        continue;
+    const key = captureKey(basename(path));
+    for (const entry of await context.siblings(path, asset.mediaType, signal)) {
+      checkAbort(signal);
+      const sameCapture = key !== undefined && key === entry.capture;
       const uri = pathToFileURL(join(directory, entry.name)).href;
       if (uri === asset.uri || found.has(uri)) continue;
       await regular(join(directory, entry.name));
+      checkAbort(signal);
       found.set(uri, {
         kind: "named-sibling",
         uri,
@@ -290,7 +368,9 @@ async function associations(asset: MediaAsset): Promise<Insta360Association[]> {
         available: true,
       });
     }
-  } catch {
+  } catch (error) {
+    checkAbort(signal);
+    if (error instanceof Error && error.name === "AbortError") throw error;
     /* A moved source folder must not prevent existing metadata from opening. */
   }
   return [...found.values()];
@@ -299,13 +379,15 @@ async function associations(asset: MediaAsset): Promise<Insta360Association[]> {
 /** Annotate reliable device/export evidence while retaining the original inspected metadata. */
 export async function enrichInsta360Asset(
   asset: MediaAsset,
+  options: EnrichmentOptions = {},
 ): Promise<MediaAsset> {
+  checkAbort(options.signal);
   const next = structuredClone(asset);
   if (!["image", "video", "360-video"].includes(next.mediaType)) return next;
   const raw = isInsta360Raw(next.uri);
   const matched = recognition(next);
   const spherical = sphericalEvidence(next);
-  const associated = await associations(next);
+  const associated = await associations(next, options);
   if (!raw && !matched.length && !associated.length) {
     if (spherical.length) {
       if (next.mediaType === "video") next.mediaType = "360-video";
@@ -357,6 +439,7 @@ export async function enrichInsta360Asset(
 export async function inspectInsta360Raw(
   candidate: MediaCandidate,
   signal?: AbortSignal,
+  context?: Insta360ImportContext,
 ): Promise<MediaAsset> {
   checkAbort(signal);
   if (!isInsta360Raw(candidate.path))
@@ -468,7 +551,7 @@ export async function inspectInsta360Raw(
         : {}),
     },
   };
-  const enriched = await enrichInsta360Asset(asset);
+  const enriched = await enrichInsta360Asset(asset, { signal, context });
   checkAbort(signal);
   return enriched;
 }
@@ -476,6 +559,10 @@ export async function inspectInsta360Raw(
 /** Local source port; export recognition happens during metadata extraction. */
 export class Insta360Source implements MediaSourceAdapter {
   readonly id = "openfilm.source.insta360";
+  private readonly contexts = new WeakMap<
+    SourceCandidate,
+    Insta360ImportContext
+  >();
 
   supports(input: SourceInput): boolean {
     return (
@@ -497,19 +584,24 @@ export class Insta360Source implements MediaSourceAdapter {
     const info = await lstat(path);
     if (info.isSymbolicLink() || (await realpath(path)) !== resolve(path))
       throw new Error("Insta360 source cannot be a symlink");
+    const context = new Insta360ImportContext();
+    const contextualize = (candidate: MediaCandidate): MediaCandidate => {
+      this.contexts.set(candidate, context);
+      return candidate;
+    };
     if (info.isFile()) {
       options.onProgress?.(1);
       return [
-        {
+        contextualize({
           path,
           uri: pathToFileURL(path).href,
           name: basename(path),
           sourceId: this.id,
-        },
+        }),
       ];
     }
     return (await new FilesystemSource().scan(input, options)).map(
-      (candidate) => ({ ...candidate, sourceId: this.id }),
+      (candidate) => contextualize({ ...candidate, sourceId: this.id }),
     );
   }
 
@@ -523,9 +615,14 @@ export class Insta360Source implements MediaSourceAdapter {
         ? candidate.path
         : localPath(candidate.uri);
     const inspected = isInsta360Raw(candidate.uri)
-      ? await inspectInsta360Raw({ ...candidate, path }, options.signal)
+      ? await inspectInsta360Raw(
+          { ...candidate, path },
+          options.signal,
+          this.contexts.get(candidate),
+        )
       : await enrichInsta360Asset(
           await inspectMedia({ ...candidate, path }, options.signal),
+          { signal: options.signal, context: this.contexts.get(candidate) },
         );
     checkAbort(options.signal);
     const {

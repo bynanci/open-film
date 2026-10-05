@@ -7,6 +7,13 @@ Resolve is not installed in the verification environment; actual Resolve import
 and playback have not been verified.** Parser success does not establish NLE
 compatibility.
 
+The Global Product Experience preflight rechecked repository, PR #1 and accessible
+workspace artifacts at candidate `239436cf672be287dbaec4dd9771165609d1d061`.
+Only generated fixtures and official-parser results exist; no actual Resolve QA
+record, `.drp`/`.dra`, import screenshots or application test results were found.
+The manual gate therefore remains open. Use [the QA record](resolve-qa-record.md)
+to record each capability independently when application testing is performed.
+
 Advanced edits are **metadata only**, a known implementation limit. Speed,
 volume/mute, scale, rotation, position, incoming crossfades, titles and clip locks
 are retained exactly in OpenFilm metadata and must be recreated manually in the
