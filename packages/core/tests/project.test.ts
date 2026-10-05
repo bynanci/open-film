@@ -105,6 +105,18 @@ describe("versioned projects", () => {
     expect(original.stories[0]!.beats[0]!.title).toBe("Opening");
   });
 
+  it("preserves optional clip locks while accepting existing unlocked projects", () => {
+    const original = project();
+    expect(validateProject(original)).toEqual(original);
+    original.timelines[0]!.tracks[0]!.clips[0]!.locked = true;
+    expect(migrateProject(JSON.parse(JSON.stringify(original)))).toEqual(
+      original,
+    );
+    const malformed = JSON.parse(JSON.stringify(original));
+    malformed.timelines[0].tracks[0].clips[0].locked = "true";
+    expect(() => validateProject(malformed)).toThrow("locked");
+  });
+
   it.each([
     undefined,
     null,

@@ -17,6 +17,8 @@
     "@openfilm/catalog": "workspace:*",
     "@openfilm/media": "workspace:*",
     "@openfilm/render": "workspace:*",
-    "@openfilm/template-proposal": "workspace:*"
+    "@openfilm/template-proposal": "workspace:*",
+    "@openfilm/source-pixel": "workspace:*",
+    "@openfilm/source-insta360": "workspace:*"
   }
 }

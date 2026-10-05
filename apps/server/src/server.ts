@@ -5,11 +5,18 @@ import {
 } from "node:http";
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
-import { resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
-import { OpenFilmApplication } from "@openfilm/application";
+import {
+  OpenFilmApplication,
+  TimelineEditor,
+  TimelineEditorError,
+  MediaRelinker,
+  MediaRelinkError as RelinkError,
+  type TimelineEditInput,
+} from "@openfilm/application";
 import {
   validateProject,
   validateStory,
@@ -17,6 +24,7 @@ import {
   type MediaAsset,
   type Story,
 } from "@openfilm/core";
+import { previewIssue } from "@openfilm/media";
 
 type Body = Record<string, unknown>;
 class HttpError extends Error {
@@ -85,6 +93,11 @@ async function streamFile(
     throw new HttpError(403, "Media cache path is outside this project.");
   const info = await stat(actualFile);
   if (!info.isFile()) throw new HttpError(404, "Cached media is unavailable.");
+  if (info.size === 0)
+    throw new HttpError(
+      404,
+      "Media file is empty or unavailable. Rebuild its preview or relink the original source.",
+    );
   let start = 0;
   let end = info.size - 1;
   let status = 200;
@@ -128,6 +141,24 @@ export async function startServer(
     app = await OpenFilmApplication.open(resolve(options.project));
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
+  const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
+  const relinkers = new WeakMap<OpenFilmApplication, MediaRelinker>();
+  const relinkerFor = (application: OpenFilmApplication) => {
+    let relinker = relinkers.get(application);
+    if (!relinker) {
+      relinker = new MediaRelinker(application);
+      relinkers.set(application, relinker);
+    }
+    return relinker;
+  };
+  const editorFor = (application: OpenFilmApplication) => {
+    let editor = editors.get(application);
+    if (!editor) {
+      editor = new TimelineEditor(application);
+      editors.set(application, editor);
+    }
+    return editor;
+  };
   let mutationQueue = Promise.resolve();
   let closing = false;
   const current = () => {
@@ -183,11 +214,17 @@ export async function startServer(
         if ((method === "POST" || method === "PATCH") && !cancellation) {
           if (
             active.size &&
-            (route === "/api/project/create" || route === "/api/project/open")
+            [
+              "/api/project/create",
+              "/api/project/open",
+              "/api/project/close",
+              "/api/media/relink/plan",
+              "/api/media/relink/apply",
+            ].includes(route)
           )
             throw new HttpError(
               409,
-              "Wait for running jobs before switching projects.",
+              "Wait for running jobs before switching projects or relinking media.",
             );
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -206,6 +243,17 @@ export async function startServer(
             project: app?.project ?? null,
             path: app?.directory ?? null,
           });
+          return;
+        }
+        if (method === "POST" && route === "/api/project/close") {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for running jobs before closing this project.",
+            );
+          app?.close();
+          app = undefined;
+          json(response, 200, { ok: true });
           return;
         }
         if (
@@ -330,6 +378,158 @@ export async function startServer(
           application.catalog.updateAsset(id, data as Partial<MediaAsset>);
           json(response, 200, { asset: application.catalog.getAsset(id) });
           return;
+        }
+        if (method === "GET" && route === "/api/media/status") {
+          const assetIds = url.searchParams.has("assetIds")
+            ? url.searchParams.get("assetIds")!.split(",")
+            : undefined;
+          json(response, 200, await relinkerFor(application).status(assetIds));
+          return;
+        }
+        if (
+          method === "POST" &&
+          (route === "/api/media/relink/plan" ||
+            route === "/api/media/relink/apply")
+        ) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for import or rendering to finish before relinking media.",
+            );
+          const data = await body(request);
+          const relinker = relinkerFor(application);
+          const result = route.endsWith("/plan")
+            ? await relinker.plan(data as Parameters<MediaRelinker["plan"]>[0])
+            : await relinker.apply(
+                data as unknown as Parameters<MediaRelinker["apply"]>[0],
+              );
+          json(response, 200, result);
+          return;
+        }
+        const source = /^\/api\/source\/([^/]+)$/.exec(route);
+        if (method === "GET" && source) {
+          const asset = application.catalog.getAsset(
+            decodeURIComponent(source[1]!),
+          );
+          if (!asset)
+            throw new HttpError(
+              404,
+              "Source asset was not found in this project.",
+            );
+          const issue = previewIssue(asset);
+          if (issue) throw new HttpError(422, issue);
+          if (!asset.uri.startsWith("file:"))
+            throw new HttpError(
+              422,
+              "Only imported local media can be previewed.",
+            );
+          const sourceExtension = extname(
+            fileURLToPath(asset.uri),
+          ).toLowerCase();
+          const needsImagePreview =
+            asset.mediaType === "image" &&
+            (asset.hdr ||
+              asset.codec === "hevc" ||
+              ![".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"].includes(
+                sourceExtension,
+              ));
+          if (needsImagePreview && !asset.thumbnailUri)
+            throw new HttpError(
+              422,
+              "A compatible image preview is missing. Import this media again to rebuild its cached preview.",
+            );
+          const derivedUri = needsImagePreview
+            ? asset.thumbnailUri
+            : ["video", "audio"].includes(asset.mediaType)
+              ? asset.proxyUri
+              : undefined;
+          const useProxy = !!derivedUri;
+          const file = derivedUri
+            ? derivedUri.startsWith("file:")
+              ? fileURLToPath(derivedUri)
+              : resolve(application.directory, derivedUri)
+            : fileURLToPath(asset.uri);
+          if (!useProxy && (asset.hdr || asset.codec === "hevc"))
+            throw new HttpError(
+              422,
+              "A compatible preview proxy is required for this HDR/HEVC source. Import it again with proxies enabled.",
+            );
+          const mime = (
+            {
+              ".jpg": "image/jpeg",
+              ".jpeg": "image/jpeg",
+              ".png": "image/png",
+              ".webp": "image/webp",
+              ".gif": "image/gif",
+              ".bmp": "image/bmp",
+              ".mp4": "video/mp4",
+              ".m4v": "video/mp4",
+              ".mov": "video/quicktime",
+              ".webm": "video/webm",
+              ".mp3": "audio/mpeg",
+              ".wav": "audio/wav",
+              ".m4a": "audio/mp4",
+              ".ogg": "audio/ogg",
+              ".opus": "audio/ogg",
+              ".flac": "audio/flac",
+              ".aac": "audio/aac",
+            } as Record<string, string>
+          )[extname(file).toLowerCase()];
+          if (!mime)
+            throw new HttpError(
+              422,
+              "This source format needs a compatible preview. Import it again with proxies enabled, or add a JPEG, MP4 or MP3 copy.",
+            );
+          try {
+            // The path comes exclusively from this project's catalog, never a request path.
+            await streamFile(
+              request,
+              response,
+              file,
+              useProxy
+                ? resolve(application.directory, "cache")
+                : dirname(file),
+              mime,
+            );
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT")
+              throw new HttpError(
+                404,
+                useProxy
+                  ? "Preview proxy missing: import this media again to rebuild its cached preview."
+                  : "Missing Media: reconnect the disk or relink this source.",
+              );
+            throw error;
+          }
+          return;
+        }
+        const editorMatch =
+          /^\/api\/compositions\/([^/]+)\/(editor|edit|undo|redo)$/.exec(route);
+        if (editorMatch) {
+          const compositionId = decodeURIComponent(editorMatch[1]!);
+          const action = editorMatch[2];
+          const editor = editorFor(application);
+          if (method === "GET" && action === "editor") {
+            json(response, 200, editor.get(compositionId));
+            return;
+          }
+          if (method === "POST" && action !== "editor") {
+            const data = await body(request);
+            const state =
+              action === "edit"
+                ? await editor.edit(
+                    compositionId,
+                    data as unknown as TimelineEditInput,
+                  )
+                : action === "undo"
+                  ? await editor.undo(compositionId, text(data, "baseRevision"))
+                  : await editor.redo(
+                      compositionId,
+                      text(data, "baseRevision"),
+                    );
+            json(response, 200, state);
+            return;
+          }
         }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
         if (method === "GET" && thumbnail) {
@@ -498,10 +698,31 @@ export async function startServer(
               : undefined,
             { signal: controller.signal, jobId },
           );
-          const handled = task.finally(() => {
-            active.delete(jobId);
-            tasks.delete(handled);
-          });
+          const handled = task
+            .catch((error: unknown) => {
+              const job = application.catalog
+                .listJobs()
+                .find((item) => item.id === jobId);
+              if (job && (job.status === "queued" || job.status === "running"))
+                application.catalog.saveJob({
+                  ...job,
+                  status: controller.signal.aborted ? "cancelled" : "failed",
+                  updatedAt: new Date().toISOString(),
+                  errors: [
+                    {
+                      uri: "",
+                      stage: "prepare-render",
+                      message:
+                        error instanceof Error ? error.message : String(error),
+                    },
+                  ],
+                });
+              throw error;
+            })
+            .finally(() => {
+              active.delete(jobId);
+              tasks.delete(handled);
+            });
           tasks.add(handled);
           const path = await handled;
           json(response, 200, { path });
@@ -521,19 +742,24 @@ export async function startServer(
           const data = await body(request);
           if (!["json", "otio", "fcpxml", "edl"].includes(String(data.format)))
             throw new HttpError(400, "Choose JSON, OTIO, FCPXML, or EDL.");
-          const path = await application.export(
+          const exported = await application.exportWithReport(
             data.format as "json" | "otio" | "fcpxml" | "edl",
             typeof data.compositionId === "string"
               ? data.compositionId
               : undefined,
           );
-          json(response, 200, { path });
+          json(response, 200, exported);
           return;
         }
         throw new HttpError(404, "Endpoint not found.");
       } catch (error) {
         if (response.headersSent || response.destroyed) return;
-        const status = error instanceof HttpError ? error.status : 400;
+        const status =
+          error instanceof HttpError ||
+          error instanceof TimelineEditorError ||
+          error instanceof RelinkError
+            ? error.status
+            : 400;
         json(response, status, {
           error: error instanceof Error ? error.message : "Operation failed.",
         });

@@ -398,6 +398,7 @@ function composition(
           "source out must be greater than source in",
         );
       optional(clip, "title", clipPath, string);
+      optional(clip, "locked", clipPath, boolean);
       optional(clip, "transform", clipPath, (v, p) => {
         const transform = object(v, p);
         for (const key of ["scale", "speed"])

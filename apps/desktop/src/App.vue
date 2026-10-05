@@ -17,9 +17,17 @@ import {
   previewUrl,
   duration,
   dateLabel,
+  type EditorState,
+  type MediaStatus,
+  type SourceStatus,
+  type ExportCompatibilityReport,
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
+import TimelineEditor from "./components/TimelineEditor.vue";
+import RelinkMedia from "./components/RelinkMedia.vue";
+import SourceDetails from "./components/SourceDetails.vue";
+import ExportReport from "./components/ExportReport.vue";
 
 type Tab = "Library" | "Stories" | "Timeline" | "Export";
 type AssetState = "favorite" | "rejected" | "locked";
@@ -39,6 +47,41 @@ const importOpen = ref(false);
 const importFolder = ref("");
 const assets = ref<MediaAsset[]>([]);
 const assetCache = ref<Record<string, MediaAsset>>({});
+const mediaStatus = ref<MediaStatus | null>(null);
+const mediaStatusError = ref("");
+const checkingMedia = ref(false);
+const relinkOpen = ref(false);
+const relinkAssetIds = ref<string[] | undefined>();
+const relinkLibraryId = ref<string | undefined>();
+const relinkPanelBusy = ref(false);
+const relinkRefreshing = ref(false);
+const relinkBusy = computed(
+  () => relinkPanelBusy.value || relinkRefreshing.value,
+);
+const sourceVersion = ref(0);
+let statusGeneration = 0;
+const sourceStatuses = computed<Record<string, SourceStatus>>(() =>
+  Object.fromEntries(
+    mediaStatus.value?.assets.map((item) => [item.assetId, item]) ?? [],
+  ),
+);
+const missingCount = computed(
+  () =>
+    mediaStatus.value?.assets.filter((item) => item.status === "missing")
+      .length ?? 0,
+);
+const inaccessibleCount = computed(
+  () =>
+    mediaStatus.value?.assets.filter((item) => item.status === "inaccessible")
+      .length ?? 0,
+);
+const offlineLibraries = computed(
+  () =>
+    mediaStatus.value?.libraries.filter(
+      (library) => library.status !== "online",
+    ) ?? [],
+);
+
 const total = ref(0);
 const offset = ref(0);
 const pageSize = 60;
@@ -67,6 +110,12 @@ const storyTemplate = ref("blank");
 const storyScope = ref<"library" | "page">("library");
 const targetDuration = ref(120);
 const maxDuration = ref(180);
+const storyTimingEdited = ref(false);
+watch(storyTemplate, (template) => {
+  if (storyTimingEdited.value) return;
+  targetDuration.value = template === "proposal-film" ? 270 : 120;
+  maxDuration.value = template === "proposal-film" ? 300 : 180;
+});
 const activeStoryId = ref("");
 const activeStory = computed(
   () =>
@@ -113,16 +162,143 @@ const clipCount = computed(
     ) ?? 0,
 );
 const previewVersion = ref(0);
+const previewStale = ref(false);
+const showRenderedPreview = ref(false);
+const renderedPlayer = ref<HTMLVideoElement | null>(null);
+const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
+let editSerial = 0;
+
+function editorChanged(state: EditorState) {
+  if (!project.value) return;
+  project.value = {
+    ...project.value,
+    stories: project.value.stories.map((story) =>
+      story.id === state.story.id ? state.story : story,
+    ),
+    timelines: project.value.timelines.map((cut) =>
+      cut.id === state.composition.id ? state.composition : cut,
+    ),
+  };
+  cacheAssets(state.assets);
+}
+function editorEdited() {
+  editSerial += 1;
+  if (previewVersion.value) previewStale.value = true;
+  if (exportPath.value) exportStale.value = true;
+}
+async function flushEditor() {
+  if (!timelineEditor.value) return true;
+  const saved = await timelineEditor.value.flush();
+  if (!saved)
+    error.value =
+      "Save your timeline edits before continuing. Your unsaved draft is retained; return to Timeline and retry saving.";
+  return saved;
+}
+async function changeTab(next: Tab) {
+  if (next === tab.value || relinkBusy.value) return;
+  if (next === "Timeline") {
+    tab.value = next;
+    if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
+    return;
+  }
+  if (!(await flushEditor())) return;
+  tab.value = next;
+  if (next === "Stories" && !beatDirty.value) hydrateBeat();
+  if (next === "Library") await checkMediaStatus();
+}
+async function changeComposition(event: globalThis.Event) {
+  const select = event.target as HTMLSelectElement;
+  const next = select.value;
+  select.value = activeComposition.value?.id ?? "";
+  if (busy.value || relinkBusy.value) return;
+  if (!(await flushEditor())) return;
+  activeCompositionId.value = next;
+  previewVersion.value = 0;
+  previewStale.value = false;
+  clearExport();
+}
+function toggleRenderedPlayback() {
+  const player = renderedPlayer.value;
+  if (!player) return;
+  if (player.paused)
+    void player.play().catch(() => {
+      error.value =
+        "The rendered preview cannot play. Render it again to refresh the file.";
+    });
+  else player.pause();
+}
 const exportPath = ref("");
+const exportFormat = ref("");
+const exportReport = ref<ExportCompatibilityReport | undefined>();
+const exportStale = ref(false);
+function clearExport() {
+  exportPath.value = "";
+  exportFormat.value = "";
+  exportReport.value = undefined;
+  exportStale.value = false;
+}
 const native = !!window.__TAURI_INTERNALS__;
 let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
+let jobsGeneration = 0;
 
 function cacheAssets(incoming: MediaAsset[]) {
   const next = { ...assetCache.value };
   for (const asset of incoming) next[asset.id] = asset;
   assetCache.value = next;
+}
+async function checkMediaStatus() {
+  const projectId = project.value?.id;
+  if (!projectId) return;
+  const generation = ++statusGeneration;
+  checkingMedia.value = true;
+  mediaStatusError.value = "";
+  try {
+    const result = await api.mediaStatus();
+    if (project.value?.id === projectId && generation === statusGeneration)
+      mediaStatus.value = result;
+  } catch (cause) {
+    if (generation === statusGeneration)
+      mediaStatusError.value =
+        cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    if (generation === statusGeneration) checkingMedia.value = false;
+  }
+}
+async function openRelink(assetId?: string, libraryId?: string) {
+  if (relinkBusy.value || busy.value || activeJobs.value.length) return;
+  if (!(await flushEditor())) return;
+  relinkAssetIds.value = assetId ? [assetId] : undefined;
+  relinkLibraryId.value = libraryId;
+  relinkOpen.value = true;
+  importOpen.value = false;
+  tab.value = "Library";
+  await checkMediaStatus();
+}
+async function beforeRelink() {
+  if (busy.value || activeJobs.value.length) {
+    error.value =
+      "Wait for import or rendering to finish before relinking media.";
+    return false;
+  }
+  return flushEditor();
+}
+async function mediaRelinked(updated: MediaAsset[]) {
+  relinkRefreshing.value = true;
+  try {
+    cacheAssets(updated);
+    const byId = new Map(updated.map((asset) => [asset.id, asset]));
+    assets.value = assets.value.map((asset) => byId.get(asset.id) ?? asset);
+    sourceVersion.value += 1;
+    if (previewVersion.value) previewStale.value = true;
+    if (exportPath.value) exportStale.value = true;
+    await timelineEditor.value?.reload();
+    await checkMediaStatus();
+    notice.value = `${updated.length} ${updated.length === 1 ? "source is" : "sources are"} connected again. Your edits and selections are preserved.`;
+  } finally {
+    relinkRefreshing.value = false;
+  }
 }
 async function refreshProject() {
   const result = await api.project();
@@ -173,7 +349,8 @@ async function boot() {
     await refreshProject();
     if (project.value) {
       await reloadAssets();
-      jobs.value = (await api.jobs()).jobs;
+      await refreshJobs();
+      await checkMediaStatus();
     }
   });
   loading.value = false;
@@ -189,6 +366,7 @@ async function pickFolder(target: "project" | "import") {
   });
 }
 async function openProject() {
+  if (!(await flushEditor())) return;
   if (!folder.value.trim()) {
     error.value = "Choose a project folder first.";
     return;
@@ -208,37 +386,61 @@ async function openProject() {
       });
       offset.value = 0;
       assetCache.value = {};
+      mediaStatus.value = null;
+      relinkOpen.value = false;
+      sourceVersion.value += 1;
       selectedAssetId.value = "";
       groupSelection.value = null;
       events.value = [];
       duplicates.value = [];
       analyzed.value = false;
       previewVersion.value = 0;
+      clearExport();
       await refreshProject();
       await reloadAssets();
-      jobs.value = (await api.jobs()).jobs;
+      await refreshJobs();
       tab.value = "Library";
+      await checkMediaStatus();
     },
   );
 }
 async function beginImport() {
+  if (relinkBusy.value) return;
   if (!importFolder.value.trim()) {
     error.value = "Choose the folder containing your media.";
     return;
   }
   await run("Starting import", async () => {
     await post("/import", { folder: importFolder.value.trim() });
-    jobs.value = (await api.jobs()).jobs;
+    await refreshJobs();
     importOpen.value = false;
     notice.value =
       "Import started. You can keep working while your media is organized.";
   });
 }
+async function refreshJobs() {
+  const generation = ++jobsGeneration;
+  const projectId = project.value?.id;
+  const result = await api.jobs();
+  if (generation === jobsGeneration && project.value?.id === projectId)
+    jobs.value = result.jobs;
+}
 async function pollJobs() {
   if (!project.value || polling) return;
+  const generation = ++jobsGeneration;
+  const projectId = project.value.id;
   polling = true;
   try {
     const result = await api.jobs();
+    if (generation !== jobsGeneration || project.value?.id !== projectId)
+      return;
+    const newlyImported = result.jobs.some(
+      (job) =>
+        job.type === "import" &&
+        ["completed", "failed", "cancelled"].includes(job.status) &&
+        jobs.value.find((previous) => previous.id === job.id)?.status !==
+          job.status,
+    );
     jobs.value = result.jobs;
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
@@ -247,6 +449,7 @@ async function pollJobs() {
       lastJobSignature = signature;
       await reloadAssets();
       await refreshProject();
+      if (newlyImported) await checkMediaStatus();
     }
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
@@ -374,6 +577,7 @@ function chooseCandidate(asset: MediaAsset) {
   beatDirty.value = true;
 }
 async function saveBeat() {
+  if (!(await flushEditor())) return;
   const story = activeStory.value;
   const beat = activeBeat.value;
   if (!story || !beat) return;
@@ -398,9 +602,11 @@ async function saveBeat() {
     await refreshProject();
     beatDirty.value = false;
     notice.value = "Story beat saved.";
+    await timelineEditor.value?.reload();
   });
 }
 async function compose() {
+  if (!(await flushEditor())) return;
   const story = activeStory.value;
   if (!story) return;
   if (beatDirty.value) {
@@ -410,6 +616,7 @@ async function compose() {
   await run("Composing film", async () => {
     const { composition } = await api.compose(story.id);
     activeCompositionId.value = composition.id;
+    clearExport();
     await refreshProject();
     previewVersion.value = 0;
     tab.value = "Timeline";
@@ -434,6 +641,8 @@ async function compose() {
   });
 }
 async function renderPreview() {
+  if (!(await flushEditor())) return;
+  const renderingEdit = editSerial;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("Rendering preview", async () => {
@@ -453,21 +662,42 @@ async function renderPreview() {
         return;
       }
       throw cause;
+    } finally {
+      try {
+        await refreshJobs();
+      } catch {
+        /* Polling will retry without replacing the render result. */
+      }
     }
     previewVersion.value = Date.now();
+    previewStale.value = renderingEdit !== editSerial;
+    showRenderedPreview.value = true;
     notice.value = "Your preview is ready to play.";
   });
 }
 async function exportFilm(format: string) {
+  if (!(await flushEditor())) return;
+  const exportingEdit = editSerial;
+  const exportingProject = project.value?.id;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("Exporting timeline", async () => {
-    exportPath.value = (
-      await post<{ path: string }>("/export", {
-        format,
-        compositionId: composition.id,
-      })
-    ).path;
+    const result = await post<{
+      path: string;
+      report?: ExportCompatibilityReport;
+    }>("/export", {
+      format,
+      compositionId: composition.id,
+    });
+    if (
+      project.value?.id !== exportingProject ||
+      activeComposition.value?.id !== composition.id
+    )
+      return;
+    exportPath.value = result.path;
+    exportFormat.value = format;
+    exportReport.value = result.report;
+    exportStale.value = exportingEdit !== editSerial;
     notice.value =
       "Timeline exported. Your original media stays in its source folders.";
   });
@@ -492,7 +722,7 @@ async function cancelJob(job: Job) {
   if (job.type === "render") renderCancellationRequested.value = true;
   try {
     await post(`/jobs/${encodeURIComponent(job.id)}/cancel`);
-    jobs.value = (await api.jobs()).jobs;
+    await refreshJobs();
   } catch (cause) {
     if (job.type === "render") renderCancellationRequested.value = false;
     error.value = cause instanceof Error ? cause.message : String(cause);
@@ -503,8 +733,15 @@ async function cancelJob(job: Job) {
 function progress(job: Job) {
   return Math.round(Math.max(0, Math.min(1, job.progress ?? 0)) * 100);
 }
-function changeWorkspace() {
-  if (busy.value || activeJobs.value.length) return;
+async function changeWorkspace() {
+  if (busy.value || activeJobs.value.length || relinkBusy.value) return;
+  if (!(await flushEditor())) return;
+  statusGeneration += 1;
+  jobsGeneration += 1;
+  mediaStatus.value = null;
+  checkingMedia.value = false;
+  relinkOpen.value = false;
+  clearExport();
   project.value = null;
   projectPath.value = null;
   folder.value = "";
@@ -535,13 +772,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="film-workspace">
+  <div
+    class="film-workspace"
+    :class="{ 'editing-room': tab === 'Timeline' || tab === 'Export' }"
+  >
     <header class="app-header">
       <a
         class="wordmark"
         href="#"
         aria-label="OpenFilm home"
-        @click.prevent="tab = 'Library'"
+        @click.prevent="changeTab('Library')"
         ><span class="logo-bracket">[</span>OpenFilm<span class="logo-bracket"
           >]</span
         ></a
@@ -552,7 +792,8 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
-          @click="tab = item"
+          :disabled="relinkBusy"
+          @click="changeTab(item)"
         >
           {{ item }}
         </button>
@@ -706,8 +947,7 @@ onUnmounted(() => {
             Give your memories a beginning, a middle, and a reason to stay.
           </p>
           <p v-if="tab === 'Timeline'">
-            A first cut, shaped around your story. Keep editing in your favorite
-            editor.
+            Shape each moment around your story. Your originals stay untouched.
           </p>
           <p v-if="tab === 'Export'">
             Watch your film, or bring an editable timeline into your editing
@@ -717,17 +957,27 @@ onUnmounted(() => {
         <div class="project-heading-actions">
           <button
             class="text-button project-switch"
-            :disabled="!!busy || activeJobs.length > 0"
+            :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
             @click="changeWorkspace"
           >
             <Icon name="folder" :size="15" /> Switch project</button
           ><button
             v-if="tab === 'Library'"
             class="primary"
-            :disabled="!!busy"
+            :disabled="!!busy || relinkBusy"
             @click="importOpen = !importOpen"
           >
             <Icon name="plus" /> Add media</button
+          ><button
+            v-if="
+              tab === 'Library' &&
+              (total > 0 || (mediaStatus?.assets.length ?? 0) > 0)
+            "
+            class="secondary"
+            :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+            @click="openRelink()"
+          >
+            <Icon name="refresh" :size="16" />Relink Media</button
           ><button
             v-if="tab === 'Stories'"
             class="primary"
@@ -738,6 +988,20 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <RelinkMedia
+        v-if="relinkOpen && tab === 'Library'"
+        :key="`${project.id}:${relinkAssetIds?.join(',') ?? relinkLibraryId ?? 'all'}`"
+        :assets="Object.values(assetCache)"
+        :asset-ids="relinkAssetIds"
+        :library-id="relinkLibraryId"
+        :libraries="mediaStatus?.libraries"
+        :blocked="!!busy || activeJobs.length > 0"
+        :before-action="beforeRelink"
+        @close="relinkOpen = false"
+        @applied="mediaRelinked"
+        @working="relinkPanelBusy = $event"
+      />
 
       <section v-if="importOpen" class="inline-form" aria-label="Import media">
         <div>
@@ -851,6 +1115,76 @@ onUnmounted(() => {
       </section>
 
       <template v-if="tab === 'Library'">
+        <section
+          v-if="
+            total > 0 ||
+            (mediaStatus?.assets.length ?? 0) > 0 ||
+            mediaStatusError
+          "
+          class="media-availability"
+          :class="{
+            unavailable:
+              missingCount || inaccessibleCount || offlineLibraries.length,
+          }"
+          aria-label="Media availability"
+        >
+          <div class="media-availability-summary">
+            <div>
+              <strong v-if="missingCount || inaccessibleCount"
+                >{{ missingCount ? `${missingCount} Missing Media` : ""
+                }}{{ missingCount && inaccessibleCount ? " · " : ""
+                }}{{
+                  inaccessibleCount ? `${inaccessibleCount} inaccessible` : ""
+                }}</strong
+              ><strong v-else>{{
+                checkingMedia
+                  ? "Checking source files…"
+                  : mediaStatus
+                    ? "All media available"
+                    : "Source status not checked"
+              }}</strong>
+              <p v-if="missingCount || inaccessibleCount">
+                Reconnect the drive or locate moved files. Cached thumbnails and
+                your edits stay available.
+              </p>
+              <p v-else-if="mediaStatus">
+                {{ mediaStatus.assets.length }} source files checked.
+              </p>
+              <p v-if="mediaStatusError" role="alert">{{ mediaStatusError }}</p>
+            </div>
+            <button
+              class="secondary"
+              :disabled="checkingMedia || relinkBusy"
+              @click="checkMediaStatus"
+            >
+              <Icon name="refresh" :size="14" />{{
+                checkingMedia ? "Checking…" : "Check again"
+              }}
+            </button>
+          </div>
+          <div
+            v-for="library in offlineLibraries"
+            :key="library.id"
+            class="library-availability"
+          >
+            <span
+              ><strong>{{
+                library.status === "offline"
+                  ? "Library offline"
+                  : "Some library files unavailable"
+              }}</strong>
+              · {{ library.name
+              }}<small>{{ library.roots.join(" · ") }}</small></span
+            ><button
+              class="text-button"
+              :aria-label="`Relink library ${library.name}`"
+              :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+              @click="openRelink(undefined, library.id)"
+            >
+              Locate library<Icon name="arrow" :size="14" />
+            </button>
+          </div>
+        </section>
         <div class="library-toolbar">
           <div class="collection-tabs" aria-label="Library view">
             <button
@@ -933,6 +1267,7 @@ onUnmounted(() => {
                 v-for="asset in assets"
                 :key="asset.id"
                 :asset="asset"
+                :source-status="sourceStatuses[asset.id]"
                 :selected="selectedAssetId === asset.id"
                 @select="inspectAsset"
                 @toggle="toggleAsset"
@@ -1014,6 +1349,7 @@ onUnmounted(() => {
                   </dd>
                 </div>
               </dl>
+              <SourceDetails :asset="selectedAsset" />
               <div class="rating-control">
                 <span>How much does this matter?</span>
                 <div>
@@ -1061,6 +1397,33 @@ onUnmounted(() => {
                       ? "Restore to story"
                       : "Leave out"
                   }}
+                </button>
+              </div>
+              <div
+                class="selected-source-status"
+                :class="{
+                  unavailable:
+                    sourceStatuses[selectedAsset.id]?.status !== 'available' &&
+                    sourceStatuses[selectedAsset.id],
+                }"
+              >
+                <strong v-if="sourceStatuses[selectedAsset.id]">{{
+                  sourceStatuses[selectedAsset.id]?.status === "missing"
+                    ? "Missing Media"
+                    : sourceStatuses[selectedAsset.id]?.status ===
+                        "inaccessible"
+                      ? "Inaccessible Media"
+                      : "Source available"
+                }}</strong>
+                <p v-if="sourceStatuses[selectedAsset.id]?.message">
+                  {{ sourceStatuses[selectedAsset.id]?.message }}
+                </p>
+                <button
+                  class="secondary"
+                  :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+                  @click="openRelink(selectedAsset.id)"
+                >
+                  Relink selected media
                 </button>
               </div>
               <p class="source-path" :title="selectedAsset.uri">
@@ -1246,14 +1609,16 @@ onUnmounted(() => {
                 name="target-duration"
                 type="number"
                 min="1"
-                required /></label
+                required
+                @input="storyTimingEdited = true" /></label
             ><label class="field compact-field"
               >Maximum (seconds)<input
                 v-model.number="maxDuration"
                 name="max-duration"
                 type="number"
                 min="1"
-                required /></label
+                required
+                @input="storyTimingEdited = true" /></label
             ><button class="primary" :disabled="!!busy">
               Plan story<Icon name="arrow" />
             </button>
@@ -1377,6 +1742,12 @@ onUnmounted(() => {
                   }}</span
                 >
               </div>
+              <p class="candidate-guidance">
+                Selected memories are <strong>Must include</strong> for this
+                beat, in the order you choose them. Save the beat to keep that
+                choice. Leave optional moments unselected so the cut can be
+                shortened.
+              </p>
               <p v-if="beatDirty" class="edit-note" role="status">
                 You have changes to save before moving to another beat.
               </p>
@@ -1385,6 +1756,7 @@ onUnmounted(() => {
                   v-for="asset in candidateAssets"
                   :key="asset.id"
                   :asset="asset"
+                  :source-status="sourceStatuses[asset.id]"
                   choice
                   :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
                   @select="chooseCandidate"
@@ -1428,7 +1800,10 @@ onUnmounted(() => {
         </template>
       </template>
 
-      <template v-if="tab === 'Timeline' || tab === 'Export'">
+      <section
+        v-show="tab === 'Timeline' || tab === 'Export'"
+        class="editing-workflow"
+      >
         <div v-if="!activeComposition" class="empty-state">
           <span class="empty-symbol"><Icon name="film" :size="30" /></span>
           <h2>Your first cut is waiting.</h2>
@@ -1457,11 +1832,8 @@ onUnmounted(() => {
               >Cut<select
                 :value="activeComposition.id"
                 aria-label="Active composition"
-                @change="
-                  activeCompositionId = ($event.target as HTMLSelectElement)
-                    .value;
-                  previewVersion = 0;
-                "
+                :disabled="!!busy || relinkBusy"
+                @change="changeComposition"
               >
                 <option
                   v-for="(composition, index) in project.timelines"
@@ -1481,8 +1853,29 @@ onUnmounted(() => {
               }}
             </button>
           </div>
-          <div v-if="previewVersion" class="preview-screen">
+          <p
+            v-if="previewVersion && previewStale"
+            class="preview-stale"
+            role="status"
+          >
+            Preview is out of date. Render again to see your latest edits.
+          </p>
+          <button
+            v-if="previewVersion && tab === 'Timeline'"
+            class="secondary preview-toggle"
+            :aria-expanded="showRenderedPreview"
+            @click="showRenderedPreview = !showRenderedPreview"
+          >
+            {{
+              showRenderedPreview ? "Hide film preview" : "Show film preview"
+            }}
+          </button>
+          <div
+            v-if="previewVersion && (tab === 'Export' || showRenderedPreview)"
+            class="preview-screen"
+          >
             <video
+              ref="renderedPlayer"
               :key="previewVersion"
               crossorigin="anonymous"
               :src="previewUrl(previewVersion)"
@@ -1497,99 +1890,30 @@ onUnmounted(() => {
               >YOUR FILM · {{ duration(activeComposition.duration) }}</span
             >
           </div>
-          <div v-else class="preview-placeholder">
+          <div
+            v-else-if="tab === 'Export' && !previewVersion"
+            class="preview-placeholder"
+          >
             <Icon name="play" :size="36" /><span>{{
               busy === "Rendering preview"
                 ? "Your film is taking shape. This can take a moment."
                 : "Render a preview to watch your story."
             }}</span>
           </div>
-          <section
-            v-if="tab === 'Timeline'"
-            class="composition-timeline"
-            aria-label="Composition timeline"
-          >
-            <div class="timeline-header">
-              <span class="eyebrow">THE ROUGH CUT</span
-              ><span>Source files are never changed.</span>
-            </div>
-            <div class="track-scroll">
-              <div class="time-ruler">
-                <span v-for="tick in 7" :key="tick">{{
-                  duration((activeComposition.duration * (tick - 1)) / 6)
-                }}</span>
-              </div>
-              <div
-                v-for="track in activeComposition.tracks"
-                :key="track.id"
-                class="track"
-              >
-                <div class="track-label">
-                  <Icon
-                    :name="track.type === 'video' ? 'film' : 'volume'"
-                    :size="15"
-                  />{{ track.type }}
-                </div>
-                <div class="clip-lane">
-                  <div
-                    v-for="clip in track.clips"
-                    :key="clip.id"
-                    class="timeline-clip"
-                    :style="{
-                      width: `${(clip.timelineDuration / activeComposition.duration) * 100}%`,
-                      left: `${(clip.timelineStart / activeComposition.duration) * 100}%`,
-                    }"
-                    :title="`${assetCache[clip.assetId]?.name || clip.assetId} · ${duration(clip.timelineDuration)}`"
-                  >
-                    <img
-                      v-if="assetCache[clip.assetId]?.thumbnailUri"
-                      crossorigin="anonymous"
-                      :src="thumbnailUrl(clip.assetId)"
-                      alt=""
-                      loading="lazy"
-                    /><span>{{
-                      assetCache[clip.assetId]?.name || clip.title || "Media"
-                    }}</span
-                    ><small>{{ duration(clip.timelineDuration) }}</small>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <details class="cut-details">
-              <summary>View clip timing</summary>
-              <div class="clip-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Memory</th>
-                      <th>Track</th>
-                      <th>Start</th>
-                      <th>Duration</th>
-                      <th>Source in–out</th>
-                    </tr>
-                  </thead>
-                  <tbody
-                    v-for="track in activeComposition.tracks"
-                    :key="track.id"
-                  >
-                    <tr v-for="clip in track.clips" :key="clip.id">
-                      <td>
-                        {{ assetCache[clip.assetId]?.name || clip.assetId }}
-                      </td>
-                      <td>{{ track.type }}</td>
-                      <td>{{ duration(clip.timelineStart) }}</td>
-                      <td>{{ duration(clip.timelineDuration) }}</td>
-                      <td>
-                        {{ duration(clip.sourceIn ?? 0) }}–{{
-                          duration(clip.sourceOut ?? clip.timelineDuration)
-                        }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </section>
+          <TimelineEditor
+            v-show="tab === 'Timeline'"
+            :key="`${project.id}:${activeComposition.id}`"
+            ref="timelineEditor"
+            :project-id="project.id"
+            :composition-id="activeComposition.id"
+            :active="tab === 'Timeline'"
+            :source-statuses="sourceStatuses"
+            :source-version="sourceVersion"
+            @relink="openRelink($event)"
+            @change="editorChanged"
+            @edited="editorEdited"
+            @playback="toggleRenderedPlayback"
+          />
           <section v-if="tab === 'Export'" class="export-options">
             <div>
               <span class="eyebrow">KEEP THE STORY MOVING</span>
@@ -1604,8 +1928,8 @@ onUnmounted(() => {
                 <span
                   ><strong>OpenTimelineIO</strong
                   ><small
-                    >Open, portable timeline · Resolve and compatible
-                    editors</small
+                    >Portable cut timeline · Resolve import requires
+                    checking</small
                   ></span
                 ><span class="format-extension">.otio</span
                 ><Icon name="download" /></button
@@ -1640,9 +1964,22 @@ onUnmounted(() => {
                 ><code>{{ exportPath }}</code>
               </div>
             </div>
+            <p
+              v-if="exportPath && exportStale"
+              class="preview-stale"
+              role="status"
+            >
+              This export predates your latest edits. Export again to include
+              them.
+            </p>
+            <ExportReport
+              v-if="exportPath"
+              :report="exportReport"
+              :format="exportFormat"
+            />
           </section>
         </template>
-      </template>
+      </section>
       <footer class="workspace-footer">
         <span
           >{{ project.title }} <span class="footer-dot">·</span>

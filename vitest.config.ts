@@ -14,6 +14,8 @@ const packages = [
   "media",
   "render",
   "application",
+  "source-pixel",
+  "source-insta360",
 ];
 export default defineConfig({
   resolve: {

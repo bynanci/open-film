@@ -13,6 +13,12 @@ region radii use kilometers. Confidence and job progress are fractions from
 zero to one; user ratings range from zero to five. Timestamps include an explicit
 timezone. Namespace plugin metadata keys to avoid collisions.
 
+Clip `locked` is an optional additive 1.0.0 field. Existing projects without it
+remain valid and no data conversion is needed. The lock protects clip identity,
+source selection, duration and effects; preceding edits may ripple its timeline
+position. Unlock explicitly before editing or removing a locked clip. The loader
+preserves this field through save/reopen and rejects non-boolean values.
+
 Call `validateProject` when loading a manifest. It checks semantic duration
 bounds, unique IDs, calendar timestamps, story references, and beat references in
 addition to the structural schema. Supply `{ assetIds: catalogIds }` to check

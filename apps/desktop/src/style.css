@@ -1991,3 +1991,122 @@ td {
     border-top-color: var(--paper);
   }
 }
+
+/* Source availability remains separate from the saved edit and selection. */
+.media-availability {
+  margin-bottom: 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--frame-line);
+  border-radius: 6px;
+  background: var(--fresh-paper);
+  font-size: 12px;
+}
+.media-availability.unavailable {
+  border-color: #d7b4a0;
+  background: #fcf4ed;
+}
+.media-availability-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.media-availability-summary strong {
+  font-weight: 600;
+}
+.media-availability-summary p {
+  margin-top: 5px;
+  color: var(--faded-ink);
+  line-height: 1.6;
+}
+.library-availability {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 13px;
+  margin-top: 13px;
+  border-top: 1px solid #e8d8cc;
+}
+.library-availability strong {
+  color: #915336;
+  font-size: 11px;
+}
+.library-availability small {
+  display: block;
+  margin-top: 5px;
+  color: var(--faded-ink);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.asset-source-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  color: #ffdbbd;
+  background: #32261fec;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.selected-source-status {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--frame-line);
+  font-size: 11px;
+}
+.selected-source-status strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--olive);
+}
+.selected-source-status.unavailable strong {
+  color: var(--film-orange);
+}
+.selected-source-status p {
+  margin-bottom: 11px;
+  color: var(--faded-ink);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 650px) {
+  .media-availability-summary,
+  .library-availability {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.asset-device {
+  color: var(--faded-ink);
+  font-size: 9px;
+}
+.asset-capability-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.asset-capability-badges > span {
+  padding: 3px 5px;
+  border: 1px solid #ddccbc;
+  border-radius: 3px;
+  color: #865334;
+  background: #f7eee4;
+  font-size: 8px;
+  font-weight: 550;
+  line-height: 1.3;
+}
+
+.candidate-guidance {
+  margin: -2px 0 16px;
+  max-width: 660px;
+  color: var(--faded-ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.candidate-guidance strong {
+  color: var(--ink);
+  font-weight: 600;
+}

@@ -41,7 +41,9 @@
     "@openfilm/media": "workspace:*",
     "@openfilm/render": "workspace:*",
     "@openfilm/application": "workspace:*",
-    "exiftool-vendored.pl": "13.59.3"
+    "exiftool-vendored.pl": "13.59.3",
+    "@openfilm/source-pixel": "workspace:*",
+    "@openfilm/source-insta360": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -104,6 +104,8 @@ export interface Clip {
   timelineDuration: number;
   transform?: ClipTransform;
   title?: string;
+  /** Protect source selection and edits; ripple timeline positioning remains allowed. */
+  locked?: boolean;
   transition?: { type: "crossfade"; duration: number };
 }
 

@@ -1,0 +1,95 @@
+.export-report {
+  grid-column: 1 / -1;
+  margin-top: 5px;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--pencil);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.export-report .export-report-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.export-report .export-report-heading h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+
+.export-report .export-report-heading > span {
+  color: var(--faded-ink);
+  font-size: 10px;
+}
+
+.export-report .export-report-verification {
+  max-width: 760px;
+}
+
+.export-report p {
+  margin: 0;
+  color: var(--faded-ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.export-report p.export-report-status {
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.export-report .export-report-advanced {
+  max-width: 760px;
+  margin-top: 16px;
+  padding: 12px 15px;
+  border-left: 2px solid var(--film-orange);
+  border-radius: 0 3px 3px 0;
+  background: var(--fresh-paper);
+}
+
+.export-report .export-report-advanced h4 {
+  margin: 0 0 5px;
+  color: var(--film-orange);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+
+.export-report .export-report-warnings {
+  max-width: 760px;
+  margin: 16px 0 0;
+  padding-left: 17px;
+  color: var(--faded-ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.export-report .export-report-warnings li {
+  padding-left: 3px;
+  overflow-wrap: anywhere;
+}
+
+.export-report .export-report-warnings li + li {
+  margin-top: 8px;
+}
+
+.export-report .export-report-warnings li::marker {
+  color: var(--film-orange);
+}
+
+@media (max-width: 480px) {
+  .export-report {
+    padding-top: 17px;
+  }
+
+  .export-report .export-report-advanced {
+    padding: 11px 12px;
+  }
+}

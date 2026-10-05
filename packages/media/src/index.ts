@@ -22,6 +22,7 @@ import type {
   OperationOptions,
 } from "@openfilm/plugin-sdk";
 import { resolveTimestamp } from "@openfilm/metadata";
+import { probeColor, previewIssue, hdrToneMapFilter } from "./color.js";
 
 export interface MediaCandidate extends SourceCandidate {
   path: string;
@@ -124,6 +125,9 @@ const supported = new Set([
   ".tiff",
   ".heic",
   ".avif",
+  ".dng",
+  ".insv",
+  ".insp",
   ".mp4",
   ".mov",
   ".m4v",
@@ -142,6 +146,8 @@ const supported = new Set([
   ".opus",
 ]);
 const images = new Set([
+  ".dng",
+  ".insp",
   ".jpg",
   ".jpeg",
   ".png",
@@ -235,7 +241,7 @@ let exifAvailable: boolean | undefined;
 let exifCommand: { command: string; args: string[] } | undefined;
 const require = createRequire(import.meta.url);
 
-async function extractExif(
+export async function extractExif(
   path: string,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
@@ -309,11 +315,17 @@ export async function inspectMedia(
       avg_frame_rate?: string;
       duration?: string;
       color_space?: string;
+      disposition?: { attached_pic?: number };
       tags?: Record<string, unknown>;
     }[];
   };
-  const video = result.streams?.find((stream) => stream.codec_type === "video");
   const audio = result.streams?.find((stream) => stream.codec_type === "audio");
+  const video = result.streams?.find(
+    (stream) =>
+      stream.codec_type === "video" &&
+      (!audio || stream.disposition?.attached_pic !== 1),
+  );
+  const color = probeColor(video);
   if (!video && !audio)
     throw new Error("No decodable image, video or audio stream was found");
   const exif = await extractExif(path, signal);
@@ -361,6 +373,7 @@ export async function inspectMedia(
       ? { codec: video?.codec_name ?? audio?.codec_name }
       : {}),
     ...(video?.color_space ? { colorSpace: video.color_space } : {}),
+    ...(video ? { hdr: color.hdr } : {}),
     ...(exif.Make || exif.Model || exif.Software
       ? {
           source: {
@@ -382,6 +395,17 @@ export async function inspectMedia(
     state: {},
     metadata: {
       "openfilm.ffprobe": result,
+      "openfilm.color": color,
+      ...(color.hdr
+        ? {
+            "openfilm.preview": {
+              supported: true,
+              warnings: [
+                "HDR source. SDR previews use tone mapping; original color metadata is preserved.",
+              ],
+            },
+          }
+        : {}),
       "openfilm.exif": exif,
       "openfilm.metadata.exiftoolAvailable": exifAvailable !== false,
       "openfilm.filesystem": {
@@ -511,6 +535,7 @@ export async function createThumbnail(
 ): Promise<void> {
   await ensureDerivedOutput(asset, output);
   if (asset.mediaType === "audio") return;
+  const filters = await previewVideoFilters(asset, signal);
   await runProcess(
     "ffmpeg",
     [
@@ -526,7 +551,9 @@ export async function createThumbnail(
       "-frames:v",
       "1",
       "-vf",
-      "scale=480:320:force_original_aspect_ratio=decrease",
+      [...filters, "scale=480:320:force_original_aspect_ratio=decrease"].join(
+        ",",
+      ),
       "-threads",
       "1",
       "-update",
@@ -544,7 +571,39 @@ export async function createProxy(
   signal?: AbortSignal,
 ): Promise<void> {
   await ensureDerivedOutput(asset, output);
+  if (asset.mediaType === "audio") {
+    const issue = previewIssue(asset);
+    if (issue) throw new Error(issue);
+    await runProcess(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-nostdin",
+        "-threads",
+        "1",
+        "-i",
+        localPath(asset.uri),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "192k",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
+        "-y",
+        output,
+      ],
+      { signal, timeoutMs: 600000 },
+    );
+    return;
+  }
   if (asset.mediaType !== "video" && asset.mediaType !== "360-video") return;
+  const filters = await previewVideoFilters(asset, signal);
   await runProcess(
     "ffmpeg",
     [
@@ -562,7 +621,10 @@ export async function createProxy(
       "-map",
       "0:a?",
       "-vf",
-      "scale=640:360:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      [
+        ...filters,
+        "scale=640:360:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      ].join(","),
       "-c:v",
       "libx264",
       "-threads",
@@ -583,3 +645,38 @@ export async function createProxy(
     { signal, timeoutMs: 600000 },
   );
 }
+
+let hdrFiltersAvailable: boolean | undefined;
+export async function previewVideoFilters(
+  asset: MediaAsset,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const issue = previewIssue(asset);
+  if (issue) throw new Error(issue);
+  const filter = hdrToneMapFilter(asset);
+  if (!filter) return [];
+  if (hdrFiltersAvailable === undefined) {
+    const result = await runProcess("ffmpeg", ["-hide_banner", "-filters"], {
+      signal,
+    });
+    const filters = result.stdout.toString("utf8");
+    hdrFiltersAvailable =
+      /\bzscale\b/.test(filters) && /\btonemap\b/.test(filters);
+  }
+  if (!hdrFiltersAvailable)
+    throw new Error(
+      `HDR preview for "${asset.name}" requires FFmpeg zscale and tonemap filters. Install a build with these filters or export an SDR copy.`,
+    );
+  return [filter];
+}
+
+export { probeColor, previewIssue, hdrToneMapFilter } from "./color.js";
+export type { ColorMetadata } from "./color.js";
+
+export { referenceFor, sourceStatus, planMediaRelink } from "./relink.js";
+export type {
+  PortableReference,
+  SourceStatus,
+  RelinkCandidate,
+  RelinkMatch,
+} from "./relink.js";

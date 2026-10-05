@@ -18,7 +18,15 @@ import {
   rename,
   rm,
 } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createProject,
@@ -36,9 +44,16 @@ import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
 import { createStory } from "@openfilm/story";
 import { compose as solve } from "@openfilm/solver";
-import { exportTimeline } from "@openfilm/exporters";
+import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import { FFmpegRenderer } from "@openfilm/render";
+import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
+import {
+  enrichInsta360Asset,
+  Insta360ImportContext,
+  inspectInsta360Raw,
+  isInsta360Raw,
+} from "@openfilm/source-insta360";
 import {
   checkAbort,
   createProxy,
@@ -49,8 +64,13 @@ import {
   localPath,
   perceptualHash,
   safeProjectCachePath,
+  referenceFor,
+  sourceStatus,
+  previewIssue,
+  previewVideoFilters,
   type MediaCandidate,
 } from "@openfilm/media";
+import { portableCacheUri } from "./portable-cache.js";
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -71,6 +91,13 @@ export interface StoryOptions {
   maxDuration?: number;
   /** Explicit scope for large libraries; every locked asset is also included. */
   assetIds?: string[];
+}
+
+export interface ExportReport {
+  format: "json" | "otio" | "fcpxml" | "edl";
+  warnings: string[];
+  realNleVerified?: false;
+  advancedEdits?: "metadata-only";
 }
 
 function safeDirectorySync(directory: string): void {
@@ -165,6 +192,21 @@ export class OpenFilmApplication {
       }
     }
     const application = new OpenFilmApplication(canonical, project);
+    // Cache references are relative to the project, so its complete directory can move.
+    for (const summary of application.catalog.iterateAssetSummaries()) {
+      const asset = application.catalog.getAsset(summary.id)!;
+      const thumbnailUri =
+        asset.thumbnailUri &&
+        portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
+      const proxyUri =
+        asset.proxyUri && portableCacheUri(asset, asset.proxyUri, "proxies");
+      if (thumbnailUri !== asset.thumbnailUri || proxyUri !== asset.proxyUri)
+        application.catalog.upsertAsset({
+          ...asset,
+          ...(thumbnailUri ? { thumbnailUri } : {}),
+          ...(proxyUri ? { proxyUri } : {}),
+        });
+    }
     for (const job of application.catalog.listJobs()) {
       if (job.status === "running" || job.status === "queued")
         application.catalog.saveJob({
@@ -196,6 +238,10 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  get hasActiveJobs(): boolean {
+    return this.activeJobs > 0;
   }
 
   close(): void {
@@ -238,6 +284,8 @@ export class OpenFilmApplication {
     publish();
     this.activeJobs++;
     const pending = new Set<Promise<void>>();
+    const insta360Context = new Insta360ImportContext();
+    let library: OpenFilmProject["mediaLibraries"][number] | undefined;
     const process = async (candidate: MediaCandidate): Promise<void> => {
       let stage = "fingerprint";
       const partials: string[] = [];
@@ -247,13 +295,20 @@ export class OpenFilmApplication {
           result.skipped++;
           return;
         }
-        const assetId = createHash("sha256")
+        const locationMatch = this.catalog.getAssetByUri(candidate.uri);
+        const locationId = createHash("sha256")
           .update(candidate.uri)
           .digest("hex")
           .slice(0, 32);
+        const previousLocationOwner = this.catalog.getAsset(locationId);
+        const assetId =
+          locationMatch?.id ??
+          (previousLocationOwner && previousLocationOwner.uri !== candidate.uri
+            ? randomUUID()
+            : locationId);
         const originalHash = await hashFile(candidate.path, options.signal);
         const previous = this.catalog.getAsset(assetId);
-        const stem = `${assetId}-${originalHash.slice(0, 16)}`;
+        const stem = `${assetId}-${originalHash.slice(0, 16)}-v2`;
         const thumbnail = await safeProjectCachePath(
           this.directory,
           "thumbnails",
@@ -264,26 +319,78 @@ export class OpenFilmApplication {
           "proxies",
           `${stem}.mp4`,
         );
+        const audioProxy = await safeProjectCachePath(
+          this.directory,
+          "proxies",
+          `${stem}.mp3`,
+        );
         const derivedComplete =
           previous &&
+          previous.metadata["openfilm.importPipeline"] === 2 &&
           (previous.mediaType === "audio" || existsSync(thumbnail)) &&
           (options.proxies === false ||
-            !["video", "360-video"].includes(previous.mediaType) ||
-            existsSync(proxy));
+            !["video", "360-video", "audio"].includes(previous.mediaType) ||
+            (!!previous.proxyUri &&
+              existsSync(previous.mediaType === "audio" ? audioProxy : proxy)));
         if (previous?.contentHash === originalHash && derivedComplete) {
           result.skipped++;
           return;
         }
         stage = "inspect";
-        const asset = await inspectMedia(candidate, options.signal);
+        const inspected = isInsta360Raw(candidate.uri)
+          ? await inspectInsta360Raw(candidate, options.signal, insta360Context)
+          : extname(candidate.path).toLowerCase() === ".dng"
+            ? await inspectPixelDng(candidate, options.signal)
+            : await inspectMedia(candidate, options.signal);
+        const asset = await enrichInsta360Asset(
+          await enrichPixelAsset(inspected),
+          { signal: options.signal, context: insta360Context },
+        );
+        asset.id = assetId;
         asset.contentHash = originalHash;
         if (previous) {
           asset.state = structuredClone(previous.state);
           asset.tags = [...previous.tags];
           if (previous.rating !== undefined) asset.rating = previous.rating;
-          asset.metadata = { ...previous.metadata, ...asset.metadata };
+          const previousMetadata = { ...previous.metadata };
+          for (const key of [
+            "openfilm.preview",
+            "openfilm.pixel",
+            "openfilm.insta360",
+            "openfilm.color",
+            "openfilm.ffprobe",
+            "openfilm.exif",
+            "openfilm.timestamp",
+            "openfilm.filesystem",
+            "openfilm.metadata.exiftoolAvailable",
+            "openfilm.importPipeline",
+          ])
+            delete previousMetadata[key];
+          asset.metadata = { ...previousMetadata, ...asset.metadata };
         }
-        if (asset.mediaType !== "audio") {
+        const reference = referenceFor(
+          previous ?? asset,
+          library ? [library] : this.project.mediaLibraries,
+        );
+        asset.metadata["openfilm.reference"] = {
+          ...reference,
+          contentHash: originalHash,
+          fileSize: (asset.metadata["openfilm.filesystem"] as { size?: number })
+            .size,
+        };
+        asset.metadata["openfilm.importPipeline"] = 2;
+        if (!previewIssue(asset)) {
+          try {
+            await previewVideoFilters(asset, options.signal);
+          } catch (error) {
+            checkAbort(options.signal);
+            asset.metadata["openfilm.preview"] = {
+              supported: false,
+              reason: String(error instanceof Error ? error.message : error),
+            };
+          }
+        }
+        if (asset.mediaType !== "audio" && !previewIssue(asset)) {
           stage = "perceptual-fingerprint";
           asset.perceptualHash = await perceptualHash(
             candidate.path,
@@ -300,24 +407,31 @@ export class OpenFilmApplication {
             await createThumbnail(asset, temporary, options.signal);
             await rename(temporary, thumbnail);
           }
-          asset.thumbnailUri = pathToFileURL(thumbnail).href;
+          asset.thumbnailUri = relative(this.directory, thumbnail)
+            .split(sep)
+            .join("/");
         }
         if (
           options.proxies !== false &&
-          ["video", "360-video"].includes(asset.mediaType)
+          !previewIssue(asset) &&
+          ["video", "360-video", "audio"].includes(asset.mediaType)
         ) {
           stage = "proxy";
-          if (!existsSync(proxy)) {
+          const mediaProxy = asset.mediaType === "audio" ? audioProxy : proxy;
+          const extension = asset.mediaType === "audio" ? "mp3" : "mp4";
+          if (!existsSync(mediaProxy)) {
             const temporary = await safeProjectCachePath(
               this.directory,
               "proxies",
-              `${stem}-${job.id}.partial.mp4`,
+              `${stem}-${job.id}.partial.${extension}`,
             );
             partials.push(temporary);
             await createProxy(asset, temporary, options.signal);
-            await rename(temporary, proxy);
+            await rename(temporary, mediaProxy);
           }
-          asset.proxyUri = pathToFileURL(proxy).href;
+          asset.proxyUri = relative(this.directory, mediaProxy)
+            .split(sep)
+            .join("/");
         }
         stage = "index";
         checkAbort(options.signal);
@@ -352,6 +466,28 @@ export class OpenFilmApplication {
     };
     try {
       checkAbort(options.signal);
+      const uri = pathToFileURL(await realpath(sourceFolder)).href;
+      library = this.project.mediaLibraries.find((item) => item.uri === uri);
+      if (!library) {
+        for (const summary of this.catalog.iterateAssetSummaries()) {
+          const reference = referenceFor(
+            this.catalog.getAsset(summary.id)!,
+            this.project.mediaLibraries,
+          );
+          if (reference.rootUri === uri) {
+            library = this.project.mediaLibraries.find(
+              (item) => item.id === reference.mediaLibraryId,
+            );
+            if (library) break;
+          }
+        }
+      }
+      if (!library) {
+        library = { id: randomUUID(), uri, name: basename(sourceFolder) };
+        this.project.mediaLibraries.push(library);
+        this.saveSync();
+      }
+      library = { ...library, uri };
       job.status = "running";
       publish();
       for await (const candidate of new FilesystemSource().discover(
@@ -371,13 +507,6 @@ export class OpenFilmApplication {
       await Promise.all(pending);
       job.status = options.signal?.aborted ? "cancelled" : "completed";
       if (!options.signal?.aborted) job.progress = 1;
-      const uri = pathToFileURL(await realpath(sourceFolder)).href;
-      if (!this.project.mediaLibraries.some((library) => library.uri === uri))
-        this.project.mediaLibraries.push({
-          id: randomUUID(),
-          uri,
-          name: basename(sourceFolder),
-        });
       this.saveSync();
     } catch (error) {
       await Promise.all(pending);
@@ -450,7 +579,18 @@ export class OpenFilmApplication {
       }
     }
     if (!assets.length) throw new Error("Import media before creating a story");
-    const story = createStory(options.title ?? this.project.title, assets, {
+    for (const asset of assets)
+      if (
+        previewIssue(asset) &&
+        (asset.state.locked || options.assetIds?.includes(asset.id))
+      )
+        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+    const usable = assets.filter((asset) => !previewIssue(asset));
+    if (!usable.length)
+      throw new Error(
+        "No renderable media is available. Import flat exported photos/videos before creating a story.",
+      );
+    const story = createStory(options.title ?? this.project.title, usable, {
       ...(options.template === "proposal-film"
         ? { template: proposalTemplate }
         : {}),
@@ -488,7 +628,24 @@ export class OpenFilmApplication {
       if (!asset) throw new Error(`Story asset not found: ${id}`);
       assets.push(asset);
     }
-    const composition = solve(story, assets);
+    const required = new Set(
+      story.beats.flatMap((beat) => [
+        ...(beat.selectedAssetIds ?? []),
+        ...(beat.constraints ?? []).flatMap((constraint) =>
+          constraint.type === "must-include" ||
+          constraint.type === "asset-order"
+            ? constraint.assetIds
+            : [],
+        ),
+      ]),
+    );
+    for (const asset of assets)
+      if (previewIssue(asset) && (asset.state.locked || required.has(asset.id)))
+        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+    const composition = solve(
+      story,
+      assets.filter((asset) => !previewIssue(asset)),
+    );
     this.project.timelines.push(composition);
     this.saveSync();
     return structuredClone(composition);
@@ -529,7 +686,7 @@ export class OpenFilmApplication {
       composition.duration > story.maxDuration + 0.00001
     )
       throw new Error(
-        "Timeline exceeds the story maximum duration; compose again before rendering",
+        "Timeline exceeds the story maximum duration; use Fit to Duration or shorten clips before rendering",
       );
     const output = await safeProjectCachePath(this.directory, "preview.mp4");
     const job: Job = {
@@ -542,9 +699,36 @@ export class OpenFilmApplication {
     this.catalog.saveJob(job);
     this.activeJobs++;
     try {
+      const assets = this.compositionAssets(composition);
+      for (const asset of assets) {
+        checkAbort(options.signal);
+        const status = await sourceStatus(asset);
+        if (status.status !== "available")
+          throw new Error(
+            `${status.status === "missing" ? "Missing Media" : "Source inaccessible"}: ${asset.name}. Reconnect the disk or relink this source before rendering.`,
+          );
+        const recorded = asset.metadata["openfilm.filesystem"] as
+          { size?: number; modifiedAt?: string } | undefined;
+        if (asset.contentHash && recorded) {
+          const info = await lstat(localPath(asset.uri));
+          if (
+            (recorded.size !== undefined && recorded.size !== info.size) ||
+            (recorded.modifiedAt !== undefined &&
+              recorded.modifiedAt !== info.mtime.toISOString())
+          ) {
+            if (
+              (await hashFile(localPath(asset.uri), options.signal)) !==
+              asset.contentHash
+            )
+              throw new Error(
+                `Source changed after import: ${asset.name}. Import it again to refresh its duration before rendering; existing trims may exceed the new source.`,
+              );
+          }
+        }
+      }
       const path = await new FFmpegRenderer().render(
         composition,
-        this.compositionAssets(composition),
+        assets,
         output,
         this.project.settings,
         options,
@@ -570,13 +754,38 @@ export class OpenFilmApplication {
     format: "json" | "otio" | "fcpxml" | "edl",
     compositionId?: string,
   ): Promise<string> {
+    return (await this.exportWithReport(format, compositionId)).path;
+  }
+
+  async exportWithReport(
+    format: "json" | "otio" | "fcpxml" | "edl",
+    compositionId?: string,
+  ): Promise<{ path: string; report: ExportReport }> {
     const composition = this.composition(compositionId);
+    const assets = this.compositionAssets(composition);
     const exported = exportTimeline(
       format,
       composition,
-      this.compositionAssets(composition),
+      assets,
       this.project.settings,
     );
+    const compatibility =
+      format === "otio" ? otioCompatibilityReport(composition) : {};
+    const warnings = [...(exported.warnings ?? [])];
+    for (const asset of assets) {
+      const status = await sourceStatus(asset);
+      if (status.status !== "available")
+        warnings.push(
+          `Missing or inaccessible source: ${asset.name}. Relink ${asset.id} before importing this timeline into an editor.`,
+        );
+      const issue = previewIssue(asset);
+      if (issue) warnings.push(`${asset.name}: ${issue}`);
+    }
+    const report: ExportReport = {
+      ...compatibility,
+      format,
+      warnings: [...new Set(warnings)],
+    };
     if (!/^[a-z0-9]+$/u.test(exported.extension))
       throw new Error("Exporter returned an unsafe extension");
     const directory = join(this.directory, "exports");
@@ -594,6 +803,23 @@ export class OpenFilmApplication {
       mode: 0o600,
     });
     renameSync(temporary, path);
-    return path;
+    atomicJsonSync(`${path}.report.json`, report);
+    return { path, report };
   }
 }
+
+export {
+  TimelineEditor,
+  TimelineEditorError,
+  type TimelineEditorState,
+  type TimelineEditInput,
+} from "./editor.js";
+
+export {
+  MediaRelinker,
+  MediaRelinkError,
+  type MediaSourceStatus,
+  type RelinkPlan,
+  type RelinkPlanInput,
+  type RelinkApplyInput,
+} from "./relink.js";

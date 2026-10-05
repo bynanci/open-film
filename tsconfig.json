@@ -27,7 +27,9 @@
       "@openfilm/render": ["packages/render/src/index.ts"],
       "@openfilm/application": ["packages/application/src/index.ts"],
       "@openfilm/ui": ["packages/ui/src/index.ts"],
-      "@openfilm/template-proposal": ["templates/proposal-film/src/index.ts"]
+      "@openfilm/template-proposal": ["templates/proposal-film/src/index.ts"],
+      "@openfilm/source-pixel": ["packages/source-pixel/src/index.ts"],
+      "@openfilm/source-insta360": ["packages/source-insta360/src/index.ts"]
     }
   },
   "include": [

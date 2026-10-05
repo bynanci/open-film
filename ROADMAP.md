@@ -12,24 +12,36 @@ stories, an external template, duration-constrained composition, MP4 preview,
 timeline export, CLI, local API, and desktop workspace. See [TASKS.md](TASKS.md)
 for the detailed release checklist.
 
-## Next — Reliability and delivery
+## Real editing — Working development tree
+
+The Real Editing Workflow round has added a story-first graphical timeline,
+non-destructive clip and beat commands, explicit locks, explainable duration
+fitting, undo/redo and durable autosave with conflict recovery. Browser tests
+exercise editing, preview rendering and reopening. Single/folder media relinking,
+missing/offline state, portable cache references, Pixel/Insta360 source adapters
+and safe supported HDR previews are implemented. The generated Proposal reference
+workflow and independent OTIO/Resolve preparation make these capabilities testable.
+
+## Next — Real-world verification and delivery
 
 - Package the native shell with a verified local Node service and media runtime;
   test installation and updates on supported operating systems.
-- Exercise actual import/export round trips in Resolve, Premiere, and Final Cut;
-  expand each exporter only with tested edit preservation.
-- Add relinking and volume-aware media references for moved libraries.
+- Perform actual Resolve import QA first, including manual recreation of advanced
+  edits currently stored only in OTIO metadata. Expand native effect support only
+  with tested preservation; other NLEs follow later.
+  The Global Product Experience preflight found no application QA evidence; the
+  [Resolve record](docs/resolve-qa-record.md) remains not run.
+- Validate removable volumes on Windows hardware and representative Pixel HDR,
+  Motion Photo and Insta360 source files.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event
   editing without hiding uncertainty.
-- Make export/analysis jobs and renderer cancellation consistently visible in the
-  desktop, and add timeline edit controls for existing model operations.
-- Validate representative camera codecs, HDR/orientation behavior, and meaningful
-  360-media workflows; a `.360` media type alone is not stitching or reframing.
+- Validate real camera orientation/color behavior and future 360 reframing;
+  source recognition alone is not stitching or optical validation.
 
 ## Then — Extensibility and scale
 
 - Add a discoverable plugin/template registry with compatibility checks and
-  documentation, plus device/source adapters beyond local folders.
+  documentation, plus additional device/source adapters.
 - Add more general event/person coverage and media-balance constraints, together
   with explainable infeasibility reporting.
 - Add optional local vision, embeddings, transcription, and language providers;

@@ -42,9 +42,10 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Preview playback and persistence across project reopening.
 - [x] JSON, OTIO, FCPXML, and applicable EDL exporters with explicit unsupported-edit
       errors and timeline/source reference preservation.
-- [ ] End-user graphical trim, reframe, speed, volume, order, and transition editing.
+- [x] End-user graphical trim, reframe, speed, volume, order, and transition editing.
 - [ ] General event/person coverage and media-balance constraints.
-- [ ] Real NLE round-trip compatibility matrix.
+- [x] NLE compatibility matrix distinguishing implemented, parser-validated and
+      manually unverified behavior; actual Resolve import remains a manual gate.
 
 ## P2 — Delivery and ecosystem
 
@@ -54,12 +55,37 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] README, contribution/conduct/security policies, architecture, format docs,
       changelog, roadmap, and ADRs.
 - [ ] Self-contained native installer and multi-platform installation validation.
-- [ ] Media relinking and volume-aware library portability.
+- [x] Media relinking and logical-volume-aware library portability; native Windows
+      remount checks remain manual.
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.
-- [ ] Pixel/Insta360/other device adapters beyond generic filesystem inspection.
+- [x] Pixel and Insta360 adapters with metadata, safe previews and explicit raw
+      source limitations; other camera-specific adapters remain future work.
 - [ ] Local vision, embeddings, transcript, and language implementations.
 - [ ] Incremental analysis/background worker scheduling at archive scale.
 - [ ] Reproducible 10,000–100,000-asset performance benchmarks.
+
+## Real editing workflow round
+
+Checked items require working behavior, regression tests and relevant documentation.
+Hardware and real NLE verification are recorded separately.
+
+- [x] P0: story-first graphical timeline with trim, photo duration, drag/keyboard
+      order, speed, volume, cut/crossfade, transform and explicit clip locks.
+- [x] P0: scoped beat editing/regeneration, duration feedback and explainable fit.
+- [x] P0: undo/redo, debounced durable autosave, recoverable errors and reopen tests.
+- [x] P1: missing/offline state, single/folder relink and portable library references.
+- [x] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
+- [x] P2: Insta360 exported media plus raw-source recognition/association.
+- [x] P3: generated Proposal reference dataset, documented workflow and full E2E.
+- [x] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
+- [x] P5: all local regression gates, including a 500-clip browser playback check.
+- [x] P5: branch CI green; source/media/browser/interchange and native jobs pass.
+- [x] Review regressions: import-scoped Insta360 directory indexes, accepted image
+      and audio previews, current-state Fit savings, and paged media status beyond
+      2,000 assets. Covered by unit, media/HTTP integration and browser tests.
+- [ ] Manual: actual DaVinci Resolve import. The Global UX preflight found no real
+      application QA evidence; see [the QA record](docs/resolve-qa-record.md).
+- [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 
 Keep this file current when a pending capability gains working behavior and
 validation; keep host-dependent checks distinct from source implementation.

@@ -4,12 +4,12 @@ An open media storytelling engine. OpenFilm turns a local collection of photos,
 video, and audio into an organized library, a story plan, an editable rough cut,
 and an MP4 preview. Original files stay in their source folders.
 
-**0.1.0 is the first working vertical slice.** It combines a Vue desktop workspace,
+**The current development tree includes the Real Editing Workflow round.** It combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
 ```text
-Folder → Metadata → Duplicates & Events → Story → Composition → Preview / Export
+Folder → Metadata → Duplicates & Events → Story → Edit → Preview → Export
 ```
 
 ## What works
@@ -27,11 +27,19 @@ Folder → Metadata → Duplicates & Events → Story → Composition → Previe
 - Compose a timeline that respects duration maxima, beat minima, locks, required
   selections, exclusions, explicit order, source bounds, and no repeated assets.
 - Render a local MP4 and export JSON, OpenTimelineIO, FCPXML, or applicable EDL.
+- Graphically trim video, set photo duration, reorder, adjust speed/volume and
+  transforms, and choose cut/crossfade in a dark story-first timeline.
+- Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
+  Duration suggestions, and recover autosave failures without dropping the draft.
+- Keep editing missing media, reconnect a moved folder or single file, and move
+  projects with their cached thumbnails and proxies.
+- Import Pixel metadata and Insta360 flat exports, recognize raw360 associations,
+  and generate safe SDR previews for supported HEVC/HDR sources.
 
-The timeline model and renderer support trim, speed, volume, scale, rotation,
-position, simple titles, and crossfade. These edits are currently accessible
-through the SDK/project model; the desktop is a story and rough-cut workspace,
-with a read-only timeline display, rather than a full timeline editor.
+Start with the [Proposal Film reference workflow](docs/reference-workflows/proposal-film.md).
+Read [media portability](docs/media-portability.md) for offline/relink behavior,
+[source support](docs/source-support.md) for camera limitations, and the
+[desktop guide](apps/desktop/README.md) for shortcuts and save recovery.
 
 ## Requirements
 
@@ -44,6 +52,9 @@ camera metadata, OpenFilm first tries `exiftool` on `PATH`, then its installed
 `exiftool-vendored.pl` distribution through **Perl**. If both are unavailable,
 FFprobe and filesystem timestamps provide a fallback recorded in metadata.
 Codec availability depends on your FFmpeg build.
+HDR previews require `zscale` and `tonemap`; the generated HDR regression suite
+also uses the `libx265` encoder. Unsupported color metadata or filters produces
+an explicit conversion instruction while preserving source metadata.
 
 ```bash
 node --version
@@ -116,7 +127,7 @@ pnpm --filter @openfilm/desktop tauri dev
 The repository pins Rust 1.99.0 with `rustfmt` and `clippy` in
 `rust-toolchain.toml`.
 
-The shell supplies a native folder picker. Its development command starts the
+The shell supplies native folder and file pickers. Its development command starts the
 same local service and interface. A native build can launch a supplied service
 using absolute `OPENFILM_NODE_PATH` and `OPENFILM_SERVER_PATH` paths, or connect to
 an already running service. **The native shell is not a self-contained installer:**
@@ -132,11 +143,15 @@ Tauri installer bundling is disabled in this release.
 | FCPXML 1.10    | Exports media resources, precise rational offsets, cut tracks, and connected lanes.                                 |
 | CMX3600 EDL    | One video cut track, video sources, integer non-drop frame rates up to 60 fps, frame-aligned edits, and black gaps. |
 
-NLE exports reject unsupported transforms, generated titles, transitions, and
-overlapping clips within a track. They report what cannot be represented; use JSON
-to preserve all edits. EDL also rejects still-image holds and multiple tracks.
-Real-world import and round-trip validation across Resolve, Premiere, and Final
-Cut remains release work; an exported file is not a compatibility certification.
+OTIO carries native cuts/source references and exact original OpenFilm edit data.
+Advanced edits are **metadata-only** and need manual recreation in Resolve;
+the export report lists affected clips and any timing accommodation. Desktop and
+CLI show the report, also saved beside the timeline as `.report.json`. Use the
+OpenFilm MP4 preview as a visual/audio reference and JSON for complete edit data.
+FCPXML/EDL continue rejecting unsupported edits. See the
+[Resolve compatibility matrix and QA procedure](docs/nle-compatibility.md).
+Official parser validation and actual NLE import are separate; real Resolve
+import remains manual verification required.
 
 ## Develop and verify
 
@@ -147,12 +162,16 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm exec playwright install chromium
-pnpm test:e2e
+python3 -m venv /tmp/openfilm-interchange-venv
+/tmp/openfilm-interchange-venv/bin/python -m pip install opentimelineio==0.18.1
+OPENFILM_OTIO_PYTHON=/tmp/openfilm-interchange-venv/bin/python pnpm test:e2e
 ```
 
 Tests generate their own media, exercise actual FFmpeg/FFprobe and SQLite, verify
 unchanged source hashes, and cover the browser workflow. `pnpm verify` runs lint,
 type checking, Vitest, and build; browser tests and Rust checks are separate.
+The Proposal browser workflow validates its exported file with the official OTIO
+Python parser, so install it before running the complete browser suite.
 `pnpm build` creates `dist/cli/index.mjs`, `dist/server/index.mjs`, and
 `apps/desktop/dist`. Run the built CLI with `node dist/cli/index.mjs --help`.
 
@@ -171,7 +190,9 @@ XML parser for resource/rational-time assertions. The native check needs the hos
 Tauri dependencies. The CI workflow runs these checks in addition to the browser
 journey; source validation and a native build still differ from installer testing.
 
-The initial Linux validation record is [documented here](docs/validation.md).
+See the [Real Editing Workflow validation record](docs/validation-real-editing.md)
+for current regression coverage and manual checks. The
+[initial Linux record](docs/validation.md) is retained separately.
 
 ## Architecture and community
 

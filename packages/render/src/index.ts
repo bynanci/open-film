@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { Clip, Composition, MediaAsset } from "@openfilm/core";
-import { checkAbort, localPath, runProcess } from "@openfilm/media";
+import {
+  checkAbort,
+  localPath,
+  runProcess,
+  previewVideoFilters,
+  previewIssue,
+} from "@openfilm/media";
 
 export interface RenderSettings {
   width: number;
@@ -119,6 +125,8 @@ export class FFmpegRenderer {
             throw new Error(
               `Clip ${clip.id} references missing asset ${clip.assetId}`,
             );
+          const issue = previewIssue(asset);
+          if (issue) throw new Error(`${asset.name}: ${issue}`);
           const sourceIn = clip.sourceIn ?? 0;
           const speed = clip.transform?.speed ?? 1;
           const sourceOut =
@@ -142,7 +150,10 @@ export class FFmpegRenderer {
             const label = `visual${suffix}`;
             const scale = clip.transform?.scale ?? 1;
             const rotation = clip.transform?.rotation ?? 0;
-            const transform: string[] = [];
+            const transform: string[] = await previewVideoFilters(
+              asset,
+              options.signal,
+            );
             if (rotation)
               transform.push(
                 `rotate=${number((rotation * Math.PI) / 180)}:ow=rotw(${number((rotation * Math.PI) / 180)}):oh=roth(${number((rotation * Math.PI) / 180)}):c=black`,

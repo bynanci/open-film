@@ -499,6 +499,9 @@
           "minLength": 1,
           "pattern": "\\S"
         },
+        "locked": {
+          "type": "boolean"
+        },
         "transition": {
           "type": "object",
           "properties": {

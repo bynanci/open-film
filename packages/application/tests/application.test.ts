@@ -9,7 +9,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { generateSampleMedia } from "../../../fixtures/sample-media/generate.mjs";
 import { hashFile, runProcess } from "@openfilm/media";
@@ -63,10 +62,14 @@ describe("offline application workflow", () => {
       .listAssets()
       .find((asset) => asset.mediaType === "video")!;
     expect(image.uri).toContain("/originals/");
-    expect(await readFile(fileURLToPath(image.thumbnailUri!))).not.toHaveLength(
-      0,
-    );
-    expect(await readFile(fileURLToPath(video.proxyUri!))).not.toHaveLength(0);
+    expect(image.thumbnailUri).toMatch(/^cache\/thumbnails\//);
+    expect(
+      await readFile(join(app.directory, image.thumbnailUri!)),
+    ).not.toHaveLength(0);
+    expect(video.proxyUri).toMatch(/^cache\/proxies\//);
+    expect(
+      await readFile(join(app.directory, video.proxyUri!)),
+    ).not.toHaveLength(0);
     app.catalog.updateAsset(image.id, {
       rating: 5,
       state: { favorite: true, locked: true },

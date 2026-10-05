@@ -215,12 +215,12 @@ async function main() {
       const format = value(options, "format") ?? "json";
       if (!["json", "otio", "fcpxml", "edl"].includes(format))
         throw new Error("Choose json, otio, fcpxml, or edl.");
-      print({
-        path: await app.export(
+      print(
+        await app.exportWithReport(
           format as "json" | "otio" | "fcpxml" | "edl",
           value(options, "composition"),
         ),
-      });
+      );
     } else throw new Error(`Unknown command ${command}. Run openfilm --help.`);
   } finally {
     process.removeListener("SIGINT", stop);

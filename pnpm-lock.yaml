@@ -41,6 +41,12 @@ importers:
       '@openfilm/solver':
         specifier: workspace:*
         version: link:packages/solver
+      '@openfilm/source-insta360':
+        specifier: workspace:*
+        version: link:packages/source-insta360
+      '@openfilm/source-pixel':
+        specifier: workspace:*
+        version: link:packages/source-pixel
       '@openfilm/story':
         specifier: workspace:*
         version: link:packages/story
@@ -108,6 +114,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@openfilm/solver':
+        specifier: workspace:*
+        version: link:../../packages/solver
       '@tauri-apps/api':
         specifier: 2.12.1
         version: 2.12.1
@@ -169,6 +178,12 @@ importers:
       '@openfilm/solver':
         specifier: workspace:*
         version: link:../solver
+      '@openfilm/source-insta360':
+        specifier: workspace:*
+        version: link:../source-insta360
+      '@openfilm/source-pixel':
+        specifier: workspace:*
+        version: link:../source-pixel
       '@openfilm/story':
         specifier: workspace:*
         version: link:../story
@@ -243,6 +258,36 @@ importers:
       '@openfilm/story':
         specifier: workspace:*
         version: link:../story
+
+  packages/source-insta360:
+    dependencies:
+      '@openfilm/core':
+        specifier: workspace:*
+        version: link:../core
+      '@openfilm/media':
+        specifier: workspace:*
+        version: link:../media
+      '@openfilm/metadata':
+        specifier: workspace:*
+        version: link:../metadata
+      '@openfilm/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+
+  packages/source-pixel:
+    dependencies:
+      '@openfilm/core':
+        specifier: workspace:*
+        version: link:../core
+      '@openfilm/media':
+        specifier: workspace:*
+        version: link:../media
+      '@openfilm/metadata':
+        specifier: workspace:*
+        version: link:../metadata
+      '@openfilm/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
 
   packages/story:
     dependencies:
