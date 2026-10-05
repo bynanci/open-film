@@ -473,6 +473,11 @@ print(json.dumps({'duration': timeline.duration().to_seconds(), 'clip_count': le
     .getByRole("button", { name: "Open project", exact: true })
     .last()
     .click();
+  await expect(
+    page.getByRole("button", { name: "Switch project", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await saved(page);
   expect((await state(request)).composition).toEqual(current.composition);
   for (const file of fixture.files)
     expect(
