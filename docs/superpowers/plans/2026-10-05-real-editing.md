@@ -24,38 +24,38 @@ or Resolve certification without those fixtures/applications. main stays green.
 
 ## P0 graphical editing
 
-- [ ] Add optional per-clip lock validation/schema tests without a breaking schema.
-- [ ] Implement pure commands, scoped regeneration and explainable fit suggestions;
+- [x] Add optional per-clip lock validation/schema tests without a breaking schema.
+- [x] Implement pure commands, scoped regeneration and explainable fit suggestions;
       test bounds, ordering, protected clips and edits outside the target beat.
-- [ ] Implement application revision/undo/redo/atomic save service; test reopen,
+- [x] Implement application revision/undo/redo/atomic save service; test reopen,
       rejected edits, stale clients, failure rollback and request replay.
-- [ ] Add HTTP editor routes and real source preview; exercise actual project IO.
-- [ ] Build dark story-beat timeline, clip/beat controls, autosave and shortcuts.
-- [ ] Verify graphical end-to-end editing/render/reopen; update TASKS immediately.
+- [x] Add HTTP editor routes and real source preview; exercise actual project IO.
+- [x] Build dark story-beat timeline, clip/beat controls, autosave and shortcuts.
+- [x] Verify graphical end-to-end editing/render/reopen; update TASKS immediately.
 
 ## P1 relinking
 
-- [ ] Add stable provenance/library references and missing-media reporting.
-- [ ] Implement single/folder inspect+confirm relink with hash-first matching.
-- [ ] Expose Desktop relink flow; test offline library and Windows path identity.
-- [ ] Verify moved-media render/reopen with unchanged original hashes; document.
+- [x] Add stable provenance/library references and missing-media reporting.
+- [x] Implement single/folder inspect+confirm relink with hash-first matching.
+- [x] Expose Desktop relink flow; test offline library and Windows path identity.
+- [x] Verify moved-media render/reopen with unchanged original hashes; document.
 
 ## P2 source adapters
 
-- [ ] Pixel recognition/metadata and experimental Motion Photo detection.
-- [ ] Insta360 export recognition and raw source association with explicit levels.
-- [ ] Preserve HDR/color metadata; safe supported proxies or actionable failure.
-- [ ] Adapter tests, integration and user-facing unsupported360 states.
+- [x] Pixel recognition/metadata and experimental Motion Photo detection.
+- [x] Insta360 export recognition and raw source association with explicit levels.
+- [x] Preserve HDR/color metadata; safe supported proxies or actionable failure.
+- [x] Adapter tests, integration and user-facing unsupported360 states.
 
 ## P3/P4 reference and interchange
 
-- [ ] Generate CC0 proposal fixture and document the complete reference workflow.
-- [ ] Add proposal E2E with manual edits, locks, regeneration, fit and reopen.
-- [ ] Add Resolve fixture matrix and official OTIO parser/serialization tests.
-- [ ] Document actual implementation/parser evidence vs manual Resolve/camera QA.
+- [x] Generate CC0 proposal fixture and document the complete reference workflow.
+- [x] Add proposal E2E with manual edits, locks, regeneration, fit and reopen.
+- [x] Add Resolve fixture matrix and official OTIO parser/serialization tests.
+- [x] Document actual implementation/parser evidence vs manual Resolve/camera QA.
 
 ## P5 release verification
 
-- [ ] Run format, lint, typecheck, test, build, e2e, interchange and native gates.
-- [ ] Review actual UI screenshots and independently audit regressions.
+- [x] Run format, lint, typecheck, test, build, e2e, interchange and native gates.
+- [x] Review actual UI screenshots and independently audit regressions.
 - [ ] Update TASKS/ROADMAP/README, create PR, verify its CI against exact head.

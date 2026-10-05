@@ -36,10 +36,11 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: browser-test-results
           path: test-results/
+          if-no-files-found: ignore
   native-shell:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

@@ -1,5 +1,9 @@
 # Validation record — 2026-10-05
 
+This is the historical first vertical-slice record. See
+[Real Editing Workflow validation](validation-real-editing.md) for the subsequent
+editing, portability, camera adapters and Resolve preparation gates.
+
 The initial 0.1.0 implementation was verified on Linux x86_64 in the cloud
 workspace using Node24.14.0, pnpm11.11.0, FFmpeg/FFprobe7.1.5, Perl5.40.1,
 ExifTool13.59 and Rust1.99.0. These results cover the source tree; they are not

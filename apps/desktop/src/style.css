@@ -2098,3 +2098,15 @@ td {
   font-weight: 550;
   line-height: 1.3;
 }
+
+.candidate-guidance {
+  margin: -2px 0 16px;
+  max-width: 660px;
+  color: var(--faded-ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.candidate-guidance strong {
+  color: var(--ink);
+  font-weight: 600;
+}

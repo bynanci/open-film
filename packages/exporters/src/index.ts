@@ -52,8 +52,12 @@ export function otioCompatibilityReport(
         const sourceIn = clip.sourceIn ?? 0;
         const sourceOut =
           clip.sourceOut ?? sourceIn + clip.timelineDuration * speed;
+        const nativeSpan = Math.min(
+          clip.timelineDuration,
+          sourceOut - sourceIn,
+        );
         warnings.push(
-          `Clip ${clip.id}: native OTIO plays an unretimed cut excerpt, not the ${speed}x speed edit. Recreate source ${sourceIn}s–${sourceOut}s in the ${clip.timelineDuration}s slot at ${clip.timelineStart}s; a slower-than-1x video/audio slot includes a labeled padding gap after the source excerpt.`,
+          `Clip ${clip.id}: native OTIO plays an unretimed cut excerpt, not the ${speed}x speed edit. Recreate source ${sourceIn}s–${sourceOut}s in the ${clip.timelineDuration}s slot at ${clip.timelineStart}s. For video/audio, the native 1x source range is ${sourceIn}s–${sourceIn + nativeSpan}s with ${clip.timelineDuration - nativeSpan}s of labeled padding after it; stills keep the requested hold duration.`,
         );
       }
     }

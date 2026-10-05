@@ -93,6 +93,11 @@ async function streamFile(
     throw new HttpError(403, "Media cache path is outside this project.");
   const info = await stat(actualFile);
   if (!info.isFile()) throw new HttpError(404, "Cached media is unavailable.");
+  if (info.size === 0)
+    throw new HttpError(
+      404,
+      "Media file is empty or unavailable. Rebuild its preview or relink the original source.",
+    );
   let start = 0;
   let end = info.size - 1;
   let status = 200;
@@ -667,10 +672,31 @@ export async function startServer(
               : undefined,
             { signal: controller.signal, jobId },
           );
-          const handled = task.finally(() => {
-            active.delete(jobId);
-            tasks.delete(handled);
-          });
+          const handled = task
+            .catch((error: unknown) => {
+              const job = application.catalog
+                .listJobs()
+                .find((item) => item.id === jobId);
+              if (job && (job.status === "queued" || job.status === "running"))
+                application.catalog.saveJob({
+                  ...job,
+                  status: controller.signal.aborted ? "cancelled" : "failed",
+                  updatedAt: new Date().toISOString(),
+                  errors: [
+                    {
+                      uri: "",
+                      stage: "prepare-render",
+                      message:
+                        error instanceof Error ? error.message : String(error),
+                    },
+                  ],
+                });
+              throw error;
+            })
+            .finally(() => {
+              active.delete(jobId);
+              tasks.delete(handled);
+            });
           tasks.add(handled);
           const path = await handled;
           json(response, 200, { path });
@@ -690,13 +716,13 @@ export async function startServer(
           const data = await body(request);
           if (!["json", "otio", "fcpxml", "edl"].includes(String(data.format)))
             throw new HttpError(400, "Choose JSON, OTIO, FCPXML, or EDL.");
-          const path = await application.export(
+          const exported = await application.exportWithReport(
             data.format as "json" | "otio" | "fcpxml" | "edl",
             typeof data.compositionId === "string"
               ? data.compositionId
               : undefined,
           );
-          json(response, 200, { path });
+          json(response, 200, exported);
           return;
         }
         throw new HttpError(404, "Endpoint not found.");

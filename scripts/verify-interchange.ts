@@ -1,114 +1,246 @@
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  readFile,
+  rm,
+  mkdir,
+  readdir,
+  rename,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { exportTimeline } from "@openfilm/exporters";
+import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
+import { hashFile, inspectMedia } from "@openfilm/media";
 import type { Composition, MediaAsset } from "@openfilm/core";
+import { generateSampleMedia } from "../fixtures/sample-media/generate.mjs";
 
-// Independent parser readback, rather than string matching the exporter itself.
-const directory = await mkdtemp(join(tmpdir(), "openfilm-interchange-"));
-const assets: MediaAsset[] = [
-  {
-    id: "video",
-    name: "Scene & subject",
-    uri: "file:///media/a%20b.mp4",
-    mediaType: "video",
-    duration: 100,
-    tags: [],
-    state: {},
-    metadata: {},
-  },
-  {
-    id: "audio",
-    name: "Sound",
-    uri: "file:///media/sound.wav",
-    mediaType: "audio",
-    duration: 20,
-    tags: [],
-    state: {},
-    metadata: {},
-  },
-];
-const composition: Composition = {
-  id: "cut",
-  storyId: "story",
-  duration: 12,
-  tracks: [
-    {
-      id: "video",
-      type: "video",
-      clips: [
-        {
-          id: "clip",
-          assetId: "video",
-          sourceIn: 5,
-          sourceOut: 9,
-          timelineStart: 2,
-          timelineDuration: 4,
-        },
-      ],
-    },
-    {
-      id: "audio",
-      type: "audio",
-      clips: [
-        {
-          id: "sound",
-          assetId: "audio",
-          sourceIn: 3,
-          sourceOut: 5,
-          timelineStart: 1,
-          timelineDuration: 2,
-        },
-      ],
-    },
-  ],
-};
-try {
-  for (const format of ["otio", "fcpxml"] as const)
-    await writeFile(
-      join(directory, `timeline.${format}`),
-      exportTimeline(format, composition, assets).content,
+const execute = promisify(execFile);
+const outputIndex = process.argv.indexOf("--output");
+if (outputIndex >= 0 && !process.argv[outputIndex + 1])
+  throw new Error("--output requires an empty artifact directory.");
+const keep = outputIndex >= 0;
+const directory = keep
+  ? resolve(process.argv[outputIndex + 1]!)
+  : await mkdtemp(join(tmpdir(), "openfilm-interchange-"));
+if (keep) {
+  await mkdir(directory, { recursive: true });
+  if ((await readdir(directory)).length)
+    throw new Error(
+      "Interchange artifact directory must be empty to avoid overwriting existing files.",
     );
-  const script = String.raw`
-import sys, pathlib, fractions, xml.etree.ElementTree as ET
-import opentimelineio as otio
-root = pathlib.Path(sys.argv[1])
-timeline = otio.adapters.read_from_file(str(root / 'timeline.otio'))
-assert abs(timeline.duration().to_seconds() - 12) < 1e-8
-assert len(timeline.tracks) == 2
-for track, offset, source, duration, uri in [(timeline.tracks[0], 2, 5, 4, 'file:///media/a%20b.mp4'), (timeline.tracks[1], 1, 3, 2, 'file:///media/sound.wav')]:
-    clips = [item for item in track if isinstance(item, otio.schema.Clip)]
-    assert len(clips) == 1
-    clip = clips[0]
-    assert abs(track.range_of_child(clip).start_time.to_seconds() - offset) < 1e-8
-    assert abs(clip.source_range.start_time.to_seconds() - source) < 1e-8
-    assert abs(clip.duration().to_seconds() - duration) < 1e-8
-    assert clip.media_reference.target_url == uri
-# Serialize and deserialize through the official adapter too.
-restored = otio.adapters.read_from_string(otio.adapters.write_to_string(timeline, 'otio_json'), 'otio_json')
-assert abs(restored.duration().to_seconds() - 12) < 1e-8
-xml = ET.parse(root / 'timeline.fcpxml').getroot()
-assert xml.tag == 'fcpxml' and xml.attrib['version'] == '1.10'
-resources = {element.attrib['id']: element for element in xml.find('resources')}
-sequence = xml.find('./library/event/project/sequence')
-assert fractions.Fraction(sequence.attrib['duration'][:-1]) == 12
-clips = sequence.findall('.//asset-clip')
-assert len(clips) == 2
-for clip, source, duration, uri in zip(clips, [5, 3], [4, 2], ['file:///media/a%20b.mp4', 'file:///media/sound.wav']):
-    assert fractions.Fraction(clip.attrib['start'][:-1]) == source
-    assert fractions.Fraction(clip.attrib['duration'][:-1]) == duration
-    assert resources[clip.attrib['ref']].find('media-rep').attrib['src'] == uri
-assert clips[1].attrib['lane'] == '-1'
-assert fractions.Fraction(clips[1].attrib['offset'][:-1]) == 1
-print('Official OTIO read/write/read preserved source ranges, offsets and tracks; FCPXML parsed with referenced resources and rational times.')
-`;
-  const { stdout } = await promisify(execFile)(
-    process.env.OPENFILM_OTIO_PYTHON ?? "python3",
-    ["-c", script, directory],
+}
+const python = process.env.OPENFILM_OTIO_PYTHON ?? "python3";
+const verifier = fileURLToPath(
+  new URL("../tests/interchange/resolve/verify.py", import.meta.url),
+);
+try {
+  const mediaDirectory = join(directory, "media files");
+  const generated = await generateSampleMedia(mediaDirectory);
+  const videoPath = join(mediaDirectory, "motion #1 中文.mp4");
+  await rename(generated[3]!, videoPath);
+  const selected = [generated[0]!, generated[2]!, videoPath, generated[4]!];
+  const ids = ["photo", "evening", "video", "audio"];
+  const assets: MediaAsset[] = [];
+  for (const [index, path] of selected.entries()) {
+    const inspected = await inspectMedia({
+      path,
+      uri: pathToFileURL(path).href,
+      name: basename(path),
+    });
+    assets.push({
+      ...inspected,
+      id: ids[index]!,
+      contentHash: await hashFile(path),
+    });
+  }
+  const cuts: Composition = {
+    id: "resolve-cut-reference",
+    storyId: "reference-story",
+    duration: 12,
+    tracks: [
+      {
+        id: "video-main",
+        type: "video",
+        clips: [
+          {
+            id: "still",
+            assetId: "photo",
+            beatId: "intro",
+            sourceIn: 0,
+            sourceOut: 3,
+            timelineStart: 1,
+            timelineDuration: 3,
+          },
+          {
+            id: "trimmed-video",
+            assetId: "video",
+            beatId: "middle",
+            sourceIn: 0.5,
+            sourceOut: 2.5,
+            timelineStart: 5,
+            timelineDuration: 2,
+          },
+          {
+            id: "closing-still",
+            assetId: "evening",
+            beatId: "end",
+            sourceIn: 0,
+            sourceOut: 2,
+            timelineStart: 9,
+            timelineDuration: 2,
+          },
+        ],
+      },
+      {
+        id: "video-second",
+        type: "video",
+        clips: [
+          {
+            id: "second-video",
+            assetId: "video",
+            sourceIn: 0.25,
+            sourceOut: 1.25,
+            timelineStart: 2,
+            timelineDuration: 1,
+          },
+        ],
+      },
+      {
+        id: "dialogue",
+        type: "audio",
+        clips: [
+          {
+            id: "sound",
+            assetId: "audio",
+            sourceIn: 0.25,
+            sourceOut: 1.25,
+            timelineStart: 0.5,
+            timelineDuration: 1,
+          },
+        ],
+      },
+      {
+        id: "music",
+        type: "music",
+        clips: [
+          {
+            id: "music",
+            assetId: "audio",
+            sourceIn: 0.5,
+            sourceOut: 2,
+            timelineStart: 8,
+            timelineDuration: 1.5,
+          },
+        ],
+      },
+    ],
+  };
+  const edited = structuredClone(cuts);
+  edited.id = "resolve-edited-reference";
+  Object.assign(edited.tracks[0]!.clips[0]!, {
+    transform: { scale: 1.2, rotation: 5, x: 12, y: -8 },
+    title: "A generated moment — 我们",
+    locked: true,
+  });
+  Object.assign(edited.tracks[0]!.clips[1]!, {
+    timelineDuration: 1,
+    transform: { speed: 2, volume: 0.5 },
+    transition: { type: "crossfade", duration: 0.25 },
+  });
+  Object.assign(edited.tracks[1]!.clips[0]!, {
+    sourceIn: 2.5,
+    sourceOut: 3,
+    transform: { speed: 0.5 },
+  });
+  edited.tracks[2]!.clips[0]!.transform = { volume: 0 };
+  const compositions = {
+    cuts,
+    edited,
+    fractional: {
+      ...structuredClone(cuts),
+      id: "resolve-fractional-reference",
+    },
+  };
+  const settingsByComposition: Record<
+    string,
+    { width: number; height: number; frameRate: number }
+  > = {};
+  for (const [name, composition] of Object.entries(compositions)) {
+    const settings = {
+      width: 320,
+      height: 180,
+      frameRate: name === "fractional" ? 30000 / 1001 : 24,
+    };
+    settingsByComposition[name] = settings;
+    const exported = exportTimeline("otio", composition, assets, settings);
+    await writeFile(join(directory, `${name}.otio`), exported.content);
+    await writeFile(
+      join(directory, `${name}.otio.report.json`),
+      JSON.stringify(otioCompatibilityReport(composition), null, 2) + "\n",
+    );
+  }
+  await writeFile(
+    join(directory, "cuts.fcpxml"),
+    exportTimeline("fcpxml", cuts, assets, {
+      width: 320,
+      height: 180,
+      frameRate: 24,
+    }).content,
   );
+  await writeFile(
+    join(directory, "manifest.json"),
+    JSON.stringify(
+      {
+        synthetic: true,
+        license: "CC0-1.0",
+        assets,
+        compositions,
+        settingsByComposition,
+        realResolveVerified: false,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  const { stdout } = await execute(python, [verifier, directory]);
   process.stdout.write(stdout);
+  // A parser-valid document must still fail the independent source-file gate.
+  const offline = `${videoPath}.temporarily-offline`;
+  await rename(videoPath, offline);
+  try {
+    let rejectedMissing = false;
+    try {
+      await execute(python, [verifier, directory]);
+    } catch (error) {
+      rejectedMissing = String((error as { stderr?: string }).stderr).includes(
+        "missing source:",
+      );
+    }
+    if (!rejectedMissing)
+      throw new Error(
+        "Missing source URL regression did not fail the interchange gate.",
+      );
+    process.stdout.write(
+      "Missing source URL regression: rejected as expected.\n",
+    );
+  } finally {
+    await rename(offline, videoPath);
+  }
+  for (const asset of assets)
+    if ((await hashFile(fileURLToPath(asset.uri))) !== asset.contentHash)
+      throw new Error(`Original source changed: ${asset.name}`);
+  await writeFile(
+    join(directory, "README.md"),
+    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. DaVinci Resolve import has not been run.\n\nStart with cuts.otio. edited.otio preserves advanced edits in metadata ONLY and contains unretimed cut excerpts, including a labeled gap for slow motion. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n\nAbsolute file URLs point to this generated directory; relink the media files folder if this bundle moves to another computer.\n",
+  );
+  await writeFile(
+    join(directory, "nle-compatibility.md"),
+    await readFile(new URL("../docs/nle-compatibility.md", import.meta.url)),
+  );
+  if (keep) process.stdout.write(`Reviewable reference bundle: ${directory}\n`);
 } finally {
-  await rm(directory, { recursive: true, force: true });
+  if (!keep) await rm(directory, { recursive: true, force: true });
 }

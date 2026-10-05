@@ -44,7 +44,8 @@ system or downstream NLE. Commands and test responsibilities are in
       errors and timeline/source reference preservation.
 - [x] End-user graphical trim, reframe, speed, volume, order, and transition editing.
 - [ ] General event/person coverage and media-balance constraints.
-- [ ] Real NLE round-trip compatibility matrix.
+- [x] NLE compatibility matrix distinguishing implemented, parser-validated and
+      manually unverified behavior; actual Resolve import remains a manual gate.
 
 ## P2 — Delivery and ecosystem
 
@@ -75,9 +76,10 @@ Hardware and real NLE verification are recorded separately.
 - [x] P1: missing/offline state, single/folder relink and portable library references.
 - [x] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
 - [x] P2: Insta360 exported media plus raw-source recognition/association.
-- [ ] P3: generated Proposal reference dataset, documented workflow and full E2E.
-- [ ] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
-- [ ] P5: all regression gates and branch CI green.
+- [x] P3: generated Proposal reference dataset, documented workflow and full E2E.
+- [x] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
+- [x] P5: all local regression gates, including a 500-clip browser playback check.
+- [ ] P5: final branch CI green.
 - [ ] Manual: actual DaVinci Resolve import.
 - [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 

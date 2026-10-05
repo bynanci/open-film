@@ -44,7 +44,7 @@ import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
 import { createStory } from "@openfilm/story";
 import { compose as solve } from "@openfilm/solver";
-import { exportTimeline } from "@openfilm/exporters";
+import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import { FFmpegRenderer } from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
@@ -90,6 +90,13 @@ export interface StoryOptions {
   maxDuration?: number;
   /** Explicit scope for large libraries; every locked asset is also included. */
   assetIds?: string[];
+}
+
+export interface ExportReport {
+  format: "json" | "otio" | "fcpxml" | "edl";
+  warnings: string[];
+  realNleVerified?: false;
+  advancedEdits?: "metadata-only";
 }
 
 function safeDirectorySync(directory: string): void {
@@ -287,9 +294,16 @@ export class OpenFilmApplication {
           return;
         }
         const locationMatch = this.catalog.getAssetByUri(candidate.uri);
+        const locationId = createHash("sha256")
+          .update(candidate.uri)
+          .digest("hex")
+          .slice(0, 32);
+        const previousLocationOwner = this.catalog.getAsset(locationId);
         const assetId =
           locationMatch?.id ??
-          createHash("sha256").update(candidate.uri).digest("hex").slice(0, 32);
+          (previousLocationOwner && previousLocationOwner.uri !== candidate.uri
+            ? randomUUID()
+            : locationId);
         const originalHash = await hashFile(candidate.path, options.signal);
         const previous = this.catalog.getAsset(assetId);
         const stem = `${assetId}-${originalHash.slice(0, 16)}-v2`;
@@ -330,7 +344,19 @@ export class OpenFilmApplication {
           asset.tags = [...previous.tags];
           if (previous.rating !== undefined) asset.rating = previous.rating;
           const previousMetadata = { ...previous.metadata };
-          delete previousMetadata["openfilm.preview"];
+          for (const key of [
+            "openfilm.preview",
+            "openfilm.pixel",
+            "openfilm.insta360",
+            "openfilm.color",
+            "openfilm.ffprobe",
+            "openfilm.exif",
+            "openfilm.timestamp",
+            "openfilm.filesystem",
+            "openfilm.metadata.exiftoolAvailable",
+            "openfilm.importPipeline",
+          ])
+            delete previousMetadata[key];
           asset.metadata = { ...previousMetadata, ...asset.metadata };
         }
         const reference = referenceFor(
@@ -668,6 +694,24 @@ export class OpenFilmApplication {
           throw new Error(
             `${status.status === "missing" ? "Missing Media" : "Source inaccessible"}: ${asset.name}. Reconnect the disk or relink this source before rendering.`,
           );
+        const recorded = asset.metadata["openfilm.filesystem"] as
+          { size?: number; modifiedAt?: string } | undefined;
+        if (asset.contentHash && recorded) {
+          const info = await lstat(localPath(asset.uri));
+          if (
+            (recorded.size !== undefined && recorded.size !== info.size) ||
+            (recorded.modifiedAt !== undefined &&
+              recorded.modifiedAt !== info.mtime.toISOString())
+          ) {
+            if (
+              (await hashFile(localPath(asset.uri), options.signal)) !==
+              asset.contentHash
+            )
+              throw new Error(
+                `Source changed after import: ${asset.name}. Import it again to refresh its duration before rendering; existing trims may exceed the new source.`,
+              );
+          }
+        }
       }
       const path = await new FFmpegRenderer().render(
         composition,
@@ -697,13 +741,38 @@ export class OpenFilmApplication {
     format: "json" | "otio" | "fcpxml" | "edl",
     compositionId?: string,
   ): Promise<string> {
+    return (await this.exportWithReport(format, compositionId)).path;
+  }
+
+  async exportWithReport(
+    format: "json" | "otio" | "fcpxml" | "edl",
+    compositionId?: string,
+  ): Promise<{ path: string; report: ExportReport }> {
     const composition = this.composition(compositionId);
+    const assets = this.compositionAssets(composition);
     const exported = exportTimeline(
       format,
       composition,
-      this.compositionAssets(composition),
+      assets,
       this.project.settings,
     );
+    const compatibility =
+      format === "otio" ? otioCompatibilityReport(composition) : {};
+    const warnings = [...(exported.warnings ?? [])];
+    for (const asset of assets) {
+      const status = await sourceStatus(asset);
+      if (status.status !== "available")
+        warnings.push(
+          `Missing or inaccessible source: ${asset.name}. Relink ${asset.id} before importing this timeline into an editor.`,
+        );
+      const issue = previewIssue(asset);
+      if (issue) warnings.push(`${asset.name}: ${issue}`);
+    }
+    const report: ExportReport = {
+      ...compatibility,
+      format,
+      warnings: [...new Set(warnings)],
+    };
     if (!/^[a-z0-9]+$/u.test(exported.extension))
       throw new Error("Exporter returned an unsafe extension");
     const directory = join(this.directory, "exports");
@@ -721,7 +790,8 @@ export class OpenFilmApplication {
       mode: 0o600,
     });
     renameSync(temporary, path);
-    return path;
+    atomicJsonSync(`${path}.report.json`, report);
+    return { path, report };
   }
 }
 

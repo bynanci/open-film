@@ -106,3 +106,21 @@ Preview warnings report the local media pipeline's actual capabilities, includin
 an SDR tone-mapped preview when supplied. The original source metadata remains
 available for finishing; the UI does not claim native camera extraction,
 stitching, reframing, or verified HDR display appearance.
+
+## Proposal reference workflow and export reports
+
+Follow the [generated proposal reference workflow](../../docs/reference-workflows/proposal-film.md)
+for a complete CC0 exercise: camera metadata, preferences and required memories,
+story beats, timeline editing, fit suggestions, preview, reopen, relink, and NLE
+handoff. Selecting Proposal Film supplies 270/300-second defaults unless the user
+has already edited the duration fields. Beat selections are explicitly described
+as Must include; Library Always include and Timeline Lock clip have distinct
+protection scopes described in the guide.
+
+Exports retain a visible compatibility report beneath the saved path. OTIO warns
+that a real Resolve import still needs manual verification; advanced edits kept
+as OpenFilm metadata need recreation in Resolve. The warning list remains visible
+after the transient success message is dismissed. Changing a cut marks a prior
+export stale; changing projects or compositions clears the previous artifact's
+report. See [NLE compatibility](../../docs/nle-compatibility.md) for the verification
+boundary and manual finishing checks.

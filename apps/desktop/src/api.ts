@@ -16,6 +16,13 @@ export interface EditorState extends EditorDocument {
   canRedo: boolean;
 }
 
+export interface ExportCompatibilityReport {
+  format: string;
+  warnings: string[];
+  realNleVerified?: false;
+  advancedEdits?: "metadata-only";
+}
+
 export interface SourceStatus {
   assetId: string;
   status: "available" | "missing" | "inaccessible";

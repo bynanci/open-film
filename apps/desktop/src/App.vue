@@ -20,12 +20,14 @@ import {
   type EditorState,
   type MediaStatus,
   type SourceStatus,
+  type ExportCompatibilityReport,
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
 import TimelineEditor from "./components/TimelineEditor.vue";
 import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
+import ExportReport from "./components/ExportReport.vue";
 
 type Tab = "Library" | "Stories" | "Timeline" | "Export";
 type AssetState = "favorite" | "rejected" | "locked";
@@ -108,6 +110,12 @@ const storyTemplate = ref("blank");
 const storyScope = ref<"library" | "page">("library");
 const targetDuration = ref(120);
 const maxDuration = ref(180);
+const storyTimingEdited = ref(false);
+watch(storyTemplate, (template) => {
+  if (storyTimingEdited.value) return;
+  targetDuration.value = template === "proposal-film" ? 270 : 120;
+  maxDuration.value = template === "proposal-film" ? 300 : 180;
+});
 const activeStoryId = ref("");
 const activeStory = computed(
   () =>
@@ -176,6 +184,7 @@ function editorChanged(state: EditorState) {
 function editorEdited() {
   editSerial += 1;
   if (previewVersion.value) previewStale.value = true;
+  if (exportPath.value) exportStale.value = true;
 }
 async function flushEditor() {
   if (!timelineEditor.value) return true;
@@ -201,10 +210,12 @@ async function changeComposition(event: globalThis.Event) {
   const select = event.target as HTMLSelectElement;
   const next = select.value;
   select.value = activeComposition.value?.id ?? "";
+  if (busy.value || relinkBusy.value) return;
   if (!(await flushEditor())) return;
   activeCompositionId.value = next;
   previewVersion.value = 0;
   previewStale.value = false;
+  clearExport();
 }
 function toggleRenderedPlayback() {
   const player = renderedPlayer.value;
@@ -217,10 +228,20 @@ function toggleRenderedPlayback() {
   else player.pause();
 }
 const exportPath = ref("");
+const exportFormat = ref("");
+const exportReport = ref<ExportCompatibilityReport | undefined>();
+const exportStale = ref(false);
+function clearExport() {
+  exportPath.value = "";
+  exportFormat.value = "";
+  exportReport.value = undefined;
+  exportStale.value = false;
+}
 const native = !!window.__TAURI_INTERNALS__;
 let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
+let jobsGeneration = 0;
 
 function cacheAssets(incoming: MediaAsset[]) {
   const next = { ...assetCache.value };
@@ -271,6 +292,7 @@ async function mediaRelinked(updated: MediaAsset[]) {
     assets.value = assets.value.map((asset) => byId.get(asset.id) ?? asset);
     sourceVersion.value += 1;
     if (previewVersion.value) previewStale.value = true;
+    if (exportPath.value) exportStale.value = true;
     await timelineEditor.value?.reload();
     await checkMediaStatus();
     notice.value = `${updated.length} ${updated.length === 1 ? "source is" : "sources are"} connected again. Your edits and selections are preserved.`;
@@ -327,7 +349,7 @@ async function boot() {
     await refreshProject();
     if (project.value) {
       await reloadAssets();
-      jobs.value = (await api.jobs()).jobs;
+      await refreshJobs();
       await checkMediaStatus();
     }
   });
@@ -373,9 +395,10 @@ async function openProject() {
       duplicates.value = [];
       analyzed.value = false;
       previewVersion.value = 0;
+      clearExport();
       await refreshProject();
       await reloadAssets();
-      jobs.value = (await api.jobs()).jobs;
+      await refreshJobs();
       tab.value = "Library";
       await checkMediaStatus();
     },
@@ -389,17 +412,28 @@ async function beginImport() {
   }
   await run("Starting import", async () => {
     await post("/import", { folder: importFolder.value.trim() });
-    jobs.value = (await api.jobs()).jobs;
+    await refreshJobs();
     importOpen.value = false;
     notice.value =
       "Import started. You can keep working while your media is organized.";
   });
 }
+async function refreshJobs() {
+  const generation = ++jobsGeneration;
+  const projectId = project.value?.id;
+  const result = await api.jobs();
+  if (generation === jobsGeneration && project.value?.id === projectId)
+    jobs.value = result.jobs;
+}
 async function pollJobs() {
   if (!project.value || polling) return;
+  const generation = ++jobsGeneration;
+  const projectId = project.value.id;
   polling = true;
   try {
     const result = await api.jobs();
+    if (generation !== jobsGeneration || project.value?.id !== projectId)
+      return;
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
@@ -582,6 +616,7 @@ async function compose() {
   await run("Composing film", async () => {
     const { composition } = await api.compose(story.id);
     activeCompositionId.value = composition.id;
+    clearExport();
     await refreshProject();
     previewVersion.value = 0;
     tab.value = "Timeline";
@@ -627,6 +662,12 @@ async function renderPreview() {
         return;
       }
       throw cause;
+    } finally {
+      try {
+        await refreshJobs();
+      } catch {
+        /* Polling will retry without replacing the render result. */
+      }
     }
     previewVersion.value = Date.now();
     previewStale.value = renderingEdit !== editSerial;
@@ -636,15 +677,27 @@ async function renderPreview() {
 }
 async function exportFilm(format: string) {
   if (!(await flushEditor())) return;
+  const exportingEdit = editSerial;
+  const exportingProject = project.value?.id;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("Exporting timeline", async () => {
-    exportPath.value = (
-      await post<{ path: string }>("/export", {
-        format,
-        compositionId: composition.id,
-      })
-    ).path;
+    const result = await post<{
+      path: string;
+      report?: ExportCompatibilityReport;
+    }>("/export", {
+      format,
+      compositionId: composition.id,
+    });
+    if (
+      project.value?.id !== exportingProject ||
+      activeComposition.value?.id !== composition.id
+    )
+      return;
+    exportPath.value = result.path;
+    exportFormat.value = format;
+    exportReport.value = result.report;
+    exportStale.value = exportingEdit !== editSerial;
     notice.value =
       "Timeline exported. Your original media stays in its source folders.";
   });
@@ -669,7 +722,7 @@ async function cancelJob(job: Job) {
   if (job.type === "render") renderCancellationRequested.value = true;
   try {
     await post(`/jobs/${encodeURIComponent(job.id)}/cancel`);
-    jobs.value = (await api.jobs()).jobs;
+    await refreshJobs();
   } catch (cause) {
     if (job.type === "render") renderCancellationRequested.value = false;
     error.value = cause instanceof Error ? cause.message : String(cause);
@@ -684,9 +737,11 @@ async function changeWorkspace() {
   if (busy.value || activeJobs.value.length || relinkBusy.value) return;
   if (!(await flushEditor())) return;
   statusGeneration += 1;
+  jobsGeneration += 1;
   mediaStatus.value = null;
   checkingMedia.value = false;
   relinkOpen.value = false;
+  clearExport();
   project.value = null;
   projectPath.value = null;
   folder.value = "";
@@ -1554,14 +1609,16 @@ onUnmounted(() => {
                 name="target-duration"
                 type="number"
                 min="1"
-                required /></label
+                required
+                @input="storyTimingEdited = true" /></label
             ><label class="field compact-field"
               >Maximum (seconds)<input
                 v-model.number="maxDuration"
                 name="max-duration"
                 type="number"
                 min="1"
-                required /></label
+                required
+                @input="storyTimingEdited = true" /></label
             ><button class="primary" :disabled="!!busy">
               Plan story<Icon name="arrow" />
             </button>
@@ -1685,6 +1742,12 @@ onUnmounted(() => {
                   }}</span
                 >
               </div>
+              <p class="candidate-guidance">
+                Selected memories are <strong>Must include</strong> for this
+                beat, in the order you choose them. Save the beat to keep that
+                choice. Leave optional moments unselected so the cut can be
+                shortened.
+              </p>
               <p v-if="beatDirty" class="edit-note" role="status">
                 You have changes to save before moving to another beat.
               </p>
@@ -1769,6 +1832,7 @@ onUnmounted(() => {
               >Cut<select
                 :value="activeComposition.id"
                 aria-label="Active composition"
+                :disabled="!!busy || relinkBusy"
                 @change="changeComposition"
               >
                 <option
@@ -1864,8 +1928,8 @@ onUnmounted(() => {
                 <span
                   ><strong>OpenTimelineIO</strong
                   ><small
-                    >Open, portable timeline · Resolve and compatible
-                    editors</small
+                    >Portable cut timeline · Resolve import requires
+                    checking</small
                   ></span
                 ><span class="format-extension">.otio</span
                 ><Icon name="download" /></button
@@ -1900,6 +1964,19 @@ onUnmounted(() => {
                 ><code>{{ exportPath }}</code>
               </div>
             </div>
+            <p
+              v-if="exportPath && exportStale"
+              class="preview-stale"
+              role="status"
+            >
+              This export predates your latest edits. Export again to include
+              them.
+            </p>
+            <ExportReport
+              v-if="exportPath"
+              :report="exportReport"
+              :format="exportFormat"
+            />
           </section>
         </template>
       </section>

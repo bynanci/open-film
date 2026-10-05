@@ -2,6 +2,31 @@
 
 Changes use release versions; the project schema has its own version.
 
+## Unreleased — Real Editing Workflow
+
+- Added a story-first graphical timeline with clip/beat editing, locks, scoped
+  regeneration, duration feedback, explainable fit, undo/redo and recoverable
+  debounced autosave.
+- Added transactional single/folder relinking, missing/offline states, stable
+  logical-volume references and project-relative cache recovery.
+- Added Pixel and Insta360 source adapters, explicit raw360 capability limits,
+  experimental Motion Photo detection and tested HEVC10-bit HLG/PQ SDR previews.
+- Added a generated CC0 Proposal reference dataset, real browser editing/relink
+  regressions, source-adapter tests and precise media failure messages.
+- Added the complete Proposal reference guide and browser workflow: selection,
+  manual edits, protected beat regeneration, duration fitting, actual preview,
+  close/reopen and official-parser-validated OTIO export.
+- Added Resolve preparation fixtures, source/hash/bounds and official OTIO
+  read/write/read validation, and visible export compatibility reports. Advanced
+  edits remain exact OpenFilm metadata and require manual recreation in the NLE;
+  actual Resolve import is unverified.
+- Fixed reused source-path identity collisions, stale device classifications,
+  empty preview requests and failed render jobs remaining queued.
+
+Project schema 1.0.0 remains compatible: clip locks are optional; portable and
+device provenance uses existing metadata extension fields. Native disk mounting,
+real camera variants and NLE appearance are tracked separately from parser tests.
+
 ## 0.1.0 — First vertical slice
 
 - Added portable media, story, event, composition, project, and plugin contracts.
