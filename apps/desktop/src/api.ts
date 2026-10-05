@@ -7,6 +7,24 @@ import type {
   SimilarityGroup,
   Job,
 } from "@openfilm/core";
+import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
+
+export interface EditorState extends EditorDocument {
+  assets: MediaAsset[];
+  revision: string;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 const prefix = import.meta.env.DEV ? "/api" : "http://127.0.0.1:4310/api";
 
@@ -34,10 +52,11 @@ export async function request<T>(
     );
   }
   if (!response.ok) {
-    throw new Error(
+    throw new ApiError(
       typeof body === "object" && body !== null && "error" in body
         ? String(body.error)
         : `Request failed (${response.status}).`,
+      response.status,
     );
   }
   return body as T;
@@ -51,6 +70,8 @@ export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
+export const sourceUrl = (id: string): string =>
+  `${prefix}/source/${encodeURIComponent(id)}`;
 export const api = {
   project: () =>
     request<{ project: OpenFilmProject | null; path: string | null }>(
@@ -64,6 +85,20 @@ export const api = {
   createStory: (body: unknown) => post<{ story: Story }>("/stories", body),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
+  editor: (id: string) =>
+    request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`),
+  edit: (
+    id: string,
+    body: {
+      baseRevision: string;
+      requestId: string;
+      commands: TimelineCommand[];
+    },
+  ) => post<EditorState>(`/compositions/${encodeURIComponent(id)}/edit`, body),
+  history: (id: string, direction: "undo" | "redo", baseRevision: string) =>
+    post<EditorState>(`/compositions/${encodeURIComponent(id)}/${direction}`, {
+      baseRevision,
+    }),
 };
 
 export function duration(value: number | undefined): string {

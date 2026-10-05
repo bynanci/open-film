@@ -14,6 +14,13 @@ for the detailed release checklist.
 
 ## Next — Reliability and delivery
 
+The Real Editing Workflow round has added a story-first graphical timeline,
+non-destructive clip and beat commands, explicit locks, explainable duration
+fitting, undo/redo and durable autosave with conflict recovery. Browser tests
+exercise editing, preview rendering and reopening. The next implementation slice
+is media relinking and portability, followed by device adapters, the Proposal
+reference workflow and independent OTIO/Resolve preparation.
+
 - Package the native shell with a verified local Node service and media runtime;
   test installation and updates on supported operating systems.
 - Exercise actual import/export round trips in Resolve, Premiere, and Final Cut;

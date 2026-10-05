@@ -597,3 +597,10 @@ export class OpenFilmApplication {
     return path;
   }
 }
+
+export {
+  TimelineEditor,
+  TimelineEditorError,
+  type TimelineEditorState,
+  type TimelineEditInput,
+} from "./editor.js";

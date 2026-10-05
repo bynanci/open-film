@@ -5,11 +5,16 @@ import {
 } from "node:http";
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
-import { resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
-import { OpenFilmApplication } from "@openfilm/application";
+import {
+  OpenFilmApplication,
+  TimelineEditor,
+  TimelineEditorError,
+  type TimelineEditInput,
+} from "@openfilm/application";
 import {
   validateProject,
   validateStory,
@@ -128,6 +133,15 @@ export async function startServer(
     app = await OpenFilmApplication.open(resolve(options.project));
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
+  const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
+  const editorFor = (application: OpenFilmApplication) => {
+    let editor = editors.get(application);
+    if (!editor) {
+      editor = new TimelineEditor(application);
+      editors.set(application, editor);
+    }
+    return editor;
+  };
   let mutationQueue = Promise.resolve();
   let closing = false;
   const current = () => {
@@ -206,6 +220,17 @@ export async function startServer(
             project: app?.project ?? null,
             path: app?.directory ?? null,
           });
+          return;
+        }
+        if (method === "POST" && route === "/api/project/close") {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for running jobs before closing this project.",
+            );
+          app?.close();
+          app = undefined;
+          json(response, 200, { ok: true });
           return;
         }
         if (
@@ -330,6 +355,88 @@ export async function startServer(
           application.catalog.updateAsset(id, data as Partial<MediaAsset>);
           json(response, 200, { asset: application.catalog.getAsset(id) });
           return;
+        }
+        const source = /^\/api\/source\/([^/]+)$/.exec(route);
+        if (method === "GET" && source) {
+          const asset = application.catalog.getAsset(
+            decodeURIComponent(source[1]!),
+          );
+          if (!asset)
+            throw new HttpError(
+              404,
+              "Source asset was not found in this project.",
+            );
+          if (asset.mediaType === "360-video")
+            throw new HttpError(
+              422,
+              "360 source requires a reframed export before playback.",
+            );
+          if (!asset.uri.startsWith("file:"))
+            throw new HttpError(
+              422,
+              "Only imported local media can be previewed.",
+            );
+          const file = fileURLToPath(asset.uri);
+          const mime = (
+            {
+              ".jpg": "image/jpeg",
+              ".jpeg": "image/jpeg",
+              ".png": "image/png",
+              ".webp": "image/webp",
+              ".mp4": "video/mp4",
+              ".mov": "video/quicktime",
+              ".webm": "video/webm",
+              ".mp3": "audio/mpeg",
+              ".wav": "audio/wav",
+              ".m4a": "audio/mp4",
+              ".ogg": "audio/ogg",
+            } as Record<string, string>
+          )[extname(file).toLowerCase()];
+          if (!mime)
+            throw new HttpError(
+              422,
+              "This source format needs a compatible preview proxy.",
+            );
+          try {
+            // The path comes exclusively from this project's catalog, never a request path.
+            await streamFile(request, response, file, dirname(file), mime);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT")
+              throw new HttpError(
+                404,
+                "Missing Media: reconnect the disk or relink this source.",
+              );
+            throw error;
+          }
+          return;
+        }
+        const editorMatch =
+          /^\/api\/compositions\/([^/]+)\/(editor|edit|undo|redo)$/.exec(route);
+        if (editorMatch) {
+          const compositionId = decodeURIComponent(editorMatch[1]!);
+          const action = editorMatch[2];
+          const editor = editorFor(application);
+          if (method === "GET" && action === "editor") {
+            json(response, 200, editor.get(compositionId));
+            return;
+          }
+          if (method === "POST" && action !== "editor") {
+            const data = await body(request);
+            const state =
+              action === "edit"
+                ? await editor.edit(
+                    compositionId,
+                    data as unknown as TimelineEditInput,
+                  )
+                : action === "undo"
+                  ? await editor.undo(compositionId, text(data, "baseRevision"))
+                  : await editor.redo(
+                      compositionId,
+                      text(data, "baseRevision"),
+                    );
+            json(response, 200, state);
+            return;
+          }
         }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
         if (method === "GET" && thumbnail) {
@@ -533,7 +640,10 @@ export async function startServer(
         throw new HttpError(404, "Endpoint not found.");
       } catch (error) {
         if (response.headersSent || response.destroyed) return;
-        const status = error instanceof HttpError ? error.status : 400;
+        const status =
+          error instanceof HttpError || error instanceof TimelineEditorError
+            ? error.status
+            : 400;
         json(response, status, {
           error: error instanceof Error ? error.message : "Operation failed.",
         });

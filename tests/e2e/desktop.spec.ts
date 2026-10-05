@@ -4,6 +4,11 @@ import { createDesktopFixture } from "./helpers.js";
 
 const cleanupFixtures: Array<() => Promise<void>> = [];
 test.afterAll(async () => {
+  const response = await fetch("http://127.0.0.1:4310/api/project/close", {
+    method: "POST",
+  });
+  if (!response.ok)
+    throw new Error(`Could not close test project: ${await response.text()}`);
   await Promise.all(cleanupFixtures.map((cleanup) => cleanup()));
 });
 

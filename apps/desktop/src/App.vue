@@ -17,9 +17,11 @@ import {
   previewUrl,
   duration,
   dateLabel,
+  type EditorState,
 } from "./api";
 import Icon from "./components/Icon.vue";
 import AssetCard from "./components/AssetCard.vue";
+import TimelineEditor from "./components/TimelineEditor.vue";
 
 type Tab = "Library" | "Stories" | "Timeline" | "Export";
 type AssetState = "favorite" | "rejected" | "locked";
@@ -113,6 +115,67 @@ const clipCount = computed(
     ) ?? 0,
 );
 const previewVersion = ref(0);
+const previewStale = ref(false);
+const showRenderedPreview = ref(false);
+const renderedPlayer = ref<HTMLVideoElement | null>(null);
+const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
+let editSerial = 0;
+
+function editorChanged(state: EditorState) {
+  if (!project.value) return;
+  project.value = {
+    ...project.value,
+    stories: project.value.stories.map((story) =>
+      story.id === state.story.id ? state.story : story,
+    ),
+    timelines: project.value.timelines.map((cut) =>
+      cut.id === state.composition.id ? state.composition : cut,
+    ),
+  };
+  cacheAssets(state.assets);
+}
+function editorEdited() {
+  editSerial += 1;
+  if (previewVersion.value) previewStale.value = true;
+}
+async function flushEditor() {
+  if (!timelineEditor.value) return true;
+  const saved = await timelineEditor.value.flush();
+  if (!saved)
+    error.value =
+      "Save your timeline edits before continuing. Your unsaved draft is retained; return to Timeline and retry saving.";
+  return saved;
+}
+async function changeTab(next: Tab) {
+  if (next === tab.value) return;
+  if (next === "Timeline") {
+    tab.value = next;
+    if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
+    return;
+  }
+  if (!(await flushEditor())) return;
+  tab.value = next;
+  if (next === "Stories" && !beatDirty.value) hydrateBeat();
+}
+async function changeComposition(event: globalThis.Event) {
+  const select = event.target as HTMLSelectElement;
+  const next = select.value;
+  select.value = activeComposition.value?.id ?? "";
+  if (!(await flushEditor())) return;
+  activeCompositionId.value = next;
+  previewVersion.value = 0;
+  previewStale.value = false;
+}
+function toggleRenderedPlayback() {
+  const player = renderedPlayer.value;
+  if (!player) return;
+  if (player.paused)
+    void player.play().catch(() => {
+      error.value =
+        "The rendered preview cannot play. Render it again to refresh the file.";
+    });
+  else player.pause();
+}
 const exportPath = ref("");
 const native = !!window.__TAURI_INTERNALS__;
 let poll: ReturnType<typeof setInterval> | undefined;
@@ -189,6 +252,7 @@ async function pickFolder(target: "project" | "import") {
   });
 }
 async function openProject() {
+  if (!(await flushEditor())) return;
   if (!folder.value.trim()) {
     error.value = "Choose a project folder first.";
     return;
@@ -374,6 +438,7 @@ function chooseCandidate(asset: MediaAsset) {
   beatDirty.value = true;
 }
 async function saveBeat() {
+  if (!(await flushEditor())) return;
   const story = activeStory.value;
   const beat = activeBeat.value;
   if (!story || !beat) return;
@@ -398,9 +463,11 @@ async function saveBeat() {
     await refreshProject();
     beatDirty.value = false;
     notice.value = "Story beat saved.";
+    await timelineEditor.value?.reload();
   });
 }
 async function compose() {
+  if (!(await flushEditor())) return;
   const story = activeStory.value;
   if (!story) return;
   if (beatDirty.value) {
@@ -434,6 +501,8 @@ async function compose() {
   });
 }
 async function renderPreview() {
+  if (!(await flushEditor())) return;
+  const renderingEdit = editSerial;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("Rendering preview", async () => {
@@ -455,10 +524,13 @@ async function renderPreview() {
       throw cause;
     }
     previewVersion.value = Date.now();
+    previewStale.value = renderingEdit !== editSerial;
+    showRenderedPreview.value = true;
     notice.value = "Your preview is ready to play.";
   });
 }
 async function exportFilm(format: string) {
+  if (!(await flushEditor())) return;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("Exporting timeline", async () => {
@@ -503,8 +575,9 @@ async function cancelJob(job: Job) {
 function progress(job: Job) {
   return Math.round(Math.max(0, Math.min(1, job.progress ?? 0)) * 100);
 }
-function changeWorkspace() {
+async function changeWorkspace() {
   if (busy.value || activeJobs.value.length) return;
+  if (!(await flushEditor())) return;
   project.value = null;
   projectPath.value = null;
   folder.value = "";
@@ -535,13 +608,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="film-workspace">
+  <div
+    class="film-workspace"
+    :class="{ 'editing-room': tab === 'Timeline' || tab === 'Export' }"
+  >
     <header class="app-header">
       <a
         class="wordmark"
         href="#"
         aria-label="OpenFilm home"
-        @click.prevent="tab = 'Library'"
+        @click.prevent="changeTab('Library')"
         ><span class="logo-bracket">[</span>OpenFilm<span class="logo-bracket"
           >]</span
         ></a
@@ -552,7 +628,7 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
-          @click="tab = item"
+          @click="changeTab(item)"
         >
           {{ item }}
         </button>
@@ -706,8 +782,7 @@ onUnmounted(() => {
             Give your memories a beginning, a middle, and a reason to stay.
           </p>
           <p v-if="tab === 'Timeline'">
-            A first cut, shaped around your story. Keep editing in your favorite
-            editor.
+            Shape each moment around your story. Your originals stay untouched.
           </p>
           <p v-if="tab === 'Export'">
             Watch your film, or bring an editable timeline into your editing
@@ -1428,7 +1503,10 @@ onUnmounted(() => {
         </template>
       </template>
 
-      <template v-if="tab === 'Timeline' || tab === 'Export'">
+      <section
+        v-show="tab === 'Timeline' || tab === 'Export'"
+        class="editing-workflow"
+      >
         <div v-if="!activeComposition" class="empty-state">
           <span class="empty-symbol"><Icon name="film" :size="30" /></span>
           <h2>Your first cut is waiting.</h2>
@@ -1457,11 +1535,7 @@ onUnmounted(() => {
               >Cut<select
                 :value="activeComposition.id"
                 aria-label="Active composition"
-                @change="
-                  activeCompositionId = ($event.target as HTMLSelectElement)
-                    .value;
-                  previewVersion = 0;
-                "
+                @change="changeComposition"
               >
                 <option
                   v-for="(composition, index) in project.timelines"
@@ -1481,8 +1555,29 @@ onUnmounted(() => {
               }}
             </button>
           </div>
-          <div v-if="previewVersion" class="preview-screen">
+          <p
+            v-if="previewVersion && previewStale"
+            class="preview-stale"
+            role="status"
+          >
+            Preview is out of date. Render again to see your latest edits.
+          </p>
+          <button
+            v-if="previewVersion && tab === 'Timeline'"
+            class="secondary preview-toggle"
+            :aria-expanded="showRenderedPreview"
+            @click="showRenderedPreview = !showRenderedPreview"
+          >
+            {{
+              showRenderedPreview ? "Hide film preview" : "Show film preview"
+            }}
+          </button>
+          <div
+            v-if="previewVersion && (tab === 'Export' || showRenderedPreview)"
+            class="preview-screen"
+          >
             <video
+              ref="renderedPlayer"
               :key="previewVersion"
               crossorigin="anonymous"
               :src="previewUrl(previewVersion)"
@@ -1497,99 +1592,27 @@ onUnmounted(() => {
               >YOUR FILM · {{ duration(activeComposition.duration) }}</span
             >
           </div>
-          <div v-else class="preview-placeholder">
+          <div
+            v-else-if="tab === 'Export' && !previewVersion"
+            class="preview-placeholder"
+          >
             <Icon name="play" :size="36" /><span>{{
               busy === "Rendering preview"
                 ? "Your film is taking shape. This can take a moment."
                 : "Render a preview to watch your story."
             }}</span>
           </div>
-          <section
-            v-if="tab === 'Timeline'"
-            class="composition-timeline"
-            aria-label="Composition timeline"
-          >
-            <div class="timeline-header">
-              <span class="eyebrow">THE ROUGH CUT</span
-              ><span>Source files are never changed.</span>
-            </div>
-            <div class="track-scroll">
-              <div class="time-ruler">
-                <span v-for="tick in 7" :key="tick">{{
-                  duration((activeComposition.duration * (tick - 1)) / 6)
-                }}</span>
-              </div>
-              <div
-                v-for="track in activeComposition.tracks"
-                :key="track.id"
-                class="track"
-              >
-                <div class="track-label">
-                  <Icon
-                    :name="track.type === 'video' ? 'film' : 'volume'"
-                    :size="15"
-                  />{{ track.type }}
-                </div>
-                <div class="clip-lane">
-                  <div
-                    v-for="clip in track.clips"
-                    :key="clip.id"
-                    class="timeline-clip"
-                    :style="{
-                      width: `${(clip.timelineDuration / activeComposition.duration) * 100}%`,
-                      left: `${(clip.timelineStart / activeComposition.duration) * 100}%`,
-                    }"
-                    :title="`${assetCache[clip.assetId]?.name || clip.assetId} · ${duration(clip.timelineDuration)}`"
-                  >
-                    <img
-                      v-if="assetCache[clip.assetId]?.thumbnailUri"
-                      crossorigin="anonymous"
-                      :src="thumbnailUrl(clip.assetId)"
-                      alt=""
-                      loading="lazy"
-                    /><span>{{
-                      assetCache[clip.assetId]?.name || clip.title || "Media"
-                    }}</span
-                    ><small>{{ duration(clip.timelineDuration) }}</small>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <details class="cut-details">
-              <summary>View clip timing</summary>
-              <div class="clip-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Memory</th>
-                      <th>Track</th>
-                      <th>Start</th>
-                      <th>Duration</th>
-                      <th>Source in–out</th>
-                    </tr>
-                  </thead>
-                  <tbody
-                    v-for="track in activeComposition.tracks"
-                    :key="track.id"
-                  >
-                    <tr v-for="clip in track.clips" :key="clip.id">
-                      <td>
-                        {{ assetCache[clip.assetId]?.name || clip.assetId }}
-                      </td>
-                      <td>{{ track.type }}</td>
-                      <td>{{ duration(clip.timelineStart) }}</td>
-                      <td>{{ duration(clip.timelineDuration) }}</td>
-                      <td>
-                        {{ duration(clip.sourceIn ?? 0) }}–{{
-                          duration(clip.sourceOut ?? clip.timelineDuration)
-                        }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </section>
+          <TimelineEditor
+            v-show="tab === 'Timeline'"
+            :key="`${project.id}:${activeComposition.id}`"
+            ref="timelineEditor"
+            :project-id="project.id"
+            :composition-id="activeComposition.id"
+            :active="tab === 'Timeline'"
+            @change="editorChanged"
+            @edited="editorEdited"
+            @playback="toggleRenderedPlayback"
+          />
           <section v-if="tab === 'Export'" class="export-options">
             <div>
               <span class="eyebrow">KEEP THE STORY MOVING</span>
@@ -1642,7 +1665,7 @@ onUnmounted(() => {
             </div>
           </section>
         </template>
-      </template>
+      </section>
       <footer class="workspace-footer">
         <span
           >{{ project.title }} <span class="footer-dot">·</span>

@@ -42,7 +42,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Preview playback and persistence across project reopening.
 - [x] JSON, OTIO, FCPXML, and applicable EDL exporters with explicit unsupported-edit
       errors and timeline/source reference preservation.
-- [ ] End-user graphical trim, reframe, speed, volume, order, and transition editing.
+- [x] End-user graphical trim, reframe, speed, volume, order, and transition editing.
 - [ ] General event/person coverage and media-balance constraints.
 - [ ] Real NLE round-trip compatibility matrix.
 
@@ -60,6 +60,24 @@ system or downstream NLE. Commands and test responsibilities are in
 - [ ] Local vision, embeddings, transcript, and language implementations.
 - [ ] Incremental analysis/background worker scheduling at archive scale.
 - [ ] Reproducible 10,000–100,000-asset performance benchmarks.
+
+## Real editing workflow round
+
+Checked items require working behavior, regression tests and relevant documentation.
+Hardware and real NLE verification are recorded separately.
+
+- [x] P0: story-first graphical timeline with trim, photo duration, drag/keyboard
+      order, speed, volume, cut/crossfade, transform and explicit clip locks.
+- [x] P0: scoped beat editing/regeneration, duration feedback and explainable fit.
+- [x] P0: undo/redo, debounced durable autosave, recoverable errors and reopen tests.
+- [ ] P1: missing/offline state, single/folder relink and portable library references.
+- [ ] P2: Pixel metadata/HDR detection and experimental Motion Photo recognition.
+- [ ] P2: Insta360 exported media plus raw-source recognition/association.
+- [ ] P3: generated Proposal reference dataset, documented workflow and full E2E.
+- [ ] P4: Resolve fixtures, official OTIO validation and honest compatibility matrix.
+- [ ] P5: all regression gates and branch CI green.
+- [ ] Manual: actual DaVinci Resolve import.
+- [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 
 Keep this file current when a pending capability gains working behavior and
 validation; keep host-dependent checks distinct from source implementation.
