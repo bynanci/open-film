@@ -62,6 +62,9 @@ function host() {
   const reads: JobRead[] = [];
   const rendering = deferred<{ path: string }>();
   const cancellation = deferred<void>();
+  const cancellations = [cancellation];
+  let cancellationCalls = 0;
+  const cancelling = ref<Record<string, boolean>>({});
   const project = ref<{ id: string } | null>({ id: "film" });
   const jobs = ref<Job[]>([current("running"), oldCancelled]);
   const error = ref<unknown>("");
@@ -82,12 +85,17 @@ function host() {
     error,
     notice,
     renderCancellationRequested: requested,
-    cancellingJobs: ref<Record<string, boolean>>({}),
+    cancellingJobs: cancelling,
     flushPending: async () => true,
     activeComposition: ref({ id: "composition" }),
     editSerial: 0,
-    post: (path: string) =>
-      path.includes("/cancel") ? cancellation.promise : rendering.promise,
+    post: (path: string) => {
+      if (!path.includes("/cancel")) return rendering.promise;
+      if (cancellationCalls++ === 0) return cancellation.promise;
+      const response = deferred<void>();
+      cancellations.push(response);
+      return response.promise;
+    },
     message: (key: string) => key,
     reloadAssets: async () => {},
     refreshProject: async () => {},
@@ -116,6 +124,8 @@ function host() {
     reads,
     rendering,
     cancellation,
+    cancellations,
+    cancelling,
     project,
     jobs,
     error,
@@ -293,5 +303,53 @@ describe("App cancellation responses remain owned during overlapping job polling
     h.reads[0]!.resolve({ jobs: [current("running")] });
     expect(await older).toEqual([current("running")]);
     expect(h.jobs.value).toEqual([current("cancelled")]);
+  });
+
+  it.each(["same", "different"])(
+    "an old cancellation failure cannot replace a newer request in the %s project",
+    async (scope) => {
+      const h = host();
+      const oldCancel = h.cancelJob(current("running"));
+      if (scope === "different") h.project.value = { id: "new-film" };
+      const newJob = { ...current("running"), id: "new-render" };
+      const newCancel = h.cancelJob(newJob);
+      expect(h.requested.value).toBe(newJob.id);
+      h.cancellation.reject(
+        new ApiError("Old job already finished", 409, {
+          code: "operation.failed",
+        }),
+      );
+      await oldCancel;
+      expect(h.requested.value).toBe(newJob.id);
+      expect(h.error.value).toBe("");
+      expect(h.cancelling.value["current-render"]).toBe(false);
+      expect(h.cancelling.value[newJob.id]).toBe(true);
+      expect(h.reads).toHaveLength(0);
+      h.cancellations[1]!.resolve();
+      await turn();
+      h.reads[0]!.resolve({ jobs: [newJob] });
+      await newCancel;
+      expect(h.requested.value).toBe(newJob.id);
+      expect(h.error.value).toBe("");
+    },
+  );
+
+  it("a late old-project cancellation ACK does not read or overwrite the new project's jobs", async () => {
+    const h = host();
+    const oldCancel = h.cancelJob(current("running"));
+    h.project.value = { id: "new-film" };
+    const newJob = { ...current("running"), id: "new-render" };
+    const newCancel = h.cancelJob(newJob);
+    h.cancellation.resolve();
+    await oldCancel;
+    expect(h.reads).toHaveLength(0);
+    expect(h.requested.value).toBe(newJob.id);
+    expect(h.error.value).toBe("");
+    expect(h.cancelling.value["current-render"]).toBe(false);
+    h.cancellations[1]!.resolve();
+    await turn();
+    h.reads[0]!.resolve({ jobs: [newJob] });
+    await newCancel;
+    expect(h.jobs.value).toEqual([newJob]);
   });
 });

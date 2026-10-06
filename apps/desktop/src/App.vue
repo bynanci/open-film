@@ -1136,18 +1136,25 @@ function jobTitle(job: Job): string {
 }
 async function cancelJob(job: Job) {
   if (cancellingJobs.value[job.id]) return;
+  const cancellingProject = project.value?.id;
   cancellingJobs.value = { ...cancellingJobs.value, [job.id]: true };
   if (job.type === "render") renderCancellationRequested.value = job.id;
   try {
     await post(`/jobs/${encodeURIComponent(job.id)}/cancel`);
+    if (project.value?.id !== cancellingProject) return;
     try {
       await refreshJobs();
     } catch {
       /* The cancel was acknowledged; polling will refresh its status. */
     }
   } catch (cause) {
-    if (job.type === "render") renderCancellationRequested.value = null;
-    error.value = cause;
+    if (
+      project.value?.id === cancellingProject &&
+      (job.type !== "render" || renderCancellationRequested.value === job.id)
+    ) {
+      if (job.type === "render") renderCancellationRequested.value = null;
+      error.value = cause;
+    }
   } finally {
     cancellingJobs.value = { ...cancellingJobs.value, [job.id]: false };
   }

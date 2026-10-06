@@ -473,6 +473,9 @@ test("cancels a real preview render while its request is pending", async ({
     await expect(
       page.getByRole("button", { name: "Switch project", exact: true }),
     ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Cancel render", exact: true }),
+    ).toBeVisible();
     active = true;
     await page
       .getByRole("button", { name: "Cancel render", exact: true })
