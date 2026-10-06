@@ -250,8 +250,7 @@ async function refresh(offset = requestedOffset.value) {
       recoveryStates.value = nextRecoveryStates;
       if (
         recoveryConfirmJobId.value &&
-        !nextRecoveryStates[recoveryConfirmJobId.value]
-          ?.manualRecoveryAllowed
+        !nextRecoveryStates[recoveryConfirmJobId.value]?.manualRecoveryAllowed
       )
         recoveryConfirmJobId.value = "";
     }
