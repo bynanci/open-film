@@ -59,6 +59,9 @@ receives a definitive missing-suggestion response, such as after opening
 a restored project copy, that receipt is cleared and navigation is released.
 Network, server and missing-source failures retain uncertain receipts for Retry.
 Responses from a disposed or changed project/asset cannot clear a newer receipt.
+Review actions reserve ownership before waiting for transcript saves. Rapid
+Accept clicks cannot replace a pending receipt, and project navigation waits for
+preparation and transport together.
 If the transcript
 changed since generation, Accept reports
 `review.suggestionStale`; regenerate suggestions against the current text. Even
@@ -87,6 +90,11 @@ when a valid glossary replacement exceeds the suggestion-size limit. Restart
 recovery marks abandoned queued/running review jobs failed and their unfinished
 batches cancelled, retaining completed suggestions. Retry never rebases evidence
 onto a newer transcript revision.
+
+Batch Retry first saves any manual draft. If that changes the revision, the old
+batch is rejected before provider invocation; create a new review for the edited
+text. Retrying an uncertain Accept instead confirms its original request before
+flushing a possibly conflicting draft.
 
 Starting a newer review does not hide an older review's Retry/Skip actions.
 Unfinished reviews are paged independently of suggestion cards, with at most five

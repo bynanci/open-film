@@ -198,6 +198,12 @@ workspace runs on port 1420 during development. Errors use non-success responses
 with actionable text. Remote provider ports exist; the default application does
 not instantiate a remote provider.
 
+Desktop App owns the project/generation-guarded Activity snapshot. Transcript and
+Suggestions consume this shared input instead of independently reading full job
+history. The parent retains its existing poll, and older unfinished review jobs
+remain available for recovery. Future job-history pagination must preserve those
+recovery and fast-completion guarantees.
+
 Tauri supplies native folder selection and can spawn a configured local Node
 service, stopping its owned child on exit. It does not replace the Node media and
 SQLite adapters. Development starts the service separately; deployment must

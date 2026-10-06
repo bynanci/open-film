@@ -154,7 +154,7 @@ from model, camera and hardware certification.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
 Geometry/Vision, Highlights and Captions remain deferred. Transcript productivity
-is the next milestone below; interface-only work is not completion.
+is tracked separately below; interface-only work is not completion.
 
 ## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
 
@@ -184,5 +184,9 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Read reserved asset IDs through canonical transcript CLI grammar while retaining existing actions.
 - [x] Wait for owned transcript reads before navigation; retain startup recovery bytes through disposal and exact receipt retry.
 - [x] Match Unicode case variants consistently across glossary and transcript search without changing original text offsets or expanding characters.
+- [x] Reserve review acceptance before waiting for saves so rapid clicks cannot strand recovery receipts.
+- [x] Validate maximum-size review selections with linear work while preserving exact IDs and privacy checks.
+- [x] Save transcript drafts before batch retry without rebasing immutable review evidence.
+- [x] Share the project-owned jobs snapshot instead of polling full history separately from each editor.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.

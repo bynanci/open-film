@@ -23,10 +23,10 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`3ae31a8edcc7c46c0079f7df396c1892a877ccaf` passed all required local regression
-gates. The complete browser run passed **51 tests** (34 existing, 17 new) with no
-failures, skips or retries. The full unit/integration suite passed **798 tests in
-71 files**. Documentation finalization follows these runs; current-head GitHub
+`0dcbcabec1737e5350d6747657048811b4872227` passed all required local regression
+gates. The complete browser run passed **54 tests** (34 existing, 20 new) with no
+failures, skips or retries. The full unit/integration suite passed **814 tests in
+72 files**. Documentation finalization follows these runs; current-head GitHub
 checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 798 tests / 71 files                                                                                 |
+| `pnpm test`             | Passed: 814 tests / 72 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 51 tests, 9.7 minutes, one worker and zero retries                                                   |
+| `pnpm test:e2e`         | Passed: 54 tests, 10.3 minutes, one worker and zero retries                                                  |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -327,6 +327,58 @@ false-positive checks and 179 exported-matcher range checks. This is evidence fo
 the inspected Node 24 / Unicode 17 runtime, not all possible strings, future
 Unicode versions or locale-specific normalization.
 
+## Fifth Codex review
+
+The documentation head `93abf055a8fa38cc3a92e61e63ed54bb722617c5` passed both
+[push CI](https://github.com/bynanci/open-film/actions/runs/37461542422) and
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37461549911).
+Its completed Codex review nevertheless identified four more P2 cases: rapid
+Accept clicks sharing a pending flush could replace the first recovery receipt;
+maximum-size selection validation made a nested segment scan; batch Retry could
+send old text before autosave; and both child editors repeatedly polled the same
+unpaged job history already read by their parent. That earlier green CI does not
+close these correctness findings; remediation and current-head verification are
+required separately.
+
+A maximum-selection regression instruments only the first actual SQLite-loaded
+transcript snapshot and captures its ID-read count at job reservation. It failed
+before the change with 50,015,000 reads for 10,000 selected IDs; indexed membership
+passes its 30,000-read linear bound. All 50 application knowledge tests passed,
+including selection order, invalid inputs, opaque IDs and selected-text privacy.
+
+Review actions now reserve their operation before publishing busy state or
+awaiting a save. Navigation awaits preparation and transport together; a second
+Accept cannot replace the first exact receipt. Retry confirms uncertain
+acceptance independently, while batch Retry first saves and then validates its
+original revision before provider invocation. Nine new operation tests failed
+before this correction; the actual Vue/SQLite and existing receipt suites pass
+23 cases with no unhandled errors.
+
+App remains the sole project/generation-guarded job-history reader. Both child
+editors consume its snapshot; a 10,000-job component regression records zero
+child jobs reads. Fast completion, progress/cancel, initial recovery and manual
+conflicts remain covered by 20 component tests. The combined focused regression
+run passes 112 tests; independent overlap and snapshot reviews reproduce no
+further P1/P2 in those boundaries. Complete browser and current-head CI/review
+remain separate checks.
+
+Three additional actual-browser regressions pass before the complete rerun:
+rapid native Accept clicks while a real manual save is held; cancelled-batch
+Retry waiting for that save and retaining its original batch evidence; and real
+review progress/cancellation with job requests originating only from App. The
+first focused attempt passed two cases and failed an incorrect synchronous HTTP
+expectation in the Retry test. That endpoint acknowledges a queued job with 202;
+its worker then records `review.suggestionStale` before another provider attempt.
+The corrected test asserts that asynchronous sequence, the unchanged batch and
+the saved manual revision. All three passed in 38.4 seconds without timeout
+increases, skips or retries; the first failure remains part of the evidence.
+
+The final production/test tree `0dcbcab` then passed all nine local gates: 814
+unit/integration tests in 72 files and 54 browser cases in 10.3 minutes, with zero
+failures, skips or retries. All 21 Codex findings across five review rounds have
+implementation and regression evidence. Published replies, resolved threads and
+fresh exact-head GitHub CI/review remain separate final PR readiness checks.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -349,6 +401,14 @@ Japanese and pseudo-locale screenshot inspection confirmed readable controls and
 a visible player at small desktop size. Regression checks now require actual
 viewport/scroll-container intersection and a decoded frame, including after row,
 search and suggestion seeking; DOM visibility alone is insufficient.
+
+The final rerun retained 36 named Transcript, Glossary and Suggestions captures.
+Manual inspection covered all four 1280×720 Suggestions screens and additional
+Transcript/Glossary captures. Controls and wrapped text remained readable with
+vertical scrolling and no new horizontal clipping. One small English Transcript
+capture still contains Chromium's native buffering indicator despite successful
+decoded-frame, seeking and player-geometry assertions. This snapshot limitation
+is retained in the evidence; it is not continuous-playback or hardware QA.
 
 ## Generated text performance observations
 
@@ -374,6 +434,18 @@ Linux x64, AMD EPYC 7763 on this shared development machine:
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache
 measurements, or large immutable-revision write/100,000-segment archive benchmarks.
 No claim of real transcription quality or speed follows from them.
+
+For maximum-size review selection, run
+`pnpm exec tsx scripts/benchmark-review-selection.ts output.json`. This generated
+SQLite fixture selects 10,000 IDs in reverse order and verifies 100 cancelled
+batches retain transcript order. On the same shared host, at
+`90a4b37fe56bb4d4c8e0f913ce9e8e7c381e4c6a`, five preparation samples had a
+**24.34 ms** median and **20.85–39.61 ms** range. Setup took **60.15 ms**, including
+**47.48 ms** seeding, outside the interval. Preparation includes source
+verification, transcript loading, selection validation, partitioning and initial
+queued-job persistence; later batch writes, cancellation and full review are
+excluded. The output records exact source/runtime/fixture hashes. This is not
+ASR, model latency, full-review throughput or a performance guarantee.
 
 ## Limits and manual gates
 

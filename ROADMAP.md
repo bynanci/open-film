@@ -68,7 +68,7 @@ remains the next external gate; it is not replaced by helper tests.
   documentation, plus additional device/source adapters.
 - Add more general event/person coverage and media-balance constraints, together
   with explainable infeasibility reporting.
-- Add optional local vision, embeddings, transcription, and language providers;
+- Add further optional local vision, embedding, transcription and language providers;
   keep remote integrations explicit and consented.
 - Benchmark 10,000–100,000-asset catalogs with published fixtures, memory/latency
   measurements, incremental analysis, background workers, and broader story
@@ -108,5 +108,7 @@ The Story-first composition engine and main Library/Story/Edit/Export navigation
 remain the same. See [transcript editing](docs/transcript-editing.md),
 [glossary](docs/glossary.md) and [review suggestions](docs/review-suggestions.md).
 
-Geometry/safe frames, local vision, smart reframing, highlights/derived films and
-captions remain subsequent milestones. They are not implemented in this round.
+The next implementation priority is a shared composition geometry contract with
+preview/render parity tests. Safe frames, local vision, smart reframing,
+highlights/derived films and captions remain subsequent milestones. They are not
+implemented in this round.
