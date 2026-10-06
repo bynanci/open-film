@@ -462,29 +462,36 @@ async function seekMatch(direction: number) {
     let index = matchIndex.value + direction;
     let found = search.value!;
     if (index < 0) {
-      if (found.offset > 0) {
+      const offset =
+        found.offset > 0
+          ? Math.max(0, found.offset - found.limit)
+          : Math.floor(Math.max(0, found.totalSegments - 1) / found.limit) *
+            found.limit;
+      if (offset !== found.offset)
         found = await api.transcriptSearch(
           props.asset.id,
           context.query,
           context.caseSensitive,
-          Math.max(0, found.offset - 100),
+          offset,
+          found.limit,
         );
-        index =
-          found.matches.reduce(
-            (count, match) => count + match.ranges.length,
-            0,
-          ) - 1;
-      } else index = matchRanges.value.length - 1;
+      index =
+        found.matches.reduce((count, match) => count + match.ranges.length, 0) -
+        1;
     } else if (index >= matchRanges.value.length) {
-      if (found.offset + found.limit < found.totalSegments) {
+      const offset =
+        found.offset + found.limit < found.totalSegments
+          ? found.offset + found.limit
+          : 0;
+      if (offset !== found.offset)
         found = await api.transcriptSearch(
           props.asset.id,
           context.query,
           context.caseSensitive,
-          found.offset + 100,
+          offset,
+          found.limit,
         );
-        index = 0;
-      } else index = 0;
+      index = 0;
     }
     if (!current() || found.revision !== context.revision) return;
     search.value = found;
