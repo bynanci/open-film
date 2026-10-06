@@ -3,6 +3,7 @@ import type { MediaAsset } from "@openfilm/core";
 import type {
   LanguageProvider,
   RemoteProviderConsent,
+  TranscriptionProvider,
   VisionProvider,
 } from "@openfilm/plugin-sdk";
 import { dataKindsForAsset, ProviderRegistry } from "../src/index.js";
@@ -37,6 +38,134 @@ const consent: RemoteProviderConsent = {
 };
 
 describe("explicit remote provider opt-in", () => {
+  it("does not expose glossary prompt hints to a remote audio provider without text disclosure and consent", async () => {
+    const registry = new ProviderRegistry();
+    const transcribe = vi.fn(async () => ({ text: "", segments: [] }));
+    const provider: TranscriptionProvider = {
+      id: "remote.audio",
+      name: "Audio",
+      kind: "transcription",
+      execution: "remote",
+      endpoint: "https://audio.example.invalid",
+      dataKinds: ["audio", "metadata"],
+      transcribe,
+    };
+    const spoken = { ...asset, mediaType: "audio" as const };
+    const grant = {
+      providerId: provider.id,
+      dataKinds: ["audio", "metadata"] as const,
+      grantedAt: new Date().toISOString(),
+    };
+    registry.register(provider);
+    registry.grantConsent({ ...grant, dataKinds: [...grant.dataKinds] });
+    await expect(
+      registry.transcribe(provider.id, spoken, {
+        promptHints: ["private project name"],
+      }),
+    ).rejects.toThrow("has not disclosed");
+    expect(transcribe).not.toHaveBeenCalled();
+    await registry.transcribe(provider.id, spoken, { promptHints: [] });
+    expect(transcribe).toHaveBeenCalledOnce();
+    registry.unregister(provider.id);
+    provider.dataKinds = ["audio", "metadata", "text"];
+    registry.register(provider);
+    await expect(
+      registry.transcribe(provider.id, spoken, {
+        promptHints: ["private project name"],
+      }),
+    ).rejects.toThrow("Explicit opt-in");
+    expect(transcribe).toHaveBeenCalledOnce();
+    registry.grantConsent({
+      ...grant,
+      dataKinds: ["audio", "metadata", "text"],
+    });
+    await registry.transcribe(provider.id, spoken, {
+      promptHints: ["private project name"],
+    });
+    expect(transcribe).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires transcript disclosure and consent before language review can send transcript text", async () => {
+    const registry = new ProviderRegistry();
+    const generate = vi.fn(async () => "reviewed");
+    const provider: LanguageProvider = {
+      id: "review.remote",
+      name: "Remote review",
+      kind: "language",
+      execution: "remote",
+      endpoint: "https://review.example.invalid",
+      dataKinds: ["text"],
+      generate,
+    };
+    registry.register(provider);
+    registry.grantConsent({
+      providerId: provider.id,
+      dataKinds: ["text"],
+      grantedAt: new Date().toISOString(),
+    });
+    await expect(
+      registry.generate(provider.id, "private transcript", undefined, [
+        "text",
+        "transcripts",
+      ]),
+    ).rejects.toThrow("has not disclosed");
+    expect(generate).not.toHaveBeenCalled();
+    registry.unregister(provider.id);
+    provider.dataKinds = ["text", "transcripts"];
+    registry.register(provider);
+    await expect(
+      registry.generate(provider.id, "private transcript", undefined, [
+        "text",
+        "transcripts",
+      ]),
+    ).rejects.toThrow("Explicit opt-in");
+    expect(generate).not.toHaveBeenCalled();
+    registry.grantConsent({
+      providerId: provider.id,
+      dataKinds: ["text", "transcripts"],
+      grantedAt: new Date().toISOString(),
+    });
+    await expect(
+      registry.generate(provider.id, "private transcript", undefined, [
+        "text",
+        "transcripts",
+      ]),
+    ).resolves.toBe("reviewed");
+    expect(generate).toHaveBeenCalledOnce();
+    registry.revokeConsent(provider.id);
+    await expect(
+      registry.generate(provider.id, "private transcript", undefined, [
+        "text",
+        "transcripts",
+      ]),
+    ).rejects.toThrow("Explicit opt-in");
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it("keeps ordinary generation's text disclosure required even with an empty additional-data list", async () => {
+    const registry = new ProviderRegistry();
+    const generate = vi.fn(async () => "unused");
+    const provider: LanguageProvider = {
+      id: "review.local",
+      name: "Local",
+      kind: "language",
+      execution: "remote",
+      endpoint: "https://review.example.invalid",
+      dataKinds: ["transcripts"],
+      generate,
+    };
+    registry.register(provider);
+    registry.grantConsent({
+      providerId: provider.id,
+      dataKinds: ["transcripts"],
+      grantedAt: new Date().toISOString(),
+    });
+    await expect(
+      registry.generate(provider.id, "private text", undefined, []),
+    ).rejects.toThrow("has not disclosed");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
   it("does not call a registered remote provider until consent is granted", async () => {
     const registry = new ProviderRegistry();
     const provider = vision();

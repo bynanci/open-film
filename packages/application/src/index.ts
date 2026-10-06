@@ -83,7 +83,27 @@ import {
 import { portableCacheUri } from "./portable-cache.js";
 import { isInside } from "./path-safety.js";
 import { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
+import { TranscriptEditor } from "./transcript-editor.js";
+import {
+  KnowledgeService,
+  type KnowledgeOptions,
+  type ReviewOptions,
+} from "./knowledge.js";
 export { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
+export { TranscriptEditor } from "./transcript-editor.js";
+export {
+  KnowledgeService,
+  type KnowledgeOptions,
+  type ReviewOptions,
+} from "./knowledge.js";
+export { GlobalGlossaryStore } from "./global-glossary.js";
+export { resolveUserDataDirectory } from "./user-data.js";
+export {
+  createReviewOwner,
+  ownsReviewOwner,
+  reviewOwnerState,
+} from "./review-owner.js";
+export type OpenFilmRuntimeOptions = KnowledgeOptions;
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -148,20 +168,35 @@ function atomicJsonSync(path: string, value: unknown): void {
 export class OpenFilmApplication {
   readonly catalog: ProjectCatalog;
   readonly intelligence: MediaIntelligence;
+  readonly transcriptEditor: TranscriptEditor;
+  readonly knowledge: KnowledgeService;
   private activeJobs = 0;
 
   private constructor(
     readonly directory: string,
     public project: OpenFilmProject,
+    runtime: OpenFilmRuntimeOptions = {},
   ) {
     this.catalog = new ProjectCatalog(directory);
-    this.intelligence = new MediaIntelligence(this.catalog);
+    try {
+      this.intelligence = new MediaIntelligence(this.catalog);
+      this.transcriptEditor = new TranscriptEditor(this);
+      this.knowledge = new KnowledgeService(
+        this.catalog,
+        this.transcriptEditor,
+        runtime,
+      );
+    } catch (error) {
+      this.catalog.close();
+      throw error;
+    }
   }
 
   static async create(
     directory: string,
     title: string,
     options: CreateFilmOptions = {},
+    runtime: OpenFilmRuntimeOptions = {},
   ): Promise<OpenFilmApplication> {
     const path = resolve(directory);
     const project = createProject(title);
@@ -188,10 +223,13 @@ export class OpenFilmApplication {
     for (const name of ["story", "timeline", "analysis", "cache", "exports"])
       await mkdir(join(canonical, name));
     atomicJsonSync(join(canonical, "project.json"), project);
-    return new OpenFilmApplication(canonical, project);
+    return new OpenFilmApplication(canonical, project, runtime);
   }
 
-  static async open(directory: string): Promise<OpenFilmApplication> {
+  static async open(
+    directory: string,
+    runtime: OpenFilmRuntimeOptions = {},
+  ): Promise<OpenFilmApplication> {
     const path = resolve(directory);
     safeDirectorySync(path);
     for (const name of ["project.json", "database.sqlite"]) {
@@ -211,7 +249,7 @@ export class OpenFilmApplication {
         mkdirSync(join(canonical, name));
       }
     }
-    const application = new OpenFilmApplication(canonical, project);
+    const application = new OpenFilmApplication(canonical, project, runtime);
     // Cache references are relative to the project, so its complete directory can move.
     for (const summary of application.catalog.iterateAssetSummaries()) {
       let asset = application.catalog.getAsset(summary.id)!;
@@ -265,6 +303,7 @@ export class OpenFilmApplication {
         });
     }
     for (const job of application.catalog.listJobs()) {
+      if (["language-review", "glossary-review"].includes(job.type)) continue;
       if (job.status === "running" || job.status === "queued")
         application.catalog.saveJob({
           ...job,
@@ -283,6 +322,7 @@ export class OpenFilmApplication {
           ],
         });
     }
+    application.knowledge.recoverInterruptedReviews();
     return application;
   }
 
@@ -315,7 +355,81 @@ export class OpenFilmApplication {
       );
     this.activeJobs++;
     try {
-      return await this.intelligence.run(assetId, options);
+      const promptHints: string[] = [];
+      let hintLength = 0;
+      if (
+        options.operation === "transcribe" &&
+        this.intelligence.supportsTranscriptionPromptHints
+      ) {
+        for (const entry of this.knowledge.glossaryList("effective")) {
+          const term = entry.replacement;
+          if (
+            !term.trim() ||
+            term.length > 200 ||
+            promptHints.includes(term) ||
+            // Multiline glossary text stays valid content. Compact provider
+            // hints must not turn that text into an invalid transcription request.
+            [...term].some(
+              (character) =>
+                character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+            )
+          )
+            continue;
+          if (promptHints.length >= 50 || hintLength + term.length > 2000)
+            continue;
+          promptHints.push(term);
+          hintLength += term.length;
+        }
+      }
+      return await this.intelligence.run(assetId, {
+        ...options,
+        ...(promptHints?.length ? { promptHints } : {}),
+      });
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  /** Review jobs share the project's lifecycle guard with import, analysis and rendering. */
+  async runKnowledgeReview(
+    assetId: string,
+    options: ReviewOptions & { source: "glossary" | "language" },
+  ): Promise<Job> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before starting another review.",
+        409,
+      );
+    if (!["glossary", "language"].includes(options.source))
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose glossary or language review.",
+      );
+    this.activeJobs++;
+    try {
+      return options.source === "glossary"
+        ? await this.knowledge.glossaryReview(assetId, options)
+        : await this.knowledge.languageReview(assetId, options);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  async retryKnowledgeReview(
+    jobId: string,
+    index: number,
+    options: ReviewOptions = {},
+  ): Promise<Job> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before retrying a review batch.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.knowledge.retryBatch(jobId, index, options);
     } finally {
       this.activeJobs--;
     }

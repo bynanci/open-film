@@ -173,7 +173,9 @@ it("rejects incomplete v2 catalogs without silently recreating missing analysis 
   );
   const database = new DatabaseSync(path);
   try {
-    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(2);
+    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(
+      CATALOG_SCHEMA_VERSION,
+    );
     expect(
       database.prepare("SELECT data FROM assets WHERE id='legacy'").get()?.data,
     ).toBe(test.asset);

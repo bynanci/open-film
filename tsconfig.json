@@ -40,7 +40,9 @@
     "apps/server/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "scripts/benchmark-transcript-productivity.ts",
+    "scripts/benchmark-review-selection.ts"
   ],
   "exclude": ["node_modules", "**/dist", "apps/desktop/src-tauri"]
 }

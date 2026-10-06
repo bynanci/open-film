@@ -181,11 +181,11 @@ export class ProviderRegistry {
     asset: MediaAsset,
     options?: TranscriptionOptions,
   ): Promise<TranscriptionResult> {
-    const provider = this.authorized(
-      providerId,
-      "transcription",
-      dataKindsForAsset(asset),
-    ) as TranscriptionProvider;
+    const dataKinds = dataKindsForAsset(asset);
+    if (options?.promptHints?.length) dataKinds.push("text");
+    const provider = this.authorized(providerId, "transcription", [
+      ...new Set(dataKinds),
+    ]) as TranscriptionProvider;
     return provider.transcribe(asset, options);
   }
 
@@ -193,9 +193,10 @@ export class ProviderRegistry {
     providerId: string,
     prompt: string,
     options?: OperationOptions,
+    dataKinds: ProviderDataKind[] = ["text"],
   ): Promise<string> {
     const provider = this.authorized(providerId, "language", [
-      "text",
+      ...new Set<ProviderDataKind>(["text", ...dataKinds]),
     ]) as LanguageProvider;
     return provider.generate(prompt, options);
   }

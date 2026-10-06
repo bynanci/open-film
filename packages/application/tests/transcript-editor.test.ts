@@ -1,0 +1,611 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, expect, it } from "vitest";
+import type { TranscriptCommand } from "@openfilm/core";
+import { hashFile } from "@openfilm/media";
+import { OpenFilmApplication } from "../src/index";
+
+const cleanups: Array<() => unknown | Promise<unknown>> = [];
+afterEach(async () => {
+  for (const action of cleanups.splice(0).reverse()) await action();
+});
+async function fixture() {
+  const root = await mkdtemp(
+    join(tmpdir(), "openfilm-transcript-application-"),
+  );
+  cleanups.push(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, "spoken # & 回憶.mp4");
+  await writeFile(
+    source,
+    "original source identity bytes; no media decoding is needed for editing",
+  );
+  const sourceHash = await hashFile(source);
+  const directory = join(root, "film.openfilm"),
+    runtime = { userDataDirectory: join(root, "user-data") };
+  let app = await OpenFilmApplication.create(
+    directory,
+    "Transcript isolation",
+    {},
+    runtime,
+  );
+  cleanups.push(() => app.close());
+  app.catalog.upsertAsset({
+    id: "source",
+    uri: pathToFileURL(source).href,
+    name: "spoken # & 回憶.mp4",
+    mediaType: "video",
+    duration: 20,
+    contentHash: sourceHash,
+    tags: [],
+    state: { favorite: true, locked: true },
+    metadata: { "user.notes": "keep" },
+  });
+  app.catalog.intelligence.replaceTranscript({
+    id: "provider-result",
+    assetId: "source",
+    language: "zh",
+    provenance: {
+      providerId: "test-local",
+      version: "1",
+      model: "protocol-fixture",
+      sourceHash,
+      createdAt: "2026-10-06T00:00:00Z",
+    },
+    segments: [
+      {
+        id: "a",
+        start: 0,
+        end: 4,
+        text: "我們去十河田湖",
+        words: [
+          { start: 0, end: 1, text: "我們" },
+          { start: 1, end: 2, text: "去" },
+          { start: 2, end: 4, text: "十河田湖" },
+        ],
+      },
+      { id: "b", start: 5, end: 7, text: "天氣很好" },
+      { id: "c", start: 8, end: 10, text: "youtube 很美" },
+    ],
+  });
+  const story = app.generateStory({
+    title: "Unrelated Story",
+    assetIds: ["source"],
+    targetDuration: 12,
+    maxDuration: 20,
+  });
+  app.compose(story.id);
+  await app.save();
+  return {
+    source,
+    sourceHash,
+    root,
+    directory,
+    runtime,
+    get app() {
+      return app;
+    },
+    async reopen() {
+      await app.close();
+      app = await OpenFilmApplication.open(directory, runtime);
+      return app;
+    },
+  };
+}
+it.each(["merge", "replace-all"] as const)(
+  "atomically rejects an oversized %s result without persisting edits, revisions, history or receipts",
+  async (kind) => {
+    const test = await fixture();
+    const provider = (await test.app.transcriptEditor.get("source")).document!;
+    provider.id = "length-limit-provider";
+    provider.segments[0]!.text = "a".repeat(kind === "merge" ? 10_000 : 1_000);
+    provider.segments[1]!.text = "b".repeat(10_000);
+    test.app.catalog.intelligence.replaceTranscript(provider);
+    let editor = test.app.transcriptEditor;
+    const initial = await editor.get("source");
+    const project = structuredClone(test.app.project);
+    const database = new DatabaseSync(join(test.directory, "database.sqlite"));
+    cleanups.push(() => database.close());
+    const evidence = () =>
+      [
+        "intelligence_transcripts",
+        "intelligence_segments",
+        "transcript_revision_metadata",
+        "transcript_editor_history",
+        "transcript_edit_requests",
+      ].map((table) =>
+        database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),
+      );
+    const before = evidence();
+    const command: TranscriptCommand =
+      kind === "merge"
+        ? { type: "merge-segment", segmentId: "a", direction: "next" }
+        : { type: "replace-all", query: "a", replacement: "x".repeat(21) };
+    const packet = {
+      baseRevision: initial.revision!,
+      requestId: "oversized-result",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "c",
+          text: "Must roll back",
+        } as const,
+        command,
+      ],
+    };
+    await expect(editor.edit("source", packet)).rejects.toMatchObject({
+      code: "transcript.invalidCommand",
+      status: 400,
+    });
+    expect(await editor.get("source")).toEqual(initial);
+    expect(evidence()).toEqual(before);
+    editor = (await test.reopen()).transcriptEditor;
+    expect(await editor.get("source")).toEqual(initial);
+    await expect(editor.edit("source", packet)).rejects.toMatchObject({
+      code: "transcript.invalidCommand",
+    });
+    expect(evidence()).toEqual(before);
+    expect(test.app.project.stories).toEqual(project.stories);
+    expect(test.app.project.timelines).toEqual(project.timelines);
+    expect(await hashFile(test.source)).toBe(test.sourceHash);
+    const recovered = await editor.edit("source", {
+      baseRevision: initial.revision!,
+      requestId: "bounded-recovery",
+      commands: [{ type: "replace-text", segmentId: "a", text: "Recovered" }],
+    });
+    expect(recovered.document!.segments[0]!.text).toBe("Recovered");
+    expect(recovered.canUndo).toBe(true);
+  },
+);
+it("persists boundary-sized Unicode replace-all as one undo unit through reopen and redo", async () => {
+  const test = await fixture();
+  const provider = (await test.app.transcriptEditor.get("source")).document!;
+  provider.id = "unicode-boundary-provider";
+  provider.segments[0]!.text = "😀" + "Kk".repeat(4_999) + "K";
+  provider.segments[1]!.text = "k".repeat(10_000);
+  provider.segments[2]!.text = "青森 k 湖";
+  test.app.catalog.intelligence.replaceTranscript(provider);
+  let editor = test.app.transcriptEditor;
+  const initial = await editor.get("source");
+  const found = await editor.search("source", {
+    query: "k",
+    caseSensitive: false,
+  });
+  expect(found.matches[0]!.ranges[0]).toEqual({ start: 2, end: 3 });
+  const applied = await editor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "boundary-replace-all",
+    commands: [
+      {
+        type: "replace-all",
+        query: "k",
+        replacement: "湖泊",
+        caseSensitive: false,
+      },
+    ],
+  });
+  expect(applied.document!.segments[0]!.text).toBe("😀" + "湖泊".repeat(9_999));
+  expect(applied.document!.segments[0]!.text.length).toBe(20_000);
+  expect(applied.document!.segments[1]!.text.length).toBe(20_000);
+  expect(applied.document!.segments[2]!.text).toBe("青森 湖泊 湖");
+  expect(applied.document!.segments[0]!.words).toEqual(
+    initial.document!.segments[0]!.words,
+  );
+  editor = (await test.reopen()).transcriptEditor;
+  expect((await editor.get("source")).document).toEqual(applied.document);
+  const undone = await editor.undo("source", {
+    baseRevision: applied.revision!,
+    requestId: "undo-boundary-all",
+  });
+  expect(undone.document!.segments).toEqual(initial.document!.segments);
+  expect(undone.canUndo).toBe(false);
+  expect(undone.canRedo).toBe(true);
+  const redone = await editor.redo("source", {
+    baseRevision: undone.revision!,
+    requestId: "redo-boundary-all",
+  });
+  editor = (await test.reopen()).transcriptEditor;
+  expect((await editor.get("source")).document!.segments).toEqual(
+    redone.document!.segments,
+  );
+  expect(redone.document!.segments).toEqual(applied.document!.segments);
+  expect((await editor.revisions("source")).total).toBe(5);
+});
+it("keeps oversized legacy provider transcripts readable and permits explicit bounded cleanup", async () => {
+  const test = await fixture();
+  const provider = (await test.app.transcriptEditor.get("source")).document!;
+  provider.id = "legacy-oversized-provider";
+  provider.segments[0]!.text = "湖".repeat(20_001);
+  test.app.catalog.intelligence.replaceTranscript(provider);
+  let editor = (await test.reopen()).transcriptEditor;
+  const initial = await editor.get("source");
+  expect(initial.document!.segments[0]!.text).toBe(provider.segments[0]!.text);
+  const cleaned = await editor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "legacy-explicit-cleanup",
+    commands: [{ type: "replace-text", segmentId: "a", text: "青森的湖" }],
+  });
+  await editor.undo("source", {
+    baseRevision: cleaned.revision!,
+    requestId: "undo-legacy-cleanup",
+  });
+  editor = (await test.reopen()).transcriptEditor;
+  expect((await editor.get("source")).document!.segments).toEqual(
+    initial.document!.segments,
+  );
+});
+it.each([
+  ["天氣", "風景"],
+  ["湖", "湖"],
+])(
+  "preserves untouched oversized provider evidence through replacement, undo and reopen (%s → %s)",
+  async (query, replacement) => {
+    const test = await fixture();
+    const provider = (await test.app.transcriptEditor.get("source")).document!;
+    provider.id = "legacy-unaffected-provider";
+    provider.segments[0]!.text = "湖".repeat(20_001);
+    provider.segments[0]!.alignmentState = "original";
+    test.app.catalog.intelligence.replaceTranscript(provider);
+    let editor = test.app.transcriptEditor;
+    const initial = await editor.get("source");
+    const applied = await editor.edit("source", {
+      baseRevision: initial.revision!,
+      requestId: "replace-preserve-unaffected",
+      commands: [{ type: "replace-all", query, replacement }],
+    });
+    expect(applied.document!.segments[0]).toEqual(
+      initial.document!.segments[0],
+    );
+    expect(applied.document!.segments[1]!.text).toBe(
+      query === "天氣" ? "風景很好" : "天氣很好",
+    );
+    editor = (await test.reopen()).transcriptEditor;
+    expect((await editor.get("source")).document!.segments).toEqual(
+      applied.document!.segments,
+    );
+    const undone = await editor.undo("source", {
+      baseRevision: applied.revision!,
+      requestId: "undo-preserve-unaffected",
+    });
+    expect(undone.document!.segments).toEqual(initial.document!.segments);
+    editor = (await test.reopen()).transcriptEditor;
+    expect((await editor.get("source")).document!.segments).toEqual(
+      initial.document!.segments,
+    );
+  },
+);
+it.each([
+  [true, "\u0000"],
+  [false, "\u0000"],
+  [true, "\ud800"],
+  [false, "\ud800"],
+] as const)(
+  "recovers canonical legacy text without weakening edit validation (caseSensitive=%s, invalid=%j)",
+  async (caseSensitive, invalid) => {
+    const test = await fixture();
+    const original = await test.app.transcriptEditor.get("source");
+    const texts = [
+      `記憶😀 ${invalid}OpenFilm`,
+      `記憶😀 Open${invalid}Film`,
+      `記憶😀 OpenFilm${invalid}OpenFilm`,
+    ];
+    test.app.catalog.intelligence.replaceTranscript({
+      ...original.document!,
+      id: "nul-application-provider",
+      segments: original.document!.segments.map((segment, index) => ({
+        ...segment,
+        text: texts[index]!,
+      })),
+    });
+    const project = structuredClone(test.app.project);
+    let editor = test.app.transcriptEditor;
+    const initial = await editor.get("source");
+    const database = new DatabaseSync(join(test.directory, "database.sqlite"));
+    cleanups.push(() => database.close());
+    const receipts = () =>
+      database
+        .prepare("SELECT COUNT(*) AS count FROM transcript_edit_requests")
+        .get()!.count;
+    const receiptsBefore = receipts();
+    const query = caseSensitive ? "OpenFilm" : "oPeNfIlM";
+    const found = await editor.search("source", { query, caseSensitive });
+    expect(found.totalMatches).toBe(3);
+    const match = found.matches[1]!;
+    expect(match).toMatchObject({ segmentId: "c", text: texts[2] });
+    const range = match.ranges[1]!;
+    expect(range).toEqual({ start: 14, end: 22 });
+    await expect(
+      editor.edit("source", {
+        baseRevision: found.revision!,
+        requestId: "replace-after-nul",
+        commands: [
+          {
+            type: "replace-match",
+            segmentId: match.segmentId,
+            ...range,
+            expected: match.text.slice(range.start, range.end),
+            replacement: "Edited",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "transcript.invalidCommand" });
+    await expect(
+      editor.edit("source", {
+        baseRevision: found.revision!,
+        requestId: "reject-legacy-replace-all",
+        commands: [
+          { type: "replace-all", query, replacement: "All", caseSensitive },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "transcript.invalidCommand" });
+    expect(await editor.get("source")).toEqual(initial);
+    expect(receipts()).toBe(receiptsBefore);
+    const cleaned = await editor.edit("source", {
+      baseRevision: initial.revision!,
+      requestId: "explicit-cleanup",
+      commands: initial.document!.segments.map((segment) => ({
+        type: "replace-text",
+        segmentId: segment.id,
+        text: segment.text.split(invalid).join(""),
+      })),
+    });
+    const cleanFound = await editor.search("source", { query, caseSensitive });
+    expect(cleanFound.totalMatches).toBe(4);
+    const cleanMatch = cleanFound.matches[2]!;
+    const cleanRange = cleanMatch.ranges[1]!;
+    expect(cleanRange).toEqual({ start: 13, end: 21 });
+    const replaced = await editor.edit("source", {
+      baseRevision: cleanFound.revision!,
+      requestId: "replace-clean-match",
+      commands: [
+        {
+          type: "replace-match",
+          segmentId: cleanMatch.segmentId,
+          ...cleanRange,
+          expected: cleanMatch.text.slice(cleanRange.start, cleanRange.end),
+          replacement: "Edited",
+        },
+      ],
+    });
+    await expect(
+      editor.edit("source", {
+        baseRevision: found.revision!,
+        requestId: "stale-nul-edit",
+        commands: [
+          { type: "replace-all", query, replacement: "Wrong", caseSensitive },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "transcript.revisionConflict" });
+    const all = await editor.edit("source", {
+      baseRevision: replaced.revision!,
+      requestId: "replace-all-around-nul",
+      commands: [
+        { type: "replace-all", query, replacement: "All", caseSensitive },
+      ],
+    });
+    expect(all.document!.segments.map((segment) => segment.text)).toEqual([
+      "記憶😀 All",
+      "記憶😀 All",
+      "記憶😀 AllEdited",
+    ]);
+    expect(
+      (await editor.search("source", { query, caseSensitive })).totalMatches,
+    ).toBe(0);
+    const undone = await editor.undo("source", {
+      baseRevision: all.revision!,
+      requestId: "undo-nul-all",
+    });
+    const beforeCleanup = await editor.undo("source", {
+      baseRevision: undone.revision!,
+      requestId: "undo-nul-match",
+    });
+    expect(beforeCleanup.document!.segments).toEqual(
+      cleaned.document!.segments,
+    );
+    await editor.undo("source", {
+      baseRevision: beforeCleanup.revision!,
+      requestId: "undo-explicit-cleanup",
+    });
+    editor = (await test.reopen()).transcriptEditor;
+    expect((await editor.get("source")).document!.segments).toEqual(
+      initial.document!.segments,
+    );
+    const restored = await editor.search("source", { query, caseSensitive });
+    expect(restored.matches).toEqual(found.matches);
+    expect(test.app.project.stories).toEqual(project.stories);
+    expect(test.app.project.timelines).toEqual(project.timelines);
+    expect(await hashFile(test.source)).toBe(test.sourceHash);
+  },
+);
+
+it("supports shared edits/search/replace/split/merge and independently restores text history across project close/reopen", async () => {
+  const test = await fixture();
+  let editor = test.app.transcriptEditor;
+  const initial = await editor.get("source");
+  const edit = await editor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "manual-edit",
+    commands: [
+      { type: "replace-text", segmentId: "a", text: "我們去十和田湖" },
+    ],
+  });
+  expect(edit.sourceHash).toBe(test.sourceHash);
+  expect(edit.revisionInfo!.source).toBe("user");
+  const split = await editor.edit("source", {
+    baseRevision: edit.revision!,
+    requestId: "split",
+    commands: [
+      {
+        type: "split-segment",
+        segmentId: "a",
+        newSegmentId: "a-right",
+        splitTime: 2,
+        cursorOffset: 3,
+      },
+    ],
+  });
+  expect(split.document!.segments[0]!.end).toBe(2);
+  const merged = await editor.edit("source", {
+    baseRevision: split.revision!,
+    requestId: "merge",
+    commands: [
+      { type: "merge-segment", segmentId: "a-right", direction: "previous" },
+    ],
+  });
+  expect(merged.document!.segments[0]!.text).toBe("我們去十和田湖");
+  const search = await editor.search("source", {
+    query: "十和田",
+    caseSensitive: true,
+  });
+  expect(search).toMatchObject({
+    totalMatches: 1,
+    totalSegments: 1,
+    revision: merged.revision,
+  });
+  expect(search.matches[0]).toMatchObject({
+    segmentId: "a",
+    start: 0,
+    ranges: [{ start: 3, end: 6 }],
+  });
+  const replaced = await editor.edit("source", {
+    baseRevision: merged.revision!,
+    requestId: "replace-all",
+    commands: [
+      {
+        type: "replace-all",
+        query: "youtube",
+        replacement: "YouTube",
+        caseSensitive: false,
+      },
+    ],
+  });
+  expect(replaced.document!.segments[2]!.text).toBe("YouTube 很美");
+  const undone = await editor.undo("source", {
+    baseRevision: replaced.revision!,
+    requestId: "undo-all",
+  });
+  expect(undone.document!.segments[2]!.text).toBe("youtube 很美");
+  editor = (await test.reopen()).transcriptEditor;
+  const reopened = await editor.get("source");
+  expect(reopened.revision).toBe(undone.revision);
+  expect(reopened.canRedo).toBe(true);
+  const redone = await editor.redo("source", {
+    baseRevision: reopened.revision!,
+    requestId: "redo-all",
+  });
+  expect(redone.document!.segments[2]!.text).toBe("YouTube 很美");
+  expect(redone.document!.segments[0]!.alignmentState).toBe("text-edited");
+});
+it("never edits media bytes, project story/composition/trims/locks or UI/content locale when correcting text", async () => {
+  const test = await fixture();
+  const originalProject = structuredClone(test.app.project),
+    originalAsset = test.app.catalog.getAsset("source"),
+    originalBytes = await readFile(test.source),
+    initial = await test.app.transcriptEditor.get("source");
+  const saved = await test.app.transcriptEditor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "isolation",
+    commands: [
+      {
+        type: "replace-text",
+        segmentId: "a",
+        text: "Correct this transcript only",
+      },
+      { type: "delete-segment", segmentId: "b" },
+    ],
+  });
+  expect(saved.document!.segments).toHaveLength(2);
+  expect(test.app.project).toEqual(originalProject);
+  expect(test.app.catalog.getAsset("source")).toEqual(originalAsset);
+  expect(await readFile(test.source)).toEqual(originalBytes);
+  await test.reopen();
+  expect(test.app.project.stories).toEqual(originalProject.stories);
+  expect(test.app.project.timelines).toEqual(originalProject.timelines);
+  expect(test.app.catalog.getAsset("source")!.state.locked).toBe(true);
+});
+it("checks actual source identity before reading or mutating historical transcripts", async () => {
+  const test = await fixture();
+  const original = await test.app.transcriptEditor.get("source");
+  await writeFile(test.source, "new content with different size and identity");
+  await expect(test.app.transcriptEditor.get("source")).rejects.toMatchObject({
+    code: "source.changed",
+  });
+  await expect(
+    test.app.transcriptEditor.edit("source", {
+      baseRevision: original.revision!,
+      requestId: "changed-source",
+      commands: [{ type: "delete-segment", segmentId: "a" }],
+    }),
+  ).rejects.toMatchObject({ code: "source.changed" });
+  expect(
+    test.app.catalog.transcripts.getFull("source", test.sourceHash)!
+      .revisionInfo.id,
+  ).toBe(original.revision);
+});
+it("requires request IDs, rejects unknown application fields, and exposes structured revision conflicts without altering saved state", async () => {
+  const test = await fixture();
+  const initial = await test.app.transcriptEditor.get("source");
+  await expect(
+    test.app.transcriptEditor.edit("source", {
+      baseRevision: initial.revision!,
+      commands: [{ type: "delete-segment", segmentId: "a" }],
+    } as never),
+  ).rejects.toMatchObject({ code: "transcript.invalidCommand" });
+  await expect(
+    test.app.transcriptEditor.edit("source", {
+      baseRevision: initial.revision!,
+      requestId: "invalid",
+      commands: [{ type: "delete-segment", segmentId: "a" }],
+      filesystem: "forbidden",
+    } as never),
+  ).rejects.toMatchObject({ code: "transcript.invalidCommand" });
+  const saved = await test.app.transcriptEditor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "valid",
+    commands: [
+      { type: "replace-text", segmentId: "a", text: "Manual text wins" },
+    ],
+  });
+  await expect(
+    test.app.transcriptEditor.edit("source", {
+      baseRevision: initial.revision!,
+      requestId: "stale",
+      commands: [{ type: "delete-segment", segmentId: "b" }],
+    }),
+  ).rejects.toMatchObject({ code: "transcript.revisionConflict", status: 409 });
+  expect((await test.app.transcriptEditor.get("source")).revision).toBe(
+    saved.revision,
+  );
+});
+it("dedupes retried undo and revision selection after reopen without resurrecting an old revision token", async () => {
+  const test = await fixture();
+  let editor = test.app.transcriptEditor;
+  const initial = await editor.get("source");
+  const edited = await editor.edit("source", {
+    baseRevision: initial.revision!,
+    requestId: "edit",
+    commands: [{ type: "delete-segment", segmentId: "a" }],
+  });
+  const undoInput = {
+    baseRevision: edited.revision!,
+    requestId: "undo-lost-response",
+  };
+  const undo = await editor.undo("source", undoInput);
+  expect(undo.revision).not.toBe(initial.revision);
+  editor = (await test.reopen()).transcriptEditor;
+  const replay = await editor.undo("source", undoInput);
+  expect(replay.revision).toBe(undo.revision);
+  expect(replay.acknowledgedRevision).toBe(undo.revision);
+  const revisions = await editor.revisions("source", { limit: 2 });
+  expect(revisions.total).toBe(3);
+  expect(revisions.revisions).toHaveLength(2);
+  const selected = await editor.selectRevision("source", {
+    baseRevision: undo.revision!,
+    requestId: "restore-provider",
+    revisionId: initial.revision!,
+  });
+  expect(selected.revision).not.toBe(initial.revision);
+  expect(selected.document!.segments[0]!.text).toBe("我們去十河田湖");
+});

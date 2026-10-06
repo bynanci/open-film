@@ -81,6 +81,32 @@ composition seconds and applies snapping, trim and split through the existing
 TimelineCommand history. Analysis does not rewrite Story or composition. See
 [media intelligence](media-intelligence.md) and [reference decisions](vidscribe-reference.md).
 
+Catalog v3 adds immutable transcript revision metadata, durable command receipts
+and independent text undo/redo, portable project glossary entries and review
+suggestions/batches. Core owns validated `TranscriptCommand` operations and
+alignment state; application owns source verification, jobs and optional review
+provider orchestration. Text edits never dispatch composition commands. Undo and
+revision selection issue fresh tokens, protecting stale suggestion checks against
+revision reuse. Accepted text commands and their suggestion audit commit in one
+SQLite transaction. v1/v2 migrations retain original provider results and roll
+back on failure.
+
+Catalog v4 rebuilds only the transcript segment index inside the migration
+transaction. JSON-encoded opaque ID keys avoid SQLite UTF-8 collisions for
+isolated surrogate code units without changing original segment JSON, timings,
+words, revisions, receipts or review evidence. v1/v2/v3 upgrades and malformed
+legacy-data rollback share the same migration boundary.
+
+Global terminology uses a validated, atomic, backed-up user-data file outside the
+project. Trusted runtime options configure its path and an optional generic
+LanguageProvider; project data and HTTP bodies cannot configure executables or
+destinations. Bounded review prompts contain declared text/transcript context only.
+The registry checks current disclosure and remote consent before every batch.
+Completed batches remain durable on failure, cancellation and restart. Desktop
+adds a paged Transcript mode within Edit rather than a second timeline engine.
+See [text commands](transcript-editing.md), [terminology](glossary.md) and
+[review evidence](review-suggestions.md).
+
 Filesystem discovery yields supported file candidates lazily and avoids symlink
 traversal. Import runs at most three file tasks concurrently. Each task inspects
 media, normalizes metadata, fingerprints content, generates derived outputs, and
@@ -171,6 +197,12 @@ are blocked while import/render jobs run. The Vue
 workspace runs on port 1420 during development. Errors use non-success responses
 with actionable text. Remote provider ports exist; the default application does
 not instantiate a remote provider.
+
+Desktop App owns the project/generation-guarded Activity snapshot. Transcript and
+Suggestions consume this shared input instead of independently reading full job
+history. The parent retains its existing poll, and older unfinished review jobs
+remain available for recovery. Future job-history pagination must preserve those
+recovery and fast-completion guarantees.
 
 Tauri supplies native folder selection and can spawn a configured local Node
 service, stopping its owned child on exit. It does not replace the Node media and

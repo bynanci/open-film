@@ -19,6 +19,11 @@ point. Zoom changes the visible source range; follow-playhead is a view option.
 Hover preview is opt-in and only seeks while paused. Moving a pointer over a
 waveform must not unexpectedly start playback or alter a cut.
 
+Transcript text corrections mark word alignment `text-edited`. Segment seeking
+remains available, while shared snapping excludes those historical words and the
+Precision UI explains why word-specific controls are unavailable. Corrected text
+does not silently retime a clip. See [Transcript editing](transcript-editing.md).
+
 ## Trim and split
 
 Drag the in/out handles or set an edge at the playhead. A drag previews a range

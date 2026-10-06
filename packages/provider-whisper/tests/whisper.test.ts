@@ -107,9 +107,42 @@ describe("local Whisper provider protocol (not speech accuracy)", () => {
       new URL("./test_whisper_runner.py", import.meta.url),
     );
     const output = await runProcess(python, ["-B", tests]);
-    expect(output.stderr).toContain("Ran 8 tests");
+    expect(output.stderr).toContain("Ran 9 tests");
     expect(output.stderr).toContain("OK");
   });
+  it("passes bounded Unicode terminology as process data without rewriting output", async () => {
+    const path = await script(
+      "hints.py",
+      `import json,sys
+assert json.loads(sys.argv[sys.argv.index('--prompt-hints')+1]) == ['台積電', 'OpenFilm # & $(literal)']
+print(json.dumps({'event':'result','result':${JSON.stringify(result)}}))
+`,
+    );
+    const output = await provider(path).transcribe(asset, {
+      promptHints: ["台積電", "OpenFilm # & $(literal)"],
+    });
+    expect(output.text).toBe("A memory");
+    expect(provider().capabilities.supportsPromptHints).toBe(true);
+    expect(await readdir(work)).toEqual([]);
+  });
+  it.each(
+    [
+      Array(51).fill("term"),
+      [""],
+      ["x".repeat(201)],
+      Array(11).fill("x".repeat(200)),
+      [["term"]],
+      ["bad\nline"],
+    ].map((hints) => [hints]),
+  )(
+    "rejects invalid terminology context before launching a child (%j)",
+    async (hints) => {
+      await expect(
+        provider().transcribe(asset, { promptHints: hints as string[] }),
+      ).rejects.toMatchObject({ code: "request.invalid" });
+      expect(await readdir(work)).toEqual([]);
+    },
+  );
   it("registers locally, extracts actual PCM, returns timed words, and removes temporary media", async () => {
     const local = provider();
     expect(await local.available()).toEqual({

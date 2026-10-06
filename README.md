@@ -4,7 +4,7 @@ An open-source, local-first, story-first media composer. OpenFilm turns a local
 collection of photos, video and audio into organized memories, a story and an
 editable film. Original files are never modified.
 
-**The current development tree includes the Global Product Experience and i18n round.** It combines a Vue desktop workspace,
+**The current development tree includes OpenFilm 0.3.1 Transcript Productivity.** It builds on the localized product workflow and combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
@@ -56,6 +56,15 @@ scene analysis; optional local Whisper requires an explicitly supplied model.
 No model is bundled or downloaded during recognition. See [media intelligence](docs/media-intelligence.md),
 [transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
 This development milestone does not certify camera/GPU or real ASR quality.
+
+**0.3.1 Transcript Productivity** adds **Edit → Transcript**: correct text,
+split/merge segments, search/replace and undo independently of the film timeline.
+Immutable revisions preserve recognition evidence and mark edited word timing
+as stale. Project/global terminology produces offline suggestions to preview,
+accept or skip; optional language review uses the existing provider consent
+boundary. See [transcript editing](docs/transcript-editing.md),
+[glossary](docs/glossary.md), [review suggestions](docs/review-suggestions.md) and
+the [validation record](docs/validation-transcript-productivity.md).
 
 ## Requirements
 

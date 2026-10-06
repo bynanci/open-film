@@ -34,14 +34,15 @@ def engine_version():
     return "faster-whisper/" + importlib.metadata.version("faster-whisper") + "; ctranslate2/" + importlib.metadata.version("ctranslate2")
 
 
-def perform(model_class, model_path, audio, language, execution, duration):
+def perform(model_class, model_path, audio, language, execution, duration, prompt_hints=None):
     emit("stage", stage="loading-model", execution=execution)
     model = model_class(str(model_path), device="cuda" if execution == "gpu" else "cpu",
                         compute_type="float16" if execution == "gpu" else "int8",
                         local_files_only=True)
     emit("stage", stage="transcribing", execution=execution)
     iterator, information = model.transcribe(str(audio), language=None if language == "auto" else language,
-                                            word_timestamps=True, vad_filter=True, beam_size=5)
+                                            word_timestamps=True, vad_filter=True, beam_size=5,
+                                            initial_prompt="; ".join(prompt_hints) if prompt_hints else None)
     segments = []
     # Iterating is part of inference and must be inside the GPU fallback boundary.
     for item in iterator:
@@ -65,17 +66,17 @@ def perform(model_class, model_path, audio, language, execution, duration):
             "segments": segments, "execution": execution, "model": model_path.name, "version": engine_version()}
 
 
-def transcribe(model_class, model_path, audio, language, execution, duration):
+def transcribe(model_class, model_path, audio, language, execution, duration, prompt_hints=None):
     if execution == "cpu":
-        return perform(model_class, model_path, audio, language, "cpu", duration)
+        return perform(model_class, model_path, audio, language, "cpu", duration, prompt_hints)
     try:
-        return perform(model_class, model_path, audio, language, "gpu", duration)
+        return perform(model_class, model_path, audio, language, "gpu", duration, prompt_hints)
     except Exception as error:
         # No partial GPU transcript is published; CPU retries the whole source once.
         reason = type(error).__name__ + ": " + str(error)[:1500]
         emit("fallback", reason=reason, execution="cpu")
         gc.collect()
-    result = perform(model_class, model_path, audio, language, "cpu", duration)
+    result = perform(model_class, model_path, audio, language, "cpu", duration, prompt_hints)
     result["fallbackReason"] = reason
     return result
 
@@ -86,6 +87,7 @@ def main():
     parser.add_argument("--audio")
     parser.add_argument("--language", choices=["auto", "zh", "en", "ja"], default="auto")
     parser.add_argument("--execution", choices=["auto", "cpu", "gpu"], default="auto")
+    parser.add_argument("--prompt-hints", default="[]")
     parser.add_argument("--probe", action="store_true")
     args = parser.parse_args()
     try:
@@ -112,7 +114,13 @@ def main():
             duration = stream.getnframes() / stream.getframerate()
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError("The extracted audio is empty.")
-        result = transcribe(WhisperModel, path, audio, args.language, args.execution, duration)
+        hints = json.loads(args.prompt_hints)
+        if (not isinstance(hints, list) or len(hints) > 50 or
+            any(not isinstance(hint, str) or not hint.strip() or len(hint) > 200 or
+                any(ord(char) < 32 or ord(char) == 127 for char in hint) for hint in hints) or
+            sum(len(hint) for hint in hints) > 2000):
+            raise ValueError("Invalid or oversized terminology context.")
+        result = transcribe(WhisperModel, path, audio, args.language, args.execution, duration, hints)
         emit("result", result=result)
         return 0
     except Exception as error:

@@ -16,6 +16,7 @@ parser.add_argument("--model", required=True)
 parser.add_argument("--audio")
 parser.add_argument("--language", default="auto")
 parser.add_argument("--execution", default="auto")
+parser.add_argument("--prompt-hints", default="[]")
 args = parser.parse_args()
 if args.probe:
     emit("available", available=True, model="fixture-protocol-not-asr", version="fixture-protocol/1")

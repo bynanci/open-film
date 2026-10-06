@@ -93,6 +93,13 @@ class RunnerTest(unittest.TestCase):
             runner.transcribe(Model, self.root, self.root / "audio.wav", "ja", "auto", 1)
         self.assertEqual(len(calls), 2)
 
+    def test_prompt_hints_are_context_only_and_survive_cpu_fallback(self):
+        Model, calls = self.model(fail_stream=True)
+        result = runner.transcribe(Model, self.root, self.root / "audio.wav", "zh", "auto", 1, ["台積電", "OpenFilm # &"])
+        self.assertEqual([call["transcribe"]["initial_prompt"] for call in calls], ["台積電; OpenFilm # &"] * 2)
+        self.assertEqual(result["text"], "complete CPU")
+        self.assertNotIn("台積電", result["text"])
+
     def test_requested_languages_are_passed_without_text_rewriting(self):
         for language in ["zh", "en", "ja"]:
             Model, calls = self.model()

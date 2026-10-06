@@ -89,6 +89,25 @@ export default {
       invalidOutput:
         "語音辨識結果的文字或時間資料無效，因此未儲存。請檢查辨識工具設定後再試一次。",
     },
+    transcript: {
+      revisionConflict:
+        "逐字稿在編輯期間已有更新。本機草稿已保留；請先載入較新版本。",
+      segmentNotFound: "此逐字稿段落已不存在，請重新載入目前版本。",
+      alignmentStale: "文字已修改，逐字時間僅供參考，不可作為精準對齊。",
+      invalidCommand: "此逐字稿修改無效，請檢查所選文字、段落與分割時間。",
+    },
+    glossary: {
+      storageBusy:
+        "另一個 OpenFilm 視窗或程序正在更新全域詞彙表，請等候完成後再試。",
+      entryConflict: "詞彙已變更或與另一項詞彙衝突，請重新載入詞彙表後再試。",
+    },
+    review: {
+      providerUnavailable:
+        "語言審閱供應者無法使用或尚需文字傳送同意，仍可使用詞彙建議。",
+      suggestionStale:
+        "此建議產生後，逐字稿已有修改。請先產生新建議再套用校正。",
+      invalidOutput: "審閱結果無效，未套用任何修改。先前完成的有效建議仍保留。",
+    },
     operation: {
       failed:
         "未能完成這項操作。已儲存的內容仍然安全。請再試一次，或查看技術詳情。",

@@ -153,5 +153,57 @@ from model, camera and hardware certification.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
-Transcript text editing, Glossary, Review Suggestions, Geometry/Vision, Highlights
-and Captions are deferred; no interface-only completion claims are made for them.
+Geometry/Vision, Highlights and Captions remain deferred. Transcript productivity
+is tracked separately below; interface-only work is not completion.
+
+## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
+
+Evidence: [validation record](docs/validation-transcript-productivity.md).
+
+- [x] Let people correct, split, merge and delete transcript text without changing media or the film.
+- [x] Preserve provider evidence and manual revisions without silently claiming stale word timing is precise.
+- [x] Search and replace occurrences, including one-step Undo/Redo for Replace All.
+- [x] Recover autosaved edits after restart without duplicate requests or overwriting newer revisions.
+- [x] Remember exact preferred terms globally or with the portable project, with project precedence.
+- [x] Find glossary corrections offline and review, preview, accept or skip durable suggestions.
+- [x] Offer optional bounded LanguageProvider review with consent, streaming evidence, cancellation and retry.
+- [x] Reject stale or invalid suggestions and atomically preserve accepted correction audit evidence.
+- [x] Share transcript/terminology/review commands across Desktop, API and CLI.
+- [x] Verify localized, accessible Transcript UX and preserve Precision/Story behavior.
+- [x] Pass complete local regression gates and address reproduced correctness review findings.
+- [x] Preserve global terms across competing processes; recover interrupted/failed review batches with offline Retry/Skip.
+- [x] Keep delayed transcription in its owning project and preserve valid multiline terms without invalid provider hints.
+- [x] Keep earlier unfinished review recovery reachable after starting a new review; bound complete provider prompts without truncating evidence.
+- [x] Preserve existing opaque segment IDs through search, keyboard edits and reopen; allow reviewable, undoable empty-term removal.
+- [x] Preserve disabled terminology when saving edits and release missing-suggestion recovery without discarding uncertain requests.
+- [x] Refresh short transcriptions without losing restored drafts; discard obsolete reconciliation reads and retain idempotent save retry.
+- [x] Keep suggestion polling bounded on large transcripts while retaining source validation and stale-revision protection.
+- [x] Return shrinking transcripts to a valid page across edits, history, recovery and revision restore.
+- [x] Offer Remember only for the selected segment's current correction; reverted text cannot create a stale glossary rule.
+- [x] Preserve opaque segment IDs with exact JSON transport and transactional v4 indexing without losing legacy evidence.
+- [x] Read reserved asset IDs through canonical transcript CLI grammar while retaining existing actions.
+- [x] Wait for owned transcript reads before navigation; retain startup recovery bytes through disposal and exact receipt retry.
+- [x] Match Unicode case variants consistently across glossary and transcript search without changing original text offsets or expanding characters.
+- [x] Reserve review acceptance before waiting for saves so rapid clicks cannot strand recovery receipts.
+- [x] Validate maximum-size review selections with linear work while preserving exact IDs and privacy checks.
+- [x] Save transcript drafts before batch retry without rebasing immutable review evidence.
+- [x] Share the project-owned jobs snapshot instead of polling full history separately from each editor.
+- [x] Search canonical legacy text across NUL and surrogate boundaries without losing offsets or inventing replacement-character matches.
+- [x] Preserve full multiline glossary terms and valid long remembered corrections through review and reopen.
+- [x] Return editable revision tokens from both CLI transcript read forms while preserving intelligence fields.
+- [x] Reserve Undo, Redo and revision restore before pending saves so competing actions cannot replace an exact recovery receipt.
+- [x] Wrap Next/Previous through the complete paged transcript search result set.
+- [x] Allow leaving an initially failed clean transcript read while retaining all recovery drafts and uncertain receipts.
+- [x] Keep providers without prompt hints independent of optional glossary storage failures.
+- [x] Preserve the user's chosen search occurrence through explicit refresh and delayed timers so Replace Current cannot silently target another match.
+- [x] Reject oversized Replace All expansion before allocation and keep merged text within the editable limit.
+- [x] Preserve accepted suggestion audit state when another process concurrently skips it.
+- [x] Preserve valid opaque language provider identities throughout review evidence and reopen.
+- [x] Recognize confirmed preview/export cancellation through overlapping Job reads and keep late replies owned by their original project and Job.
+- [x] Reserve confirmed transcript draft Discard through an in-flight save and saved-page reload, blocking competing edits and waiting navigation.
+- [x] Filter the current transcript page literally without changing the global search occurrence cursor.
+- [x] Bind remote review consent to the configured provider identity, displayed destination and all declared data kinds while sending only bounded text and terminology.
+- [x] Claim a retry batch and its job owner atomically before preparation, with exact rollback and protection from obsolete attempts.
+- [x] Recover review work only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
+- [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
+- [ ] Manual: actual Resolve QA remains a separate workstation gate.

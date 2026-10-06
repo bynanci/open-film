@@ -97,6 +97,11 @@ export class MediaIntelligence {
     this.provider = provider;
   }
 
+  /** Read the active capability without probing model availability. */
+  get supportsTranscriptionPromptHints(): boolean {
+    return this.provider.capabilities?.supportsPromptHints === true;
+  }
+
   async providers() {
     const provider = this.provider;
     const enabled = this.registry
@@ -168,6 +173,10 @@ export class MediaIntelligence {
       );
     this.identities.set(asset.id, { stamp, hash });
     return hash;
+  }
+
+  sourceIdentity(assetId: string): Promise<string> {
+    return this.identity(this.asset(assetId));
   }
 
   async read(
@@ -292,6 +301,8 @@ export class MediaIntelligence {
       notify();
       const sourceHash = await this.identity(asset, options.signal, true);
       if (options.operation === "transcribe") {
+        const expectedRevision =
+          this.catalog.transcripts.get(assetId, sourceHash).revision ?? null;
         const provider = this.provider;
         const stages = [
           "extracting-audio",
@@ -306,6 +317,9 @@ export class MediaIntelligence {
         try {
           result = await this.registry.transcribe(provider.id, asset, {
             ...options,
+            promptHints: provider.capabilities?.supportsPromptHints
+              ? options.promptHints
+              : undefined,
             onStage: (stage) => {
               if (
                 !acceptingProviderProgress ||
@@ -393,7 +407,9 @@ export class MediaIntelligence {
         job.fallbackReason = metadata.fallbackReason;
         notify();
         checkAbort(options.signal);
-        this.catalog.intelligence.replaceTranscript(document);
+        this.catalog.intelligence.replaceTranscript(document, {
+          expectedRevision,
+        });
       } else if (options.operation === "waveform") {
         job.stage = "generating-waveform";
         notify();

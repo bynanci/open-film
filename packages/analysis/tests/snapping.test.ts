@@ -13,6 +13,63 @@ const candidates: SnapCandidate[] = [
 ];
 
 describe("generic source-time snapping", () => {
+  it("retains segment seek boundaries while excluding stale word timing after any text correction", () => {
+    const transcript: TranscriptDocument = {
+      id: "edited",
+      assetId: "source",
+      provenance: {
+        providerId: "local",
+        version: "1",
+        sourceHash: "hash",
+        createdAt: "2026-10-06T00:00:00Z",
+      },
+      segments: [
+        {
+          id: "stale",
+          start: 0,
+          end: 3,
+          text: "Corrected text",
+          alignmentState: "text-edited",
+          words: [{ start: 1, end: 2, text: "Original text" }],
+        },
+        {
+          id: "original",
+          start: 4,
+          end: 7,
+          text: "Unchanged words",
+          words: [{ start: 5, end: 6, text: "words" }],
+        },
+        {
+          id: "realigned",
+          start: 8,
+          end: 11,
+          text: "Realigned words",
+          alignmentState: "realigned",
+          words: [{ start: 9, end: 10, text: "words" }],
+        },
+      ],
+    };
+    const candidates = candidatesFromIntelligence([], transcript);
+    expect(
+      candidates.filter((candidate) => candidate.type === "transcript-segment"),
+    ).toHaveLength(6);
+    expect(
+      candidates
+        .filter((candidate) => candidate.type === "word")
+        .map((candidate) => candidate.time),
+    ).toEqual([5, 6, 9, 10]);
+    expect(
+      snapTime(1.02, candidates, { threshold: 0.1, enabledTypes: ["word"] })
+        .snapped,
+    ).toBe(false);
+    expect(
+      snapTime(0.02, candidates, {
+        threshold: 0.1,
+        enabledTypes: ["transcript-segment"],
+      }),
+    ).toMatchObject({ time: 0, snapped: true });
+    expect(transcript.segments[0]!.words).toHaveLength(1);
+  });
   it("chooses the nearest scene, marker or word within a source-time threshold", () => {
     for (const [time, expected] of [
       [3.1, "scene"],

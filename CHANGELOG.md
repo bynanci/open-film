@@ -2,6 +2,21 @@
 
 Changes use release versions; the project schema has its own version.
 
+## Unreleased — 0.3.1 Transcript Productivity
+
+- Added shared transcript commands, revisions, independent Undo/Redo, paged
+  search/replace and durable autosave in Edit's Transcript mode.
+- Preserve original recognition evidence and exclude text-edited word timing
+  from precision snapping. Re-transcription cannot overwrite concurrent edits.
+- Added portable project and user-owned global terminology, offline glossary
+  suggestions and revision-bound, auditable Accept/Skip review actions.
+- Added optional consented LanguageProvider batches with partial-result
+  persistence, cancellation, retry and strict text-only context boundaries.
+- Catalog v3 migrates v1/v2 transactionally; project/composition schema is unchanged.
+
+Real ASR/GPU/camera quality, native installation and actual Resolve import remain
+manual gates. Captions, vision, reframing and derived films remain deferred.
+
 ## Unreleased — Real Editing Workflow
 
 - Added a story-first graphical timeline with clip/beat editing, locks, scoped

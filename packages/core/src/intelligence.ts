@@ -25,6 +25,10 @@ export interface TranscriptSegment {
   end: number;
   text: string;
   words?: TranscriptWord[];
+  /** Missing on pre-0.3.1 analysis is equivalent to original. */
+  alignmentState?: "original" | "text-edited" | "realigned";
+  /** The authority used for segment boundaries after a split. */
+  timingSource?: "provider" | "playhead" | "word-boundary" | "estimated";
 }
 
 export interface TranscriptDocument {
@@ -217,6 +221,16 @@ export function validateAnalysisProvenance(value: unknown): AnalysisProvenance {
   return provenance(value, "provenance");
 }
 
+/** Provider and historical segment IDs are opaque nonblank strings. References
+ * preserve this established ingestion contract; newly generated command IDs use
+ * their own bounded identifier validation. */
+export function validateTranscriptSegmentId(
+  value: unknown,
+  path = "transcript.segment.id",
+): string {
+  return text(value, path);
+}
+
 export function validateTranscriptDocument(
   value: unknown,
   options: IntelligenceValidationOptions = {},
@@ -230,7 +244,7 @@ export function validateTranscriptDocument(
     (entry, index) => {
       const p = `${path}.segments[${index}]`;
       const segment = record(entry, p);
-      const id = text(segment.id, `${p}.id`);
+      const id = validateTranscriptSegmentId(segment.id, `${p}.id`);
       if (ids.has(id)) fail(`${p}.id`, "segment IDs must be unique");
       ids.add(id);
       const start = number(segment.start, `${p}.start`, previousStart, maximum);
@@ -268,6 +282,24 @@ export function validateTranscriptDocument(
         end,
         text: text(segment.text, `${p}.text`),
         ...(words === undefined ? {} : { words }),
+        ...(segment.alignmentState === undefined
+          ? {}
+          : {
+              alignmentState: enumValue(
+                segment.alignmentState,
+                ["original", "text-edited", "realigned"] as const,
+                `${p}.alignmentState`,
+              ),
+            }),
+        ...(segment.timingSource === undefined
+          ? {}
+          : {
+              timingSource: enumValue(
+                segment.timingSource,
+                ["provider", "playhead", "word-boundary", "estimated"] as const,
+                `${p}.timingSource`,
+              ),
+            }),
       };
     },
   );
@@ -280,6 +312,16 @@ export function validateTranscriptDocument(
     provenance: provenance(data.provenance, `${path}.provenance`),
     segments,
   };
+}
+
+function enumValue<T extends string>(
+  value: unknown,
+  values: readonly T[],
+  path: string,
+): T {
+  if (typeof value !== "string" || !values.includes(value as T))
+    fail(path, `expected one of ${values.join(", ")}`);
+  return value as T;
 }
 
 export function validateWaveformData(value: unknown): WaveformData {
