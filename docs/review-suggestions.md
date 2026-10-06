@@ -157,7 +157,6 @@ use `/api/review/suggestions/:id/accept|skip`; batch status/retry/skip use
 `/api/review/jobs/:jobId/batches`. Invalid retry requests leave completed jobs
 unchanged. Project switching waits for active jobs and in-flight text mutations.
 
-
 ## Interrupted review ownership and recovery
 
 Review jobs persist an execution owner so reopening a project cannot assume every
