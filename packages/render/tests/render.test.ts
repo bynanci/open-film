@@ -306,9 +306,19 @@ describe("real FFmpeg preview renderer", () => {
     directories.push(directory);
     const source = join(directory, "geometry.png");
     await runProcess("ffmpeg", [
-      "-v", "error", "-nostdin",
-      "-f", "lavfi", "-i", "color=red:s=80x40",
-      "-frames:v", "1", "-threads", "1", "-y", source,
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=80x40",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      source,
     ]);
     const asset = {
       id: "geometry",
@@ -324,17 +334,21 @@ describe("real FFmpeg preview renderer", () => {
       id: "geometry-cut",
       storyId: "story",
       duration: 1,
-      tracks: [{
-        id: "video",
-        type: "video",
-        clips: [{
-          id: "geometry-clip",
-          assetId: asset.id,
-          timelineStart: 0,
-          timelineDuration: 1,
-          transform: { scale: 0.5, rotation: 0, x: 20, y: 0 },
-        }],
-      }],
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "geometry-clip",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+              transform: { scale: 0.5, rotation: 0, x: 20, y: 0 },
+            },
+          ],
+        },
+      ],
     };
     const output = join(directory, "geometry-preview.mp4");
     await new FFmpegRenderer().render(composition, [asset], output, {
@@ -345,9 +359,19 @@ describe("real FFmpeg preview renderer", () => {
     const sample = async (x: number, y: number) =>
       (
         await runProcess("ffmpeg", [
-          "-v", "error", "-ss", "0.2", "-i", output,
-          "-vf", `crop=1:1:${x}:${y},format=rgb24`,
-          "-frames:v", "1", "-f", "rawvideo", "-",
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-vf",
+          `crop=1:1:${x}:${y},format=rgb24`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
         ])
       ).stdout;
     // Contain-fit is 160x80; scale .5 becomes 80x40 and +20 frame px moves
@@ -357,5 +381,4 @@ describe("real FFmpeg preview renderer", () => {
     expect((await sample(130, 45))[0]).toBeGreaterThan(180);
     expect((await sample(145, 45))[0]).toBeLessThan(30);
   });
-
 });
