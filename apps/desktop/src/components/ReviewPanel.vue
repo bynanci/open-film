@@ -398,7 +398,6 @@ async function recoverInterrupted(job: Job) {
     busy.value = false;
   }
 }
-
 async function batchAction(batch: ReviewBatch, action: "retry" | "skip") {
   if (uncertainAcceptance.value) return;
   await reserve(async ({ current }) => {
@@ -626,10 +625,7 @@ onBeforeUnmount(() => {
         {{ t("transcript.revokeConsent") }}
       </button>
     </template>
-    <p
-      v-if="active && !activeRecovery?.manualRecoveryAllowed"
-      role="status"
-    >
+    <p v-if="active && !activeRecovery?.manualRecoveryAllowed" role="status">
       {{ t("transcript.reviewRunning") }}
       {{ formatNumber(Math.round((active.progress ?? 0) * 100)) }}%
     </p>
