@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GLOSSARY_REPLACEMENT_LIMIT,
+  GLOSSARY_SOURCE_LIMIT,
   validateTranscriptCommand,
   type Job,
   type TranscriptCommand,
@@ -201,6 +203,8 @@ async function fixture(initial?: TranscriptEditorState, initialize = true) {
     ...vue,
     ...lifecycle,
     ...queue,
+    GLOSSARY_REPLACEMENT_LIMIT,
+    GLOSSARY_SOURCE_LIMIT,
     api,
     defineProps: () => props,
     defineEmits: () => vi.fn(),

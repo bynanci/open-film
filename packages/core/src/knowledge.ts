@@ -19,6 +19,9 @@ export type GlossaryInput = Pick<
   Partial<Pick<GlossaryEntry, "id" | "enabled" | "caseSensitive">>;
 
 export const GLOSSARY_ENTRY_LIMIT = 1000;
+/** Text limits count UTF-16 code units, matching browser maxlength. */
+export const GLOSSARY_SOURCE_LIMIT = 512;
+export const GLOSSARY_REPLACEMENT_LIMIT = 4096;
 export const REVIEW_PAGE_LIMIT = 100;
 export const TRANSCRIPT_TEXT_LIMIT = 20000;
 
@@ -137,8 +140,13 @@ export function validateGlossaryEntry(value: unknown): GlossaryEntry {
     throw new Error("Invalid glossary scope or matching flags.");
   return {
     id: identifier(data.id),
-    source: string(data.source, "Glossary source", 512),
-    replacement: string(data.replacement, "Glossary replacement", 4096, true),
+    source: string(data.source, "Glossary source", GLOSSARY_SOURCE_LIMIT),
+    replacement: string(
+      data.replacement,
+      "Glossary replacement",
+      GLOSSARY_REPLACEMENT_LIMIT,
+      true,
+    ),
     scope: data.scope as GlossaryEntry["scope"],
     enabled: data.enabled,
     caseSensitive: data.caseSensitive,

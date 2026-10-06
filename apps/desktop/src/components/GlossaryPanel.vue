@@ -8,7 +8,11 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
-import type { GlossaryEntry } from "@openfilm/core";
+import {
+  GLOSSARY_REPLACEMENT_LIMIT,
+  GLOSSARY_SOURCE_LIMIT,
+  type GlossaryEntry,
+} from "@openfilm/core";
 import { api } from "../api";
 import { errorDetail, localizeError } from "../i18n";
 const props = defineProps<{
@@ -169,20 +173,24 @@ onBeforeUnmount(() => {
     <form class="transcript-glossary-form" @submit.prevent="save">
       <label class="editor-field"
         >{{ t("transcript.sourceTerm")
-        }}<input
+        }}<textarea
           v-model="source"
-          maxlength="512"
+          :maxlength="GLOSSARY_SOURCE_LIMIT"
+          rows="2"
           :disabled="unavailable"
           required
-      /></label>
+        />
+      </label>
       <label class="editor-field"
         >{{ t("transcript.replacementTerm")
-        }}<input
+        }}<textarea
           v-model="replacement"
-          maxlength="512"
+          :maxlength="GLOSSARY_REPLACEMENT_LIMIT"
+          rows="3"
           :disabled="unavailable"
           :placeholder="t('transcript.emptyReplacementHint')"
-      /></label>
+        />
+      </label>
       <label class="transcript-check"
         ><input
           v-model="caseSensitive"

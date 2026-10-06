@@ -9,13 +9,15 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
-import type {
-  Clip,
-  Job,
-  MediaAsset,
-  TranscriptCommand,
-  TranscriptRevision,
-  TranscriptSegment,
+import {
+  GLOSSARY_REPLACEMENT_LIMIT,
+  GLOSSARY_SOURCE_LIMIT,
+  type Clip,
+  type Job,
+  type MediaAsset,
+  type TranscriptCommand,
+  type TranscriptRevision,
+  type TranscriptSegment,
 } from "@openfilm/core";
 import {
   api,
@@ -153,8 +155,8 @@ const rememberableCorrection = computed(() => {
     correction.segmentId === selectedId.value &&
     selected.value?.text === correction.after &&
     correction.before !== correction.after &&
-    correction.before.length <= 512 &&
-    correction.after.length <= 512 &&
+    correction.before.length <= GLOSSARY_SOURCE_LIMIT &&
+    correction.after.length <= GLOSSARY_REPLACEMENT_LIMIT &&
     correction.after.trim()
     ? correction
     : null;
@@ -1736,6 +1738,10 @@ onBeforeUnmount(() => {
   color: var(--of-text-secondary);
   width: 100%;
 }
+.transcript-workspace :deep(.transcript-term > span:not([aria-hidden])),
+.transcript-workspace :deep(.transcript-term strong) {
+  white-space: pre-wrap;
+}
 .transcript-workspace :deep(.transcript-suggestion) {
   padding: 14px 0;
   border-bottom: 1px solid var(--of-border-subtle);
@@ -1789,7 +1795,8 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .transcript-workspace :deep(.editor-field input),
-.transcript-workspace :deep(.editor-field select) {
+.transcript-workspace :deep(.editor-field select),
+.transcript-workspace :deep(.editor-field textarea) {
   min-width: 0;
   max-width: 100%;
 }
