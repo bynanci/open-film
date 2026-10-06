@@ -532,9 +532,10 @@ function measureWorkspace() {
   cancelAnimationFrame(layoutFrame);
   layoutFrame = requestAnimationFrame(() => {
     if (sourceScreenElement.value) {
-      const bounds = sourceScreenElement.value.getBoundingClientRect();
-      if (bounds.width > 0 && bounds.height > 0)
-        sourceViewport.value = { width: bounds.width, height: bounds.height };
+      const width = sourceScreenElement.value.clientWidth;
+      const height = sourceScreenElement.value.clientHeight;
+      if (width > 0 && height > 0)
+        sourceViewport.value = { width, height };
     }
     const workspace =
       editMode.value === "precision"
