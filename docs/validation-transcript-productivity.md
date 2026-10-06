@@ -23,11 +23,11 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36` passed all required local regression
-gates. The complete browser run passed **58 tests** (34 existing, 24 new) with no
-failures, skips or retries. The full unit/integration suite passed **886 tests in
-77 files**. Documentation finalization follows these runs; current-head GitHub
-checks remain the separate merge-readiness evidence.
+`2e3e9651dfb3995149681414215a5d1caa9b8242` passed all required local regression
+gates. The complete browser run passed **59 tests** with no failures, skips or
+retries. The full unit/integration suite passed **935 tests in 80 files**.
+Documentation finalization follows these runs; current-head GitHub checks and
+Codex review remain separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 886 tests / 77 files                                                                                 |
+| `pnpm test`             | Passed: 935 tests / 80 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 58 tests, 10.9 minutes, one worker and zero retries                                                  |
+| `pnpm test:e2e`         | Passed: 59 tests, 11.2 minutes, one worker and zero retries                                                  |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -535,6 +535,130 @@ run; earlier unsuffixed metadata belongs to the preceding `acc8958` run and is
 not evidence for the new head. Final documentation formatting, new-head CI and
 review remain distinct checks.
 
+## Eighth Codex review
+
+The documentation head `d33398a250cc5b10829463a791423e9ca7f5a757` passed
+both [push CI](https://github.com/bynanci/open-film/actions/runs/37483523848)
+and [PR CI](https://github.com/bynanci/open-film/actions/runs/37483534434).
+Their check annotations report 58 browser passes in 9.5 and 10.8 minutes
+respectively; both native jobs passed. Its completed Codex review nevertheless
+identified one P1 and three P2 correctness cases:
+
+- Replace All constructs a potentially enormous expanded segment before checking
+  the 20,000 UTF-16-unit command text limit.
+- Merge can persist combined text exceeding that editable limit.
+- A concurrent Skip can overwrite an already accepted suggestion's audit status.
+- Valid opaque LanguageProvider IDs can be rejected in review evidence after
+  successful provider invocation.
+
+The four fixes have focused regression evidence and the fresh complete local
+regression recorded below. At that review, 29 earlier threads were resolved;
+the new four required implementation and regression fixes. Exact-head published
+CI and review are separate gates; earlier green CI does not establish them.
+
+Replace All measures its projected length from actual UTF-16 match spans before
+constructing output, then joins bounded pieces instead of repeatedly rebuilding
+expanded text. Merge validates the joined text before mutation. A guarded
+20,000-by-20,000 reproduction stops at the first unsafe slice before the fix,
+never allocating hundreds of millions of characters. Eighteen new tests cover
+exact bounds, CJK/astral/case-folded spans, atomic rejection across five SQLite
+tables, one-step history and reopen. All 62 focused cases pass. Unaffected or
+exactly unchanged legacy/provider segments retain their original text and
+alignment evidence; changed output remains subject to the editing limit.
+
+Suggestion lifecycle writes compare their observed status in SQL and reject a
+lost race with the existing stale-suggestion conflict. A deterministic test
+finishes a real pending read, commits normal acceptance in another Node process,
+then resumes Skip. Before the fix it overwrote accepted audit fields; afterward
+the full accepted row, revision, request receipt and replay/reopen state survive.
+Three new tests and all 69 focused catalog/application cases pass, including
+pending/stale idempotent Skip.
+
+Only provider evidence adopts the SDK's exact nonblank identifier contract.
+Thirteen tests failed eleven cases before and pass afterward; 49 combined focused
+cases pass. Long, control-bearing, NUL and surrogate IDs retain exact identity
+through batch/source records, dedupe, Accept/Skip, receipt replay and reopen.
+Remote consent and minimal text disclosure remain enforced. No application,
+registry, SDK or schema change was needed; rule/glossary/generated IDs stay strict.
+Independent read-only review reran both new suites, with all 16 cases passing and
+no reproduced P1/P2 in these two fixes.
+
+The new Traditional Chinese browser case passed on production/test head
+`6b9d3a047b49487d36c6ed098eb21a974471410c` in 18.7 seconds without skips or
+retries. Oversized Merge/Replace All receive `transcript.invalidCommand`, preserve
+saved text/revisions/film/source hashes and retain their exact failed draft packet.
+Explicit Discard confirmation reloads the saved revision; subsequent valid edits,
+replacement and reopen succeed. It does not silently discard other unsaved work.
+
+The first complete 59-case run at `6b9d3a0` passed 58 cases and failed the existing
+preview-render cancellation case: the cancelled render also displayed a failure
+alert. Intermediate progress updates missed this early failure; the final log,
+trace and failed-run archive retain the actual result. It is not a full-suite pass.
+Trace inspection identified overlapping Job reads: the render handler's own
+cancelled response was superseded for shared-view publication while a newer poll
+was pending. Reading the still-running shared snapshot then misclassified the
+successful cancellation. A controlled execution of the actual App functions
+reproduced that ordering without a transport failure or retry. Both the correction
+and a new-head complete rerun were required; their evidence follows.
+
+The App correction returns the reader's own snapshot while retaining the generation
+guard for shared publication, and verifies the requested cancellation's exact Job
+ID and operation-owned project. Render and export cannot treat an unrelated old
+cancelled Job as their success. An independent additional reproduction found that
+a successful cancel acknowledgement followed by an ancillary status-read failure
+could clear that requested ID. The acknowledged intent now survives that read;
+polling refreshes it later. Rejected cancellation and actual operation failures
+remain visible. That injected read failure is a separate regression condition;
+all Job reads in the original failing trace returned HTTP 200.
+
+Twelve actual-App-function tests pass, including overlapping reads, project changes,
+unrelated historical cancellations, failed cancel requests and acknowledged
+cancel/read failure for both render and export. Independent read-only review reran
+all twelve without a material finding. The real browser cancellation test holds
+actual HTTP response timing to force the original overlap, verifies the unchanged
+response status/body and retains its zero-alert assertion. No retry, timeout
+increase or replacement HTTP response is part of the correction.
+
+At `52472391f769e3c9b32f8696c807bc356c1b4c75`, the eight non-browser local
+gates and built CLI smoke pass, including 932 unit/integration tests in 80 files.
+At that intermediate point, fresh focused and complete browser checks remained
+pending; the subsequent focused attempt below exposed a test-readiness issue.
+
+The first focused attempt on that head passed the size-recovery case but failed
+before issuing cancellation: the timing gate held the first running-Job snapshot
+before the Cancel button appeared. Its 40.3-second result and trace are retained.
+The test now waits for that existing control before activating its overlap gate,
+without increasing timeouts or retries. This is a test-readiness correction, not
+evidence of a second render failure.
+
+A further independent execution of normal App render/cancel/Switch/Open functions
+reproduced a separate late-response ownership issue. An earlier render finished
+while its cancel acknowledgement remained pending; switching and opening another
+project then starting and cancelling a new render succeeded. The old cancellation
+failure could clear the new Job's requested ID and publish an obsolete error.
+Cancellation must retain its originating project and Job ownership across both
+successful and failed responses. The same normal Switch/Open reproduction passes
+afterward, retaining the new request and cancellation notice without an old error.
+The final App unit suite passes all 15 cases, including same-project newer requests
+and late acknowledgements that must not read another project's Jobs. Genuine owned
+cancel failures still surface. Independent read-only review found no remaining
+material issue in this correction.
+
+Both focused real browser cases pass at
+`2e3e9651dfb3995149681414215a5d1caa9b8242` in 27.9 seconds: actual render
+cancellation under forced overlapping reads, and oversized transcript rejection
+with explicit draft recovery. There are no skipped tests or retries. The first
+focused failure, before/after ownership reproduction and original full-run failure
+remain separate retained evidence.
+
+The complete final rerun at `2e3e965` passed all nine local gates, built CLI smoke,
+935 unit/integration tests in 80 files and all 59 browser cases in 11.2 minutes,
+with zero failures, skips or retries. Its owned `.log.head`, `.log.testsha`,
+`.log.sourcesha`, `.log.exitstatus` and `.log.elapsed-seconds` sidecars bind the run
+and frozen App/test files. Earlier failed full and focused runs are preserved
+separately. Final documentation formatting, new-head published CI and Codex review
+remain distinct checks.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -560,8 +684,11 @@ search and suggestion seeking; DOM visibility alone is insufficient.
 
 The final rerun retained 36 named Transcript, Glossary and Suggestions captures.
 Manual inspection covered all four 1280×720 Suggestions screens and additional
-Transcript/Glossary captures. Controls and wrapped text remained readable with
-vertical scrolling and no new horizontal clipping. One small English Transcript
+Transcript/Glossary captures. Navigation and wrapped CJK/pseudo text remained
+readable without new horizontal clipping in the inspected views. Some Transcript
+and Suggestions controls fall below their internal scrollport boundaries; static
+captures do not establish their scroll reachability or simultaneous visibility.
+Browser interactions are separate functional evidence. One small English Transcript
 capture still contains Chromium's native buffering indicator despite successful
 decoded-frame, seeking and player-geometry assertions. This snapshot limitation
 is retained in the evidence; it is not continuous-playback or hardware QA.
@@ -575,16 +702,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36`, Node 24.14.0, SQLite 3.51.2,
+`2e3e9651dfb3995149681414215a5d1caa9b8242`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **7.89–39.00 ms**, with a recorded maximum **39.95 ms**. Case-sensitive,
+  **8.11–38.86 ms**, with a recorded maximum **38.96 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **75.42 ms** and is outside the search interval.
+- Database seeding took **86.12 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **11.61 ms** matcher compilation and **41.26 ms** scanning, including
+  warm-up, **13.02 ms** matcher compilation and **42.88 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache
@@ -595,9 +722,9 @@ For maximum-size review selection, run
 `pnpm exec tsx scripts/benchmark-review-selection.ts output.json`. This generated
 SQLite fixture selects 10,000 IDs in reverse order and verifies 100 cancelled
 batches retain transcript order. On the same shared host, at
-`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36`, five preparation samples had a
-**23.23 ms** median and **20.82–31.61 ms** range. Setup took **59.61 ms**, including
-**47.84 ms** seeding, outside the interval. Preparation includes source
+`2e3e9651dfb3995149681414215a5d1caa9b8242`, five preparation samples had a
+**21.40 ms** median and **19.78–28.44 ms** range. Setup took **56.02 ms**, including
+**44.82 ms** seeding, outside the interval. Preparation includes source
 verification, transcript loading, selection validation, partitioning and initial
 queued-job persistence; later batch writes, cancellation and full review are
 excluded. The output records exact source/runtime/fixture hashes. This is not

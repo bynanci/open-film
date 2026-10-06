@@ -54,6 +54,9 @@ command, and records acceptance and its resulting revision in the same catalog
 transaction. It is undoable. Lost response retries use the same request ID without
 applying twice. Desktop retains an uncertain-acceptance receipt and shows Retry
 even if the accepted card has disappeared or the application has restarted.
+Lifecycle writes compare the status observed before updating. A concurrent Skip
+cannot overwrite acceptance committed by another process; it reports a stale
+suggestion conflict and preserves accepted audit evidence and the applied revision.
 Reconciliation preserves any pending manual draft as a conflict. If a retry
 receives a definitive missing-suggestion response, such as after opening
 a restored project copy, that receipt is cleared and navigation is released.
@@ -68,6 +71,12 @@ changed since generation, Accept reports
 Undo creates a new revision token, so it cannot accidentally revive old evidence.
 Skip changes review status without changing text. Original suggestions remain
 auditable.
+
+Provider evidence preserves the registered provider's original opaque nonblank
+ID, including long or escaped identifiers. The application captures that identity;
+provider output cannot choose its own source. Rule, glossary and generated IDs
+retain their stricter validation, and remote consent still uses the exact
+registered provider identity.
 
 Stale evidence may also be skipped to dismiss it. Accepted items stay accepted;
 Undo changes transcript history rather than rewriting the review audit.

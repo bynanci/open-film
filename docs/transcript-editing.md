@@ -13,6 +13,14 @@ transcript segment. Deletion removes text only. Search provides matching segment
 and occurrences, next/previous navigation and source seeking. Replace changes one
 occurrence; Replace All is one command and one undo step.
 
+Text replacements and merged text are limited to 20,000 UTF-16 units. Merge checks
+its combined text; Replace All checks the projected result before allocating expanded text.
+Oversized commands leave the saved transcript revision unchanged. Existing
+provider evidence is preserved rather than truncated to this editing limit.
+Failed commands remain in the recovery draft. Discarding that draft requires
+confirmation and reloads the saved revision; earlier unsaved edits are never
+silently removed.
+
 Transcript has its own Undo/Redo history. Keyboard actions follow the focused
 workspace; typing spaces in a text field does not start playback. The editor saves
 commands with a debounce and displays saving, saved, failed or conflict state.
