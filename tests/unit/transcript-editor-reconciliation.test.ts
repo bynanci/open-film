@@ -46,6 +46,7 @@ type Editor = {
   error: { value: unknown };
   notice: { value: string };
   hasPending: { value: boolean };
+  historyBusy: { value: boolean };
 };
 let factory: (dependencies: Record<string, unknown>) => Editor;
 const cleanup: (() => void | Promise<unknown>)[] = [];
@@ -88,7 +89,7 @@ async function fixture(segmentCount = 1) {
   const source = join(directory, "spoken.wav");
   await writeFile(source, "Identity-only fixture, not speech recognition.");
   const sourceHash = await hashFile(source);
-  const app = await OpenFilmApplication.create(
+  let app = await OpenFilmApplication.create(
     join(directory, "film.openfilm"),
     "Reconciliation",
     {},
@@ -247,12 +248,145 @@ async function fixture(segmentCount = 1) {
     holdRead,
     newProviderRevision,
     createEditor,
+    reopenProject: async () => {
+      const path = app.directory;
+      app.close();
+      app = await OpenFilmApplication.open(path, {
+        userDataDirectory: join(directory, "user-data"),
+      });
+      return app;
+    },
     dispose: initial.dispose,
     loseAcknowledgment: () => {
       loseNextAcknowledgment = true;
     },
   };
 }
+
+describe("transcript history operation ownership", () => {
+  it.each(["undo", "redo"] as const)(
+    "preserves the first Undo receipt when rapid %s overlaps its pending manual save and the committed history ACK is lost",
+    async (secondDirection) => {
+      const test = await fixture();
+      const original = await test.app.transcriptEditor.get("asset");
+      const manualAck = deferred<void>(),
+        manualCommitted = deferred<void>(),
+        historyAck = deferred<void>(),
+        historyCommitted = deferred<void>();
+      test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+        const result = await test.app.transcriptEditor.edit(assetId, input);
+        manualCommitted.resolve();
+        await manualAck.promise;
+        return result;
+      });
+      test.api.transcriptHistory.mockImplementationOnce(
+        async (assetId, direction, input) => {
+          const result = await test.app.transcriptEditor[direction](
+            assetId,
+            input,
+          );
+          historyCommitted.resolve();
+          await historyAck.promise;
+          throw new TypeError(`Committed ${result.revision} history ACK lost`);
+        },
+      );
+      expect(test.editor.command(test.correction)).toBe(true);
+      const first = test.editor.history("undo"),
+        second = test.editor.history(secondDirection);
+      let navigationSettled = false;
+      const navigation = test.editor.flush().then((result) => {
+        navigationSettled = true;
+        return result;
+      });
+      await manualCommitted.promise;
+      const reservedBeforePreparation = test.editor.historyBusy.value;
+      manualAck.resolve();
+      await historyCommitted.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const navigationSettledBeforeHistoryAck = navigationSettled;
+      const retained = JSON.parse(test.storage.get(test.storageKey)!);
+      const [assetId, direction, sent] =
+        test.api.transcriptHistory.mock.calls[0]!;
+      historyAck.resolve();
+      const results = await Promise.all([first, second, navigation]);
+      expect(retained.receipt).toEqual({ ...sent, direction });
+      expect(reservedBeforePreparation).toBe(true);
+      expect(navigationSettledBeforeHistoryAck).toBe(false);
+      expect(results).toEqual([false, false, false]);
+      expect(test.editor.historyBusy.value).toBe(false);
+      expect(test.editor.hasPending.value).toBe(true);
+      expect(test.api.transcriptHistory).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(test.storage.get(test.storageKey)!).receipt).toEqual(
+        retained.receipt,
+      );
+      test.dispose();
+      const reopenedApp = await test.reopenProject();
+      const reopened = test.createEditor();
+      expect(await reopened.editor.load()).toBe(true);
+      expect(reopened.editor.status.value).toBe("saved");
+      expect(reopened.editor.hasPending.value).toBe(false);
+      expect(reopened.editor.state.value?.document?.segments).toEqual(
+        original.document?.segments,
+      );
+      expect(reopened.editor.state.value?.canRedo).toBe(true);
+      expect(test.api.transcriptHistory.mock.calls).toEqual([
+        [assetId, direction, sent],
+        [assetId, direction, sent],
+      ]);
+      expect(
+        (await reopenedApp.transcriptEditor.revisions("asset")).total,
+      ).toBe(3);
+      expect(test.storage.has(test.storageKey)).toBe(false);
+      expect(await reopened.editor.flush()).toBe(true);
+      expect(
+        reopenedApp.catalog.transcripts.getFull(
+          "asset",
+          test.sourceHash,
+          original.revision,
+        )?.document,
+      ).toEqual(original.document);
+    },
+  );
+
+  it("releases a failed preparatory save without dispatching or replacing its exact pending receipt", async () => {
+    const test = await fixture();
+    test.api.editTranscript.mockRejectedValue(
+      new ApiError("Save unavailable", 503, { code: "operation.failed" }),
+    );
+    expect(test.editor.command(test.correction)).toBe(true);
+    expect(await test.editor.history("undo")).toBe(false);
+    const retained = test.storage.get(test.storageKey);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.editor.hasPending.value).toBe(true);
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+    expect(await test.editor.history("redo")).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+  });
+
+  it("does not dispatch history after disposal during its preparatory save", async () => {
+    const test = await fixture();
+    const ack = deferred<void>(),
+      committed = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+      const result = await test.app.transcriptEditor.edit(assetId, input);
+      committed.resolve();
+      await ack.promise;
+      return result;
+    });
+    expect(test.editor.command(test.correction)).toBe(true);
+    const changing = test.editor.history("undo");
+    await committed.promise;
+    test.dispose();
+    ack.resolve();
+    expect(await changing).toBe(false);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+  });
+});
 
 describe("transcript reconciliation ownership", () => {
   it.each(["old-snapshot", "read-error"])(

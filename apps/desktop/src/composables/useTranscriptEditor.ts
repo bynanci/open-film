@@ -41,6 +41,7 @@ export function useTranscriptEditor(
   let pending: TranscriptCommand[] = [];
   let receipt: Receipt | null = null;
   let saving: Promise<boolean> | null = null;
+  let historyMutation: Promise<boolean> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let readGeneration = 0;
@@ -236,6 +237,9 @@ export function useTranscriptEditor(
     }
   }
   function flush(): Promise<boolean> {
+    return historyMutation ?? flushQueue();
+  }
+  function flushQueue(): Promise<boolean> {
     clearTimeout(timer);
     if (disposed) return Promise.resolve(false);
     if (loading) {
@@ -246,8 +250,8 @@ export function useTranscriptEditor(
       ]).then((outcome) => {
         if (disposed) return false;
         if (outcome.superseded || operation.generation !== readGeneration)
-          return flush();
-        return outcome.result ? flush() : false;
+          return flushQueue();
+        return outcome.result ? flushQueue() : false;
       });
     }
     if (saving) return saving;
@@ -306,21 +310,32 @@ export function useTranscriptEditor(
     });
     return saving;
   }
-  async function history(direction: "undo" | "redo") {
-    if (historyBusy.value || !(await flush()) || !state.value?.revision)
-      return false;
+  function history(direction: "undo" | "redo"): Promise<boolean> {
+    if (disposed || historyBusy.value || historyMutation)
+      return Promise.resolve(false);
+    // Reserve preparation and receipt delivery before publishing the busy state.
+    // Navigation waits for this operation; its own saves use the queue directly.
+    const operation = Promise.resolve()
+      .then(async () => {
+        if (!(await flushQueue()) || disposed || !state.value?.revision)
+          return false;
+        receipt = {
+          baseRevision: state.value.revision,
+          requestId: crypto.randomUUID(),
+          direction,
+        };
+        retain();
+        return flushQueue();
+      })
+      .finally(() => {
+        if (historyMutation === operation) {
+          historyMutation = null;
+          historyBusy.value = false;
+        }
+      });
+    historyMutation = operation;
     historyBusy.value = true;
-    try {
-      receipt = {
-        baseRevision: state.value.revision,
-        requestId: crypto.randomUUID(),
-        direction,
-      };
-      retain();
-      return await flush();
-    } finally {
-      historyBusy.value = false;
-    }
+    return operation;
   }
   async function loadPage(offset: number) {
     if (!(await flush())) return false;
