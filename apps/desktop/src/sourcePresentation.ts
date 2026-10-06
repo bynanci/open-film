@@ -309,7 +309,14 @@ export function sourcePresentation(
     "captureTime",
     first(
       asset.capturedAt && options.formatDate
-        ? options.formatDate(asset.capturedAt)
+        ? options.formatDate(asset.capturedAt, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+          })
         : asset.capturedAt,
       pixelEvidence.dateTimeOriginal,
       tag(exif, "DateTimeOriginal"),
@@ -329,7 +336,7 @@ export function sourcePresentation(
     "orientation",
     first(
       pixelEvidence.orientation,
-      tag(exif, "orientation"),
+      tag(exif, "Orientation"),
       streamTags.rotate,
     ),
   );

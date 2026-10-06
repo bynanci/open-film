@@ -3,12 +3,14 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { createReadStream } from "node:fs";
+import { constants, createReadStream } from "node:fs";
 import {
+  copyFile,
   realpath,
   stat,
   lstat,
   mkdir,
+  mkdtemp,
   open,
   readFile,
   rename,
@@ -23,10 +25,11 @@ import {
   basename,
   join,
 } from "node:path";
-import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { homedir, tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import {
   OpenFilmApplication,
   TimelineEditor,
@@ -167,6 +170,52 @@ function systemLocale(): string {
     /* Intl uses the platform locale when its environment value is unusable. */
   }
   return new Intl.DateTimeFormat().resolvedOptions().locale;
+}
+
+async function inspectCatalog(path: string): Promise<void> {
+  // A normal read-only SQLite connection can create WAL sidecars. Recent
+  // projects must remain untouched, including projects on read-only volumes.
+  let temporary: string | undefined;
+  let database: DatabaseSync | undefined;
+  try {
+    const walPath = `${path}-wal`;
+    const wal = await lstat(walPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (wal && (!wal.isFile() || wal.isSymbolicLink()))
+      throw new Error("Catalog WAL must be a regular file");
+    if (wal?.size) {
+      // Immutable connections ignore committed WAL pages. Inspect a disposable
+      // copy when another instance or crash recovery has uncheckpointed data.
+      temporary = await mkdtemp(join(tmpdir(), "openfilm-recent-catalog-"));
+      const snapshot = join(temporary, "database.sqlite");
+      await copyFile(path, snapshot, constants.COPYFILE_FICLONE);
+      await copyFile(walPath, `${snapshot}-wal`, constants.COPYFILE_FICLONE);
+      database = new DatabaseSync(snapshot, { readOnly: true });
+    } else {
+      const uri = pathToFileURL(path);
+      uri.searchParams.set("mode", "ro");
+      uri.searchParams.set("immutable", "1");
+      database = new DatabaseSync(uri.href, { readOnly: true });
+    }
+    const version = Number(
+      database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+    );
+    if (version > 1) throw new Error("Unsupported future catalog schema");
+    const integrity = database.prepare("PRAGMA quick_check(1)").get();
+    if (integrity?.quick_check !== "ok")
+      throw new Error("The project catalog is corrupt");
+    database
+      .prepare(
+        "SELECT id, uri, name, media_type, captured_at, rating, favorite, rejected, locked, data FROM assets LIMIT 1",
+      )
+      .get();
+    database.prepare("SELECT id, created_at, data FROM jobs LIMIT 1").get();
+  } finally {
+    database?.close();
+    if (temporary) await rm(temporary, { recursive: true, force: true });
+  }
 }
 function number(value: unknown, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -438,12 +487,14 @@ export async function startServer(
                 if (status === "available") {
                   const info = await stat(join(path, "project.json"));
                   if (info.size > 16 * 1024 * 1024) status = "invalid";
-                  else
+                  else {
                     migrateProject(
                       JSON.parse(
                         await readFile(join(path, "project.json"), "utf8"),
                       ),
                     );
+                    await inspectCatalog(join(path, "database.sqlite"));
+                  }
                 }
               }
             } catch (error) {
@@ -1003,6 +1054,18 @@ export async function startServer(
               : application.importFolder(folder!, importOptions);
           for (const upload of uploaded ?? []) uploads.delete(upload.id);
           const handled = task
+            .finally(async () => {
+              // Receipts are consumed once, but their managed files remain this
+              // job's responsibility until all import workers have settled.
+              for (const upload of uploaded ?? []) {
+                if (
+                  !application.catalog.getAssetByUri(
+                    pathToFileURL(upload.path).href,
+                  )
+                )
+                  await rm(upload.directory, { recursive: true, force: true });
+              }
+            })
             .catch((error: unknown) => {
               application.catalog.saveJob({
                 id: placeholderId,

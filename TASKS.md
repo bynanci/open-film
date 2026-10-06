@@ -108,3 +108,7 @@ Evidence: [validation record](docs/validation-global-product.md).
       pathless creation, Story save races and managed-thumbnail recovery.
 - [x] CI integrates i18n coverage, locale workflows, visual/axe checks and local CJK
       fonts; the PR checks record the exact commit's execution result.
+- [x] PR #2 review regressions: generic orientation/capture time, still rotation,
+      managed-upload cleanup, read-only recent catalog/WAL validation, Missing
+      refresh/pagination and bounded Story/Compose hydration. Legacy locale
+      fallback confirmed; delayed asset reads preserve acknowledged edits.

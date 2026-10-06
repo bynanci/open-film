@@ -28,7 +28,10 @@ test.afterAll(async ({ request }) => {
   await Promise.all(cleanup.map((action) => action()));
 });
 
-async function fixtureForEditing(request: APIRequestContext) {
+async function fixtureForEditing(
+  request: APIRequestContext,
+  withAudio = false,
+) {
   const fixture = await createDesktopFixture(1);
   cleanup.push(fixture.cleanup);
   const app = await OpenFilmApplication.create(
@@ -117,6 +120,22 @@ async function fixtureForEditing(request: APIRequestContext) {
       },
     ],
   });
+  if (withAudio)
+    app.project.timelines[0]!.tracks.push({
+      id: "sound",
+      type: "audio",
+      clips: [
+        {
+          id: "opening-audio",
+          assetId: assetId("05-tone.wav"),
+          beatId: "opening",
+          timelineStart: 0,
+          timelineDuration: 2,
+          sourceIn: 0,
+          sourceOut: 2,
+        },
+      ],
+    });
   app.close();
   expect(
     (
@@ -563,4 +582,48 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await page.getByRole("button", { name: "Undo edit", exact: true }).click();
   await saved(page);
   expect((await editorState(request)).composition).toEqual(before.composition);
+});
+
+test("saves photo rotation through reopening and keeps visual controls absent for audio", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request, true);
+  await openTimeline(page);
+  await page.locator("#clip-opening-photo").click();
+  await field(page, "Clip rotation", "90");
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  const persisted = JSON.parse(
+    await readFile(join(fixture.project, "project.json"), "utf8"),
+  );
+  expect(persisted.timelines[0].tracks[0].clips[0].transform.rotation).toBe(90);
+  await page
+    .getByRole("button", { name: "Switch project", exact: true })
+    .click();
+  await openFilm(page, fixture.project);
+  await navigate(page, "edit");
+  await saved(page);
+  await page.locator("#clip-opening-photo").click();
+  await expect(page.getByLabel("Clip rotation", { exact: true })).toHaveValue(
+    "90",
+  );
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  await page.locator("#clip-opening-audio").click();
+  await expect(page.getByLabel("Source in", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Clip volume", { exact: true })).toBeVisible();
+  for (const label of [
+    "Clip rotation",
+    "Clip scale",
+    "Clip position X",
+    "Clip position Y",
+    "Clip transition",
+    "Playback speed",
+  ])
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });

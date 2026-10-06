@@ -1498,7 +1498,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                       min="0.01"
                       step="0.1"
                       @change="transform" /></label
-                  ><label v-if="controls.speed" class="editor-field"
+                  ><label class="editor-field"
                     >{{ t("editor.clip.rotation")
                     }}<input
                       v-model.number="clipFields.rotation"

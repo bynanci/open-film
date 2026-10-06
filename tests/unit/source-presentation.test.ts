@@ -11,6 +11,7 @@ import {
   flattenMessages,
   translationProblems,
 } from "../../apps/desktop/src/i18n/coverage";
+import { localizedDate } from "../../apps/desktop/src/i18n/format";
 
 const asset: MediaAsset = {
   id: "memory",
@@ -61,6 +62,60 @@ function translator(catalog: typeof enUS) {
 }
 
 describe("localized source presentation", () => {
+  it.each(["Orientation", "EXIF:Orientation"])(
+    "preserves generic-camera %s without Pixel or video metadata",
+    (key) => {
+      const generic: MediaAsset = {
+        id: "generic-photo",
+        uri: "file:///Memories/photo.jpg",
+        name: "photo.jpg",
+        mediaType: "image",
+        tags: [],
+        state: {},
+        metadata: { "openfilm.exif": { [key]: 6 } },
+      };
+      const presented = sourcePresentation(generic);
+      expect(presented.adapter).toBe("generic");
+      expect(
+        presented.details.find((item) => item.key === "orientation")?.value,
+      ).toBe("6");
+      expect(generic.metadata).toEqual({ "openfilm.exif": { [key]: 6 } });
+    },
+  );
+  it.each([
+    ["en-US", enUS],
+    ["zh-TW", zhTW],
+    ["ja-JP", jaJP],
+  ] as const)("retains capture time to the second in %s", (locale, catalog) => {
+    const capturedAt = "2026-04-03T17:42:09Z";
+    const timedAsset = { ...asset, capturedAt };
+    const presented = sourcePresentation(timedAsset, {
+      translate: translator(catalog),
+      formatDate: (value, options) =>
+        localizedDate(value, locale, { ...options, timeZone: "UTC" }) ?? "",
+    });
+    const captureTime = presented.details.find(
+      (item) => item.key === "captureTime",
+    );
+    const expected = new Intl.DateTimeFormat(locale, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "UTC",
+    }).format(new Date(capturedAt));
+    expect(captureTime?.label).toBe(catalog.media.source.fields.captureTime);
+    expect(captureTime?.value).toBe(expected.replace(/\s+/g, " "));
+    expect(captureTime?.value).toContain(":42:09");
+    expect(timedAsset.capturedAt).toBe(capturedAt);
+    expect(
+      sourcePresentation(timedAsset).details.find(
+        (item) => item.key === "captureTime",
+      )?.value,
+    ).toBe(capturedAt);
+  });
   it.each([
     ["en-US", enUS],
     ["zh-TW", zhTW],

@@ -119,6 +119,8 @@ const relinkBusy = computed(
 );
 const sourceVersion = ref(0);
 let statusGeneration = 0;
+let assetsGeneration = 0;
+const assetMutations = new Map<string, number>();
 const sourceStatuses = computed<Record<string, SourceStatus>>(() =>
   Object.fromEntries(
     mediaStatus.value?.assets.map((item) => [item.assetId, item]) ?? [],
@@ -344,10 +346,29 @@ let polling = false;
 let lastJobSignature = "";
 let jobsGeneration = 0;
 
-function cacheAssets(incoming: MediaAsset[]) {
+function cacheAssets(incoming: MediaAsset[], mutated = false) {
   const next = { ...assetCache.value };
-  for (const asset of incoming) next[asset.id] = asset;
+  for (const asset of incoming) {
+    next[asset.id] = asset;
+    if (mutated)
+      assetMutations.set(asset.id, (assetMutations.get(asset.id) ?? 0) + 1);
+  }
   assetCache.value = next;
+}
+function cacheFetchedAssets(
+  incoming: MediaAsset[],
+  before: ReadonlyMap<string, number>,
+): MediaAsset[] {
+  const current = assetCache.value;
+  // A read started before a selection/rating/relink change must not replace its
+  // acknowledged result when that older response arrives later.
+  const latest = incoming.map((asset) =>
+    current[asset.id] && assetMutations.get(asset.id) !== before.get(asset.id)
+      ? current[asset.id]!
+      : asset,
+  );
+  cacheAssets(latest);
+  return latest;
 }
 async function checkMediaStatus() {
   const projectId = project.value?.id;
@@ -357,8 +378,10 @@ async function checkMediaStatus() {
   mediaStatusError.value = "";
   try {
     const result = await api.mediaStatus();
-    if (project.value?.id === projectId && generation === statusGeneration)
+    if (project.value?.id === projectId && generation === statusGeneration) {
       mediaStatus.value = result;
+      if (libraryFilter.value === "missing") await reloadAssets();
+    }
   } catch (cause) {
     if (generation === statusGeneration) mediaStatusError.value = cause;
   } finally {
@@ -385,7 +408,7 @@ async function beforeRelink() {
 async function mediaRelinked(updated: MediaAsset[]) {
   relinkRefreshing.value = true;
   try {
-    cacheAssets(updated);
+    cacheAssets(updated, true);
     const byId = new Map(updated.map((asset) => [asset.id, asset]));
     assets.value = assets.value.map((asset) => byId.get(asset.id) ?? asset);
     sourceVersion.value += 1;
@@ -406,6 +429,9 @@ async function refreshProject() {
 }
 async function reloadAssets() {
   if (!project.value) return;
+  const projectId = project.value.id;
+  const generation = ++assetsGeneration;
+  const cachedBefore = new Map(assetMutations);
   const params = new URLSearchParams({
     offset: String(offset.value),
     limit: String(pageSize),
@@ -417,8 +443,13 @@ async function reloadAssets() {
     if (!ids.length) {
       assets.value = [];
       total.value = 0;
+      offset.value = 0;
       return;
     }
+    offset.value = Math.min(
+      offset.value,
+      Math.floor((ids.length - 1) / pageSize) * pageSize,
+    );
     params.set(
       "ids",
       ids.slice(offset.value, offset.value + pageSize).join(","),
@@ -438,7 +469,9 @@ async function reloadAssets() {
     if (mediaFilter.value) params.set("mediaType", mediaFilter.value);
   }
   const result = await api.assets(params);
-  assets.value = result.assets;
+  if (project.value?.id !== projectId || generation !== assetsGeneration)
+    return;
+  assets.value = cacheFetchedAssets(result.assets, cachedBefore);
   if (result.summary) librarySummary.value = result.summary;
   total.value =
     libraryFilter.value === "missing"
@@ -446,7 +479,6 @@ async function reloadAssets() {
           (status) => status.status !== "available",
         ).length
       : (groupSelection.value?.assetIds.length ?? result.total);
-  cacheAssets(result.assets);
 }
 async function run(label: string, action: () => Promise<void>) {
   if (busy.value) return false;
@@ -747,9 +779,9 @@ async function toggleAsset(asset: MediaAsset, key: AssetState) {
   await run("savingSelection", async () => {
     const result = await patch<{ asset: MediaAsset }>(
       `/assets/${encodeURIComponent(asset.id)}`,
-      { state: { ...asset.state, [key]: !asset.state[key] } },
+      { state: { [key]: !(assetCache.value[asset.id] ?? asset).state[key] } },
     );
-    cacheAssets([result.asset]);
+    cacheAssets([result.asset], true);
     assets.value = assets.value.map((item) =>
       item.id === asset.id ? result.asset : item,
     );
@@ -762,7 +794,7 @@ async function rateAsset(asset: MediaAsset, rating: number) {
       `/assets/${encodeURIComponent(asset.id)}`,
       { rating },
     );
-    cacheAssets([result.asset]);
+    cacheAssets([result.asset], true);
     assets.value = assets.value.map((item) =>
       item.id === asset.id ? result.asset : item,
     );
@@ -824,20 +856,31 @@ async function createStory() {
   });
 }
 async function loadCandidates() {
-  const ids = [
-    ...new Set([
-      ...candidateIds.value.slice(
-        candidateOffset.value,
-        candidateOffset.value + 24,
-      ),
-      ...beatDraft.value.selectedAssetIds,
-    ]),
-  ].filter((id) => !assetCache.value[id]);
+  await loadAssetIds([
+    ...candidateIds.value.slice(
+      candidateOffset.value,
+      candidateOffset.value + 24,
+    ),
+    ...beatDraft.value.selectedAssetIds,
+  ]);
+}
+async function loadAssetIds(requested: string[]) {
+  const projectId = project.value?.id;
+  const ids = [...new Set(requested)].filter((id) => !assetCache.value[id]);
   if (!ids.length) return;
-  const result = await api.assets(
-    new URLSearchParams({ ids: ids.join(","), limit: String(ids.length) }),
-  );
-  cacheAssets(result.assets);
+  for (let index = 0; index < ids.length; index += 200) {
+    const batch = ids.slice(index, index + 200);
+    const result = await api.assets(
+      new URLSearchParams({
+        ids: batch.join(","),
+        limit: String(batch.length),
+      }),
+    );
+    if (project.value?.id !== projectId) return;
+    // Another beat/read or an edit may have filled the cache while this batch
+    // was pending. Hydration only fills entries that are still missing.
+    cacheAssets(result.assets.filter((asset) => !assetCache.value[asset.id]));
+  }
 }
 function hydrateBeat() {
   const beat = activeBeat.value;
@@ -956,17 +999,7 @@ async function compose() {
         ),
       ),
     ];
-    if (ids.length)
-      cacheAssets(
-        (
-          await api.assets(
-            new URLSearchParams({
-              ids: ids.join(","),
-              limit: String(ids.length),
-            }),
-          )
-        ).assets,
-      );
+    await loadAssetIds(ids);
   });
 }
 async function renderPreview() {

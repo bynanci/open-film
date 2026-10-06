@@ -34,9 +34,9 @@ API or cloud provider participates in the workflow.
 | `pnpm lint`                        | Passed with warnings denied.                                                                                                                                |
 | `pnpm typecheck`                   | Passed TypeScript and Vue checks.                                                                                                                           |
 | `pnpm test:i18n`                   | Passed 732 semantic keys in each of en-US, zh-TW and ja-JP, including parameter parity, error codes and literal UI references.                              |
-| `pnpm test`                        | Passed 391 tests across 43 files.                                                                                                                           |
+| `pnpm test`                        | Passed 404 tests across 45 files after PR review follow-up.                                                                                                 |
 | `pnpm build`                       | Passed CLI, server and Vue production builds.                                                                                                               |
-| `pnpm test:e2e`                    | Passed all 18 browser cases with no skips.                                                                                                                  |
+| `pnpm test:e2e`                    | Passed all 22 browser cases with no skips after PR review follow-up.                                                                                        |
 | `pnpm test:interchange`            | Passed official OTIO read/write/read, real source hash/bounds validation and existing XML checks; the missing-source negative regression fails as intended. |
 | `pnpm test:native`                 | Passed Rust formatting, Clippy and test-target execution. Rust targets contain zero behavior tests; this does not exercise a native window or installer.    |
 | `node scripts/smoke-built-cli.mjs` | Passed the built CLI's real media workflow.                                                                                                                 |
@@ -107,6 +107,49 @@ with `CI=1`; subsequent PR checks record remote verification of the fix.
 Screenshots and generated MP4 files live under `test-results/` during execution
 and in CI's `browser-test-results` artifact. The local complete-run archive is
 `/tmp/openfilm-global-browser-final`; these generated outputs are not committed.
+
+## PR #2 review follow-up — 2026-10-06
+
+The follow-up starts from `32aad5949fff6206222f536da07722f00c2a0a9d`.
+Seven findings required fixes; the legacy film-language finding was already
+handled by the parent component's `en-US` fallback and is now covered explicitly.
+
+- Generic EXIF retains the case-sensitive `Orientation` lookup, including
+  namespaced tags. Localized capture details retain hours, minutes and seconds in
+  English, Traditional Chinese and Japanese.
+- Still images expose rotation again. A real browser test saves 90 degrees,
+  closes/reopens and verifies persistence; audio still omits visual controls.
+- Consumed browser uploads remain owned by their import job until its workers
+  settle. Failed/cancelled imports remove unindexed copies while keeping indexed
+  copies and external originals. Real decoder/cancellation tests verify both.
+- Recent-project checks reject non-SQLite, corrupt and future-schema catalogs.
+  Immutable reads avoid modifying closed projects; disposable DB/WAL snapshots
+  also inspect committed pages belonging to another instance or crash recovery.
+  Tests verify bytes, modes, directory/file modification times and active-project
+  state remain unchanged, including read-only storage and future versions in WAL.
+- Missing-media refresh and relink immediately update the filtered list, clamp
+  its page after recovery and clear it when all sources return. A delayed real
+  asset response cannot overwrite an acknowledged lock/rating/relink change;
+  single-flag state updates preserve unrelated flags.
+- Candidate and composition hydration fetch missing IDs in batches of at most
+  200 and keep cache entries filled or edited while a request is pending. A
+  305-memory browser case saves/reopens selections and creates the composition
+  without oversized requests or HTTP 400 responses.
+- A legacy project without a stored film locale already displays the current-film
+  selector with `en-US`. Its browser regression switches to Japanese and reopens
+  while preserving literal legacy titles/intents. No extra production change was
+  needed for this finding.
+
+All requested local gates passed: 404 unit/integration tests in 45 files, 22
+browser cases with `CI=1`, 732-key translation coverage, formatting, lint,
+TypeScript/Vue checks, builds, official OTIO/source validation, built CLI smoke
+and native targets. Native behavior tests remain zero. The first follow-up OTIO
+invocation omitted the installed Python environment; the corrected invocation
+passed without changing assertions or product code.
+
+The complete browser archive is `/tmp/openfilm-pr2-review-browser-final`.
+Remote PR checks record the exact pushed follow-up SHA and results. Actual Resolve
+application QA remains blocked as recorded in [the QA record](resolve-qa-record.md).
 
 ## Manual verification still required
 
