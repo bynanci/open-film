@@ -158,6 +158,7 @@ export interface ReviewProviderState {
     execution: string;
     model?: string;
     endpoint?: string;
+    dataKinds: string[];
   };
 }
 export interface ReviewSuggestionsState {
@@ -460,8 +461,20 @@ export const api = {
       { method: "DELETE" },
     ),
   reviewProvider: () => request<ReviewProviderState>("/review/provider"),
-  reviewConsent: (allow: boolean) =>
-    post<ReviewProviderState>("/review/consent", { allow }),
+  reviewConsent: (
+    allow: boolean,
+    disclosedProvider?: ReviewProviderState["provider"],
+  ) =>
+    post<ReviewProviderState>("/review/consent", {
+      allow,
+      ...(allow && disclosedProvider
+        ? {
+            providerId: disclosedProvider.id,
+            endpoint: disclosedProvider.endpoint,
+            dataKinds: disclosedProvider.dataKinds,
+          }
+        : {}),
+    }),
   reviewSuggestions: (
     assetId: string,
     status?: ReviewSuggestion["status"],

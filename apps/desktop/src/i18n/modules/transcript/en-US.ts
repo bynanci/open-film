@@ -116,9 +116,22 @@ export default {
     languageReview: "Run language review",
     remoteConsent:
       "Language review sends transcript text and terminology to this provider only after you grant consent.",
-    grantConsent: "Allow text review",
+    grantConsent: "Allow declared review data",
     revokeConsent: "Revoke text review consent",
     providerDestination: "Destination: {destination}",
+    providerDataKinds: "Provider-declared data types:",
+    reviewDataAccess:
+      "Consent covers the types listed above. This review sends only transcript text and terminology; it does not grant access to files or media.",
+    dataKinds: {
+      images: "Images",
+      video: "Video",
+      audio: "Audio",
+      metadata: "Metadata",
+      gps: "Location",
+      faces: "Faces",
+      transcripts: "Transcripts",
+      text: "Text",
+    },
     reviewRunning: "Reviewing more text…",
     cancelReview: "Cancel review",
     retryBatch: "Retry batch",

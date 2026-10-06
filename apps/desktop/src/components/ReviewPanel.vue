@@ -330,7 +330,7 @@ async function skip(suggestion: ReviewSuggestion) {
 async function consent(allow: boolean) {
   busy.value = true;
   try {
-    provider.value = await api.reviewConsent(allow);
+    provider.value = await api.reviewConsent(allow, provider.value?.provider);
     await refresh();
   } catch (cause) {
     error.value = cause;
@@ -533,6 +533,15 @@ onBeforeUnmount(() => {
       <p v-if="remote" class="editor-note">
         {{ t("transcript.remoteConsent") }}
       </p>
+      <div v-if="remote" class="editor-note" data-testid="review-data-kinds">
+        <p>{{ t("transcript.providerDataKinds") }}</p>
+        <ul>
+          <li v-for="kind in provider.provider?.dataKinds" :key="kind">
+            {{ t(`transcript.dataKinds.${kind}`) }}
+          </li>
+        </ul>
+        <p>{{ t("transcript.reviewDataAccess") }}</p>
+      </div>
       <p v-if="provider.provider?.endpoint" class="editor-note">
         {{
           t("transcript.providerDestination", {

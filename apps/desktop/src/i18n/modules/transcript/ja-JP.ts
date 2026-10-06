@@ -115,9 +115,22 @@ export default {
     languageReview: "言語レビューを実行",
     remoteConsent:
       "同意後にのみ、文字起こしと用語をこのプロバイダーに送信します。",
-    grantConsent: "文字のレビューを許可",
+    grantConsent: "記載のレビューデータに同意",
     revokeConsent: "文字レビューの同意を取り消す",
     providerDestination: "送信先：{destination}",
+    providerDataKinds: "プロバイダーが申告したデータの種類：",
+    reviewDataAccess:
+      "同意の対象は上記の種類です。このレビューでは文字起こしと用語のみを送信し、ファイルやメディアへのアクセス権は付与しません。",
+    dataKinds: {
+      images: "画像",
+      video: "動画",
+      audio: "音声",
+      metadata: "メタデータ",
+      gps: "位置情報",
+      faces: "顔",
+      transcripts: "文字起こし",
+      text: "テキスト",
+    },
     reviewRunning: "さらに文字を確認中…",
     cancelReview: "レビューをキャンセル",
     retryBatch: "バッチを再試行",

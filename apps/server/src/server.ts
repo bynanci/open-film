@@ -39,6 +39,7 @@ import {
   type TimelineEditInput,
   type CreateFilmOptions,
   resolveUserDataDirectory,
+  createReviewOwner,
   type ReviewOptions,
 } from "@openfilm/application";
 import {
@@ -715,6 +716,7 @@ export async function startServer(options: ServerOptions = {}) {
         const startReview = (
           job: Job,
           work: (options: ReviewOptions) => Promise<Job>,
+          initialReservation = true,
         ) => {
           if (active.size || application.hasActiveJobs)
             throw new HttpError(
@@ -722,17 +724,35 @@ export async function startServer(options: ServerOptions = {}) {
               "Wait for the current job before starting another review.",
             );
           const controller = new AbortController();
-          application.catalog.saveJob(job);
+          let ownedJob: Job | undefined;
+          if (initialReservation) {
+            job = { ...job, reviewOwner: createReviewOwner() };
+            application.catalog.saveJob(job);
+            ownedJob = job;
+          }
           active.set(job.id, controller);
           const handled = Promise.resolve()
-            .then(() => work({ jobId: job.id, signal: controller.signal }))
+            .then(() =>
+              work({
+                jobId: job.id,
+                signal: controller.signal,
+                onJob: (observed) => {
+                  ownedJob = observed;
+                },
+              }),
+            )
             .catch((error) => {
+              // A retry owns nothing until its atomic claim and preflight
+              // succeed. Its rejection must not rewrite another execution.
+              if (!ownedJob?.reviewOwner) return;
               const prior =
                 application.catalog
                   .listJobs()
-                  .find((item) => item.id === job.id) ?? job;
-              application.catalog.saveJob({
+                  .find((item) => item.id === job.id) ?? ownedJob;
+              if (!["queued", "running"].includes(prior.status)) return;
+              application.catalog.knowledge.saveOwnedReviewJob({
                 ...prior,
+                reviewOwner: ownedJob.reviewOwner,
                 status: controller.signal.aborted ? "cancelled" : "failed",
                 updatedAt: new Date().toISOString(),
                 errors: [
@@ -921,7 +941,7 @@ export async function startServer(options: ServerOptions = {}) {
         }
         if (method === "POST" && route === "/api/review/consent") {
           const data = await body(request);
-          keys(data, ["allow"]);
+          keys(data, ["allow", "providerId", "endpoint", "dataKinds"]);
           if (typeof data.allow !== "boolean")
             throw new HttpError(400, "allow must be a boolean.");
           const provider = application.knowledge.languageProvider().provider;
@@ -931,13 +951,36 @@ export async function startServer(options: ServerOptions = {}) {
               "No remote language provider is configured.",
               "review.providerUnavailable",
             );
-          if (data.allow)
+          if (data.allow) {
+            // Consent covers the descriptor the user actually saw, never a
+            // newly configured destination or undisclosed additional data kind.
+            const disclosedKinds = data.dataKinds;
+            if (
+              data.providerId !== provider.id ||
+              data.endpoint !== provider.endpoint ||
+              !Array.isArray(disclosedKinds) ||
+              disclosedKinds.length !== provider.dataKinds.length ||
+              new Set(disclosedKinds).size !== disclosedKinds.length ||
+              provider.dataKinds.some((kind) => !disclosedKinds.includes(kind))
+            )
+              throw new HttpError(
+                400,
+                "Consent must match the displayed provider, destination, and all declared data kinds. Refresh the provider disclosure before granting consent.",
+              );
             application.knowledge.grantConsent({
               providerId: provider.id,
-              dataKinds: ["text", "transcripts"],
+              dataKinds: [...provider.dataKinds],
               grantedAt: new Date().toISOString(),
             });
-          else application.knowledge.revokeConsent(provider.id);
+            if (!application.knowledge.languageProvider().available) {
+              application.knowledge.revokeConsent(provider.id);
+              throw new HttpError(
+                400,
+                "The configured language provider changed or cannot review transcript text. Configure it again before granting consent.",
+                "review.providerUnavailable",
+              );
+            }
+          } else application.knowledge.revokeConsent(provider.id);
           json(response, 200, application.knowledge.languageProvider());
           return;
         }
@@ -1067,8 +1110,11 @@ export async function startServer(options: ServerOptions = {}) {
                 .find((item) => item.id === jobId),
             });
           } else
-            startReview({ ...job, status: "queued" }, (options) =>
-              application.retryKnowledgeReview(jobId, index, options),
+            startReview(
+              { ...job, status: "queued" },
+              (options) =>
+                application.retryKnowledgeReview(jobId, index, options),
+              false,
             );
           return;
         }

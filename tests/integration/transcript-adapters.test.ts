@@ -481,6 +481,191 @@ describe("transcript REST and CLI adapters", () => {
       "review.providerUnavailable",
     );
   });
+  it("authorizes a registered remote review provider with additional disclosed data kinds", async () => {
+    const generate = vi.fn(async (_prompt: string) => '{"suggestions":[]}');
+    const provider: LanguageProvider = {
+      id: "extra-kind-review",
+      name: "Remote descriptor contract fixture",
+      kind: "language",
+      execution: "remote",
+      endpoint: "https://review.invalid/text",
+      dataKinds: ["text", "transcripts", "metadata"],
+      generate,
+    };
+    const { get, post, job, path, directory, base } = await server({
+      languageProvider: provider,
+    });
+    const disclosure = (await get("/review/provider")).provider;
+    expect(disclosure.dataKinds).toEqual(provider.dataKinds);
+    const denied = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(denied.job.id)).status).toBe("failed");
+    expect(generate).not.toHaveBeenCalled();
+    const nativeFetch = globalThis.fetch;
+    const redirected = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = new URL(String(input), "http://127.0.0.1:4310");
+        return nativeFetch(
+          base.replace(/\/api$/, "") + url.pathname + url.search,
+          init,
+        );
+      });
+    cleanups.push(() => redirected.mockRestore());
+    const granted = await desktopApi.reviewConsent(true, disclosure);
+    expect(granted.available).toBe(true);
+    expect(JSON.parse(String(redirected.mock.calls.at(-1)?.[1]?.body))).toEqual(
+      {
+        allow: true,
+        providerId: disclosure.id,
+        endpoint: disclosure.endpoint,
+        dataKinds: disclosure.dataKinds,
+      },
+    );
+    const started = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(started.job.id)).status).toBe("completed");
+    expect(generate).toHaveBeenCalledOnce();
+    // The descriptor consent does not add asset metadata, source references,
+    // paths, media bytes, or project context to this text-only review request.
+    const prompt = generate.mock.calls[0]![0];
+    const payload = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1));
+    expect(Object.keys(payload).sort()).toEqual([
+      "glossary",
+      "language",
+      "segments",
+    ]);
+    expect(payload.segments).toEqual(
+      result.segments.map((segment) => ({
+        segmentId: segment.id,
+        text: segment.text,
+      })),
+    );
+    expect(prompt).not.toContain(path);
+    expect(prompt).not.toContain(directory);
+    expect(prompt).not.toContain(pathToFileURL(path).href);
+    expect(prompt).not.toContain(await hashFile(path));
+    expect(prompt).not.toContain("Identity-only fixture");
+    expect((await post("/review/consent", { allow: false })).status).toBe(200);
+    const revoked = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(revoked.job.id)).status).toBe("failed");
+    expect(generate).toHaveBeenCalledOnce();
+  });
+  it("rejects consent that does not identify the displayed destination and complete data kinds", async () => {
+    const generate = vi.fn(async () => '{"suggestions":[]}');
+    const provider: LanguageProvider = {
+      id: "disclosed-review",
+      name: "Disclosure fixture",
+      kind: "language",
+      execution: "remote",
+      endpoint: "https://review.invalid/approved",
+      dataKinds: ["text", "transcripts", "metadata"],
+      generate,
+    };
+    const { get, post, job } = await server({ languageProvider: provider });
+    const disclosed = (await get("/review/provider")).provider;
+    const grant = {
+      allow: true,
+      providerId: disclosed.id,
+      endpoint: disclosed.endpoint,
+      dataKinds: disclosed.dataKinds,
+    };
+    for (const input of [
+      { allow: true },
+      { ...grant, providerId: "another-provider" },
+      { ...grant, endpoint: "https://review.invalid/undisclosed" },
+      { ...grant, dataKinds: ["text", "transcripts"] },
+      { ...grant, dataKinds: ["text", "transcripts", "metadata", "audio"] },
+      { ...grant, dataKinds: ["text", "transcripts", "transcripts"] },
+      { ...grant, dataKinds: "text,transcripts,metadata" },
+      { ...grant, dataKinds: ["text", "transcripts", ["metadata"]] },
+      { ...grant, sourcePath: "/untrusted/source" },
+    ]) {
+      const response = await post("/review/consent", input);
+      expect(response.status, JSON.stringify(input)).toBe(400);
+      expect((await response.json()).code).toBe("request.invalid");
+      expect((await get("/review/provider")).available).toBe(false);
+    }
+    const denied = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(denied.job.id)).status).toBe("failed");
+    expect(generate).not.toHaveBeenCalled();
+    // Disclosure order is presentation, not a different consent scope.
+    expect(
+      (
+        await post("/review/consent", {
+          ...grant,
+          dataKinds: [...grant.dataKinds].reverse(),
+        })
+      ).status,
+    ).toBe(200);
+    expect((await get("/review/provider")).available).toBe(true);
+  });
+  it.each(["destination", "data kinds"] as const)(
+    "keeps descriptor %s changes behind fresh registration and consent",
+    async (changed) => {
+      const generate = vi.fn(async () => '{"suggestions":[]}');
+      const provider: LanguageProvider = {
+        id: "changing-review",
+        name: "Changed registration fixture",
+        kind: "language",
+        execution: "remote",
+        endpoint: "https://review.invalid/original",
+        dataKinds: ["text", "transcripts", "metadata"],
+        generate,
+      };
+      const { get, post, job, app } = await server({
+        languageProvider: provider,
+      });
+      const disclosure = (await get("/review/provider")).provider;
+      const grant = {
+        allow: true,
+        providerId: disclosure.id,
+        endpoint: disclosure.endpoint,
+        dataKinds: disclosure.dataKinds,
+      };
+      expect((await post("/review/consent", grant)).status).toBe(200);
+      if (changed === "destination")
+        provider.endpoint = "https://review.invalid/changed";
+      else provider.dataKinds = [...provider.dataKinds, "audio"];
+      expect((await get("/review/provider")).available).toBe(false);
+      expect((await post("/review/consent", grant)).status).toBe(400);
+      const denied = await (
+        await post("/assets/audio/review", { source: "language" })
+      ).json();
+      expect((await job(denied.job.id)).status).toBe("failed");
+      expect(generate).not.toHaveBeenCalled();
+
+      // Opening the project registers the trusted runtime's changed descriptor.
+      // A stale browser disclosure still cannot authorize that new registration.
+      expect((await post("/project/close", {})).status).toBe(200);
+      expect(
+        (await post("/project/open", { path: app.directory })).status,
+      ).toBe(200);
+      expect((await post("/review/consent", grant)).status).toBe(400);
+      const fresh = (await get("/review/provider")).provider;
+      expect(
+        (
+          await post("/review/consent", {
+            allow: true,
+            providerId: fresh.id,
+            endpoint: fresh.endpoint,
+            dataKinds: fresh.dataKinds,
+          })
+        ).status,
+      ).toBe(200);
+      const started = await (
+        await post("/assets/audio/review", { source: "language" })
+      ).json();
+      expect((await job(started.job.id)).status).toBe("completed");
+      expect(generate).toHaveBeenCalledOnce();
+    },
+  );
   it("requires consent for only the configured remote provider and persists batch failures for retry/skip", async () => {
     let fail = true;
     const generate = vi.fn(async (prompt: string) => {
@@ -512,7 +697,16 @@ describe("transcript REST and CLI adapters", () => {
     ).json();
     expect((await job(denied.job.id)).status).toBe("failed");
     expect(generate).not.toHaveBeenCalled();
-    expect((await post("/review/consent", { allow: true })).status).toBe(200);
+    expect(
+      (
+        await post("/review/consent", {
+          allow: true,
+          providerId: provider.id,
+          endpoint: provider.endpoint,
+          dataKinds: provider.dataKinds,
+        })
+      ).status,
+    ).toBe(200);
     const run = await (
       await post("/assets/audio/review", { source: "language", batchSize: 1 })
     ).json();
@@ -541,6 +735,46 @@ describe("transcript REST and CLI adapters", () => {
     expect((await get("/assets/audio/review/suggestions")).total).toBe(1);
     await post("/review/consent", { allow: false });
     expect((await get("/review/provider")).available).toBe(false);
+  });
+  it("does not rewrite a failed review checkpoint when HTTP retry preflight rejects", async () => {
+    const generate = vi.fn(async () => {
+      throw new Error("fixture initial provider failure");
+    });
+    const { post, get, job, app, path } = await server({
+      languageProvider: {
+        id: "retry-preflight-fixture",
+        name: "Retry preflight fixture",
+        kind: "language",
+        execution: "local",
+        dataKinds: ["text", "transcripts"],
+        generate,
+      },
+    });
+    const started = await (
+      await post("/assets/audio/review", { source: "language", batchSize: 1 })
+    ).json();
+    const originalJob = await job(started.job.id);
+    expect(originalJob.status).toBe("failed");
+    const originalBatches = await get(`/review/jobs/${started.job.id}/batches`);
+    expect(originalBatches.batches[0].status).toBe("failed");
+    const calls = generate.mock.calls.length;
+    await rm(path);
+    expect(
+      (await post(`/review/jobs/${started.job.id}/batches/0/retry`, {})).status,
+    ).toBe(202);
+    // Closing is refused while work owns the request, so this observes actual
+    // retry completion rather than sampling its temporary claimed state.
+    await expect
+      .poll(async () => (await post("/project/close", {})).status)
+      .toBe(200);
+    expect((await post("/project/open", { path: app.directory })).status).toBe(
+      200,
+    );
+    expect(await job(started.job.id)).toEqual(originalJob);
+    expect(await get(`/review/jobs/${started.job.id}/batches`)).toEqual(
+      originalBatches,
+    );
+    expect(generate).toHaveBeenCalledTimes(calls);
   });
   it("keeps cancellation available and blocks project switching while a review owns the project", async () => {
     let entered!: () => void;
