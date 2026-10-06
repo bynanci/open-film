@@ -7,7 +7,14 @@ import {
   ref,
   watch,
 } from "vue";
-import type { Clip, Job, StoryBeat } from "@openfilm/core";
+import {
+  geometryTranslationForViewport,
+  resolveClipGeometry,
+  type Clip,
+  type Job,
+  type ProjectSettings,
+  type StoryBeat,
+} from "@openfilm/core";
 import {
   applyTimelineCommand,
   prepareShorteningPlan,
@@ -42,6 +49,7 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   jobs?: readonly Job[];
+  projectSettings: ProjectSettings;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -91,6 +99,8 @@ const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
+const sourceScreenElement = ref<HTMLElement | null>(null);
+const sourceViewport = ref({ width: 1, height: 1 });
 const precisionElement = ref<HTMLElement | null>(null);
 const transcriptElement = ref<HTMLElement | null>(null);
 async function setEditMode(mode: "story" | "precision" | "transcript") {
@@ -318,6 +328,24 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
+const previewGeometryStyle = computed(() => {
+  const geometry = resolveClipGeometry({
+    scale: clipFields.value.scale,
+    rotation: clipFields.value.rotation,
+    x: clipFields.value.x,
+    y: clipFields.value.y,
+  });
+  const mapped = geometryTranslationForViewport(
+    geometry,
+    props.projectSettings,
+    sourceViewport.value,
+  );
+  return {
+    width: `${mapped.frame.width}px`,
+    height: `${mapped.frame.height}px`,
+    transform: `translate(${mapped.x}px, ${mapped.y}px) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
+  };
+});
 function transition(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   editClip({
@@ -480,6 +508,11 @@ function revealClip(id: string) {
 function measureWorkspace() {
   cancelAnimationFrame(layoutFrame);
   layoutFrame = requestAnimationFrame(() => {
+    if (sourceScreenElement.value) {
+      const bounds = sourceScreenElement.value.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0)
+        sourceViewport.value = { width: bounds.width, height: bounds.height };
+    }
     const workspace =
       editMode.value === "precision"
         ? precisionElement.value
@@ -1128,7 +1161,7 @@ onBeforeUnmount(() => {
       >
         <div class="editor-stage editor-main">
           <div class="editor-player-region">
-            <div class="editor-source-screen">
+            <div ref="sourceScreenElement" class="editor-source-screen">
               <template v-if="selectedAsset">
                 <div v-if="sourceUnavailable" class="editor-missing-source">
                   <img
@@ -1181,9 +1214,7 @@ onBeforeUnmount(() => {
                   :key="sourcePlaybackKey"
                   :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
                   :alt="selectedAsset.name"
-                  :style="{
-                    transform: `translate(${clipFields.x}px, ${clipFields.y}px) rotate(${clipFields.rotation}deg) scale(${clipFields.scale})`,
-                  }"
+                  :style="previewGeometryStyle"
                   @error="sourceError = 'photo'"
                 />
                 <div
@@ -1218,9 +1249,7 @@ onBeforeUnmount(() => {
                   controls
                   preload="metadata"
                   :aria-label="t('editor.source.preview')"
-                  :style="{
-                    transform: `translate(${clipFields.x}px, ${clipFields.y}px) rotate(${clipFields.rotation}deg) scale(${clipFields.scale})`,
-                  }"
+                  :style="previewGeometryStyle"
                   @loadedmetadata="configurePlayer"
                   @timeupdate="stopAtOut"
                   @play="playing = true"
