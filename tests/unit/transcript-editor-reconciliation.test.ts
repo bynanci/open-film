@@ -178,26 +178,35 @@ async function fixture(segmentCount = 1) {
       ) => app.transcriptEditor.selectRevision(assetId, input),
     ),
   };
-  const scope = vue.effectScope();
-  let dispose = () => {};
   const changed = vi.fn();
-  const editor = scope.run(() =>
-    factory({
-      ...vue,
-      validateTranscriptCommand,
-      api,
-      ApiError,
-      changed,
-      onMounted: () => {},
-      onBeforeUnmount: (callback: () => void) => {
-        dispose = callback;
-      },
-    }),
-  )!;
-  cleanup.push(() => {
-    dispose();
-    scope.stop();
-  });
+  const createEditor = () => {
+    const scope = vue.effectScope();
+    let unmount = () => {};
+    let disposed = false;
+    const editor = scope.run(() =>
+      factory({
+        ...vue,
+        validateTranscriptCommand,
+        api,
+        ApiError,
+        changed,
+        onMounted: () => {},
+        onBeforeUnmount: (callback: () => void) => {
+          unmount = callback;
+        },
+      }),
+    )!;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      unmount();
+      scope.stop();
+    };
+    cleanup.push(dispose);
+    return { editor, dispose };
+  };
+  const initial = createEditor();
+  const editor = initial.editor;
   expect(await editor.load()).toBe(true);
   const baseRevision = editor.state.value!.revision!;
   const correction: TranscriptCommand = {
@@ -237,7 +246,8 @@ async function fixture(segmentCount = 1) {
     correction,
     holdRead,
     newProviderRevision,
-    dispose: () => dispose(),
+    createEditor,
+    dispose: initial.dispose,
     loseAcknowledgment: () => {
       loseNextAcknowledgment = true;
     },
@@ -432,8 +442,48 @@ describe("accepted transcript load ownership", () => {
     expect(test.editor.state.value).toEqual(original);
     expect(test.editor.error.value).toBe(failure);
     expect(test.api.editTranscript).not.toHaveBeenCalled();
-    expect(await test.editor.load(0, false)).toBe(true);
+    // The failed refresh blocked its waiting transition. A new explicit leave
+    // remains safe for this clean project, including when the source is offline.
+    expect(test.editor.hasPending.value).toBe(false);
+    expect(test.storage.size).toBe(0);
     expect(await test.editor.flush()).toBe(true);
+    expect(test.editor.status.value).toBe("failed");
+    expect(test.editor.error.value).toBe(failure);
+    expect(test.editor.state.value).toEqual(original);
+    expect(test.storage.size).toBe(0);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    expect(await test.editor.load(0, false)).toBe(true);
+    expect(test.editor.status.value).toBe("saved");
+    expect(test.editor.error.value).toBeNull();
+    expect(await test.editor.flush()).toBe(true);
+  });
+
+  it("does not treat a failed pending save as a clean read failure on repeated navigation", async () => {
+    const test = await fixture();
+    const failure = new ApiError("Save destination unavailable", 503, {
+      code: "operation.failed",
+    });
+    test.api.editTranscript.mockRejectedValue(failure);
+    expect(test.editor.command(test.correction)).toBe(true);
+    expect(await test.editor.flush()).toBe(false);
+    const draft = test.storage.get(test.storageKey)!;
+    expect(test.editor.hasPending.value).toBe(true);
+    expect(await test.editor.flush()).toBe(false);
+    expect(test.editor.status.value).toBe("failed");
+    expect(test.editor.error.value).toBe(failure);
+    expect(test.editor.state.value?.revision).toBe(test.baseRevision);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect(test.storage.get(test.storageKey)).toBe(draft);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(1);
+    expect(
+      (await test.app.transcriptEditor.get("asset")).document?.segments[0]
+        ?.text,
+    ).toBe("Original text");
   });
 
   it("follows a newer accepted refresh without waiting for an obsolete held response", async () => {
@@ -510,6 +560,78 @@ describe("accepted transcript load ownership", () => {
     expect(await loading).toBe(false);
     expect(test.editor.state.value).toEqual(original);
     expect(test.api.editTranscript).not.toHaveBeenCalled();
+  });
+});
+
+describe("startup transcript recovery retention", () => {
+  it("keeps exact validated draft bytes when disposed before the initial recovery read completes", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.dispose();
+    const original = test.storage.get(test.storageKey)!;
+    const recovering = test.createEditor();
+    const read = test.holdRead();
+    const loading = recovering.editor.load();
+    await read.entered;
+    expect(recovering.editor.state.value).toBeNull();
+    expect(recovering.editor.status.value).toBe("loading");
+    recovering.dispose();
+    expect(test.storage.get(test.storageKey)).toBe(original);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    read.release();
+    expect(await loading).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(original);
+    const reopened = test.createEditor();
+    expect(await reopened.editor.load()).toBe(true);
+    expect(reopened.editor.hasPending.value).toBe(true);
+    expect(reopened.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect(await reopened.editor.flush()).toBe(true);
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+    expect(test.storage.has(test.storageKey)).toBe(false);
+  });
+
+  it("keeps an uncertain startup receipt unchanged through disposal and safely replays it on the next reopen", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.loseAcknowledgment();
+    expect(await test.editor.flush()).toBe(false);
+    test.dispose();
+    const original = test.storage.get(test.storageKey)!;
+    const ack = deferred<void>(),
+      entered = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+      const result = await test.app.transcriptEditor.edit(assetId, input);
+      entered.resolve();
+      await ack.promise;
+      return result;
+    });
+    const recovering = test.createEditor();
+    const loading = recovering.editor.load();
+    await entered.promise;
+    expect(recovering.editor.state.value).toBeNull();
+    recovering.dispose();
+    expect(test.storage.get(test.storageKey)).toBe(original);
+    ack.resolve();
+    expect(await loading).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(original);
+    const reopened = test.createEditor();
+    expect(await reopened.editor.load()).toBe(true);
+    expect(reopened.editor.status.value).toBe("saved");
+    expect(reopened.editor.hasPending.value).toBe(false);
+    expect(reopened.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect(test.api.editTranscript.mock.calls).toHaveLength(3);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect(test.api.editTranscript.mock.calls[2]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+    expect(test.storage.has(test.storageKey)).toBe(false);
   });
 });
 

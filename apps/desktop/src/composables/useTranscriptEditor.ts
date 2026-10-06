@@ -64,6 +64,8 @@ export function useTranscriptEditor(
   };
   function retain() {
     pendingCount.value = pending.length + (receipt ? 1 : 0);
+    // Keep recovery bytes until a hydrated snapshot can safely replace them.
+    if (!state.value) return;
     try {
       if ((pending.length || receipt) && state.value)
         localStorage.setItem(
