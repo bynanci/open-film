@@ -120,6 +120,13 @@ function identifier(value: unknown, name = "ID"): string {
   return result;
 }
 
+/** SDK provider IDs are opaque nonblank strings; preserve their original UTF-16 identity. */
+function providerIdentifier(value: unknown): string {
+  if (typeof value !== "string" || !value.trim())
+    throw new Error("Provider ID must be a nonblank string.");
+  return value;
+}
+
 function date(value: unknown): string {
   if (
     typeof value !== "string" ||
@@ -222,7 +229,10 @@ export function validateReviewSuggestion(value: unknown): ReviewSuggestion {
     ...(confidence === undefined ? {} : { confidence: confidence as number }),
     source: {
       type: source.type as ReviewSuggestion["source"]["type"],
-      id: identifier(source.id),
+      id:
+        source.type === "provider"
+          ? providerIdentifier(source.id)
+          : identifier(source.id),
       ...(source.model === undefined
         ? {}
         : { model: string(source.model, "Provider model", 256) }),
