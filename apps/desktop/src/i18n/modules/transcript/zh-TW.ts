@@ -151,6 +151,13 @@ export default {
     failedBatch: "一個審閱批次失敗。已完成的建議已保留，可重試或略過此批次。",
     cancelledBatch:
       "此審閱批次已取消。已完成的建議仍保留，可重試或略過尚未完成的工作。",
+    interruptedReview:
+      "此審閱仍標示為執行中，但 OpenFilm 無法驗證執行者。它可能屬於另一個程序，也可能是先前程序已停止。",
+    recoverReview: "復原中斷的審閱",
+    recoverReviewConfirm:
+      "只有在你確定先前的 OpenFilm 程序已停止時才繼續。已完成的建議會保留，未完成批次會改為可重試。",
+    confirmStopped: "確認已停止並復原",
+    cancelRecovery: "維持目前狀態",
     unfinishedReviews: "未完成的審閱",
     noRecoveryBatches: "此頁審閱沒有未完成的批次，可換頁尋找更早的審閱。",
     glossaryLimit: "載入下一頁即可管理更多詞彙。",
