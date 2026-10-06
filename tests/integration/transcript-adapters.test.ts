@@ -3,10 +3,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OpenFilmApplication } from "@openfilm/application";
+import {
+  OpenFilmApplication,
+  createReviewOwner,
+} from "@openfilm/application";
 import { api as desktopApi } from "../../apps/desktop/src/api";
 import { hashFile, runProcess } from "@openfilm/media";
-import type { Job, TranscriptSegment } from "@openfilm/core";
+import type { Job, ReviewBatch, TranscriptSegment } from "@openfilm/core";
 import type {
   LanguageProvider,
   TranscriptionOptions,
@@ -144,6 +147,87 @@ async function server(
 }
 
 describe("transcript REST and CLI adapters", () => {
+  it("exposes explicit HTTP recovery for a confirmed unknown review owner", async () => {
+    const setup = await fixture();
+    const transcript = await setup.app.transcriptEditor.get(setup.assetId);
+    const owner = createReviewOwner();
+    const reviewOwner = { ...owner, host: owner.host + ":foreign" };
+    const job: Job = {
+      id: "unknown-owner-http",
+      type: "language-review",
+      assetId: setup.assetId,
+      status: "running",
+      reviewOwner,
+      createdAt: "2026-10-06T00:00:00Z",
+      updatedAt: "2026-10-06T00:01:00Z",
+    };
+    setup.app.catalog.saveJob(job);
+    const batch: ReviewBatch = {
+      jobId: job.id,
+      index: 0,
+      assetId: setup.assetId,
+      sourceRevisionId: transcript.revision!,
+      providerId: "adapter-fixture",
+      segmentIds: ["segment-0"],
+      status: "running",
+      attempts: 1,
+    };
+    setup.app.catalog.knowledge.saveBatch(batch);
+    setup.close();
+
+    const runtime = await startServer({
+      port: 0,
+      project: setup.app.directory,
+      userDataDirectory: setup.userDataDirectory,
+    });
+    cleanups.push(() => runtime.close());
+    const base = `http://127.0.0.1:${runtime.port}/api`;
+    const recovery = await (
+      await fetch(`${base}/review/jobs/${job.id}/recovery`)
+    ).json();
+    expect(recovery).toMatchObject({
+      jobId: job.id,
+      ownerState: "unknown",
+      manualRecoveryAllowed: true,
+      ownerToken: reviewOwner.token,
+      updatedAt: job.updatedAt,
+    });
+
+    const rejected = await fetch(`${base}/review/jobs/${job.id}/recovery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmStopped: true,
+        ownerToken: "stale",
+        updatedAt: recovery.updatedAt,
+      }),
+    });
+    expect(rejected.status).toBe(409);
+
+    const accepted = await fetch(`${base}/review/jobs/${job.id}/recovery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmStopped: true,
+        ownerToken: recovery.ownerToken,
+        updatedAt: recovery.updatedAt,
+      }),
+    });
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()).job).toMatchObject({
+      id: job.id,
+      status: "failed",
+      stage: "interrupted",
+    });
+    expect(
+      (
+        await (
+          await fetch(`${base}/review/jobs/${job.id}/batches`)
+        ).json()
+      ).batches[0].status,
+    ).toBe("cancelled");
+  });
+
   it.each([
     ["isolated surrogate", "provider-\ud800"],
     ["long opaque identifier", "provider-" + "長".repeat(32000)],
