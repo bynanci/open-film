@@ -351,7 +351,10 @@ export class OpenFilmApplication {
     try {
       const promptHints: string[] = [];
       let hintLength = 0;
-      if (options.operation === "transcribe") {
+      if (
+        options.operation === "transcribe" &&
+        this.intelligence.supportsTranscriptionPromptHints
+      ) {
         for (const entry of this.knowledge.glossaryList("effective")) {
           const term = entry.replacement;
           if (

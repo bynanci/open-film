@@ -97,6 +97,11 @@ export class MediaIntelligence {
     this.provider = provider;
   }
 
+  /** Read the active capability without probing model availability. */
+  get supportsTranscriptionPromptHints(): boolean {
+    return this.provider.capabilities?.supportsPromptHints === true;
+  }
+
   async providers() {
     const provider = this.provider;
     const enabled = this.registry
