@@ -96,7 +96,11 @@ API clients use `GET /api/glossary?scope=...`,
 
 Enabled effective terms may be supplied as optional `promptHints` through the
 existing `TranscriptionProvider` port. A provider advertises
-`supportsPromptHints`; unsupported providers receive no hints. The application
+`supportsPromptHints`; unsupported providers receive no hints and do not read
+optional glossary storage for transcription. Corrupt or future-version global
+terminology therefore cannot block a provider that ignores hints. Supporting
+providers still report glossary validation/storage failures before invocation.
+The application
 uses up to 50 unique nonblank preferred terms, each at most 200 characters and
 2,000 characters total. Longer glossary replacements remain valid for suggestions
 but are omitted from this compact hint list. Replacements containing control

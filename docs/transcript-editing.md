@@ -51,7 +51,8 @@ load supersedes an older read; a refused read cannot replace recovery ownership.
 Read failure, draft conflict or disposal blocks the waiting transition rather than
 discarding edits or treating an in-flight refresh as a completed save.
 A later explicit navigation may leave a failed read when there are no unsaved
-commands or receipts. Failed saves, uncertain receipts and conflicting drafts
+commands, receipts or unread recovery bytes, including a failed first read before
+editor state is hydrated. Failed saves, uncertain receipts and conflicting drafts
 still require recovery; an offline source cannot trap a clean project indefinitely.
 
 ## Timing after correction

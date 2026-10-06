@@ -192,5 +192,9 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Preserve full multiline glossary terms and valid long remembered corrections through review and reopen.
 - [x] Return editable revision tokens from both CLI transcript read forms while preserving intelligence fields.
 - [x] Reserve Undo, Redo and revision restore before pending saves so competing actions cannot replace an exact recovery receipt.
+- [x] Wrap Next/Previous through the complete paged transcript search result set.
+- [x] Allow leaving an initially failed clean transcript read while retaining all recovery drafts and uncertain receipts.
+- [x] Keep providers without prompt hints independent of optional glossary storage failures.
+- [x] Preserve the user's chosen search occurrence through explicit refresh and delayed timers so Replace Current cannot silently target another match.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.

@@ -23,10 +23,10 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`acc89583c90e6e58f847023cc5a271e699e38616` passed all required local regression
-gates. The complete browser run passed **56 tests** (34 existing, 22 new) with no
-failures, skips or retries. The full unit/integration suite passed **851 tests in
-74 files**. Documentation finalization follows these runs; current-head GitHub
+`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36` passed all required local regression
+gates. The complete browser run passed **58 tests** (34 existing, 24 new) with no
+failures, skips or retries. The full unit/integration suite passed **886 tests in
+77 files**. Documentation finalization follows these runs; current-head GitHub
 checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 851 tests / 74 files                                                                                 |
+| `pnpm test`             | Passed: 886 tests / 77 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 56 tests, 10.4 minutes, one worker and zero retries                                                  |
+| `pnpm test:e2e`         | Passed: 58 tests, 10.9 minutes, one worker and zero retries                                                  |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -354,9 +354,10 @@ original revision before provider invocation. Nine new operation tests failed
 before this correction; the actual Vue/SQLite and existing receipt suites pass
 23 cases with no unhandled errors.
 
-App remains the sole project/generation-guarded job-history reader. Both child
-editors consume its snapshot; a 10,000-job component regression records zero
-child jobs reads. Fast completion, progress/cancel, initial recovery and manual
+For Transcript and its Review panel, App remains the sole
+project/generation-guarded job-history reader. Both consume its snapshot; a
+10,000-job component regression records zero child jobs reads. Precision retains
+its existing guarded job reader. Fast completion, progress/cancel, initial recovery and manual
 conflicts remain covered by 20 component tests. The combined focused regression
 run passes 112 tests; independent overlap and snapshot reviews reproduce no
 further P1/P2 in those boundaries. Complete browser and current-head CI/review
@@ -443,6 +444,97 @@ published replies, resolved threads and fresh exact-head GitHub CI/review remain
 separate final readiness checks. The native gate compiles a test harness with zero
 native behavior tests; actual hardware and NLE gates remain manual.
 
+## Seventh Codex review
+
+The documentation head `5be8bbe2af52d1bf074746e473823770ba586b66` passed
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37474383451), but
+[push CI](https://github.com/bynanci/open-film/actions/runs/37474376205) failed one
+browser case: Traditional Chinese visual-test cleanup received a socket hang up
+on `POST /api/project/close`; 55 cases passed. Native checks passed in both runs.
+Signed raw logs were unavailable, so the underlying transport cause is not
+inferred from the annotation alone. This head is not an all-green gate.
+
+Its completed Codex review also identified three new P2 cases: Next/Previous
+search navigation wrapping within the boundary page rather than the full result
+set; an initial failed clean read with null editor state preventing subsequent
+navigation; and optional glossary storage blocking transcription even when the
+active provider does not support prompt hints. These findings require focused
+reproduction, regression tests and new-head verification; earlier passing runs
+do not close them.
+
+The initial-load fix keeps the first transition awaiting a failed read refused,
+but permits a later explicit departure only after confirming that no commands,
+receipt or unread recovery bytes exist. Two network/offline-source reproductions
+failed before; five new actual SQLite/queue regressions and all 77 focused cases
+passed after. Valid unhydrated drafts, failed manual saves and server-committed
+lost acknowledgements remain protected; exact retry creates no duplicate revision.
+Independent review reran the five cases without finding a new P1/P2.
+
+Transcription now reads the active provider's hint capability without probing
+availability. Only supporting providers load the effective glossary. Seven cases
+failed before; all 12 new capability/storage/consent regressions and 55 focused
+tests passed after. Corrupt data, future versions and locked backup repair cannot
+block unsupported providers or alter user-data bytes. Supporting providers still
+surface those errors before invocation and require text consent for nonempty
+hints. Registry invocation and explicit provider hints remain unchanged.
+
+Search now reads the opposite boundary page using the reported page size and
+selects its first/last flattened occurrence. Four of nine actual SFC/SQLite cases
+failed before; all nine passed afterward, including 101/201 matching segments,
+multiple occurrences and single-page wrapping without extra reads. Independent
+review reran the nine cases and confirmed existing query/case/revision/generation
+guards reject stale page responses before publishing or seeking.
+
+Transport diagnosis uses the declared Playwright 1.63.0 and the actual local
+server. Ordinary idle/stalled-before-dispatch requests succeeded. A controlled
+stall after selecting a reusable socket reproduced `ECONNRESET` while the server
+expired that connection; the failed POST never reached its handler and subsequent
+health remained successful. A dedicated fresh API context succeeded under the
+same controlled condition. Earlier probes accidentally selected an environment
+Playwright 1.62.1; those logs are separately labelled and are not evidence for the
+pinned runner. The controlled 1.63 result proves a matching failure mechanism,
+not the remote CI root cause, whose raw logs/trace remained unavailable.
+
+The extracted cleanup fixture owns and disposes one fresh request context per
+call. Three actual HTTP regressions verify distinct connections, prompt disposal,
+preservation of the caller's warmed context, and HTTP 500/TCP-reset propagation
+with exactly one POST. No dispatch mocks, timing stalls, sleeps, network retries
+or production server timeout changes are part of those tests.
+
+The first focused browser attempt failed both new cases: the offline test
+incorrectly expected HTTP 404 instead of the existing `media.missing` HTTP 400,
+and the search cycle was reset by a second same-context refresh. After correcting
+the status contract, the offline recovery case passed, but searching still failed
+even after re-entering the query. Those failures and traces are retained. A real
+SFC/SQLite reproduction showed Next selecting offset 12, then a 250 ms scheduled
+refresh resetting it to 0 after explicit search. This additional cursor race is
+an independent finding, not one of the three Codex threads; it requires a code
+fix and protection for new query timers, rather than a fixture-only workaround.
+
+Explicit `find()` now clears the existing timer at entry only. Fifteen actual
+SFC/SQLite cases pass, including held real saves with newer query, case and
+revision timers; those later timers must survive. Independent exact-prior-script
+reproduction persisted the wrong `beta first alpha` with replacement offset 0.
+Both fixed-source cases and their fresh independent rerun preserve offset 12 and
+persist `alpha first beta`. An accidentally expanded diagnostic run's totals are
+excluded; only the isolated before/after evidence establishes this finding.
+
+The final two focused browser cases passed on `bd269b8` in 42.3 seconds without
+skips or retries. They traverse all 104 occurrences across 101 matching segments,
+verify both global wrap directions and exact within-segment replacements, then
+exercise a failed first read, clean departure and protected offline edits with
+original-receipt retry after source restoration. Story/composition and source
+hashes remain unchanged. Complete reruns and new-head GitHub checks remain
+separate gates.
+
+The complete final rerun at `bd269b8` passed all nine local gates, 886
+unit/integration tests in 77 files, and all 58 browser cases in 10.9 minutes
+with zero skips or retries. The final browser log and its owned `.log.head`,
+`.log.testsha`, `.log.exitstatus` and `.log.elapsed-seconds` sidecars identify this
+run; earlier unsuffixed metadata belongs to the preceding `acc8958` run and is
+not evidence for the new head. Final documentation formatting, new-head CI and
+review remain distinct checks.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -483,16 +575,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`acc89583c90e6e58f847023cc5a271e699e38616`, Node 24.14.0, SQLite 3.51.2,
+`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **9.23–43.83 ms**, with a recorded maximum **46.79 ms**. Case-sensitive,
+  **7.89–39.00 ms**, with a recorded maximum **39.95 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **91.25 ms** and is outside the search interval.
+- Database seeding took **75.42 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **13.06 ms** matcher compilation and **51.62 ms** scanning, including
+  warm-up, **11.61 ms** matcher compilation and **41.26 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache
@@ -503,9 +595,9 @@ For maximum-size review selection, run
 `pnpm exec tsx scripts/benchmark-review-selection.ts output.json`. This generated
 SQLite fixture selects 10,000 IDs in reverse order and verifies 100 cancelled
 batches retain transcript order. On the same shared host, at
-`acc89583c90e6e58f847023cc5a271e699e38616`, five preparation samples had a
-**20.81 ms** median and **19.74–30.56 ms** range. Setup took **58.56 ms**, including
-**46.45 ms** seeding, outside the interval. Preparation includes source
+`bd269b80976d1763c2b6f92b0742d3ac8cbd7c36`, five preparation samples had a
+**23.23 ms** median and **20.82–31.61 ms** range. Setup took **59.61 ms**, including
+**47.84 ms** seeding, outside the interval. Preparation includes source
 verification, transcript loading, selection validation, partitioning and initial
 queued-job persistence; later batch writes, cancellation and full review are
 excluded. The output records exact source/runtime/fixture hashes. This is not
