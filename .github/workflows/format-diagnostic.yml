@@ -1,0 +1,40 @@
+name: Format diagnostic
+on:
+  push:
+    branches:
+      - codex/geometry-preview-renderer-parity-clean
+permissions:
+  contents: read
+jobs:
+  prettier:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print Prettier diff
+        run: |
+          pnpm exec prettier --write \
+            apps/cli/src/index.ts \
+            apps/desktop/src/components/ReviewPanel.vue \
+            apps/server/src/server.ts \
+            docs/review-suggestions.md \
+            schemas/workstation-qa-1.0.0.schema.json \
+            scripts/workstation-qa.ts \
+            tests/integration/transcript-adapters.test.ts \
+            tests/unit/workstation-qa-contract.test.ts
+          git diff -- \
+            apps/cli/src/index.ts \
+            apps/desktop/src/components/ReviewPanel.vue \
+            apps/server/src/server.ts \
+            docs/review-suggestions.md \
+            schemas/workstation-qa-1.0.0.schema.json \
+            scripts/workstation-qa.ts \
+            tests/integration/transcript-adapters.test.ts \
+            tests/unit/workstation-qa-contract.test.ts
