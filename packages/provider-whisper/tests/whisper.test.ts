@@ -270,6 +270,99 @@ describe("local Whisper provider protocol (not speech accuracy)", () => {
     expect(gappedResult.segments?.at(-1)?.end).toBeGreaterThan(2.8);
     expect(gappedResult.segments?.at(-1)?.end).toBeLessThanOrEqual(3);
   });
+  it.each([
+    { name: "single", duration: 1, gaps: [0.4], pulses: [0.6] },
+    {
+      name: "repeated",
+      duration: 2,
+      gaps: [0.4, 0.8, 1.2],
+      pulses: [0.6, 1, 1.6],
+    },
+  ])(
+    "passes source-clock pulse times to the runner across $name 50ms packet gaps (diagnostic, not ASR)",
+    async ({ name, duration, gaps, pulses }) => {
+      const source = join(directory, `short-packet-gaps-${name}.mkv`);
+      const pulseExpression = pulses
+        .map((time) => `between(t\\,${time}\\,${time + 0.01})`)
+        .join("+");
+      const gapExpression = gaps
+        .map((time) => `between(t\\,${time}\\,${(time + 0.04).toFixed(2)})`)
+        .join("+");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=black:s=96x64:r=25:d=${duration}`,
+        "-f",
+        "lavfi",
+        "-i",
+        `aevalsrc=if(${pulseExpression}\\,0.75\\,0.5):s=8000:d=${duration}`,
+        "-filter:a",
+        `asetnsamples=n=80,aselect=not(${gapExpression})`,
+        "-c:v",
+        "ffv1",
+        "-c:a",
+        "pcm_s16le",
+        "-threads",
+        "1",
+        "-y",
+        source,
+      ]);
+      // Read the real provider-extracted 16kHz WAV. This runner reports pulse
+      // sample positions, independently of the provider's FFmpeg arguments.
+      const diagnostic = await script(
+        `audio-clock-${name}.py`,
+        `import argparse, json, struct, wave
+parser = argparse.ArgumentParser(description="PCM timing diagnostic, not ASR")
+for option in ["model", "audio", "language", "execution"]:
+    parser.add_argument("--" + option)
+args = parser.parse_args()
+with wave.open(args.audio, "rb") as stream:
+    rate = stream.getframerate()
+    assert rate == 16000 and stream.getnchannels() == 1 and stream.getsampwidth() == 2
+    data = stream.readframes(stream.getnframes())
+samples = [value[0] for value in struct.iter_unpack("<h", data)]
+segments = []
+start = None
+for index, sample in enumerate(samples + [0]):
+    if sample > 0.625 * 32768:
+        if start is None:
+            start = index / rate
+    elif start is not None:
+        end = index / rate
+        segments.append({"id": "pulse-" + str(len(segments)), "start": start, "end": end,
+                         "text": "pulse", "words": [{"start": start, "end": end, "text": "pulse"}]})
+        start = None
+print(json.dumps({"event": "result", "result": {
+    "text": f"{len(samples) / rate:.3f}s diagnostic PCM", "language": "en", "execution": "cpu",
+    "model": "audio-clock-diagnostic-not-asr", "version": "diagnostic/1", "segments": segments}}), flush=True)
+`,
+      );
+      const transcript = await provider(diagnostic).transcribe(
+        {
+          ...asset,
+          uri: pathToFileURL(source).href,
+          mediaType: "video",
+          duration,
+        },
+        { execution: "cpu" },
+      );
+      expect(transcript.model).toBe("audio-clock-diagnostic-not-asr");
+      expect(transcript.segments).toHaveLength(pulses.length);
+      for (const [index, time] of pulses.entries()) {
+        expect(transcript.segments?.[index]?.start).toBeCloseTo(time, 3);
+        expect(transcript.segments?.[index]?.words?.[0]?.start).toBeCloseTo(
+          time,
+          3,
+        );
+      }
+      expect(transcript.text).toBe(`${duration.toFixed(3)}s diagnostic PCM`);
+      expect(await readdir(work)).toEqual([]);
+    },
+  );
   it("propagates structured process failures and rejects malformed/duplicate results", async () => {
     const failed = await script(
       "error.py",

@@ -20,6 +20,7 @@ import {
   type IntelligenceProviders,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
+import { waveformPath } from "../waveform";
 
 const props = defineProps<{
   projectId: string;
@@ -43,6 +44,7 @@ const jobs = ref<Job[]>([]);
 const error = shallowRef<unknown>(null);
 const playbackError = ref(false);
 const loading = ref(false);
+const sourceVerified = ref(false);
 const discoveringJobs = ref(false);
 const pending = ref(false);
 const playing = ref(false);
@@ -84,7 +86,11 @@ const playable = computed(
   () => supported.value && !props.unavailable && sourceDuration.value > 0,
 );
 const editable = computed(
-  () => playable.value && !props.clip?.locked && !props.busy,
+  () =>
+    playable.value &&
+    sourceVerified.value &&
+    !props.clip?.locked &&
+    !props.busy,
 );
 const sourceKey = computed(
   () =>
@@ -159,36 +165,9 @@ const clipTime = computed(() => {
     (props.clip.transform?.speed ?? 1)
   );
 });
-const wavePath = computed(() => {
-  const wave = data.value?.waveform;
-  if (!wave || !viewDuration.value) return "";
-  const columns = 800;
-  let path = "";
-  for (let column = 0; column < columns; column++) {
-    const from = Math.floor(
-      ((viewStart.value + (column / columns) * viewDuration.value) /
-        wave.duration) *
-        wave.peaks.length,
-    );
-    const to = Math.min(
-      wave.peaks.length,
-      Math.max(
-        from + 1,
-        Math.ceil(
-          ((viewStart.value + ((column + 1) / columns) * viewDuration.value) /
-            wave.duration) *
-            wave.peaks.length,
-        ),
-      ),
-    );
-    let peak = 0;
-    for (let index = Math.max(0, from); index < to; index++)
-      peak = Math.max(peak, wave.peaks[index] ?? 0);
-    const amplitude = Math.max(0.4, peak * 42);
-    path += `M${column + 0.5},${50 - amplitude}v${amplitude * 2}`;
-  }
-  return path;
-});
+const wavePath = computed(() =>
+  waveformPath(data.value?.waveform, viewStart.value, viewDuration.value),
+);
 const silent = computed(
   () =>
     !!data.value?.waveform &&
@@ -230,6 +209,26 @@ function haltPolling() {
   if (polling) clearTimeout(polling);
   polling = undefined;
 }
+function handleError(cause: unknown, readFailed = false) {
+  error.value = cause;
+  const code =
+    typeof cause === "object" && cause !== null && "code" in cause
+      ? cause.code
+      : undefined;
+  if (
+    code === "source.changed" ||
+    code === "media.missing" ||
+    (readFailed && !sourceVerified.value)
+  ) {
+    analysisRead++;
+    loading.value = false;
+    sourceVerified.value = false;
+    data.value = null;
+    pageOffset.value = 0;
+    snapResult.value = undefined;
+    cancelDrag();
+  }
+}
 async function loadAnalysis(offset = pageOffset.value) {
   if (!props.active || !supported.value) return;
   const stamp = generation;
@@ -245,9 +244,11 @@ async function loadAnalysis(offset = pageOffset.value) {
     );
     if (!current(stamp) || read !== analysisRead) return;
     data.value = result;
+    sourceVerified.value = true;
+    error.value = null;
     pageOffset.value = result.transcriptOffset;
   } catch (cause) {
-    if (current(stamp) && read === analysisRead) error.value = cause;
+    if (current(stamp) && read === analysisRead) handleError(cause, true);
   } finally {
     if (current(stamp) && read === analysisRead) loading.value = false;
   }
@@ -295,7 +296,7 @@ async function pollJobs(hydrate = false) {
         emit("activity");
         if (next.status === "completed") finished = true;
         if (next.status === "failed")
-          error.value = next.errors?.[0] ?? { code: "operation.failed" };
+          handleError(next.errors?.[0] ?? { code: "operation.failed" });
       }
       return next;
     });
@@ -306,7 +307,7 @@ async function pollJobs(hydrate = false) {
     )
       await loadAnalysis(finished ? 0 : pageOffset.value);
   } catch (cause) {
-    if (current(stamp) && read === jobRead) error.value = cause;
+    if (current(stamp) && read === jobRead) handleError(cause);
   } finally {
     if (current(stamp) && read === jobRead) discoveringJobs.value = false;
   }
@@ -344,9 +345,11 @@ async function analyze(operation: "transcribe" | "waveform" | "scenes") {
     ];
     emit("activity");
     if (result.job.status === "completed") await loadAnalysis(0);
+    else if (result.job.status === "failed")
+      handleError(result.job.errors?.[0] ?? { code: "operation.failed" });
     else void pollJobs();
   } catch (cause) {
-    if (current(stamp)) error.value = cause;
+    if (current(stamp)) handleError(cause);
   } finally {
     if (current(stamp)) pending.value = false;
   }
@@ -364,11 +367,11 @@ async function cancelJob(job: Job) {
       void pollJobs();
     }
   } catch (cause) {
-    if (current(stamp)) error.value = cause;
+    if (current(stamp)) handleError(cause);
   }
 }
 async function addMarker(at = playhead.value) {
-  if (!playable.value || pending.value) return;
+  if (!playable.value || !sourceVerified.value || pending.value) return;
   const stamp = generation;
   pending.value = true;
   try {
@@ -382,13 +385,14 @@ async function addMarker(at = playhead.value) {
       emit("activity");
     }
   } catch (cause) {
-    if (current(stamp)) error.value = cause;
+    if (current(stamp)) handleError(cause);
   } finally {
     if (current(stamp)) pending.value = false;
   }
 }
 async function removeMarker(marker: TimelineMarker) {
-  if (marker.type !== "manual" || pending.value) return;
+  if (!sourceVerified.value || marker.type !== "manual" || pending.value)
+    return;
   const stamp = generation;
   pending.value = true;
   try {
@@ -401,7 +405,7 @@ async function removeMarker(marker: TimelineMarker) {
       emit("activity");
     }
   } catch (cause) {
-    if (current(stamp)) error.value = cause;
+    if (current(stamp)) handleError(cause);
   } finally {
     if (current(stamp)) pending.value = false;
   }
@@ -477,7 +481,7 @@ function pointerTime(event: PointerEvent | MouseEvent) {
   );
 }
 function snapped(value: number, minimum = 0, maximum = sourceDuration.value) {
-  if (!snapEnabled.value) {
+  if (!sourceVerified.value || !snapEnabled.value) {
     snapResult.value = undefined;
     return clamp(value, minimum, maximum);
   }
@@ -655,10 +659,13 @@ watch(
     haltPolling();
     pending.value = false;
     loading.value = false;
+    sourceVerified.value = false;
+    data.value = null;
+    snapResult.value = undefined;
+    cancelDrag();
     discoveringJobs.value = false;
     player.value?.pause();
     if (!previous || key !== previous[0]) {
-      data.value = null;
       jobs.value = [];
       providers.value = null;
       error.value = null;
@@ -1004,7 +1011,7 @@ onBeforeUnmount(() => {
                 :aria-label="
                   t('precision.removeMarker', { time: time(marker.time) })
                 "
-                :disabled="pending"
+                :disabled="!sourceVerified || pending"
                 @click="removeMarker(marker)"
               >
                 ×
@@ -1089,9 +1096,11 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <label
-              ><input v-model="snapEnabled" type="checkbox" />{{
-                t("precision.snap")
-              }}</label
+              ><input
+                v-model="snapEnabled"
+                type="checkbox"
+                :disabled="!sourceVerified"
+              />{{ t("precision.snap") }}</label
             ><label
               ><input v-model="follow" type="checkbox" />{{
                 t("precision.follow")
@@ -1252,7 +1261,7 @@ onBeforeUnmount(() => {
               {{ t("precision.split") }}</button
             ><button
               class="editor-button"
-              :disabled="pending"
+              :disabled="!sourceVerified || pending"
               @click="addMarker()"
             >
               {{ t("precision.addMarker") }}

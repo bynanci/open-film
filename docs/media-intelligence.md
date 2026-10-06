@@ -43,7 +43,10 @@ Originals are never modified by these operations.
 Waveforms and scene cuts use local FFmpeg. Waveforms stream decoded PCM and combine channel peaks
 rather than buffering the entire recording. Peaks begin at 50 bins per second
 and are combined as needed to keep at most 20,000 bins. `sampleRate` describes
-the resulting peak bins per second, not the source audio sample rate.
+the resulting peak bins per second, not the source audio sample rate. Source
+timestamps, including short packet gaps, are preserved in both waveform and
+transcription audio preparation. Precision plots bins using this rate; a partial
+final bin does not stretch earlier audio positions.
 
 Scene detection uses FFmpeg's visual change score with a default threshold of
 0.3. Results are source-time `scene-cut` suggestions with confidence and detector

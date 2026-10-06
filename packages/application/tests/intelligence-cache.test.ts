@@ -84,7 +84,7 @@ it.each(["providerId", "version", "model"] as const)(
         ...waveform.provenance,
         [field]:
           field === "model"
-            ? "channel-max-s16le-8000hz-max-20000-peaks"
+            ? "source-clock-channel-max-s16le-8000hz-max-20000-peaks"
             : "incompatible",
       },
     };

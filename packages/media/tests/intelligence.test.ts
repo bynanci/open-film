@@ -260,6 +260,65 @@ describe("local streaming waveform analysis", () => {
     expect(waveform.peaks.slice(120, 130)).toEqual(Array(10).fill(0.5));
   });
 
+  it.each([
+    { name: "single", duration: 1, gaps: [0.4], pulses: [0.6] },
+    {
+      name: "repeated",
+      duration: 2,
+      gaps: [0.4, 0.8, 1.2],
+      pulses: [0.6, 1, 1.6],
+    },
+  ])(
+    "preserves source-clock pulse positions across $name 50ms packet gaps",
+    async ({ name, duration, gaps, pulses }) => {
+      const file = `short-packet-gaps-${name}.mkv`;
+      const pulseExpression = pulses
+        .map((time) => `between(t\\,${time}\\,${time + 0.01})`)
+        .join("+");
+      const gapExpression = gaps
+        .map((time) => `between(t\\,${time}\\,${(time + 0.04).toFixed(2)})`)
+        .join("+");
+      await runProcess("ffmpeg", [
+        "-hide_banner",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=black:s=96x64:r=25:d=${duration}`,
+        "-f",
+        "lavfi",
+        "-i",
+        `aevalsrc=if(${pulseExpression}\\,0.75\\,0.5):s=8000:d=${duration}`,
+        "-filter:a",
+        // Drop five 10ms packets while retaining the resumed packet's PTS.
+        `asetnsamples=n=80,aselect=not(${gapExpression})`,
+        "-c:v",
+        "ffv1",
+        "-c:a",
+        "pcm_s16le",
+        "-threads",
+        "1",
+        "-y",
+        join(root, file),
+      ]);
+      const waveform = await generateWaveform(
+        asset(file, "video"),
+        `short-packet-gaps-${name}`,
+      );
+      expect(waveform.duration).toBe(duration);
+      expect(waveform.sampleRate).toBe(50);
+      for (const time of gaps)
+        expect(waveform.peaks.slice(time * 50, time * 50 + 2)).toEqual([0, 0]);
+      expect(
+        waveform.peaks.flatMap((peak, index) =>
+          peak > 0.74 ? [index / waveform.sampleRate] : [],
+        ),
+      ).toEqual(pulses);
+      expect(waveform.peaks.at(-1)).toBe(0.5);
+    },
+  );
+
   it("rejects cancellation before spawn and during decoded output without cache artifacts", async () => {
     const cancelled = new AbortController();
     cancelled.abort();

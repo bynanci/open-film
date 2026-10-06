@@ -19,11 +19,15 @@ const MAX_MARKERS = 20_000;
 const MAX_DIAGNOSTIC_BYTES = 65_536;
 type AnalysisKind = "waveform" | "scene";
 
+/** Fill every packet gap; FFmpeg otherwise ignores gaps below its 100ms default. */
+export const SOURCE_CLOCK_AUDIO_FILTER =
+  "asetpts=PTS-STARTPTS,aresample=async=1:min_hard_comp=0:first_pts=0";
+
 /** Shared with cache readers so algorithm changes invalidate prior results. */
 export const WAVEFORM_CACHE_IDENTITY = {
   providerId: "openfilm.ffmpeg-waveform",
   version: "1",
-  model: "source-clock-channel-max-s16le-8000hz-max-20000-peaks",
+  model: "source-clock-v2-channel-max-s16le-8000hz-max-20000-peaks",
 } as const;
 
 export function sceneCacheIdentity(threshold = 0.3) {
@@ -325,7 +329,7 @@ export async function generateWaveform(
         // Keep packet gaps on the source clock while the leading offset is
         // represented by zero bins above. Raw PCM otherwise loses timestamps.
         "-af",
-        "asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0",
+        SOURCE_CLOCK_AUDIO_FILTER,
         "-ar",
         String(PCM_RATE),
         "-c:a",

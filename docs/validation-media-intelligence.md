@@ -29,10 +29,10 @@ The existing regression gates also execute the new suites through CI:
 | `pnpm format:check`                | **Passed.** Repository formatting check.                                                                                                                                                                   |
 | `pnpm test:i18n`                   | **Passed.** 856 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
 | `pnpm lint`, `pnpm typecheck`      | **Passed.** TypeScript, Vue and strict lint checks.                                                                                                                                                        |
-| `pnpm test`                        | **Passed: 491 tests in 54 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
+| `pnpm test`                        | **Passed: 502 tests in 55 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
 | `pnpm build`                       | **Passed.** CLI/server bundles, Python sidecar copies and Desktop production build.                                                                                                                        |
 | `node scripts/smoke-built-cli.mjs` | **Passed.** Built CLI import/Story/Compose, real waveform/scenes, missing-model failure, protocol-fixture transcription, paged words, markers, reopen, MP4 and exports.                                    |
-| `pnpm test:e2e`                    | **Passed: 26 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus three Precision browser cases; the 500-clip regression remains green.                                |
+| `pnpm test:e2e`                    | **Passed: 27 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus four Precision browser cases; the 500-clip regression remains green.                                 |
 | `pnpm test:interchange`            | **Passed.** Official OpenTimelineIO 0.18.1 serialization/source validation and 18 offline workstation-helper regressions. Actual Resolve is not run.                                                       |
 | `pnpm test:native`                 | **Passed.** Rust formatting, Clippy and compile/test harness; the harness contains zero native behavior tests.                                                                                             |
 
@@ -57,7 +57,9 @@ Independent reviews and browser execution identified and corrected:
 - Progress observers corrupting durable job state when they throw.
 - Request enum arrays passing through string coercion.
 - Malformed provider execution arrays entering completed job metadata.
-- Delayed audio or internal packet gaps shifting word/waveform source timing.
+- Delayed audio or internal packet gaps, including repeated 50 ms gaps, shifting
+  word/waveform source timing. Both ingest paths share timestamp resampling with
+  immediate hard compensation; actual PCM pulse diagnostics verify the source clock.
 - Older/foreign waveform and scene caches being reused by the current pipeline.
 - Frame-key trim sticking to its own snap candidate.
 - Trim handle bounds becoming inverted for valid 5 ms selections.
@@ -65,6 +67,10 @@ Independent reviews and browser execution identified and corrected:
 - Story mute changes not reaching a retained source player.
 - Hidden Story/Precision media elements using a second decoder.
 - Activity labels missing dynamic translation keys.
+- Invalidated source evidence remaining editable after a failed read/job/marker
+  operation; Precision now waits for a verified read and can refresh after recovery.
+- Waveform SVG stretching a partial final bucket; geometry uses actual peak
+  sample rate at all zoom levels.
 
 Each correction has a protocol, integration, media or browser regression rather
 than only an interface declaration.

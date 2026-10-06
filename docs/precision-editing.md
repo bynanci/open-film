@@ -73,3 +73,9 @@ cancellation, exact frame adjustment and valid sub-frame trim boundaries.
 Its deterministic transcription provider is
 explicitly a protocol fixture. Real FFmpeg waveform/scene processing and actual
 Whisper inference are different checks and must be reported separately.
+
+Source evidence is cleared when a read, job or marker operation reports changed
+or missing media. Precision edit/marker controls wait for a successful source
+verification; use the source refresh action after restoring the original file.
+Cancelled re-transcription keeps previously verified results. This source
+readiness guard does not delete the saved composition or its edit history.

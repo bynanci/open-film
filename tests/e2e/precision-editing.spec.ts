@@ -209,10 +209,11 @@ async function createSourceFilm(
   page: Page,
   request: APIRequestContext,
   locale: ProjectContentLocale,
+  suffix = "",
 ) {
   await initialLocale(page, locale);
   await page.goto("/");
-  const path = join(root, `${locale}-precision.openfilm`);
+  const path = join(root, `${locale}-precision${suffix}.openfilm`);
   await createFilm(
     page,
     {
@@ -450,6 +451,195 @@ async function seekWord(
     )
     .toBeCloseTo(expected, 2);
 }
+
+test("invalidates source evidence after rejected reads, marker writes and failed jobs, then recovers on refresh", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const original = await readFile(join(mediaDirectory, videoName));
+  const changed = Buffer.concat([
+    original,
+    Buffer.from("precision-source-verification-regression"),
+  ]);
+  const { video } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-source-invalidation",
+  );
+  const before = await composition(request);
+  let wordCount = 0;
+  const panel = (name: "analysis" | "transcript") =>
+    page.locator(".precision-panel-tabs").getByRole("button", {
+      name: text(locale, `precision.${name}`),
+      exact: true,
+    });
+  const trimIn = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  const marker = page.getByRole("button", {
+    name: text(locale, "precision.addMarker"),
+    exact: true,
+  });
+  const refresh = page.getByRole("button", {
+    name: text(locale, "precision.refresh"),
+    exact: true,
+  });
+  const startTranscription = async () => {
+    const started = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${video.id}/intelligence` &&
+        response.request().method() === "POST",
+    );
+    await page
+      .getByRole("region", {
+        name: text(locale, "precision.analysis"),
+        exact: true,
+      })
+      .getByRole("button", {
+        name: text(locale, "precision.transcribe"),
+        exact: true,
+      })
+      .click();
+    const response = await started;
+    expect(response.status()).toBe(202);
+    return (await response.json()).job.id as string;
+  };
+  const expectEvidence = async (available: boolean) => {
+    await panel("transcript").click();
+    await expect(page.locator(".precision-words button")).toHaveCount(
+      available ? wordCount : 0,
+    );
+    if (available)
+      await expect(page.locator(".precision-wave-path")).not.toHaveAttribute(
+        "d",
+        "",
+      );
+    else
+      await expect(page.locator(".precision-wave-path")).toHaveAttribute(
+        "d",
+        "",
+      );
+    await expect(page.locator(".precision-marker-line")).toHaveCount(
+      available ? 1 : 0,
+    );
+    if (available) {
+      await expect(trimIn).toBeEnabled();
+      await expect(marker).toBeEnabled();
+      await expect(
+        page.getByLabel(text(locale, "precision.snap"), { exact: true }),
+      ).toBeEnabled();
+    } else {
+      await expect(trimIn).toBeDisabled();
+      await expect(marker).toBeDisabled();
+      await expect(
+        page.getByLabel(text(locale, "precision.snap"), { exact: true }),
+      ).toBeDisabled();
+      await page.locator(".precision-waveform").press("m");
+      await page.locator(".precision-waveform").press("b");
+    }
+    expect(await composition(request)).toEqual(before);
+  };
+  const recover = async () => {
+    await writeFile(join(mediaDirectory, videoName), original);
+    await panel("analysis").click();
+    await refresh.click();
+    await expectEvidence(true);
+    await expect(page.locator(".precision-editor [role=alert]")).toHaveCount(0);
+  };
+  try {
+    await analysisPanel(page, locale);
+    await analyze(page, request, locale, video.id, "transcribe");
+    await analyze(page, request, locale, video.id, "waveform");
+    await marker.click();
+    await expect
+      .poll(async () => (await intelligence(request, video.id)).markers.length)
+      .toBe(1);
+    const evidence = await intelligence(request, video.id);
+    wordCount = evidence.transcript!.segments.reduce(
+      (count, segment) => count + (segment.words?.length ?? 0),
+      0,
+    );
+    expect(wordCount).toBeGreaterThan(0);
+    // Cancelling a replacement analysis keeps already verified evidence usable.
+    const cancelledId = await startTranscription();
+    await page
+      .locator(`.precision-job[data-job-id="${cancelledId}"]`)
+      .getByRole("button", {
+        name: text(locale, "precision.cancelJob"),
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.locator(`.precision-job[data-job-id="${cancelledId}"]`),
+    ).toContainText(text(locale, "precision.jobStatus.cancelled"));
+    expect((await intelligence(request, video.id)).transcript).toEqual(
+      evidence.transcript,
+    );
+    await expectEvidence(true);
+
+    // Returning from Story re-verifies the bytes even when the asset ID, URI and
+    // imported hash are unchanged. The failed read must remove old snap evidence.
+    await mode(page, locale, "story");
+    await writeFile(join(mediaDirectory, videoName), changed);
+    const rejectedRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${video.id}/intelligence` &&
+        response.request().method() === "GET",
+    );
+    await mode(page, locale, "precision");
+    expect((await rejectedRead).status()).toBe(409);
+    await expectEvidence(false);
+    await recover();
+
+    // Marker mutations can discover a changed source while the view is active.
+    await writeFile(join(mediaDirectory, videoName), changed);
+    const rejectedMarker = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${video.id}/markers` &&
+        response.request().method() === "POST",
+    );
+    await marker.click();
+    expect((await rejectedMarker).status()).toBe(409);
+    await expectEvidence(false);
+    await recover();
+
+    // A job verifies the source again before persisting its result. A failure
+    // delivered through job polling must invalidate the same evidence.
+    await panel("analysis").click();
+    const failedId = await startTranscription();
+    await expect
+      .poll(async () => {
+        const jobs = (await (await request.get(`${base}/jobs`)).json())
+          .jobs as Job[];
+        return jobs.find((job) => job.id === failedId)?.stage;
+      })
+      .toBe("transcribing");
+    await writeFile(join(mediaDirectory, videoName), changed);
+    await expect(
+      page.locator(`.precision-job[data-job-id="${failedId}"]`),
+    ).toContainText(text(locale, "precision.jobStatus.failed"), {
+      timeout: 30_000,
+    });
+    const jobs = (await (await request.get(`${base}/jobs`)).json())
+      .jobs as Job[];
+    expect(jobs.find((job) => job.id === failedId)?.errors?.[0]?.code).toBe(
+      "source.changed",
+    );
+    await expectEvidence(false);
+    await recover();
+    expect((await intelligence(request, video.id)).transcript).toEqual(
+      evidence.transcript,
+    );
+  } finally {
+    await writeFile(join(mediaDirectory, videoName), original);
+  }
+});
 
 test("uses real source analysis, a disclosed protocol transcript, snapped trim and shared split history", async ({
   page,

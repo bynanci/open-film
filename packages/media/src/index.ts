@@ -685,6 +685,7 @@ export type {
 export {
   generateWaveform,
   detectScenes,
+  SOURCE_CLOCK_AUDIO_FILTER,
   WAVEFORM_CACHE_IDENTITY,
   sceneCacheIdentity,
 } from "./intelligence.js";

@@ -15,7 +15,13 @@ import type {
   TranscriptionResult,
   TranscriptionStage,
 } from "@openfilm/plugin-sdk";
-import { abortError, checkAbort, localPath, runProcess } from "@openfilm/media";
+import {
+  abortError,
+  checkAbort,
+  localPath,
+  runProcess,
+  SOURCE_CLOCK_AUDIO_FILTER,
+} from "@openfilm/media";
 
 export interface LocalWhisperOptions {
   pythonPath?: string;
@@ -470,7 +476,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           // Normalize only the first audio timestamp; fill internal PTS gaps.
           // The separate sourceOffset restores its position in the source video.
           "-af",
-          "asetpts=PTS-STARTPTS,aresample=async=1:first_pts=0",
+          SOURCE_CLOCK_AUDIO_FILTER,
           "-ac",
           "1",
           "-ar",
