@@ -89,3 +89,21 @@ Hardware and real NLE verification are recorded separately.
 
 Keep this file current when a pending capability gains working behavior and
 validation; keep host-dependent checks distinct from source implementation.
+
+## Global product experience and i18n round
+
+Evidence: [validation record](docs/validation-global-product.md).
+
+- [x] Previous correctness reviews fixed, tested and merged in PR #1; main CI green.
+- [x] Resolve QA truth recorded; actual application import remains the manual gate.
+- [x] Vue I18n en-US/zh-TW/ja-JP foundation, runtime locale preference, Intl formats,
+      development pseudo locale and semantic key/placeholder coverage gate.
+- [x] Separate persisted film locale/settings and template/user text ownership;
+      legacy preservation, undo/redo and real HTTP save/reopen regressions.
+- [x] Structured localized errors and complete Welcome/Create Film product flow.
+- [x] Guided navigation, Library, Story, Edit, Export and missing-media recovery.
+- [x] Keyboard/accessibility, CJK/pseudo screenshots and desktop layout QA.
+- [x] Localized full workflow and existing regression coverage, including real MP4,
+      pathless creation, Story save races and managed-thumbnail recovery.
+- [x] CI integrates i18n coverage, locale workflows, visual/axe checks and local CJK
+      fonts; the PR checks record the exact commit's execution result.

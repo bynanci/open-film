@@ -1,10 +1,18 @@
 import type {
   MediaAsset,
+  ProjectContentLocale,
   ScoreResult,
   Story,
   StoryContext,
 } from "@openfilm/core";
 import type { StoryTemplate } from "@openfilm/plugin-sdk";
+import {
+  genericBeatText,
+  genericStoryTitle,
+  resolveProjectContentLocale,
+} from "./content.js";
+
+export * from "./content.js";
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value));
 const date = (asset: MediaAsset): number =>
@@ -140,6 +148,7 @@ export interface CreateStoryOptions {
   template?: StoryTemplate;
   targetDuration?: number;
   maxDuration?: number;
+  contentLocale?: ProjectContentLocale;
 }
 
 export function createStory(
@@ -147,6 +156,7 @@ export function createStory(
   assets: MediaAsset[],
   options: CreateStoryOptions = {},
 ): Story {
+  const contentLocale = resolveProjectContentLocale(options.contentLocale);
   const available = assets
     .filter((asset) => !asset.state.rejected)
     .sort((a, b) => date(a) - date(b) || a.id.localeCompare(b.id));
@@ -171,28 +181,31 @@ export function createStory(
       targetDuration: options.targetDuration,
       maxDuration: options.maxDuration,
       assetIds: available.map((asset) => asset.id),
+      contentLocale,
     });
   const target =
     options.targetDuration ??
     Math.min(available.length * 4 || 4, options.maxDuration ?? Infinity);
   const count = Math.min(3, Math.max(1, available.length));
-  const titles =
+  const keys =
     count === 3
-      ? ["Opening", "Development", "Resolution"]
+      ? ["story.opening", "story.development", "story.resolution"]
       : count === 2
-        ? ["Opening", "Resolution"]
-        : ["Sequence"];
+        ? ["story.opening", "story.resolution"]
+        : ["story.sequence"];
   const weights =
     count === 3 ? [0.2, 0.6, 0.2] : count === 2 ? [0.5, 0.5] : [1];
   const id = globalThis.crypto.randomUUID();
   return {
     id,
-    title: title.trim() || "Untitled story",
+    title: title.trim() || genericStoryTitle(contentLocale),
     targetDuration: target,
     maxDuration: options.maxDuration,
-    beats: titles.map((beatTitle, index) => ({
+    beats: keys.map((key, index) => ({
       id: `${id}:beat:${index + 1}`,
-      title: beatTitle,
+      title: genericBeatText(key, contentLocale)!.title,
+      templateBeatKey: key,
+      titleSource: "template",
       targetDuration: target * weights[index]!,
       minDuration: 0,
       candidateAssetIds: available

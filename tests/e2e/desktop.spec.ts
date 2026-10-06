@@ -1,6 +1,20 @@
 import { test, expect } from "@playwright/test";
+import {
+  initialLocale,
+  navigate,
+  createFilm,
+  chooseImportFolder,
+  openFilm,
+  openAdvancedExports,
+  uiText,
+} from "./ui-helpers.js";
 import type { MediaAsset, OpenFilmProject } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
+
+test.use({ actionTimeout: 15_000 });
+test.beforeEach(async ({ page }) => {
+  await initialLocale(page);
+});
 
 const cleanupFixtures: Array<() => Promise<void>> = [];
 test.afterAll(async () => {
@@ -28,16 +42,13 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
     await page.goto("/");
     await expect(
       page.getByRole("heading", {
-        name: "Your memories. A story worth telling.",
+        name: "A story worth telling.",
       }),
     ).toBeVisible();
-    await page.getByLabel("Film title").fill("The moments between");
-    await page
-      .getByLabel("Project folder", { exact: true })
-      .fill(fixture.project);
-    await page
-      .getByRole("button", { name: "Create project", exact: true })
-      .click();
+    await createFilm(page, {
+      title: "The moments between",
+      path: fixture.project,
+    });
     await expect(
       page.getByRole("heading", { name: "The moments between" }),
     ).toBeVisible();
@@ -45,10 +56,7 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       page.getByRole("heading", { name: "Every film begins with a moment." }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Add your first media" }).click();
-    await page.getByLabel("Media folder", { exact: true }).fill(fixture.media);
-    await page
-      .getByRole("button", { name: "Import folder", exact: true })
-      .click();
+    await chooseImportFolder(page, fixture.media);
     await expect(
       page.getByText("Import complete", { exact: true }),
     ).toBeVisible({ timeout: 60_000 });
@@ -134,7 +142,7 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       .first()
       .click();
 
-    await page.getByRole("button", { name: "Stories", exact: true }).click();
+    await navigate(page, "story");
     await page.getByRole("button", { name: "Create your first story" }).click();
     await page
       .getByLabel("Story title", { exact: true })
@@ -171,7 +179,15 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       .getByRole("button", { name: "Compose film", exact: true })
       .click();
     await expect(
-      page.getByRole("heading", { name: "Let it unfold." }),
+      page
+        .getByRole("region", {
+          name: uiText("en-US", "editor.timeline"),
+          exact: true,
+        })
+        .getByRole("status")
+        .filter({
+          hasText: new RegExp(`^${uiText("en-US", "editor.save.saved")}$`),
+        }),
     ).toBeVisible();
     const state = (await (
       await request.get("http://127.0.0.1:4310/api/project")
@@ -212,7 +228,8 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       path: test.info().outputPath("timeline.png"),
       fullPage: true,
     });
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await navigate(page, "export");
+    await openAdvancedExports(page);
     await page.getByRole("button", { name: /OpenTimelineIO/ }).click();
     await expect(
       page.getByText("Saved to your project", { exact: true }),
@@ -236,18 +253,11 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
     await page
       .getByRole("button", { name: "Switch project", exact: true })
       .click();
-    await page
-      .getByRole("button", { name: "Open project", exact: true })
-      .click();
-    await page.getByLabel("Existing .openfilm folder").fill(fixture.project);
-    await page
-      .getByRole("button", { name: "Open project", exact: true })
-      .last()
-      .click();
+    await openFilm(page, fixture.project);
     await expect(
       page.getByRole("heading", { name: "The moments between" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Stories", exact: true }).click();
+    await navigate(page, "story");
     await expect(
       page.getByRole("heading", { name: "The moment before", exact: true }),
     ).toBeVisible();
@@ -283,18 +293,12 @@ test("cancels a real import and keeps the project available", async ({
         .getByRole("button", { name: "Switch project", exact: true })
         .click();
     }
-    await page.getByLabel("Film title").fill("An unfinished import");
-    await page
-      .getByLabel("Project folder", { exact: true })
-      .fill(fixture.project);
-    await page
-      .getByRole("button", { name: "Create project", exact: true })
-      .click();
+    await createFilm(page, {
+      title: "An unfinished import",
+      path: fixture.project,
+    });
     await page.getByRole("button", { name: "Add your first media" }).click();
-    await page.getByLabel("Media folder", { exact: true }).fill(fixture.media);
-    await page
-      .getByRole("button", { name: "Import folder", exact: true })
-      .click();
+    await chooseImportFolder(page, fixture.media);
     await page
       .getByRole("button", { name: "Cancel import", exact: true })
       .click();
@@ -357,7 +361,7 @@ test("cancels a real preview render while its request is pending", async ({
     });
     expect(composed.ok()).toBe(true);
     await page.goto("/");
-    await page.getByRole("button", { name: "Timeline", exact: true }).click();
+    await navigate(page, "edit");
     await page
       .getByRole("button", { name: "Render preview", exact: true })
       .click();

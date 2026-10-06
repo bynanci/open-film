@@ -1,10 +1,10 @@
 .export-report {
   grid-column: 1 / -1;
   margin-top: 5px;
-  padding: 20px 0 0;
+  padding: var(--of-space-5) 0 0;
   border-top: 1px solid var(--pencil);
   color: var(--ink);
-  font-size: 11px;
+  font-size: var(--of-font-caption);
   line-height: 1.7;
 }
 
@@ -12,20 +12,20 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  margin-bottom: 12px;
+  gap: var(--of-space-2) var(--of-space-4);
+  margin-bottom: var(--of-space-3);
 }
 
 .export-report .export-report-heading h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--of-font-small);
   font-weight: 550;
   line-height: 1.5;
 }
 
 .export-report .export-report-heading > span {
   color: var(--faded-ink);
-  font-size: 10px;
+  font-size: var(--of-font-caption);
 }
 
 .export-report .export-report-verification {
@@ -35,7 +35,7 @@
 .export-report p {
   margin: 0;
   color: var(--faded-ink);
-  font-size: 11px;
+  font-size: var(--of-font-caption);
   line-height: 1.7;
 }
 
@@ -47,27 +47,27 @@
 
 .export-report .export-report-advanced {
   max-width: 760px;
-  margin-top: 16px;
-  padding: 12px 15px;
+  margin-top: var(--of-space-4);
+  padding: var(--of-space-3) 15px;
   border-left: 2px solid var(--film-orange);
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 var(--of-radius-sm) var(--of-radius-sm) 0;
   background: var(--fresh-paper);
 }
 
 .export-report .export-report-advanced h4 {
   margin: 0 0 5px;
   color: var(--film-orange);
-  font-size: 12px;
+  font-size: var(--of-font-caption);
   font-weight: 550;
   line-height: 1.5;
 }
 
 .export-report .export-report-warnings {
   max-width: 760px;
-  margin: 16px 0 0;
+  margin: var(--of-space-4) 0 0;
   padding-left: 17px;
   color: var(--faded-ink);
-  font-size: 11px;
+  font-size: var(--of-font-caption);
   line-height: 1.7;
 }
 
@@ -77,7 +77,7 @@
 }
 
 .export-report .export-report-warnings li + li {
-  margin-top: 8px;
+  margin-top: var(--of-space-2);
 }
 
 .export-report .export-report-warnings li::marker {
@@ -90,6 +90,6 @@
   }
 
   .export-report .export-report-advanced {
-    padding: 11px 12px;
+    padding: 11px var(--of-space-3);
   }
 }

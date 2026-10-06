@@ -22,6 +22,21 @@ missing/offline state, portable cache references, Pixel/Insta360 source adapters
 and safe supported HDR previews are implemented. The generated Proposal reference
 workflow and independent OTIO/Resolve preparation make these capabilities testable.
 
+## Global product experience — Working development tree
+
+The editing foundation is merged in PR #1. The product round adds Welcome and
+guided film creation, a nonblocking workflow indicator, goal-based import/export,
+story boards with separate selected/suggested memories, contextual editing and
+recoverable offline-media guidance. Stable workspace IDs, structured error codes
+and Vue I18n support English, Traditional Chinese and Japanese without changing
+user-authored film text. A separate persisted film locale controls template-owned
+defaults; legacy text stays intact. Local theme/preferences, shared visual tokens,
+CJK/pseudo layouts and browser accessibility checks support the desktop experience.
+See [product workflow](docs/product-workflow.md), [i18n](docs/i18n.md) and
+[design system](docs/design-system.md). Exact completed gates remain in TASKS and
+the [validation record](docs/validation-global-product.md) and PR checks rather
+than implying hardware or real NLE certification.
+
 ## Next — Real-world verification and delivery
 
 - Package the native shell with a verified local Node service and media runtime;

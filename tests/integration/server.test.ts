@@ -32,6 +32,7 @@ describe("loopback application boundary", () => {
     expect(await (await fetch(`${base}/api/assets`)).json()).toEqual({
       assets: [],
       total: 0,
+      summary: { total: 0, images: 0, videos: 0, audio: 0 },
     });
     const opened = await fetch(`${base}/api/project/open`, {
       method: "POST",

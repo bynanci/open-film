@@ -1,5 +1,26 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { errorDetail, formatNumber, localizeError } from "../i18n";
+import { compactPath } from "../sourcePresentation";
+const { t } = useI18n();
+type Message = {
+  key: string;
+  params?: Record<string, string | number>;
+  count?: number;
+};
+function message(value: Message) {
+  return value.count === undefined
+    ? t(value.key, value.params ?? {})
+    : t(
+        value.key,
+        { ...value.params, count: formatNumber(value.count) },
+        value.count,
+      );
+}
+function isMessage(value: unknown): value is Message {
+  return !!value && typeof value === "object" && "key" in value;
+}
 import type { MediaAsset } from "@openfilm/core";
 import { api, type RelinkCandidate, type RelinkPlan } from "../api";
 import Icon from "./Icon.vue";
@@ -43,8 +64,19 @@ const operation = ref<"" | "checking" | "planning" | "applying" | "picking">(
   "",
 );
 const disabled = computed(() => !!props.blocked || !!operation.value);
-const error = ref("");
-const notice = ref("");
+const error = ref<unknown>(null);
+const notice = ref<Message[]>([]);
+const errorMessage = computed(() =>
+  !error.value
+    ? ""
+    : isMessage(error.value)
+      ? message(error.value)
+      : localizeError(error.value),
+);
+const technicalError = computed(() =>
+  error.value && !isMessage(error.value) ? errorDetail(error.value) : "",
+);
+const noticeMessage = computed(() => notice.value.map(message).join(" "));
 const plan = ref<RelinkPlan | null>(null);
 const choices = ref<Record<string, string>>({});
 const confirmations = ref<Record<string, boolean>>({});
@@ -74,15 +106,18 @@ const currentLibrary = computed(() =>
 const scopeLabel = computed(() => {
   if (mode.value === "file")
     return singleAssetId.value
-      ? `Selected media · ${assetName(singleAssetId.value)}`
-      : "Choose the original media to reconnect.";
+      ? t("media.relink.selectedName", { name: assetName(singleAssetId.value) })
+      : t("media.relink.chooseOriginal");
   if (scope.value === "selected")
-    return `Selected media · ${selectedIds.value.length} ${selectedIds.value.length === 1 ? "item" : "items"}`;
+    return message({
+      key: "media.relink.selectedCount",
+      count: selectedIds.value.length,
+    });
   if (scope.value === "library")
     return currentLibrary.value
       ? `${currentLibrary.value.name} · ${libraryStatus(currentLibrary.value.status)}`
-      : "Choose a media library to reconnect.";
-  return "All project media, including items outside the current Library page.";
+      : t("media.relink.chooseLibraryHelp");
+  return t("media.relink.allHelp");
 });
 const canPlan = computed(
   () =>
@@ -136,33 +171,34 @@ function originalPath(id: string) {
   return asset?.uri;
 }
 function libraryStatus(status: "online" | "offline" | "partial") {
-  return {
-    online: "Online",
-    offline: "Library offline",
-    partial: "Some media missing",
-  }[status];
+  return t(`media.relink.${status}`);
 }
 function matchLabel(candidate: RelinkCandidate) {
   if (candidate.match === "content-hash" && !candidate.automatic)
-    return "Content verified; choose the intended copy/location";
-  return {
-    "content-hash": "Verified content match",
-    "relative-path": "Same relative path",
-    "filename-size": "Same filename and size",
-    manual: "Manually chosen file",
-  }[candidate.match];
+    return t("media.relink.matchCopy");
+  return t(
+    `media.relink.${
+      {
+        "content-hash": "matchContent",
+        "relative-path": "matchRelative",
+        "filename-size": "matchNameSize",
+        manual: "matchManual",
+      }[candidate.match]
+    }`,
+  );
 }
 function fileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${formatNumber(bytes)} B`;
+  if (bytes < 1024 * 1024)
+    return `${formatNumber(bytes / 1024, { maximumFractionDigits: 1 })} KB`;
+  return `${formatNumber(bytes / (1024 * 1024), { maximumFractionDigits: 1 })} MB`;
 }
 function resetPlan() {
   plan.value = null;
   choices.value = {};
   confirmations.value = {};
-  error.value = "";
-  notice.value = "";
+  error.value = null;
+  notice.value = [];
 }
 function choose(assetId: string, candidateId: string) {
   choices.value = { ...choices.value, [assetId]: candidateId };
@@ -176,13 +212,11 @@ function chosenCandidate(assetId: string) {
 async function prepareAction() {
   operation.value = "checking";
   if (!(await props.beforeAction())) {
-    error.value =
-      "Save your timeline edits before reconnecting media. Return to Timeline to resolve any unsaved changes.";
+    error.value = { key: "media.relink.saveFirst" };
     return false;
   }
   if (props.blocked) {
-    error.value =
-      "Wait for the current import or render to finish before reconnecting media.";
+    error.value = { key: "media.relink.busy" };
     return false;
   }
   return true;
@@ -190,7 +224,7 @@ async function prepareAction() {
 async function browse() {
   if (disabled.value) return;
   operation.value = "picking";
-  error.value = "";
+  error.value = null;
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     const path = await invoke<string | null>(
@@ -198,7 +232,7 @@ async function browse() {
     );
     if (path) location.value = path;
   } catch {
-    error.value = `The ${mode.value === "folder" ? "folder" : "file"} picker is unavailable. Enter the full path in the field below.`;
+    error.value = { key: "media.relink.pickerUnavailable" };
   } finally {
     operation.value = "";
   }
@@ -245,11 +279,15 @@ async function findMatches() {
       }),
     );
     plan.value = result;
-    notice.value = result.matches.length
-      ? "Search complete. Review the file matches before applying them."
-      : "No media was found in this scope. Choose another scope or a selected media item.";
+    notice.value = [
+      {
+        key: result.matches.length
+          ? "media.relink.searchComplete"
+          : "media.relink.emptyScope",
+      },
+    ];
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause);
+    error.value = cause;
   } finally {
     operation.value = "";
   }
@@ -262,8 +300,8 @@ async function applyMatches() {
     unconfirmed.value
   )
     return;
-  error.value = "";
-  notice.value = "";
+  error.value = null;
+  notice.value = [];
   try {
     if (!(await prepareAction())) return;
     operation.value = "applying";
@@ -277,10 +315,16 @@ async function applyMatches() {
     });
     const untouched = unselected.value;
     resetPlan();
-    notice.value = `${result.assets.length} ${result.assets.length === 1 ? "media item reconnected" : "media items reconnected"}.${untouched ? ` ${untouched} unselected ${untouched === 1 ? "item was" : "items were"} left unchanged.` : ""}`;
+    notice.value = [
+      { key: "media.relink.reconnected", count: result.assets.length },
+      ...(untouched
+        ? [{ key: "media.relink.unchanged", count: untouched }]
+        : []),
+    ];
     emit("applied", result.assets);
   } catch (cause) {
-    error.value = `${cause instanceof Error ? cause.message : String(cause)} Review your choices or find matches again to refresh the search.`;
+    error.value = cause;
+    notice.value = [{ key: "media.relink.retry" }];
   } finally {
     operation.value = "";
   }
@@ -311,43 +355,44 @@ watch(
 <template>
   <section
     class="relink-panel"
-    aria-label="Relink media"
+    :aria-label="t('media.relink.region')"
     :aria-busy="!!operation"
   >
     <header class="relink-heading">
       <div>
-        <span class="relink-kicker">BRING YOUR MOMENTS BACK</span>
-        <h2>Reconnect your media.</h2>
-        <p>
-          Find moved files and review the matches. Your ratings, stories, and
-          edits stay with each memory.
-        </p>
+        <span class="relink-kicker">{{ t("media.relink.kicker") }}</span>
+        <h2>{{ t("media.relink.title") }}</h2>
+        <p>{{ t("media.relink.intro") }}</p>
       </div>
       <button
         class="relink-close"
-        aria-label="Close relink media"
+        :aria-label="t('media.relink.close')"
         :disabled="!!operation"
         @click="emit('close')"
       >
         <Icon name="reject" :size="18" />
       </button>
     </header>
-
     <p v-if="blocked" class="relink-message caution" role="status">
-      An import or render is active. Reconnect media when it finishes.
+      {{ t("media.relink.busy") }}
     </p>
-    <p v-if="error" class="relink-message error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="relink-message success" role="status">
-      {{ notice }}
+    <p v-if="errorMessage" class="relink-message error" role="alert">
+      {{ errorMessage }}
     </p>
-
+    <details v-if="technicalError" class="relink-help">
+      <summary>{{ t("media.relink.technical") }}</summary>
+      <p>{{ technicalError }}</p>
+    </details>
+    <p v-if="noticeMessage" class="relink-message success" role="status">
+      {{ noticeMessage }}
+    </p>
     <form class="relink-search" @submit.prevent="findMatches">
       <fieldset :disabled="disabled">
-        <legend class="relink-legend">Where are the files now?</legend>
+        <legend class="relink-legend">{{ t("media.relink.where") }}</legend>
         <div
           class="relink-modes"
           role="group"
-          aria-label="Relink search method"
+          :aria-label="t('media.relink.method')"
         >
           <button
             type="button"
@@ -355,7 +400,7 @@ watch(
             :aria-pressed="mode === 'folder'"
             @click="mode = 'folder'"
           >
-            Search a folder
+            {{ t("media.relink.folder") }}
           </button>
           <button
             type="button"
@@ -363,33 +408,34 @@ watch(
             :aria-pressed="mode === 'file'"
             @click="mode = 'file'"
           >
-            Choose one file
+            {{ t("media.relink.file") }}
           </button>
         </div>
         <div class="relink-search-fields">
-          <label v-if="mode === 'folder'" class="relink-field">
-            Media to search for
-            <select v-model="scope" aria-label="Media to search for">
-              <option value="all">All project media</option>
+          <label v-if="mode === 'folder'" class="relink-field"
+            >{{ t("media.relink.scope")
+            }}<select v-model="scope" :aria-label="t('media.relink.scope')">
+              <option value="all">{{ t("media.relink.all") }}</option>
               <option value="selected" :disabled="!selectedIds.length">
-                Selected media
+                {{ t("media.relink.selected") }}
               </option>
               <option value="library" :disabled="!libraries?.length">
-                One media library
+                {{ t("media.relink.oneLibrary") }}
               </option>
-            </select>
-          </label>
+            </select></label
+          >
           <label
             v-if="mode === 'folder' && scope === 'library'"
             class="relink-field"
-          >
-            Media library
-            <select
+            >{{ t("media.relink.library")
+            }}<select
               v-model="selectedLibraryId"
-              aria-label="Media library"
+              :aria-label="t('media.relink.library')"
               required
             >
-              <option value="" disabled>Choose a library…</option>
+              <option value="" disabled>
+                {{ t("media.relink.chooseLibrary") }}
+              </option>
               <option
                 v-for="library in libraries"
                 :key="library.id"
@@ -397,16 +443,18 @@ watch(
               >
                 {{ library.name }} · {{ libraryStatus(library.status) }}
               </option>
-            </select>
-          </label>
-          <label v-if="mode === 'file'" class="relink-field">
-            Media to relink
-            <select
+            </select></label
+          >
+          <label v-if="mode === 'file'" class="relink-field"
+            >{{ t("media.relink.mediaToFind")
+            }}<select
               v-model="singleAssetId"
-              aria-label="Media to relink"
+              :aria-label="t('media.relink.mediaToFind')"
               required
             >
-              <option value="" disabled>Choose a media item…</option>
+              <option value="" disabled>
+                {{ t("media.relink.chooseMedia") }}
+              </option>
               <option
                 v-for="asset in fileAssets"
                 :key="asset.id"
@@ -414,53 +462,51 @@ watch(
               >
                 {{ asset.name }}
               </option>
-            </select>
-          </label>
-          <label class="relink-field relink-location">
-            {{
-              mode === "folder" ? "Search folder path" : "Replacement file path"
-            }}
-            <span class="relink-path-input">
-              <input
+            </select></label
+          >
+          <label class="relink-field relink-location"
+            >{{
+              t(
+                `media.relink.${mode === "folder" ? "folderPath" : "filePath"}`,
+              )
+            }}<span class="relink-path-input"
+              ><input
                 v-model="location"
                 :aria-label="
-                  mode === 'folder'
-                    ? 'Search folder path'
-                    : 'Replacement file path'
+                  t(
+                    `media.relink.${mode === 'folder' ? 'folderPath' : 'filePath'}`,
+                  )
                 "
                 :placeholder="
                   mode === 'folder'
-                    ? '/Volumes/My drive/Media'
-                    : '/Volumes/My drive/Media/clip.mov'
+                    ? '/Volumes/Media/Family'
+                    : '/Volumes/Media/Family/clip.mov'
                 "
                 type="text"
                 spellcheck="false"
                 required
-              />
-              <button
+              /><button
                 v-if="native"
                 type="button"
                 class="relink-button"
                 :aria-label="
-                  mode === 'folder' ? 'Browse folder' : 'Browse file'
+                  t(`media.relink.${mode === 'folder' ? 'folder' : 'file'}`)
                 "
                 @click="browse"
               >
-                <Icon name="folder" :size="15" />Browse
-              </button>
-            </span>
-          </label>
+                <Icon name="folder" :size="15" />{{ t("media.relink.browse") }}
+              </button></span
+            ></label
+          >
           <button
             type="submit"
             class="relink-button primary"
             :disabled="!canPlan"
           >
             {{
-              operation === "planning"
-                ? "Finding matches…"
-                : operation === "checking"
-                  ? "Saving edits…"
-                  : "Find matches"
+              t(
+                `media.relink.${operation === "planning" ? "finding" : operation === "checking" ? "saving" : "findMatches"}`,
+              )
             }}<Icon name="search" :size="15" />
           </button>
         </div>
@@ -473,34 +519,34 @@ watch(
           "
           class="relink-roots"
         >
-          Previous locations:
-          <span v-for="root in currentLibrary.roots" :key="root">{{
-            root
-          }}</span>
+          {{ t("media.relink.previous")
+          }}<span
+            v-for="root in currentLibrary.roots"
+            :key="root"
+            :title="root"
+            >{{ compactPath(root) }}</span
+          >
         </p>
         <p v-if="mode === 'file' && !fileAssets.length" class="relink-help">
-          Choose a media item in the Library, then open Relink media from its
-          details.
+          {{ t("media.relink.chooseFirst") }}
         </p>
       </fieldset>
     </form>
-
     <section
       v-if="plan?.matches.length"
       class="relink-review"
-      aria-label="Review relink matches"
+      :aria-label="t('media.relink.review')"
     >
       <div class="relink-review-heading">
-        <h3>Review the matches</h3>
-        <span
-          >{{ selections.length }} of {{ plan.matches.length }} selected</span
-        >
+        <h3>{{ t("media.relink.review") }}</h3>
+        <span>{{
+          t("media.relink.selectionSummary", {
+            selected: formatNumber(selections.length),
+            total: formatNumber(plan.matches.length),
+          })
+        }}</span>
       </div>
-      <p class="relink-help">
-        Content matches are selected when there is one verified file. Choose
-        among other candidates and confirm the file and location for each
-        selection.
-      </p>
+      <p class="relink-help">{{ t("media.relink.reviewHelp") }}</p>
       <fieldset
         v-for="match in plan.matches"
         :key="match.assetId"
@@ -509,24 +555,29 @@ watch(
       >
         <legend>{{ assetName(match.assetId) }}</legend>
         <div class="relink-original">
-          <span>Original source</span>
-          <code>{{
-            originalPath(match.assetId) ??
-            "Source details unavailable for this media item."
-          }}</code>
-          <template
+          <span>{{ t("media.relink.previous") }}</span
+          ><code :title="originalPath(match.assetId)">{{
+            originalPath(match.assetId)
+              ? compactPath(originalPath(match.assetId)!)
+              : t("media.relink.detailsUnavailable")
+          }}</code
+          ><template
             v-if="
               assetsById.get(match.assetId)?.uri &&
               assetsById.get(match.assetId)?.uri !== originalPath(match.assetId)
             "
-            ><span>Current source</span
-            ><code>{{ assetsById.get(match.assetId)?.uri }}</code></template
+            ><span>{{ t("media.relink.current") }}</span
+            ><code :title="assetsById.get(match.assetId)?.uri">{{
+              compactPath(assetsById.get(match.assetId)!.uri)
+            }}</code></template
           >
         </div>
-        <p v-if="match.reason" class="relink-reason">{{ match.reason }}</p>
+        <details v-if="match.reason" class="relink-help">
+          <summary>{{ t("media.relink.technical") }}</summary>
+          <p>{{ match.reason }}</p>
+        </details>
         <p v-if="!match.candidates.length" class="relink-no-match">
-          No matching file found. Check the folder or choose one replacement
-          file to review.
+          {{ t("media.relink.noMatch") }}
         </p>
         <div v-else class="relink-candidates">
           <label
@@ -540,26 +591,29 @@ watch(
               :name="`relink-${plan.id}-${match.assetId}`"
               :value="candidate.id"
               :checked="choices[match.assetId] === candidate.id"
-              :aria-label="`Use ${candidate.path} for ${assetName(match.assetId)}`"
+              :aria-label="
+                t('media.relink.useCandidate', {
+                  path: candidate.path,
+                  name: assetName(match.assetId),
+                })
+              "
               @change="choose(match.assetId, candidate.id)"
             />
-            <span class="relink-candidate-copy">
-              <span class="relink-evidence"
+            <span class="relink-candidate-copy"
+              ><span class="relink-evidence"
                 ><strong>{{ matchLabel(candidate) }}</strong
                 ><span
                   :class="{ verified: candidate.match === 'content-hash' }"
                   >{{
-                    candidate.automatic
-                      ? "Verified"
-                      : candidate.match === "content-hash"
-                        ? "Choose intended copy"
-                        : "Confirmation needed"
+                    t(
+                      `media.relink.${candidate.automatic ? "verified" : candidate.match === "content-hash" ? "chooseCopy" : "confirmNeeded"}`,
+                    )
                   }}</span
                 ><small>{{ fileSize(candidate.fileSize) }}</small></span
-              >
-              <code>{{ candidate.path }}</code>
-              <small>{{ candidate.reason }}</small>
-            </span>
+              ><code :title="candidate.path">{{
+                compactPath(candidate.path)
+              }}</code></span
+            >
           </label>
           <label class="relink-skip"
             ><input
@@ -567,48 +621,58 @@ watch(
               :name="`relink-${plan.id}-${match.assetId}`"
               value=""
               :checked="!choices[match.assetId]"
-              :aria-label="`Leave ${assetName(match.assetId)} unchanged`"
+              :aria-label="
+                t('media.relink.leaveNamed', { name: assetName(match.assetId) })
+              "
               @change="choose(match.assetId, '')"
-            />Leave this media unchanged</label
+            />{{ t("media.relink.leave") }}</label
           >
         </div>
+        <details v-if="match.candidates.length" class="relink-help">
+          <summary>{{ t("media.relink.technical") }}</summary>
+          <p v-for="candidate in match.candidates" :key="candidate.id">
+            <code>{{ candidate.path }}</code> — {{ candidate.reason }}
+          </p>
+        </details>
         <label
           v-if="
             chosenCandidate(match.assetId) &&
             !chosenCandidate(match.assetId)?.automatic
           "
           class="relink-confirm"
-        >
-          <input
+          ><input
             v-model="confirmations[match.assetId]"
             type="checkbox"
-            :aria-label="`Confirm ${assetName(match.assetId)} matches the selected file`"
-          />
-          <span
-            >I checked that this is the correct file for
-            <strong>{{ assetName(match.assetId) }}</strong
-            >.
+            :aria-label="
+              t('media.relink.confirmNamed', { name: assetName(match.assetId) })
+            "
+          /><span
+            >{{
+              t("media.relink.checkedNamed", { name: assetName(match.assetId) })
+            }}
             {{
-              chosenCandidate(match.assetId)?.match === "content-hash"
-                ? "Its content is verified; this is the copy and location I want to use."
-                : "This match has not been verified by content hash."
+              t(
+                `media.relink.${chosenCandidate(match.assetId)?.match === "content-hash" ? "confirmCopy" : "confirmWeak"}`,
+              )
             }}</span
-          >
-        </label>
+          ></label
+        >
       </fieldset>
       <footer class="relink-apply">
         <div>
-          <strong
-            >{{ selections.length }}
-            {{ selections.length === 1 ? "match" : "matches" }} selected</strong
-          >
+          <strong>{{
+            message({
+              key: "media.relink.matchesSelected",
+              count: selections.length,
+            })
+          }}</strong>
           <p v-if="unselected">
-            {{ unselected }} unselected
-            {{ unselected === 1 ? "item will" : "items will" }} stay unchanged.
+            {{ message({ key: "media.relink.unchanged", count: unselected }) }}
           </p>
           <p v-if="unconfirmed" class="relink-confirm-needed">
-            Confirm {{ unconfirmed }}
-            {{ unconfirmed === 1 ? "match" : "matches" }} before applying.
+            {{
+              message({ key: "media.relink.confirmCount", count: unconfirmed })
+            }}
           </p>
         </div>
         <button
@@ -618,9 +682,9 @@ watch(
           @click="applyMatches"
         >
           {{
-            operation === "applying"
-              ? "Reconnecting media…"
-              : "Apply selected matches"
+            t(
+              `media.relink.${operation === "applying" ? "applying" : "apply"}`,
+            )
           }}<Icon name="check" :size="15" />
         </button>
       </footer>

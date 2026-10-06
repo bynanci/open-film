@@ -6,7 +6,7 @@ import type {
   StoryBeat,
   Track,
 } from "@openfilm/core";
-import { scoreAsset } from "@openfilm/story";
+import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
@@ -68,6 +68,7 @@ export interface ShorteningSuggestion {
 }
 
 interface PreparedShorteningEdit {
+  excludedClipIds: string[];
   commands: TimelineCommand[];
   secondsSaved: number;
   beforeDuration: number;
@@ -89,6 +90,7 @@ export interface PreparedShorteningPlan extends PreparedShorteningEdit {
 
 export class TimelineEditingError extends Error {
   override name = "TimelineEditingError";
+  readonly code = "timeline.invalidEdit";
 }
 const EPSILON = 1e-7;
 function fail(message: string): never {
@@ -293,6 +295,7 @@ export function applyTimelineCommand(
   const next = structuredClone(document);
   if (command.type === "beat") {
     const beat = findBeat(next, command.beatId);
+    const previousBeat = structuredClone(beat);
     for (const [key, value] of Object.entries(command.patch)) {
       if (key === "title" || key === "intent") {
         if (typeof value !== "string" || (key === "title" && !value.trim()))
@@ -308,6 +311,7 @@ export function applyTimelineCommand(
     Object.assign(beat, command.patch);
     if (command.patch.intent !== undefined && !command.patch.intent.trim())
       delete beat.intent;
+    Object.assign(beat, preserveUserBeatText(previousBeat, beat));
     if ((beat.minDuration ?? 0) > (beat.maxDuration ?? Infinity))
       fail("Beat minimum exceeds its maximum duration.");
     if (
@@ -510,6 +514,7 @@ function shorteningState(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  excludedClipIds: string[] = [],
 ): string {
   return JSON.stringify({
     composition: document.composition,
@@ -517,6 +522,7 @@ function shorteningState(
     revision: "revision" in document ? document.revision : undefined,
     assets,
     targetDuration,
+    excludedClipIds,
   });
 }
 
@@ -558,14 +564,24 @@ export function prepareShorteningPlan(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  excludedClipIds: string[] = [],
 ): PreparedShorteningPlan {
-  const steps = suggestShortening(document, assets, targetDuration);
-  const baseState = shorteningState(document, assets, targetDuration);
+  finite(targetDuration, "Target duration", 0, true);
+  const excluded = [...new Set(excludedClipIds)].sort();
+  const steps = shorteningPlan(
+    document,
+    assets,
+    targetDuration,
+    undefined,
+    excluded,
+  );
+  const baseState = shorteningState(document, assets, targetDuration, excluded);
   const beforeDuration = document.composition.duration;
   const prepare = (
     commands: TimelineCommand[],
     secondsSaved: number,
   ): PreparedShorteningEdit => ({
+    excludedClipIds: [...excluded],
     commands: structuredClone(commands),
     secondsSaved,
     beforeDuration,
@@ -618,10 +634,17 @@ export function shorteningCommands(
   assets: MediaAsset[],
   targetDuration: number,
   preview: PreparedShorteningPlan | ShorteningSuggestionPreview,
+  excludedClipIds: string[] = [],
 ): TimelineCommand[] {
+  const excluded = [...new Set(excludedClipIds)].sort();
   if (
-    preview.baseState !== shorteningState(document, assets, targetDuration) ||
-    preview.commandFingerprint !== JSON.stringify(preview.commands)
+    preview.baseState !==
+      shorteningState(document, assets, targetDuration, excluded) ||
+    JSON.stringify(preview.excludedClipIds) !== JSON.stringify(excluded) ||
+    preview.commandFingerprint !== JSON.stringify(preview.commands) ||
+    preview.commands.some(
+      (command) => "clipId" in command && excluded.includes(command.clipId),
+    )
   )
     fail(
       "This shortening suggestion is stale. Review the suggestions for the current cut and try again.",
@@ -645,6 +668,7 @@ function shorteningPlan(
   assets: MediaAsset[],
   targetDuration: number,
   onlyBeat?: string,
+  excludedClipIds: string[] = [],
 ): ShorteningSuggestion[] {
   let current = document;
   const suggestions: ShorteningSuggestion[] = [];
@@ -652,6 +676,7 @@ function shorteningPlan(
   const editable = allClips(document).filter(
     (clip) =>
       (!onlyBeat || clip.beatId === onlyBeat) &&
+      !excludedClipIds.includes(clip.id) &&
       !protectedClip(document, assets, clip),
   );
   editable.sort(

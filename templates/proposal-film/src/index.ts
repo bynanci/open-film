@@ -1,21 +1,18 @@
-import type { Story } from "@openfilm/core";
+import { ApplicationError, type Story } from "@openfilm/core";
 import type { StoryTemplate } from "@openfilm/plugin-sdk";
+import {
+  getProposalBeatText,
+  getProposalContent,
+  PROPOSAL_BEAT_KEYS,
+} from "./content.js";
 
-const arc = [
-  ["Cold Open", "A glimpse of the meaningful moment ahead.", 12],
-  ["Beginning", "Where the relationship began.", 33],
-  ["Ordinary Days", "The small routines that made a shared life.", 45],
-  ["Adventures", "Explore the world and remember discoveries together.", 55],
-  ["Growing Together", "Show how challenges became shared growth.", 50],
-  [
-    "Why You",
-    "The qualities and moments that make this person irreplaceable.",
-    50,
-  ],
-  ["Future", "Imagine the life still to come.", 35],
-  ["Build-up", "Let anticipation rise toward the proposal.", 15],
-  ["Ending", "Leave space for the question and the answer.", 5],
-] as const;
+export * from "./content.js";
+
+const arc = [12, 33, 45, 55, 50, 50, 35, 15, 5] as const;
+export const proposalFilmDefaults = {
+  targetDuration: 270,
+  maxDuration: 300,
+} as const;
 
 /** A real external template; no romantic vocabulary enters the generic engine. */
 export const proposalTemplate: StoryTemplate = {
@@ -23,9 +20,14 @@ export const proposalTemplate: StoryTemplate = {
   name: "Proposal Film",
   description:
     "A chronological relationship film with a deliberate emotional arc and room for the final question.",
+  defaults: proposalFilmDefaults,
+  getBeatText: getProposalBeatText,
   create(config): Story {
-    const maxDuration = config.maxDuration ?? 300;
-    const targetDuration = config.targetDuration ?? Math.min(270, maxDuration);
+    const content = getProposalContent(config.contentLocale);
+    const maxDuration = config.maxDuration ?? proposalFilmDefaults.maxDuration;
+    const targetDuration =
+      config.targetDuration ??
+      Math.min(proposalFilmDefaults.targetDuration, maxDuration);
     if (
       !Number.isFinite(targetDuration) ||
       !Number.isFinite(maxDuration) ||
@@ -33,23 +35,26 @@ export const proposalTemplate: StoryTemplate = {
       maxDuration <= 0 ||
       targetDuration > maxDuration
     )
-      throw new Error(
+      throw new ApplicationError(
+        "story.invalid",
         "Proposal Film needs positive target/max durations with target no greater than maximum.",
       );
     const id = globalThis.crypto.randomUUID();
     const assets = config.assetIds ?? [];
-    const arcDuration = arc.reduce((sum, beat) => sum + beat[2], 0);
+    const arcDuration = arc.reduce((sum, seconds) => sum + seconds, 0);
     return {
       id,
-      title: config.title?.trim() || "Our Story",
+      title: config.title?.trim() || content.defaultTitle,
       template: "proposal-film",
       targetDuration,
       maxDuration,
-      beats: arc.map(([title, intent, seconds], index) => ({
+      beats: PROPOSAL_BEAT_KEYS.map((key, index) => ({
         id: `${id}:beat:${index + 1}`,
-        title,
-        intent,
-        targetDuration: (seconds / arcDuration) * targetDuration,
+        ...content.beats[key],
+        templateBeatKey: key,
+        titleSource: "template",
+        intentSource: "template",
+        targetDuration: (arc[index]! / arcDuration) * targetDuration,
         minDuration: 0,
         candidateAssetIds: assets.slice(
           Math.floor((index * assets.length) / arc.length),

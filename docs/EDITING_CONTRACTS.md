@@ -81,6 +81,14 @@ original sequential Apply-all plan; independent row savings are alternatives and
 must never be added together. Individual Apply enqueues only its reviewed command;
 the existing persistence batching and undo behavior are unchanged.
 
+Both helpers accept an optional final `excludedClipIds` array. Desktop Skip
+excludes that clip from the newly computed sequential plan as well as individual
+alternatives. The normalized exclusion set is included in the snapshot; pass the
+current set again to `shorteningCommands`, which rejects a preview from a different
+filter. Preview changes only the inspected source range and before/after display;
+it never queues an edit. Apply-all still uses the existing bounded command queue,
+not a new all-film atomic transaction.
+
 ## Application service — packages/application/src/editor.ts
 
 Export via @openfilm/application:

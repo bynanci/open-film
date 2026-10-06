@@ -1,22 +1,28 @@
 # OpenFilm
 
-An open media storytelling engine. OpenFilm turns a local collection of photos,
-video, and audio into an organized library, a story plan, an editable rough cut,
-and an MP4 preview. Original files stay in their source folders.
+An open-source, local-first, story-first media composer. OpenFilm turns a local
+collection of photos, video and audio into organized memories, a story and an
+editable film. Original files are never modified.
 
-**The current development tree includes the Real Editing Workflow round.** It combines a Vue desktop workspace,
+**The current development tree includes the Global Product Experience and i18n round.** It combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
 ```text
-Folder → Metadata → Duplicates & Events → Story → Edit → Preview → Export
+Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
 
 ## What works
 
 - Create and reopen versioned `.openfilm` projects with durable SQLite catalogs.
+- Start from Welcome, choose film language and duration, and follow freely
+  accessible workflow guidance through Library, Story, Edit and Export.
+- Switch English, Traditional Chinese or Japanese without reloading; keep the
+  film's language and custom story text independent from interface preferences.
 - Import local images, video, and audio with per-file errors, cancellation, and
   resumable derived outputs; generate thumbnails and video proxies.
+- Add folders, selected native files or browser-selected local copies; recover
+  offline files without losing edits. Export a finished MP4 from the current cut.
 - Resolve capture timestamps with source, confidence, and timezone uncertainty;
   detect exact duplicates and basic perceptual similarity; group events using
   time, GPS, and similarity.
@@ -30,13 +36,15 @@ Folder → Metadata → Duplicates & Events → Story → Edit → Preview → E
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
-  Duration suggestions, and recover autosave failures without dropping the draft.
+  target suggestions, and recover autosave failures without dropping the draft.
 - Keep editing missing media, reconnect a moved folder or single file, and move
   projects with their cached thumbnails and proxies.
 - Import Pixel metadata and Insta360 flat exports, recognize raw360 associations,
   and generate safe SDR previews for supported HEVC/HDR sources.
 
 Start with the [Proposal Film reference workflow](docs/reference-workflows/proposal-film.md).
+The [product workflow](docs/product-workflow.md) walks through the graphical flow;
+[i18n](docs/i18n.md) describes language and template-text behavior.
 Read [media portability](docs/media-portability.md) for offline/relink behavior,
 [source support](docs/source-support.md) for camera limitations, and the
 [desktop guide](apps/desktop/README.md) for shortcuts and save recovery.
@@ -69,6 +77,14 @@ Dependency installation requires network access. The basic media workflow runs
 offline once dependencies and local tools are installed.
 
 ## Try a film
+
+Run `pnpm dev` from the repository root and open the desktop development page.
+Welcome offers Create Film and Open Project. Add memories, organize the library,
+build a story, create the cut, then preview and export. The browser supports real
+file selection and local copying; the Tauri shell adds native file/folder pickers.
+See the [desktop guide](apps/desktop/README.md) for startup and native prerequisites.
+
+### Engine and CLI workflow
 
 From the repository root, generate public-domain sample media into a separate
 folder and run the real CLI:
@@ -115,7 +131,7 @@ pnpm dev
 
 The application service binds to `127.0.0.1:4310`; Vite serves the interface at
 `http://127.0.0.1:1420`. Open the interface in a local browser and create or open a
-project, import a folder, then use Library, Stories, Timeline, and Export.
+project, add media, then use Library, Story, Edit and Export.
 
 For the optional native shell, install Rust and your operating system's
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), then run:
@@ -190,9 +206,10 @@ XML parser for resource/rational-time assertions. The native check needs the hos
 Tauri dependencies. The CI workflow runs these checks in addition to the browser
 journey; source validation and a native build still differ from installer testing.
 
-See the [Real Editing Workflow validation record](docs/validation-real-editing.md)
+See the [Global Product validation record](docs/validation-global-product.md)
 for current regression coverage and manual checks. The
-[initial Linux record](docs/validation.md) is retained separately.
+[Real Editing Workflow record](docs/validation-real-editing.md) and
+[initial Linux record](docs/validation.md) are retained separately.
 
 ## Architecture and community
 

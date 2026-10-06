@@ -7,6 +7,15 @@ Resolve is not installed in the verification environment; actual Resolve import
 and playback have not been verified.** Parser success does not establish NLE
 compatibility.
 
+The Desktop Resolve card reads the browser-safe capability model in
+[`packages/exporters/src/compatibility.ts`](../packages/exporters/src/compatibility.ts).
+Each feature records implementation level, schema/parser validation, real NLE
+verification, manual recreation and unsupported state separately. Its real-NLE
+evidence list is empty. Export-specific reports additionally list the effects
+actually present in that cut; a plain-cut export does not falsely request speed
+or transform recreation. Updating real QA requires both evidence and the model,
+not a translated UI claim.
+
 The Global Product Experience preflight rechecked repository, PR #1 and accessible
 workspace artifacts at candidate `239436cf672be287dbaec4dd9771165609d1d061`.
 Only generated fixtures and official-parser results exist; no actual Resolve QA

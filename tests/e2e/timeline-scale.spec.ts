@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { initialLocale, navigate } from "./ui-helpers.js";
 import { link, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,11 @@ import { OpenFilmApplication } from "@openfilm/application";
 import type { Clip, MediaAsset } from "@openfilm/core";
 import { createThumbnail } from "@openfilm/media";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
+
+test.use({ actionTimeout: 15_000 });
+test.beforeEach(async ({ page }) => {
+  await initialLocale(page);
+});
 
 const base = "http://127.0.0.1:4310";
 const roots: string[] = [];
@@ -120,7 +126,7 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
       );
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   const editor = page.getByRole("region", {
     name: "Composition timeline",
     exact: true,

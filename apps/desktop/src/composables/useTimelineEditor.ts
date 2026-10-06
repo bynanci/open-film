@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import { applyTimelineCommand, type TimelineCommand } from "@openfilm/solver";
 import { api, ApiError, type EditorState } from "../api";
+import { useI18n } from "vue-i18n";
+import { errorDetail, localizeError } from "../i18n";
 
 type Batch = {
   baseRevision: string;
@@ -20,11 +22,31 @@ export function useTimelineEditor(
   changed: (state: EditorState) => void,
   edited: () => void,
 ) {
+  const { t } = useI18n();
   const state = shallowRef<EditorState | null>(null);
   const status = ref<"loading" | "saved" | "saving" | "failed" | "conflict">(
     "loading",
   );
-  const message = ref("");
+  const issue = shallowRef<unknown>(null);
+  const notice = ref("");
+  const message = computed(() =>
+    notice.value
+      ? t(notice.value)
+      : issue.value
+        ? localizeError(issue.value)
+        : "",
+  );
+  const messageDetail = computed(() =>
+    issue.value ? errorDetail(issue.value) : "",
+  );
+  function reportError(cause: unknown) {
+    notice.value = "";
+    issue.value = cause;
+  }
+  function reportNotice(key: string) {
+    issue.value = null;
+    notice.value = key;
+  }
   const pendingCount = ref(0);
   const historyBusy = ref(false);
   const storageKey = `openfilm:editor:${projectId}:${compositionId}`;
@@ -60,7 +82,7 @@ export function useTimelineEditor(
   function fail(cause: unknown) {
     status.value =
       cause instanceof ApiError && cause.status === 409 ? "conflict" : "failed";
-    message.value = cause instanceof Error ? cause.message : String(cause);
+    reportError(cause);
     retainDraft();
   }
   function applyTo(next: EditorState, commands: TimelineCommand[]) {
@@ -93,19 +115,18 @@ export function useTimelineEditor(
         if (recovered.state.revision === saved.revision) {
           publish(applyTo(saved, pending));
           status.value = "failed";
-          message.value =
-            "Your unsaved edits were recovered. Retry saving to keep them in your project.";
+          reportNotice("editor.draft.recovered");
         } else {
           publish(recovered.state);
           status.value = "conflict";
-          message.value =
-            "Your unsaved draft was recovered, and the saved cut has changed. Review the draft before applying it to the latest cut.";
+          reportNotice("editor.draft.conflictRecovered");
         }
         retainDraft();
         edited();
       } else {
         publish(saved);
         status.value = "saved";
+        reportNotice("");
       }
     } catch (cause) {
       if (recovered) {
@@ -126,7 +147,7 @@ export function useTimelineEditor(
       publish(next);
       edited();
       retainDraft();
-      message.value = "";
+      reportNotice("");
       if (status.value !== "conflict") {
         status.value = "saving";
         if (timer) clearTimeout(timer);
@@ -136,7 +157,7 @@ export function useTimelineEditor(
       }
       return true;
     } catch (cause) {
-      message.value = cause instanceof Error ? cause.message : String(cause);
+      reportError(cause);
       return false;
     }
   }
@@ -171,7 +192,7 @@ export function useTimelineEditor(
           batch = null;
           publish(applyTo(saved, pending));
           retainDraft();
-          message.value = "";
+          reportNotice("");
         } catch (cause) {
           fail(cause);
           return false;
@@ -212,7 +233,7 @@ export function useTimelineEditor(
         );
         edited();
         status.value = "saved";
-        message.value = "";
+        reportNotice("");
         return true;
       } catch (cause) {
         fail(cause);
@@ -237,7 +258,7 @@ export function useTimelineEditor(
       publish(saved);
       retainDraft();
       status.value = "saved";
-      message.value = "";
+      reportNotice("");
       edited();
     } catch (cause) {
       fail(cause);
@@ -279,6 +300,9 @@ export function useTimelineEditor(
     state,
     status,
     message,
+    messageDetail,
+    reportError,
+    reportNotice,
     hasPending,
     historyBusy,
     command,

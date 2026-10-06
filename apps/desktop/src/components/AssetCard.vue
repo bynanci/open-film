@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import type { MediaAsset } from "@openfilm/core";
-import { thumbnailUrl, duration, dateLabel, type SourceStatus } from "../api";
+import { thumbnailUrl, type SourceStatus } from "../api";
+import { formatDuration } from "../i18n";
 import Icon from "./Icon.vue";
 import { sourcePresentation } from "../sourcePresentation";
+const { t } = useI18n();
 const props = defineProps<{
   asset: MediaAsset;
   selected?: boolean;
@@ -16,9 +19,22 @@ defineEmits<{
   toggle: [asset: MediaAsset, key: "favorite" | "rejected" | "locked"];
 }>();
 const failed = ref(false);
-const sourceInfo = computed(() => sourcePresentation(props.asset));
+const sourceInfo = computed(() =>
+  sourcePresentation(props.asset, { translate: t }),
+);
+const kind = computed(() =>
+  sourceInfo.value.requiresReframedExport
+    ? "kind360"
+    : props.asset.mediaType === "image"
+      ? "kindPhoto"
+      : props.asset.mediaType === "audio"
+        ? "kindAudio"
+        : "kindVideo",
+);
+// Reimport can rebuild the same cache URI. A fresh catalog object means retry
+// a thumbnail that failed earlier, without requiring the Library to remount.
 watch(
-  () => `${props.asset.id}:${props.asset.uri}:${props.asset.thumbnailUri}`,
+  () => props.asset,
   () => {
     failed.value = false;
   },
@@ -32,14 +48,16 @@ watch(
       'is-selected': selected,
       'is-rejected': asset.state.rejected,
       'is-chosen': chosen,
+      'is-locked': asset.state.locked,
+      'is-missing': sourceStatus && sourceStatus.status !== 'available',
     }"
   >
     <button
       class="asset-image-button"
       :aria-label="
-        choice
-          ? `${chosen ? 'Remove' : 'Select'} ${asset.name}`
-          : `Inspect ${asset.name}`
+        t(`media.card.${choice ? (chosen ? 'remove' : 'select') : 'inspect'}`, {
+          name: asset.name,
+        })
       "
       :aria-pressed="choice ? !!chosen : !!selected"
       @click="$emit('select', asset)"
@@ -56,38 +74,45 @@ watch(
         <Icon
           :name="asset.mediaType === 'audio' ? 'volume' : 'film'"
           :size="30"
-        /><span>{{
+        />
+        <span>{{
           sourceInfo.requiresReframedExport
-            ? "360 source"
+            ? t("media.source.kind360")
             : !sourceInfo.previewSupported
-              ? "Preview unavailable"
+              ? t("media.source.previewUnavailable")
               : asset.mediaType === "audio"
-                ? "Audio recording"
-                : "No preview available"
+                ? t("media.card.audioRecording")
+                : t("media.card.noPreview")
         }}</span>
       </div>
-      <span class="asset-type">{{
-        sourceInfo.requiresReframedExport
-          ? "360 SOURCE"
-          : asset.mediaType === "image"
-            ? "PHOTO"
-            : asset.mediaType === "audio"
-              ? "AUDIO"
-              : "VIDEO"
-      }}</span>
+      <span class="asset-type">{{ t(`media.source.${kind}`) }}</span>
       <span v-if="asset.duration !== undefined" class="asset-duration">{{
-        duration(asset.duration)
+        formatDuration(asset.duration)
       }}</span>
       <span
         v-if="sourceStatus && sourceStatus.status !== 'available'"
         class="asset-source-status"
-        :title="sourceStatus.message"
+        :title="t('media.card.offlineHelp')"
         >{{
-          sourceStatus.status === "missing"
-            ? "Missing Media"
-            : "Inaccessible Media"
+          t(
+            `media.card.${sourceStatus.status === "missing" ? "offline" : "inaccessible"}`,
+          )
         }}</span
       >
+      <span
+        v-if="asset.state.locked"
+        class="asset-lock-mark"
+        :aria-label="t('media.card.lockedState')"
+        :title="t('media.card.lockedState')"
+        ><Icon name="lock" :size="14"
+      /></span>
+      <span
+        v-if="asset.state.favorite"
+        class="asset-favorite-mark"
+        :aria-label="t('media.card.favoriteState')"
+        :title="t('media.card.favoriteState')"
+        ><Icon name="heart" :size="14"
+      /></span>
       <span v-if="choice" class="choice-mark"
         ><Icon v-if="chosen" name="check" :size="14" /><span v-else
           >+</span
@@ -95,24 +120,16 @@ watch(
       >
     </button>
     <div class="asset-caption">
-      <span class="asset-name" :title="asset.name">{{ asset.name }}</span
-      ><span class="asset-date">{{ dateLabel(asset.capturedAt) }}</span>
-      <span v-if="sourceInfo.adapter !== 'generic'" class="asset-device">{{
-        sourceInfo.deviceLabel
-      }}</span>
-      <span v-if="sourceInfo.badges.length" class="asset-capability-badges"
-        ><span
-          v-for="badge in sourceInfo.badges.slice(0, 2)"
-          :key="badge"
-          :title="sourceInfo.previewReason"
-          >{{ badge }}</span
-        ></span
-      >
+      <span class="asset-name" :title="asset.name">{{ asset.name }}</span>
     </div>
     <div v-if="!choice" class="asset-actions">
       <button
         :class="{ active: asset.state.favorite }"
-        :aria-label="`${asset.state.favorite ? 'Unfavorite' : 'Favorite'} ${asset.name}`"
+        :aria-label="
+          t(`media.card.${asset.state.favorite ? 'unfavorite' : 'favorite'}`, {
+            name: asset.name,
+          })
+        "
         :aria-pressed="!!asset.state.favorite"
         @click="$emit('toggle', asset, 'favorite')"
       >
@@ -120,7 +137,11 @@ watch(
       </button>
       <button
         :class="{ active: asset.state.locked }"
-        :aria-label="`${asset.state.locked ? 'Unlock' : 'Lock'} ${asset.name}`"
+        :aria-label="
+          t(`media.card.${asset.state.locked ? 'unlock' : 'lock'}`, {
+            name: asset.name,
+          })
+        "
         :aria-pressed="!!asset.state.locked"
         @click="$emit('toggle', asset, 'locked')"
       >
@@ -128,7 +149,11 @@ watch(
       </button>
       <button
         :class="{ active: asset.state.rejected }"
-        :aria-label="`${asset.state.rejected ? 'Restore' : 'Reject'} ${asset.name}`"
+        :aria-label="
+          t(`media.card.${asset.state.rejected ? 'restore' : 'reject'}`, {
+            name: asset.name,
+          })
+        "
         :aria-pressed="!!asset.state.rejected"
         @click="$emit('toggle', asset, 'rejected')"
       >

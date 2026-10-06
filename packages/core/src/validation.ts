@@ -1,5 +1,6 @@
 import {
   PROJECT_SCHEMA_VERSION,
+  PROJECT_CONTENT_LOCALES,
   type Composition,
   type Job,
   type MediaAsset,
@@ -281,6 +282,19 @@ function story(
     const beat = object(entry, beatPath);
     string(beat.title, `${beatPath}.title`);
     optional(beat, "intent", beatPath, string);
+    optional(beat, "templateBeatKey", beatPath, string);
+    for (const key of ["titleSource", "intentSource"])
+      optional(beat, key, beatPath, (v, p) =>
+        choice(v, p, ["template", "user"]),
+      );
+    if (
+      (beat.titleSource === "template" || beat.intentSource === "template") &&
+      beat.templateBeatKey === undefined
+    )
+      fail(
+        `${beatPath}.templateBeatKey`,
+        "template text requires a stable beat key",
+      );
     optional(beat, "minDuration", beatPath, (v, p) => number(v, p, 0));
     for (const key of ["targetDuration", "maxDuration"])
       optional(beat, key, beatPath, positive);
@@ -449,6 +463,17 @@ export function validateProject(
     );
   }
   for (const key of ["id", "title"]) string(data[key], `${path}.${key}`);
+  optional(data, "projectContentLocale", path, (v, p) =>
+    choice(v, p, PROJECT_CONTENT_LOCALES),
+  );
+  optional(data, "filmSettings", path, (v, p) => {
+    const settings = object(v, p);
+    string(settings.templateId, `${p}.templateId`);
+    positive(settings.targetDuration, `${p}.targetDuration`);
+    positive(settings.maxDuration, `${p}.maxDuration`);
+    if (Number(settings.targetDuration) > Number(settings.maxDuration))
+      fail(`${p}.targetDuration`, "target duration exceeds maximum duration");
+  });
   timestamp(data.createdAt, `${path}.createdAt`);
   timestamp(data.updatedAt, `${path}.updatedAt`);
   if (Date.parse(String(data.updatedAt)) < Date.parse(String(data.createdAt)))
@@ -508,6 +533,17 @@ export function validateJob(value: unknown): Job {
       const error = object(entry, `${p}[${i}]`);
       for (const key of ["uri", "stage", "message"])
         string(error[key], `${p}[${i}].${key}`);
+      for (const key of ["code", "detail"])
+        optional(error, key, `${p}[${i}]`, string);
+      optional(error, "params", `${p}[${i}]`, (value, paramsPath) => {
+        const params = object(value, paramsPath);
+        for (const [key, parameter] of Object.entries(params)) {
+          if (typeof parameter === "number")
+            number(parameter, `${paramsPath}.${key}`);
+          else if (typeof parameter !== "string")
+            fail(`${paramsPath}.${key}`, "expected a string or finite number");
+        }
+      });
     });
   });
   return copyJson(value, path) as Job;

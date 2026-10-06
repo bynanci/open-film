@@ -160,6 +160,10 @@ const images = new Set([
   ".avif",
 ]);
 
+export function isSupportedMediaFile(path: string): boolean {
+  return supported.has(extname(path).toLowerCase());
+}
+
 export class FilesystemSource implements MediaSourceAdapter {
   readonly id = "openfilm.filesystem";
   supports(input: string | { uri?: string; path?: string }): boolean {
@@ -193,10 +197,7 @@ export class FilesystemSource implements MediaSourceAdapter {
         const path = join(directory, entry.name);
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) pending.push(path);
-        else if (
-          entry.isFile() &&
-          supported.has(extname(entry.name).toLowerCase())
-        ) {
+        else if (entry.isFile() && isSupportedMediaFile(entry.name)) {
           yield { path, uri: pathToFileURL(path).href, name: entry.name };
         }
       }
