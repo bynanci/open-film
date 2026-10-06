@@ -388,6 +388,154 @@ describe("transcript history operation ownership", () => {
   });
 });
 
+describe("transcript restore operation ownership", () => {
+  it.each(["undo", "redo"] as const)(
+    "dispatches the first Restore rather than rapid %s after their preparatory manual save",
+    async (direction) => {
+      const test = await fixture();
+      const manualAck = deferred<void>(),
+        committed = deferred<void>();
+      test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+        const result = await test.app.transcriptEditor.edit(assetId, input);
+        committed.resolve();
+        await manualAck.promise;
+        return result;
+      });
+      expect(test.editor.command(test.correction)).toBe(true);
+      const restoring = test.editor.restore(test.baseRevision);
+      const reservedBeforeHistory = test.editor.historyBusy.value;
+      const moving = test.editor.history(direction);
+      await committed.promise;
+      manualAck.resolve();
+      const results = await Promise.all([restoring, moving]);
+      expect(test.api.selectTranscriptRevision).toHaveBeenCalledTimes(1);
+      expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+      expect(reservedBeforeHistory).toBe(true);
+      expect(results).toEqual([true, false]);
+      expect(test.editor.historyBusy.value).toBe(false);
+      expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+        "Original text",
+      );
+      expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(
+        3,
+      );
+    },
+  );
+
+  it("does not reserve Restore over an already preparing history operation", async () => {
+    const test = await fixture();
+    const ack = deferred<void>(),
+      committed = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+      const result = await test.app.transcriptEditor.edit(assetId, input);
+      committed.resolve();
+      await ack.promise;
+      return result;
+    });
+    expect(test.editor.command(test.correction)).toBe(true);
+    const moving = test.editor.history("undo"),
+      restoring = test.editor.restore(test.baseRevision);
+    await committed.promise;
+    ack.resolve();
+    expect(await moving).toBe(true);
+    expect(await restoring).toBe(false);
+    expect(test.api.transcriptHistory).toHaveBeenCalledTimes(1);
+    expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(3);
+  });
+
+  it("preserves a committed Restore lost-ACK receipt through duplicate Restore, Undo, navigation and SQLite reopen", async () => {
+    const test = await fixture();
+    const original = await test.app.transcriptEditor.get("asset");
+    test.editor.command(test.correction);
+    expect(await test.editor.flush()).toBe(true);
+    const ack = deferred<void>(),
+      committed = deferred<void>();
+    test.api.selectTranscriptRevision.mockImplementationOnce(
+      async (assetId, input) => {
+        await test.app.transcriptEditor.selectRevision(assetId, input);
+        committed.resolve();
+        await ack.promise;
+        throw new TypeError("Committed restore ACK lost");
+      },
+    );
+    const restoring = test.editor.restore(test.baseRevision),
+      repeated = test.editor.restore(test.baseRevision),
+      moving = test.editor.history("undo");
+    let navigationSettled = false;
+    const navigation = test.editor.flush().then((result) => {
+      navigationSettled = true;
+      return result;
+    });
+    await committed.promise;
+    const retained = test.storage.get(test.storageKey)!;
+    const [assetId, sent] = test.api.selectTranscriptRevision.mock.calls[0]!;
+    const beforeAck = navigationSettled;
+    ack.resolve();
+    expect(
+      await Promise.all([restoring, repeated, moving, navigation]),
+    ).toEqual([false, false, false, false]);
+    expect(beforeAck).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(JSON.parse(retained).receipt).toEqual(sent);
+    expect(test.api.selectTranscriptRevision).toHaveBeenCalledTimes(1);
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+    test.dispose();
+    const reopenedApp = await test.reopenProject(),
+      reopened = test.createEditor();
+    expect(await reopened.editor.load()).toBe(true);
+    expect(reopened.editor.state.value?.document?.segments).toEqual(
+      original.document?.segments,
+    );
+    expect(reopened.editor.hasPending.value).toBe(false);
+    expect(test.api.selectTranscriptRevision.mock.calls).toEqual([
+      [assetId, sent],
+      [assetId, sent],
+    ]);
+    expect((await reopenedApp.transcriptEditor.revisions("asset")).total).toBe(
+      3,
+    );
+    expect(test.storage.has(test.storageKey)).toBe(false);
+    expect(reopened.editor.historyBusy.value).toBe(false);
+  });
+
+  it("releases failed Restore preparation while retaining its original unsaved command receipt", async () => {
+    const test = await fixture();
+    test.api.editTranscript.mockRejectedValue(
+      new ApiError("Save unavailable", 503, { code: "operation.failed" }),
+    );
+    test.editor.command(test.correction);
+    expect(await test.editor.restore(test.baseRevision)).toBe(false);
+    const retained = test.storage.get(test.storageKey)!;
+    expect(await test.editor.history("undo")).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch Restore after disposal during its preparatory save", async () => {
+    const test = await fixture();
+    const ack = deferred<void>(),
+      committed = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+      const result = await test.app.transcriptEditor.edit(assetId, input);
+      committed.resolve();
+      await ack.promise;
+      return result;
+    });
+    test.editor.command(test.correction);
+    const restoring = test.editor.restore(test.baseRevision);
+    await committed.promise;
+    test.dispose();
+    ack.resolve();
+    expect(await restoring).toBe(false);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+  });
+});
+
 describe("transcript reconciliation ownership", () => {
   it.each(["old-snapshot", "read-error"])(
     "discards a delayed %s after autosave acknowledged a newer manual revision",

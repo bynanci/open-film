@@ -41,7 +41,7 @@ export function useTranscriptEditor(
   let pending: TranscriptCommand[] = [];
   let receipt: Receipt | null = null;
   let saving: Promise<boolean> | null = null;
-  let historyMutation: Promise<boolean> | null = null;
+  let revisionMutation: Promise<boolean> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let readGeneration = 0;
@@ -237,7 +237,7 @@ export function useTranscriptEditor(
     }
   }
   function flush(): Promise<boolean> {
-    return historyMutation ?? flushQueue();
+    return revisionMutation ?? flushQueue();
   }
   function flushQueue(): Promise<boolean> {
     clearTimeout(timer);
@@ -311,7 +311,16 @@ export function useTranscriptEditor(
     return saving;
   }
   function history(direction: "undo" | "redo"): Promise<boolean> {
-    if (disposed || historyBusy.value || historyMutation)
+    return reserveRevisionChange((baseRevision) => ({
+      baseRevision,
+      requestId: crypto.randomUUID(),
+      direction,
+    }));
+  }
+  function reserveRevisionChange(
+    createReceipt: (baseRevision: string) => Receipt,
+  ): Promise<boolean> {
+    if (disposed || historyBusy.value || revisionMutation)
       return Promise.resolve(false);
     // Reserve preparation and receipt delivery before publishing the busy state.
     // Navigation waits for this operation; its own saves use the queue directly.
@@ -319,21 +328,17 @@ export function useTranscriptEditor(
       .then(async () => {
         if (!(await flushQueue()) || disposed || !state.value?.revision)
           return false;
-        receipt = {
-          baseRevision: state.value.revision,
-          requestId: crypto.randomUUID(),
-          direction,
-        };
+        receipt = createReceipt(state.value.revision);
         retain();
         return flushQueue();
       })
       .finally(() => {
-        if (historyMutation === operation) {
-          historyMutation = null;
+        if (revisionMutation === operation) {
+          revisionMutation = null;
           historyBusy.value = false;
         }
       });
-    historyMutation = operation;
+    revisionMutation = operation;
     historyBusy.value = true;
     return operation;
   }
@@ -396,15 +401,12 @@ export function useTranscriptEditor(
     link.click();
     setTimeout(() => URL.revokeObjectURL(href), 1000);
   }
-  async function restore(revisionId: string) {
-    if (!(await flush()) || !state.value?.revision) return false;
-    receipt = {
-      baseRevision: state.value.revision,
+  function restore(revisionId: string): Promise<boolean> {
+    return reserveRevisionChange((baseRevision) => ({
+      baseRevision,
       requestId: crypto.randomUUID(),
       revisionId,
-    };
-    retain();
-    return flush();
+    }));
   }
   onMounted(() => void load());
   onBeforeUnmount(() => {
