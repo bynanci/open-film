@@ -1030,18 +1030,33 @@ test("transcription completed before browser polling refreshes in place and late
   let jobsGate: Promise<void> | undefined;
   let releaseJobs: (() => void) | undefined;
   const observedStatuses: string[][] = [];
+  const jobReads = new Set<Promise<void>>();
   function holdJobs() {
     jobsGate = new Promise<void>((resolve) => {
       releaseJobs = resolve;
     });
   }
-  await page.route("**/api/jobs", async (route) => {
-    if (jobsGate) await jobsGate;
-    const response = await route.fetch();
-    const { jobs } = (await response.json()) as { jobs: Job[] };
-    observedStatuses.push(jobs.map((job) => job.status));
-    await route.fulfill({ response });
-  });
+  const jobsHandler: Parameters<Page["route"]>[1] = (route) => {
+    const read = (async () => {
+      if (jobsGate) await jobsGate;
+      const response = await route.fetch();
+      const body = await response.text();
+      // Forward the actual response before validating its contract. A server
+      // error remains visible to the application and fails with its evidence.
+      await route.fulfill({ response });
+      expect(response.ok(), `GET /api/jobs ${response.status()}: ${body}`).toBe(
+        true,
+      );
+      const payload = JSON.parse(body) as { jobs?: Job[] };
+      expect(Array.isArray(payload.jobs), `GET /api/jobs body: ${body}`).toBe(
+        true,
+      );
+      observedStatuses.push(payload.jobs!.map((job) => job.status));
+    })();
+    jobReads.add(read);
+    return read.finally(() => jobReads.delete(read));
+  };
+  await page.route("**/api/jobs", jobsHandler);
   let holdUntilCompleted = true;
   let backgroundJob: Job | undefined;
   await page.route(`**/api/assets/${asset.id}/intelligence`, async (route) => {
@@ -1134,7 +1149,13 @@ test("transcription completed before browser polling refreshes in place and late
     );
     await unchangedSource();
   } finally {
+    // Hooks close the real project before Playwright disposes its page. Stop
+    // this test's interception and finish its held reads while it is still open.
+    await page.unroute("**/api/jobs", jobsHandler);
     releaseJobs?.();
+    jobsGate = undefined;
+    await Promise.all([...jobReads]);
+    await page.unroute(`**/api/assets/${asset.id}/intelligence`);
   }
 });
 
@@ -1889,6 +1910,33 @@ test("a pending transcription request stays with its original film before projec
   });
   const pattern = `**/api/assets/${asset.id}/intelligence`;
   for (const outcome of ["failed", "acknowledged"] as const) {
+    let releaseCompletion: (() => void) | undefined;
+    let completionHeld = false;
+    const completionGate = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
+    const completionPattern = `**/api/assets/${asset.id}/transcript?*`;
+    const completionReads = new Set<Promise<void>>();
+    const completionHandler: Parameters<Page["route"]>[1] = (route) => {
+      const read = (async () => {
+        const response = await route.fetch();
+        const body = await response.text();
+        expect(
+          response.ok(),
+          `Transcript completion read ${response.status()}: ${body}`,
+        ).toBe(true);
+        const state = JSON.parse(body) as TranscriptState;
+        if (state.document?.provenance.model === "fixture-protocol-not-asr") {
+          completionHeld = true;
+          await completionGate;
+        }
+        await route.fulfill({ response });
+      })();
+      completionReads.add(read);
+      return read.finally(() => completionReads.delete(read));
+    };
+    if (outcome === "acknowledged")
+      await page.route(completionPattern, completionHandler);
     let received = false;
     let finished = false;
     let release!: () => void;
@@ -1906,62 +1954,96 @@ test("a pending transcription request stays with its original film before projec
       finished = true;
     };
     await page.route(pattern, handler);
+    let phaseFailure: { error: unknown } | undefined;
+    let cleanup: PromiseSettledResult<void>[];
     try {
-      await start.click();
-      await expect
-        .poll(() => received, {
-          message: `${outcome}: transcription is held before backend arrival`,
-        })
-        .toBe(true);
-      await expect(start).toBeDisabled();
-      await expect(page.getByTestId("transcript-source-picker")).toBeDisabled();
-      await switchProject.click();
-      await expect(workspace(page)).toBeVisible();
-      expect((await project(request)).id).toBe(original.id);
-      expect(
-        (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+      try {
+        await start.click();
+        await expect
+          .poll(() => received, {
+            message: `${outcome}: transcription is held before backend arrival`,
+          })
+          .toBe(true);
+        await expect(start).toBeDisabled();
+        await expect(
+          page.getByTestId("transcript-source-picker"),
+        ).toBeDisabled();
+        await switchProject.click();
+        await expect(workspace(page)).toBeVisible();
+        expect((await project(request)).id).toBe(original.id);
+        expect(
+          (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+            (item) => item.type === "transcribe",
+          ),
+        ).toEqual([]);
+        expect((await transcript(request, asset.id)).revision).toBeUndefined();
+      } finally {
+        release();
+      }
+      await expect.poll(() => finished).toBe(true);
+      if (outcome === "failed") {
+        // A rejected dispatch releases local controls but blocks the waiting switch.
+        await expect(workspace(page).getByRole("alert").first()).toBeVisible();
+        await expect(start).toBeEnabled();
+        expect((await project(request)).id).toBe(original.id);
+        expect(
+          (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+            (item) => item.type === "transcribe",
+          ),
+        ).toEqual([]);
+      } else {
+        await expect
+          .poll(
+            async () =>
+              (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+                (item) => item.type === "transcribe",
+              ).length,
+          )
+          .toBe(1);
+        const job = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
           (item) => item.type === "transcribe",
-        ),
-      ).toEqual([]);
-      expect((await transcript(request, asset.id)).revision).toBeUndefined();
+        )!;
+        await waitJob(request, job.id);
+        expect(
+          (await transcript(request, asset.id)).document?.provenance.model,
+        ).toBe("fixture-protocol-not-asr");
+        expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+          baseline,
+        );
+        await expect
+          .poll(() => completionHeld, {
+            timeout: 15_000,
+            message: "The provider result is held while the editor is Loading",
+          })
+          .toBe(true);
+        await expect(switchProject).toBeEnabled();
+        try {
+          await switchProject.click();
+          await expect(workspace(page)).toBeVisible();
+          expect((await project(request)).id).toBe(original.id);
+        } finally {
+          releaseCompletion?.();
+        }
+        await expect(page.locator(".launcher-actions")).toBeVisible();
+      }
+    } catch (error) {
+      phaseFailure = { error };
     } finally {
+      // Release every held read even if an earlier assertion fails, then drain
+      // it before the hook closes the project. Keep the primary assertion.
       release();
+      releaseCompletion?.();
+      cleanup = await Promise.allSettled([
+        page.unroute(pattern, handler),
+        outcome === "acknowledged"
+          ? page.unroute(completionPattern, completionHandler)
+          : Promise.resolve(),
+        ...completionReads,
+      ]);
     }
-    await expect.poll(() => finished).toBe(true);
-    if (outcome === "failed") {
-      // A rejected dispatch releases local controls but blocks the waiting switch.
-      await expect(workspace(page).getByRole("alert").first()).toBeVisible();
-      await expect(start).toBeEnabled();
-      expect((await project(request)).id).toBe(original.id);
-      expect(
-        (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
-          (item) => item.type === "transcribe",
-        ),
-      ).toEqual([]);
-    } else {
-      await expect
-        .poll(
-          async () =>
-            (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
-              (item) => item.type === "transcribe",
-            ).length,
-        )
-        .toBe(1);
-      const job = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
-        (item) => item.type === "transcribe",
-      )!;
-      await waitJob(request, job.id);
-      expect(
-        (await transcript(request, asset.id)).document?.provenance.model,
-      ).toBe("fixture-protocol-not-asr");
-      expect(await immutableCut(request, asset.id, compositionId)).toEqual(
-        baseline,
-      );
-      await expect(switchProject).toBeEnabled();
-      await switchProject.click();
-      await expect(page.locator(".launcher-actions")).toBeVisible();
-    }
-    await page.unroute(pattern, handler);
+    if (phaseFailure) throw phaseFailure.error;
+    for (const result of cleanup)
+      if (result.status === "rejected") throw result.reason;
   }
   await openFilm(page, copiedPath);
   expect((await project(request)).id).toBe(copied.id);
@@ -2152,10 +2234,14 @@ test("glossary saves, remembered corrections, toggles and removal finish in thei
   await unchangedSource();
 });
 
-async function seedManySegments(request: APIRequestContext, id: string) {
+async function seedManySegments(
+  request: APIRequestContext,
+  id: string,
+  count = 121,
+) {
   const initial = await transcribe(request, id);
   const lines = Array.from(
-    { length: 121 },
+    { length: count },
     (_, index) =>
       `Fixture line ${String(index).padStart(3, "0")} alpha 回憶 思い出`,
   );
@@ -2168,7 +2254,7 @@ async function seedManySegments(request: APIRequestContext, id: string) {
     },
   ];
   let current = initial.document!.segments[0]!.id;
-  for (let index = 0; index < 120; index++) {
+  for (let index = 0; index < count - 1; index++) {
     const next = `fixture-split-${index + 1}`;
     commands.push({
       type: "split-segment",
@@ -2181,10 +2267,296 @@ async function seedManySegments(request: APIRequestContext, id: string) {
   for (let offset = 0; offset < commands.length; offset += 100)
     await edit(request, id, commands.slice(offset, offset + 100));
   const state = await transcript(request, id);
-  expect(state.total).toBe(121);
+  expect(state.total).toBe(count);
   expect(state.document?.segments).toHaveLength(100);
   return state;
 }
+
+test("shrinking the last transcript page clamps its rows and history changes clear stale remembered corrections", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Transcript page history",
+  );
+  await seedManySegments(request, asset.id, 101);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await expect(rows(page)).toHaveCount(100);
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(1);
+  await selectRow(page);
+  const originalLast = await field(page).inputValue();
+  await typeText(page, "A corrected last transcript line.");
+  await expect(button(page, "remember")).toBeVisible();
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue(originalLast);
+  await expect(button(page, "remember")).toHaveCount(0);
+  await button(page, "redo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue("A corrected last transcript line.");
+  await expect(button(page, "remember")).toHaveCount(0);
+  await typeText(page, "A fresh correction that will be deleted.");
+  await expect(button(page, "remember")).toBeVisible();
+  await button(page, "deleteSegment").click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(100);
+  await expect(workspace(page)).toContainText("Page 1 of 1");
+  await expect(button(page, "nextPage")).toBeDisabled();
+  await expect(button(page, "remember")).toHaveCount(0);
+  const deleted = await transcript(request, asset.id);
+  expect(deleted.total).toBe(100);
+  // Undo restores the row; redo while viewing the last page must clamp again.
+  await button(page, "undo").click();
+  await saved(page);
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(1);
+  await button(page, "redo").click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(100);
+  await expect(workspace(page)).toContainText("Page 1 of 1");
+  await button(page, "undo").click();
+  await saved(page);
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(1);
+  await selectRow(page);
+  await typeText(page, "Another draft before restoring fewer rows.");
+  await expect(button(page, "remember")).toBeVisible();
+  await workspace(page).locator(".transcript-history > summary").click();
+  const history = workspace(page).locator(".transcript-history select");
+  const revisions = await get<{ revisions: TranscriptRevision[] }>(
+    request,
+    `/assets/${asset.id}/transcript/revisions?limit=100`,
+  );
+  expect(
+    revisions.revisions.some((revision) => revision.id === deleted.revision),
+  ).toBe(true);
+  await expect(
+    history.locator(`option[value="${deleted.revision}"]`),
+  ).toHaveCount(1);
+  await history.selectOption(deleted.revision!);
+  await button(page, "restoreRevision").click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(100);
+  await expect(workspace(page)).toContainText("Page 1 of 1");
+  await expect(button(page, "remember")).toHaveCount(0);
+  await selectRow(page);
+  await typeText(page, "A correction belonging only to the first row.");
+  await expect(button(page, "remember")).toBeVisible();
+  await selectRow(page, 1);
+  await expect(button(page, "remember")).toHaveCount(0);
+  expect(
+    (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=project",
+      )
+    ).entries,
+  ).toEqual([]);
+  await selectRow(page);
+  const liveBefore = await field(page).inputValue();
+  const liveAfter = "Remember this current correction only.";
+  await typeText(page, liveAfter);
+  await button(page, "remember").click();
+  await expect(page.getByTestId("glossary-entry")).toHaveCount(1);
+  const terms = (
+    await get<{ entries: GlossaryEntry[] }>(request, "/glossary?scope=project")
+  ).entries;
+  expect(terms).toHaveLength(1);
+  expect(terms[0]?.source).toBe(liveBefore);
+  expect(terms[0]?.replacement).toBe(liveAfter);
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  await expect(rows(page)).toHaveCount(100);
+  await selectRow(page);
+  await expect(field(page)).toHaveValue(liveAfter);
+  await expect(button(page, "remember")).toHaveCount(0);
+  await unchangedSource();
+});
+
+test("opaque lone-surrogate and very long IDs use exact JSON lookup for review preview and survive editing and reopening", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Opaque JSON segment lookup",
+  );
+  const ids = [
+    "legacy-\ud800",
+    "legacy-\udc00",
+    "legacy-\ufffd",
+    "legacy-" + "x".repeat(32_768),
+  ];
+  const texts = [
+    "Fixword high surrogate memory.",
+    "Fixword low surrogate memory.",
+    "Fixword literal replacement character memory.",
+    "Fixword very long identity memory.",
+  ];
+  const starts = [0.5, 3, 5.5, 8];
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await closeProject(request);
+  // Explicit source-bound legacy identity fixture. JSON preserves every code
+  // unit; this fixture does not represent ASR recognition or model quality.
+  const fixture = await OpenFilmApplication.open(path, {
+    userDataDirectory: join(root, "opaque-json-fixture-user-data"),
+  });
+  try {
+    const sourceHash = await fixture.intelligence.sourceIdentity(asset.id);
+    fixture.catalog.intelligence.replaceTranscript({
+      id: `opaque-json-fixture-${randomUUID()}`,
+      assetId: asset.id,
+      language: "en",
+      provenance: {
+        providerId: "fixture-opaque-json-legacy-identifiers",
+        model: "identity-fixture-not-asr",
+        version: "1",
+        sourceHash,
+        createdAt: new Date().toISOString(),
+      },
+      segments: ids.map((id, position) => ({
+        id,
+        start: starts[position]!,
+        end: starts[position]! + 2,
+        text: texts[position]!,
+      })),
+    });
+  } finally {
+    fixture.close();
+  }
+  await post(request, "/project/open", { path });
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await expect(rows(page)).toHaveCount(4);
+  expect(
+    await rows(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.segmentId),
+    ),
+  ).toEqual(ids);
+  for (const [position, id] of ids.entries()) {
+    const found = await post<{
+      segment: { id: string; text: string };
+      position: number;
+    }>(request, `/assets/${asset.id}/transcript/segment`, { segmentId: id });
+    expect(found.position).toBe(position);
+    expect(found.segment.id).toBe(id);
+    expect(found.segment.text).toBe(texts[position]);
+  }
+  await selectRow(page, 0);
+  await typeText(page, "Fixword edited high surrogate memory.");
+  texts[0] = "Fixword edited high surrogate memory.";
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue("Fixword high surrogate memory.");
+  await button(page, "redo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue(texts[0]!);
+  await selectRow(page, 3);
+  await typeText(page, "Fixword edited very long identity memory.");
+  texts[3] = "Fixword edited very long identity memory.";
+  await post(request, "/glossary", {
+    source: "Fixword",
+    replacement: "Correctword",
+    scope: "project",
+  });
+  const { job } = await post<{ job: Job }>(
+    request,
+    `/assets/${asset.id}/review`,
+    { source: "glossary" },
+  );
+  await waitJob(request, job.id);
+  const pending = (await suggestions(request, asset.id, "pending")).suggestions;
+  expect(pending).toHaveLength(4);
+  for (const id of ids)
+    expect(pending.some((item) => item.target.segmentId === id)).toBe(true);
+  await tools(page, "suggestions");
+  await expect(page.getByTestId("review-suggestion")).toHaveCount(4);
+  for (const [position, id] of ids.entries()) {
+    const suggestion = pending.find((item) => item.target.segmentId === id)!;
+    const lookup = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${asset.id}/transcript/segment` &&
+        response.request().method() === "POST" &&
+        (response.request().postDataJSON() as { segmentId: string })
+          .segmentId === id,
+    );
+    await page
+      .locator(`[data-suggestion-id="${suggestion.id}"]`)
+      .getByRole("button", { name: t("preview"), exact: true })
+      .click();
+    const response = await lookup;
+    expect(response.ok()).toBe(true);
+    const result = (await response.json()) as {
+      segment: { id: string };
+      position: number;
+    };
+    expect(result.segment.id).toBe(id);
+    expect(result.position).toBe(position);
+    await expect(field(page)).toHaveValue(texts[position]!);
+    await previewVisible(page);
+    await expect
+      .poll(() =>
+        page
+          .getByTestId("transcript-source-preview")
+          .locator("video")
+          .evaluate((node) => (node as HTMLVideoElement).currentTime),
+      )
+      .toBeCloseTo(starts[position]!, 1);
+  }
+  const search = workspace(page).getByLabel(t("search"), { exact: true });
+  await search.fill("edited high surrogate");
+  await expect(page.getByTestId("transcript-search-status")).toHaveText(
+    "1 match",
+  );
+  await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue(texts[0]!);
+  await previewVisible(page);
+  await search.fill("");
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  expect(
+    await rows(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.segmentId),
+    ),
+  ).toEqual(ids);
+  for (const [position, id] of ids.entries()) {
+    const found = await post<{
+      segment: { id: string; text: string };
+      position: number;
+    }>(request, `/assets/${asset.id}/transcript/segment`, { segmentId: id });
+    expect(found.position).toBe(position);
+    expect(found.segment.id).toBe(id);
+    expect(found.segment.text).toBe(texts[position]);
+  }
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
 
 test("bounded transcript pages stream completed review batches and preserve partial results on cancellation", async ({
   page,
