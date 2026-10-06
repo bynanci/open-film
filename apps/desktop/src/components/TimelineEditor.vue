@@ -1233,14 +1233,20 @@ onBeforeUnmount(() => {
                     </p>
                   </div>
                 </div>
-                <img
+                <div
                   v-else-if="selectedAsset.mediaType === 'image'"
-                  :key="sourcePlaybackKey"
-                  :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
-                  :alt="selectedAsset.name"
-                  :style="previewGeometryStyle"
-                  @error="sourceError = 'photo'"
-                />
+                  class="editor-composition-frame"
+                  :style="previewFrameStyle"
+                >
+                  <img
+                    :key="sourcePlaybackKey"
+                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :alt="selectedAsset.name"
+                    :style="previewMediaStyle"
+                    @load="capturePreviewSize"
+                    @error="sourceError = 'photo'"
+                  />
+                </div>
                 <div
                   v-else-if="selectedAsset.mediaType === 'audio'"
                   class="editor-audio-preview"
@@ -1260,26 +1266,34 @@ onBeforeUnmount(() => {
                     @error="sourceError = 'playback'"
                   />
                 </div>
-                <video
+                <div
                   v-else-if="active && editMode === 'story'"
-                  ref="sourcePlayer"
-                  :key="sourcePlaybackKey"
-                  :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
-                  :poster="
-                    selectedAsset.thumbnailUri
-                      ? thumbnailUrl(selectedAsset.id)
-                      : undefined
-                  "
-                  controls
-                  preload="metadata"
-                  :aria-label="t('editor.source.preview')"
-                  :style="previewGeometryStyle"
-                  @loadedmetadata="configurePlayer"
-                  @timeupdate="stopAtOut"
-                  @play="playing = true"
-                  @pause="playing = false"
-                  @error="sourceError = 'playback'"
-                />
+                  class="editor-composition-frame"
+                  :style="previewFrameStyle"
+                >
+                  <video
+                    ref="sourcePlayer"
+                    :key="sourcePlaybackKey"
+                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :poster="
+                      selectedAsset.thumbnailUri
+                        ? thumbnailUrl(selectedAsset.id)
+                        : undefined
+                    "
+                    controls
+                    preload="metadata"
+                    :aria-label="t('editor.source.preview')"
+                    :style="previewMediaStyle"
+                    @loadedmetadata="
+                      capturePreviewSize($event);
+                      configurePlayer();
+                    "
+                    @timeupdate="stopAtOut"
+                    @play="playing = true"
+                    @pause="playing = false"
+                    @error="sourceError = 'playback'"
+                  />
+                </div>
               </template>
               <div v-else class="editor-source-empty">
                 <Icon name="film" :size="30" /><span>{{
