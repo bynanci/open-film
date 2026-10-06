@@ -325,9 +325,19 @@ export class ProjectCatalog {
           );
         const metadata = { ...latest.metadata };
         if (change.inspected) {
-          for (const key of Object.keys(metadata))
-            if (key.startsWith("openfilm.") && key !== "openfilm.reference")
-              delete metadata[key];
+          for (const key of [
+            "openfilm.preview",
+            "openfilm.pixel",
+            "openfilm.insta360",
+            "openfilm.color",
+            "openfilm.ffprobe",
+            "openfilm.exif",
+            "openfilm.timestamp",
+            "openfilm.filesystem",
+            "openfilm.metadata.exiftoolAvailable",
+            "openfilm.importPipeline",
+          ])
+            delete metadata[key];
           Object.assign(metadata, change.inspected.metadata);
         }
         const next: MediaAsset = {

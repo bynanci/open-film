@@ -413,19 +413,21 @@ describe("durable timeline editor", () => {
     };
     const first = await editor.edit("timeline", input);
     const firstBytes = await readFile(path);
-    expect(await editor.edit("timeline", input)).toEqual(first);
+    const replayed = await editor.edit("timeline", input);
+    expect(replayed).toMatchObject(first);
+    expect(replayed.acknowledgedRevision).toBe(first.revision);
     expect(await readFile(path)).toEqual(firstBytes);
     const second = await editor.edit("timeline", {
       baseRevision: first.revision,
       commands: [{ type: "volume", clipId: "video-clip", volume: 0.7 }],
     });
-    expect(
-      await editor.edit("timeline", {
-        commands: [{ duration: 5, clipId: "photo-clip", type: "duration" }],
-        requestId: "retry-1",
-        baseRevision: initial.revision,
-      }),
-    ).toEqual(second);
+    const replayedAfterLaterEdit = await editor.edit("timeline", {
+      commands: [{ duration: 5, clipId: "photo-clip", type: "duration" }],
+      requestId: "retry-1",
+      baseRevision: initial.revision,
+    });
+    expect(replayedAfterLaterEdit).toMatchObject(second);
+    expect(replayedAfterLaterEdit.acknowledgedRevision).toBe(first.revision);
     await expect(
       editor.edit("timeline", {
         ...input,

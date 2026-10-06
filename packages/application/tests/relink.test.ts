@@ -334,6 +334,8 @@ describe("media relinking application", () => {
     legacy.metadata["openfilm.color"] = { stale: true };
     legacy.metadata["openfilm.preview"] = { supported: false, reason: "old" };
     legacy.metadata["openfilm.pixel"] = { device: "Old camera" };
+    legacy.metadata["openfilm.importPipeline"] = 2;
+    legacy.metadata["openfilm.test.note"] = "retained";
     app.catalog.upsertAsset(legacy);
     await rename(original, moved);
     const replacement = join(moved, "01-photo.png");
@@ -372,6 +374,8 @@ describe("media relinking application", () => {
     );
     expect(refreshed.metadata["openfilm.preview"]).toBeUndefined();
     expect(refreshed.metadata["openfilm.pixel"]).toBeUndefined();
+    expect(refreshed.metadata["openfilm.importPipeline"]).toBeUndefined();
+    expect(refreshed.metadata["openfilm.test.note"]).toBe("retained");
     expect(refreshed.metadata["user.note"]).toEqual({ text: "retained" });
     expect(refreshed.metadata["openfilm.reference"]).toMatchObject({
       contentHash: candidate.contentHash,
