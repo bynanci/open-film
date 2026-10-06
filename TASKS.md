@@ -112,3 +112,20 @@ Evidence: [validation record](docs/validation-global-product.md).
       managed-upload cleanup, read-only recent catalog/WAL validation, Missing
       refresh/pagination and bounded Story/Compose hydration. Legacy locale
       fallback confirmed; delayed asset reads preserve acknowledged edits.
+
+## Impeccable UI refinement and Resolve QA handoff
+
+Evidence: [validation record](docs/validation-impeccable-resolve.md).
+
+- [x] Apply pinned Impeccable Operate/Polish guidance to existing UI: compact
+      navigation, fixed-rem type, direct Welcome actions and media-first spacing.
+- [x] Bounded Edit workspace: independently scrolling story rail/inspector,
+      visible player and keyboard clip reveal without page scrolling.
+- [x] Download editable exports, localized Resolve handoff and progressive
+      capability disclosure in en-US, zh-TW and ja-JP.
+- [x] Portable Resolve QA preparation and evidence helper, non-destructive
+      project guards, 18 offline regressions and actual relocation/source checks.
+- [x] CI builds and uploads the generated CC0 reference for workstation testing;
+      includes source SHA/CI provenance and manual/API procedures.
+- [ ] Actual Resolve import/playback/relink/effect QA on a capable workstation.
+      The helper and official parser do not close this application gate.

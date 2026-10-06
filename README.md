@@ -169,6 +169,13 @@ FCPXML/EDL continue rejecting unsupported edits. See the
 Official parser validation and actual NLE import are separate; real Resolve
 import remains manual verification required.
 
+If this computer cannot run Resolve, use the downloadable `resolve-qa-reference-…`
+artifact from a successful [Verify run](https://github.com/bynanci/open-film/actions/workflows/ci.yml).
+It contains generated media, portable fixture preparation, a manual import checklist
+and an optional installed-Resolve API probe. Follow the
+[workstation QA guide](docs/resolve-workstation-qa.md). A prepared bundle or successful
+API check does not establish playback or effect fidelity.
+
 ## Develop and verify
 
 ```bash

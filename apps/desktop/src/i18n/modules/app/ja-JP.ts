@@ -145,7 +145,7 @@ export default {
       },
       destinationHint: {
         resolve:
-          "OpenTimelineIO を使います。取り込み後にカット、静止画の長さ、音声、参照先を確認してください。高度な効果は手動で再設定が必要です。Resolve での実際の取り込みは未検証です。",
+          "カットと元のメディアを Resolve に渡します。編集を続ける前に取り込み結果を確認してください。高度な効果は手動で再設定が必要です。",
         finalcut:
           "Final Cut Pro XML で基本的なカットを渡します。未対応の編集は報告されます。Final Cut Pro でタイミング、参照先、効果を確認してください。",
         premiere:
@@ -173,6 +173,19 @@ export default {
       },
       saved: "プロジェクトに保存しました",
       downloadMp4: "MP4 をダウンロード",
+      downloadFile: "{format} をダウンロード",
+      resolveGuide: {
+        title: "次に DaVinci Resolve で",
+        import:
+          ".otio ファイルをダウンロードします。Resolve の File → Import → Timeline から選択してください。",
+        media:
+          "メディアがオフラインの場合、Media Pool の Relink Selected Clips から元のメディアフォルダーを選びます。",
+        check:
+          "再生して静止画の長さと音声を確認し、書き出しレポートに記載された編集を再設定してください。Resolve プロジェクトを保存して開き直します。",
+        unavailable: "このパソコンに Resolve がありませんか？",
+        fallback:
+          "Resolve が入ったパソコンで確認してください。.otio と元のメディアを一緒に移します。.otio 自体には写真や動画が含まれません。取り込み画面で .otio を選べない場合は、Resolve のバージョンが OpenTimelineIO に対応しているか確認してください。ここでは引き続き MP4 を書き出せます。",
+      },
       stale:
         "この書き出しには最新の編集が含まれていません。もう一度書き出してください。",
       heading: "ストーリーを次へ。",

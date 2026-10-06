@@ -137,7 +137,7 @@ export default {
       },
       destinationHint: {
         resolve:
-          "使用 OpenTimelineIO。匯入後請檢查剪接、照片長度、音訊與來源連結。進階效果需要手動重建；尚未驗證 Resolve 實際匯入結果。",
+          "將剪輯與原始素材帶到 Resolve。繼續剪輯前請確認匯入結果；進階效果需要手動重建。",
         finalcut:
           "使用 Final Cut Pro XML 轉移基本剪輯。不支援的編輯會顯示說明，請在 Final Cut Pro 中確認時間、媒體連結與效果。",
         premiere:
@@ -165,6 +165,19 @@ export default {
       },
       saved: "已儲存至專案",
       downloadMp4: "下載 MP4",
+      downloadFile: "下載 {format}",
+      resolveGuide: {
+        title: "接著在 DaVinci Resolve 中",
+        import:
+          "下載 .otio 檔。在 Resolve 選擇 File → Import → Timeline，再選取此檔案。",
+        media:
+          "若素材離線，在 Media Pool 使用 Relink Selected Clips，選擇原始素材資料夾。",
+        check:
+          "播放剪輯，檢查照片長度與聲音，並重建匯出報告列出的編輯效果。儲存並重新開啟 Resolve 專案。",
+        unavailable: "這台電腦沒有 Resolve？",
+        fallback:
+          "改用已安裝 Resolve 的電腦，將 .otio 檔與原始素材一起搬移；.otio 本身不含照片或影片。若匯入視窗不接受 .otio，請確認 Resolve 版本支援 OpenTimelineIO。你仍可在這裡匯出 MP4。",
+      },
       stale: "此匯出檔早於最近的編輯，請重新匯出以包含變更。",
       heading: "讓故事繼續前進。",
       headingDescription: "觀看影片，或將可編輯時間軸帶到其他編輯軟體。",

@@ -74,6 +74,11 @@ const selectedBeatId = ref("");
 const inspector = ref<"clip" | "beat">("clip");
 const showFit = ref(false);
 const inspectorOpen = ref(true);
+const editorElement = ref<HTMLElement | null>(null);
+const workspaceElement = ref<HTMLElement | null>(null);
+const workspaceHeight = ref<number>();
+let layoutObserver: ResizeObserver | undefined;
+let layoutFrame = 0;
 const skippedClipIds = ref<string[]>([]);
 const fitPreview = ref<ShorteningSuggestionPreview | null>(null);
 const draftAction = ref<"discard" | "reapply" | null>(null);
@@ -419,13 +424,43 @@ function keyboard(event: KeyboardEvent) {
     const next = clips[index + (event.key === "ArrowRight" ? 1 : -1)];
     if (next) {
       chooseClip(next);
-      void nextTick(() =>
-        document
-          .getElementById(`clip-${next.id}`)
-          ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
-      );
+      void nextTick(() => revealClip(next.id));
     }
   }
+}
+function revealClip(id: string) {
+  const clip = document.getElementById(`clip-${id}`);
+  const rail = clip?.closest<HTMLElement>(".editor-story-rail");
+  const lane = clip?.closest<HTMLElement>(".editor-clip-lane");
+  if (!clip || !rail || !lane) return;
+  const bounds = clip.getBoundingClientRect();
+  const vertical = rail.getBoundingClientRect();
+  const horizontal = lane.getBoundingClientRect();
+  if (bounds.top < vertical.top + 8)
+    rail.scrollTop += bounds.top - vertical.top - 8;
+  else if (bounds.bottom > vertical.bottom - 8)
+    rail.scrollTop += bounds.bottom - vertical.bottom + 8;
+  if (bounds.left < horizontal.left + 8)
+    lane.scrollLeft += bounds.left - horizontal.left - 8;
+  else if (bounds.right > horizontal.right - 8)
+    lane.scrollLeft += bounds.right - horizontal.right + 8;
+}
+function measureWorkspace() {
+  cancelAnimationFrame(layoutFrame);
+  layoutFrame = requestAnimationFrame(() => {
+    if (!props.active || !workspaceElement.value) return;
+    const footer = editorElement.value?.querySelector(".editor-shortcuts");
+    const footerHeight = footer?.getBoundingClientRect().height ?? 0;
+    workspaceHeight.value = Math.max(
+      272,
+      Math.floor(
+        window.innerHeight -
+          Math.max(0, workspaceElement.value.getBoundingClientRect().top) -
+          footerHeight -
+          16,
+      ),
+    );
+  });
 }
 watch(
   allClips,
@@ -631,20 +666,37 @@ watch(
   () => props.active,
   (active) => {
     if (!active) sourcePlayer.value?.pause();
+    else void nextTick(measureWorkspace);
   },
 );
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
+  window.addEventListener("resize", measureWorkspace);
+  layoutObserver = new ResizeObserver(measureWorkspace);
+  if (editorElement.value) {
+    layoutObserver.observe(editorElement.value);
+    if (editorElement.value.parentElement)
+      layoutObserver.observe(editorElement.value.parentElement);
+  }
+  measureWorkspace();
 });
-onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", keyboard);
+  window.removeEventListener("resize", measureWorkspace);
+  layoutObserver?.disconnect();
+  cancelAnimationFrame(layoutFrame);
+});
 </script>
 
 <template>
-  <section class="timeline-editor" :aria-label="t('editor.timeline')">
+  <section
+    ref="editorElement"
+    class="timeline-editor timeline-editor-contained"
+    :aria-label="t('editor.timeline')"
+  >
     <header class="editor-toolbar">
       <div class="editor-heading">
-        <span class="editor-kicker">{{ t("editor.kicker") }}</span>
         <h2>{{ t("editor.heading") }}</h2>
       </div>
       <span
@@ -942,8 +994,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
         </p>
       </section>
       <div
+        ref="workspaceElement"
         class="editor-body editor-workspace"
         :class="{ 'editor-inspector-collapsed': !inspectorOpen }"
+        :style="
+          workspaceHeight
+            ? { '--editor-workspace-height': `${workspaceHeight}px` }
+            : undefined
+        "
       >
         <div class="editor-stage editor-main">
           <div class="editor-player-region">
@@ -1108,17 +1166,23 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
           </div>
           <div
             class="editor-beats editor-story-rail"
+            role="region"
+            tabindex="0"
             :aria-label="t('editor.beats.timeline')"
           >
             <section
               v-for="(group, index) in groups"
               :key="group.id"
               class="editor-beat"
-              :class="{ selected: selectedBeatId === group.id }"
+              :class="{
+                selected: selectedBeatId === group.id,
+                'editor-beat-empty': !group.clips.length,
+              }"
               :aria-label="t('editor.beats.beatLabel', { title: group.title })"
             >
               <button
                 class="editor-beat-heading"
+                :title="group.title"
                 :aria-label="
                   t('editor.beats.editLabel', { title: group.title })
                 "
@@ -1129,7 +1193,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                 }}</span
                 ><span class="editor-beat-copy"
                   ><strong>{{ group.title }}</strong
-                  ><small>{{
+                  ><small :title="group.intent">{{
                     group.intent || t("editor.beats.intentHint")
                   }}</small></span
                 ><span class="editor-beat-time"
@@ -1258,11 +1322,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
             v-if="inspector === 'clip' && selectedClip && selectedAsset"
           >
             <div class="editor-inspector-title">
-              <span class="editor-kicker">{{
-                t(
-                  `editor.clip.kind.${selectedAsset.mediaType === "image" ? "photo" : selectedAsset.mediaType === "audio" ? "audio" : "video"}`,
-                )
-              }}</span>
               <h3>{{ selectedAsset.name }}</h3>
               <button
                 class="editor-button"
@@ -1291,23 +1350,20 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
                 }}
               </button>
             </div>
-            <div class="editor-stat-grid">
+            <div
+              v-if="selectedAsset.mediaType !== 'image'"
+              class="editor-stat-grid"
+            >
               <div class="editor-stat">
                 <small>{{ t("editor.clip.source") }}</small
-                ><strong>{{
-                  selectedAsset.mediaType === "image"
-                    ? t("editor.clip.still")
-                    : duration(selectedAsset.duration)
-                }}</strong>
+                ><strong>{{ duration(selectedAsset.duration) }}</strong>
               </div>
               <div class="editor-stat">
                 <small>{{ t("editor.clip.selected") }}</small
                 ><strong>{{
                   duration(
-                    selectedAsset.mediaType === "image"
-                      ? selectedClip.timelineDuration
-                      : (selectedClip.sourceOut ?? 0) -
-                          (selectedClip.sourceIn ?? 0),
+                    (selectedClip.sourceOut ?? 0) -
+                      (selectedClip.sourceIn ?? 0),
                   )
                 }}</strong>
               </div>
@@ -1583,7 +1639,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", keyboard));
           </template>
           <template v-else-if="inspector === 'beat' && selectedBeat"
             ><div class="editor-inspector-title">
-              <span class="editor-kicker">{{ t("editor.beats.kicker") }}</span>
               <h3>{{ selectedBeat.title }}</h3>
             </div>
             <fieldset class="editor-fields" :disabled="historyBusy">

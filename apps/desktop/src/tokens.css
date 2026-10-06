@@ -45,10 +45,13 @@
     "Noto Sans CJK TC", "Noto Sans JP", "Noto Sans CJK JP",
     "Hiragino Kaku Gothic ProN", "Yu Gothic", "Microsoft JhengHei", sans-serif;
   --of-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --of-font-caption: 12px;
-  --of-font-small: 13px;
-  --of-font-base: 14px;
-  --of-font-title: 24px;
+  --of-font-caption: 0.75rem;
+  --of-font-small: 0.8125rem;
+  --of-font-base: 0.875rem;
+  --of-font-subtitle: 1.125rem;
+  --of-font-title: 1.5rem;
+  --of-font-heading: 1.75rem;
+  --of-font-display: 2rem;
   --of-line-body: 1.6;
   --of-line-heading: 1.25;
   --of-motion-fast: 140ms;

@@ -37,6 +37,13 @@ See [product workflow](docs/product-workflow.md), [i18n](docs/i18n.md) and
 the [validation record](docs/validation-global-product.md) and PR checks rather
 than implying hardware or real NLE certification.
 
+The Impeccable refinement keeps the same visual system while reducing chrome,
+retaining preview visibility during story-rail editing and making editable exports
+downloadable. The [portable Resolve QA flow](docs/resolve-workstation-qa.md) moves
+the generated reference onto a real workstation via a CI artifact, with hash-checked
+local paths and separate manual/API observations. Actual application verification
+remains the next external gate; it is not replaced by helper tests.
+
 ## Next — Real-world verification and delivery
 
 - Package the native shell with a verified local Node service and media runtime;

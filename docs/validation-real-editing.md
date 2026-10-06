@@ -85,6 +85,11 @@ Generated/parser fixtures are not application QA. The
 device access or graphical session; actual application QA is blocked on a
 Resolve-capable workstation. It produced no actual import or saved-project result.
 
+The follow-up provides a [portable workstation QA flow](resolve-workstation-qa.md)
+and CI-downloadable generated fixture bundle. Hash-checked relocation and optional
+API observations make the handoff repeatable; actual Resolve application results
+remain unrecorded until the bundle is exercised on a capable workstation.
+
 1. Actual DaVinci Resolve import, playback and reopen. Speed, volume/mute,
    transforms, crossfades and titles are **metadata only** in OTIO and require
    manual recreation. Native cuts and official parser success do not certify

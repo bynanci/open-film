@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   expect,
   test,
@@ -15,6 +16,7 @@ import type {
   ProjectContentLocale,
 } from "@openfilm/core";
 import { getProposalContent } from "@openfilm/template-proposal";
+import { resolveCompatibility } from "@openfilm/exporters";
 import { generateProposalMedia } from "../../fixtures/proposal-film/generate.mjs";
 import {
   chooseImportFolder,
@@ -106,6 +108,133 @@ async function snapshot(page: Page, name: string) {
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(1440);
   await page.screenshot({ path: test.info().outputPath(name), fullPage: true });
+}
+
+async function resolveHandoff(page: Page, locale: ProjectContentLocale) {
+  const text = (key: string) => uiText(locale, key);
+  await page
+    .getByRole("button", { name: new RegExp(text("app.export.edit")) })
+    .click();
+  await expect(page.locator(".compatibility-status")).toHaveAttribute(
+    "data-status",
+    "manual",
+  );
+  await expect(page.locator(".compatibility-status")).toHaveText(
+    text("app.export.compatibility.manual"),
+  );
+  const compatibility = page.locator("details.compatibility-card");
+  await expect(compatibility).not.toHaveAttribute("open", "");
+  await expect(compatibility.locator("ul")).not.toBeVisible();
+  await compatibility
+    .getByText(text("media.compatibility.details"), { exact: true })
+    .click();
+  const features = compatibility.locator("li");
+  await expect(features).toHaveCount(resolveCompatibility.features.length);
+  for (const [index, feature] of resolveCompatibility.features.entries()) {
+    const status = feature.manualRecreation
+      ? "manual"
+      : feature.implementation === "unsupported"
+        ? "unsupported"
+        : feature.realNleVerified
+          ? "verified"
+          : feature.parserValidated
+            ? "parserChecked"
+            : "unverified";
+    await expect(features.nth(index)).toBeVisible();
+    await expect(features.nth(index)).toContainText(
+      text(`media.compatibility.feature.${feature.id}`),
+    );
+    await expect(features.nth(index).locator("[data-status]")).toHaveText(
+      text(`media.compatibility.${status}`),
+    );
+  }
+  await compatibility.locator("summary").click();
+  const handoff = page.getByRole("region", {
+    name: text("app.export.resolveGuide.title"),
+    exact: true,
+  });
+  await expect(handoff.locator("ol > li")).toHaveText(
+    ["import", "media", "check"].map((step) =>
+      text(`app.export.resolveGuide.${step}`),
+    ),
+  );
+  await expect(handoff.locator("details p")).not.toBeVisible();
+  await handoff
+    .getByText(text("app.export.resolveGuide.unavailable"), { exact: true })
+    .click();
+  await expect(handoff.locator("details p")).toHaveText(
+    text("app.export.resolveGuide.fallback"),
+  );
+  await expect(handoff.locator("details p")).toBeVisible();
+  await handoff.locator("summary").click();
+}
+
+async function downloadOtio(
+  page: Page,
+  request: APIRequestContext,
+  locale: ProjectContentLocale,
+  composition: Composition,
+) {
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "app.export.saveEditable"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".export-result code")).toContainText(".otio");
+  const savedPath = (await page.locator(".export-result code").textContent())!;
+  const downloadEvent = page.waitForEvent("download");
+  await page
+    .getByRole("link", {
+      name: uiText(locale, "app.export.downloadFile", { format: "OTIO" }),
+      exact: true,
+    })
+    .click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toMatch(/\.otio$/);
+  const downloadedPath = test.info().outputPath(`${locale}-film.otio`);
+  await download.saveAs(downloadedPath);
+  const bytes = await readFile(downloadedPath);
+  expect(bytes.equals(await readFile(savedPath))).toBe(true);
+  const otio = JSON.parse(bytes.toString("utf8"));
+  expect(otio.OTIO_SCHEMA).toBe("Timeline.1");
+  expect(otio.metadata.openfilm.composition).toEqual(composition);
+  expect(otio.metadata.openfilm.compatibility.realNleVerified).toBe(false);
+  const sourceAssets = new Map(
+    (await assets(request)).map((asset) => [asset.id, asset]),
+  );
+  const expectedClips = composition.tracks.flatMap((track) => track.clips);
+  type NativeClip = {
+    OTIO_SCHEMA: string;
+    metadata: { openfilm: { clipId: string; assetId: string } };
+    media_reference: { OTIO_SCHEMA: string; target_url: string };
+  };
+  const nativeClips = otio.tracks.children.flatMap(
+    (track: { children: NativeClip[] }) =>
+      track.children.filter((child) => child.OTIO_SCHEMA === "Clip.1"),
+  ) as NativeClip[];
+  expect(nativeClips).toHaveLength(expectedClips.length);
+  for (const clip of expectedClips) {
+    const native = nativeClips.find(
+      (entry) => entry.metadata.openfilm.clipId === clip.id,
+    )!;
+    expect(native).toBeDefined();
+    expect(native.metadata.openfilm.assetId).toBe(clip.assetId);
+    expect(native.media_reference).toMatchObject({
+      OTIO_SCHEMA: "ExternalReference.1",
+      target_url: sourceAssets.get(clip.assetId)!.uri,
+    });
+    expect(new URL(native.media_reference.target_url).protocol).toBe("file:");
+    expect(
+      (await stat(fileURLToPath(native.media_reference.target_url))).isFile(),
+    ).toBe(true);
+  }
+  await expect(
+    page.getByRole("region", {
+      name: uiText(locale, "media.report.region"),
+      exact: true,
+    }),
+  ).toContainText(uiText(locale, "media.report.unverified"));
 }
 
 test("completes a Traditional Chinese film and preserves authored text across runtime and film-language changes", async ({
@@ -339,6 +468,8 @@ test("completes a Traditional Chinese film and preserves authored text across ru
   expect(JSON.parse(await readFile(jsonPath, "utf8")).composition).toEqual(
     composition,
   );
+  await resolveHandoff(page, locale);
+  await downloadOtio(page, request, locale, composition);
   await snapshot(page, "zh-TW-export.png");
 
   // Film content has its own explicit control; authored text remains unchanged.
@@ -616,25 +747,13 @@ for (const locale of ["en-US", "ja-JP"] as const) {
       .getByRole("button", { name: text("app.settings.close"), exact: true })
       .click();
     await navigate(page, "export", locale);
-    await page
-      .getByRole("button", { name: new RegExp(text("app.export.edit")) })
-      .click();
-    await expect(
-      page.getByText(text("app.export.compatibility.manual"), { exact: true }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", {
-        name: text("app.export.saveEditable"),
-        exact: true,
-      })
-      .click();
-    await expect(page.locator(".export-result code")).toContainText(".otio");
-    await expect(
-      page.getByRole("region", {
-        name: text("media.report.region"),
-        exact: true,
-      }),
-    ).toContainText(text("media.report.unverified"));
+    await resolveHandoff(page, locale);
+    await downloadOtio(
+      page,
+      request,
+      locale,
+      (await project(request)).timelines.at(-1) as Composition,
+    );
     await snapshot(page, `${locale}-export.png`);
     const current = await project(request);
     expect(current.projectContentLocale).toBe(locale);

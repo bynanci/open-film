@@ -159,9 +159,9 @@ textarea {
 .welcome-intro h1 {
   font-family: var(--of-font-body);
   font-weight: 400;
-  font-size: clamp(54px, 5.5vw, 82px);
-  line-height: 1.05;
-  letter-spacing: -3px;
+  font-size: var(--of-font-display);
+  line-height: var(--of-line-heading);
+  letter-spacing: -0.025em;
   margin: 22px 0 27px;
 }
 .welcome-intro h1 em {
@@ -203,9 +203,9 @@ textarea {
 }
 .project-start h2 {
   font-family: var(--of-font-body);
-  font-size: 30px;
+  font-size: var(--of-font-title);
   line-height: 1.2;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.025em;
   font-weight: 400;
   margin-bottom: 30px;
 }
@@ -377,8 +377,8 @@ textarea {
   margin-bottom: 37px;
 }
 .project-heading h1 {
-  font-size: 43px;
-  letter-spacing: -1.35px;
+  font-size: var(--of-font-heading);
+  letter-spacing: -0.025em;
   font-family: var(--of-font-body);
   font-weight: 400;
   line-height: 1.13;
@@ -1468,9 +1468,6 @@ td {
     padding: 65px var(--of-space-10);
     gap: 60px;
   }
-  .welcome-intro h1 {
-    font-size: 65px;
-  }
   .local-label {
     font-size: var(--of-font-caption);
   }
@@ -1548,7 +1545,6 @@ td {
     grid-template-columns: 1fr;
   }
   .welcome-intro h1 {
-    font-size: 62px;
     margin-top: 19px;
     max-width: 500px;
   }
@@ -1574,8 +1570,8 @@ td {
     gap: var(--of-space-5);
   }
   .project-heading h1 {
-    font-size: 33px;
-    letter-spacing: -0.9px;
+    font-size: var(--of-font-heading);
+    letter-spacing: -0.025em;
   }
   .project-heading p {
     font-size: var(--of-font-caption);

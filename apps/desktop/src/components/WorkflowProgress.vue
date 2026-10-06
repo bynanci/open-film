@@ -14,6 +14,7 @@ const { t } = useI18n();
       class="workflow-step"
       :data-state="step.state"
       :aria-current="step.state === 'current' ? 'step' : undefined"
+      :title="t(`app.workflow.state.${step.state}`)"
       :disabled="disabled"
       @click="$emit('navigate', step.id)"
     >
@@ -25,7 +26,9 @@ const { t } = useI18n();
       >
       <span class="workflow-step-copy"
         ><strong>{{ t(`app.workflow.${step.id}`) }}</strong
-        ><small>{{ t(`app.workflow.state.${step.state}`) }}</small></span
+        ><small :class="{ 'sr-only': step.state !== 'attention' }">{{
+          t(`app.workflow.state.${step.state}`)
+        }}</small></span
       >
     </button>
   </nav>

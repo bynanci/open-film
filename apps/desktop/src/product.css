@@ -9,6 +9,20 @@ body {
   font-size: var(--of-font-base);
   line-height: var(--of-line-body);
 }
+html {
+  scrollbar-color: var(--of-border-strong) var(--of-surface-1);
+  scrollbar-gutter: stable;
+}
+::selection {
+  color: var(--of-accent-ink);
+  background: var(--of-accent);
+}
+:is(input, textarea, [contenteditable="true"]) {
+  caret-color: var(--of-accent);
+}
+a {
+  text-underline-offset: 0.2em;
+}
 :lang(zh),
 :lang(ja) {
   line-break: strict;
@@ -111,6 +125,12 @@ input[type="range"] {
   background: var(--of-surface-1);
   font-size: var(--of-font-small);
 }
+.field :is(input, select, textarea) {
+  padding: var(--of-space-2) var(--of-space-3);
+}
+.field .path-input:has(button) input {
+  padding-right: var(--of-space-12);
+}
 .field small,
 .muted,
 .source-path,
@@ -141,16 +161,20 @@ input[type="range"] {
 
 .app-header,
 .editing-room .app-header {
-  min-height: 72px;
+  min-height: 56px;
   height: auto;
   gap: var(--of-space-8);
-  padding: var(--of-space-3) var(--of-space-8);
+  padding: var(--of-space-2) var(--of-space-8);
   background: var(--of-bg);
 }
 .wordmark {
-  font-size: 24px;
-  letter-spacing: -0.8px;
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
+  line-height: 1;
   white-space: nowrap;
+}
+.logo-bracket {
+  font-size: 1.75rem;
 }
 .main-nav {
   min-width: 0;
@@ -165,7 +189,7 @@ input[type="range"] {
   line-height: 1.5;
 }
 .main-nav button.current::after {
-  bottom: calc(-1 * var(--of-space-3));
+  bottom: calc(-1 * var(--of-space-2));
 }
 .ui-language {
   min-width: 0;
@@ -201,16 +225,17 @@ label.ui-language {
 .app-header .local-label {
   margin-left: 0;
   font-size: var(--of-font-caption);
+  letter-spacing: normal;
 }
 .workspace-content,
 .editing-room .workspace-content {
   max-width: 1920px;
-  padding: var(--of-space-6) var(--of-space-8) 0;
+  padding: var(--of-space-4) var(--of-space-8) 0;
 }
 .project-heading,
 .editing-room .project-heading {
   align-items: center;
-  margin-bottom: var(--of-space-6);
+  margin-bottom: var(--of-space-4);
   gap: var(--of-space-6);
 }
 .project-heading > div:first-child {
@@ -218,15 +243,15 @@ label.ui-language {
 }
 .project-heading h1,
 .editing-room .project-heading h1 {
-  margin-top: var(--of-space-1);
-  font-size: clamp(26px, 2.5vw, 36px);
+  margin-top: 0;
+  font-size: var(--of-font-heading);
   font-weight: 550;
-  letter-spacing: -0.7px;
+  letter-spacing: -0.025em;
   line-height: var(--of-line-heading);
   overflow-wrap: anywhere;
 }
 .project-heading p {
-  margin-top: var(--of-space-2);
+  margin-top: var(--of-space-1);
 }
 .project-heading-actions {
   gap: var(--of-space-3);
@@ -242,7 +267,7 @@ label.ui-language {
 }
 .workspace-edit .workflow-progress {
   margin-bottom: var(--of-space-4);
-  padding-bottom: var(--of-space-3);
+  padding-bottom: var(--of-space-2);
 }
 .workspace-edit .jobs,
 .workspace-edit .composition-heading {
@@ -258,11 +283,12 @@ label.ui-language {
 }
 
 .welcome.project-launcher {
-  min-height: calc(100vh - 72px);
-  max-width: 1240px;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  min-height: calc(100vh - 56px);
+  max-width: 1120px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
   gap: var(--of-space-12);
-  padding: var(--of-space-12) var(--of-space-10);
+  padding: 4rem var(--of-space-8);
 }
 .launcher-intro,
 .project-start,
@@ -271,19 +297,19 @@ label.ui-language {
   min-width: 0;
 }
 .launcher-intro h1 {
-  max-width: 580px;
-  margin: var(--of-space-5) 0 var(--of-space-6);
-  font-size: clamp(36px, 4vw, 56px);
+  max-width: 20ch;
+  margin: 0 0 var(--of-space-4);
+  font-size: var(--of-font-display);
   font-weight: 550;
-  letter-spacing: -1.7px;
-  line-height: 1.18;
+  letter-spacing: -0.025em;
+  line-height: var(--of-line-heading);
   overflow-wrap: anywhere;
 }
 .launcher-intro > p {
-  max-width: 480px;
+  max-width: 48ch;
   color: var(--of-text-secondary);
-  font-size: 16px;
-  line-height: 1.8;
+  font-size: var(--of-font-base);
+  line-height: var(--of-line-body);
 }
 .launcher-actions,
 .import-actions {
@@ -293,23 +319,34 @@ label.ui-language {
   gap: var(--of-space-3);
   margin-top: var(--of-space-6);
 }
-.launcher-home .launcher-actions {
-  margin: 0 0 var(--of-space-8);
+.launcher-intro .launcher-actions {
+  margin: var(--of-space-6) 0 0;
 }
-.launcher-home > .text-button {
-  margin-top: var(--of-space-4);
+.launcher-intro .welcome-note {
+  align-items: flex-start;
+  gap: var(--of-space-2);
+  margin-top: var(--of-space-6);
+  color: var(--of-text-secondary);
+  max-width: 48ch;
+}
+.launcher-intro .welcome-note svg {
+  margin-top: 1px;
+  color: var(--of-success);
+}
+.launcher-form-open .launcher-intro {
+  padding-top: var(--of-space-10);
 }
 .recent-projects {
   min-width: 0;
   width: 100%;
-  padding-top: var(--of-space-6);
-  border-top: 1px solid var(--of-border-subtle);
+  padding-left: var(--of-space-8);
+  border-left: 1px solid var(--of-border-subtle);
 }
 .recent-projects h2,
 .create-film-form h2,
 .open-project-form h2 {
-  margin-bottom: var(--of-space-5);
-  font-size: var(--of-font-title);
+  margin-bottom: var(--of-space-4);
+  font-size: var(--of-font-subtitle);
   font-weight: 550;
   line-height: var(--of-line-heading);
 }
@@ -362,7 +399,7 @@ label.ui-language {
 }
 .create-film-form,
 .open-project-form {
-  padding: var(--of-space-6);
+  padding: var(--of-space-5);
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
 }
@@ -376,8 +413,8 @@ label.ui-language {
   margin: 0;
 }
 .advanced-storage {
-  margin-block: var(--of-space-5);
-  padding-block: var(--of-space-4);
+  margin-block: var(--of-space-3);
+  padding-block: var(--of-space-2);
   border-top: 1px solid var(--of-border-subtle);
 }
 .advanced-storage > summary,
@@ -396,13 +433,26 @@ label.ui-language {
   padding: 0;
   border: 0;
 }
+.project-launcher .project-start > h2 {
+  margin-block: var(--of-space-2) var(--of-space-5);
+  font-size: var(--of-font-title);
+  font-weight: 550;
+  letter-spacing: -0.025em;
+}
+.project-launcher .field {
+  margin-bottom: var(--of-space-4);
+  gap: var(--of-space-1);
+}
+.project-launcher .create-film-grid .field {
+  margin-bottom: 0;
+}
 
 .workflow-progress {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--of-space-2);
-  margin-bottom: var(--of-space-6);
-  padding-bottom: var(--of-space-4);
+  margin-bottom: var(--of-space-4);
+  padding-bottom: var(--of-space-2);
   border-bottom: 1px solid var(--of-border-subtle);
 }
 .workflow-step {
@@ -410,24 +460,25 @@ label.ui-language {
   min-width: 0;
   align-items: center;
   gap: var(--of-space-2);
-  padding: var(--of-space-2) var(--of-space-3);
+  min-height: 40px;
+  padding: var(--of-space-1) var(--of-space-2);
   border: 1px solid transparent;
-  border-radius: var(--of-radius-md);
+  border-radius: var(--of-radius-sm);
   color: var(--of-text-secondary);
   text-align: left;
   font-size: var(--of-font-caption);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.workflow-step:hover {
+.workflow-step:hover:not(:disabled) {
   background: var(--of-surface-2);
 }
 .workflow-step[data-state="current"] {
   color: var(--of-text-primary);
-  border-color: var(--of-border-strong);
+  border-color: var(--of-border-subtle);
   background: var(--of-surface-2);
 }
-.workflow-step[data-state="complete"] {
+.workflow-step[data-state="complete"] .workflow-step-number {
   color: var(--of-success);
 }
 .workflow-step[data-state="attention"],
@@ -440,8 +491,8 @@ label.ui-language {
 }
 .workflow-step-number {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
   border: 1px solid currentColor;
@@ -458,6 +509,9 @@ label.ui-language {
   display: block;
   color: var(--of-text-muted);
   font-size: var(--of-font-caption);
+}
+.workflow-step small:not(.sr-only) {
+  color: inherit;
 }
 
 .library-workspace {
@@ -484,7 +538,8 @@ label.ui-language {
   min-width: 0;
   align-items: center;
   gap: var(--of-space-2);
-  padding: var(--of-space-3);
+  min-height: 36px;
+  padding: var(--of-space-2) var(--of-space-3);
   border-radius: var(--of-radius-sm);
   color: var(--of-text-secondary);
   text-align: left;
@@ -506,7 +561,18 @@ label.ui-language {
 .filter-bar {
   gap: var(--of-space-3);
   flex-wrap: wrap;
-  padding: 0 0 var(--of-space-5);
+  padding: var(--of-space-2) 0 var(--of-space-3);
+}
+.library-toolbar {
+  min-height: 32px;
+  border-bottom: 0;
+}
+.library-toolbar > .text-button {
+  padding-block: var(--of-space-1);
+}
+.library-summary {
+  font-size: var(--of-font-small);
+  color: var(--of-text-secondary);
 }
 .filter-bar > select {
   max-width: 180px;
@@ -518,7 +584,7 @@ label.ui-language {
 }
 .search-field {
   min-height: 36px;
-  padding: var(--of-space-2);
+  padding: 0 var(--of-space-2);
   border: 1px solid var(--of-border-strong);
   border-radius: var(--of-radius-sm);
 }
@@ -627,7 +693,7 @@ label.ui-language {
 }
 .empty-state h2 {
   max-width: 580px;
-  font-size: 28px;
+  font-size: var(--of-font-heading);
   font-weight: 550;
   line-height: 1.35;
 }
@@ -709,7 +775,10 @@ label.ui-language {
   border: 0;
   border-radius: var(--of-radius-md);
   gap: var(--of-space-4);
-  padding: var(--of-space-3) var(--of-space-4);
+  padding: var(--of-space-2) var(--of-space-3);
+}
+.jobs {
+  margin-bottom: var(--of-space-4);
 }
 .job-summary {
   min-width: 180px;
@@ -740,11 +809,13 @@ label.ui-language {
   margin: var(--of-space-1) 0;
   padding: var(--of-space-3);
   gap: var(--of-space-3);
+  border: 1px solid transparent;
   border-radius: var(--of-radius-md);
 }
 .beat-list button.active {
   background: var(--of-surface-3);
-  box-shadow: inset 3px 0 var(--of-accent);
+  border-color: var(--of-accent);
+  box-shadow: none;
 }
 .beat-list button > span:nth-child(2) {
   min-width: 0;
@@ -1338,8 +1409,8 @@ label.ui-language {
   background: var(--of-warning-soft);
 }
 .media-availability.healthy {
-  margin-bottom: var(--of-space-4);
-  padding: 0 0 var(--of-space-3);
+  margin-bottom: var(--of-space-2);
+  padding: 0;
   border-radius: 0;
   background: transparent;
 }
@@ -1593,9 +1664,15 @@ label.ui-language {
   }
   .welcome.project-launcher {
     grid-template-columns: minmax(0, 1fr);
+    padding-block: var(--of-space-8);
   }
-  .launcher-intro h1 {
-    font-size: 40px;
+  .launcher-form-open .launcher-intro {
+    padding-top: 0;
+  }
+  .recent-projects {
+    padding: var(--of-space-6) 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--of-border-subtle);
   }
   .export-goals {
     grid-template-columns: minmax(0, 1fr);

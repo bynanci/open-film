@@ -10,7 +10,7 @@ import type { Clip, MediaAsset } from "@openfilm/core";
 import { createThumbnail } from "@openfilm/media";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
 
-test.use({ actionTimeout: 15_000 });
+test.use({ actionTimeout: 15_000, viewport: { width: 1280, height: 720 } });
 test.beforeEach(async ({ page }) => {
   await initialLocale(page);
 });
@@ -202,12 +202,40 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
     .toBeGreaterThanOrEqual(1);
   expect([...requestedSources]).toEqual(["asset-000"]);
 
+  const monitor = editor.locator(".editor-player-region");
+  const storyRail = editor.locator(".editor-story-rail");
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  const initialMonitor = (await monitor.boundingBox())!;
+  const initialDocumentScroll = await page.evaluate(() => window.scrollY);
+  expect(
+    await storyRail.evaluate((rail) => rail.scrollHeight > rail.clientHeight),
+  ).toBe(true);
+  await storyRail.hover();
+  await page.mouse.wheel(0, 10_000);
+  await expect
+    .poll(() => storyRail.evaluate((rail) => rail.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
+  expect(
+    Math.abs((await monitor.boundingBox())!.y - initialMonitor.y),
+  ).toBeLessThanOrEqual(1);
+
   await page.locator("#clip-scale-499").click();
   await expect(page.locator("#clip-scale-499")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await expect(player).toHaveAttribute("src", /\/source\/asset-499(?:\?|$)/);
+  const finalLane = editor.getByRole("group", {
+    name: "Chapter 10 clips",
+    exact: true,
+  });
+  await expect
+    .poll(() => finalLane.evaluate((lane) => lane.scrollLeft))
+    .toBeGreaterThan(0);
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
   await expect
     .poll(() =>
       player.evaluate((video) => (video as HTMLVideoElement).readyState),
@@ -219,6 +247,12 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
     "true",
   );
   await expect(player).toHaveAttribute("src", /\/source\/asset-498(?:\?|$)/);
+  await expect(page.locator("#clip-scale-498")).toBeInViewport({ ratio: 1 });
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
+  expect(
+    Math.abs((await monitor.boundingBox())!.y - initialMonitor.y),
+  ).toBeLessThanOrEqual(1);
   await expect
     .poll(() =>
       player.evaluate((video) => (video as HTMLVideoElement).readyState),

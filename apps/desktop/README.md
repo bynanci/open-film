@@ -152,3 +152,10 @@ after the transient success message is dismissed. Changing a cut marks a prior
 export stale; changing projects or compositions clears the previous artifact's
 report. See [NLE compatibility](../../docs/nle-compatibility.md) for the verification
 boundary and manual finishing checks.
+
+Every saved export now has a download link, including an editable OTIO cut. The
+Resolve destination gives localized import/relink steps and keeps detailed
+capabilities in an expandable section. Transfer the original media along with the
+OTIO file; the interchange file does not embed source media. For a reproducible
+generated-media check on another computer, use the
+[portable workstation QA guide](../../docs/resolve-workstation-qa.md).

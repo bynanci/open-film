@@ -113,6 +113,13 @@ or Resolve playback evidence.
 
 ## Manual Resolve import procedure
 
+For a cloud environment without Resolve, use the CI-downloadable bundle and
+[workstation QA guide](resolve-workstation-qa.md). Its preparation command verifies
+hashes and creates local-path copies without changing the original fixtures. An
+optional installed-API runner records individual observations; unsupported API
+imports fall back to this GUI procedure. Neither path automatically certifies
+unobserved playback, relinking or metadata-only edits.
+
 1. Generate the retained reference bundle above and record the Resolve version,
    operating system and project frame rate. Make a separate Resolve project;
    retain the OpenFilm files unchanged. Save the compatibility report with the QA

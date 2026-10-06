@@ -9,6 +9,8 @@ test-results/
 .env*
 !.env.example
 *.log
+__pycache__/
+*.py[cod]
 .DS_Store
 apps/desktop/src-tauri/gen/
 fixtures/sample-media/generated/

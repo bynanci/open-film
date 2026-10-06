@@ -1270,13 +1270,6 @@ onUnmounted(() => {
         :class="{ 'project-heading-compact': tab === 'edit' }"
       >
         <div v-if="tab !== 'edit'">
-          <span class="eyebrow">{{
-            tab === "library"
-              ? t("app.library.eyebrow")
-              : tab === "story"
-                ? t("app.story.eyebrow")
-                : t("app.export.eyebrow")
-          }}</span>
           <h1>
             {{
               tab === "library"
@@ -1359,7 +1352,10 @@ onUnmounted(() => {
       />
 
       <section
-        v-if="activeJobs.length || recentJob"
+        v-if="
+          activeJobs.length ||
+          (recentJob && (tab === 'library' || recentJob.status !== 'completed'))
+        "
         class="jobs activity-strip"
         :aria-label="t('app.activity.label')"
       >
@@ -1703,7 +1699,7 @@ onUnmounted(() => {
                   :aria-label="t('app.inspector.label')"
                 >
                   <div class="inspector-title">
-                    <span class="eyebrow">{{ t("app.inspector.eyebrow") }}</span
+                    <span>{{ t("app.inspector.label") }}</span
                     ><button
                       class="icon-button"
                       :aria-label="t('app.inspector.close')"
@@ -2142,8 +2138,7 @@ onUnmounted(() => {
           </div>
           <div class="story-room story-board">
             <aside class="beat-list" :aria-label="t('app.story.beats')">
-              <span class="eyebrow">{{ t("app.story.arc") }}</span
-              ><button
+              <button
                 v-for="(beat, index) in activeStory.beats"
                 :key="beat.id"
                 :class="{ active: activeBeatIndex === index }"
@@ -2208,11 +2203,6 @@ onUnmounted(() => {
             >
               <div class="beat-editor-heading">
                 <div>
-                  <span class="eyebrow">{{
-                    t("app.story.beatNumber", {
-                      number: formatNumber(activeBeatIndex + 1),
-                    })
-                  }}</span>
                   <h2>{{ activeBeat.title }}</h2>
                 </div>
                 <button
@@ -2365,7 +2355,7 @@ onUnmounted(() => {
           <div class="composition-heading">
             <div>
               <h2>{{ compositionTitle }}</h2>
-              <p>
+              <p v-if="tab === 'export'">
                 <strong>{{ duration(activeComposition.duration) }}</strong
                 ><span
                   >{{
@@ -2384,7 +2374,10 @@ onUnmounted(() => {
                   ></span
                 >
               </p>
-              <p v-if="compositionStory" class="composition-target">
+              <p
+                v-if="compositionStory && tab === 'export'"
+                class="composition-target"
+              >
                 {{
                   t("app.composition.target", {
                     duration: duration(compositionStory.targetDuration),

@@ -246,7 +246,11 @@ for (const locale of locales) {
       await layout(page, `${locale}-${workspace}-1024`);
       if (workspace === "export") {
         await page.locator(".export-goal").nth(1).click();
-        await expect(page.locator(".compatibility-card")).toBeVisible();
+        const compatibility = page.locator("details.compatibility-card");
+        await expect(compatibility).toBeVisible();
+        await expect(compatibility.locator("ul")).not.toBeVisible();
+        await compatibility.locator("summary").click();
+        await expect(compatibility.locator("ul")).toBeVisible();
         await expect(
           page.locator(".compatibility-feature-list > li"),
         ).not.toHaveCount(0);

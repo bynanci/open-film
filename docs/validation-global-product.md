@@ -165,3 +165,11 @@ application QA remains blocked as recorded in [the QA record](resolve-qa-record.
 
 No requested automated gate is blocked by a missing local dependency. These
 manual platform/media gates remain distinct from completed source implementation.
+
+## Impeccable and portable Resolve follow-up
+
+The subsequent [validation record](validation-impeccable-resolve.md) covers compact
+product hierarchy, independently scrolling editing regions, real editable-export
+downloads and a CI-distributed workstation QA helper. Translation coverage is now
+739 keys per supported locale; the historical counts above describe earlier runs.
+The actual Resolve application gate remains unverified.

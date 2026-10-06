@@ -149,7 +149,7 @@ export default {
       },
       destinationHint: {
         resolve:
-          "Uses OpenTimelineIO. Check cuts, still lengths, audio, and source links after import. Advanced effects need manual recreation; Resolve application import has not been verified.",
+          "Take your cut and original media into Resolve. Check the import before continuing; advanced effects need manual recreation.",
         finalcut:
           "Uses Final Cut Pro XML for a basic cut. Unsupported edits are reported. Check timing, media links, and effects in Final Cut Pro.",
         premiere:
@@ -177,6 +177,19 @@ export default {
       },
       saved: "Saved to your project",
       downloadMp4: "Download MP4",
+      downloadFile: "Download {format}",
+      resolveGuide: {
+        title: "Next, in DaVinci Resolve",
+        import:
+          "Download the .otio file. In Resolve, choose File → Import → Timeline and select it.",
+        media:
+          "If media is offline, use Relink Selected Clips in the Media Pool and choose the original media folder.",
+        check:
+          "Play the cut, check photo lengths and sound, then recreate the edits listed in the export report. Save and reopen the Resolve project.",
+        unavailable: "No Resolve on this computer?",
+        fallback:
+          "Use a computer with Resolve installed. Transfer the .otio file and original media together; an .otio file alone does not contain your photos or videos. If .otio is unavailable in the import dialog, check that your Resolve version supports OpenTimelineIO. OpenFilm’s MP4 export remains available here.",
+      },
       stale:
         "This export predates your latest edits. Export again to include them.",
       heading: "Take your story further.",

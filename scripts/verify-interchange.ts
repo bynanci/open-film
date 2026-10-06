@@ -8,7 +8,7 @@ import {
   rename,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -36,10 +36,27 @@ const python = process.env.OPENFILM_OTIO_PYTHON ?? "python3";
 const verifier = fileURLToPath(
   new URL("../tests/interchange/resolve/verify.py", import.meta.url),
 );
+const workstationRunner = fileURLToPath(
+  new URL("./resolve-qa/resolve_qa.py", import.meta.url),
+);
 try {
+  const { stdout: harnessTests, stderr: harnessSummary } = await execute(
+    python,
+    [
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      fileURLToPath(new URL("../tests/interchange/resolve", import.meta.url)),
+      "-p",
+      "test_workstation.py",
+    ],
+  );
+  process.stdout.write(harnessTests + harnessSummary);
   const mediaDirectory = join(directory, "media files");
   const generated = await generateSampleMedia(mediaDirectory);
-  const videoPath = join(mediaDirectory, "motion #1 中文.mp4");
+  const videoPath = join(mediaDirectory, "motion #1 中文 &.mp4");
   await rename(generated[3]!, videoPath);
   const selected = [generated[0]!, generated[2]!, videoPath, generated[4]!];
   const ids = ["photo", "evening", "video", "audio"];
@@ -234,11 +251,85 @@ try {
       throw new Error(`Original source changed: ${asset.name}`);
   await writeFile(
     join(directory, "README.md"),
-    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. DaVinci Resolve import has not been run.\n\nStart with cuts.otio. edited.otio preserves advanced edits in metadata ONLY and contains unretimed cut excerpts, including a labeled gap for slow motion. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n\nAbsolute file URLs point to this generated directory; relink the media files folder if this bundle moves to another computer.\n",
+    "# Generated Resolve import reference\n\nThese CC0 procedural sources contain no private camera material.\n\nOpenTimelineIO official parser read/write/read, source hashes, source bounds, gaps, still holds, audio, multiple tracks and fractional rates passed. DaVinci Resolve import has not been run.\n\nStart with [WORKSTATION.md](WORKSTATION.md): copy this complete folder, run `python3 resolve_qa.py prepare` at the new location, then import its relocated cuts.otio. Preparation needs only standard-library Python 3.9+. A manual UI route supports installations without external scripting.\n\nOriginal OTIO URLs and sources are retained unchanged; preparation creates separate copies and validates SHA-256 identities. bundle.json records exact source and CI provenance. edited.otio preserves advanced edits in metadata ONLY. Read edited.otio.report.json and [the compatibility/manual QA guide](nle-compatibility.md) before recreating effects manually.\n",
   );
   await writeFile(
     join(directory, "nle-compatibility.md"),
     await readFile(new URL("../docs/nle-compatibility.md", import.meta.url)),
+  );
+  for (const name of ["resolve-workstation-qa.md", "resolve-qa-record.md"])
+    await writeFile(
+      join(directory, name),
+      await readFile(new URL(`../docs/${name}`, import.meta.url)),
+    );
+  await writeFile(
+    join(directory, "resolve_qa.py"),
+    await readFile(workstationRunner),
+  );
+  await writeFile(
+    join(directory, "WORKSTATION.md"),
+    await readFile(new URL("./resolve-qa/WORKSTATION.md", import.meta.url)),
+  );
+  const [{ stdout: sha }, { stdout: dirtyFiles }] = await Promise.all([
+    execute("git", ["rev-parse", "HEAD"]),
+    execute("git", ["status", "--porcelain", "--untracked-files=all"]),
+  ]);
+  const portablePath = (path: string) =>
+    relative(directory, path).split("\\").join("/");
+  const inventory: { path: string; sha256: string }[] = [];
+  for (const entry of await readdir(directory, { recursive: true })) {
+    const path = join(directory, entry);
+    // All generated bundle members are regular files or this one media folder.
+    if (entry === "media files") continue;
+    inventory.push({ path: portablePath(path), sha256: await hashFile(path) });
+  }
+  await writeFile(
+    join(directory, "bundle.json"),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        kind: "openfilm-resolve-qa",
+        generatedAt: new Date().toISOString(),
+        openfilm: {
+          checkoutSha: sha.trim(),
+          candidateSha: process.env.OPENFILM_QA_CANDIDATE_SHA ?? sha.trim(),
+          dirtyFiles: dirtyFiles.trimEnd().split("\n").filter(Boolean),
+          ci: {
+            repository: process.env.GITHUB_REPOSITORY ?? null,
+            runId: process.env.GITHUB_RUN_ID ?? null,
+            sha: process.env.GITHUB_SHA ?? null,
+          },
+        },
+        parserEvidence: JSON.parse(stdout.trim()),
+        assets: assets.map((asset) => ({
+          id: asset.id,
+          originalUri: asset.uri,
+          relativePath: portablePath(fileURLToPath(asset.uri)),
+          sha256: asset.contentHash,
+        })),
+        fixtures: Object.keys(compositions).map((name) => ({
+          name,
+          path: `${name}.otio`,
+          frameRate: settingsByComposition[name]!.frameRate,
+        })),
+        files: inventory,
+        realResolveVerified: false,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  // Exercise the portable stdlib preparation on the real parser-validated bundle.
+  const { stdout: preparedOutput } = await execute(python, [
+    workstationRunner,
+    "prepare",
+    "--bundle",
+    directory,
+  ]);
+  const prepared = JSON.parse(preparedOutput).output as string;
+  await rm(prepared, { recursive: true });
+  process.stdout.write(
+    "Workstation relocation and source hash gate: passed.\n",
   );
   if (keep) process.stdout.write(`Reviewable reference bundle: ${directory}\n`);
 } finally {

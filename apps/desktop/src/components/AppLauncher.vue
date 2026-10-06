@@ -108,16 +108,9 @@ function submit() {
     :class="{ 'launcher-form-open': mode !== 'welcome' }"
   >
     <section class="welcome-intro launcher-intro">
-      <span class="eyebrow">{{ t("app.welcome.eyebrow") }}</span>
       <h1>{{ t("app.welcome.title") }}</h1>
       <p>{{ t("app.welcome.description") }}</p>
-      <div class="welcome-note">
-        <Icon name="film" :size="22" /><span>{{ t("app.welcome.local") }}</span>
-      </div>
-      <span class="edition">{{ t("app.welcome.edition") }}</span>
-    </section>
-    <section v-if="mode === 'welcome'" class="launcher-home">
-      <div class="launcher-actions">
+      <div v-if="mode === 'welcome'" class="launcher-actions">
         <button class="primary" :disabled="busy" @click="changeMode('create')">
           {{ t("app.welcome.create") }}<Icon name="plus" />
         </button>
@@ -125,6 +118,11 @@ function submit() {
           {{ t("app.welcome.open") }}<Icon name="folder" />
         </button>
       </div>
+      <div class="welcome-note">
+        <Icon name="film" :size="18" /><span>{{ t("app.welcome.local") }}</span>
+      </div>
+    </section>
+    <section v-if="mode === 'welcome'" class="launcher-home">
       <section class="recent-projects" :aria-label="t('app.welcome.recent')">
         <h2>{{ t("app.welcome.recent") }}</h2>
         <p v-if="!recent.length" class="muted">

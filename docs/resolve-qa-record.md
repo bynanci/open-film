@@ -23,7 +23,30 @@ testing is required. Keep every real-NLE feature unverified until observations
 are collected there. The candidate SHA above identifies the prepared source,
 not a successful Resolve import.
 
-## Prepared workstation handoff
+## Portable workstation handoff — UI refinement follow-up
+
+The follow-up on `codex/global-product-i18n` adds a durable GitHub Actions
+`resolve-qa-reference-<checkout SHA>` artifact. Unlike the earlier local archive,
+it can be downloaded onto a Resolve workstation. Its `bundle.json` records exact
+checkout/candidate SHAs, dirty files, CI provenance and fixture/media hashes.
+See [the workstation guide](resolve-workstation-qa.md) and bundled
+`WORKSTATION.md` for GUI and optional installed-API paths.
+
+Standard-library Python preparation creates relocated OTIO copies while preserving
+originals. Offline regressions cover changed/missing sources, unsafe references,
+Unicode/space/`#`/`&` paths, stale preparation and independent observation statuses.
+Failure-only API doubles cover an active user project, unavailable Project Manager,
+failed save and failed/missing `.drp`; these are tests of the helper, not application
+evidence. The cloud's actual installed-API probe/run returns **blocked** because
+Resolve is absent. A manual record starts as **not run**.
+
+No real-Resolve capability is newly verified by this follow-up. Actual import,
+playback, relinking, fractional timing and save/reopen must still be observed on
+the workstation. The optional API runner separately records structural observations
+and leaves visual/audio/effect QA manual; it never automatically promotes the
+compatibility model. Advanced edits remain metadata-only/manual recreation.
+
+## Historical prepared workstation handoff
 
 The retained bundle for the implementation SHA above is
 `/tmp/openfilm-resolve-qa-713a8e4.tar.gz` (138,067 bytes). Its SHA-256 is

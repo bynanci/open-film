@@ -32,8 +32,10 @@ text tokens.
 
 Use the local system stack, including Traditional Chinese and Japanese fallbacks.
 No downloadable web fonts are required. Body line height is 1.6; headings use
-1.25. Captions start at 12px, body at 14px, with larger headings establishing
-hierarchy. Monospace is reserved for timecodes and technical paths.
+1.25. The fixed rem scale renders captions at 12px, body at 14px, workspace headings
+at 28px and the Welcome heading at 32px with the default root size. Product headings
+do not grow with window width. Monospace is reserved for timecodes and technical
+paths. Selection, text carets and native scrollbars use the same semantic palette.
 
 The spacing scale is based on 4px increments. Group related controls through
 spacing and surfaces rather than a border around every item. Long story titles
@@ -57,6 +59,9 @@ filenames/trailing context with the complete value available as a tooltip or det
   and actual timing when composed. Selected and suggested memories are separate.
 - **Timeline clip:** cached lazy thumbnail, stable selected/locked/missing states,
   drag and keyboard alternatives. Selecting one source does not decode every clip.
+  The desktop editor keeps its player visible while the story-beat rail scrolls
+  vertically and clip lanes scroll horizontally. Its inspector scrolls separately;
+  arrow selection reveals a clip inside those regions without moving the page.
 - **Inspector:** contextual controls for photo, video or audio, collapsible at
   smaller desktop widths. Unsupported controls are omitted.
 - **Empty state:** states the next meaningful action, with one direct action to
@@ -67,6 +72,12 @@ filenames/trailing context with the complete value available as a tooltip or det
 These are conventions over existing components and CSS, not a new component
 framework. `product.css` handles shared product layout; focused editor, relink,
 source and export-report styles retain their component responsibilities.
+
+The refinement follows Impeccable's Operate/Polish guidance at upstream revision
+`ca6ca49f6a74e2e23adb955fb3801f4aa6426f3d`: preserve the incumbent visual system,
+remove repeated decorative labels, group controls by task and inspect rendered
+interaction paths. The user requirement for local system/CJK fonts takes priority
+over generic font recommendations. No runtime design service or edit hook is added.
 
 ## Interaction and validation
 
