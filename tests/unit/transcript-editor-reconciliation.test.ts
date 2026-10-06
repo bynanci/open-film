@@ -11,7 +11,10 @@ import {
 } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile } from "@openfilm/media";
-import type { TranscriptMutationInput } from "@openfilm/catalog";
+import type {
+  TranscriptHistoryInput,
+  TranscriptMutationInput,
+} from "@openfilm/catalog";
 import {
   ApiError,
   type TranscriptEditorState,
@@ -31,7 +34,10 @@ const vue = createRequire(
   };
 };
 type Editor = {
-  load: () => Promise<boolean>;
+  load: (offset?: number, recover?: boolean) => Promise<boolean>;
+  loadPage: (offset: number) => Promise<boolean>;
+  history: (direction: "undo" | "redo") => Promise<boolean>;
+  restore: (revisionId: string) => Promise<boolean>;
   reconcile: () => Promise<boolean>;
   command: (command: TranscriptCommand) => boolean;
   flush: () => Promise<boolean>;
@@ -76,7 +82,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-async function fixture() {
+async function fixture(segmentCount = 1) {
   const directory = await mkdtemp(join(tmpdir(), "openfilm-reconciliation-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const source = join(directory, "spoken.wav");
@@ -94,7 +100,7 @@ async function fixture() {
     uri: pathToFileURL(source).href,
     name: "spoken.wav",
     mediaType: "audio",
-    duration: 2,
+    duration: segmentCount * 2,
     contentHash: sourceHash,
     metadata: {},
     tags: [],
@@ -110,15 +116,19 @@ async function fixture() {
       sourceHash,
       createdAt: "2026-10-06T00:00:00Z",
     },
-    segments: [
-      {
-        id: "segment",
-        start: 0,
-        end: 2,
-        text: "Original text",
-        words: [{ start: 0, end: 2, text: "Original text" }],
-      },
-    ],
+    segments: Array.from({ length: segmentCount }, (_, index) => ({
+      id: index ? `segment-${index}` : "segment",
+      start: index * 2,
+      end: index * 2 + 2,
+      text: index ? `Segment ${index}` : "Original text",
+      words: [
+        {
+          start: index * 2,
+          end: index * 2 + 2,
+          text: index ? `Segment ${index}` : "Original text",
+        },
+      ],
+    })),
   });
   const storage = new Map<string, string>();
   const storageKey = "openfilm:transcript:project:asset";
@@ -153,6 +163,19 @@ async function fixture() {
         }
         return result;
       },
+    ),
+    transcriptHistory: vi.fn(
+      async (
+        assetId: string,
+        direction: "undo" | "redo",
+        input: TranscriptHistoryInput,
+      ) => app.transcriptEditor[direction](assetId, input),
+    ),
+    selectTranscriptRevision: vi.fn(
+      async (
+        assetId: string,
+        input: TranscriptHistoryInput & { revisionId: string },
+      ) => app.transcriptEditor.selectRevision(assetId, input),
     ),
   };
   const scope = vue.effectScope();
@@ -204,6 +227,7 @@ async function fixture() {
   };
   return {
     app,
+    sourceHash,
     editor,
     api,
     changed,
@@ -213,6 +237,7 @@ async function fixture() {
     correction,
     holdRead,
     newProviderRevision,
+    dispose: () => dispose(),
     loseAcknowledgment: () => {
       loseNextAcknowledgment = true;
     },
@@ -329,5 +354,275 @@ describe("transcript reconciliation ownership", () => {
       (await test.app.transcriptEditor.get("asset")).document?.segments[0]
         ?.text,
     ).toBe("User correction");
+  });
+});
+
+describe("accepted transcript load ownership", () => {
+  const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it("waits for a clean provider refresh before permitting a single project-switch flush", async () => {
+    const test = await fixture();
+    test.newProviderRevision();
+    const read = test.holdRead();
+    const loading = test.editor.load(0, false);
+    const latest = await read.entered;
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    expect(settled).toBe(false);
+    expect(test.editor.status.value).toBe("loading");
+    read.release();
+    expect(await loading).toBe(true);
+    expect(await switching).toBe(true);
+    expect(test.editor.state.value?.revision).toBe(latest.revision);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "New provider text",
+    );
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+  });
+
+  it("waits for recovery before refusing a genuine draft conflict without sending its commands", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.newProviderRevision();
+    const retained = test.storage.get(test.storageKey)!;
+    const read = test.holdRead();
+    const loading = test.editor.load();
+    await read.entered;
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    expect(settled).toBe(false);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    read.release();
+    expect(await loading).toBe(true);
+    expect(await switching).toBe(false);
+    expect(test.editor.status.value).toBe("conflict");
+    expect(test.editor.state.value?.revision).toBe(test.baseRevision);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+  });
+
+  it("returns a failed owned read without closing or mutating and releases ownership for retry", async () => {
+    const test = await fixture();
+    const original = structuredClone(test.editor.state.value);
+    const read = test.holdRead();
+    const loading = test.editor.load(0, false);
+    await read.entered;
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    expect(settled).toBe(false);
+    const failure = new TypeError("Provider refresh connection lost");
+    read.reject(failure);
+    expect(await loading).toBe(false);
+    expect(await switching).toBe(false);
+    expect(test.editor.state.value).toEqual(original);
+    expect(test.editor.error.value).toBe(failure);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    expect(await test.editor.load(0, false)).toBe(true);
+    expect(await test.editor.flush()).toBe(true);
+  });
+
+  it("follows a newer accepted refresh without waiting for an obsolete held response", async () => {
+    const test = await fixture();
+    const oldRead = test.holdRead();
+    const oldLoad = test.editor.load(0, false);
+    await oldRead.entered;
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    test.newProviderRevision();
+    const newRead = test.holdRead();
+    const newLoad = test.editor.load(0, false);
+    const latest = await newRead.entered;
+    await drain();
+    expect(settled).toBe(false);
+    newRead.release();
+    expect(await newLoad).toBe(true);
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(await switching).toBe(true);
+    expect(test.editor.state.value?.revision).toBe(latest.revision);
+    oldRead.release();
+    expect(await oldLoad).toBe(false);
+    expect(test.editor.state.value?.revision).toBe(latest.revision);
+    expect(test.editor.status.value).toBe("saved");
+  });
+
+  it("retains the active recovery barrier when a clean read is refused because a draft is pending", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    const read = test.holdRead();
+    const recovering = test.editor.load();
+    await read.entered;
+    expect(await test.editor.load(0, false)).toBe(false);
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    expect(settled).toBe(false);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    read.release();
+    expect(await recovering).toBe(true);
+    expect(await switching).toBe(true);
+    expect(test.api.editTranscript).toHaveBeenCalledOnce();
+    expect(test.editor.hasPending.value).toBe(false);
+    expect(
+      (await test.app.transcriptEditor.get("asset")).document?.segments[0]
+        ?.text,
+    ).toBe("User correction");
+  });
+
+  it("resolves a waiting flush as false on disposal and ignores the later read response", async () => {
+    const test = await fixture();
+    const original = structuredClone(test.editor.state.value);
+    test.newProviderRevision();
+    const read = test.holdRead();
+    const loading = test.editor.load(0, false);
+    await read.entered;
+    let settled = false;
+    const switching = test.editor.flush().then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    expect(settled).toBe(false);
+    test.dispose();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(await switching).toBe(false);
+    read.release();
+    expect(await loading).toBe(false);
+    expect(test.editor.state.value).toEqual(original);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+  });
+});
+
+describe("transcript page recovery after structural edits", () => {
+  const expectLastExistingPage = (editor: Editor) => {
+    expect(editor.state.value?.total).toBe(100);
+    expect(editor.state.value?.offset).toBe(0);
+    expect(editor.state.value?.document?.segments).toHaveLength(100);
+    expect(editor.state.value?.document?.segments[0]?.id).toBe("segment");
+    expect(editor.state.value?.document?.segments[99]?.id).toBe("segment-99");
+    expect(editor.status.value).toBe("saved");
+    expect(editor.hasPending.value).toBe(false);
+  };
+  it.each(["delete", "merge"])(
+    "returns to a valid page after %s, undo/redo and revision selection",
+    async (action) => {
+      const test = await fixture(101);
+      expect(await test.editor.loadPage(100)).toBe(true);
+      expect(test.editor.state.value?.document?.segments[0]?.id).toBe(
+        "segment-100",
+      );
+      const command: TranscriptCommand =
+        action === "delete"
+          ? { type: "delete-segment", segmentId: "segment-100" }
+          : {
+              type: "merge-segment",
+              segmentId: "segment-100",
+              direction: "previous",
+            };
+      expect(test.editor.command(command)).toBe(true);
+      expect(await test.editor.flush()).toBe(true);
+      expectLastExistingPage(test.editor);
+      const shortenedRevision = test.editor.state.value!.revision!;
+      expect(await test.editor.history("undo")).toBe(true);
+      expect(test.editor.state.value?.total).toBe(101);
+      expect(await test.editor.loadPage(100)).toBe(true);
+      expect(await test.editor.history("redo")).toBe(true);
+      expectLastExistingPage(test.editor);
+      expect(await test.editor.restore(test.baseRevision)).toBe(true);
+      expect(test.editor.state.value?.total).toBe(101);
+      expect(await test.editor.loadPage(100)).toBe(true);
+      expect(await test.editor.restore(shortenedRevision)).toBe(true);
+      expectLastExistingPage(test.editor);
+      expect(test.storage.has(test.storageKey)).toBe(false);
+      expect(
+        test.api.transcript.mock.calls.every(([, , limit]) => limit === 100),
+      ).toBe(true);
+    },
+  );
+
+  it("clamps a clean reload when a successful provider revision shortens the document", async () => {
+    const test = await fixture(101);
+    await test.editor.loadPage(100);
+    const document = test.app.catalog.transcripts.getFull(
+      "asset",
+      test.sourceHash,
+    )!.document;
+    test.app.catalog.intelligence.replaceTranscript(
+      {
+        ...document,
+        id: "shorter-provider",
+        segments: document.segments.slice(0, 100),
+      },
+      { expectedRevision: test.baseRevision },
+    );
+    expect(await test.editor.reconcile()).toBe(true);
+    expectLastExistingPage(test.editor);
+    expect(test.editor.state.value?.revision).not.toBe(test.baseRevision);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+  });
+
+  it("clamps recovery after a structural edit committed with its acknowledgment lost", async () => {
+    const test = await fixture(101);
+    await test.editor.loadPage(100);
+    test.editor.command({ type: "delete-segment", segmentId: "segment-100" });
+    test.loseAcknowledgment();
+    expect(await test.editor.flush()).toBe(false);
+    const pending = JSON.parse(test.storage.get(test.storageKey)!);
+    expect(pending.state.offset).toBe(100);
+    expect(pending.receipt.commands).toEqual([
+      { type: "delete-segment", segmentId: "segment-100" },
+    ]);
+    expect(await test.editor.load()).toBe(true);
+    expectLastExistingPage(test.editor);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+    expect(test.storage.has(test.storageKey)).toBe(false);
+  });
+
+  it("preserves the exact committed receipt if the clamped-page read fails, then retries without duplicate deletion", async () => {
+    const test = await fixture(101);
+    await test.editor.loadPage(100);
+    test.editor.command({ type: "delete-segment", segmentId: "segment-100" });
+    test.api.transcript
+      .mockImplementationOnce((assetId, offset, limit) =>
+        test.app.transcriptEditor.get(assetId, { offset, limit }),
+      )
+      .mockImplementationOnce(async () => {
+        throw new TypeError("Clamped page response lost");
+      });
+    expect(await test.editor.flush()).toBe(false);
+    expect(test.editor.status.value).toBe("failed");
+    expect(test.editor.hasPending.value).toBe(true);
+    expect(
+      JSON.parse(test.storage.get(test.storageKey)!).receipt.commands,
+    ).toEqual([{ type: "delete-segment", segmentId: "segment-100" }]);
+    expect(await test.editor.flush()).toBe(true);
+    expectLastExistingPage(test.editor);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
   });
 });

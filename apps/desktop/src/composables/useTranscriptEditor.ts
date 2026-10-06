@@ -14,6 +14,13 @@ type Draft = {
   pending: TranscriptCommand[];
   receipt: Receipt | null;
 };
+type LoadOperation = {
+  generation: number;
+  recover: boolean;
+  promise: Promise<boolean>;
+  superseded: Promise<void>;
+  supersede: () => void;
+};
 
 /** Source-scoped durable queue. A retry always reuses its original receipt. */
 export function useTranscriptEditor(
@@ -37,6 +44,7 @@ export function useTranscriptEditor(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let readGeneration = 0;
+  let loading: LoadOperation | null = null;
   const view = (
     saved: TranscriptEditorState,
     commands: TranscriptCommand[],
@@ -87,10 +95,52 @@ export function useTranscriptEditor(
             requestId: value.requestId,
           });
   }
-  async function load(offset = state.value?.offset ?? 0, recover = true) {
-    if (disposed || (!recover && hasPending.value)) return false;
+  async function readPage(offset: number) {
+    let saved = await api.transcript(assetId, offset, 100);
+    // Structural edits or revision changes can remove the current last page.
+    // Each reread moves backward, including if another edit shrinks it again.
+    while (saved.offset > 0 && saved.offset >= saved.total) {
+      const lastOffset = Math.floor(Math.max(0, saved.total - 1) / 100) * 100;
+      saved = await api.transcript(assetId, lastOffset, 100);
+    }
+    return saved;
+  }
+  function load(
+    offset = state.value?.offset ?? 0,
+    recover = true,
+  ): Promise<boolean> {
+    if (
+      disposed ||
+      (!recover &&
+        (hasPending.value || pending.length || receipt || loading?.recover))
+    )
+      return Promise.resolve(false);
+    // Recovery owns receipt replay and pending-prefix removal as one operation.
+    // Coalesce repeated recovery calls rather than replaying them concurrently.
+    if (loading?.recover) return loading.promise;
     const stamp = ++readGeneration;
+    let supersede!: () => void;
+    const superseded = new Promise<void>((resolve) => {
+      supersede = resolve;
+    });
+    const operation: LoadOperation = {
+      generation: stamp,
+      recover,
+      superseded,
+      supersede,
+      promise: Promise.resolve().then(() => readLoad(offset, recover, stamp)),
+    };
+    operation.promise = operation.promise.finally(() => {
+      if (loading === operation) loading = null;
+    });
+    const previous = loading;
+    loading = operation;
+    previous?.supersede();
     status.value = "loading";
+    return operation.promise;
+  }
+  async function readLoad(offset: number, recover: boolean, stamp: number) {
+    if (disposed || stamp !== readGeneration) return false;
     let draft: Draft | null = null;
     if (recover)
       try {
@@ -120,7 +170,7 @@ export function useTranscriptEditor(
           if ("commands" in sent) pending = pending.slice(sent.commands.length);
           receipt = null;
         }
-        const saved = await api.transcript(assetId, draft.state.offset, 100);
+        const saved = await readPage(draft.state.offset);
         if (disposed || stamp !== readGeneration) return false;
         const expected =
           acknowledged?.acknowledgedRevision ??
@@ -138,7 +188,7 @@ export function useTranscriptEditor(
         retain();
         changed();
       } else {
-        const saved = await api.transcript(assetId, offset, 100);
+        const saved = await readPage(offset);
         if (disposed || stamp !== readGeneration) return false;
         state.value = saved;
         status.value = "saved";
@@ -185,6 +235,19 @@ export function useTranscriptEditor(
   }
   function flush(): Promise<boolean> {
     clearTimeout(timer);
+    if (disposed) return Promise.resolve(false);
+    if (loading) {
+      const operation = loading;
+      return Promise.race([
+        operation.promise.then((result) => ({ result, superseded: false })),
+        operation.superseded.then(() => ({ result: false, superseded: true })),
+      ]).then((outcome) => {
+        if (disposed) return false;
+        if (outcome.superseded || operation.generation !== readGeneration)
+          return flush();
+        return outcome.result ? flush() : false;
+      });
+    }
     if (saving) return saving;
     if (status.value === "conflict") return Promise.resolve(false);
     if (!hasPending.value)
@@ -205,7 +268,7 @@ export function useTranscriptEditor(
           const offset = state.value.offset;
           // A paged edit receipt can be followed by a newer revision from a
           // different editor. Never replay an unsaved suffix over that revision.
-          const saved = await api.transcript(assetId, offset, 100);
+          const saved = await readPage(offset);
           if ("commands" in sending)
             pending = pending.slice(sending.commands.length);
           receipt = null;
@@ -329,6 +392,7 @@ export function useTranscriptEditor(
   onMounted(() => void load());
   onBeforeUnmount(() => {
     disposed = true;
+    loading?.supersede();
     clearTimeout(timer);
     retain();
   });
