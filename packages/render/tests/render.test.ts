@@ -492,5 +492,4 @@ describe("real FFmpeg preview renderer", () => {
     expect(rotatedCorner[2]).toBeGreaterThan(120);
     expect(rotatedCorner[0]).toBeLessThan(100);
   });
-
 });
