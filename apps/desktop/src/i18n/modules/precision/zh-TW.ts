@@ -10,6 +10,8 @@ export default {
       "精準剪輯使用來源時間。請在上方選擇影片或音訊片段，或回到故事模式繼續調整照片。",
     sourceUnavailable: "無法在精準模式播放此來源。請先在故事模式中尋找檔案。",
     sourcePreview: "精準來源預覽",
+    durationUnavailable:
+      "此來源缺少有效時長。請重新匯入後再裁切、分割、新增標記或開始分析。仍可播放與瀏覽來源。",
     sourceTime: "來源 {time}",
     clipTime: "片段內 {time}",
     outsideClip: "超出選取片段範圍",
@@ -42,9 +44,16 @@ export default {
     markerAt: "{time} 的標記",
     removeMarker: "移除 {time} 的標記",
     noMarkers: "在波形上按兩下或按 M，即可新增來源標記。",
+    markersPage: "第 {page} 頁，共 {pages} 頁",
+    firstMarkersPage: "第一頁標記",
+    previousMarkersPage: "上一頁標記",
+    nextMarkersPage: "下一頁標記",
+    lastMarkersPage: "最後一頁標記",
     locked: "此片段已鎖定。仍可瀏覽與分析來源；請先解鎖，再裁切或分割。",
     assetLocked:
       "此來源已在媒體庫中鎖定。請到媒體庫解鎖後再分割；仍可裁切片段。",
+    splitCrossfade:
+      "請在入場交叉淡化結束後再分割，或在故事模式中改用直接切換。",
     transcript: "逐字稿",
     transcriptHint:
       "來源逐字稿僅供閱讀。選取段落或字詞即可定位；語音辨識不會變更剪輯。",
@@ -69,6 +78,7 @@ export default {
     analyzeWaveform: "分析波形",
     detectScenes: "偵測畫面切點",
     modelReady: "本機語音辨識已就緒",
+    projectJobBusy: "此專案中有其他工作正在執行。請等候完成後再開始分析。",
     modelMissing: "本機語音辨識需要設定",
     modelSetup:
       "請在 OpenFilm 啟動設定中指定本機 Whisper 模型，再重新檢查可用狀態。素材會留在這台電腦上。",

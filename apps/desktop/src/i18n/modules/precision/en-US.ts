@@ -11,6 +11,8 @@ export default {
     sourceUnavailable:
       "This source is unavailable for precision playback. Locate it in Story mode before continuing.",
     sourcePreview: "Precision source preview",
+    durationUnavailable:
+      "This source is missing a usable duration. Import it again before trimming, splitting, adding markers, or starting analysis. Playback and navigation remain available.",
     sourceTime: "Source {time}",
     clipTime: "In this clip {time}",
     outsideClip: "Outside the selected clip",
@@ -45,10 +47,17 @@ export default {
     markerAt: "Marker at {time}",
     removeMarker: "Remove marker at {time}",
     noMarkers: "Double-click the waveform or press M to add a source marker.",
+    markersPage: "Page {page} of {pages}",
+    firstMarkersPage: "First marker page",
+    previousMarkersPage: "Previous marker page",
+    nextMarkersPage: "Next marker page",
+    lastMarkersPage: "Last marker page",
     locked:
       "This clip is locked. Source navigation and analysis remain available; unlock it to trim or split.",
     assetLocked:
       "This source is locked in Library. Unlock it there to split. Trimming remains available.",
+    splitCrossfade:
+      "Finish the incoming crossfade before splitting, or choose Cut in Story mode.",
     transcript: "Transcript",
     transcriptHint:
       "Read-only source transcript. Select a segment or word to seek; transcription does not change your cut.",
@@ -73,6 +82,8 @@ export default {
     analyzeWaveform: "Analyze waveform",
     detectScenes: "Detect scene cuts",
     modelReady: "Local transcription is ready",
+    projectJobBusy:
+      "Another job is running in this project. Wait for it to finish before starting analysis.",
     modelMissing: "Local transcription needs setup",
     modelSetup:
       "Configure a local Whisper model in OpenFilm’s startup settings, then refresh availability. Your media stays on this computer.",

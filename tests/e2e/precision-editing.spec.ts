@@ -147,18 +147,56 @@ test.beforeAll(async () => {
     );
 });
 test.beforeEach(async ({ request }) => {
-  expect((await request.post(`${base}/project/close`, { data: {} })).ok()).toBe(
-    true,
-  );
+  await closeProject(request);
 });
 test.afterEach(async ({ request }) => {
-  expect((await request.post(`${base}/project/close`, { data: {} })).ok()).toBe(
-    true,
-  );
+  await closeProject(request);
 });
-test.afterAll(async () => {
+test.afterAll(async ({ request }) => {
+  await closeProject(request);
   if (root) await rm(root, { recursive: true, force: true });
 });
+
+async function closeProject(request: APIRequestContext) {
+  const closed = await request.post(`${base}/project/close`, { data: {} });
+  if (closed.ok()) return;
+  expect(closed.status()).toBe(409);
+  const response = await request.get(`${base}/jobs`);
+  expect(response.ok()).toBe(true);
+  const active = ((await response.json()).jobs as Job[]).filter(
+    (job) => job.status === "queued" || job.status === "running",
+  );
+  await Promise.all(
+    active.map(async (job) => {
+      const cancelled = await request.post(
+        `${base}/jobs/${encodeURIComponent(job.id)}/cancel`,
+        { data: {} },
+      );
+      // A job can finish between listing and cancellation.
+      expect([200, 409]).toContain(cancelled.status());
+    }),
+  );
+  await expect
+    .poll(
+      async () => {
+        const jobs = await request.get(`${base}/jobs`);
+        expect(jobs.ok()).toBe(true);
+        return ((await jobs.json()).jobs as Job[]).filter(
+          (job) => job.status === "queued" || job.status === "running",
+        ).length;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(0);
+  // Durable terminal status can precede release of the server's active guard.
+  await expect
+    .poll(
+      async () =>
+        (await request.post(`${base}/project/close`, { data: {} })).status(),
+      { timeout: 30_000 },
+    )
+    .toBe(200);
+}
 
 async function project(request: APIRequestContext): Promise<OpenFilmProject> {
   const response = await request.get(`${base}/project`);
@@ -451,6 +489,488 @@ async function seekWord(
     )
     .toBeCloseTo(expected, 2);
 }
+
+async function seekSource(
+  page: Page,
+  locale: ProjectContentLocale,
+  sourceTime: number,
+) {
+  const preview = page.getByLabel(text(locale, "precision.sourcePreview"), {
+    exact: true,
+  });
+  await preview.evaluate((node, at) => {
+    const media = node as HTMLMediaElement;
+    media.pause();
+    media.currentTime = at;
+  }, sourceTime);
+  await expect
+    .poll(() =>
+      preview.evaluate((node) => (node as HTMLMediaElement).currentTime),
+    )
+    .toBeCloseTo(sourceTime, 4);
+}
+
+test("precision split respects a retimed incoming crossfade and permits its exact boundary", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { clip } = await createSourceFilm(page, request, locale, "-crossfade");
+  await mode(page, locale, "story");
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "editor.clip.speedPreset", { speed: 2 }),
+      exact: true,
+    })
+    .click();
+  await page
+    .getByLabel(text(locale, "editor.clip.transitionLabel"), { exact: true })
+    .selectOption("crossfade");
+  const fade = page.getByLabel(text(locale, "editor.clip.fadeDurationLabel"), {
+    exact: true,
+  });
+  await fade.fill("0.5");
+  await fade.press("Tab");
+  await saved(page, locale);
+  const before = await composition(request);
+  const retimed = clipById(before, clip.id);
+  expect(retimed.transform?.speed).toBe(2);
+  expect(retimed.transition?.duration).toBe(0.5);
+  await mode(page, locale, "precision");
+  await expect(
+    page.getByRole("spinbutton", {
+      name: text(locale, "precision.trimIn"),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  const split = page.getByRole("button", {
+    name: text(locale, "precision.split"),
+    exact: true,
+  });
+  await seekSource(page, locale, retimed.sourceIn! + 0.75);
+  await expect(split).toBeDisabled();
+  await expect(
+    page.getByText(text(locale, "precision.splitCrossfade"), { exact: true }),
+  ).toBeVisible();
+  await page.locator(".precision-waveform").press("b");
+  expect(await composition(request)).toEqual(before);
+  await expect(page.locator(".editor-message.error")).toHaveCount(0);
+
+  const boundary = retimed.sourceIn! + 1;
+  await seekSource(page, locale, boundary);
+  await expect(split).toBeEnabled();
+  await split.click();
+  await saved(page, locale);
+  const atBoundary = await composition(request);
+  expect(allClips(atBoundary)).toHaveLength(allClips(before).length + 1);
+  const left = clipById(atBoundary, clip.id);
+  expect(left.sourceOut).toBeCloseTo(boundary, 6);
+  expect(left.timelineDuration).toBeCloseTo(0.5, 6);
+  expect(left.transition).toEqual({ type: "crossfade", duration: 0.5 });
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await saved(page, locale);
+  expect(await composition(request)).toEqual(before);
+  await seekSource(page, locale, boundary + 0.25);
+  await expect(split).toBeEnabled();
+  await page.locator(".precision-waveform").press("b");
+  await saved(page, locale);
+  expect(allClips(await composition(request))).toHaveLength(
+    allClips(before).length + 1,
+  );
+});
+
+test("source analysis waits for project jobs on other sources and recovers after cancellation or completion", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { video, clip, audioClip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-project-jobs",
+  );
+  await analysisPanel(page, locale);
+  const picker = page
+    .locator(".precision-source-picker")
+    .getByLabel(text(locale, "precision.selectedClip"));
+  const transcribe = page.getByRole("button", {
+    name: text(locale, "precision.transcribe"),
+    exact: true,
+  });
+  const waveform = page.getByRole("button", {
+    name: text(locale, "precision.analyzeWaveform"),
+    exact: true,
+  });
+  const busyMessage = page.getByText(text(locale, "precision.projectJobBusy"), {
+    exact: true,
+  });
+  const start = async () => {
+    await picker.selectOption(clip.id);
+    await expect(transcribe).toBeEnabled();
+    const started = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${video.id}/intelligence` &&
+        response.request().method() === "POST",
+    );
+    await transcribe.click();
+    const response = await started;
+    expect(response.status()).toBe(202);
+    return (await response.json()).job.id as string;
+  };
+  const switchToWaitingSource = async (jobId: string) => {
+    await picker.selectOption(audioClip.id);
+    await expect(page.locator(".precision-player-region audio")).toBeVisible();
+    await expect(busyMessage).toBeVisible();
+    await expect(transcribe).toBeDisabled();
+    await expect(waveform).toBeDisabled();
+    await expect(
+      page.locator(`.precision-job[data-job-id="${jobId}"]`),
+    ).toHaveCount(0);
+  };
+  const cancelledId = await start();
+  await switchToWaitingSource(cancelledId);
+  await picker.selectOption(clip.id);
+  await page
+    .locator(`.precision-job[data-job-id="${cancelledId}"]`)
+    .getByRole("button", {
+      name: text(locale, "precision.cancelJob"),
+      exact: true,
+    })
+    .click();
+  await picker.selectOption(audioClip.id);
+  await expect(waveform).toBeEnabled();
+  await expect(busyMessage).toHaveCount(0);
+
+  const completedId = await start();
+  await switchToWaitingSource(completedId);
+  await expect
+    .poll(
+      async () => {
+        const jobs = (await (await request.get(`${base}/jobs`)).json())
+          .jobs as Job[];
+        return jobs.find((job) => job.id === completedId)?.status;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe("completed");
+  await expect(waveform).toBeEnabled();
+  await expect(busyMessage).toHaveCount(0);
+
+  // Import/render jobs share the backend guard. Inject only their job status to
+  // verify the global UI guard while all source reads and media remain real.
+  test.info().annotations.push({
+    type: "fixture",
+    description:
+      "One render-job status fixture supplements real analysis jobs.",
+  });
+  let renderStatus: Job["status"] = "running";
+  await page.route(
+    (url) => url.pathname === "/api/jobs",
+    async (route) => {
+      const response = await route.fetch();
+      const result = (await response.json()) as { jobs: Job[] };
+      result.jobs.push({
+        id: "fixture-render",
+        type: "render",
+        status: renderStatus,
+      });
+      await route.fulfill({ response, json: result });
+    },
+  );
+  await picker.selectOption(clip.id);
+  await expect(busyMessage).toBeVisible();
+  await expect(transcribe).toBeDisabled();
+  await expect(waveform).toBeDisabled();
+  await expect(
+    page.getByRole("button", {
+      name: text(locale, "precision.detectScenes"),
+      exact: true,
+    }),
+  ).toBeDisabled();
+  renderStatus = "completed";
+  await expect(waveform).toBeEnabled();
+  await expect(busyMessage).toHaveCount(0);
+});
+
+test("dense source markers stay paged with keyboard navigation, full counts and source/view resets", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { video, clip, audioClip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-marker-pages",
+  );
+  test.info().annotations.push({
+    type: "fixture",
+    description:
+      "20,000 mixed manual/scene markers supplement a real verified source read; this is a UI density fixture.",
+  });
+  const dense: TimelineMarker[] = Array.from(
+    { length: 20_000 },
+    (_, index) => ({
+      id: `dense-marker-${index}`,
+      assetId: video.id,
+      time: (index / 20_000) * video.duration! * 0.9,
+      type: index % 2 === 0 ? "scene-cut" : "manual",
+      label: `${index % 2 === 0 ? "Scene" : "Manual"} marker ${index}`,
+    }),
+  );
+  let markerCount = dense.length;
+  await page.route(
+    (url) => url.pathname === `/api/assets/${video.id}/intelligence`,
+    async (route) => {
+      const response = await route.fetch();
+      const result = await response.json();
+      const markers = dense.slice(0, markerCount);
+      await route.fulfill({
+        response,
+        json: {
+          ...result,
+          markers,
+          scenes: {
+            assetId: video.id,
+            markers: markers.filter((marker) => marker.type === "scene-cut"),
+            provenance: {
+              providerId: "fixture-marker-density",
+              version: "1",
+              sourceHash: result.sourceHash,
+              createdAt: "2026-10-06T00:00:00.000Z",
+            },
+          },
+        },
+      });
+    },
+  );
+  const panel = (name: "analysis" | "markers") =>
+    page.locator(".precision-panel-tabs").getByRole("button", {
+      name: text(locale, `precision.${name}`),
+      exact: true,
+    });
+  await panel("analysis").click();
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.refresh"),
+      exact: true,
+    })
+    .click();
+  await panel("markers").click();
+  const markerPanel = page.locator(".precision-markers");
+  await expect(markerPanel).toContainText("20,000");
+  await expect(page.locator(".precision-marker")).toHaveCount(100);
+  await expect(page.locator(".precision-marker-line")).toHaveCount(200);
+  const previous = markerPanel.getByRole("button", {
+    name: text(locale, "precision.previousMarkersPage"),
+    exact: true,
+  });
+  const next = markerPanel.getByRole("button", {
+    name: text(locale, "precision.nextMarkersPage"),
+    exact: true,
+  });
+  const last = markerPanel.getByRole("button", {
+    name: text(locale, "precision.lastMarkersPage"),
+    exact: true,
+  });
+  await expect(previous).toBeDisabled();
+  await next.press("Enter");
+  await expect(markerPanel.getByRole("status")).toHaveText(
+    uiText(locale, "precision.markersPage", { page: 2, pages: 200 }),
+  );
+  await previous.press("Enter");
+  await last.press("Enter");
+  await expect(markerPanel.getByRole("status")).toHaveText(
+    uiText(locale, "precision.markersPage", { page: 200, pages: 200 }),
+  );
+  await expect(next).toBeDisabled();
+  await expect(page.locator(".precision-marker")).toHaveCount(100);
+  await markerPanel
+    .getByRole("button", { name: "Manual marker 19999", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page
+        .getByLabel(text(locale, "precision.sourcePreview"), { exact: true })
+        .evaluate((node) => (node as HTMLMediaElement).currentTime),
+    )
+    .toBeCloseTo(dense.at(-1)!.time, 3);
+  markerCount = 19_900;
+  await panel("analysis").click();
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.refresh"),
+      exact: true,
+    })
+    .click();
+  await panel("markers").click();
+  await expect(markerPanel.getByRole("status")).toHaveText(
+    uiText(locale, "precision.markersPage", { page: 199, pages: 199 }),
+  );
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.zoomIn"),
+      exact: true,
+    })
+    .click();
+  await expect(previous).toBeDisabled();
+  await expect(page.locator(".precision-marker")).toHaveCount(100);
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.wholeSource"),
+      exact: true,
+    })
+    .click();
+  await last.press("Enter");
+  const picker = page
+    .locator(".precision-source-picker")
+    .getByLabel(text(locale, "precision.selectedClip"));
+  await picker.selectOption(audioClip.id);
+  await expect(page.locator(".precision-marker")).toHaveCount(0);
+  await picker.selectOption(clip.id);
+  await expect(markerPanel.getByRole("status")).toHaveText(
+    uiText(locale, "precision.markersPage", { page: 1, pages: 199 }),
+  );
+  await expect(previous).toBeDisabled();
+  await expect(page.locator(".precision-marker")).toHaveCount(100);
+});
+
+test("missing source duration preserves playback but disables duration-dependent actions until metadata is repaired", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { video, clip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-missing-duration",
+  );
+  const before = await composition(request);
+  const editorPath = `/api/compositions/${before.id}/editor`;
+  const editorRoute = (url: URL) => url.pathname === editorPath;
+  test.info().annotations.push({
+    type: "fixture",
+    description:
+      "The editor response omits only source duration; source playback, intelligence and saved edits remain real.",
+  });
+  await page.route(editorRoute, async (route) => {
+    const response = await route.fetch();
+    const state = await response.json();
+    delete state.assets.find((asset: MediaAsset) => asset.id === video.id)
+      .duration;
+    await route.fulfill({ response, json: state });
+  });
+  const openPrecision = async () => {
+    await page.reload();
+    await navigate(page, "edit", locale);
+    await mode(page, locale, "precision");
+    await page
+      .locator(".precision-source-picker")
+      .getByLabel(text(locale, "precision.selectedClip"))
+      .selectOption(clip.id);
+    await expect
+      .poll(() =>
+        page
+          .getByLabel(text(locale, "precision.sourcePreview"), { exact: true })
+          .evaluate((node) => (node as HTMLMediaElement).readyState),
+      )
+      .toBeGreaterThanOrEqual(1);
+  };
+  await openPrecision();
+  await expect(
+    page.getByText(text(locale, "precision.durationUnavailable"), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const trimIn = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  await expect(trimIn).toBeDisabled();
+  for (const edge of ["trimIn", "trimOut"]) {
+    await expect(
+      page.getByRole("slider", {
+        name: text(locale, `precision.${edge}`),
+        exact: true,
+      }),
+    ).toBeDisabled();
+  }
+  for (const action of ["setIn", "setOut", "split", "addMarker"]) {
+    await expect(
+      page.getByRole("button", {
+        name: text(locale, `precision.${action}`),
+        exact: true,
+      }),
+    ).toBeDisabled();
+  }
+  const sourceTime = (clip.sourceIn! + clip.sourceOut!) / 2;
+  await seekSource(page, locale, sourceTime);
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.frameForward"),
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: text(locale, "precision.play"), exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: text(locale, "precision.pause"),
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: text(locale, "precision.pause"), exact: true })
+    .click();
+  await page.locator(".precision-waveform").press("b");
+  await page.locator(".precision-waveform").press("m");
+  expect(await composition(request)).toEqual(before);
+  await expect(page.locator(".editor-message.error")).toHaveCount(0);
+  await analysisPanel(page, locale);
+  for (const action of ["transcribe", "analyzeWaveform", "detectScenes"]) {
+    await expect(
+      page
+        .getByRole("region", {
+          name: text(locale, "precision.analysis"),
+          exact: true,
+        })
+        .getByRole("button", {
+          name: text(locale, `precision.${action}`),
+          exact: true,
+        }),
+    ).toBeDisabled();
+  }
+  await page.unroute(editorRoute);
+  await openPrecision();
+  await expect(
+    page.getByText(text(locale, "precision.durationUnavailable"), {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(trimIn).toBeEnabled();
+  const newIn = clip.sourceIn! + 0.1;
+  await trimIn.fill(String(newIn));
+  await trimIn.press("Tab");
+  await saved(page, locale);
+  const repaired = await composition(request);
+  expect(clipById(repaired, clip.id).sourceIn).toBeCloseTo(newIn, 6);
+  await seekSource(page, locale, sourceTime);
+  await expect(
+    page.getByRole("button", {
+      name: text(locale, "precision.split"),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await page.locator(".precision-waveform").press("b");
+  await saved(page, locale);
+  expect(allClips(await composition(request))).toHaveLength(
+    allClips(repaired).length + 1,
+  );
+});
 
 test("Library asset locks prevent precision splits while allowing trims, then unlocking restores splitting", async ({
   page,

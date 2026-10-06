@@ -41,6 +41,7 @@ const surface = ref<HTMLElement | null>(null);
 const data = shallowRef<IntelligenceState | null>(null);
 const providers = shallowRef<IntelligenceProviders | null>(null);
 const jobs = ref<Job[]>([]);
+const projectActiveJobs = ref<Job[]>([]);
 const error = shallowRef<unknown>(null);
 const playbackError = ref(false);
 const loading = ref(false);
@@ -63,6 +64,8 @@ const execution = ref("auto");
 const panel = ref<"transcript" | "analysis" | "markers">("transcript");
 const pageOffset = ref(0);
 const pageSize = 100;
+const markerPage = ref(0);
+const markerPageSize = 100;
 let generation = 0;
 let analysisRead = 0;
 let jobRead = 0;
@@ -79,23 +82,42 @@ const supported = computed(
     !!props.clip &&
     (props.asset.mediaType === "video" || props.asset.mediaType === "audio"),
 );
-const sourceDuration = computed(() =>
-  Math.max(0, props.asset?.duration ?? props.clip?.sourceOut ?? 0),
+const hasSourceDuration = computed(
+  () =>
+    typeof props.asset?.duration === "number" &&
+    Number.isFinite(props.asset.duration) &&
+    props.asset.duration > 0,
 );
+const sourceDuration = computed(() => {
+  if (hasSourceDuration.value) return props.asset!.duration!;
+  const fallback = props.clip?.sourceOut;
+  return typeof fallback === "number" && Number.isFinite(fallback)
+    ? Math.max(0, fallback)
+    : 0;
+});
 const playable = computed(
   () => supported.value && !props.unavailable && sourceDuration.value > 0,
 );
 const editable = computed(
   () =>
     playable.value &&
+    hasSourceDuration.value &&
     sourceVerified.value &&
     !props.clip?.locked &&
     !props.busy,
+);
+const crossfadeBlocksSplit = computed(
+  () =>
+    !!props.clip?.transition &&
+    (playhead.value - (props.clip.sourceIn ?? 0)) /
+      (props.clip.transform?.speed ?? 1) <
+      props.clip.transition.duration,
 );
 const canSplit = computed(
   () =>
     editable.value &&
     !props.asset?.state.locked &&
+    !crossfadeBlocksSplit.value &&
     playhead.value > trimIn.value &&
     playhead.value < trimOut.value,
 );
@@ -148,16 +170,27 @@ const visibleMarkers = computed(() =>
     (marker) => marker.time >= viewStart.value && marker.time <= viewEnd.value,
   ),
 );
+const markerPages = computed(() =>
+  Math.max(1, Math.ceil(visibleMarkers.value.length / markerPageSize)),
+);
+const pageMarkers = computed(() =>
+  visibleMarkers.value.slice(
+    markerPage.value * markerPageSize,
+    (markerPage.value + 1) * markerPageSize,
+  ),
+);
 const candidates = computed(() =>
   candidatesFromIntelligence(markers.value, data.value?.transcript, [
     props.clip?.sourceIn ?? 0,
     props.clip?.sourceOut ?? sourceDuration.value,
   ]),
 );
-const activeJobs = computed(() =>
-  jobs.value.filter(
-    (job) => job.status === "queued" || job.status === "running",
-  ),
+const analysisBusy = computed(
+  () =>
+    pending.value || discoveringJobs.value || !!projectActiveJobs.value.length,
+);
+const otherProjectJob = computed(() =>
+  projectActiveJobs.value.some((job) => job.assetId !== props.asset?.id),
 );
 const transcript = computed(() => data.value?.transcript?.segments ?? []);
 const clipTime = computed(() => {
@@ -271,7 +304,7 @@ async function loadProviders() {
 }
 async function pollJobs(hydrate = false) {
   haltPolling();
-  if (!props.active || (!hydrate && !activeJobs.value.length)) return;
+  if (!props.active || (!hydrate && !projectActiveJobs.value.length)) return;
   const stamp = generation;
   const read = ++jobRead;
   if (hydrate) discoveringJobs.value = true;
@@ -280,6 +313,9 @@ async function pollJobs(hydrate = false) {
       signal: controller.signal,
     });
     if (!current(stamp) || read !== jobRead) return;
+    projectActiveJobs.value = response.jobs.filter(
+      (job) => job.status === "queued" || job.status === "running",
+    );
     let finished = false;
     const scoped = response.jobs.filter(
       (job) =>
@@ -318,17 +354,11 @@ async function pollJobs(hydrate = false) {
   } finally {
     if (current(stamp) && read === jobRead) discoveringJobs.value = false;
   }
-  if (current(stamp) && read === jobRead && activeJobs.value.length)
+  if (current(stamp) && read === jobRead && projectActiveJobs.value.length)
     polling = setTimeout(() => void pollJobs(), 1000);
 }
 async function analyze(operation: "transcribe" | "waveform" | "scenes") {
-  if (
-    !playable.value ||
-    pending.value ||
-    discoveringJobs.value ||
-    activeJobs.value.length
-  )
-    return;
+  if (!playable.value || !hasSourceDuration.value || analysisBusy.value) return;
   const stamp = generation;
   pending.value = true;
   error.value = null;
@@ -350,6 +380,8 @@ async function analyze(operation: "transcribe" | "waveform" | "scenes") {
       ),
       result.job,
     ];
+    if (result.job.status === "queued" || result.job.status === "running")
+      projectActiveJobs.value = [...projectActiveJobs.value, result.job];
     emit("activity");
     if (result.job.status === "completed") await loadAnalysis(0);
     else if (result.job.status === "failed")
@@ -378,7 +410,13 @@ async function cancelJob(job: Job) {
   }
 }
 async function addMarker(at = playhead.value) {
-  if (!playable.value || !sourceVerified.value || pending.value) return;
+  if (
+    !playable.value ||
+    !hasSourceDuration.value ||
+    !sourceVerified.value ||
+    pending.value
+  )
+    return;
   const stamp = generation;
   pending.value = true;
   try {
@@ -631,6 +669,12 @@ function keyboard(event: KeyboardEvent) {
 // Both editors stay mounted, so Story volume changes must update this player
 // even when no source range or lock changed and no loadedmetadata event fires.
 watch([player, () => props.clip?.transform?.volume], configurePlayback);
+watch([sourceKey, viewStart, viewEnd], () => {
+  markerPage.value = 0;
+});
+watch(markerPages, (pages) => {
+  markerPage.value = Math.min(markerPage.value, pages - 1);
+});
 watch(
   clipSnapshot,
   () => {
@@ -659,6 +703,7 @@ watch(
     controller = new AbortController();
     haltPolling();
     pending.value = false;
+    projectActiveJobs.value = [];
     loading.value = false;
     sourceVerified.value = false;
     data.value = null;
@@ -915,6 +960,9 @@ onBeforeUnmount(() => {
             >
               {{ t("precision.modelSetup") }}
             </p>
+            <p v-if="otherProjectJob" class="editor-note" role="status">
+              {{ t("precision.projectJobBusy") }}
+            </p>
             <label class="editor-field"
               >{{ t("precision.language")
               }}<select v-model="language">
@@ -934,9 +982,8 @@ onBeforeUnmount(() => {
               class="editor-button primary"
               :disabled="
                 !providers?.transcription.available ||
-                pending ||
-                discoveringJobs ||
-                !!activeJobs.length
+                !hasSourceDuration ||
+                analysisBusy
               "
               @click="analyze('transcribe')"
             >
@@ -945,14 +992,14 @@ onBeforeUnmount(() => {
             <div class="editor-actions">
               <button
                 class="editor-button"
-                :disabled="pending || discoveringJobs || !!activeJobs.length"
+                :disabled="!hasSourceDuration || analysisBusy"
                 @click="analyze('waveform')"
               >
                 {{ t("precision.analyzeWaveform") }}</button
               ><button
                 v-if="asset!.mediaType === 'video'"
                 class="editor-button"
-                :disabled="pending || discoveringJobs || !!activeJobs.length"
+                :disabled="!hasSourceDuration || analysisBusy"
                 @click="analyze('scenes')"
               >
                 {{ t("precision.detectScenes") }}
@@ -997,7 +1044,7 @@ onBeforeUnmount(() => {
               {{ t("precision.noMarkers") }}
             </p>
             <div
-              v-for="marker in visibleMarkers"
+              v-for="marker in pageMarkers"
               :key="marker.id"
               class="precision-marker"
             >
@@ -1016,6 +1063,45 @@ onBeforeUnmount(() => {
                 @click="removeMarker(marker)"
               >
                 ×
+              </button>
+            </div>
+            <div
+              v-if="visibleMarkers.length > markerPageSize"
+              class="editor-actions"
+            >
+              <button
+                class="editor-button"
+                :disabled="markerPage === 0"
+                @click="markerPage = 0"
+              >
+                {{ t("precision.firstMarkersPage") }}
+              </button>
+              <button
+                class="editor-button"
+                :disabled="markerPage === 0"
+                @click="markerPage--"
+              >
+                {{ t("precision.previousMarkersPage") }}
+              </button>
+              <span role="status">{{
+                t("precision.markersPage", {
+                  page: formatNumber(markerPage + 1),
+                  pages: formatNumber(markerPages),
+                })
+              }}</span>
+              <button
+                class="editor-button"
+                :disabled="markerPage + 1 >= markerPages"
+                @click="markerPage++"
+              >
+                {{ t("precision.nextMarkersPage") }}
+              </button>
+              <button
+                class="editor-button"
+                :disabled="markerPage + 1 >= markerPages"
+                @click="markerPage = markerPages - 1"
+              >
+                {{ t("precision.lastMarkersPage") }}
               </button>
             </div>
           </section>
@@ -1258,17 +1344,29 @@ onBeforeUnmount(() => {
               {{ t("precision.split") }}</button
             ><button
               class="editor-button"
-              :disabled="!sourceVerified || pending"
+              :disabled="!hasSourceDuration || !sourceVerified || pending"
               @click="addMarker()"
             >
               {{ t("precision.addMarker") }}
             </button>
           </div>
+          <p v-if="!hasSourceDuration" class="editor-note">
+            {{ t("precision.durationUnavailable") }}
+          </p>
           <p v-if="clip?.locked" class="editor-note">
             {{ t("precision.locked") }}
           </p>
-          <p v-else-if="asset?.state.locked" class="editor-note">
+          <p
+            v-else-if="hasSourceDuration && asset?.state.locked"
+            class="editor-note"
+          >
             {{ t("precision.assetLocked") }}
+          </p>
+          <p
+            v-if="editable && !asset?.state.locked && crossfadeBlocksSplit"
+            class="editor-note"
+          >
+            {{ t("precision.splitCrossfade") }}
           </p>
           <p v-if="snapResult" class="precision-snap-result" role="status">
             {{

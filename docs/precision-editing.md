@@ -39,6 +39,12 @@ timeline clip is unlocked. Precision explains the source lock and disables both
 the Split action and B shortcut until it is unlocked in Library. Source locking
 does not disable a valid trim of an unlocked clip.
 
+Split also waits until the incoming crossfade has finished. The guard converts
+the source span through clip speed, matching the shared command's film-time
+transition constraint. Playback can use a saved clip range when source duration
+metadata is unavailable; trimming, splitting, adding markers and analysis wait
+for a finite positive duration recorded on the asset.
+
 The editor must flush pending work before operations that switch project or
 export. A failed/conflicting save remains visible and keeps the existing draft
 recovery behavior. Reopening the project loads the saved cut, not a separate
@@ -51,6 +57,16 @@ visible progress and cancellation. Analysis completion refreshes source evidence
 it does not edit the timeline. Read-only transcript segments and words act as
 seek targets, with page controls for long recordings. An unavailable Whisper
 model leaves source playback and normal editing usable.
+
+Analysis availability follows all active project jobs, including work on another
+source, import and rendering. The inspector shows job details for the selected
+source and explains when another task owns the project. It keeps polling until
+that task completes or is cancelled so analysis becomes available again.
+
+Marker controls show 100 rows per page with a full visible-range count and
+first/previous/next/last navigation. Paging limits DOM work without discarding
+scene/manual evidence used for seeking or snapping; the waveform overlay stays
+bounded separately.
 
 The source player and inspector remain available while navigating the precision
 view. Long transcript/marker lists scroll inside their own areas rather than

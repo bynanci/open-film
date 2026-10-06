@@ -13,6 +13,7 @@ import { ProviderRegistry } from "@openfilm/analysis";
 import type {
   TranscriptionOptions,
   TranscriptionProvider,
+  TranscriptionResult,
 } from "@openfilm/plugin-sdk";
 import { LocalWhisperProvider } from "@openfilm/provider-whisper";
 import {
@@ -31,9 +32,50 @@ export interface IntelligenceOptions extends TranscriptionOptions {
   onJob?: (job: Job) => void;
 }
 
+type TranscriptionMetadata = Pick<
+  TranscriptionResult,
+  "execution" | "model" | "version" | "language" | "fallbackReason"
+>;
+
+/** Plugins are runtime boundaries; adapter validation cannot protect other providers. */
+function transcriptionMetadata(value: unknown): TranscriptionMetadata {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new ApplicationError(
+      "media.transcriptionFailed",
+      "The transcription provider returned an invalid result.",
+    );
+  const result = value as Record<string, unknown>;
+  const metadata: TranscriptionMetadata = {};
+  for (const field of [
+    "model",
+    "version",
+    "language",
+    "fallbackReason",
+  ] as const) {
+    const text = result[field];
+    if (text === undefined) continue;
+    if (typeof text !== "string" || !text.trim())
+      throw new ApplicationError(
+        "media.transcriptionFailed",
+        `The transcription provider returned invalid ${field} metadata.`,
+      );
+    metadata[field] = text;
+  }
+  const execution = result.execution;
+  if (execution !== undefined) {
+    if (execution !== "cpu" && execution !== "gpu")
+      throw new ApplicationError(
+        "media.transcriptionFailed",
+        "The transcription provider returned an invalid execution mode.",
+      );
+    metadata.execution = execution;
+  }
+  return metadata;
+}
+
 /** Concrete local orchestration; portable results and provider ports remain shared. */
 export class MediaIntelligence {
-  private readonly registry = new ProviderRegistry();
+  private registry = new ProviderRegistry();
   private provider: TranscriptionProvider = new LocalWhisperProvider();
   private readonly identities = new Map<
     string,
@@ -45,8 +87,13 @@ export class MediaIntelligence {
   }
 
   registerTranscriptionProvider(provider: TranscriptionProvider): void {
-    this.registry.unregister(this.provider.id);
-    this.registry.register(provider);
+    // Validate before replacing the active registry. A failed plugin registration
+    // must preserve the working provider; successful replacement requires fresh consent.
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+    if (provider.kind !== "transcription")
+      throw new Error("A transcription provider must implement transcription.");
+    this.registry = registry;
     this.provider = provider;
   }
 
@@ -248,6 +295,11 @@ export class MediaIntelligence {
         const result = await this.registry.transcribe(provider.id, asset, {
           ...options,
           onStage: (stage) => {
+            if (!stages.includes(stage))
+              throw new ApplicationError(
+                "media.transcriptionFailed",
+                "The transcription provider reported an invalid stage.",
+              );
             job.stage = stage;
             job.progress = Math.max(
               job.progress ?? 0,
@@ -266,6 +318,7 @@ export class MediaIntelligence {
           },
         });
         checkAbort(options.signal);
+        const metadata = transcriptionMetadata(result);
         if (
           provider.capabilities?.wordTimestamps &&
           result.segments?.some((s) => s.text.trim() && !s.words?.length)
@@ -278,12 +331,12 @@ export class MediaIntelligence {
           {
             id: randomUUID(),
             assetId,
-            language: result.language,
+            language: metadata.language,
             provenance: {
               providerId: provider.id,
-              model: result.model,
+              model: metadata.model,
               version: "1",
-              providerVersion: result.version,
+              providerVersion: metadata.version,
               sourceHash,
               createdAt: new Date().toISOString(),
             },
@@ -301,10 +354,10 @@ export class MediaIntelligence {
           );
         await this.checkUnchanged(asset, sourceHash, options.signal);
         job.stage = "indexing";
-        job.execution = result.execution;
-        job.model = result.model;
-        job.language = result.language;
-        job.fallbackReason = result.fallbackReason;
+        job.execution = metadata.execution;
+        job.model = metadata.model;
+        job.language = metadata.language;
+        job.fallbackReason = metadata.fallbackReason;
         notify();
         checkAbort(options.signal);
         this.catalog.intelligence.replaceTranscript(document);

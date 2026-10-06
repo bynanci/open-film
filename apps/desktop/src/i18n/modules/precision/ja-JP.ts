@@ -11,6 +11,8 @@ export default {
     sourceUnavailable:
       "この素材は精密モードで再生できません。ストーリーモードでファイルを再接続してください。",
     sourcePreview: "精密ソースプレビュー",
+    durationUnavailable:
+      "この素材には有効な長さの情報がありません。トリム、分割、マーカー追加、解析の前に再インポートしてください。再生と素材内の移動は引き続き利用できます。",
     sourceTime: "素材 {time}",
     clipTime: "クリップ内 {time}",
     outsideClip: "選択中のクリップ範囲外",
@@ -45,10 +47,17 @@ export default {
     removeMarker: "{time} のマーカーを削除",
     noMarkers:
       "波形をダブルクリックするか M を押すと、素材にマーカーを追加できます。",
+    markersPage: "{pages} ページ中 {page} ページ",
+    firstMarkersPage: "マーカーの最初のページ",
+    previousMarkersPage: "マーカーの前のページ",
+    nextMarkersPage: "マーカーの次のページ",
+    lastMarkersPage: "マーカーの最後のページ",
     locked:
       "このクリップはロックされています。素材の移動と解析は利用できます。トリムや分割の前にロックを解除してください。",
     assetLocked:
       "この素材はライブラリでロックされています。分割するにはライブラリでロックを解除してください。トリムは引き続き利用できます。",
+    splitCrossfade:
+      "冒頭のクロスフェードが終わってから分割するか、ストーリーモードでカットに変更してください。",
     transcript: "文字起こし",
     transcriptHint:
       "素材の文字起こしは読み取り専用です。文章や単語を選んで移動できます。文字起こしで編集内容は変わりません。",
@@ -74,6 +83,8 @@ export default {
     analyzeWaveform: "波形を解析",
     detectScenes: "シーンの切り替わりを検出",
     modelReady: "ローカル文字起こしを利用できます",
+    projectJobBusy:
+      "このプロジェクトで別の処理が実行中です。完了してから解析を開始してください。",
     modelMissing: "ローカル文字起こしの設定が必要です",
     modelSetup:
       "OpenFilm の起動設定でローカル Whisper モデルを指定し、利用状況を更新してください。素材はこのコンピューター内に保持されます。",

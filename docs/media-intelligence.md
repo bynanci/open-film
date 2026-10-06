@@ -97,3 +97,10 @@ in browser tests. Such a run proves orchestration and timing interactions, not
 speech-recognition accuracy. Any actual Whisper CPU or GPU evidence must be
 recorded separately with model/runtime details; neither source review nor a
 fixture transcript is evidence of model execution.
+
+Third-party transcription results cross the same application validation boundary
+as the local adapter. Optional execution/model/version/language/fallback metadata
+is read once, validated and copied before durable job and transcript writes.
+Malformed output or progress stages cannot replace an existing transcript with a
+completed result. Provider replacement validates a fresh registry first; failed
+registration preserves the working provider and its consent state.

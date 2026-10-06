@@ -27,12 +27,12 @@ The existing regression gates also execute the new suites through CI:
 | Gate                               | Evidence                                                                                                                                                                                                   |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm format:check`                | **Passed.** Repository formatting check.                                                                                                                                                                   |
-| `pnpm test:i18n`                   | **Passed.** 857 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
+| `pnpm test:i18n`                   | **Passed.** 865 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
 | `pnpm lint`, `pnpm typecheck`      | **Passed.** TypeScript, Vue and strict lint checks.                                                                                                                                                        |
-| `pnpm test`                        | **Passed: 502 tests in 55 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
+| `pnpm test`                        | **Passed: 523 tests in 56 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
 | `pnpm build`                       | **Passed.** CLI/server bundles, Python sidecar copies and Desktop production build.                                                                                                                        |
 | `node scripts/smoke-built-cli.mjs` | **Passed.** Built CLI import/Story/Compose, real waveform/scenes, missing-model failure, protocol-fixture transcription, paged words, markers, reopen, MP4 and exports.                                    |
-| `pnpm test:e2e`                    | **Passed: 28 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus five Precision browser cases; the 500-clip regression remains green.                                 |
+| `pnpm test:e2e`                    | **Passed: 32 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus nine Precision browser cases; the 500-clip regression remains green.                                 |
 | `pnpm test:interchange`            | **Passed.** Official OpenTimelineIO 0.18.1 serialization/source validation and 18 offline workstation-helper regressions. Actual Resolve is not run.                                                       |
 | `pnpm test:native`                 | **Passed.** Rust formatting, Clippy and compile/test harness; the harness contains zero native behavior tests.                                                                                             |
 
@@ -42,6 +42,9 @@ checks on-demand transcription jobs, cancellation, returning to a source while
 its job runs, word seeking, snapped and keyboard trims, very short positive
 ranges, split/undo/redo, durable reopen and a real MP4 render. It compares original
 source hashes and checks that analysis does not change Story or film duration.
+Dense-marker, render-status and missing-duration browser response fixtures are
+explicitly identified UI stress/error inputs; they do not certify 20,000 real
+scene detections or camera metadata extraction.
 
 Transcript protocol tests explicitly return predetermined words. The optional
 engine's CPU fallback is exercised with offline test doubles, including GPU
@@ -74,6 +77,18 @@ Independent reviews and browser execution identified and corrected:
 - Library-locked assets offering Split even though the command rejects them;
   split availability and its keyboard guard now respect the source lock while
   preserving valid trim controls on unlocked clips.
+- Split points inside a retimed incoming crossfade being offered even though
+  the solver rejects them; UI availability uses the same film-time boundary.
+- Source-scoped job hydration enabling analysis while another source or project
+  task is active; analysis uses project-wide readiness while job details remain scoped.
+- Dense marker results creating up to 20,000 controls; the list is paged at 100
+  rows while retaining full evidence for snapping.
+- Missing duration metadata enabling operations that require a measured source;
+  playback remains available but editing, marker creation and analysis wait for metadata.
+- Generic plugin execution/fallback metadata entering durable jobs unchecked;
+  result metadata is validated and snapshotted, including before reopen.
+- Failed provider registration removing the prior working provider; replacement
+  is atomic and retains consent protection.
 
 Each correction has a protocol, integration, media or browser regression rather
 than only an interface declaration.
