@@ -263,15 +263,27 @@ export function useTranscriptEditor(
   }
   async function reconcile() {
     if (!hasPending.value) return load(state.value?.offset ?? 0, false);
+    // A newer server revision may be our own commit with an acknowledgment
+    // still in flight or lost. Confirm that exact receipt before comparing it
+    // with an unsent draft, so reconciliation never disables receipt retry.
+    if (saving || receipt) return false;
     const stamp = ++readGeneration;
+    const baseRevision = state.value?.revision;
+    const current = () =>
+      !disposed &&
+      stamp === readGeneration &&
+      hasPending.value &&
+      state.value?.revision === baseRevision &&
+      !saving &&
+      !receipt;
     try {
       const saved = await api.transcript(
         assetId,
         state.value?.offset ?? 0,
         100,
       );
-      if (disposed || stamp !== readGeneration) return false;
-      if (saved.revision !== state.value?.revision) {
+      if (!current()) return false;
+      if (saved.revision !== baseRevision) {
         status.value = "conflict";
         notice.value = "transcript.draftConflict";
         retain();
@@ -279,7 +291,7 @@ export function useTranscriptEditor(
       }
       return true;
     } catch (cause) {
-      if (!disposed && stamp === readGeneration) fail(cause);
+      if (current()) fail(cause);
       return false;
     }
   }
