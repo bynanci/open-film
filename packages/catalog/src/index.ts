@@ -15,6 +15,7 @@ import {
   CatalogKnowledgeStore,
   migrateKnowledgeSchema,
 } from "./knowledge-store.js";
+import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
 
 export * from "./transcript-editor-store.js";
 export * from "./knowledge-store.js";
@@ -203,9 +204,13 @@ export class ProjectCatalog {
         PRAGMA foreign_keys=ON;
         PRAGMA busy_timeout=5000;
       `);
-      // Verify the complete older schema before starting an additive migration.
-      // A malformed v2 database must not be relabeled as a healthy v3 project.
+      // Verify older schemas before migrating; missing tables must not be
+      // silently recreated and relabeled as a healthy project.
       if (version >= 2) new CatalogIntelligenceStore(this.database);
+      if (version >= 3) {
+        new CatalogTranscriptEditorStore(this.database);
+        new CatalogKnowledgeStore(this.database);
+      }
       if (version < CATALOG_SCHEMA_VERSION) {
         this.database.exec("BEGIN IMMEDIATE");
         try {
@@ -221,8 +226,11 @@ export class ProjectCatalog {
             CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
           `);
           if (version < 2) migrateIntelligenceSchema(this.database);
-          migrateTranscriptEditorSchema(this.database);
-          migrateKnowledgeSchema(this.database);
+          if (version < 3) {
+            migrateTranscriptEditorSchema(this.database);
+            migrateKnowledgeSchema(this.database);
+          }
+          migrateTranscriptSegmentIdentity(this.database);
           this.database.exec(
             `PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`,
           );

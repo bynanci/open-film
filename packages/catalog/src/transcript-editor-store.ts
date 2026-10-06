@@ -10,6 +10,7 @@ import {
   type TranscriptDocument,
   type TranscriptRevision,
 } from "@openfilm/core";
+import { transcriptSegmentKey } from "./transcript-segment-identity.js";
 
 export const TRANSCRIPT_HISTORY_LIMIT = 100;
 const PAGE_LIMIT = 200;
@@ -374,7 +375,7 @@ export class CatalogTranscriptEditorStore {
       .prepare(
         "SELECT position,data FROM intelligence_segments WHERE revision=? AND segment_id=?",
       )
-      .get(stored.revision!, segmentId);
+      .get(stored.revision!, transcriptSegmentKey(segmentId));
     if (!row)
       throw new ApplicationError(
         "transcript.segmentNotFound",
@@ -703,7 +704,7 @@ export class CatalogTranscriptEditorStore {
         insert.run(
           inserted.lastInsertRowid,
           position,
-          segment.id,
+          transcriptSegmentKey(segment.id),
           segment.start,
           segment.end,
           segment.text,

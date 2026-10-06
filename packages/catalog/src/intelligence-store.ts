@@ -10,8 +10,9 @@ import {
   type WaveformData,
 } from "@openfilm/core";
 import { recordTranscriptRevision } from "./transcript-editor-store.js";
+import { transcriptSegmentKey } from "./transcript-segment-identity.js";
 
-export const CATALOG_SCHEMA_VERSION = 3;
+export const CATALOG_SCHEMA_VERSION = 4;
 export const INTELLIGENCE_CACHE_VERSION = "1";
 export const TRANSCRIPT_PAGE_LIMIT = 200;
 
@@ -277,7 +278,7 @@ export class CatalogIntelligenceStore {
         insert.run(
           inserted.lastInsertRowid,
           position,
-          segment.id,
+          transcriptSegmentKey(segment.id),
           segment.start,
           segment.end,
           segment.text,

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
-import { ProjectCatalog } from "../src/index";
+import { CATALOG_SCHEMA_VERSION, ProjectCatalog } from "../src/index";
 
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
@@ -127,7 +127,9 @@ it("upgrades real v2 transcript tables transactionally without rebuilding analys
   );
   const database = new DatabaseSync(legacy.path);
   try {
-    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(
+      CATALOG_SCHEMA_VERSION,
+    );
     expect(
       database
         .prepare("SELECT header FROM intelligence_transcripts WHERE revision=1")
@@ -215,7 +217,9 @@ it("rejects corrupt v2 before migration and rejects incomplete v3 or future cata
     "transcript_edit_requests",
   );
   database = new DatabaseSync(legacy.path);
-  expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+  expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(
+    CATALOG_SCHEMA_VERSION,
+  );
   database.exec("PRAGMA user_version=99");
   database.close();
   expect(() => new ProjectCatalog(legacy.directory)).toThrow(
