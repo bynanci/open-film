@@ -465,16 +465,15 @@ export class KnowledgeService {
         "Review batch size must be between 1 and 100.",
       );
     const selected = options.segmentIds;
+    const availableIds = selected
+      ? new Set(segments.map((segment) => segment.id))
+      : undefined;
     if (
       selected &&
       (!Array.isArray(selected) ||
         selected.length > 10000 ||
         new Set(selected).size !== selected.length ||
-        selected.some(
-          (id) =>
-            typeof id !== "string" ||
-            !segments.some((segment) => segment.id === id),
-        ))
+        selected.some((id) => typeof id !== "string" || !availableIds!.has(id)))
     )
       throw new ApplicationError(
         "request.invalid",

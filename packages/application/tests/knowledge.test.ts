@@ -138,6 +138,122 @@ async function fixture(
 }
 
 describe("offline terminology, revisions and durable review", () => {
+  it("validates 10,000 selected segments with a linear number of ID reads", async () => {
+    const count = 10000;
+    const context = await fixture(
+      Array.from({ length: count }, (_, index) => `Memory ${index}`),
+    );
+    const { app, knowledge, editor } = context;
+    const initial = await editor.get("source", { limit: 1 });
+    const full = app.catalog.transcripts.getFull.bind(app.catalog.transcripts);
+    let idReads = 0;
+    let preparationReads: number | undefined;
+    // Observe only the first real catalog snapshot used to prepare the review.
+    // Operation counts, rather than elapsed time, catch a nested selection scan.
+    vi.spyOn(app.catalog.transcripts, "getFull").mockImplementationOnce(
+      (...args) => {
+        const result = full(...args);
+        for (const segment of result!.document.segments) {
+          const id = segment.id;
+          Object.defineProperty(segment, "id", {
+            enumerable: true,
+            get() {
+              idReads++;
+              return id;
+            },
+          });
+        }
+        return result;
+      },
+    );
+    const ids = Array.from({ length: count }, (_, index) => `segment-${index}`);
+    const job = await knowledge.glossaryReview("source", {
+      segmentIds: [...ids].reverse(),
+      batchSize: 100,
+      onJob() {
+        preparationReads ??= idReads;
+      },
+    });
+    expect(job.status).toBe("completed");
+    expect(preparationReads).toBeGreaterThanOrEqual(count);
+    expect(preparationReads).toBeLessThanOrEqual(count * 3);
+    const batches = knowledge.batches(job.id);
+    expect(batches).toHaveLength(100);
+    expect(batches.flatMap((batch) => batch.segmentIds)).toEqual(ids);
+    expect(batches.every((batch) => batch.status === "completed")).toBe(true);
+    expect((await knowledge.suggestionsList("source")).total).toBe(0);
+    expect((await editor.get("source", { limit: 1 })).revision).toBe(
+      initial.revision,
+    );
+    expect(await hashFile(join(context.root, "source.wav"))).toBe(
+      context.sourceHash,
+    );
+  });
+  it("rejects invalid selections and keeps empty, omitted and opaque-ID selections exact and private", async () => {
+    const context = await fixture([
+      "Share this",
+      "Private words",
+      "Also share",
+    ]);
+    const { knowledge, editor, app } = context;
+    const before = await editor.get("source");
+    const ids = [
+      "legacy\u0000\ud800識別",
+      "legacy\u0000\ufffd識別",
+      "長".repeat(300),
+    ];
+    app.catalog.intelligence.replaceTranscript({
+      ...before.document!,
+      id: "selected-opaque-revision",
+      segments: before.document!.segments.map((segment, index) => ({
+        ...segment,
+        id: ids[index]!,
+      })),
+    });
+    const generate = vi.fn<LanguageProvider["generate"]>(
+      async () => '{"suggestions":[]}',
+    );
+    knowledge.registerLanguageProvider(languageProvider(generate));
+    const jobsBefore = app.catalog.listJobs();
+    for (const segmentIds of [
+      [ids[0]!, ids[0]!],
+      [ids[0]!, "missing"],
+      Array.from({ length: 10001 }, (_, index) => String(index)),
+      [42],
+      "not-an-array",
+    ]) {
+      await expect(
+        knowledge.languageReview("source", {
+          segmentIds: segmentIds as string[],
+        }),
+      ).rejects.toMatchObject({ code: "request.invalid" });
+    }
+    expect(app.catalog.listJobs()).toEqual(jobsBefore);
+    expect(generate).not.toHaveBeenCalled();
+    const empty = await knowledge.languageReview("source", { segmentIds: [] });
+    expect(empty.status).toBe("completed");
+    expect(knowledge.batches(empty.id)).toEqual([]);
+    expect(generate).not.toHaveBeenCalled();
+    const selected = await knowledge.languageReview("source", {
+      segmentIds: [ids[2]!, ids[0]!],
+    });
+    expect(selected.status).toBe("completed");
+    expect(generate).toHaveBeenCalledTimes(1);
+    const selectedPayload = payload(generate.mock.calls[0]![0]);
+    expect(selectedPayload.segments).toEqual([
+      { segmentId: ids[0], text: "Share this" },
+      { segmentId: ids[2], text: "Also share" },
+    ]);
+    expect(generate.mock.calls[0]![0]).not.toContain("Private words");
+    const all = await knowledge.languageReview("source");
+    expect(all.status).toBe("completed");
+    expect(
+      payload(generate.mock.calls[1]![0]).segments.map((row) => row.segmentId),
+    ).toEqual(ids);
+    expect(
+      (await editor.get("source")).document?.segments.map((row) => row.text),
+    ).toEqual(["Share this", "Private words", "Also share"]);
+  });
   it("pages and stales suggestions from a 10,000-segment persisted transcript without materializing its full document", async () => {
     const context = await fixture(
       Array.from(
