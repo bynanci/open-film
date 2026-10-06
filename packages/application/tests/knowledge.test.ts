@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Job, MediaAsset } from "@openfilm/core";
 import type { LanguageProvider } from "@openfilm/plugin-sdk";
 import { hashFile } from "@openfilm/media";
+import { ProjectCatalog } from "@openfilm/catalog";
 import { OpenFilmApplication } from "../src/index.js";
 import { TranscriptEditor } from "../src/transcript-editor.js";
 import { KnowledgeService } from "../src/knowledge.js";
@@ -137,6 +138,88 @@ async function fixture(
 }
 
 describe("offline terminology, revisions and durable review", () => {
+  it.each(["retry", "skip"] as const)(
+    "terminalizes an oversized glossary batch and allows offline %s without dropping completed results",
+    async (action) => {
+      const context = await fixture(["youtube", "x".repeat(19999), "youtube"]);
+      const { knowledge, editor } = context;
+      knowledge.glossaryUpsert({
+        source: "youtube",
+        replacement: "YouTube",
+        scope: "project",
+      });
+      knowledge.glossaryUpsert({
+        source: "x",
+        replacement: "xx",
+        scope: "project",
+      });
+      const original = await editor.get("source");
+      const job = await knowledge.glossaryReview("source", { batchSize: 1 });
+      expect(job.status).toBe("failed");
+      expect(knowledge.batches(job.id).map((batch) => batch.status)).toEqual([
+        "completed",
+        "failed",
+        "cancelled",
+      ]);
+      expect(knowledge.batches(job.id)[1]?.error).toMatch(/exceed/);
+      const completed = (await knowledge.suggestionsList("source")).suggestions;
+      expect(completed).toHaveLength(1);
+      expect((await editor.get("source")).revision).toBe(original.revision);
+      await context.reopen();
+      expect(
+        context.knowledge.batches(job.id).map((batch) => batch.status),
+      ).toEqual(["completed", "failed", "cancelled"]);
+      if (action === "retry") {
+        expect((await context.knowledge.retryBatch(job.id, 1)).status).toBe(
+          "failed",
+        );
+        expect(context.knowledge.batches(job.id)[1]?.status).toBe("failed");
+        expect(context.knowledge.batches(job.id)[1]?.attempts).toBe(2);
+        context.knowledge.glossaryUpsert({
+          source: "x",
+          replacement: "x",
+          scope: "project",
+        });
+        expect(context.knowledge.languageProvider().configured).toBe(false);
+        expect((await context.knowledge.retryBatch(job.id, 1)).status).toBe(
+          "cancelled",
+        );
+        expect(context.knowledge.batches(job.id)[1]?.attempts).toBe(3);
+        expect((await context.knowledge.retryBatch(job.id, 2)).status).toBe(
+          "completed",
+        );
+        expect((await context.knowledge.suggestionsList("source")).total).toBe(
+          2,
+        );
+      } else {
+        expect(context.knowledge.skipBatch(job.id, 1).status).toBe("skipped");
+        expect(context.knowledge.skipBatch(job.id, 2).status).toBe("skipped");
+        expect(
+          context.app.catalog.listJobs().find((row) => row.id === job.id)
+            ?.status,
+        ).toBe("completed");
+      }
+      expect(
+        context.app.catalog.knowledge.getSuggestion(completed[0]!.id),
+      ).toEqual(completed[0]);
+      expect((await context.editor.get("source")).revision).toBe(
+        original.revision,
+      );
+      await context.reopen();
+      expect(
+        context.knowledge
+          .batches(job.id)
+          .some((batch) =>
+            ["pending", "running", "failed", "cancelled"].includes(
+              batch.status,
+            ),
+          ),
+      ).toBe(false);
+      expect(
+        context.app.catalog.knowledge.getSuggestion(completed[0]!.id),
+      ).toEqual(completed[0]);
+    },
+  );
   it("claims an exact queued HTTP reservation while rejecting mismatched, active and reused jobs", async () => {
     const { knowledge, app } = await fixture();
     app.catalog.saveJob({
@@ -469,6 +552,90 @@ describe("offline terminology, revisions and durable review", () => {
 });
 
 describe("optional provider review, privacy and recoverable batches", () => {
+  it.each(["queued", "running"] as const)(
+    "recovers an actual reopened catalog containing an interrupted %s review and preserves completed suggestions",
+    async (status) => {
+      const context = await fixture();
+      const { knowledge, editor, app } = context;
+      knowledge.registerLanguageProvider(
+        languageProvider(async (prompt) => correction(prompt)),
+      );
+      const job = await knowledge.languageReview("source", {
+        segmentIds: ["segment-0"],
+      });
+      const completed = (await knowledge.suggestionsList("source"))
+        .suggestions[0]!;
+      const completedBatch = knowledge.batches(job.id)[0]!;
+      app.catalog.saveJob({ ...job, status });
+      app.catalog.knowledge.saveBatch({
+        ...completedBatch,
+        index: 1,
+        segmentIds: ["segment-1"],
+        status: "running",
+        attempts: 1,
+      });
+      app.catalog.knowledge.saveBatch({
+        ...completedBatch,
+        index: 2,
+        segmentIds: ["segment-2"],
+        status: "pending",
+        attempts: 0,
+      });
+      app.catalog.saveJob({
+        id: "unrelated-render",
+        type: "render",
+        status: "running",
+      });
+      // A fresh SQLite connection reads persisted crash checkpoints before the
+      // application's generic job normalization can conceal a recovery defect.
+      const reopened = new ProjectCatalog(app.directory);
+      try {
+        const recovered = new KnowledgeService(reopened, editor, {
+          userDataDirectory: join(context.root, "user-data"),
+        });
+        expect(
+          reopened.listJobs().find((row) => row.id === job.id)?.status,
+        ).toBe(status);
+        recovered.recoverInterruptedReviews();
+        expect(
+          reopened.listJobs().find((row) => row.id === job.id)?.status,
+        ).toBe("failed");
+        expect(
+          reopened.listJobs().find((row) => row.id === "unrelated-render")
+            ?.status,
+        ).toBe("running");
+        expect(recovered.batches(job.id).map((batch) => batch.status)).toEqual([
+          "completed",
+          "cancelled",
+          "cancelled",
+        ]);
+        expect(recovered.batches(job.id)[0]).toEqual(completedBatch);
+        expect(reopened.knowledge.getSuggestion(completed.id)).toEqual(
+          completed,
+        );
+        recovered.registerLanguageProvider(
+          languageProvider(async (prompt) => correction(prompt)),
+        );
+        expect((await recovered.retryBatch(job.id, 1)).status).toBe(
+          "cancelled",
+        );
+        expect(recovered.skipBatch(job.id, 2).status).toBe("skipped");
+        expect(
+          reopened.listJobs().find((row) => row.id === job.id)?.status,
+        ).toBe("completed");
+        expect((await recovered.suggestionsList("source")).total).toBe(2);
+      } finally {
+        reopened.close();
+      }
+      await context.reopen();
+      expect(
+        context.knowledge.batches(job.id).map((batch) => batch.status),
+      ).toEqual(["completed", "completed", "skipped"]);
+      expect(context.app.catalog.knowledge.getSuggestion(completed.id)).toEqual(
+        completed,
+      );
+    },
+  );
   it.each(["never", "resolve", "reject"] as const)(
     "cancels a provider that ignores AbortSignal and safely discards a late %s",
     async (outcome) => {

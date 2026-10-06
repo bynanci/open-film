@@ -343,43 +343,29 @@ export class KnowledgeService {
     const match = compileGlossaryMatcher(this.glossaryList());
     const chunks = this.partition(current.document.segments, options);
     const job = this.start(assetId, "glossary-review", options);
+    const batches = chunks.map((segments, index): ReviewBatch => ({
+      jobId: job.id,
+      index,
+      assetId,
+      sourceRevisionId: current.revision,
+      providerId: "glossary",
+      segmentIds: segments.map((segment) => segment.id),
+      status: "pending",
+      attempts: 0,
+    }));
+    for (const batch of batches) this.catalog.knowledge.saveBatch(batch);
     job.status = "running";
     this.notify(job, options);
     try {
-      for (let index = 0; index < chunks.length; index++) {
-        abort(options.signal);
-        const segments = chunks[index]!;
-        const batch: ReviewBatch = {
-          jobId: job.id,
-          index,
-          assetId,
-          sourceRevisionId: current.revision,
-          providerId: "glossary",
-          segmentIds: segments.map((segment) => segment.id),
-          status: "running",
-          attempts: 1,
-        };
-        this.catalog.knowledge.saveBatch(batch);
-        const suggestions: ReviewSuggestion[] = [];
-        for (const segment of segments) {
-          const result = match(segment.text);
-          if (result.text === segment.text) continue;
-          const ids = [
-            ...new Set(result.matches.map((item) => item.entryId)),
-          ].sort();
-          suggestions.push(
-            this.suggestion(
-              assetId,
-              segment,
-              result.text,
-              "Matches your enabled glossary terms.",
-              current.revision,
-              { type: "glossary", id: ids.join(",").slice(0, 256) },
-            ),
-          );
-        }
-        this.catalog.knowledge.completeBatch(batch, suggestions);
-        job.progress = (index + 1) / Math.max(1, chunks.length);
+      for (const batch of batches) {
+        this.processGlossaryBatch(
+          batch,
+          current,
+          options,
+          match,
+          chunks[batch.index],
+        );
+        job.progress = (batch.index + 1) / Math.max(1, batches.length);
         this.notify(job, options);
         await setImmediate();
         const latest = await this.current(assetId);
@@ -393,10 +379,62 @@ export class KnowledgeService {
       job.status = "completed";
       job.progress = 1;
     } catch (error) {
+      const cancelled =
+        options.signal?.aborted ||
+        (error instanceof Error && error.name === "AbortError");
       this.finishFailure(job, error, options.signal);
+      for (const batch of this.catalog.knowledge.batches(job.id)) {
+        if (!["pending", "running"].includes(batch.status)) continue;
+        this.catalog.knowledge.saveBatch({
+          ...batch,
+          status:
+            cancelled || batch.status === "pending" ? "cancelled" : "failed",
+          error: errorInfo(error, "review.invalidOutput").detail,
+        });
+      }
     }
     this.notify(job, options);
     return job;
+  }
+
+  private processGlossaryBatch(
+    batch: ReviewBatch,
+    current: { document: TranscriptDocument; revision: string },
+    options: ReviewOptions,
+    match = compileGlossaryMatcher(this.glossaryList()),
+    selectedSegments?: TranscriptSegment[],
+  ) {
+    abort(options.signal);
+    const running = {
+      ...batch,
+      status: "running" as const,
+      attempts: batch.attempts + 1,
+      error: undefined,
+    };
+    this.catalog.knowledge.saveBatch(running);
+    const ids = new Set(batch.segmentIds);
+    const suggestions: ReviewSuggestion[] = [];
+    const segments =
+      selectedSegments ??
+      current.document.segments.filter((segment) => ids.has(segment.id));
+    for (const segment of segments) {
+      const result = match(segment.text);
+      if (result.text === segment.text) continue;
+      const entryIds = [
+        ...new Set(result.matches.map((item) => item.entryId)),
+      ].sort();
+      suggestions.push(
+        this.suggestion(
+          batch.assetId,
+          segment,
+          result.text,
+          "Matches your enabled glossary terms.",
+          current.revision,
+          { type: "glossary", id: entryIds.join(",").slice(0, 256) },
+        ),
+      );
+    }
+    this.catalog.knowledge.completeBatch(running, suggestions);
   }
 
   private partition(
@@ -711,16 +749,21 @@ export class KnowledgeService {
         "This batch belongs to an older transcript revision.",
         409,
       );
-    const readiness = this.languageProvider();
-    if (!readiness.available || readiness.provider?.id !== batch.providerId)
-      throw new ApplicationError(
-        "review.providerUnavailable",
-        "The original review provider must be configured and authorized.",
-      );
+    const glossary =
+      job.type === "glossary-review" && batch.providerId === "glossary";
+    if (!glossary) {
+      const readiness = this.languageProvider();
+      if (!readiness.available || readiness.provider?.id !== batch.providerId)
+        throw new ApplicationError(
+          "review.providerUnavailable",
+          "The original review provider must be configured and authorized.",
+        );
+    }
     job.status = "running";
     this.notify(job, options);
     try {
-      await this.processBatch(batch, current, options, this.registry);
+      if (glossary) this.processGlossaryBatch(batch, current, options);
+      else await this.processBatch(batch, current, options, this.registry);
       job.status = this.batchJobStatus(jobId);
     } catch (error) {
       this.catalog.knowledge.saveBatch({
@@ -767,11 +810,24 @@ export class KnowledgeService {
   }
   recoverInterruptedReviews() {
     for (const job of this.catalog.listJobs()) {
-      if (
-        !["language-review", "glossary-review"].includes(job.type) ||
-        ["queued", "running"].includes(job.status)
-      )
-        continue;
+      if (!["language-review", "glossary-review"].includes(job.type)) continue;
+      // This is a startup-only operation: no in-process task owns these persisted jobs.
+      if (["queued", "running"].includes(job.status))
+        this.catalog.saveJob({
+          ...job,
+          status: "failed",
+          stage: "interrupted",
+          updatedAt: new Date().toISOString(),
+          errors: [
+            ...(job.errors ?? []),
+            {
+              uri: "",
+              stage: "interrupted",
+              message:
+                "The previous process stopped. Retry unfinished review batches; completed suggestions remain available.",
+            },
+          ],
+        });
       for (const batch of this.catalog.knowledge.batches(job.id))
         if (["pending", "running"].includes(batch.status))
           this.catalog.knowledge.saveBatch({
