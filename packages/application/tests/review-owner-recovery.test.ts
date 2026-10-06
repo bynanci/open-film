@@ -459,6 +459,90 @@ describe("review recovery respects durable execution ownership", () => {
     },
   );
 
+  it("recovers an unknown owner only after explicit confirmation against the exact checkpoint", async () => {
+    const context = await fixture();
+    const state = await context.app.transcriptEditor.get("source");
+    const owner = createReviewOwner();
+    const job: Job = {
+      id: "manual-recovery",
+      type: "language-review",
+      assetId: "source",
+      status: "running",
+      reviewOwner: { ...owner, host: owner.host + ":foreign" },
+      createdAt: "2026-10-06T00:00:00Z",
+      updatedAt: "2026-10-06T00:01:00Z",
+    };
+    context.app.catalog.saveJob(job);
+    const completed: ReviewBatch = {
+      jobId: job.id,
+      index: 0,
+      assetId: "source",
+      sourceRevisionId: state.revision!,
+      providerId: "owner-fixture",
+      segmentIds: ["segment-0"],
+      status: "completed",
+      attempts: 1,
+    };
+    const running: ReviewBatch = {
+      ...completed,
+      index: 1,
+      segmentIds: ["segment-1"],
+      status: "running",
+    };
+    const pending: ReviewBatch = {
+      ...completed,
+      index: 2,
+      segmentIds: ["segment-2"],
+      status: "pending",
+      attempts: 0,
+    };
+    for (const batch of [completed, running, pending])
+      context.app.catalog.knowledge.saveBatch(batch);
+
+    const status = context.app.knowledge.reviewRecoveryStatus(job.id);
+    expect(status).toEqual({
+      jobId: job.id,
+      ownerState: "unknown",
+      manualRecoveryAllowed: true,
+      ownerToken: job.reviewOwner!.token,
+      updatedAt: job.updatedAt,
+    });
+    expect(() =>
+      context.app.knowledge.manualRecoverReview(job.id, {
+        confirmStopped: false,
+        ownerToken: status.ownerToken,
+        updatedAt: status.updatedAt,
+      }),
+    ).toThrow(/Confirm/);
+    expect(() =>
+      context.app.knowledge.manualRecoverReview(job.id, {
+        confirmStopped: true,
+        ownerToken: "stale-owner",
+        updatedAt: status.updatedAt,
+      }),
+    ).toThrow(/changed/);
+
+    const recovered = context.app.knowledge.manualRecoverReview(job.id, {
+      confirmStopped: true,
+      ownerToken: status.ownerToken,
+      updatedAt: status.updatedAt,
+    });
+    expect(recovered).toMatchObject({
+      id: job.id,
+      status: "failed",
+      stage: "interrupted",
+      reviewOwner: job.reviewOwner,
+    });
+    expect(
+      context.app.knowledge.batches(job.id).map((batch) => batch.status),
+    ).toEqual(["completed", "cancelled", "cancelled"]);
+    expect(context.app.knowledge.batches(job.id)[0]).toEqual(completed);
+    expect(context.app.knowledge.reviewRecoveryStatus(job.id)).toMatchObject({
+      manualRecoveryAllowed: false,
+      ownerState: "unknown",
+    });
+  });
+
   it("rejects invalid requested job IDs before creating owned review jobs or invoking a provider", async () => {
     const context = await fixture();
     const generate = vi.fn<LanguageProvider["generate"]>(
