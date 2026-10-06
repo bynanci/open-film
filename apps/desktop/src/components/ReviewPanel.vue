@@ -626,19 +626,68 @@ onBeforeUnmount(() => {
         {{ t("transcript.revokeConsent") }}
       </button>
     </template>
-    <p v-if="active" role="status">
+    <p
+      v-if="active && !activeRecovery?.manualRecoveryAllowed"
+      role="status"
+    >
       {{ t("transcript.reviewRunning") }}
       {{ formatNumber(Math.round((active.progress ?? 0) * 100)) }}%
     </p>
-    <button v-if="active" class="editor-button" @click="cancel">
+    <button
+      v-if="active && !activeRecovery?.manualRecoveryAllowed"
+      class="editor-button"
+      @click="cancel"
+    >
       {{ t("transcript.cancelReview") }}
     </button>
     <p v-if="lastJob?.status === 'cancelled'" class="editor-note">
       {{ t("transcript.reviewPartial") }}
     </p>
-    <h3 v-if="recoverableBatches.length || recoveryPages > 1">
+    <h3
+      v-if="
+        manualRecoveryJobs.length ||
+        recoverableBatches.length ||
+        recoveryPages > 1
+      "
+    >
       {{ t("transcript.unfinishedReviews") }}
     </h3>
+    <div
+      v-for="job in manualRecoveryJobs"
+      :key="`manual-recovery:${job.id}`"
+      class="editor-error"
+      data-testid="review-owner-recovery"
+      :data-job-id="job.id"
+    >
+      <p>{{ t("transcript.interruptedReview") }}</p>
+      <template v-if="recoveryConfirmJobId === job.id">
+        <p>{{ t("transcript.recoverReviewConfirm") }}</p>
+        <div class="editor-actions">
+          <button
+            class="editor-button primary"
+            :disabled="busy"
+            @click="recoverInterrupted(job)"
+          >
+            {{ t("transcript.confirmStopped") }}
+          </button>
+          <button
+            class="editor-button"
+            :disabled="busy"
+            @click="recoveryConfirmJobId = ''"
+          >
+            {{ t("transcript.cancelRecovery") }}
+          </button>
+        </div>
+      </template>
+      <button
+        v-else
+        class="editor-button"
+        :disabled="busy"
+        @click="recoveryConfirmJobId = job.id"
+      >
+        {{ t("transcript.recoverReview") }}
+      </button>
+    </div>
     <p
       v-if="recoveryPages > 1 && !recoverableBatches.length && !recoveryLoading"
       class="editor-note"
