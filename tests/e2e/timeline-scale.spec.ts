@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, uiText } from "./ui-helpers.js";
 import { link, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -125,7 +125,43 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
         decodeURIComponent(path.slice("/api/source/".length)),
       );
   });
+  // Project data makes the navigation visible before the boot-time source check
+  // finishes. Keep that real request pending to exercise slower startup (as on
+  // CI): navigation must advertise its disabled state instead of dropping clicks.
+  let releaseStatus!: () => void;
+  const statusGate = new Promise<void>((resolve) => {
+    releaseStatus = resolve;
+  });
+  let signalStatus!: () => void;
+  const statusStarted = new Promise<void>((resolve) => {
+    signalStatus = resolve;
+  });
+  await page.route(
+    "**/api/media/status",
+    async (route) => {
+      signalStatus();
+      await statusGate;
+      await route.continue();
+    },
+    { times: 1 },
+  );
   await page.goto("/");
+  await statusStarted;
+  const editTab = page
+    .getByRole("navigation", {
+      name: uiText("en-US", "app.navigation.label"),
+      exact: true,
+    })
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.edit"),
+      exact: true,
+    });
+  try {
+    await expect(editTab).toBeDisabled();
+  } finally {
+    releaseStatus();
+  }
+  await expect(editTab).toBeEnabled();
   await navigate(page, "edit");
   const editor = page.getByRole("region", {
     name: "Composition timeline",

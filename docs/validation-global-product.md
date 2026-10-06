@@ -96,6 +96,14 @@ localized inline messages instead of browser-language native popups. The affecte
 Traditional Chinese full workflow passed again with new empty-name and invalid-
 duration assertions; the repository gates and PR CI cover the resulting candidate.
 
+The first remote push and PR runs each passed 17 browser cases but failed the
+500-clip case. Holding the real startup availability request reproduced the
+failure: navigation appeared enabled before boot finished, while its handler
+discarded clicks during the busy state. Navigation now exposes that disabled
+state. The regression gates and releases the actual request, then retains all
+500-clip assertions. Five focused repetitions and the full 18-case suite passed
+with `CI=1`; subsequent PR checks record remote verification of the fix.
+
 Screenshots and generated MP4 files live under `test-results/` during execution
 and in CI's `browser-test-results` artifact. The local complete-run archive is
 `/tmp/openfilm-global-browser-final`; these generated outputs are not committed.

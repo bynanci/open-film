@@ -1161,7 +1161,7 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
-          :disabled="relinkBusy"
+          :disabled="!!busy || relinkBusy"
           @click="changeTab(item)"
         >
           {{ t(`app.navigation.${item}`) }}
