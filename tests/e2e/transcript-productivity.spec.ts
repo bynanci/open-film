@@ -1513,6 +1513,433 @@ test("opaque legacy transcript IDs preserve seeking, text edits, search and row 
   await unchangedSource();
 });
 
+test("rapid transcript history and restoration preserve one lost acknowledgment receipt through reload and explicit retry", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "History receipt ownership",
+  );
+  const initial = await transcribe(request, asset.id);
+  const projectId = (await project(request)).id;
+  const storageKey = `openfilm:transcript:${projectId}:${asset.id}`;
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  type HistoryPacket = {
+    baseRevision: string;
+    requestId: string;
+    revisionId?: string;
+  };
+  const transmissions: {
+    direction: "undo" | "redo" | "select";
+    packet: HistoryPacket;
+    status: number;
+    state: TranscriptState;
+  }[] = [];
+  const lost = new Set<"undo" | "redo" | "select">();
+  const historyReads = new Set<Promise<void>>();
+  const pattern = `**/api/assets/${asset.id}/transcript/{undo,redo,select}`;
+  const handler: Parameters<Page["route"]>[1] = (route) => {
+    const read = (async () => {
+      const direction = new URL(route.request().url()).pathname
+        .split("/")
+        .at(-1) as "undo" | "redo" | "select";
+      const packet = route.request().postDataJSON() as HistoryPacket;
+      const response = await route.fetch();
+      expect(response.status(), await response.text()).toBe(200);
+      const state = (await response.json()) as TranscriptState;
+      transmissions.push({
+        direction,
+        packet,
+        status: response.status(),
+        state,
+      });
+      if (!lost.has(direction)) {
+        // The real SQLite history operation commits before its ACK is lost.
+        lost.add(direction);
+        await route.abort("failed");
+      } else await route.fulfill({ response });
+    })();
+    historyReads.add(read);
+    return read.finally(() => historyReads.delete(read));
+  };
+  await page.route(pattern, handler);
+  const manual =
+    "One manual correction precedes exactly one history operation.";
+  let failure: { error: unknown } | undefined;
+  try {
+    await withHeldTranscriptSave(page, asset.id, async (held) => {
+      await field(page).fill(manual);
+      await expect.poll(() => held.packets.length).toBe(1);
+      await expect(button(page, "undo")).toBeEnabled();
+      const undoBox = await button(page, "undo").boundingBox();
+      const redoBox = await button(page, "redo").boundingBox();
+      expect(undoBox).not.toBeNull();
+      expect(redoBox).not.toBeNull();
+      // Genuine pointer events respect disabled controls after the first intent.
+      for (let index = 0; index < 2; index++)
+        await page.mouse.click(
+          undoBox!.x + undoBox!.width / 2,
+          undoBox!.y + undoBox!.height / 2,
+        );
+      await page.mouse.click(
+        redoBox!.x + redoBox!.width / 2,
+        redoBox!.y + redoBox!.height / 2,
+      );
+      await expect(button(page, "undo")).toBeDisabled();
+      await expect(button(page, "redo")).toBeDisabled();
+      expect(transmissions).toEqual([]);
+      expect((await transcript(request, asset.id)).revision).toBe(
+        initial.revision,
+      );
+      held.release();
+      await expect.poll(() => held.responses.length).toBe(1);
+      expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
+      await expect(page.getByTestId("transcript-save-state")).toHaveText(
+        t("failed"),
+      );
+      expect(transmissions).toHaveLength(1);
+      expect(transmissions[0]?.direction).toBe("undo");
+      expect(transmissions[0]?.packet.baseRevision).toBe(
+        JSON.parse(held.responses[0]!.body).revision,
+      );
+    });
+    const undo = transmissions[0]!;
+    expect(Object.keys(undo.packet).sort()).toEqual([
+      "baseRevision",
+      "requestId",
+    ]);
+    expect(undo.state.document?.segments).toEqual(initial.document?.segments);
+    const durableUndo = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!),
+      storageKey,
+    );
+    expect(durableUndo.pending).toEqual([]);
+    expect(durableUndo.receipt).toEqual({ ...undo.packet, direction: "undo" });
+    expect((await transcript(request, asset.id)).revision).toBe(
+      undo.state.revision,
+    );
+    expect(
+      (
+        await get<{ total: number }>(
+          request,
+          `/assets/${asset.id}/transcript/revisions?limit=100`,
+        )
+      ).total,
+    ).toBe(3);
+    // Reload is a real browser restart of the editor; recovery replays exactly
+    // the committed packet instead of inventing another history request.
+    await page.reload();
+    await transcriptMode(page);
+    await saved(page);
+    await selectRow(page);
+    await expect(field(page)).toHaveValue(initial.document!.segments[0]!.text);
+    expect(transmissions).toHaveLength(2);
+    expect(transmissions[1]?.packet).toEqual(undo.packet);
+    expect(transmissions[1]?.direction).toBe("undo");
+    expect((await transcript(request, asset.id)).revision).toBe(
+      undo.state.revision,
+    );
+    expect(
+      await page.evaluate((key) => localStorage.getItem(key), storageKey),
+    ).toBeNull();
+    await expect(button(page, "redo")).toBeEnabled();
+    const redoBox = await button(page, "redo").boundingBox();
+    expect(redoBox).not.toBeNull();
+    for (let index = 0; index < 2; index++)
+      await page.mouse.click(
+        redoBox!.x + redoBox!.width / 2,
+        redoBox!.y + redoBox!.height / 2,
+      );
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("failed"),
+    );
+    expect(transmissions).toHaveLength(3);
+    const redo = transmissions[2]!;
+    expect(redo.direction).toBe("redo");
+    expect(redo.packet.baseRevision).toBe(undo.state.revision);
+    expect(redo.state.document?.segments[0]?.text).toBe(manual);
+    const durableRedo = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!),
+      storageKey,
+    );
+    expect(durableRedo.pending).toEqual([]);
+    expect(durableRedo.receipt).toEqual({ ...redo.packet, direction: "redo" });
+    await button(page, "retrySave").click();
+    await saved(page);
+    await expect(field(page)).toHaveValue(manual);
+    expect(transmissions).toHaveLength(4);
+    expect(transmissions[3]?.direction).toBe("redo");
+    expect(transmissions[3]?.packet).toEqual(redo.packet);
+    expect((await transcript(request, asset.id)).revision).toBe(
+      redo.state.revision,
+    );
+    expect(
+      (
+        await get<{ total: number }>(
+          request,
+          `/assets/${asset.id}/transcript/revisions?limit=100`,
+        )
+      ).total,
+    ).toBe(4);
+    expect(
+      await page.evaluate((key) => localStorage.getItem(key), storageKey),
+    ).toBeNull();
+    const historySummary = workspace(page).locator(
+      ".transcript-history > summary",
+    );
+    await historySummary.click();
+    await workspace(page)
+      .locator(".transcript-history select")
+      .selectOption(initial.revision!);
+    await withHeldTranscriptSave(page, asset.id, async (held) => {
+      await field(page).fill(
+        "A later manual draft must finish before restoring the original revision.",
+      );
+      await expect.poll(() => held.packets.length).toBe(1);
+      await button(page, "restoreRevision").click();
+      // Summary is a genuine keyboard focus target inside the editor. Shortcuts
+      // must respect the reserved Restore even while its manual save is held.
+      await historySummary.press("Control+z");
+      await historySummary.press("Control+Shift+z");
+      expect(transmissions).toHaveLength(4);
+      await expect(button(page, "undo")).toBeDisabled();
+      await expect(button(page, "redo")).toBeDisabled();
+      held.release();
+      await expect.poll(() => held.responses.length).toBe(1);
+      expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
+      await expect(page.getByTestId("transcript-save-state")).toHaveText(
+        t("failed"),
+      );
+      expect(transmissions).toHaveLength(5);
+      const restored = transmissions[4]!;
+      expect(restored.direction).toBe("select");
+      expect(restored.packet.baseRevision).toBe(
+        JSON.parse(held.responses[0]!.body).revision,
+      );
+      expect(restored.packet.revisionId).toBe(initial.revision);
+    });
+    const restored = transmissions[4]!;
+    expect(restored.state.document?.segments).toEqual(
+      initial.document?.segments,
+    );
+    const durableRestore = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!),
+      storageKey,
+    );
+    expect(durableRestore.pending).toEqual([]);
+    expect(durableRestore.receipt).toEqual(restored.packet);
+    await button(page, "retrySave").click();
+    await saved(page);
+    await expect(field(page)).toHaveValue(initial.document!.segments[0]!.text);
+    expect(transmissions).toHaveLength(6);
+    expect(transmissions[5]?.direction).toBe("select");
+    expect(transmissions[5]?.packet).toEqual(restored.packet);
+    expect((await transcript(request, asset.id)).revision).toBe(
+      restored.state.revision,
+    );
+    expect(
+      (
+        await get<{ total: number }>(
+          request,
+          `/assets/${asset.id}/transcript/revisions?limit=100`,
+        )
+      ).total,
+    ).toBe(6);
+    expect(
+      await page.evaluate((key) => localStorage.getItem(key), storageKey),
+    ).toBeNull();
+    await page
+      .getByRole("button", {
+        name: uiText("en-US", "app.navigation.switchProject"),
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".launcher-actions")).toBeVisible();
+    await openFilm(page, path);
+    await transcriptMode(page);
+    await selectRow(page);
+    await expect(field(page)).toHaveValue(initial.document!.segments[0]!.text);
+    expect((await transcript(request, asset.id)).revision).toBe(
+      restored.state.revision,
+    );
+    expect(transmissions).toHaveLength(6);
+  } catch (error) {
+    failure = { error };
+  } finally {
+    const cleanup = await Promise.allSettled([
+      page.unroute(pattern, handler),
+      ...historyReads,
+    ]);
+    for (const result of cleanup)
+      if (result.status === "rejected" && !failure)
+        failure = { error: result.reason };
+  }
+  if (failure) throw failure.error;
+  expect(pageErrors).toEqual([]);
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("long multiline glossary replacements and remembered corrections retain their full text through acceptance and reopening", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Long glossary corrections",
+  );
+  const initial = await transcribe(request, asset.id);
+  const originalTerm = "OpenFlim";
+  const rememberedSource = "Short memory";
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: originalTerm,
+    },
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[1]!.id,
+      text: rememberedSource,
+    },
+  ]);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const paragraph = (prefix: string, length: number) =>
+    prefix + "x".repeat(length - prefix.length);
+  const shortReplacement = paragraph(
+    "Corrected name\nA multiline memory: ",
+    513,
+  );
+  const longReplacement = paragraph(
+    "Full personal correction\nPreserve this entire paragraph: ",
+    4096,
+  );
+  const rememberedReplacement = paragraph(
+    "Remember this long correction\nIt belongs to the short source: ",
+    4096,
+  );
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "glossary");
+  const panel = page.locator(".transcript-side-panel");
+  const source = panel.getByLabel(t("sourceTerm"), { exact: true });
+  const replacement = panel.getByLabel(t("replacementTerm"), { exact: true });
+  await source.fill(originalTerm);
+  await replacement.fill(shortReplacement);
+  await expect(replacement).toHaveValue(shortReplacement);
+  await panel.getByRole("button", { name: t("addTerm"), exact: true }).click();
+  const entry = page
+    .getByTestId("glossary-entry")
+    .filter({ hasText: originalTerm });
+  await expect(entry).toHaveCount(1);
+  const created = (
+    await get<{ entries: GlossaryEntry[] }>(request, "/glossary?scope=project")
+  ).entries[0]!;
+  expect(created.replacement).toBe(shortReplacement);
+  let previousReplacement = shortReplacement;
+  for (const value of [longReplacement, longReplacement]) {
+    await entry.locator(".transcript-term").click();
+    await expect(replacement).toHaveValue(previousReplacement);
+    await replacement.fill(value);
+    await expect(replacement).toHaveValue(value);
+    await panel
+      .getByRole("button", { name: t("saveTerm"), exact: true })
+      .click();
+    await expect(source).toHaveValue("");
+    const entries = (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=project",
+      )
+    ).entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe(created.id);
+    expect(entries[0]?.replacement).toBe(value);
+    previousReplacement = value;
+  }
+  await panel
+    .getByRole("button", { name: t("findMatches"), exact: true })
+    .click();
+  await expect(page.getByTestId("review-suggestion")).toHaveCount(1);
+  const suggested = (await suggestions(request, asset.id, "pending"))
+    .suggestions[0]!;
+  expect(suggested.before).toBe(originalTerm);
+  expect(suggested.after).toBe(longReplacement);
+  await page
+    .locator(`[data-suggestion-id="${suggested.id}"]`)
+    .getByRole("button", { name: t("accept"), exact: true })
+    .click();
+  await saved(page);
+  await expect(field(page)).toHaveValue(longReplacement);
+  await selectRow(page, 1);
+  await typeText(page, rememberedReplacement);
+  await expect(button(page, "remember")).toBeVisible();
+  await button(page, "remember").click();
+  await expect(page.getByTestId("glossary-entry")).toHaveCount(2);
+  const entries = (
+    await get<{ entries: GlossaryEntry[] }>(request, "/glossary?scope=project")
+  ).entries;
+  expect(entries.find((term) => term.id === created.id)?.replacement).toBe(
+    longReplacement,
+  );
+  expect(
+    entries.find((term) => term.source === rememberedSource)?.replacement,
+  ).toBe(rememberedReplacement);
+  const after = await transcript(request, asset.id);
+  expect(after.document?.segments.map((segment) => segment.text)).toEqual([
+    longReplacement,
+    rememberedReplacement,
+  ]);
+  expect(
+    (await suggestions(request, asset.id)).suggestions.find(
+      (item) => item.id === suggested.id,
+    )?.status,
+  ).toBe("accepted");
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  await selectRow(page);
+  await expect(field(page)).toHaveValue(longReplacement);
+  await selectRow(page, 1);
+  await expect(field(page)).toHaveValue(rememberedReplacement);
+  await tools(page, "glossary");
+  await entry.locator(".transcript-term").click();
+  await expect(replacement).toHaveValue(longReplacement);
+  expect(
+    (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=project",
+      )
+    ).entries,
+  ).toEqual(entries);
+  expect((await transcript(request, asset.id)).document).toEqual(
+    after.document,
+  );
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
 test("lost edit responses retry one receipt and conflicting drafts preserve server text and independent input history", async ({
   page,
   request,
