@@ -476,6 +476,79 @@ describe("offline terminology, revisions and durable review", () => {
       available: false,
     });
   });
+  it("reviews Unicode case variants with original source ranges and accepts/undoes only their text across reopening", async () => {
+    const original = "記憶😀 ſource ΟΣ ος ß ẞ SS İ ı";
+    const expected = "記憶😀 OpenFilm Greek Greek sharp sharp SS İ ı";
+    const context = await fixture([original]);
+    await context.app.save();
+    const story = structuredClone(context.app.project.stories),
+      composition = structuredClone(context.app.project.timelines);
+    for (const [source, replacement] of [
+      ["source", "OpenFilm"],
+      ["οσ", "Greek"],
+      ["ß", "sharp"],
+      ["i", "ASCII-i"],
+    ])
+      context.knowledge.glossaryUpsert({
+        scope: "project",
+        source: source!,
+        replacement: replacement!,
+        caseSensitive: false,
+      });
+    const initial = await context.editor.get("source");
+    const found = await context.editor.search("source", {
+      query: "source",
+      caseSensitive: false,
+    });
+    expect(found.matches[0]?.ranges).toEqual([{ start: 5, end: 11 }]);
+    expect((await context.knowledge.glossaryReview("source")).status).toBe(
+      "completed",
+    );
+    const suggestion = (await context.knowledge.suggestionsList("source"))
+      .suggestions[0]!;
+    expect(suggestion).toMatchObject({
+      before: original,
+      after: expected,
+      sourceRevisionId: initial.revision,
+      target: { assetId: "source", segmentId: "segment-0" },
+      source: { type: "glossary" },
+    });
+    expect(
+      (await context.editor.get("source")).document?.segments[0]?.text,
+    ).toBe(original);
+    const accepted = await context.knowledge.acceptSuggestion(suggestion.id, {
+      baseRevision: initial.revision!,
+      requestId: "unicode-accept",
+    });
+    expect(accepted.document?.segments[0]).toMatchObject({
+      text: expected,
+      start: 0,
+      end: 1,
+      alignmentState: "text-edited",
+      words: initial.document?.segments[0]?.words,
+    });
+    expect(accepted.document?.provenance).toEqual(initial.document?.provenance);
+    await context.reopen();
+    expect(
+      (await context.editor.get("source")).document?.segments[0]?.text,
+    ).toBe(expected);
+    expect(
+      context.app.catalog.knowledge.getSuggestion(suggestion.id)?.status,
+    ).toBe("accepted");
+    await context.editor.undo("source", {
+      baseRevision: accepted.revision!,
+      requestId: "undo-unicode-accept",
+    });
+    await context.reopen();
+    expect((await context.editor.get("source")).document?.segments).toEqual(
+      initial.document?.segments,
+    );
+    expect(context.app.project.stories).toEqual(story);
+    expect(context.app.project.timelines).toEqual(composition);
+    expect(await hashFile(join(context.root, "source.wav"))).toBe(
+      context.sourceHash,
+    );
+  });
   it("atomically accepts a suggestion, preserves provenance/alignment history and deduplicates lost responses", async () => {
     const context = await fixture();
     const { knowledge, editor, app } = context;

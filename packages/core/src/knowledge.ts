@@ -285,16 +285,49 @@ export interface GlossaryMatch {
   after: string;
 }
 
+/** Match the transcript searcher's Unicode /iu equivalence without expanding
+ * characters or changing the original string's offsets. JS case conversion is
+ * only a candidate: /iu excludes dotless I and multi-character folds such as ß→ss. */
+function simpleFoldKey(character: string, cache: Map<string, string>): string {
+  const code = character.codePointAt(0)!;
+  if (code <= 0x7f)
+    return code >= 65 && code <= 90
+      ? String.fromCharCode(code + 32)
+      : character;
+  const cached = cache.get(character);
+  if (cached !== undefined) return cached;
+  const upperLower = character.toUpperCase().toLowerCase();
+  const lower = character.toLowerCase();
+  if (upperLower === character && lower === character) return character;
+  let key = character;
+  let equivalent: RegExp | undefined;
+  for (const candidate of [upperLower, lower]) {
+    if (candidate === character || [...candidate].length !== 1) continue;
+    equivalent ??= new RegExp(`^\\u{${code.toString(16)}}$`, "iu");
+    if (equivalent.test(candidate)) {
+      key = candidate;
+      break;
+    }
+  }
+  // Cache only case-conversion candidates, not every CJK/emoji seen in a film.
+  // Keep a hard bound even if a future engine adds more case mappings.
+  if (cache.size < 4096) cache.set(character, key);
+  return key;
+}
+
 /** Compile once per bounded review batch; no replacement cascades and no fuzzy matching. */
 export function compileGlossaryMatcher(
   values: readonly GlossaryEntry[],
 ): (text: string) => { text: string; matches: GlossaryMatch[] } {
   const exact: Trie = { children: new Map(), entries: [] };
   const folded: Trie = { children: new Map(), entries: [] };
+  const caseKeys = new Map<string, string>();
   for (const entry of effectiveGlossary(values)) {
     let node = entry.caseSensitive ? exact : folded;
     for (const character of entry.source) {
-      const key = entry.caseSensitive ? character : character.toLowerCase();
+      const key = entry.caseSensitive
+        ? character
+        : simpleFoldKey(character, caseKeys);
       if (!node.children.has(key))
         node.children.set(key, { children: new Map(), entries: [] });
       node = node.children.get(key)!;
@@ -327,7 +360,7 @@ export function compileGlossaryMatcher(
         ) {
           const character = characters[end]!;
           node = node.children.get(
-            caseSensitive ? character : character.toLowerCase(),
+            caseSensitive ? character : simpleFoldKey(character, caseKeys),
           );
           if (!node) break;
           for (const entry of node.entries) {
