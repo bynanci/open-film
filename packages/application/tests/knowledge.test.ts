@@ -552,6 +552,180 @@ describe("offline terminology, revisions and durable review", () => {
 });
 
 describe("optional provider review, privacy and recoverable batches", () => {
+  it("never sends an oversized accepted provider segment and retains valid completed batches across retry, skip and reopen", async () => {
+    const oversized = "x".repeat(60001);
+    const context = await fixture([
+      "Keep this first memory",
+      oversized,
+      "Keep this last memory",
+    ]);
+    const { knowledge, editor } = context;
+    const original = await editor.get("source");
+    const prompts: string[] = [];
+    knowledge.registerLanguageProvider(
+      languageProvider(async (prompt) => {
+        prompts.push(prompt);
+        return correction(prompt);
+      }),
+    );
+    const job = await knowledge.languageReview("source");
+    expect(job.status).toBe("failed");
+    expect(job.errors?.[0]?.code).toBe("request.tooLarge");
+    expect(
+      prompts.map((prompt) =>
+        payload(prompt).segments.map((segment) => segment.segmentId),
+      ),
+    ).toEqual([["segment-0"], ["segment-2"]]);
+    expect(
+      prompts.every((prompt) => Buffer.byteLength(prompt, "utf8") <= 60000),
+    ).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes(oversized))).toBe(false);
+    expect(knowledge.batches(job.id).map((batch) => batch.status)).toEqual([
+      "completed",
+      "failed",
+      "completed",
+    ]);
+    const retained = (await knowledge.suggestionsList("source")).suggestions;
+    expect(retained).toHaveLength(2);
+    expect((await editor.get("source")).revision).toBe(original.revision);
+    expect((await editor.get("source")).document?.segments[1]?.text).toBe(
+      oversized,
+    );
+    expect((await knowledge.retryBatch(job.id, 1)).status).toBe("failed");
+    expect(prompts).toHaveLength(2);
+    expect(knowledge.batches(job.id)[1]?.attempts).toBe(2);
+    await context.reopen();
+    expect(
+      (await context.editor.get("source")).document?.segments[1]?.text,
+    ).toBe(oversized);
+    expect(
+      (await context.knowledge.suggestionsList("source")).suggestions,
+    ).toEqual(retained);
+    context.knowledge.skipBatch(job.id, 1);
+    expect(
+      context.app.catalog.listJobs().find((row) => row.id === job.id)?.status,
+    ).toBe("completed");
+    await context.reopen();
+    expect(context.knowledge.batches(job.id)[1]?.status).toBe("skipped");
+    expect((await context.editor.get("source")).revision).toBe(
+      original.revision,
+    );
+  });
+
+  it.each([
+    ["CJK", Array.from({ length: 7 }, () => "記憶".repeat(2500)), [3, 3, 1]],
+    [
+      "JSON escapes",
+      Array.from({ length: 2 }, () => '"'.repeat(19999)),
+      [1, 1],
+    ],
+  ] as const)(
+    "groups ordinary %s text by the actual serialized UTF-8 request size",
+    async (_label, lines, counts) => {
+      const { knowledge } = await fixture([...lines]);
+      const prompts: string[] = [];
+      knowledge.registerLanguageProvider(
+        languageProvider(async (prompt) => {
+          prompts.push(prompt);
+          return JSON.stringify({ suggestions: [] });
+        }),
+      );
+      const job = await knowledge.languageReview("source");
+      expect(job.status).toBe("completed");
+      expect(prompts.map((prompt) => payload(prompt).segments.length)).toEqual([
+        ...counts,
+      ]);
+      expect(
+        prompts.every((prompt) => Buffer.byteLength(prompt, "utf8") <= 60000),
+      ).toBe(true);
+      expect(
+        prompts.flatMap((prompt) =>
+          payload(prompt).segments.map((segment) => segment.text),
+        ),
+      ).toEqual([...lines]);
+      expect(
+        knowledge
+          .batches(job.id)
+          .every((batch) => batch.status === "completed"),
+      ).toBe(true);
+    },
+  );
+
+  it("includes escaped glossary context in the prompt budget and permits retry after reducing that context", async () => {
+    const context = await fixture(["\\".repeat(19999)]);
+    const { knowledge, editor } = context;
+    const terms = ["a", "b", "c"].map((source) =>
+      knowledge.glossaryUpsert({
+        source,
+        replacement: "\n".repeat(3999),
+        scope: "project",
+      }),
+    );
+    const generate = vi.fn(async (_prompt: string) =>
+      JSON.stringify({ suggestions: [] }),
+    );
+    knowledge.registerLanguageProvider(languageProvider(generate));
+    const before = await editor.get("source");
+    const job = await knowledge.languageReview("source");
+    expect(job.status).toBe("failed");
+    expect(job.errors?.[0]?.code).toBe("request.tooLarge");
+    expect(generate).not.toHaveBeenCalled();
+    expect(knowledge.batches(job.id)[0]?.status).toBe("failed");
+    expect((await editor.get("source")).revision).toBe(before.revision);
+    for (const term of terms)
+      knowledge.glossaryUpsert({
+        id: term.id,
+        scope: "project",
+        source: term.source,
+        replacement: term.replacement,
+        enabled: false,
+      });
+    expect((await knowledge.retryBatch(job.id, 0)).status).toBe("completed");
+    expect(generate).toHaveBeenCalledTimes(1);
+    const prompt = generate.mock.calls[0]?.[0] as string | undefined;
+    expect(prompt && Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(
+      60000,
+    );
+    await context.reopen();
+    expect(context.knowledge.batches(job.id)[0]?.status).toBe("completed");
+    expect((await context.editor.get("source")).revision).toBe(before.revision);
+  });
+
+  it("can review and accept a correction for an unchanged opaque long/control segment identifier", async () => {
+    const context = await fixture(["Original words"]);
+    const { app, knowledge, editor } = context;
+    const initial = await editor.get("source");
+    const id = "legacy\n" + "識別".repeat(160);
+    app.catalog.intelligence.replaceTranscript({
+      ...initial.document!,
+      id: "opaque-id-provider-revision",
+      segments: [{ ...initial.document!.segments[0]!, id }],
+    });
+    knowledge.registerLanguageProvider(
+      languageProvider(async (prompt) => correction(prompt)),
+    );
+    const reviewed = await knowledge.languageReview("source");
+    expect(reviewed.status).toBe("completed");
+    const suggestion = (await knowledge.suggestionsList("source"))
+      .suggestions[0]!;
+    expect(suggestion.target.segmentId).toBe(id);
+    const changed = await knowledge.acceptSuggestion(suggestion.id, {
+      baseRevision: suggestion.sourceRevisionId,
+      requestId: "accept-opaque-id",
+    });
+    expect(changed.document?.segments[0]?.id).toBe(id);
+    expect(changed.document?.segments[0]?.text).toBe(
+      "Original words corrected",
+    );
+    await context.reopen();
+    expect((await context.editor.get("source")).document?.segments[0]?.id).toBe(
+      id,
+    );
+    expect(
+      context.app.catalog.knowledge.getSuggestion(suggestion.id)?.target
+        .segmentId,
+    ).toBe(id);
+  });
   it.each(["queued", "running"] as const)(
     "recovers an actual reopened catalog containing an interrupted %s review and preserves completed suggestions",
     async (status) => {
