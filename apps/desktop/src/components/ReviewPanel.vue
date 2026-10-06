@@ -18,6 +18,7 @@ import {
   ApiError,
   post,
   type ReviewProviderState,
+  type ReviewRecoveryState,
   type ReviewSuggestionsState,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
@@ -55,6 +56,8 @@ const jobs = computed(() =>
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
 );
 const batches = ref<ReviewBatch[]>([]);
+const recoveryStates = shallowRef<Record<string, ReviewRecoveryState>>({});
+const recoveryConfirmJobId = ref("");
 const recoveryJobsPerPage = 5;
 const recoveryPage = ref(0);
 const recoveryLoading = ref(false);
@@ -159,6 +162,20 @@ const recoveryJobs = computed(() =>
 const recoveryPages = computed(() =>
   Math.max(1, Math.ceil(recoveryJobs.value.length / recoveryJobsPerPage)),
 );
+const recoveryWindow = computed(() =>
+  recoveryJobs.value.slice(
+    recoveryPage.value * recoveryJobsPerPage,
+    (recoveryPage.value + 1) * recoveryJobsPerPage,
+  ),
+);
+const manualRecoveryJobs = computed(() =>
+  recoveryWindow.value.filter(
+    (job) => recoveryStates.value[job.id]?.manualRecoveryAllowed,
+  ),
+);
+const activeRecovery = computed(() =>
+  active.value ? recoveryStates.value[active.value.id] : undefined,
+);
 const recoverableBatches = computed(() =>
   batches.value.filter(
     (batch) => batch.status === "failed" || batch.status === "cancelled",
@@ -207,23 +224,36 @@ async function refresh(offset = requestedOffset.value) {
     provider.value = status;
     recoveryPage.value = Math.min(recoveryPage.value, recoveryPages.value - 1);
     const capturedRecoveryPage = recoveryPage.value;
-    const recoveryWindow = recoveryJobs.value.slice(
-      capturedRecoveryPage * recoveryJobsPerPage,
-      (capturedRecoveryPage + 1) * recoveryJobsPerPage,
-    );
+    const capturedRecoveryWindow = recoveryWindow.value;
     recoveryLoading.value = true;
     const found = await Promise.allSettled(
-      recoveryWindow.map((job) => api.reviewBatches(job.id)),
+      capturedRecoveryWindow.map(async (job) => {
+        const [batchState, recovery] = await Promise.all([
+          api.reviewBatches(job.id),
+          api.reviewRecovery(job.id),
+        ]);
+        return { batches: batchState.batches, recovery };
+      }),
     );
     if (current() && capturedRecoveryPage === recoveryPage.value) {
+      const nextRecoveryStates = { ...recoveryStates.value };
       batches.value = found.flatMap((result, index) => {
-        if (result.status === "fulfilled") return result.value.batches;
+        const job = capturedRecoveryWindow[index]!;
+        if (result.status === "fulfilled") {
+          nextRecoveryStates[job.id] = result.value.recovery;
+          return result.value.batches;
+        }
         error.value = result.reason;
         // A failed refresh must not hide recovery evidence already loaded.
-        return batches.value.filter(
-          (batch) => batch.jobId === recoveryWindow[index]!.id,
-        );
+        return batches.value.filter((batch) => batch.jobId === job.id);
       });
+      recoveryStates.value = nextRecoveryStates;
+      if (
+        recoveryConfirmJobId.value &&
+        !nextRecoveryStates[recoveryConfirmJobId.value]
+          ?.manualRecoveryAllowed
+      )
+        recoveryConfirmJobId.value = "";
     }
   } catch (cause) {
     if (current()) {
@@ -348,6 +378,27 @@ async function cancel() {
     error.value = cause;
   }
 }
+async function recoverInterrupted(job: Job) {
+  const state = recoveryStates.value[job.id];
+  if (!state?.manualRecoveryAllowed || busy.value) return;
+  busy.value = true;
+  error.value = null;
+  try {
+    await api.recoverReview(job.id, {
+      confirmStopped: true,
+      ownerToken: state.ownerToken,
+      updatedAt: state.updatedAt,
+    });
+    recoveryConfirmJobId.value = "";
+    emit("activity");
+    await refresh();
+  } catch (cause) {
+    error.value = cause;
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function batchAction(batch: ReviewBatch, action: "retry" | "skip") {
   if (uncertainAcceptance.value) return;
   await reserve(async ({ current }) => {
