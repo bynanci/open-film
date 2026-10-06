@@ -752,6 +752,31 @@ export async function startServer(options: ServerOptions = {}) {
           tasks.add(handled);
           json(response, 202, { job });
         };
+        const transcriptSegmentBody =
+          /^\/api\/assets\/([^/]+)\/transcript\/segment$/.exec(route);
+        if (transcriptSegmentBody && method === "POST") {
+          const data = await body(request);
+          keys(data, ["segmentId"]);
+          let segmentId: string;
+          try {
+            segmentId = validateTranscriptSegmentId(data.segmentId);
+          } catch {
+            throw new HttpError(
+              400,
+              "Choose a nonblank transcript segment identifier.",
+              "request.invalid",
+            );
+          }
+          json(
+            response,
+            200,
+            await application.transcriptEditor.getSegment(
+              decodeURIComponent(transcriptSegmentBody[1]!),
+              segmentId,
+            ),
+          );
+          return;
+        }
         const transcriptSegment =
           /^\/api\/assets\/([^/]+)\/transcript\/segments\/([^/]+)$/.exec(route);
         if (transcriptSegment && method === "GET") {

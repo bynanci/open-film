@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
+import { api as desktopApi } from "../../apps/desktop/src/api";
 import { hashFile, runProcess } from "@openfilm/media";
 import type { Job, TranscriptSegment } from "@openfilm/core";
 import type {
@@ -143,6 +144,82 @@ async function server(
 }
 
 describe("transcript REST and CLI adapters", () => {
+  it.each([
+    ["isolated surrogate", "provider-\ud800"],
+    ["long opaque identifier", "provider-" + "長".repeat(32000)],
+  ])(
+    "Desktop preview lookup transports %s without changing source position",
+    async (_label, id) => {
+      const segments = [
+        { id: "ordinary", start: 0, end: 1, text: "First memory" },
+        { id, start: 3, end: 4, text: "Preview this exact memory" },
+      ];
+      const { base } = await server({}, segments);
+      const nativeFetch = globalThis.fetch;
+      const redirected = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation((input, init) => {
+          const url = new URL(String(input), "http://127.0.0.1:4310");
+          return nativeFetch(
+            base.replace(/\/api$/, "") + url.pathname + url.search,
+            init,
+          );
+        });
+      cleanups.push(() => redirected.mockRestore());
+      // Redirect the normal Desktop adapter to the ephemeral real HTTP server;
+      // request serialization, response parsing and SQLite lookup are not mocked.
+      const found = await desktopApi.transcriptSegment("audio", id);
+      expect(found.segment.id).toBe(id);
+      expect(found.position).toBe(1);
+      expect(found.segment.start).toBe(3);
+      expect(found.segment.end).toBe(4);
+      expect(redirected.mock.calls.at(-1)?.[1]?.method).toBe("POST");
+      if (id.includes("\ud800"))
+        await expect(
+          desktopApi.transcriptSegment("audio", "provider-\ufffd"),
+        ).rejects.toMatchObject({
+          status: 404,
+          code: "transcript.segmentNotFound",
+        });
+    },
+  );
+  it("body lookup reaches distinct lone-surrogate and replacement-character segment identities", async () => {
+    const ids = ["provider-\ud800", "provider-\ufffd"];
+    const { post } = await server(
+      {},
+      ids.map((id, index) => ({
+        id,
+        start: index * 3,
+        end: index * 3 + 1,
+        text: "Different memory " + index,
+      })),
+    );
+    for (const [position, segmentId] of ids.entries()) {
+      const response = await post("/assets/audio/transcript/segment", {
+        segmentId,
+      });
+      expect(response.status).toBe(200);
+      const found = await response.json();
+      expect(found.segment.id).toBe(segmentId);
+      expect(found.position).toBe(position);
+      expect(found.segment.start).toBe(position * 3);
+    }
+    for (const data of [
+      { segmentId: null },
+      { segmentId: " " },
+      { segmentId: ids[0], position: 1 },
+    ]) {
+      const response = await post("/assets/audio/transcript/segment", data);
+      expect(response.status).toBe(400);
+    }
+    expect(
+      (
+        await post("/assets/audio/transcript/segment", {
+          segmentId: "x".repeat(1024 * 1024),
+        })
+      ).status,
+    ).toBe(413);
+  });
   it("preserves opaque provider segment IDs through HTTP paging, encoded lookup, editing, reopen and selected review acceptance", async () => {
     const ids = [
       "provider-" + "長".repeat(350) + " %/#&",

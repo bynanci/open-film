@@ -396,8 +396,9 @@ export const api = {
       `/assets/${encodeURIComponent(assetId)}/transcript?${new URLSearchParams({ offset: String(offset), limit: String(limit), ...(revisionId ? { revisionId } : {}) })}`,
     ),
   transcriptSegment: (assetId: string, segmentId: string) =>
-    request<{ segment: TranscriptSegment; position: number; revision: string }>(
-      `/assets/${encodeURIComponent(assetId)}/transcript/segments/${encodeURIComponent(segmentId)}`,
+    post<{ segment: TranscriptSegment; position: number; revision: string }>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/segment`,
+      { segmentId },
     ),
   editTranscript: (
     assetId: string,
