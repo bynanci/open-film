@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  OpenFilmApplication,
-  createReviewOwner,
-} from "@openfilm/application";
+import { OpenFilmApplication, createReviewOwner } from "@openfilm/application";
 import { api as desktopApi } from "../../apps/desktop/src/api";
 import { hashFile, runProcess } from "@openfilm/media";
 import type { Job, ReviewBatch, TranscriptSegment } from "@openfilm/core";
