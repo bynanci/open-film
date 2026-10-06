@@ -381,4 +381,116 @@ describe("real FFmpeg preview renderer", () => {
     expect((await sample(130, 45))[0]).toBeGreaterThan(180);
     expect((await sample(145, 45))[0]).toBeLessThan(30);
   });
+
+  it("keeps rotated bounds transparent so lower visual tracks remain visible", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-geometry-alpha-"));
+    directories.push(directory);
+    const paths = {
+      background: join(directory, "background.png"),
+      foreground: join(directory, "foreground.png"),
+    };
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=blue:s=160x90",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      paths.background,
+    ]);
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=80x40",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      paths.foreground,
+    ]);
+    const assets = await Promise.all(
+      Object.entries(paths).map(([name, path]) =>
+        inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${name}.png`,
+        }),
+      ),
+    );
+    const [background, foreground] = assets;
+    const composition: Composition = {
+      id: "geometry-alpha",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        {
+          id: "background",
+          type: "video",
+          clips: [
+            {
+              id: "background",
+              assetId: background!.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+            },
+          ],
+        },
+        {
+          id: "foreground",
+          type: "overlay",
+          clips: [
+            {
+              id: "foreground",
+              assetId: foreground!.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+              transform: { scale: 0.5, rotation: 45, x: 0, y: 0 },
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "geometry-alpha-preview.mp4");
+    await new FFmpegRenderer().render(composition, assets, output, {
+      width: 160,
+      height: 90,
+      frameRate: 10,
+    });
+    const sample = async (x: number, y: number) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-vf",
+          `crop=1:1:${x}:${y},format=rgb24`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ])
+      ).stdout;
+    const center = await sample(80, 45);
+    expect(center[0]).toBeGreaterThan(170);
+    expect(center[2]).toBeLessThan(80);
+    const rotatedCorner = await sample(40, 5);
+    expect(rotatedCorner[2]).toBeGreaterThan(120);
+    expect(rotatedCorner[0]).toBeLessThan(100);
+  });
+
 });
