@@ -97,6 +97,8 @@ export default {
       invalidCommand: "此逐字稿修改無效，請檢查所選文字、段落與分割時間。",
     },
     glossary: {
+      storageBusy:
+        "另一個 OpenFilm 視窗或程序正在更新全域詞彙表，請等候完成後再試。",
       entryConflict: "詞彙已變更或與另一項詞彙衝突，請重新載入詞彙表後再試。",
     },
     review: {

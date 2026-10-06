@@ -45,6 +45,7 @@ export const applicationErrorCodes = [
   "transcript.alignmentStale",
   "transcript.invalidCommand",
   "glossary.entryConflict",
+  "glossary.storageBusy",
   "review.providerUnavailable",
   "review.suggestionStale",
   "review.invalidOutput",

@@ -120,6 +120,8 @@ export default {
         "This transcript change is invalid. Check the selected text, segment and split time.",
     },
     glossary: {
+      storageBusy:
+        "Another OpenFilm window or process is updating your global glossary. Try again after it finishes.",
       entryConflict:
         "A glossary term changed or conflicts with another entry. Reload the glossary and try again.",
     },

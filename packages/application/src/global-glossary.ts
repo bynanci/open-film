@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
   fstatSync,
   fsyncSync,
   lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
   readSync,
@@ -27,6 +28,35 @@ const PRIMARY_NAME = "global-glossary.json";
 interface GlossaryFile {
   version: 1;
   entries: GlossaryEntry[];
+}
+
+interface LockOwner {
+  version: 1;
+  pid: number;
+  token: string;
+  createdAt: string;
+}
+
+function busy(
+  detail = "Another OpenFilm process is updating global glossary terms. Retry when it finishes.",
+): ApplicationError {
+  return new ApplicationError(
+    "glossary.storageBusy",
+    "Global glossary storage is busy. Retry the change.",
+    409,
+    undefined,
+    detail,
+  );
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // Permission failures and unknown platform errors cannot prove an owner dead.
+    return errorCode(error) !== "ESRCH";
+  }
 }
 
 class UnsupportedGlossaryVersion extends Error {}
@@ -96,6 +126,7 @@ export class GlobalGlossaryStore {
   readonly directory: string;
   readonly filePath: string;
   readonly backupPath: string;
+  readonly lockPath: string;
 
   constructor(userDataDirectory: string) {
     if (typeof userDataDirectory !== "string" || !userDataDirectory.trim())
@@ -106,6 +137,7 @@ export class GlobalGlossaryStore {
     this.directory = resolve(userDataDirectory);
     this.filePath = join(this.directory, PRIMARY_NAME);
     this.backupPath = `${this.filePath}.bak`;
+    this.lockPath = `${this.filePath}.lock`;
     this.ensureDirectory(false);
   }
 
@@ -129,7 +161,30 @@ export class GlobalGlossaryStore {
         "request.invalid",
         "Global glossary entries must have global scope",
       );
-    const previous = this.read();
+    // Reject malformed terms before creating a previously absent user directory.
+    try {
+      validateGlossaryEntry({
+        ...input,
+        id: input.id ?? "input-validation",
+        enabled: input.enabled ?? true,
+        caseSensitive: input.caseSensitive ?? true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid global glossary entry",
+        400,
+        undefined,
+        String(error),
+      );
+    }
+    return this.withLock(() => this.upsertLocked(input));
+  }
+
+  private upsertLocked(input: GlossaryInput): GlossaryEntry {
+    const previous = this.read(true);
     const byId = input.id
       ? previous.entries.find((entry) => entry.id === input.id)
       : undefined;
@@ -186,11 +241,180 @@ export class GlobalGlossaryStore {
         "request.invalid",
         "Invalid glossary entry id",
       );
-    const previous = this.read();
-    const entries = previous.entries.filter((entry) => entry.id !== id);
-    if (entries.length === previous.entries.length) return false;
-    this.save(previous, { version: 1, entries });
-    return true;
+    // A missing entry is a read-only no-op, including a missing user directory.
+    if (!this.read().entries.some((entry) => entry.id === id)) return false;
+    return this.withLock(() => {
+      const previous = this.read(true);
+      const entries = previous.entries.filter((entry) => entry.id !== id);
+      if (entries.length === previous.entries.length) return false;
+      this.save(previous, { version: 1, entries });
+      return true;
+    });
+  }
+
+  private lockOwner(path: string): LockOwner | undefined {
+    if (!regularFile(path)) return undefined;
+    let fd: number;
+    try {
+      fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    } catch (error) {
+      // The previous owner may release between lstat and open. This means
+      // contention ended; it does not mean the glossary storage is corrupt.
+      if (errorCode(error) === "ENOENT") return undefined;
+      throw error;
+    }
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.size < 1 || stat.size > 1024)
+        throw busy(
+          "The glossary lock owner cannot be verified; its lock was left untouched.",
+        );
+      const buffer = Buffer.alloc(1025);
+      let length = 0;
+      while (length < buffer.length) {
+        const count = readSync(
+          fd,
+          buffer,
+          length,
+          buffer.length - length,
+          null,
+        );
+        if (!count) break;
+        length += count;
+      }
+      if (length > 1024)
+        throw busy(
+          "The glossary lock owner cannot be verified; its lock was left untouched.",
+        );
+      let owner: unknown;
+      try {
+        owner = JSON.parse(buffer.subarray(0, length).toString("utf8"));
+      } catch {
+        throw busy(
+          "The glossary lock owner is incomplete or invalid; its lock was left untouched.",
+        );
+      }
+      if (!owner || typeof owner !== "object" || Array.isArray(owner))
+        throw busy(
+          "The glossary lock owner cannot be verified; its lock was left untouched.",
+        );
+      const value = owner as Record<string, unknown>;
+      if (
+        value.version !== 1 ||
+        !Number.isSafeInteger(value.pid) ||
+        Number(value.pid) < 1 ||
+        Number(value.pid) > 2147483647 ||
+        typeof value.token !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+          value.token,
+        ) ||
+        typeof value.createdAt !== "string" ||
+        !Number.isFinite(Date.parse(value.createdAt))
+      )
+        throw busy(
+          "The glossary lock owner cannot be verified; its lock was left untouched.",
+        );
+      return value as unknown as LockOwner;
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  private releaseLock(path: string, token: string): void {
+    const owner = this.lockOwner(path);
+    if (!owner) return;
+    if (owner.token !== token)
+      throw busy(
+        "The glossary lock changed ownership; the replacement lock was left untouched.",
+      );
+    unlinkSync(path);
+  }
+
+  private acquireLock(path = this.lockPath, depth = 0): () => void {
+    if (depth > 8)
+      throw busy(
+        "Repeated interrupted glossary lock recovery needs inspection; all unverified locks were left untouched.",
+      );
+    this.ensureDirectory(true);
+    const owner: LockOwner = {
+      version: 1,
+      pid: process.pid,
+      token: randomUUID(),
+      createdAt: new Date().toISOString(),
+    };
+    const temporary = join(
+      this.directory,
+      `.${PRIMARY_NAME}.owner-${owner.token}.tmp`,
+    );
+    let fd: number | undefined;
+    let claimed = false;
+    let failure: unknown;
+    try {
+      // A hard link publishes the complete owner atomically. There is never an
+      // empty/partially-written lock that another process can mistake for stale.
+      fd = openSync(temporary, "wx", 0o600);
+      writeFileSync(fd, JSON.stringify(owner), "utf8");
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = undefined;
+      try {
+        linkSync(temporary, path);
+      } catch (error) {
+        if (errorCode(error) !== "EEXIST") throw error;
+        const observed = this.lockOwner(path);
+        if (observed && processAlive(observed.pid)) throw busy();
+        if (observed) {
+          // Serialize reclamation for this exact stale token. After taking this
+          // recovery lock, re-read so an old contender cannot unlink a new owner.
+          const recoveryPath = `${this.lockPath}.recover-${createHash("sha256").update(`${path}\0${observed.token}`).digest("hex").slice(0, 32)}`;
+          const release = this.acquireLock(recoveryPath, depth + 1);
+          try {
+            const latest = this.lockOwner(path);
+            if (latest?.token === observed.token && !processAlive(latest.pid))
+              unlinkSync(path);
+          } finally {
+            release();
+          }
+        }
+        try {
+          linkSync(temporary, path);
+        } catch (error) {
+          if (errorCode(error) === "EEXIST") throw busy();
+          throw error;
+        }
+      }
+      claimed = true;
+    } catch (error) {
+      failure = error;
+    } finally {
+      if (fd !== undefined) {
+        try {
+          closeSync(fd);
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+      try {
+        unlinkSync(temporary);
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") failure ??= error;
+      }
+    }
+    if (failure) {
+      if (claimed) this.releaseLock(path, owner.token);
+      if (failure instanceof ApplicationError) throw failure;
+      throw storageError("Cannot safely lock global glossary storage", failure);
+    }
+    return () => this.releaseLock(path, owner.token);
+  }
+
+  private withLock<T>(action: () => T): T {
+    const release = this.acquireLock();
+    try {
+      return action();
+    } finally {
+      release();
+    }
   }
 
   private ensureDirectory(create: boolean): void {
@@ -237,7 +461,7 @@ export class GlobalGlossaryStore {
     }
   }
 
-  private read(): GlossaryFile {
+  private read(locked = false): GlossaryFile {
     this.ensureDirectory(false);
     // An unsafe backup is also rejected, even when the current file is healthy.
     regularFile(this.backupPath);
@@ -256,10 +480,18 @@ export class GlobalGlossaryStore {
     try {
       const backup = this.readFile(this.backupPath);
       if (backup) {
+        // Recovery also mutates storage. Re-read after locking so a concurrently
+        // committed new primary cannot be overwritten by an older backup.
+        if (!locked) return this.withLock(() => this.read(true));
         this.atomicWrite(this.filePath, this.serialize(backup));
         return backup;
       }
     } catch (error) {
+      if (
+        error instanceof ApplicationError &&
+        error.code === "glossary.storageBusy"
+      )
+        throw error;
       throw storageError("Cannot recover the global glossary backup", error);
     }
     if (primaryError)
