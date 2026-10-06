@@ -23,22 +23,22 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`2e3e9651dfb3995149681414215a5d1caa9b8242` passed all required local regression
-gates. The complete browser run passed **59 tests** with no failures, skips or
-retries. The full unit/integration suite passed **935 tests in 80 files**.
+`b7be7cb2556d330eb3fc51a3c8e280420fa16da4` passed all required local regression
+gates. The complete browser run passed **60 tests** with no failures, skips or
+retries. The full unit/integration suite passed **984 tests in 83 files**.
 Documentation finalization follows these runs; current-head GitHub checks and
 Codex review remain separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `pnpm format:check`     | Passed                                                                                                       |
-| `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
+| `pnpm test:i18n`        | Passed: 1,023 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 935 tests / 80 files                                                                                 |
+| `pnpm test`             | Passed: 984 tests / 83 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 59 tests, 11.2 minutes, one worker and zero retries                                                  |
+| `pnpm test:e2e`         | Passed: 60 tests, 11.4 minutes (684 shell seconds), one worker and zero retries                              |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -659,6 +659,96 @@ and frozen App/test files. Earlier failed full and focused runs are preserved
 separately. Final documentation formatting, new-head published CI and Codex review
 remain distinct checks.
 
+## Ninth Codex review
+
+The documentation head `af326e4661ea9a501cbeb11fce34aa1df532029f` had green
+[push CI](https://github.com/bynanci/open-film/actions/runs/37495221046) and
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37495229666), each with
+59 browser cases. Its completed review still found five P2 correctness issues.
+Those green runs do not validate the following remediation.
+
+- Opening another process's project could cancel a live review. Review jobs now
+  store an additive execution owner in their existing serialized Job data, and
+  generic startup recovery leaves these jobs to the review recovery boundary.
+  Linux checks the same boot and PID namespace and accepts only a proven-dead
+  process. An atomic observed-job check protects any newer retry claim and keeps
+  completed suggestions. Live, legacy, foreign and EPERM/unknown owners remain
+  unchanged. Automatic cross-process Windows/macOS recovery is not established
+  by this implementation; unknown-owner work can require manual support.
+- Consent for a valid provider declaring additional data types could fail. The
+  UI discloses the provider name, endpoint and every declared kind; the request
+  binds the stable provider ID to that exact disclosure. Missing, stale or altered
+  disclosure is rejected without invoking the provider. The review payload still
+  contains only bounded text, language and terminology, not media, paths or GPS.
+- Retry checked its batch before asynchronous preparation, allowing another
+  retry or Skip to win meanwhile. Retry now claims the exact batch and job owner
+  atomically before its first await; rejected preflight restores both only while
+  that claim remains current. Attempt completion and failure cleanup use
+  conditional writes, and late evidence rolls back when its attempt is obsolete.
+  The server does not pre-save a retry or let its losing callback overwrite a
+  winner. Inactive legacy residual checkpoints keep terminal aggregate state.
+- Filter Matches depended on the first global search page, hiding matching rows
+  on later transcript pages. Filtering now uses the same literal Unicode/case
+  semantics on the loaded page of at most 100 rows, independently of the global
+  occurrence cursor. Query, case and revision guards remain intact.
+- Discard awaited a pending save before reserving the operation, allowing newly
+  entered text to be discarded. Confirmed Discard now reserves synchronously
+  through the save and saved-page reload; competing commands/history actions are
+  rejected and navigation waits. Lost acknowledgments retain saved text without
+  duplicate commits; disposal preserves an owning recovery packet.
+
+Actual regression baselines are retained: live/dead/unknown owner recovery had
+six failures in its original eight-case run; competing batch retries had five
+failures in six cases and invoked the provider twice. Expanded ownership-loss
+tests then exposed four more failures in sixteen cases, including obsolete
+provider/glossary cleanup and phantom running state. Consent's extra-metadata
+request failed with HTTP 400; the compiled editor reproduced an empty second
+matching page; all five draft-disposal cases failed before their fix. A TS2683
+test annotation failure is also retained separately, followed by a passing
+typecheck rather than relabeled as success.
+
+Final focused coverage passed 79 tests across the batch/owner/knowledge/CAS
+suites, 72 editor lifecycle tests, 22 search tests and 22 HTTP/CLI plus compiled
+consent cases. An independent read-only review passed the 26 owner/batch tests
+and found no additional P1/P2 in these boundaries. The actual new browser case
+passed at `eeee9ef6055cc731df5daa1bbeafaec0676c41b8`: matching transcript pages
+remain visible, the global cursor retains repeated occurrences, Replace/Undo
+work, literal/case changes take effect, and Story/composition/source identities
+remain unchanged.
+
+The first complete run at `eeee9ef` passed 59 cases and failed one in 11.5
+minutes (691 shell seconds), with no skips or retries. Its actual trace shows
+the held manual edit acknowledged HTTP 200 before Retry's HTTP 202, followed by
+repeated Job reads showing the original cancelled checkpoint without the stale
+error. The new atomic preflight correctly restored that checkpoint, but the
+server acknowledged Retry before preparation and swallowed the rejection, so
+the user received no explanation. This was an API/UI correctness defect, not a
+failed draft flush or a passing full suite. Its raw log, trace, error context and
+all 36 captures are preserved separately.
+
+Retry acknowledgment now waits for the first owned Job notification after
+preparation. Failed source/revision/provider checks return their structured HTTP
+error while keeping the prior checkpoint; a successful retry returns the actual
+running Job before the provider finishes. Initial review still returns its queued
+reservation immediately. The real browser case checks localized stale feedback,
+save-before-request ordering, exact preserved job/batches and unchanged film
+data. HTTP regressions also exercise missing source, unavailable provider and
+a held successful provider, rather than asserting a silent HTTP 202 rejection.
+
+The corrected production/test head `b7be7cb2556d330eb3fc51a3c8e280420fa16da4`
+passed the two focused Retry/filter browser cases and then the complete **60-case**
+browser suite in **11.4 minutes / 684 shell seconds**, with zero failures, skips
+or retries. All eight other required gates and the built CLI smoke passed on
+that exact tree: **984 tests / 83 files**, **1,023 locale keys**, official OTIO
+validation and native compilation checks. An independent read-only review of
+the retry readiness lifecycle passed all **22 actual HTTP cases** and found no
+additional P1/P2. Its captured working-tree file hashes match the committed fix;
+it is scoped review evidence, not a substitute for a fresh whole-PR review.
+
+All 36 fresh locale/size/view captures are retained. The failed `eeee9ef` run
+remains immutable alongside corrected focused/full runs. Fresh exact-head GitHub
+CI and Codex review are checked after publishing; previous green CI is historical.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -682,11 +772,12 @@ a visible player at small desktop size. Regression checks now require actual
 viewport/scroll-container intersection and a decoded frame, including after row,
 search and suggestion seeking; DOM visibility alone is insufficient.
 
-The final rerun retained 36 named Transcript, Glossary and Suggestions captures.
+The final `b7be7cb` rerun retained 36 named Transcript, Glossary and Suggestions captures.
 Manual inspection covered all four 1280×720 Suggestions screens and additional
 Transcript/Glossary captures. Navigation and wrapped CJK/pseudo text remained
 readable without new horizontal clipping in the inspected views. Some Transcript
-and Suggestions controls fall below their internal scrollport boundaries; static
+and Suggestions controls fall below their internal scrollport boundaries; the
+pseudo capture has Search fields outside its currently scrolled content. Static
 captures do not establish their scroll reachability or simultaneous visibility.
 Browser interactions are separate functional evidence. One small English Transcript
 capture still contains Chromium's native buffering indicator despite successful
@@ -702,16 +793,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`2e3e9651dfb3995149681414215a5d1caa9b8242`, Node 24.14.0, SQLite 3.51.2,
+`b7be7cb2556d330eb3fc51a3c8e280420fa16da4`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **8.11–38.86 ms**, with a recorded maximum **38.96 ms**. Case-sensitive,
+  **8.06–39.73 ms**, with a recorded maximum **43.23 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **86.12 ms** and is outside the search interval.
+- Database seeding took **74.95 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **13.02 ms** matcher compilation and **42.88 ms** scanning, including
+  warm-up, **11.67 ms** matcher compilation and **41.79 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache
@@ -722,9 +813,9 @@ For maximum-size review selection, run
 `pnpm exec tsx scripts/benchmark-review-selection.ts output.json`. This generated
 SQLite fixture selects 10,000 IDs in reverse order and verifies 100 cancelled
 batches retain transcript order. On the same shared host, at
-`2e3e9651dfb3995149681414215a5d1caa9b8242`, five preparation samples had a
-**21.40 ms** median and **19.78–28.44 ms** range. Setup took **56.02 ms**, including
-**44.82 ms** seeding, outside the interval. Preparation includes source
+`b7be7cb2556d330eb3fc51a3c8e280420fa16da4`, five preparation samples had a
+**22.59 ms** median and **19.66–26.08 ms** range. Setup took **63.88 ms**, including
+**47.66 ms** seeding, outside the interval. Preparation includes source
 verification, transcript loading, selection validation, partitioning and initial
 queued-job persistence; later batch writes, cancellation and full review are
 excluded. The output records exact source/runtime/fixture hashes. This is not
@@ -742,3 +833,9 @@ Text commits store validated immutable snapshots; Undo history is bounded to 100
 references, but revisions and durable request receipts are retained. Large
 repeated-edit storage compaction is deferred. The optional review test fixture
 does not establish any commercial/local language model's correction accuracy.
+
+Automatic interrupted-review recovery requires a proven-dead local execution
+owner. Linux boot and PID namespace checks cover that case; live, legacy,
+foreign and permission-unknown owners are preserved. Cross-process automatic
+Windows/macOS recovery is not implemented by this proof. Unknown-owner
+checkpoints can require manual support rather than silently cancelling work.
