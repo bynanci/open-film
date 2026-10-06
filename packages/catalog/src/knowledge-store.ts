@@ -234,9 +234,19 @@ export class CatalogKnowledgeStore {
         409,
       );
     const after = validateTranscriptReviewSuggestion({ ...before, ...patch });
-    this.database
-      .prepare("UPDATE review_suggestions SET status=?,data=? WHERE id=?")
-      .run(after.status, JSON.stringify(after), id);
+    // Another connection can finish a review after the read. Preserve its
+    // lifecycle evidence instead of overwriting it with this outdated copy.
+    const updated = this.database
+      .prepare(
+        "UPDATE review_suggestions SET status=?,data=? WHERE id=? AND status=?",
+      )
+      .run(after.status, JSON.stringify(after), id, before.status);
+    if (Number(updated.changes) !== 1)
+      throw new ApplicationError(
+        "review.suggestionStale",
+        "This suggestion changed while it was being reviewed. Reload it before trying again.",
+        409,
+      );
     return after;
   }
 
