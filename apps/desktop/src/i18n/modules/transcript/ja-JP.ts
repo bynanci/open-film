@@ -118,8 +118,8 @@ export default {
     providerDestination: "送信先：{destination}",
     reviewRunning: "さらに文字を確認中…",
     cancelReview: "レビューをキャンセル",
-    retryBatch: "失敗したバッチを再試行",
-    skipBatch: "失敗したバッチをスキップ",
+    retryBatch: "バッチを再試行",
+    skipBatch: "バッチをスキップ",
     reviewPartial:
       "レビューをキャンセルしました。完了済みの提案は保持されています。",
     pending: "確認待ち",
@@ -155,6 +155,8 @@ export default {
       "レビューには文字起こしと用語のみを使います。メディア、位置、無関係なプロジェクトデータは送信しません。",
     failedBatch:
       "レビューバッチが失敗しました。完了済みの提案は保持され、再試行またはスキップできます。",
+    cancelledBatch:
+      "このレビューバッチはキャンセルされました。完了済みの提案は保持されています。未完了の処理を再試行またはスキップできます。",
     glossaryLimit: "次のページを読み込むとさらに用語を管理できます。",
     selectAll: "すべての提案",
   },

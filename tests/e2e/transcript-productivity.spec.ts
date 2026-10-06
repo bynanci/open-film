@@ -898,40 +898,130 @@ test("delayed suggestion acceptance guards typing and waits before changing mode
   });
   const baseline = await immutableCut(request, asset.id, compositionId);
   await initialLocale(page);
+  // Keep interception enabled while specific held/lost-response handlers come
+  // and go. Requests still reach the real API with their original contents.
+  await page.route("**/api/**", (route) => route.continue());
   await page.goto("/");
   await transcriptMode(page);
   await selectRow(page);
   await tools(page, "suggestions");
   for (const action of ["mode", "close"] as const) {
     await tools(page, "suggestions");
-    await button(page, "findMatches").click();
-    await expect(page.getByTestId("review-suggestion").first()).toBeVisible({
+    const generationPattern = `**/api/assets/${asset.id}/review`;
+    let releaseGeneration: (() => void) | undefined;
+    let generationReceived = false;
+    if (action === "close") {
+      await expect(
+        page.getByTestId("review-suggestion").first(),
+      ).toHaveAttribute("data-status", "stale");
+      const gate = new Promise<void>((resolve) => {
+        releaseGeneration = resolve;
+      });
+      await page.route(generationPattern, async (route) => {
+        generationReceived = true;
+        await gate;
+        await route.continue();
+      });
+    }
+    const reviewResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/assets/${asset.id}/review` &&
+        response.request().method() === "POST",
+    );
+    try {
+      await button(page, "findMatches").click();
+      if (action === "close") {
+        await expect
+          .poll(() => generationReceived, {
+            message: "Regeneration is pending before reaching the backend",
+          })
+          .toBe(true);
+        // The prior first row is still visible but stale. A positional locator
+        // could capture this ID and later click a different pending first row.
+        await expect(
+          page.getByTestId("review-suggestion").first(),
+        ).toHaveAttribute("data-status", "stale");
+        await expect(
+          page.getByTestId("review-suggestion").getByRole("button", {
+            name: t("accept"),
+            exact: true,
+          }),
+        ).toHaveCount(0);
+      }
+    } finally {
+      releaseGeneration?.();
+    }
+    const response = await reviewResponse;
+    // Keep the resolved route through the page's lifetime. Removing the last
+    // route while run() dispatches its refresh toggles Chromium interception
+    // and can strand those reads; later timer polls would hide the lost read.
+    expect(response.ok()).toBe(true);
+    const { job } = (await response.json()) as { job: Job };
+    await waitJob(request, job.id);
+    const candidate = page
+      .getByTestId("review-suggestion")
+      .filter({
+        has: page.getByRole("button", { name: t("accept"), exact: true }),
+      })
+      .first();
+    await expect(candidate).toBeVisible({
       timeout: 10_000,
     });
-    const suggestion = page.getByTestId("review-suggestion").first();
-    const id = (await suggestion.getAttribute("data-suggestion-id"))!;
+    const id = (await candidate.getAttribute("data-suggestion-id"))!;
+    // Polling can replace a positional first() row. The interception and click
+    // must both refer to the same durable suggestion rather than its position.
+    const suggestion = page.locator(`[data-suggestion-id="${id}"]`);
+    expect(
+      (await suggestions(request, asset.id, "pending")).suggestions.some(
+        (item) => item.id === id,
+      ),
+    ).toBe(true);
     let release!: () => void;
-    let arrived!: () => void;
+    let received = false;
+    let committed: { ok: boolean; status: number; detail: string } | undefined;
+    let failed: string | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const started = new Promise<void>((resolve) => {
-      arrived = resolve;
-    });
     const pattern = `**/api/review/suggestions/${id}/accept`;
     await page.route(pattern, async (route) => {
-      const response = await route.fetch();
-      expect(response.ok()).toBe(true);
-      arrived();
-      await gate;
-      await route.fulfill({ response });
+      received = true;
+      try {
+        const response = await route.fetch();
+        committed = {
+          ok: response.ok(),
+          status: response.status(),
+          detail: await response.text(),
+        };
+        await gate;
+        await route.fulfill({ response });
+      } catch (cause) {
+        failed = String(cause);
+        await route.abort("failed");
+      }
     });
     const before = await field(page).inputValue();
     try {
+      await expect(
+        suggestion.getByRole("button", { name: t("accept"), exact: true }),
+      ).toBeEnabled({ timeout: 10_000 });
       await suggestion
         .getByRole("button", { name: t("accept"), exact: true })
         .click();
-      await started;
+      await expect
+        .poll(() => received, {
+          message: `${action}: Accept sends its durable receipt`,
+          timeout: 15_000,
+        })
+        .toBe(true);
+      await expect
+        .poll(() => committed ?? failed, {
+          message: `${action}: Accept reaches the backend before guarding navigation`,
+          timeout: 15_000,
+        })
+        .not.toBeUndefined();
+      expect(failed, `${action}: acceptance transport`).toBeUndefined();
+      expect(committed?.ok, JSON.stringify(committed)).toBe(true);
       await expect(field(page)).toBeDisabled();
       await expect(page.getByTestId("transcript-source-picker")).toBeDisabled();
       await expect(button(page, "hideTools")).toBeDisabled();
@@ -1249,7 +1339,7 @@ test("bounded transcript pages stream completed review batches and preserve part
   page,
   request,
 }) => {
-  const { asset, compositionId } = await createSource(
+  const { path, asset, compositionId } = await createSource(
     request,
     "Bounded review batches",
   );
@@ -1342,6 +1432,8 @@ test("bounded transcript pages stream completed review batches and preserve part
     timeout: 10_000,
   });
   expect((await suggestions(request, asset.id, "pending")).total).toBe(50);
+  const retained = (await suggestions(request, asset.id, "pending"))
+    .suggestions;
   expect((await transcript(request, asset.id)).revision).toBe(seeded.revision);
   const batches = (
     await get<{ batches: ReviewBatch[] }>(
@@ -1357,6 +1449,83 @@ test("bounded transcript pages stream completed review batches and preserve part
         (batch) => batch.status === "cancelled" || batch.status === "pending",
       ),
   ).toBe(true);
+  const recovery = page.getByTestId("review-recovery-batch");
+  await expect(recovery).toHaveCount(2);
+  for (let index = 0; index < 2; index++)
+    await expect(recovery.nth(index)).toHaveAttribute("data-job-id", job.id);
+  const retryRow = page.locator(
+    '[data-testid="review-recovery-batch"][data-batch-index="1"]',
+  );
+  await expect(retryRow).toHaveAttribute("data-batch-status", "cancelled");
+  await retryRow
+    .getByRole("button", { name: t("retryBatch"), exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (
+          await get<{ batches: ReviewBatch[] }>(
+            request,
+            `/review/jobs/${job.id}/batches`,
+          )
+        ).batches[1]?.status,
+      { timeout: 15_000, message: "The cancelled second batch is retried" },
+    )
+    .toBe("completed");
+  await expect(recovery).toHaveCount(1);
+  const remaining = page.locator(
+    '[data-testid="review-recovery-batch"][data-batch-index="2"]',
+  );
+  await expect(remaining).toHaveAttribute("data-batch-status", "cancelled");
+  await remaining
+    .getByRole("button", { name: t("skipBatch"), exact: true })
+    .click();
+  await waitJob(request, job.id);
+  await expect(recovery).toHaveCount(0);
+  const recoveredBatches = (
+    await get<{ batches: ReviewBatch[] }>(
+      request,
+      `/review/jobs/${job.id}/batches`,
+    )
+  ).batches;
+  expect(recoveredBatches.map((batch) => batch.status)).toEqual([
+    "completed",
+    "completed",
+    "skipped",
+  ]);
+  expect(recoveredBatches.map((batch) => batch.attempts)).toEqual([1, 2, 0]);
+  const recoveredSuggestions = await suggestions(request, asset.id, "pending");
+  expect(recoveredSuggestions.total).toBe(100);
+  const byId = new Map(
+    recoveredSuggestions.suggestions.map((suggestion) => [
+      suggestion.id,
+      suggestion,
+    ]),
+  );
+  for (const suggestion of retained)
+    expect(byId.get(suggestion.id)).toEqual(suggestion);
+  expect((await transcript(request, asset.id)).revision).toBe(seeded.revision);
+  // The resumed job, skipped sibling and completed evidence survive reopening.
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  await tools(page, "suggestions");
+  await expect(page.getByTestId("review-suggestion")).toHaveCount(50);
+  await expect(recovery).toHaveCount(0);
+  expect(
+    (
+      await get<{ batches: ReviewBatch[] }>(
+        request,
+        `/review/jobs/${job.id}/batches`,
+      )
+    ).batches,
+  ).toEqual(recoveredBatches);
   await page
     .getByTestId("review-suggestion")
     .first()
@@ -1369,7 +1538,7 @@ test("bounded transcript pages stream completed review batches and preserve part
     .getByRole("button", { name: t("accept"), exact: true })
     .click();
   await saved(page);
-  await expect(page.getByTestId("review-suggestion")).toHaveCount(49);
+  await expect(page.getByTestId("review-suggestion")).toHaveCount(50);
   await expect(page.getByTestId("review-suggestion").first()).toHaveAttribute(
     "data-status",
     "stale",
@@ -1380,13 +1549,19 @@ test("bounded transcript pages stream completed review batches and preserve part
   ).toHaveLength(1);
   expect(
     reviewed.suggestions.filter((item) => item.status === "stale"),
-  ).toHaveLength(49);
+  ).toHaveLength(99);
+  const skippedId = await page
+    .getByTestId("review-suggestion")
+    .first()
+    .getAttribute("data-suggestion-id");
   await page
     .getByTestId("review-suggestion")
     .first()
     .getByRole("button", { name: t("skip"), exact: true })
     .click();
-  await expect(page.getByTestId("review-suggestion")).toHaveCount(48);
+  await expect(page.locator(`[data-suggestion-id="${skippedId}"]`)).toHaveCount(
+    0,
+  );
   expect(
     (await suggestions(request, asset.id)).suggestions.filter(
       (item) => item.status === "skipped",
@@ -1577,17 +1752,79 @@ for (const locale of locales) {
       await page.setViewportSize(size);
       await capture(page, info, `${locale}-suggestions`);
     }
-    // Pending and stale views each use50 rows; all121 suggestions are reachable.
-    for (const count of [50, 21]) {
-      await page
-        .locator(".transcript-side-panel > .editor-actions")
-        .filter({ has: page.locator("button") })
-        .last()
-        .locator("button")
-        .last()
-        .click();
-      await expect(page.getByTestId("review-suggestion")).toHaveCount(count);
+    // A page can keep the same row count. Acknowledged offset and changed
+    // suggestion identities prove each Next click actually reached its page.
+    const pagination = page.getByTestId("review-pagination");
+    const firstIds = await page
+      .getByTestId("review-suggestion")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-suggestion-id")),
+      );
+    await expect(pagination).toHaveAttribute("data-offset", "0");
+    let releasePage: (() => void) | undefined;
+    let pageReads = 0;
+    let pageResponses = 0;
+    const pagePattern = `**/api/assets/${asset.id}/review/suggestions?*`;
+    if (locale === "en-XA") {
+      const gate = new Promise<void>((resolve) => {
+        releasePage = resolve;
+      });
+      await page.route(pagePattern, async (route) => {
+        const params = new URL(route.request().url()).searchParams;
+        if (
+          params.get("status") !== "pending" ||
+          params.get("offset") !== "50"
+        ) {
+          await route.continue();
+          return;
+        }
+        pageReads++;
+        const response = await route.fetch();
+        await gate;
+        await route.fulfill({ response });
+        pageResponses++;
+      });
     }
+    let heldReads = 0;
+    try {
+      await pagination.locator("button").last().click();
+      if (locale === "en-XA") {
+        await expect(pagination).toHaveAttribute(
+          "data-requested-offset",
+          "100",
+        );
+        await expect(pagination).toHaveAttribute("aria-busy", "true");
+        await expect(pagination.locator("button").last()).toBeDisabled();
+        // Hold the user request across a real timer poll. The poll must retain
+        // the requested page rather than replacing it with settled offset zero.
+        await expect
+          .poll(() => pageReads, {
+            timeout: 10_000,
+            message: "Polling retains the unacknowledged Next page",
+          })
+          .toBeGreaterThanOrEqual(2);
+        heldReads = pageReads;
+      }
+    } finally {
+      releasePage?.();
+    }
+    await expect(pagination).toHaveAttribute("data-offset", "100");
+    await expect(pagination).toHaveAttribute("aria-busy", "false");
+    await expect(page.getByTestId("review-suggestion")).toHaveCount(50);
+    const secondIds = await page
+      .getByTestId("review-suggestion")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-suggestion-id")),
+      );
+    expect(secondIds.filter((id) => firstIds.includes(id))).toEqual([]);
+    if (locale === "en-XA") {
+      await expect.poll(() => pageResponses).toBeGreaterThanOrEqual(heldReads);
+      await page.unroute(pagePattern);
+    }
+    await pagination.locator("button").last().click();
+    await expect(pagination).toHaveAttribute("data-offset", "200");
+    await expect(page.getByTestId("review-suggestion")).toHaveCount(21);
+    await expect(pagination.locator("button").last()).toBeDisabled();
     expect(missing).toEqual([]);
     await unchangedSource();
   });

@@ -119,8 +119,8 @@ export default {
     providerDestination: "Destination: {destination}",
     reviewRunning: "Reviewing more text…",
     cancelReview: "Cancel review",
-    retryBatch: "Retry failed batch",
-    skipBatch: "Skip failed batch",
+    retryBatch: "Retry batch",
+    skipBatch: "Skip batch",
     reviewPartial: "Review cancelled; completed suggestions were kept.",
     pending: "Pending",
     accepted: "Accepted",
@@ -154,6 +154,8 @@ export default {
       "Reviews use transcript text and glossary terms. Media files, locations and unrelated project data are not sent.",
     failedBatch:
       "A review batch failed. Completed suggestions are preserved. Retry or skip this batch.",
+    cancelledBatch:
+      "This review batch was cancelled. Completed suggestions are preserved. Retry or skip the unfinished work.",
     glossaryLimit: "Load the next page to manage more terms.",
     selectAll: "All suggestions",
   },

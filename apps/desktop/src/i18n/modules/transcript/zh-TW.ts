@@ -101,8 +101,8 @@ export default {
     providerDestination: "目的地：{destination}",
     reviewRunning: "正在審閱更多文字…",
     cancelReview: "取消審閱",
-    retryBatch: "重試失敗批次",
-    skipBatch: "略過失敗批次",
+    retryBatch: "重試批次",
+    skipBatch: "略過批次",
     reviewPartial: "審閱已取消，已完成的建議仍保留。",
     pending: "待審閱",
     accepted: "已接受",
@@ -134,6 +134,8 @@ export default {
     reviewContext:
       "審閱只使用逐字稿文字與詞彙，不會傳送媒體檔案、位置或無關專案資料。",
     failedBatch: "一個審閱批次失敗。已完成的建議已保留，可重試或略過此批次。",
+    cancelledBatch:
+      "此審閱批次已取消。已完成的建議仍保留，可重試或略過尚未完成的工作。",
     glossaryLimit: "載入下一頁即可管理更多詞彙。",
     selectAll: "所有建議",
   },

@@ -86,6 +86,10 @@ watch(busy, (value) => emit("busy", value), { flush: "sync" });
 const error = shallowRef<unknown>(null);
 const history = ref(false);
 const reviewPages = ref(1);
+const requestedOffset = ref(0);
+const pageChanging = computed(
+  () => requestedOffset.value !== data.value.offset,
+);
 let readGeneration = 0;
 let poll: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
@@ -94,11 +98,14 @@ const active = computed(() =>
   jobs.value.find((job) => job.status === "queued" || job.status === "running"),
 );
 const lastJob = computed(() => jobs.value[0]);
-const failedBatches = computed(() =>
-  batches.value.filter((batch) => batch.status === "failed"),
+const recoverableBatches = computed(() =>
+  batches.value.filter(
+    (batch) => batch.status === "failed" || batch.status === "cancelled",
+  ),
 );
 const remote = computed(() => provider.value?.provider?.execution === "remote");
-async function refresh(offset = data.value.offset) {
+async function refresh(offset = requestedOffset.value) {
+  requestedOffset.value = offset;
   const stamp = ++readGeneration,
     capturedHistory = history.value,
     page = Math.floor(offset / 100);
@@ -155,7 +162,10 @@ async function refresh(offset = data.value.offset) {
       if (current()) batches.value = found.batches;
     }
   } catch (cause) {
-    if (current()) error.value = cause;
+    if (current()) {
+      error.value = cause;
+      requestedOffset.value = data.value.offset;
+    }
   }
 }
 async function run(source: "glossary" | "language") {
@@ -408,16 +418,27 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </article>
-    <div v-if="reviewPages > 1" class="editor-actions">
+    <div
+      v-if="reviewPages > 1"
+      class="editor-actions"
+      data-testid="review-pagination"
+      :data-offset="data.offset"
+      :data-requested-offset="requestedOffset"
+      :aria-busy="pageChanging"
+    >
       <button
         class="editor-button"
-        :disabled="busy || data.offset === 0"
+        :disabled="busy || pageChanging || data.offset === 0"
         @click="refresh(Math.max(0, data.offset - 100))"
       >
         {{ t("transcript.previousSuggestions") }}</button
       ><button
         class="editor-button"
-        :disabled="busy || Math.floor(data.offset / 100) + 1 >= reviewPages"
+        :disabled="
+          busy ||
+          pageChanging ||
+          Math.floor(data.offset / 100) + 1 >= reviewPages
+        "
         @click="refresh(data.offset + 100)"
       >
         {{ t("transcript.nextSuggestions") }}
@@ -479,8 +500,24 @@ onBeforeUnmount(() => {
     <p v-if="lastJob?.status === 'cancelled'" class="editor-note">
       {{ t("transcript.reviewPartial") }}
     </p>
-    <div v-for="batch in failedBatches" :key="batch.index" class="editor-error">
-      <p>{{ t("transcript.failedBatch") }}</p>
+    <div
+      v-for="batch in recoverableBatches"
+      :key="`${batch.jobId}:${batch.index}`"
+      class="editor-error"
+      data-testid="review-recovery-batch"
+      :data-job-id="batch.jobId"
+      :data-batch-index="batch.index"
+      :data-batch-status="batch.status"
+    >
+      <p>
+        {{
+          t(
+            batch.status === "cancelled"
+              ? "transcript.cancelledBatch"
+              : "transcript.failedBatch",
+          )
+        }}
+      </p>
       <button
         class="editor-button"
         :disabled="busy"
