@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { OpenFilmApplication } from "../packages/application/src/index.ts";
 import { hashFile } from "../packages/media/src/index.ts";
 import { compileGlossaryMatcher } from "../packages/core/src/knowledge.ts";
+import type { TranscriptSearchResult } from "../packages/catalog/src/transcript-editor-store.ts";
 
 const repository = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const output = resolve(
@@ -167,7 +168,7 @@ try {
     let count = 0;
     for (let iteration = 0; iteration < 5; iteration++) {
       const start = performance.now();
-      const result = app.catalog.transcripts.search(
+      const result: TranscriptSearchResult = app.catalog.transcripts.search(
         "generated-source",
         sourceHash,
         options,
@@ -181,7 +182,7 @@ try {
     }
     for (let iteration = 0; iteration < 5; iteration++) {
       const start = performance.now();
-      const result = await app.transcriptEditor.search(
+      const result: TranscriptSearchResult = await app.transcriptEditor.search(
         "generated-source",
         options,
       );
