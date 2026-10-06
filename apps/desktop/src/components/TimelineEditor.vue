@@ -534,8 +534,7 @@ function measureWorkspace() {
     if (sourceScreenElement.value) {
       const width = sourceScreenElement.value.clientWidth;
       const height = sourceScreenElement.value.clientHeight;
-      if (width > 0 && height > 0)
-        sourceViewport.value = { width, height };
+      if (width > 0 && height > 0) sourceViewport.value = { width, height };
     }
     const workspace =
       editMode.value === "precision"
