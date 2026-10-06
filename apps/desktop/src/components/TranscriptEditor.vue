@@ -69,6 +69,7 @@ function setTextarea(element: unknown) {
 }
 const searchInput = ref<HTMLInputElement | null>(null);
 const reviewPanel = ref<InstanceType<typeof ReviewPanel> | null>(null);
+const glossaryPanel = ref<InstanceType<typeof GlossaryPanel> | null>(null);
 const selectedId = ref("");
 const editing = ref(false);
 const text = ref("");
@@ -86,8 +87,16 @@ const localError = shallowRef<unknown>(null);
 const toolsOpen = ref(false);
 const reviewBusy = ref(false);
 const reviewPending = ref(false);
+const glossaryBusy = ref(false);
+const rememberBusy = ref(false);
+let rememberMutation: Promise<boolean> | undefined;
 const hasPending = computed(
-  () => transcriptHasPending.value || reviewBusy.value || reviewPending.value,
+  () =>
+    transcriptHasPending.value ||
+    reviewBusy.value ||
+    reviewPending.value ||
+    glossaryBusy.value ||
+    rememberBusy.value,
 );
 const tool = ref<"glossary" | "suggestions">("glossary");
 const corrections = ref<{ before: string; after: string } | null>(null);
@@ -153,6 +162,8 @@ const busy = computed(
     pending.value ||
     reviewBusy.value ||
     reviewPending.value ||
+    glossaryBusy.value ||
+    rememberBusy.value ||
     historyBusy.value ||
     status.value === "loading" ||
     status.value === "conflict",
@@ -190,11 +201,21 @@ function timed(segment: TranscriptSegment) {
 }
 async function flush() {
   if (!(await flushTranscript())) return false;
-  return (await reviewPanel.value?.flush()) ?? true;
+  if ((await reviewPanel.value?.flush()) === false) return false;
+  if ((await glossaryPanel.value?.flush()) === false) return false;
+  if (rememberMutation && !(await rememberMutation)) return false;
+  return true;
 }
 defineExpose({ flush, hasPending, reload: () => load(0, false) });
 async function toggleTools() {
-  if (reviewBusy.value || reviewPending.value || !(await flush())) return;
+  if (
+    reviewBusy.value ||
+    reviewPending.value ||
+    glossaryBusy.value ||
+    rememberBusy.value ||
+    !(await flush())
+  )
+    return;
   toolsOpen.value = !toolsOpen.value;
 }
 async function selectTool(value: "glossary" | "suggestions") {
@@ -202,6 +223,8 @@ async function selectTool(value: "glossary" | "suggestions") {
     value === tool.value ||
     reviewBusy.value ||
     reviewPending.value ||
+    glossaryBusy.value ||
+    rememberBusy.value ||
     !(await flush())
   )
     return;
@@ -461,21 +484,33 @@ async function undo(direction: "undo" | "redo") {
   }
 }
 async function remember() {
-  if (!corrections.value) return;
-  try {
-    await api.saveGlossary({
-      scope: "project",
-      source: corrections.value.before,
-      replacement: corrections.value.after,
-      caseSensitive: true,
-      enabled: true,
-    });
-    corrections.value = null;
-    toolsOpen.value = true;
-    tool.value = "glossary";
-  } catch (cause) {
-    localError.value = cause;
-  }
+  if (!corrections.value || busy.value) return false;
+  const correction = { ...corrections.value };
+  rememberBusy.value = true;
+  rememberMutation = (async () => {
+    try {
+      if (!(await flushTranscript())) return false;
+      await api.saveGlossary({
+        scope: "project",
+        source: correction.before,
+        replacement: correction.after,
+        caseSensitive: true,
+        enabled: true,
+      });
+      corrections.value = null;
+      toolsOpen.value = true;
+      tool.value = "glossary";
+      return true;
+    } catch (cause) {
+      localError.value = cause;
+      return false;
+    } finally {
+      rememberBusy.value = false;
+    }
+  })().finally(() => {
+    rememberMutation = undefined;
+  });
+  return rememberMutation;
 }
 async function seekSegment(id: string) {
   if (!(await flushTranscript())) return;
@@ -759,7 +794,9 @@ onBeforeUnmount(() => {
         ><button
           class="editor-button"
           :aria-expanded="toolsOpen"
-          :disabled="reviewBusy || reviewPending"
+          :disabled="
+            reviewBusy || reviewPending || glossaryBusy || rememberBusy
+          "
           @click="toggleTools"
         >
           {{ t(toolsOpen ? "transcript.hideTools" : "transcript.showTools") }}
@@ -1094,7 +1131,7 @@ onBeforeUnmount(() => {
             class="transcript-remember"
           >
             <span>{{ t("transcript.rememberCorrection") }}</span
-            ><button class="editor-button" @click="remember">
+            ><button class="editor-button" :disabled="busy" @click="remember">
               {{ t("transcript.remember") }}
             </button>
           </div>
@@ -1309,7 +1346,9 @@ onBeforeUnmount(() => {
             :key="value"
             class="editor-button"
             :aria-pressed="tool === value"
-            :disabled="reviewBusy || reviewPending"
+            :disabled="
+              reviewBusy || reviewPending || glossaryBusy || rememberBusy
+            "
             @click="selectTool(value)"
           >
             {{ t(`transcript.${value}`) }}
@@ -1317,9 +1356,12 @@ onBeforeUnmount(() => {
         </div>
         <GlossaryPanel
           v-if="tool === 'glossary'"
+          ref="glossaryPanel"
           :asset-id="asset.id"
           :flush="flushTranscript"
           :task-busy="taskBusy"
+          :blocked="rememberBusy || reviewBusy || reviewPending"
+          @busy="glossaryBusy = $event"
           @review="
             tool = 'suggestions';
             emit('activity');
