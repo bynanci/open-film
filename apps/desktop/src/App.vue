@@ -178,7 +178,7 @@ const activeJobs = computed(() =>
 );
 const recentJob = computed(() => jobs.value[0]);
 const cancellingJobs = ref<Record<string, boolean>>({});
-const renderCancellationRequested = ref(false);
+const renderCancellationRequested = ref<string | null>(null);
 const storyCreateOpen = ref(false);
 const storyTitle = ref("");
 const storyTemplate = ref("blank");
@@ -742,6 +742,7 @@ async function refreshJobs() {
   const result = await api.jobs();
   if (generation === jobsGeneration && project.value?.id === projectId)
     jobs.value = result.jobs;
+  return project.value?.id === projectId ? result.jobs : undefined;
 }
 async function pollJobs() {
   if (!project.value || polling) return;
@@ -1017,24 +1018,30 @@ async function compose() {
 async function renderPreview() {
   if (!(await flushPending())) return;
   const renderingEdit = editSerial;
+  const renderingProject = project.value?.id;
   const composition = activeComposition.value;
   if (!composition) return;
   await run("renderingPreview", async () => {
-    renderCancellationRequested.value = false;
+    renderCancellationRequested.value = null;
     try {
       await post<{ path: string }>("/render", {
         compositionId: composition.id,
       });
     } catch (cause) {
+      let renderJobs: Job[] | undefined;
       try {
-        await refreshJobs();
+        renderJobs = await refreshJobs();
       } catch {
         /* Preserve the render failure. */
       }
       if (
         renderCancellationRequested.value &&
-        jobs.value.some(
-          (job) => job.type === "render" && job.status === "cancelled",
+        project.value?.id === renderingProject &&
+        renderJobs?.some(
+          (job) =>
+            job.id === renderCancellationRequested.value &&
+            job.type === "render" &&
+            job.status === "cancelled",
         )
       ) {
         notice.value = message("feedback.renderCancelled");
@@ -1061,7 +1068,7 @@ async function exportFilm(format: string) {
   const composition = activeComposition.value;
   if (!composition) return;
   await run("exportingTimeline", async () => {
-    renderCancellationRequested.value = false;
+    renderCancellationRequested.value = null;
     let result: {
       path: string;
       filename?: string;
@@ -1070,15 +1077,20 @@ async function exportFilm(format: string) {
     try {
       result = await post("/export", { format, compositionId: composition.id });
     } catch (cause) {
+      let renderJobs: Job[] | undefined;
       try {
-        await refreshJobs();
+        renderJobs = await refreshJobs();
       } catch {
         /* Preserve the export result. */
       }
       if (
         renderCancellationRequested.value &&
-        jobs.value.some(
-          (job) => job.type === "render" && job.status === "cancelled",
+        project.value?.id === exportingProject &&
+        renderJobs?.some(
+          (job) =>
+            job.id === renderCancellationRequested.value &&
+            job.type === "render" &&
+            job.status === "cancelled",
         )
       ) {
         notice.value = message("feedback.renderCancelled");
@@ -1125,12 +1137,16 @@ function jobTitle(job: Job): string {
 async function cancelJob(job: Job) {
   if (cancellingJobs.value[job.id]) return;
   cancellingJobs.value = { ...cancellingJobs.value, [job.id]: true };
-  if (job.type === "render") renderCancellationRequested.value = true;
+  if (job.type === "render") renderCancellationRequested.value = job.id;
   try {
     await post(`/jobs/${encodeURIComponent(job.id)}/cancel`);
-    await refreshJobs();
+    try {
+      await refreshJobs();
+    } catch {
+      /* The cancel was acknowledged; polling will refresh its status. */
+    }
   } catch (cause) {
-    if (job.type === "render") renderCancellationRequested.value = false;
+    if (job.type === "render") renderCancellationRequested.value = null;
     error.value = cause;
   } finally {
     cancellingJobs.value = { ...cancellingJobs.value, [job.id]: false };

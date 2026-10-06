@@ -322,7 +322,112 @@ test("cancels a real preview render while its request is pending", async ({
   request,
 }) => {
   const fixture = await createDesktopFixture(20);
+  const gate = () => {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => (release = resolve));
+    return { promise, release };
+  };
+  const catchStartedGate = gate();
+  const newerPollStartedGate = gate();
+  const cancelRefreshGate = gate();
+  const newerPollGate = gate();
+  let active = false;
+  let catchStarted = false;
+  let catchResponseReleased = false;
+  let newerPollHeld = false;
+  const startsAfterCatch = new Map<number, boolean>();
+  const heldReads = new Set<Promise<void>>();
+  let callbackFailure: unknown;
+  let primaryFailure: unknown;
   try {
+    await page.exposeBinding(
+      "__holdRenderJobsResponse",
+      (
+        _source,
+        payload: {
+          id: number;
+          reader: string;
+          stage: "start" | "response";
+          status?: number;
+          jobs?: { id: string; type: string; status: string }[];
+        },
+      ) => {
+        const read = (async () => {
+          if (!active) return;
+          if (payload.stage === "start") {
+            if (payload.reader === "renderPreview" && !catchStarted) {
+              catchStarted = true;
+              catchStartedGate.release();
+            }
+            startsAfterCatch.set(payload.id, catchStarted);
+            if (payload.reader === "pollJobs" && catchStarted)
+              newerPollStartedGate.release();
+            return;
+          }
+          expect(payload.status).toBe(200);
+          expect(Array.isArray(payload.jobs)).toBe(true);
+          if (payload.reader === "cancelJob") {
+            await cancelRefreshGate.promise;
+          } else if (payload.reader === "pollJobs") {
+            await catchStartedGate.promise;
+            if (startsAfterCatch.get(payload.id)) {
+              newerPollHeld = true;
+              await newerPollGate.promise;
+            }
+          } else if (
+            payload.reader === "renderPreview" &&
+            !catchResponseReleased
+          ) {
+            expect(
+              payload.jobs?.find((job) => job.type === "render")?.status,
+            ).toBe("cancelled");
+            await newerPollStartedGate.promise;
+            catchResponseReleased = true;
+          }
+        })();
+        heldReads.add(read);
+        void read.then(
+          () => heldReads.delete(read),
+          (cause: unknown) => {
+            heldReads.delete(read);
+            callbackFailure ??= cause;
+          },
+        );
+        return read;
+      },
+    );
+    await page.addInitScript(() => {
+      const observed = window as unknown as Window & {
+        __holdRenderJobsResponse: (payload: unknown) => Promise<void>;
+      };
+      const fetch = window.fetch.bind(window);
+      let nextId = 0;
+      window.fetch = async (input, init) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        if (new URL(url, location.href).pathname !== "/api/jobs")
+          return fetch(input, init);
+        const stack = new Error().stack ?? "";
+        const reader =
+          stack.match(/\b(pollJobs|cancelJob|renderPreview)\b/)?.[1] ?? "other";
+        const id = ++nextId;
+        await observed.__holdRenderJobsResponse({ id, reader, stage: "start" });
+        const response = await fetch(input, init);
+        const body = await response.clone().json();
+        await observed.__holdRenderJobsResponse({
+          id,
+          reader,
+          stage: "response",
+          status: response.status,
+          jobs: body.jobs,
+        });
+        return response;
+      };
+    });
     const created = await request.post(
       "http://127.0.0.1:4310/api/project/create",
       { data: { path: fixture.project, title: "A longer film" } },
@@ -368,6 +473,7 @@ test("cancels a real preview render while its request is pending", async ({
     await expect(
       page.getByRole("button", { name: "Switch project", exact: true }),
     ).toBeDisabled();
+    active = true;
     await page
       .getByRole("button", { name: "Cancel render", exact: true })
       .click();
@@ -378,6 +484,10 @@ test("cancels a real preview render while its request is pending", async ({
       page.getByRole("button", { name: "Render preview", exact: true }),
     ).toBeEnabled();
     await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(catchResponseReleased).toBe(true);
+    await expect.poll(() => newerPollHeld).toBe(true);
+    cancelRefreshGate.release();
+    newerPollGate.release();
     const { jobs } = await (
       await request.get("http://127.0.0.1:4310/api/jobs")
     ).json();
@@ -385,7 +495,17 @@ test("cancels a real preview render while its request is pending", async ({
       jobs.find((job: { type: string }) => job.type === "render").status,
     ).toBe("cancelled");
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+  } catch (cause) {
+    primaryFailure = cause;
   } finally {
+    active = false;
+    catchStartedGate.release();
+    newerPollStartedGate.release();
+    cancelRefreshGate.release();
+    newerPollGate.release();
+    await Promise.allSettled([...heldReads]);
     cleanupFixtures.push(fixture.cleanup);
   }
+  if (primaryFailure) throw primaryFailure;
+  if (callbackFailure) throw callbackFailure;
 });
