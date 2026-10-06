@@ -296,12 +296,23 @@ function simpleFoldKey(character: string, cache: Map<string, string>): string {
       : character;
   const cached = cache.get(character);
   if (cached !== undefined) return cached;
+  // These Unicode simple-fold aliases have expanding full case conversions.
+  // Keep their one-scalar candidates subject to the same runtime /iu check.
+  const simple =
+    code === 0x1fd3
+      ? "\u0390"
+      : code === 0x1fe3
+        ? "\u03b0"
+        : code === 0xfb05
+          ? "\ufb06"
+          : character;
   const upperLower = character.toUpperCase().toLowerCase();
   const lower = character.toLowerCase();
-  if (upperLower === character && lower === character) return character;
+  if (simple === character && upperLower === character && lower === character)
+    return character;
   let key = character;
   let equivalent: RegExp | undefined;
-  for (const candidate of [upperLower, lower]) {
+  for (const candidate of [simple, upperLower, lower]) {
     if (candidate === character || [...candidate].length !== 1) continue;
     equivalent ??= new RegExp(`^\\u{${code.toString(16)}}$`, "iu");
     if (equivalent.test(candidate)) {

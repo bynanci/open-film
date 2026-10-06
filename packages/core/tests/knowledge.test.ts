@@ -30,6 +30,40 @@ function term(
 
 describe("portable terminology and correction evidence", () => {
   it.each([
+    ["\u0390", "\u1fd3", "ι\u0308\u0301"],
+    ["\u1fd3", "\u0390", "ι\u0308\u0301"],
+    ["\u03b0", "\u1fe3", "υ\u0308\u0301"],
+    ["\u1fe3", "\u03b0", "υ\u0308\u0301"],
+    ["\ufb05", "\ufb06", "st ST"],
+    ["\ufb06", "\ufb05", "st ST"],
+  ])(
+    "matches the simple-fold alias %s → %s without full-case expansion",
+    (source, variant, expanded) => {
+      const text = `記憶😀 ${variant} ${source} ${expanded}`;
+      const ranges = [
+        { start: 5, end: 6 },
+        { start: 7, end: 8 },
+      ];
+      expect(transcriptTextMatches(text, source, false)).toEqual(ranges);
+      const result = compileGlossaryMatcher([
+        term(source, "替換", { caseSensitive: false }),
+      ])(text);
+      expect(result.matches.map(({ start, end }) => ({ start, end }))).toEqual(
+        ranges,
+      );
+      expect(result.matches.map(({ before }) => before)).toEqual([
+        variant,
+        source,
+      ]);
+      expect(result.text).toBe(`記憶😀 替換 替換 ${expanded}`);
+      const exact = compileGlossaryMatcher([term(source, "替換")])(text);
+      expect(exact.matches.map(({ start, end }) => ({ start, end }))).toEqual([
+        { start: 7, end: 8 },
+      ]);
+      expect(exact.text).toBe(`記憶😀 ${variant} 替換 ${expanded}`);
+    },
+  );
+  it.each([
     [
       "Latin long s",
       "source",

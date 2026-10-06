@@ -476,6 +476,87 @@ describe("offline terminology, revisions and durable review", () => {
       available: false,
     });
   });
+  it.each([
+    ["\u0390", "\u1fd3", "ι\u0308\u0301"],
+    ["\u1fd3", "\u0390", "ι\u0308\u0301"],
+    ["\u03b0", "\u1fe3", "υ\u0308\u0301"],
+    ["\u1fe3", "\u03b0", "υ\u0308\u0301"],
+    ["\ufb05", "\ufb06", "st ST"],
+    ["\ufb06", "\ufb05", "st ST"],
+  ])(
+    "reviews and accepts the simple-fold alias %s → %s without normalizing source text",
+    async (source, variant, expanded) => {
+      const original = `記憶😀 ${variant} ${source} ${expanded}`;
+      const expected = `記憶😀 替換 替換 ${expanded}`;
+      const context = await fixture([original]);
+      await context.app.save();
+      const stories = structuredClone(context.app.project.stories);
+      const timelines = structuredClone(context.app.project.timelines);
+      context.knowledge.glossaryUpsert({
+        scope: "project",
+        source,
+        replacement: "替換",
+        caseSensitive: false,
+      });
+      const initial = await context.editor.get("source");
+      const found = await context.editor.search("source", {
+        query: source,
+        caseSensitive: false,
+      });
+      expect(found.matches[0]?.ranges).toEqual([
+        { start: 5, end: 6 },
+        { start: 7, end: 8 },
+      ]);
+      expect((await context.knowledge.glossaryReview("source")).status).toBe(
+        "completed",
+      );
+      const suggestions = (await context.knowledge.suggestionsList("source"))
+        .suggestions;
+      expect(suggestions).toHaveLength(1);
+      const suggestion = suggestions[0]!;
+      expect(suggestion).toMatchObject({
+        before: original,
+        after: expected,
+        sourceRevisionId: initial.revision,
+        target: { assetId: "source", segmentId: "segment-0" },
+        source: { type: "glossary" },
+      });
+      expect((await context.editor.get("source")).revision).toBe(
+        initial.revision,
+      );
+      const accepted = await context.knowledge.acceptSuggestion(suggestion.id, {
+        baseRevision: initial.revision!,
+        requestId: "accept-simple-alias",
+      });
+      expect(accepted.document?.segments[0]).toMatchObject({
+        text: expected,
+        start: 0,
+        end: 1,
+        alignmentState: "text-edited",
+        words: initial.document?.segments[0]?.words,
+      });
+      expect(accepted.document?.provenance).toEqual(
+        initial.document?.provenance,
+      );
+      await context.reopen();
+      expect(
+        (await context.editor.get("source")).document?.segments[0]?.text,
+      ).toBe(expected);
+      await context.editor.undo("source", {
+        baseRevision: accepted.revision!,
+        requestId: "undo-simple-alias",
+      });
+      await context.reopen();
+      expect((await context.editor.get("source")).document?.segments).toEqual(
+        initial.document?.segments,
+      );
+      expect(context.app.project.stories).toEqual(stories);
+      expect(context.app.project.timelines).toEqual(timelines);
+      expect(await hashFile(join(context.root, "source.wav"))).toBe(
+        context.sourceHash,
+      );
+    },
+  );
   it("reviews Unicode case variants with original source ranges and accepts/undoes only their text across reopening", async () => {
     const original = "記憶😀 ſource ΟΣ ος ß ẞ SS İ ı";
     const expected = "記憶😀 OpenFilm Greek Greek sharp sharp SS İ ı";
