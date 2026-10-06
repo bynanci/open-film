@@ -16,6 +16,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
+  type Response as PlaywrightResponse,
   type TestInfo,
 } from "@playwright/test";
 import type {
@@ -237,6 +238,61 @@ async function saved(page: Page) {
   await expect(page.getByTestId("transcript-save-state")).toHaveText(
     t("saved"),
   );
+}
+interface HeldTranscriptSave {
+  packets: {
+    baseRevision: string;
+    requestId: string;
+    commands: TranscriptCommand[];
+  }[];
+  responses: { status: number; body: string }[];
+  release: () => void;
+}
+async function withHeldTranscriptSave(
+  page: Page,
+  assetId: string,
+  run: (held: HeldTranscriptSave) => Promise<void>,
+) {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const held: HeldTranscriptSave = { packets: [], responses: [], release };
+  const reads = new Set<Promise<void>>();
+  const pattern = `**/api/assets/${assetId}/transcript/edit`;
+  const handler: Parameters<Page["route"]>[1] = (route) => {
+    const read = (async () => {
+      held.packets.push(route.request().postDataJSON());
+      await gate;
+      const response = await route.fetch();
+      held.responses.push({
+        status: response.status(),
+        body: await response.text(),
+      });
+      await route.fulfill({ response });
+    })();
+    reads.add(read);
+    return read.finally(() => reads.delete(read));
+  };
+  await page.route(pattern, handler);
+  let failure: { error: unknown } | undefined;
+  try {
+    await run(held);
+  } catch (error) {
+    failure = { error };
+  } finally {
+    // Finish held writes before hooks close the project, including a failing
+    // assertion. A cleanup error must not replace the original evidence.
+    release();
+    const cleanup = await Promise.allSettled([
+      page.unroute(pattern, handler),
+      ...reads,
+    ]);
+    for (const result of cleanup)
+      if (result.status === "rejected" && !failure)
+        failure = { error: result.reason };
+  }
+  if (failure) throw failure.error;
 }
 async function selectRow(page: Page, position = 0) {
   await rows(page).nth(position).locator(".transcript-row-select").click();
@@ -1855,6 +1911,450 @@ test("delayed suggestion acceptance guards typing and waits before changing mode
     baseline,
   );
   await unchangedSource();
+});
+
+test("rapid acceptance during a held manual save reserves one receipt and rejects old suggestions without stranding navigation", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(sizes[2]!);
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Reserved acceptance preflight",
+  );
+  const initial = await transcribe(request, asset.id);
+  await edit(
+    request,
+    asset.id,
+    initial.document!.segments.map((segment, index) => ({
+      type: "replace-text",
+      segmentId: segment.id,
+      text: `Open Flim memory ${index + 1}.`,
+    })),
+  );
+  await post(request, "/glossary", {
+    source: "Open Flim",
+    replacement: "OpenFilm",
+    scope: "project",
+  });
+  const generated = await post<{ job: Job }>(
+    request,
+    `/assets/${asset.id}/review`,
+    { source: "glossary" },
+  );
+  await waitJob(request, generated.job.id);
+  const pending = (await suggestions(request, asset.id, "pending")).suggestions;
+  expect(pending).toHaveLength(2);
+  const before = await transcript(request, asset.id);
+  const revisionsBefore = await get<{ total: number }>(
+    request,
+    `/assets/${asset.id}/transcript/revisions?limit=100`,
+  );
+  const projectId = (await project(request)).id;
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "suggestions");
+  const accepts = pending.map((suggestion) =>
+    page
+      .locator(`[data-suggestion-id="${suggestion.id}"]`)
+      .getByRole("button", { name: t("accept"), exact: true }),
+  );
+  for (const accept of accepts) {
+    await expect(accept).toBeEnabled();
+    await expect(accept).toBeInViewport();
+  }
+  const acceptPattern = "**/api/review/suggestions/*/accept";
+  const transmissions: {
+    id: string;
+    packet: { baseRevision: string; requestId: string };
+    status: number;
+    body: string;
+  }[] = [];
+  const acceptReads = new Set<Promise<void>>();
+  const acceptHandler: Parameters<Page["route"]>[1] = (route) => {
+    const read = (async () => {
+      const id = new URL(route.request().url()).pathname.split("/").at(-2)!;
+      const packet = route.request().postDataJSON();
+      const response = await route.fetch();
+      transmissions.push({
+        id,
+        packet,
+        status: response.status(),
+        body: await response.text(),
+      });
+      await route.fulfill({ response });
+    })();
+    acceptReads.add(read);
+    return read.finally(() => acceptReads.delete(read));
+  };
+  await page.route(acceptPattern, acceptHandler);
+  const manual = "Open Flim manual wording survives an obsolete suggestion.";
+  let secondDisabled = false;
+  let switchDisabled = false;
+  try {
+    await withHeldTranscriptSave(page, asset.id, async (held) => {
+      await field(page).fill(manual);
+      await expect.poll(() => held.packets.length).toBe(1);
+      expect(held.packets[0]?.baseRevision).toBe(before.revision);
+      expect((await transcript(request, asset.id)).revision).toBe(
+        before.revision,
+      );
+      const boxes = await Promise.all(
+        accepts.map((accept) => accept.boundingBox()),
+      );
+      for (const box of boxes) expect(box).not.toBeNull();
+      // Native pointer events obey disabled controls. Both suggestions are
+      // clicked while the same real save is still held before server arrival.
+      for (const box of boxes)
+        await page.mouse.click(
+          box!.x + box!.width / 2,
+          box!.y + box!.height / 2,
+        );
+      secondDisabled = await accepts[1]!.isDisabled();
+      expect(transmissions).toEqual([]);
+      const switchProject = page.getByRole("button", {
+        name: uiText("en-US", "app.navigation.switchProject"),
+        exact: true,
+      });
+      switchDisabled = await switchProject.isDisabled();
+      const switchBox = await switchProject.boundingBox();
+      expect(switchBox).not.toBeNull();
+      await page.mouse.click(
+        switchBox!.x + switchBox!.width / 2,
+        switchBox!.y + switchBox!.height / 2,
+      );
+      await expect(workspace(page)).toBeVisible();
+      expect((await project(request)).id).toBe(projectId);
+      held.release();
+      await expect.poll(() => held.responses.length).toBe(1);
+      expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
+      await expect.poll(() => transmissions.length).toBe(1);
+      expect(transmissions[0]?.status, transmissions[0]?.body).toBe(409);
+      expect([
+        "review.suggestionStale",
+        "transcript.revisionConflict",
+      ]).toContain(JSON.parse(transmissions[0]!.body).code);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (key) => localStorage.getItem(key),
+            `openfilm:review-accept:${projectId}:${asset.id}`,
+          ),
+        )
+        .toBeNull();
+      if (switchDisabled) await switchProject.click();
+      await expect(page.locator(".launcher-actions")).toBeVisible();
+    });
+  } finally {
+    await page.unroute(acceptPattern, acceptHandler);
+    await Promise.all([...acceptReads]);
+  }
+  expect(secondDisabled).toBe(true);
+  expect(transmissions[0]?.id).toBe(pending[0]?.id);
+  await openFilm(page, path);
+  await transcriptMode(page);
+  await selectRow(page);
+  await expect(field(page)).toHaveValue(manual);
+  const current = await transcript(request, asset.id);
+  expect(transmissions[0]?.packet.baseRevision).toBe(current.revision);
+  expect(
+    (await suggestions(request, asset.id)).suggestions.every(
+      (suggestion) => suggestion.status === "stale",
+    ),
+  ).toBe(true);
+  expect(
+    (
+      await get<{ total: number }>(
+        request,
+        `/assets/${asset.id}/transcript/revisions?limit=100`,
+      )
+    ).total,
+  ).toBe(revisionsBefore.total + 1);
+  await tools(page, "suggestions");
+  await expect(page.getByTestId("review-acceptance-recovery")).toHaveCount(0);
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("retrying a cancelled review saves the manual draft first and rejects the old batch before another provider attempt", async ({
+  page,
+  request,
+}) => {
+  const { asset, compositionId } = await createSource(
+    request,
+    "Review retry preflight",
+  );
+  const initial = await transcribe(request, asset.id);
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: "Fixture line 050 waits for an explicitly synthetic review.",
+    },
+  ]);
+  const before = await transcript(request, asset.id);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "suggestions");
+  const reviewAck = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/api/assets/${asset.id}/review` &&
+      response.request().method() === "POST",
+  );
+  await button(page, "languageReview").click();
+  const ack = await reviewAck;
+  expect(ack.ok()).toBe(true);
+  const { job } = (await ack.json()) as { job: Job };
+  await expect(button(page, "cancelReview")).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (
+          await get<{ batches: ReviewBatch[] }>(
+            request,
+            `/review/jobs/${job.id}/batches`,
+          )
+        ).batches[0]?.status,
+    )
+    .toBe("running");
+  await button(page, "cancelReview").click();
+  await waitJob(request, job.id, "cancelled");
+  const recovery = page.locator(
+    `[data-testid="review-recovery-batch"][data-job-id="${job.id}"][data-batch-index="0"]`,
+  );
+  await expect(recovery).toHaveAttribute("data-batch-status", "cancelled");
+  const retained = await get<{ batches: ReviewBatch[] }>(
+    request,
+    `/review/jobs/${job.id}/batches`,
+  );
+  expect(retained.batches).toHaveLength(1);
+  expect(retained.batches[0]?.attempts).toBe(1);
+  const retryPattern = `**/api/review/jobs/${job.id}/batches/0/retry`;
+  const retryResponses: {
+    status: number;
+    body: string;
+    saveAcknowledged: boolean;
+  }[] = [];
+  const retryReads = new Set<Promise<void>>();
+  let retryArrived = false;
+  let activeSave: HeldTranscriptSave | undefined;
+  const retryHandler: Parameters<Page["route"]>[1] = (route) => {
+    retryArrived = true;
+    const acknowledged =
+      activeSave?.responses.some((response) => response.status === 200) ??
+      false;
+    const read = (async () => {
+      const response = await route.fetch();
+      retryResponses.push({
+        status: response.status(),
+        body: await response.text(),
+        saveAcknowledged: acknowledged,
+      });
+      await route.fulfill({ response });
+    })();
+    retryReads.add(read);
+    return read.finally(() => retryReads.delete(read));
+  };
+  await page.route(retryPattern, retryHandler);
+  const manual = "Manual wording changes the revision before a review retry.";
+  try {
+    await withHeldTranscriptSave(page, asset.id, async (held) => {
+      activeSave = held;
+      await field(page).fill(manual);
+      await expect.poll(() => held.packets.length).toBe(1);
+      await recovery
+        .getByRole("button", { name: t("retryBatch"), exact: true })
+        .click();
+      expect(retryArrived).toBe(false);
+      expect((await transcript(request, asset.id)).revision).toBe(
+        before.revision,
+      );
+      // The held response marker observes a real successful save, rather than
+      // predicting whether the editor will flush its queued draft.
+      held.release();
+      await expect.poll(() => held.responses.length).toBe(1);
+      expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
+      await expect.poll(() => retryResponses.length).toBe(1);
+      expect(retryResponses[0]?.status, retryResponses[0]?.body).toBe(409);
+      expect(JSON.parse(retryResponses[0]!.body).code).toBe(
+        "review.suggestionStale",
+      );
+    });
+  } finally {
+    await page.unroute(retryPattern, retryHandler);
+    await Promise.all([...retryReads]);
+  }
+  expect(retryResponses[0]?.saveAcknowledged).toBe(true);
+  await saved(page);
+  await expect(field(page)).toHaveValue(manual);
+  expect((await transcript(request, asset.id)).revision).not.toBe(
+    before.revision,
+  );
+  expect(
+    await get<{ batches: ReviewBatch[] }>(
+      request,
+      `/review/jobs/${job.id}/batches`,
+    ),
+  ).toEqual(retained);
+  expect(
+    (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+      (item) => item.id === job.id,
+    )?.status,
+  ).toBe("cancelled");
+  expect((await suggestions(request, asset.id)).total).toBe(0);
+  await expect(recovery).toHaveAttribute("data-batch-status", "cancelled");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("Transcript and Suggestions share parent job polling while real review progress and cancellation remain visible", async ({
+  page,
+  request,
+}) => {
+  const { asset, compositionId } = await createSource(
+    request,
+    "Shared job snapshots",
+  );
+  const initial = await transcribe(request, asset.id);
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: "Fixture line 050 exercises an interruptible synthetic provider.",
+    },
+  ]);
+  const before = await transcript(request, asset.id);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  // Observe the actual fetch caller without replacing its response or request.
+  await page.addInitScript(() => {
+    const traced = window as unknown as Window & {
+      __openfilmJobCalls: { at: number; stack: string }[];
+    };
+    traced.__openfilmJobCalls = [];
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname === "/api/jobs")
+        traced.__openfilmJobCalls.push({
+          at: performance.now(),
+          stack: new Error().stack ?? "",
+        });
+      return nativeFetch(input, init);
+    };
+  });
+  const jobResponses: { status: number; body: string }[] = [];
+  const jobReads = new Set<Promise<void>>();
+  let failure: { error: unknown } | undefined;
+  const responseHandler = (response: PlaywrightResponse) => {
+    if (new URL(response.url()).pathname !== "/api/jobs") return;
+    const read = (async () => {
+      const body = await response.text();
+      jobResponses.push({
+        status: response.status(),
+        body,
+      });
+      expect(response.ok(), `GET /api/jobs ${response.status()}: ${body}`).toBe(
+        true,
+      );
+      expect(
+        Array.isArray(JSON.parse(body).jobs),
+        `GET /api/jobs body: ${body}`,
+      ).toBe(true);
+    })();
+    jobReads.add(read);
+    void read.then(
+      () => jobReads.delete(read),
+      (error) => {
+        jobReads.delete(read);
+        if (!failure) failure = { error };
+      },
+    );
+  };
+  page.on("response", responseHandler);
+  try {
+    await initialLocale(page);
+    await page.goto("/");
+    await transcriptMode(page);
+    await tools(page, "suggestions");
+    await expect(button(page, "languageReview")).toBeEnabled();
+    await page.evaluate(() => {
+      (
+        window as unknown as Window & { __openfilmJobCalls: unknown[] }
+      ).__openfilmJobCalls = [];
+    });
+    const calls = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as Window & {
+              __openfilmJobCalls: { at: number; stack: string }[];
+            }
+          ).__openfilmJobCalls,
+      );
+    await expect
+      .poll(async () => (await calls()).length)
+      .toBeGreaterThanOrEqual(3);
+    const idle = await calls();
+    for (const call of idle) {
+      const firstVueCaller = call.stack
+        .split("\n")
+        .find((line) => /\/src\/.*\.vue/u.test(line));
+      expect(firstVueCaller, call.stack).toContain("/src/App.vue");
+    }
+    const reviewAck = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/assets/${asset.id}/review` &&
+        response.request().method() === "POST",
+    );
+    await button(page, "languageReview").click();
+    const ack = await reviewAck;
+    expect(ack.ok()).toBe(true);
+    const { job } = (await ack.json()) as { job: Job };
+    await expect(button(page, "cancelReview")).toBeVisible();
+    await expect(button(page, "findMatches")).toBeDisabled();
+    await button(page, "cancelReview").click();
+    await waitJob(request, job.id, "cancelled");
+    await expect(
+      page.locator(
+        `[data-testid="review-recovery-batch"][data-job-id="${job.id}"]`,
+      ),
+    ).toHaveAttribute("data-batch-status", "cancelled");
+    await expect(button(page, "findMatches")).toBeEnabled();
+    for (const call of await calls()) {
+      const firstVueCaller = call.stack
+        .split("\n")
+        .find((line) => /\/src\/.*\.vue/u.test(line));
+      expect(firstVueCaller, call.stack).toContain("/src/App.vue");
+    }
+    expect((await transcript(request, asset.id)).document).toEqual(
+      before.document,
+    );
+    expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+      baseline,
+    );
+    await unchangedSource();
+  } catch (error) {
+    if (!failure) failure = { error };
+  } finally {
+    page.off("response", responseHandler);
+    for (const result of await Promise.allSettled([...jobReads]))
+      if (result.status === "rejected" && !failure)
+        failure = { error: result.reason };
+  }
+  if (failure) throw failure.error;
+  expect(jobResponses.length).toBeGreaterThanOrEqual(3);
 });
 
 test("a pending transcription request stays with its original film before project switching and recovers after transport failure", async ({
