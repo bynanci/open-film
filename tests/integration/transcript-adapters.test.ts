@@ -403,6 +403,89 @@ describe("transcript REST and CLI adapters", () => {
     );
     expect((await post("/project/close", {})).status).toBe(200);
   });
+  it.each(["project", "global"])(
+    "CLI glossary preserves defaults and supports reversible case matching in %s scope",
+    async (scope) => {
+      const setup = await fixture();
+      setup.close();
+      const cli = async (args: string[]) =>
+        JSON.parse(
+          (
+            await runProcess(process.execPath, [
+              "--import",
+              "tsx",
+              resolve("apps/cli/src/index.ts"),
+              "glossary",
+              ...args,
+              "--scope",
+              scope,
+              "--project",
+              setup.app.directory,
+              "--user-data-dir",
+              setup.userDataDirectory,
+            ])
+          ).stdout.toString(),
+        );
+      const { entry } = await cli([
+        "add",
+        "--source",
+        "YouTube",
+        "--replacement",
+        "YouTube channel",
+      ]);
+      expect(entry.caseSensitive).toBe(true);
+      const { entry: insensitive } = await cli([
+        "add",
+        "--source",
+        "OpenFilm",
+        "--replacement",
+        "OpenFilm app",
+        "--case-insensitive",
+      ]);
+      expect(insensitive.caseSensitive).toBe(false);
+      const update = ["update", "--id", entry.id];
+      expect(
+        (await cli([...update, "--case-insensitive"])).entry.caseSensitive,
+      ).toBe(false);
+      expect(
+        (await cli([...update, "--replacement", "YouTube official"])).entry
+          .caseSensitive,
+      ).toBe(false);
+      expect(
+        (await cli([...update, "--case-sensitive"])).entry.caseSensitive,
+      ).toBe(true);
+      expect(
+        (await cli([...update, "--replacement", "YouTube memories"])).entry
+          .caseSensitive,
+      ).toBe(true);
+      const before = await cli(["list"]);
+      await expect(
+        cli([
+          ...update,
+          "--case-sensitive",
+          "--case-insensitive",
+          "--replacement",
+          "Must not persist",
+        ]),
+      ).rejects.toThrow(
+        "Choose either --case-sensitive or --case-insensitive.",
+      );
+      await expect(
+        cli([
+          "add",
+          "--source",
+          "Must not exist",
+          "--replacement",
+          "Conflict",
+          "--case-insensitive",
+          "--case-sensitive",
+        ]),
+      ).rejects.toThrow(
+        "Choose either --case-sensitive or --case-insensitive.",
+      );
+      expect(await cli(["list"])).toEqual(before);
+    },
+  );
   it("CLI keeps machine-readable output and edits/searches/reviews using bounded JSON commands", async () => {
     const setup = await fixture();
     const original = await setup.app.transcriptEditor.get("audio");

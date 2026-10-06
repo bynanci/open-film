@@ -20,10 +20,10 @@ Usage:
   openfilm scenes <asset-id> --project <film.openfilm>
   openfilm transcript <asset-id> --project <film.openfilm> [--offset 0 --limit 100]
   openfilm transcript edit <asset-id> --project <film.openfilm> --commands <request.json>
-  openfilm transcript search <asset-id> --project <film.openfilm> --query "literal text" [--case-sensitive]
+  openfilm transcript search <asset-id> --project <film.openfilm> --query "literal text" [--case-sensitive|--case-insensitive]
   openfilm transcript revisions <asset-id> --project <film.openfilm>
   openfilm transcript undo|redo|select <asset-id> --project <film.openfilm> --base-revision <id> --request-id <id> [--revision <id>]
-  openfilm glossary list|add|update|delete --project <film.openfilm> [--scope project|global] [--id <id>] [--source "term" --replacement "preferred term"]
+  openfilm glossary list|add|update|delete --project <film.openfilm> [--scope project|global] [--id <id>] [--source "term" --replacement "preferred term"] [--case-sensitive|--case-insensitive]
   openfilm review run <asset-id> --project <film.openfilm> [--source glossary|language] [--batch-size 50]
   openfilm review list <asset-id> --project <film.openfilm> [--status pending]
   openfilm review accept <suggestion-id> --project <film.openfilm> --base-revision <id> --request-id <id>
@@ -61,6 +61,7 @@ function parse(args: string[]) {
     "unlock",
     "json",
     "case-sensitive",
+    "case-insensitive",
     "enable",
     "disable",
   ]);
@@ -118,6 +119,8 @@ function parse(args: string[]) {
       throw new Error(`${arg} needs a value.`);
     options[key] = value;
   }
+  if (options["case-sensitive"] && options["case-insensitive"])
+    throw new Error("Choose either --case-sensitive or --case-insensitive.");
   return { positional, options };
 }
 const value = (options: Options, key: string) =>
@@ -372,9 +375,11 @@ async function main() {
             : options.enable
               ? true
               : (existing?.enabled ?? true),
-          caseSensitive:
-            options["case-sensitive"] === true ||
-            existing?.caseSensitive === true,
+          ...(options["case-sensitive"]
+            ? { caseSensitive: true }
+            : options["case-insensitive"]
+              ? { caseSensitive: false }
+              : {}),
         };
         print({ entry: app.knowledge.glossaryUpsert(input) });
       } else throw new Error("Choose glossary list, add, update or delete.");
