@@ -482,7 +482,7 @@ test("retains a real conflicting draft through reload and reapplies it explicitl
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
-test("acknowledges a committed draft batch before retrying commands queued after it", async ({
+test("acknowledges a recovered batch before retrying queued edits", async ({
   page,
   request,
 }) => {
