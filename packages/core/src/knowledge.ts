@@ -1,3 +1,5 @@
+import { validateTranscriptSegmentId } from "./intelligence.js";
+
 /** Portable, user-owned terminology and immutable correction evidence. */
 export interface GlossaryEntry {
   id: string;
@@ -197,7 +199,7 @@ export function validateReviewSuggestion(value: unknown): ReviewSuggestion {
         : { assetId: identifier(target.assetId) }),
       ...(target.segmentId === undefined
         ? {}
-        : { segmentId: identifier(target.segmentId) }),
+        : { segmentId: validateTranscriptSegmentId(target.segmentId) }),
       ...(target.clipId === undefined
         ? {}
         : { clipId: identifier(target.clipId) }),

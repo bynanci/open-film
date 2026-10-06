@@ -38,6 +38,77 @@ function transcript(): TranscriptDocument {
 }
 
 describe("portable transcript commands", () => {
+  it("rejects blank and non-string IDs consistently at ingestion and command references", () => {
+    for (const segmentId of [undefined, null, 12, "", " \n\t"]) {
+      const original = transcript();
+      original.segments[0]!.id = segmentId as never;
+      expect(() => validateTranscriptDocument(original)).toThrow();
+      expect(() =>
+        validateTranscriptCommand({ type: "delete-segment", segmentId }),
+      ).toThrow("segmentId");
+    }
+  });
+  it.each(["provider-" + "x".repeat(300), "provider\u0000\nsegment"])(
+    "edits opaque provider segment IDs without rewriting original identity: %j",
+    (segmentId) => {
+      const original = transcript();
+      original.segments[0]!.id = segmentId;
+      expect(validateTranscriptDocument(original).segments[0]!.id).toBe(
+        segmentId,
+      );
+      const replaced = applyTranscriptCommand(original, {
+        type: "replace-text",
+        segmentId,
+        text: "十和田湖",
+      });
+      expect(replaced.segments[0]).toMatchObject({
+        id: segmentId,
+        text: "十和田湖",
+        alignmentState: "text-edited",
+      });
+      expect(
+        applyTranscriptCommand(original, {
+          type: "replace-match",
+          segmentId,
+          start: 1,
+          end: 2,
+          expected: "河",
+          replacement: "和",
+        }).segments[0]!.id,
+      ).toBe(segmentId);
+      const split = applyTranscriptCommand(original, {
+        type: "split-segment",
+        segmentId,
+        newSegmentId: "new-safe-id",
+        splitTime: 2,
+        cursorOffset: 3,
+      });
+      expect(split.segments[0]!.id).toBe(segmentId);
+      expect(
+        applyTranscriptCommand(split, {
+          type: "merge-segment",
+          segmentId,
+          direction: "next",
+        }).segments[0]!.id,
+      ).toBe(segmentId);
+      expect(
+        applyTranscriptCommand(original, {
+          type: "delete-segment",
+          segmentId,
+        }).segments.map((segment) => segment.id),
+      ).toEqual(["b", "c"]);
+      expect(original.segments[0]!.id).toBe(segmentId);
+      expect(original.segments[0]!.text).toBe("十河田湖");
+      expect(() =>
+        validateTranscriptCommand({
+          type: "split-segment",
+          segmentId,
+          newSegmentId: segmentId,
+          splitTime: 2,
+        }),
+      ).toThrow("newSegmentId");
+    },
+  );
   it("marks any changed text as stale, preserving original word evidence and provenance without mutating input", () => {
     const original = transcript();
     const edited = applyTranscriptCommand(original, {

@@ -1,6 +1,7 @@
 import { ApplicationError } from "./errors.js";
 import {
   validateTranscriptDocument,
+  validateTranscriptSegmentId,
   type TranscriptDocument,
   type TranscriptSegment,
 } from "./intelligence.js";
@@ -106,7 +107,11 @@ export function validateTranscriptCommand(value: unknown): TranscriptCommand {
   const type = data.type;
   const allowed = ["type"];
   if (type !== "replace-all") {
-    identifier(data.segmentId, "segmentId");
+    try {
+      validateTranscriptSegmentId(data.segmentId);
+    } catch {
+      invalid("segmentId must be a nonempty string.");
+    }
     allowed.push("segmentId");
   }
   switch (type) {

@@ -77,6 +77,109 @@ async function fixture(count = 3) {
   };
 }
 
+it.each(["provider-" + "x".repeat(300), "provider\u0000\nsegment"])(
+  "keeps newly ingested opaque provider IDs editable without rewriting evidence: %j",
+  async (segmentId) => {
+    const context = await fixture();
+    const provider = { ...document(), id: "opaque-provider-result" };
+    provider.segments[0]!.id = segmentId;
+    context.catalog.intelligence.replaceTranscript(provider);
+    let store = context.catalog.transcripts;
+    const original = store.get("source", hash);
+    expect(store.getSegment("source", hash, segmentId).segment).toEqual(
+      provider.segments[0],
+    );
+    const replaced = store.edit("source", hash, {
+      baseRevision: original.revision!,
+      requestId: "opaque-replace",
+      commands: [{ type: "replace-text", segmentId, text: "十和田湖" }],
+    });
+    const split = store.edit("source", hash, {
+      baseRevision: replaced.revision!,
+      requestId: "opaque-split",
+      commands: [
+        {
+          type: "split-segment",
+          segmentId,
+          newSegmentId: "new-safe-segment",
+          splitTime: 1,
+          cursorOffset: 3,
+        },
+      ],
+    });
+    const merged = store.edit("source", hash, {
+      baseRevision: split.revision!,
+      requestId: "opaque-merge",
+      commands: [{ type: "merge-segment", segmentId, direction: "next" }],
+    });
+    expect(merged.document!.segments[0]!.id).toBe(segmentId);
+    const deleted = store.edit("source", hash, {
+      baseRevision: merged.revision!,
+      requestId: "opaque-delete",
+      commands: [{ type: "delete-segment", segmentId }],
+    });
+    expect(deleted.document!.segments.map((segment) => segment.id)).toEqual([
+      "segment-1",
+      "segment-2",
+    ]);
+    const restored = store.undo("source", hash, {
+      baseRevision: deleted.revision!,
+      requestId: "opaque-undo",
+    });
+    expect(restored.document!.segments).toEqual(merged.document!.segments);
+    store = context.reopen().transcripts;
+    expect(store.get("source", hash)).toEqual(restored);
+    expect(store.getFull("source", hash, original.revision)!.document).toEqual(
+      provider,
+    );
+    expect(store.getSegment("source", hash, segmentId).segment.id).toBe(
+      segmentId,
+    );
+  },
+);
+
+it("returns complete opaque NUL IDs from paged search, navigation lookups and reopened catalogs", async () => {
+  const context = await fixture();
+  const provider = { ...document(), id: "opaque-search-result" };
+  const ids = [
+    "provider-" + "x".repeat(300),
+    "provider-\u0000\u0001\t\n %/#&",
+    "last-segment",
+  ];
+  provider.segments = provider.segments.map((segment, index) => ({
+    ...segment,
+    id: ids[index]!,
+    text: `Search match ${index}`,
+  }));
+  context.catalog.intelligence.replaceTranscript(provider);
+  let store = context.catalog.transcripts;
+  const query = { query: "Search match", limit: 1 };
+  const first = store.search("source", hash, query);
+  const next = store.search("source", hash, { ...query, offset: 1 });
+  const previous = store.search("source", hash, query);
+  expect(first.matches[0]!.segmentId).toBe(ids[0]);
+  expect(next).toMatchObject({
+    totalMatches: 3,
+    totalSegments: 3,
+    matches: [{ segmentId: ids[1], position: 1 }],
+  });
+  expect(previous).toEqual(first);
+  expect(
+    store.getSegment("source", hash, next.matches[0]!.segmentId).segment,
+  ).toEqual(provider.segments[1]);
+  expect(
+    store.search("source", hash, {
+      query: "sEaRcH mAtCh",
+      caseSensitive: false,
+      offset: 1,
+      limit: 1,
+    }).matches[0]!.segmentId,
+  ).toBe(ids[1]);
+  store = context.reopen().transcripts;
+  expect(store.search("source", hash, { ...query, offset: 1 })).toEqual(next);
+  expect(store.getFull("source", hash)!.document).toEqual(provider);
+});
+
 it("preserves provider provenance, every original revision and independent transcript history through edits and reopen", async () => {
   const test = await fixture();
   let store = test.catalog.transcripts;
@@ -377,7 +480,7 @@ it("bounds 10,000-segment page/revision/search results and performs matching wit
     store.get("source", hash, { offset: 9800, limit: 200 }).document!.segments,
   ).toHaveLength(200);
   const db = test.database();
-  db.prepare("UPDATE intelligence_segments SET data=? WHERE position=9999").run(
+  db.prepare("UPDATE intelligence_segments SET data=? WHERE position=9989").run(
     "invalid JSON outside requested page",
   );
   const started = performance.now();

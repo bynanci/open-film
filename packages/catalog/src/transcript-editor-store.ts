@@ -5,6 +5,7 @@ import {
   applyTranscriptCommand,
   compileTranscriptTextMatcher,
   validateTranscriptDocument,
+  validateTranscriptSegmentId,
   type TranscriptCommand,
   type TranscriptDocument,
   type TranscriptRevision,
@@ -354,7 +355,14 @@ export class CatalogTranscriptEditorStore {
     return { ...page, total, revisions };
   }
   getSegment(assetId: string, sourceHash: string, segmentId: string) {
-    identifier(segmentId, "segmentId");
+    try {
+      validateTranscriptSegmentId(segmentId);
+    } catch {
+      throw new ApplicationError(
+        "transcript.invalidCommand",
+        "segmentId must be a nonempty string.",
+      );
+    }
     const stored = this.stored(assetId, sourceHash);
     if (!stored)
       throw new ApplicationError(
@@ -414,9 +422,12 @@ export class CatalogTranscriptEditorStore {
     let totalMatches = 0,
       totalSegments = 0;
     const sensitive = options.caseSensitive ?? true;
+    const segmentData = this.database.prepare(
+      "SELECT data FROM intelligence_segments WHERE revision=? AND position=?",
+    );
     const rows = this.database
       .prepare(
-        `SELECT position,segment_id,start,end,text FROM intelligence_segments WHERE revision=? ${sensitive ? "AND instr(text,?)>0" : ""} ORDER BY position`,
+        `SELECT position,start,end,text FROM intelligence_segments WHERE revision=? ${sensitive ? "AND instr(text,?)>0" : ""} ORDER BY position`,
       )
       .iterate(
         ...(sensitive ? [stored.revision!, options.query] : [stored.revision!]),
@@ -425,15 +436,22 @@ export class CatalogTranscriptEditorStore {
       const text = String(row.text),
         ranges = findMatches(text);
       if (!ranges.length) continue;
-      if (totalSegments >= page.offset && matches.length < page.limit)
+      if (totalSegments >= page.offset && matches.length < page.limit) {
+        // Native SQLite TEXT reads truncate embedded NULs. The canonical JSON
+        // escapes them and preserves opaque provider IDs. Read/parse only the
+        // bounded result page through the revision/position primary-key index.
+        const segment = JSON.parse(
+          String(segmentData.get(stored.revision!, row.position!)!.data),
+        );
         matches.push({
-          segmentId: String(row.segment_id),
+          segmentId: validateTranscriptSegmentId(segment.id),
           position: Number(row.position),
           start: Number(row.start),
           end: Number(row.end),
           text,
           ranges,
         });
+      }
       totalSegments++;
       totalMatches += ranges.length;
     }

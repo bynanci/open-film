@@ -221,6 +221,16 @@ export function validateAnalysisProvenance(value: unknown): AnalysisProvenance {
   return provenance(value, "provenance");
 }
 
+/** Provider and historical segment IDs are opaque nonblank strings. References
+ * preserve this established ingestion contract; newly generated command IDs use
+ * their own bounded identifier validation. */
+export function validateTranscriptSegmentId(
+  value: unknown,
+  path = "transcript.segment.id",
+): string {
+  return text(value, path);
+}
+
 export function validateTranscriptDocument(
   value: unknown,
   options: IntelligenceValidationOptions = {},
@@ -234,7 +244,7 @@ export function validateTranscriptDocument(
     (entry, index) => {
       const p = `${path}.segments[${index}]`;
       const segment = record(entry, p);
-      const id = text(segment.id, `${p}.id`);
+      const id = validateTranscriptSegmentId(segment.id, `${p}.id`);
       if (ids.has(id)) fail(`${p}.id`, "segment IDs must be unique");
       ids.add(id);
       const start = number(segment.start, `${p}.start`, previousStart, maximum);

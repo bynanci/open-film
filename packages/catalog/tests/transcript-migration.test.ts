@@ -9,7 +9,7 @@ const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
-async function legacyV2() {
+async function legacyV2(segmentId = "segment") {
   const directory = await mkdtemp(join(tmpdir(), "openfilm-transcript-v2-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const catalog = new ProjectCatalog(directory);
@@ -36,7 +36,7 @@ async function legacyV2() {
     },
     segments: [
       {
-        id: "segment",
+        id: segmentId,
         start: 1,
         end: 2,
         text: "Original words",
@@ -58,6 +58,48 @@ async function legacyV2() {
   database.close();
   return { directory, path, expected, header, asset };
 }
+it.each(["legacy-" + "x".repeat(300), "legacy\u0000\nsegment"])(
+  "keeps existing v2 opaque segment identity editable through migration, undo and reopen: %j",
+  async (segmentId) => {
+    const legacy = await legacyV2(segmentId);
+    let catalog = new ProjectCatalog(legacy.directory);
+    cleanup.push(() => catalog.close());
+    const original = catalog.transcripts.get("asset", "hash");
+    expect(
+      catalog.transcripts.getSegment("asset", "hash", segmentId).segment.id,
+    ).toBe(segmentId);
+    expect(original.document).toEqual(legacy.expected);
+    const edited = catalog.transcripts.edit("asset", "hash", {
+      baseRevision: original.revision!,
+      requestId: "edit-opaque-id",
+      commands: [{ type: "replace-text", segmentId, text: "Corrected words" }],
+    });
+    expect(edited.document!.segments[0]).toMatchObject({
+      id: segmentId,
+      text: "Corrected words",
+    });
+    const undone = catalog.transcripts.undo("asset", "hash", {
+      baseRevision: edited.revision!,
+      requestId: "undo-opaque-id",
+    });
+    expect(undone.revision).not.toBe(original.revision);
+    expect(undone.document!.segments).toEqual(legacy.expected!.segments);
+    catalog.close();
+    catalog = new ProjectCatalog(legacy.directory);
+    expect(catalog.transcripts.get("asset", "hash")).toEqual(undone);
+    expect(
+      catalog.transcripts.getFull("asset", "hash", original.revision)!.document,
+    ).toEqual(legacy.expected);
+    const redone = catalog.transcripts.redo("asset", "hash", {
+      baseRevision: undone.revision!,
+      requestId: "redo-opaque-id",
+    });
+    expect(redone.document!.segments[0]).toMatchObject({
+      id: segmentId,
+      text: "Corrected words",
+    });
+  },
+);
 it("upgrades real v2 transcript tables transactionally without rebuilding analysis or modifying original provider bytes", async () => {
   const legacy = await legacyV2();
   let catalog = new ProjectCatalog(legacy.directory);
