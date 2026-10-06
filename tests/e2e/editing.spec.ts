@@ -569,10 +569,6 @@ test("acknowledges a committed draft batch before retrying commands queued after
     false,
   );
   expect(clipById(recovered, "ending-motion").transform?.volume).toBe(0.25);
-  expect(clips(recovered).some((clip) => clip.id === "opening-photo")).toBe(
-    false,
-  );
-  expect(clipById(recovered, "ending-motion").transform?.volume).toBe(0.25);
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 test("previews and skips Fit without saving, protects skipped clips, and switches editor language in place", async ({
