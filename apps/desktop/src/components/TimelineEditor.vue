@@ -8,9 +8,9 @@ import {
   watch,
 } from "vue";
 import {
-  geometryTranslationForViewport,
-  resolveClipGeometry,
+  resolvePreviewClipGeometry,
   type Clip,
+  type FrameSize,
   type Job,
   type ProjectSettings,
   type StoryBeat,
@@ -100,7 +100,8 @@ const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
 const sourceScreenElement = ref<HTMLElement | null>(null);
-const sourceViewport = ref({ width: 1, height: 1 });
+const sourceViewport = ref<FrameSize>({ width: 1, height: 1 });
+const sourcePreviewSize = ref<FrameSize>();
 const precisionElement = ref<HTMLElement | null>(null);
 const transcriptElement = ref<HTMLElement | null>(null);
 async function setEditMode(mode: "story" | "precision" | "transcript") {
@@ -328,24 +329,46 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
-const previewGeometryStyle = computed(() => {
-  const geometry = resolveClipGeometry({
-    scale: clipFields.value.scale,
-    rotation: clipFields.value.rotation,
-    x: clipFields.value.x,
-    y: clipFields.value.y,
-  });
-  const mapped = geometryTranslationForViewport(
-    geometry,
+const previewGeometry = computed(() =>
+  resolvePreviewClipGeometry(
+    {
+      scale: clipFields.value.scale,
+      rotation: clipFields.value.rotation,
+      x: clipFields.value.x,
+      y: clipFields.value.y,
+    },
+    sourcePreviewSize.value ??
+      selectedAsset.value?.dimensions ??
+      props.projectSettings,
     props.projectSettings,
     sourceViewport.value,
-  );
-  return {
-    width: `${mapped.frame.width}px`,
-    height: `${mapped.frame.height}px`,
-    transform: `translate(${mapped.x}px, ${mapped.y}px) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
-  };
-});
+  ),
+);
+const previewFrameStyle = computed(() => ({
+  width: `${previewGeometry.value.frame.width}px`,
+  height: `${previewGeometry.value.frame.height}px`,
+}));
+const previewMediaStyle = computed(() => ({
+  width: `${previewGeometry.value.media.width}px`,
+  height: `${previewGeometry.value.media.height}px`,
+  transform: `translate(${previewGeometry.value.x}px, ${previewGeometry.value.y}px) rotate(${previewGeometry.value.rotation}deg) scale(${previewGeometry.value.scale})`,
+}));
+function capturePreviewSize(event: Event) {
+  const media = event.currentTarget;
+  const width =
+    media instanceof HTMLImageElement
+      ? media.naturalWidth
+      : media instanceof HTMLVideoElement
+        ? media.videoWidth
+        : 0;
+  const height =
+    media instanceof HTMLImageElement
+      ? media.naturalHeight
+      : media instanceof HTMLVideoElement
+        ? media.videoHeight
+        : 0;
+  if (width > 0 && height > 0) sourcePreviewSize.value = { width, height };
+}
 function transition(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   editClip({
@@ -732,6 +755,7 @@ watch(selectedBeat, (beat, previous) => {
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
   playing.value = false;
+  sourcePreviewSize.value = undefined;
 });
 watch(
   () => props.active,
