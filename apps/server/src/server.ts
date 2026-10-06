@@ -1078,8 +1078,9 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
-        const reviewRecovery =
-          /^\/api\/review\/jobs\/([^/]+)\/recovery$/.exec(route);
+        const reviewRecovery = /^\/api\/review\/jobs\/([^/]+)\/recovery$/.exec(
+          route,
+        );
         if (reviewRecovery && method === "GET") {
           json(
             response,
