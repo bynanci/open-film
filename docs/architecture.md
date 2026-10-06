@@ -64,6 +64,23 @@ work.
 
 ## Import and analysis
 
+The 0.3 foundation adds portable transcript/word timing, waveforms, scenes and
+generic markers to Core. `@openfilm/provider-whisper` implements the existing SDK
+transcription port through optional local Python/faster-whisper. A user-supplied
+model and GPU-to-CPU fallback leave Python/model installation optional for all
+other workflows. Registry consent rules remain intact.
+
+Catalog version 2 stores validated source-hash/version-bound intelligence outside
+MediaAsset and project.json. Indexed transcript revisions support bounded reads;
+failed/cancelled replacement preserves earlier results. Application operations
+check source identity before reuse and successful commit and use existing durable
+Jobs. Waveform decoding streams bounded peaks; scene detection downsizes frames.
+
+CLI, API and Desktop share these operations. Precision mode separates source and
+composition seconds and applies snapping, trim and split through the existing
+TimelineCommand history. Analysis does not rewrite Story or composition. See
+[media intelligence](media-intelligence.md) and [reference decisions](vidscribe-reference.md).
+
 Filesystem discovery yields supported file candidates lazily and avoids symlink
 traversal. Import runs at most three file tasks concurrently. Each task inspects
 media, normalizes metadata, fingerprints content, generates derived outputs, and

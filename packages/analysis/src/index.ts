@@ -1,4 +1,5 @@
 import type { MediaAsset } from "@openfilm/core";
+export * from "./snapping.js";
 import {
   assertProviderConsent,
   RemoteProviderConsentError,
@@ -11,6 +12,7 @@ import {
   type ProviderDataKind,
   type RemoteProviderConsent,
   type TranscriptionProvider,
+  type TranscriptionOptions,
   type TranscriptionResult,
   type VisionProvider,
   type VisionResult,
@@ -166,7 +168,7 @@ export class ProviderRegistry {
   async transcribe(
     providerId: string,
     asset: MediaAsset,
-    options?: OperationOptions,
+    options?: TranscriptionOptions,
   ): Promise<TranscriptionResult> {
     const provider = this.authorized(
       providerId,

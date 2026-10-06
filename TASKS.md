@@ -60,7 +60,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.
 - [x] Pixel and Insta360 adapters with metadata, safe previews and explicit raw
       source limitations; other camera-specific adapters remain future work.
-- [ ] Local vision, embeddings, transcript, and language implementations.
+- [ ] Local vision, embeddings and language implementations (local transcription is implemented in 0.3 P0).
 - [ ] Incremental analysis/background worker scheduling at archive scale.
 - [ ] Reproducible 10,000–100,000-asset performance benchmarks.
 
@@ -129,3 +129,26 @@ Evidence: [validation record](docs/validation-impeccable-resolve.md).
       includes source SHA/CI provenance and manual/API procedures.
 - [ ] Actual Resolve import/playback/relink/effect QA on a capable workstation.
       The helper and official parser do not close this application gate.
+
+## OpenFilm 0.3 — Media Intelligence & Precision Editing
+
+First PR: P0 foundation. Evidence: [validation record](docs/validation-media-intelligence.md).
+Checked implementation and automatic tests are separate
+from model, camera and hardware certification.
+
+- [x] Optional local TranscriptionProvider, word timestamps, Auto/zh/en/ja and GPU→CPU fallback.
+- [x] SQLite v1→v2 migration, paged transcript revisions and successful-only re-transcription.
+- [x] Shared durable analysis jobs, progress, cancellation and structured localized errors.
+- [x] Source-bound bounded waveform, cache and FFmpeg scene markers.
+- [x] Generic markers and portable snapping with priorities, thresholds and disabled sources.
+- [x] Precision source player, waveform seek/hover/zoom/trim, marker and word/segment seeking.
+- [x] Shared split/trim commands, lock protection, undo/redo, autosave and save/reopen.
+- [x] English, Traditional Chinese and Japanese UX; desktop layout and keyboard regressions.
+- [x] CLI/API/plugin reuse, reference/adaptation record and capability/setup documentation.
+- [x] Full local regression gates and new CI regression coverage; candidate checks record the exact SHA.
+- [ ] Manual: real model CPU transcription quality; model download currently proxy HTTP 403.
+- [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
+- [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
+
+Transcript text editing, Glossary, Review Suggestions, Geometry/Vision, Highlights
+and Captions are deferred; no interface-only completion claims are made for them.

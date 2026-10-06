@@ -681,3 +681,11 @@ export type {
   RelinkCandidate,
   RelinkMatch,
 } from "./relink.js";
+
+export {
+  generateWaveform,
+  detectScenes,
+  WAVEFORM_CACHE_IDENTITY,
+  sceneCacheIdentity,
+} from "./intelligence.js";
+export type { SceneDetectionOptions } from "./intelligence.js";

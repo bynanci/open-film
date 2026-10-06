@@ -208,14 +208,42 @@ export interface EmbeddingProvider extends AIProviderDescriptor {
 export interface TranscriptionResult {
   text: string;
   language?: string;
-  segments?: { start: number; end: number; text: string }[];
+  segments?: {
+    id?: string;
+    start: number;
+    end: number;
+    text: string;
+    words?: { start: number; end: number; text: string; confidence?: number }[];
+  }[];
+  execution?: "cpu" | "gpu";
+  model?: string;
+  version?: string;
+  fallbackReason?: string;
+}
+
+export type TranscriptionStage =
+  | "extracting-audio"
+  | "loading-model"
+  | "transcribing"
+  | "post-processing"
+  | "indexing";
+export interface TranscriptionOptions extends OperationOptions {
+  language?: "auto" | "zh" | "en" | "ja";
+  modelPath?: string;
+  execution?: "auto" | "cpu" | "gpu";
+  onStage?: (stage: TranscriptionStage) => void;
 }
 
 export interface TranscriptionProvider extends AIProviderDescriptor {
   kind: "transcription";
+  capabilities?: {
+    wordTimestamps: boolean;
+    languages: string[];
+    cpuFallback: boolean;
+  };
   transcribe(
     asset: MediaAsset,
-    options?: OperationOptions,
+    options?: TranscriptionOptions,
   ): Promise<TranscriptionResult>;
 }
 

@@ -9,6 +9,10 @@ import type {
   OpenFilmError,
   FilmSettings,
   ProjectContentLocale,
+  TranscriptDocument,
+  WaveformData,
+  SceneAnalysis,
+  TimelineMarker,
 } from "@openfilm/core";
 import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
 
@@ -87,6 +91,30 @@ export interface WorkspaceInfo {
   defaults: FilmSettings & { projectContentLocale: ProjectContentLocale };
   templates: { id: string; targetDuration: number; maxDuration: number }[];
   maxUploadBytes: number;
+}
+
+export interface IntelligenceState {
+  sourceHash: string;
+  transcript?: TranscriptDocument;
+  transcriptTotal: number;
+  transcriptOffset: number;
+  waveform?: WaveformData;
+  scenes?: SceneAnalysis;
+  markers: TimelineMarker[];
+}
+export interface IntelligenceProviders {
+  transcription: {
+    available: boolean;
+    providerId: string;
+    execution?: string;
+    model?: string;
+    detail?: string;
+    capabilities?: {
+      wordTimestamps: boolean;
+      cpuFallback: boolean;
+      languages: string[];
+    };
+  };
 }
 export interface CreateFilmInput {
   title: string;
@@ -278,6 +306,40 @@ async function uploadFiles(
   }
 }
 export const api = {
+  intelligence: (
+    assetId: string,
+    offset = 0,
+    limit = 100,
+    signal?: AbortSignal,
+  ) =>
+    request<IntelligenceState>(
+      `/assets/${encodeURIComponent(assetId)}/intelligence?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+      { signal },
+    ),
+  intelligenceProviders: (signal?: AbortSignal) =>
+    request<IntelligenceProviders>("/intelligence/providers", { signal }),
+  analyzeIntelligence: (
+    assetId: string,
+    body: {
+      operation: "transcribe" | "waveform" | "scenes";
+      language?: "auto" | "zh" | "en" | "ja";
+      execution?: "auto" | "cpu" | "gpu";
+    },
+  ) =>
+    post<{ job: Job }>(
+      `/assets/${encodeURIComponent(assetId)}/intelligence`,
+      body,
+    ),
+  addMarker: (assetId: string, body: { time: number; label?: string }) =>
+    post<{ marker: TimelineMarker }>(
+      `/assets/${encodeURIComponent(assetId)}/markers`,
+      body,
+    ),
+  removeMarker: (assetId: string, markerId: string) =>
+    request<{ ok: true }>(
+      `/assets/${encodeURIComponent(assetId)}/markers/${encodeURIComponent(markerId)}`,
+      { method: "DELETE" },
+    ),
   workspace: () => request<WorkspaceInfo>("/workspace"),
   projectAvailability: (paths: string[]) =>
     post<{

@@ -106,6 +106,10 @@ function command(value: unknown, index: number): TimelineCommand {
     type === "beat" || type === "regenerate-beat" ? "beatId" : "clipId",
   ];
   switch (type) {
+    case "clip.split":
+      fields.push("sourceTime");
+      finite(data.sourceTime, `${path}.sourceTime`, 0);
+      break;
     case "trim":
       fields.push("sourceIn", "sourceOut");
       finite(data.sourceIn, `${path}.sourceIn`, 0);

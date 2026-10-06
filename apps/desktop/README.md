@@ -31,6 +31,18 @@ the editor. Film language controls generated template text independently; custom
 titles and legacy text remain intact. Theme and default film language/storage are
 local preferences. There is no remote provider toggle for an absent feature.
 
+## Precision mode
+
+Edit retains Story mode and adds Precision for a selected video/audio clip.
+Generate a waveform or scene cuts, add a marker and snap source trim handles;
+segment/word buttons seek source time. Split, trim, undo and autosave share the
+existing composition. `Space` plays, arrows seek (`Shift` increases the step),
+`M` adds a marker and `B` splits; focused form controls keep their own keys.
+Transcription language (Auto/Chinese/English/Japanese) is separate from both UI
+and film language. Missing optional model/runtime has localized setup guidance
+and leaves the other editing tools available. See [setup](../../docs/transcription.md)
+and [precision editing](../../docs/precision-editing.md).
+
 ## Native shell
 
 With the platform's Tauri prerequisites installed, run

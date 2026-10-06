@@ -26,6 +26,7 @@ import {
 import { useTimelineEditor } from "../composables/useTimelineEditor";
 import Icon from "./Icon.vue";
 import SourceDetails from "./SourceDetails.vue";
+import PrecisionEditor from "./PrecisionEditor.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
@@ -45,6 +46,7 @@ const emit = defineEmits<{
   edited: [];
   playback: [];
   relink: [assetId: string];
+  activity: [];
 }>();
 const {
   state,
@@ -72,10 +74,12 @@ defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
 const inspector = ref<"clip" | "beat">("clip");
+const editMode = ref<"story" | "precision">("story");
 const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
+const precisionElement = ref<HTMLElement | null>(null);
 const workspaceHeight = ref<number>();
 let layoutObserver: ResizeObserver | undefined;
 let layoutFrame = 0;
@@ -409,6 +413,7 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (editMode.value !== "story") return;
   if (event.code === "Space" && !element?.closest("button")) {
     event.preventDefault();
     togglePlayback();
@@ -448,14 +453,18 @@ function revealClip(id: string) {
 function measureWorkspace() {
   cancelAnimationFrame(layoutFrame);
   layoutFrame = requestAnimationFrame(() => {
-    if (!props.active || !workspaceElement.value) return;
+    const workspace =
+      editMode.value === "precision"
+        ? precisionElement.value
+        : workspaceElement.value;
+    if (!props.active || !workspace) return;
     const footer = editorElement.value?.querySelector(".editor-shortcuts");
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
     workspaceHeight.value = Math.max(
-      272,
+      editMode.value === "precision" ? 416 : 272,
       Math.floor(
         window.innerHeight -
-          Math.max(0, workspaceElement.value.getBoundingClientRect().top) -
+          Math.max(0, workspace.getBoundingClientRect().top) -
           footerHeight -
           16,
       ),
@@ -669,6 +678,11 @@ watch(
     else void nextTick(measureWorkspace);
   },
 );
+watch(editMode, () => {
+  sourcePlayer.value?.pause();
+  fitPreview.value = null;
+  void nextTick(measureWorkspace);
+});
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
@@ -698,6 +712,28 @@ onBeforeUnmount(() => {
     <header class="editor-toolbar">
       <div class="editor-heading">
         <h2>{{ t("editor.heading") }}</h2>
+      </div>
+      <div
+        class="editor-mode-switch"
+        role="group"
+        :aria-label="t('precision.modeLabel')"
+      >
+        <button
+          v-for="mode in ['story', 'precision'] as const"
+          :key="mode"
+          class="editor-button"
+          :aria-pressed="editMode === mode"
+          :class="{ selected: editMode === mode }"
+          @click="editMode = mode"
+        >
+          {{
+            t(
+              mode === "story"
+                ? "precision.storyMode"
+                : "precision.precisionMode",
+            )
+          }}
+        </button>
       </div>
       <span
         class="editor-save-state"
@@ -729,6 +765,7 @@ onBeforeUnmount(() => {
           {{ t("editor.redo") }}
         </button>
         <button
+          v-show="editMode === 'story'"
           class="editor-button"
           :class="{ selected: showFit }"
           :aria-expanded="showFit"
@@ -737,6 +774,7 @@ onBeforeUnmount(() => {
           {{ t("editor.fit.title") }}
         </button>
         <button
+          v-show="editMode === 'story'"
           class="editor-button"
           :aria-expanded="inspectorOpen"
           aria-controls="timeline-inspector"
@@ -847,7 +885,7 @@ onBeforeUnmount(() => {
         }}</span>
       </div>
       <section
-        v-if="showFit"
+        v-if="showFit && editMode === 'story'"
         class="editor-fit-panel"
         :aria-label="t('editor.fit.suggestions')"
       >
@@ -993,7 +1031,32 @@ onBeforeUnmount(() => {
           }}
         </p>
       </section>
+      <div v-show="editMode === 'precision'" ref="precisionElement">
+        <PrecisionEditor
+          :project-id="projectId"
+          :asset="selectedAsset"
+          :clip="selectedClip"
+          :active="active && editMode === 'precision' && !draftAction"
+          :busy="historyBusy"
+          :unavailable="
+            !!sourceUnavailable ||
+            selectedSourceInfo?.previewSupported === false
+          "
+          :source-version="sourceVersion"
+          :height="workspaceHeight"
+          :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
+          :submit="command"
+          @select="
+            (id) => {
+              const clip = allClips.find((item) => item.id === id);
+              if (clip) chooseClip(clip);
+            }
+          "
+          @activity="emit('activity')"
+        />
+      </div>
       <div
+        v-show="editMode === 'story'"
         ref="workspaceElement"
         class="editor-body editor-workspace"
         :class="{ 'editor-inspector-collapsed': !inspectorOpen }"
@@ -1068,6 +1131,7 @@ onBeforeUnmount(() => {
                   class="editor-audio-preview"
                 >
                   <Icon name="volume" :size="40" /><audio
+                    v-if="active && editMode === 'story'"
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
                     :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
@@ -1082,7 +1146,7 @@ onBeforeUnmount(() => {
                   />
                 </div>
                 <video
-                  v-else
+                  v-else-if="active && editMode === 'story'"
                   ref="sourcePlayer"
                   :key="sourcePlaybackKey"
                   :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
@@ -1719,7 +1783,7 @@ onBeforeUnmount(() => {
           </p>
         </aside>
       </div>
-      <footer class="editor-shortcuts">
+      <footer v-show="editMode === 'story'" class="editor-shortcuts">
         <span>{{ t("editor.originalsSafe") }}</span
         ><span>{{ t("editor.shortcuts") }}</span>
       </footer>

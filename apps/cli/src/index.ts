@@ -9,6 +9,11 @@ Usage:
   openfilm import <folder> --project <film.openfilm> [--no-proxy]
   openfilm list --project <film.openfilm> [--offset 0 --limit 60]
   openfilm analyze --project <film.openfilm>
+  openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
+  openfilm waveform <asset-id> --project <film.openfilm>
+  openfilm scenes <asset-id> --project <film.openfilm>
+  openfilm transcript <asset-id> --project <film.openfilm> [--offset 0 --limit 100]
+  openfilm marker <asset-id> --project <film.openfilm> --time <source-seconds>
   openfilm rate <asset-id> --project <film.openfilm> --rating 5 [--favorite --lock]
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
   openfilm compose --project <film.openfilm> [--story <id>]
@@ -51,6 +56,10 @@ function parse(args: string[]) {
     "format",
     "port",
     "assets",
+    "language",
+    "execution",
+    "model",
+    "time",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -193,6 +202,52 @@ async function main() {
         state,
       });
       print({ asset: app.catalog.getAsset(id) });
+    } else if (["transcribe", "waveform", "scenes"].includes(command)) {
+      const id = positional[1];
+      if (!id) throw new Error("Specify a media asset ID.");
+      const language = value(options, "language") ?? "auto";
+      const execution = value(options, "execution") ?? "auto";
+      if (
+        !["auto", "zh", "en", "ja"].includes(language) ||
+        !["auto", "cpu", "gpu"].includes(execution)
+      )
+        throw new Error(
+          "Choose a supported transcription language and processing device.",
+        );
+      const job = await app.analyzeIntelligence(id, {
+        operation: command as "transcribe" | "waveform" | "scenes",
+        language: language as "auto" | "zh" | "en" | "ja",
+        execution: execution as "auto" | "cpu" | "gpu",
+        modelPath: value(options, "model"),
+        signal: controller.signal,
+        onJob: (job) =>
+          console.error(JSON.stringify({ event: "job.progress", ...job })),
+      });
+      print({ job });
+      if (job.status === "cancelled") process.exitCode = 130;
+      else if (job.status === "failed") process.exitCode = 1;
+    } else if (command === "transcript") {
+      const id = positional[1];
+      if (!id) throw new Error("Specify a media asset ID.");
+      print(
+        await app.intelligence.read(id, {
+          offset: Number(value(options, "offset") ?? 0),
+          limit: Number(value(options, "limit") ?? 100),
+        }),
+      );
+    } else if (command === "marker") {
+      const id = positional[1];
+      const time = Number(value(options, "time"));
+      if (
+        !id ||
+        value(options, "time") === undefined ||
+        !Number.isFinite(time) ||
+        time < 0
+      )
+        throw new Error(
+          "Specify an asset ID and nonnegative --time in source seconds.",
+        );
+      print({ marker: await app.intelligence.addMarker(id, time) });
     } else if (command === "story" && positional[1] === "generate") {
       print({
         story: app.generateStory({

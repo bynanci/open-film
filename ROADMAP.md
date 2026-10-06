@@ -76,3 +76,23 @@ remains the next external gate; it is not replaced by helper tests.
 
 Professional color grading, complex GPU effects, cloud collaboration, marketplaces,
 and mobile editing remain deferred. Milestones are priorities, not release dates.
+
+## 0.3 — Media Intelligence & Precision Editing
+
+P0 keeps Story-first editing and adds optional source intelligence: a local Whisper
+provider through the existing transcription port, transcript/word persistence and
+jobs, reusable waveform and scene analysis, generic markers, portable snapping
+and Precision mode inside Edit. SQLite catalog v2 adds analysis tables without
+replacing the project/composition engine. Source hashes, successful-only transcript
+replacement and shared trim/split history protect existing stories and edits.
+
+The foundation is independently adapted from [VidScribe concepts](docs/vidscribe-reference.md).
+Models stay separately installed, GPU falls back to CPU, and transcription language
+is independent of interface/film languages. CI fixture output validates protocols
+and application behavior; real model accuracy/performance is a separate gate.
+See [media intelligence](docs/media-intelligence.md) and [transcription setup](docs/transcription.md).
+
+Next: Transcript Editing + Glossary + Review Suggestions. Geometry/safe frames,
+local face detection, highlights/derived compositions and captions follow only
+after this foundation is stable. They are not part of this PR. Real Resolve QA
+continues to require a workstation; generated OTIO/parser checks do not replace it.

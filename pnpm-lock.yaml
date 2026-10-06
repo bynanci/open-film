@@ -35,6 +35,9 @@ importers:
       '@openfilm/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
+      '@openfilm/provider-whisper':
+        specifier: workspace:*
+        version: link:packages/provider-whisper
       '@openfilm/render':
         specifier: workspace:*
         version: link:packages/render
@@ -117,6 +120,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@openfilm/analysis':
+        specifier: workspace:*
+        version: link:../../packages/analysis
       '@openfilm/exporters':
         specifier: workspace:*
         version: link:../../packages/exporters
@@ -160,6 +166,9 @@ importers:
 
   packages/application:
     dependencies:
+      '@openfilm/analysis':
+        specifier: workspace:*
+        version: link:../analysis
       '@openfilm/catalog':
         specifier: workspace:*
         version: link:../catalog
@@ -181,6 +190,9 @@ importers:
       '@openfilm/plugin-sdk':
         specifier: workspace:*
         version: link:../plugin-sdk
+      '@openfilm/provider-whisper':
+        specifier: workspace:*
+        version: link:../provider-whisper
       '@openfilm/render':
         specifier: workspace:*
         version: link:../render
@@ -249,6 +261,18 @@ importers:
       '@openfilm/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/provider-whisper:
+    dependencies:
+      '@openfilm/core':
+        specifier: workspace:*
+        version: link:../core
+      '@openfilm/media':
+        specifier: workspace:*
+        version: link:../media
+      '@openfilm/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
 
   packages/render:
     dependencies:

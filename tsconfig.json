@@ -29,7 +29,8 @@
       "@openfilm/ui": ["packages/ui/src/index.ts"],
       "@openfilm/template-proposal": ["templates/proposal-film/src/index.ts"],
       "@openfilm/source-pixel": ["packages/source-pixel/src/index.ts"],
-      "@openfilm/source-insta360": ["packages/source-insta360/src/index.ts"]
+      "@openfilm/source-insta360": ["packages/source-insta360/src/index.ts"],
+      "@openfilm/provider-whisper": ["packages/provider-whisper/src/index.ts"]
     }
   },
   "include": [

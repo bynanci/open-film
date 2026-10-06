@@ -82,6 +82,8 @@ import {
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
 import { isInside } from "./path-safety.js";
+import { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
+export { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -145,6 +147,7 @@ function atomicJsonSync(path: string, value: unknown): void {
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
   readonly catalog: ProjectCatalog;
+  readonly intelligence: MediaIntelligence;
   private activeJobs = 0;
 
   private constructor(
@@ -152,6 +155,7 @@ export class OpenFilmApplication {
     public project: OpenFilmProject,
   ) {
     this.catalog = new ProjectCatalog(directory);
+    this.intelligence = new MediaIntelligence(this.catalog);
   }
 
   static async create(
@@ -272,7 +276,9 @@ export class OpenFilmApplication {
               uri: "",
               stage: "interrupted",
               message:
-                "The previous process stopped. Import again to resume completed files.",
+                job.type === "import"
+                  ? "The previous process stopped. Import again to resume completed files."
+                  : "The previous process stopped. Retry this task; previously saved analysis remains available.",
             },
           ],
         });
@@ -295,6 +301,24 @@ export class OpenFilmApplication {
 
   get hasActiveJobs(): boolean {
     return this.activeJobs > 0;
+  }
+
+  async analyzeIntelligence(
+    assetId: string,
+    options: IntelligenceOptions,
+  ): Promise<Job> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before starting another analysis.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.intelligence.run(assetId, options);
+    } finally {
+      this.activeJobs--;
+    }
   }
 
   close(): void {

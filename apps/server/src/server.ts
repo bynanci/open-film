@@ -54,6 +54,8 @@ import {
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
 import { proposalTemplate } from "@openfilm/template-proposal";
+import { CATALOG_SCHEMA_VERSION } from "@openfilm/catalog";
+import type { TranscriptionProvider } from "@openfilm/plugin-sdk";
 
 type Body = Record<string, unknown>;
 const httpErrorCodes: Partial<Record<number, ApplicationErrorCode>> = {
@@ -202,7 +204,8 @@ async function inspectCatalog(path: string): Promise<void> {
     const version = Number(
       database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
     );
-    if (version > 1) throw new Error("Unsupported future catalog schema");
+    if (version > CATALOG_SCHEMA_VERSION)
+      throw new Error("Unsupported future catalog schema");
     const integrity = database.prepare("PRAGMA quick_check(1)").get();
     if (integrity?.quick_check !== "ok")
       throw new Error("The project catalog is corrupt");
@@ -212,6 +215,28 @@ async function inspectCatalog(path: string): Promise<void> {
       )
       .get();
     database.prepare("SELECT id, created_at, data FROM jobs LIMIT 1").get();
+    if (version >= 2) {
+      database
+        .prepare(
+          "SELECT revision,document_id,asset_id,source_hash,provider_id,provider_version,model,header,segment_count FROM intelligence_transcripts LIMIT 1",
+        )
+        .get();
+      database
+        .prepare(
+          "SELECT revision,position,segment_id,start,end,text,data FROM intelligence_segments LIMIT 1",
+        )
+        .get();
+      database
+        .prepare(
+          "SELECT updated_seq,kind,asset_id,source_hash,provider_id,provider_version,model,data FROM intelligence_cache LIMIT 1",
+        )
+        .get();
+      database
+        .prepare(
+          "SELECT id,asset_id,source_hash,time,data FROM intelligence_markers LIMIT 1",
+        )
+        .get();
+    }
   } finally {
     database?.close();
     if (temporary) await rm(temporary, { recursive: true, force: true });
@@ -314,6 +339,8 @@ export async function startServer(
     project?: string;
     projectRoot?: string;
     maxUploadBytes?: number;
+    /** Explicit dependency injection for local extensions and integration tests. */
+    transcriptionProvider?: TranscriptionProvider;
   } = {},
 ) {
   const projectRoot = resolve(
@@ -329,6 +356,10 @@ export async function startServer(
   let app: OpenFilmApplication | undefined;
   if (options.project)
     app = await OpenFilmApplication.open(resolve(options.project));
+  if (app && options.transcriptionProvider)
+    app.intelligence.registerTranscriptionProvider(
+      options.transcriptionProvider,
+    );
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
   const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
@@ -400,7 +431,7 @@ export async function startServer(
         }
         if (request.method === "OPTIONS") {
           response.writeHead(204, {
-            "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",
           });
           response.end();
@@ -414,7 +445,7 @@ export async function startServer(
         // Serialize mutations across body reads and project replacement. Cancellation
         // remains available while a render is awaiting its child process.
         if (
-          (method === "POST" || method === "PATCH") &&
+          (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
           route !== "/api/projects/availability"
         ) {
@@ -581,10 +612,156 @@ export async function startServer(
             throw error;
           }
           app = next;
+          if (options.transcriptionProvider)
+            next.intelligence.registerTranscriptionProvider(
+              options.transcriptionProvider,
+            );
           json(response, 200, { project: next.project, path: next.directory });
           return;
         }
         const application = current();
+        if (method === "GET" && route === "/api/intelligence/providers") {
+          json(response, 200, await application.intelligence.providers());
+          return;
+        }
+        const intelligence = /^\/api\/assets\/([^/]+)\/intelligence$/.exec(
+          route,
+        );
+        if (intelligence && method === "GET") {
+          const offset = Number(url.searchParams.get("offset") ?? 0);
+          const limit = Number(url.searchParams.get("limit") ?? 100);
+          if (
+            !Number.isInteger(offset) ||
+            offset < 0 ||
+            !Number.isInteger(limit) ||
+            limit < 1 ||
+            limit > 200
+          )
+            throw new HttpError(
+              400,
+              "Read at most 200 transcript segments per page.",
+            );
+          json(
+            response,
+            200,
+            await application.intelligence.read(
+              decodeURIComponent(intelligence[1]!),
+              { offset, limit },
+            ),
+          );
+          return;
+        }
+        if (intelligence && method === "POST") {
+          const data = await body(request);
+          const operation = data.operation;
+          if (
+            operation !== "transcribe" &&
+            operation !== "waveform" &&
+            operation !== "scenes"
+          )
+            throw new HttpError(400, "Choose transcribe, waveform or scenes.");
+          if (
+            Object.keys(data).some(
+              (key) => !["operation", "language", "execution"].includes(key),
+            )
+          )
+            throw new HttpError(400, "Unsupported media analysis setting.");
+          if (
+            data.language !== undefined &&
+            (typeof data.language !== "string" ||
+              !["auto", "zh", "en", "ja"].includes(data.language))
+          )
+            throw new HttpError(
+              400,
+              "Choose Auto, Chinese, English or Japanese.",
+            );
+          if (
+            data.execution !== undefined &&
+            (typeof data.execution !== "string" ||
+              !["auto", "cpu", "gpu"].includes(data.execution))
+          )
+            throw new HttpError(400, "Choose Auto, CPU or GPU execution.");
+          const assetId = decodeURIComponent(intelligence[1]!);
+          if (!application.catalog.getAsset(assetId))
+            throw new HttpError(404, "Media not found.", "media.notFound");
+          if (active.size || application.hasActiveJobs)
+            throw new HttpError(
+              409,
+              "Wait for the current job before analyzing another source.",
+            );
+          const controller = new AbortController();
+          const job: Job = {
+            id: randomUUID(),
+            assetId,
+            type: operation,
+            status: "queued",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          };
+          application.catalog.saveJob(job);
+          active.set(job.id, controller);
+          const task = application.analyzeIntelligence(assetId, {
+            operation,
+            jobId: job.id,
+            signal: controller.signal,
+            language: data.language as "auto" | "zh" | "en" | "ja" | undefined,
+            execution: data.execution as "auto" | "cpu" | "gpu" | undefined,
+          });
+          const handled = task
+            .catch((error) => {
+              application.catalog.saveJob({
+                ...job,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                updatedAt: new Date().toISOString(),
+                errors: [
+                  {
+                    uri: "",
+                    stage: operation,
+                    message: String(error),
+                    ...errorInfo(
+                      error,
+                      operation === "transcribe"
+                        ? "media.transcriptionFailed"
+                        : operation === "waveform"
+                          ? "media.waveformFailed"
+                          : "media.sceneFailed",
+                    ),
+                  },
+                ],
+              });
+            })
+            .finally(() => {
+              active.delete(job.id);
+              tasks.delete(handled);
+            });
+          tasks.add(handled);
+          json(response, 202, { job });
+          return;
+        }
+        const markers = /^\/api\/assets\/([^/]+)\/markers(?:\/([^/]+))?$/.exec(
+          route,
+        );
+        if (markers && method === "POST" && !markers[2]) {
+          const data = await body(request);
+          if (Object.keys(data).some((key) => !["time", "label"].includes(key)))
+            throw new HttpError(400, "Unsupported marker field.");
+          json(response, 201, {
+            marker: await application.intelligence.addMarker(
+              decodeURIComponent(markers[1]!),
+              data.time as number,
+              data.label as string | undefined,
+            ),
+          });
+          return;
+        }
+        if (markers && method === "DELETE" && markers[2]) {
+          await application.intelligence.removeMarker(
+            decodeURIComponent(markers[1]!),
+            decodeURIComponent(markers[2]),
+          );
+          json(response, 200, { ok: true });
+          return;
+        }
         if (method === "PATCH" && route === "/api/project") {
           const data = await body(request);
           if (
