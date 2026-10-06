@@ -299,9 +299,12 @@
 
 .editor-source-screen :is(img, video) {
   display: block;
-  width: 100%;
-  max-height: 230px;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
+  transform-origin: center center;
 }
 
 .editor-source-empty {
@@ -1347,8 +1350,8 @@ button.editor-beat-heading:hover {
   }
 
   .timeline-editor-contained .editor-source-screen :is(img, video) {
-    height: 100%;
-    max-height: 100%;
+    max-width: none;
+    max-height: none;
     object-fit: contain;
   }
 
