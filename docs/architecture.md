@@ -211,3 +211,12 @@ supply a verified runtime, service, media tools, and update/installer integratio
 
 See [the integration contracts](CONTRACTS.md), [project format](project-format.md),
 and [ADRs](adr/001-monorepo.md) for public interfaces and design decisions.
+
+
+## Shared visual geometry contract
+
+Clip visual geometry is a core-domain contract rather than an adapter-specific interpretation. Coordinates use composition-frame pixels with the origin at the frame center: positive x moves right and positive y moves down. A visual source is contain-fit to the composition frame, then user scale and clockwise rotation are applied around the media center, x/y translation is applied in frame pixels, and the result is clipped by the composition frame.
+
+The desktop source preview fits that same composition frame into its viewport and scales x/y by the viewport fit ratio. The FFmpeg renderer applies the same ordering at output resolution. This keeps editor preview geometry independent of panel size and prevents renderer drift. The contract is versioned as `CLIP_GEOMETRY_CONTRACT_VERSION` in `@openfilm/core`.
+
+This contract does not claim NLE interchange support. Exporters that cannot faithfully represent a transform must continue to reject it or mark it metadata-only rather than silently changing geometry.
