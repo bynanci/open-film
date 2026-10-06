@@ -25,6 +25,7 @@ const props = defineProps<{
   projectId: string;
   assetId: string;
   revision?: string;
+  jobs?: readonly Job[];
   flush: () => Promise<boolean>;
 }>();
 const emit = defineEmits<{
@@ -42,7 +43,17 @@ const data = shallowRef<ReviewSuggestionsState>({
   limit: 100,
 });
 const provider = shallowRef<ReviewProviderState>();
-const jobs = ref<Job[]>([]);
+const jobs = computed(() =>
+  (props.jobs ?? [])
+    .filter(
+      (job) =>
+        job.assetId === props.assetId &&
+        (job.type === "review" ||
+          job.type === "language-review" ||
+          job.type === "glossary-review"),
+    )
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
+);
 const batches = ref<ReviewBatch[]>([]);
 const recoveryJobsPerPage = 5;
 const recoveryPage = ref(0);
@@ -84,7 +95,11 @@ function retainAcceptance() {
     /* Keep the exact request in memory if browser storage is unavailable. */
   }
 }
-const projectBusy = ref(false);
+const projectBusy = computed(() =>
+  (props.jobs ?? []).some(
+    (job) => job.status === "queued" || job.status === "running",
+  ),
+);
 watch(busy, (value) => emit("busy", value), { flush: "sync" });
 const error = shallowRef<unknown>(null);
 const history = ref(false);
@@ -96,7 +111,44 @@ const pageChanging = computed(
 let readGeneration = 0;
 let poll: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
-let mutation: Promise<void> | undefined;
+let mutation: Promise<boolean> | undefined;
+type MutationContext = {
+  assetId: string;
+  current: () => boolean;
+};
+function reserve(
+  action: (context: MutationContext) => Promise<boolean>,
+): Promise<boolean> {
+  if (mutation || busy.value || disposed) return Promise.resolve(false);
+  const projectId = props.projectId,
+    assetId = props.assetId;
+  const current = () =>
+    !disposed &&
+    props.projectId === projectId &&
+    props.assetId === assetId &&
+    acceptanceKey === `openfilm:review-accept:${projectId}:${assetId}`;
+  if (!current()) return Promise.resolve(false);
+  // Publish ownership before busy's synchronous parent watcher can request a
+  // flush. Preparation and transport belong to the same navigation barrier.
+  const operation = Promise.resolve()
+    .then(async () => {
+      if (!current()) return false;
+      try {
+        return await action({ assetId, current });
+      } catch (cause) {
+        if (current()) error.value = cause;
+        return false;
+      }
+    })
+    .finally(() => {
+      if (mutation === operation) mutation = undefined;
+      if (current()) busy.value = false;
+    });
+  mutation = operation;
+  error.value = null;
+  busy.value = true;
+  return operation;
+}
 const active = computed(() =>
   jobs.value.find((job) => job.status === "queued" || job.status === "running"),
 );
@@ -137,10 +189,9 @@ async function refresh(offset = requestedOffset.value) {
             Math.ceil(stale.total / 50),
           ),
         }));
-    const [suggestions, status, jobsState] = await Promise.all([
+    const [suggestions, status] = await Promise.all([
       suggestionRead,
       api.reviewProvider(),
-      api.jobs(),
     ]);
     if (!current()) return;
     const pages =
@@ -154,18 +205,6 @@ async function refresh(offset = requestedOffset.value) {
     data.value = suggestions;
     reviewPages.value = pages;
     provider.value = status;
-    projectBusy.value = jobsState.jobs.some(
-      (job) => job.status === "queued" || job.status === "running",
-    );
-    jobs.value = jobsState.jobs
-      .filter(
-        (job) =>
-          job.assetId === props.assetId &&
-          (job.type === "review" ||
-            job.type === "language-review" ||
-            job.type === "glossary-review"),
-      )
-      .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
     recoveryPage.value = Math.min(recoveryPage.value, recoveryPages.value - 1);
     const capturedRecoveryPage = recoveryPage.value;
     const recoveryWindow = recoveryJobs.value.slice(
@@ -203,87 +242,78 @@ async function pageRecovery(direction: number) {
   await refresh();
 }
 async function run(source: "glossary" | "language") {
-  if (
-    busy.value ||
-    uncertainAcceptance.value ||
-    projectBusy.value ||
-    !(await props.flush())
-  )
-    return;
-  busy.value = true;
-  error.value = null;
-  try {
-    await api.runReview(props.assetId, { source });
+  if (uncertainAcceptance.value || projectBusy.value) return;
+  await reserve(async ({ assetId, current }) => {
+    if (
+      !(await props.flush()) ||
+      !current() ||
+      uncertainAcceptance.value ||
+      projectBusy.value
+    )
+      return false;
+    await api.runReview(assetId, { source });
+    if (!current()) return false;
     emit("activity");
     await refresh(0);
-  } catch (cause) {
-    error.value = cause;
-  } finally {
-    busy.value = false;
-  }
+    return current();
+  });
 }
-async function transmitAcceptance(value: Acceptance) {
-  if (busy.value) return;
-  const projectId = props.projectId,
-    assetId = props.assetId;
-  const current = () =>
-    !disposed &&
-    props.projectId === projectId &&
-    props.assetId === assetId &&
-    acceptanceKey === `openfilm:review-accept:${projectId}:${assetId}`;
-  if (!current()) return;
-  busy.value = true;
-  error.value = null;
-  mutation = (async () => {
-    try {
-      await api.acceptSuggestion(value.suggestionId, value.receipt);
-      if (!current() || uncertainAcceptance.value !== value) return;
+async function transmitAcceptance(
+  value: Acceptance,
+  { current }: MutationContext,
+) {
+  if (!current() || uncertainAcceptance.value !== value) return false;
+  try {
+    await api.acceptSuggestion(value.suggestionId, value.receipt);
+    if (!current() || uncertainAcceptance.value !== value) return false;
+    uncertainAcceptance.value = undefined;
+    retainAcceptance();
+    emit("changed");
+    await refresh();
+    return current();
+  } catch (cause) {
+    if (!current() || uncertainAcceptance.value !== value) return false;
+    error.value = cause;
+    // A definitive rejection in this project ends recovery for this receipt,
+    // including copies restored without the original suggestion. Transport
+    // failures and offline sources still leave the outcome uncertain.
+    if (
+      cause instanceof ApiError &&
+      (cause.code === "review.suggestionStale" ||
+        cause.code === "transcript.revisionConflict" ||
+        (cause.status === 404 && cause.code === "request.notFound"))
+    ) {
       uncertainAcceptance.value = undefined;
       retainAcceptance();
       emit("changed");
-      await refresh();
-    } catch (cause) {
-      if (!current() || uncertainAcceptance.value !== value) return;
-      error.value = cause;
-      // A definitive rejection in this project ends recovery for this receipt,
-      // including copies restored without the original suggestion. Transport
-      // failures and offline sources still leave the outcome uncertain.
-      if (
-        cause instanceof ApiError &&
-        (cause.code === "review.suggestionStale" ||
-          cause.code === "transcript.revisionConflict" ||
-          (cause.status === 404 && cause.code === "request.notFound"))
-      ) {
-        uncertainAcceptance.value = undefined;
-        retainAcceptance();
-        emit("changed");
-      }
-    } finally {
-      if (current()) busy.value = false;
+      return true;
     }
-  })();
-  await mutation;
-  mutation = undefined;
+    return false;
+  }
 }
 async function accept(suggestion: ReviewSuggestion) {
-  if (
-    busy.value ||
-    uncertainAcceptance.value ||
-    !props.revision ||
-    !(await props.flush())
-  )
-    return;
-  const value: Acceptance = {
-    suggestionId: suggestion.id,
-    receipt: { baseRevision: props.revision, requestId: crypto.randomUUID() },
-  };
-  uncertainAcceptance.value = value;
-  retainAcceptance();
-  await transmitAcceptance(value);
+  if (uncertainAcceptance.value || !props.revision) return;
+  await reserve(async (context) => {
+    if (
+      !(await props.flush()) ||
+      !context.current() ||
+      uncertainAcceptance.value ||
+      !props.revision
+    )
+      return false;
+    const value: Acceptance = {
+      suggestionId: suggestion.id,
+      receipt: { baseRevision: props.revision, requestId: crypto.randomUUID() },
+    };
+    uncertainAcceptance.value = value;
+    retainAcceptance();
+    return transmitAcceptance(value, context);
+  });
 }
 async function retryAcceptance() {
-  if (uncertainAcceptance.value)
-    await transmitAcceptance(uncertainAcceptance.value);
+  const value = uncertainAcceptance.value;
+  // Confirm the original request before flushing a potentially stale draft.
+  if (value) await reserve((context) => transmitAcceptance(value, context));
 }
 async function skip(suggestion: ReviewSuggestion) {
   if (busy.value) return;
@@ -319,24 +349,23 @@ async function cancel() {
   }
 }
 async function batchAction(batch: ReviewBatch, action: "retry" | "skip") {
-  if (busy.value) return;
-  busy.value = true;
-  try {
+  if (uncertainAcceptance.value) return;
+  await reserve(async ({ current }) => {
+    if (action === "retry" && !(await props.flush())) return false;
+    if (!current() || uncertainAcceptance.value) return false;
     await api.reviewBatchAction(batch.jobId, batch.index, action);
+    if (!current()) return false;
     emit("activity");
     await refresh();
-  } catch (cause) {
-    error.value = cause;
-  } finally {
-    busy.value = false;
-  }
+    return current();
+  });
 }
 async function tick() {
   await refresh();
   if (!disposed) poll = setTimeout(() => void tick(), 1200);
 }
 async function flushPending() {
-  if (mutation) await mutation;
+  if (mutation && !(await mutation)) return false;
   return !busy.value && !uncertainAcceptance.value;
 }
 defineExpose({ refresh, flush: flushPending });

@@ -17,13 +17,14 @@ import {
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 const vue = desktopRequire("vue") as Record<string, unknown> & {
   nextTick: () => Promise<void>;
+  reactive: <T extends object>(value: T) => T;
 };
 type Ref<T> = { value: T };
 interface Editor {
   state: Ref<TranscriptEditorState | null>;
   status: Ref<string>;
   hasPending: Ref<boolean>;
-  jobs: Ref<Job[]>;
+  jobs: Ref<readonly Job[]>;
   transcriptionPending: Ref<boolean>;
   localError: Ref<unknown>;
   corrections: Ref<{
@@ -189,17 +190,19 @@ async function fixture(initial?: TranscriptEditorState, initialize = true) {
     api,
     ApiError,
   });
+  const props = vue.reactive({
+    projectId: "project",
+    asset: { id: "asset", mediaType: "video", uri: "fixture.mp4" },
+    active: true,
+    clips: [],
+    jobs: [] as Job[],
+  });
   const editor = editorFactory({
     ...vue,
     ...lifecycle,
     ...queue,
     api,
-    defineProps: () => ({
-      projectId: "project",
-      asset: { id: "asset", mediaType: "video", uri: "fixture.mp4" },
-      active: true,
-      clips: [],
-    }),
+    defineProps: () => props,
     defineEmits: () => vi.fn(),
     defineExpose: () => undefined,
     useI18n: () => ({ t: (key: string) => key }),
@@ -224,6 +227,7 @@ async function fixture(initial?: TranscriptEditorState, initialize = true) {
     publish: (next: TranscriptEditorState, jobs: Job[]) => {
       saved = next;
       savedJobs = jobs;
+      props.jobs = jobs;
     },
   };
 }
@@ -374,6 +378,72 @@ describe("Remembered correction ownership", () => {
 });
 
 describe("Transcript workspace completed transcription jobs", () => {
+  it("uses the parent's shared job snapshot without rereading a large project history", async () => {
+    const saved = document("Keep my text", "original");
+    const { editor, api, publish } = await fixture(saved);
+    const history = Array.from({ length: 10_000 }, (_, index) => ({
+      ...job(`history-${index}`),
+      assetId: "another-source",
+    }));
+    publish(saved, history);
+    await editor.poll();
+    await editor.poll();
+    expect(api.jobs).not.toHaveBeenCalled();
+    expect(editor.jobs.value).toHaveLength(10_000);
+    expect(editor.state.value?.revision).toBe("original");
+  });
+
+  it("receives running progress, cancellation and completion from shared snapshots before an ancillary poll", async () => {
+    const saved = document("Old words", "old");
+    const { editor, api, publish } = await fixture(saved);
+    const ancillaryReads = api.transcriptRevisions.mock.calls.length;
+    publish(saved, [{ ...job("shared", "running"), progress: 0.25 }]);
+    await vue.nextTick();
+    expect(editor.jobs.value[0]).toMatchObject({
+      status: "running",
+      progress: 0.25,
+    });
+    publish(saved, [job("shared", "cancelled")]);
+    await vue.nextTick();
+    expect(editor.jobs.value[0]?.status).toBe("cancelled");
+    publish(document("Newly completed words", "new"), [job("retry")]);
+    await vi.waitFor(() => expect(editor.state.value?.revision).toBe("new"));
+    expect(api.transcriptRevisions).toHaveBeenCalledTimes(ancillaryReads);
+    expect(api.jobs).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a draft on shared completion without waiting for another job query", async () => {
+    const { editor, api, publish } = await fixture(
+      document("Provider words", "old"),
+    );
+    editor.command({
+      type: "replace-text",
+      segmentId: "segment",
+      text: "My manual correction",
+    });
+    publish(document("New provider words", "new"), [job("shared-complete")]);
+    for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+    expect(editor.state.value?.revision).toBe("old");
+    expect(editor.state.value?.document?.segments[0]?.text).toBe(
+      "My manual correction",
+    );
+    expect(editor.status.value).toBe("conflict");
+    expect(api.jobs).not.toHaveBeenCalled();
+    expect(api.editTranscript).not.toHaveBeenCalled();
+  });
+
+  it("does not reload a disposed source when a later parent snapshot arrives", async () => {
+    const { editor, api, publish } = await fixture(
+      document("Original project words", "old"),
+    );
+    for (const stop of cleanup.splice(0)) stop();
+    const reads = api.transcript.mock.calls.length;
+    publish(document("Copied project words", "new"), [job("new-project")]);
+    await vue.nextTick();
+    expect(api.transcript).toHaveBeenCalledTimes(reads);
+    expect(editor.state.value?.revision).toBe("old");
+    expect(api.jobs).not.toHaveBeenCalled();
+  });
   it("lets initial recovery preserve a draft before refreshing historical completed jobs", async () => {
     const fresh = document("New provider words", "new");
     const { editor, api, storage, publish } = await fixture(fresh, false);
@@ -472,12 +542,15 @@ describe("Transcript workspace completed transcription jobs", () => {
     const { editor, api, publish } = await fixture(
       document("Old words", "old"),
     );
-    const old = deferred<{ jobs: Job[] }>();
-    api.jobs.mockImplementationOnce(() => old.promise);
+    const old = deferred<{
+      revisions: NonNullable<TranscriptEditorState["revisionInfo"]>[];
+      total: number;
+    }>();
+    api.transcriptRevisions.mockImplementationOnce(() => old.promise);
     const outdated = editor.updateAncillary();
     publish(document("Newest words", "new"), [job("newest")]);
     await editor.updateAncillary();
-    old.resolve({ jobs: [job("older", "running")] });
+    old.resolve({ revisions: [], total: 0 });
     await outdated;
     expect(editor.jobs.value.map((value) => value.id)).toEqual(["newest"]);
     expect(editor.state.value?.revision).toBe("new");

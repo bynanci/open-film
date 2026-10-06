@@ -35,6 +35,7 @@ const props = defineProps<{
   active: boolean;
   unavailable?: boolean;
   sourceVersion?: number;
+  jobs?: readonly Job[];
   height?: number;
   clips: { id: string; label: string }[];
 }>();
@@ -122,7 +123,8 @@ const revisionOffset = ref(0);
 const revisionTotal = ref(0);
 const revisionSelection = ref("");
 const providers = shallowRef<IntelligenceProviders>();
-const jobs = ref<Job[]>([]);
+// App owns the project-scoped snapshot and its guarded activity poll.
+const jobs = computed(() => props.jobs ?? []);
 const language = ref<"auto" | "zh" | "en" | "ja">("auto");
 const execution = ref<"auto" | "cpu" | "gpu">("auto");
 const transcribeWarning = ref(false);
@@ -133,6 +135,7 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchGeneration = 0;
 let ancillaryGeneration = 0;
 const observedCompletedTranscriptions = new Set<string>();
+let completedRefresh: Promise<void> | undefined;
 const searchContext = shallowRef<{
   query: string;
   caseSensitive: boolean;
@@ -274,37 +277,47 @@ async function updateAncillary() {
     stamp === ancillaryGeneration &&
     capturedRevisionOffset === revisionOffset.value;
   try {
-    const [providerState, jobState, revisionState] = await Promise.all([
+    const [providerState, revisionState] = await Promise.all([
       api.intelligenceProviders(),
-      api.jobs(),
       api.transcriptRevisions(props.asset.id, capturedRevisionOffset),
     ]);
     if (!current()) return;
     providers.value = providerState;
-    jobs.value = jobState.jobs;
     revisions.value = revisionState.revisions;
     revisionTotal.value = revisionState.total;
-    const completed = transcriptionJobs.value.filter(
-      (job) =>
-        job.status === "completed" &&
-        !observedCompletedTranscriptions.has(job.id),
-    );
-    if (completed.length && status.value !== "loading") {
-      for (const job of completed) observedCompletedTranscriptions.add(job.id);
-      const beforeRevision = state.value?.revision;
-      // A fast job can finish before any poll observes it running. Reconcile a
-      // draft instead of flushing its old revision over the provider result.
-      const refreshed = transcriptHasPending.value
-        ? await reconcile()
-        : await load(0, false);
-      if (refreshed && state.value?.revision !== beforeRevision)
-        corrections.value = null;
-      if (!refreshed && status.value !== "conflict")
-        for (const job of completed)
-          observedCompletedTranscriptions.delete(job.id);
-    }
+    await refreshCompletedTranscriptions();
   } catch (cause) {
     if (current()) localError.value = cause;
+  }
+}
+async function refreshCompletedTranscriptions() {
+  if (disposed) return;
+  if (completedRefresh) return completedRefresh;
+  if (status.value === "loading") return;
+  const completed = transcriptionJobs.value.filter(
+    (job) =>
+      job.status === "completed" &&
+      !observedCompletedTranscriptions.has(job.id),
+  );
+  if (!completed.length) return;
+  for (const job of completed) observedCompletedTranscriptions.add(job.id);
+  completedRefresh = (async () => {
+    const beforeRevision = state.value?.revision;
+    // A fast job can finish before App observes it running. Initial recovery
+    // finishes first; a manual draft reconciles instead of overwriting text.
+    const refreshed = transcriptHasPending.value
+      ? await reconcile()
+      : await load(0, false);
+    if (refreshed && state.value?.revision !== beforeRevision)
+      corrections.value = null;
+    if (!refreshed && status.value !== "conflict")
+      for (const job of completed)
+        observedCompletedTranscriptions.delete(job.id);
+  })();
+  try {
+    await completedRefresh;
+  } finally {
+    completedRefresh = undefined;
   }
 }
 async function poll() {
@@ -824,6 +837,7 @@ watch(
   },
 );
 watch([player, () => props.clip?.transform?.volume], configurePlayer);
+watch([jobs, status], () => void refreshCompletedTranscriptions());
 watch(
   () => props.active,
   (active) => {
@@ -1446,6 +1460,7 @@ onBeforeUnmount(() => {
           :project-id="projectId"
           :asset-id="asset.id"
           :revision="state?.revision"
+          :jobs="jobs"
           :flush="flushTranscript"
           @changed="
             reconcile();

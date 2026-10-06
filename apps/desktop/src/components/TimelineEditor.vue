@@ -7,7 +7,7 @@ import {
   ref,
   watch,
 } from "vue";
-import type { Clip, StoryBeat } from "@openfilm/core";
+import type { Clip, Job, StoryBeat } from "@openfilm/core";
 import {
   applyTimelineCommand,
   prepareShorteningPlan,
@@ -41,6 +41,7 @@ const props = defineProps<{
   active: boolean;
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
+  jobs?: readonly Job[];
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -1101,6 +1102,7 @@ onBeforeUnmount(() => {
             selectedSourceInfo?.previewSupported === false
           "
           :source-version="sourceVersion"
+          :jobs="jobs"
           :height="workspaceHeight"
           :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
           @select="

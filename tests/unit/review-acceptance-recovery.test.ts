@@ -364,6 +364,9 @@ describe("persisted review acceptance recovery", () => {
       const response = deferred();
       const test = panel(() => response.promise);
       const retry = test.state.retryAcceptance();
+      await vi.waitFor(() =>
+        expect(test.api.acceptSuggestion).toHaveBeenCalledTimes(1),
+      );
       if (change === "project") test.props.projectId = "different-project";
       else if (change === "asset") test.props.assetId = "different-asset";
       else test.dispose();

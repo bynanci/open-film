@@ -2521,6 +2521,7 @@ onUnmounted(() => {
             :active="tab === 'edit'"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
+            :jobs="jobs"
             @relink="openRelink($event)"
             @change="editorChanged"
             @edited="editorEdited"
