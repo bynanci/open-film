@@ -57,6 +57,10 @@ remains the next external gate; it is not replaced by helper tests.
   Resolve-capable workstation.
 - Validate removable volumes on Windows hardware and representative Pixel HDR,
   Motion Photo and Insta360 source files.
+- Record Resolve, ASR/LLM, GPU, camera, 4K, Windows installer and process-recovery
+  evidence with the candidate-bound workstation QA contract. Unknown review owners
+  now have a confirmed manual escape hatch; automatic Windows/macOS dead-owner
+  proof still requires an OS-specific verified implementation.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event
   editing without hiding uncertainty.
 - Validate real camera orientation/color behavior and future 360 reframing;
