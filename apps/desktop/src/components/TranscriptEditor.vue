@@ -58,7 +58,7 @@ const {
   loadPage,
   discardDraft,
   downloadDraft,
-  restore,
+  restore: restoreTranscript,
   reconcile,
 } = useTranscriptEditor(props.projectId, props.asset.id, () => emit("changed"));
 const root = ref<HTMLElement | null>(null);
@@ -112,7 +112,11 @@ const hasPending = computed(
     transcriptionPending.value,
 );
 const tool = ref<"glossary" | "suggestions">("glossary");
-const corrections = ref<{ before: string; after: string } | null>(null);
+const corrections = ref<{
+  segmentId: string;
+  before: string;
+  after: string;
+} | null>(null);
 const revisions = ref<TranscriptRevision[]>([]);
 const revisionOffset = ref(0);
 const revisionTotal = ref(0);
@@ -140,6 +144,18 @@ const selected = computed(() =>
     (segment) => segment.id === selectedId.value,
   ),
 );
+const rememberableCorrection = computed(() => {
+  const correction = corrections.value;
+  return correction &&
+    correction.segmentId === selectedId.value &&
+    selected.value?.text === correction.after &&
+    correction.before !== correction.after &&
+    correction.before.length <= 512 &&
+    correction.after.length <= 512 &&
+    correction.after.trim()
+    ? correction
+    : null;
+});
 const visible = computed(
   () =>
     state.value?.document?.segments.filter(
@@ -275,11 +291,14 @@ async function updateAncillary() {
     );
     if (completed.length && status.value !== "loading") {
       for (const job of completed) observedCompletedTranscriptions.add(job.id);
+      const beforeRevision = state.value?.revision;
       // A fast job can finish before any poll observes it running. Reconcile a
       // draft instead of flushing its old revision over the provider result.
       const refreshed = transcriptHasPending.value
         ? await reconcile()
         : await load(0, false);
+      if (refreshed && state.value?.revision !== beforeRevision)
+        corrections.value = null;
       if (!refreshed && status.value !== "conflict")
         for (const job of completed)
           observedCompletedTranscriptions.delete(job.id);
@@ -312,17 +331,22 @@ async function select(segment: TranscriptSegment, edit = false) {
 }
 function queueText() {
   if (!selected.value) return;
+  const segmentId = selected.value.id;
   const before = selected.value.text;
   if (text.value !== before) {
     if (
       command({
         type: "replace-text",
-        segmentId: selected.value.id,
+        segmentId,
         text: text.value,
       })
     ) {
-      if (!corrections.value || corrections.value.after !== before)
-        corrections.value = { before, after: text.value };
+      if (
+        !corrections.value ||
+        corrections.value.segmentId !== segmentId ||
+        corrections.value.after !== before
+      )
+        corrections.value = { segmentId, before, after: text.value };
       else corrections.value.after = text.value;
     }
   }
@@ -333,6 +357,7 @@ async function structural(value: TranscriptCommand) {
   try {
     if (!(await flushTranscript())) return;
     if (command(value)) {
+      corrections.value = null;
       await flushTranscript();
       await updateAncillary();
       await find();
@@ -510,17 +535,39 @@ async function replace(all: boolean) {
 }
 async function undo(direction: "undo" | "redo") {
   if (await history(direction)) {
+    corrections.value = null;
     await updateAncillary();
     await find();
   }
 }
+async function restore(revisionId: string) {
+  if (busy.value) return false;
+  pending.value = true;
+  try {
+    if (!(await restoreTranscript(revisionId))) return false;
+    corrections.value = null;
+    await updateAncillary();
+    await find();
+    return true;
+  } finally {
+    pending.value = false;
+  }
+}
 async function remember() {
-  if (!corrections.value || busy.value) return false;
-  const correction = { ...corrections.value };
+  if (!rememberableCorrection.value || busy.value) return false;
+  const correction = { ...rememberableCorrection.value };
   rememberBusy.value = true;
   rememberMutation = (async () => {
     try {
       if (!(await flushTranscript())) return false;
+      const current = rememberableCorrection.value;
+      if (
+        !current ||
+        current.segmentId !== correction.segmentId ||
+        current.before !== correction.before ||
+        current.after !== correction.after
+      )
+        return false;
       await api.saveGlossary({
         scope: "project",
         source: correction.before,
@@ -746,6 +793,16 @@ watch(
   },
   { flush: "sync" },
 );
+watch([selectedId, () => selected.value?.text], () => {
+  const correction = corrections.value;
+  if (
+    correction &&
+    (correction.segmentId !== selectedId.value ||
+      correction.after !== selected.value?.text ||
+      correction.before === correction.after)
+  )
+    corrections.value = null;
+});
 watch(
   () => state.value?.document?.segments,
   (segments) => {
@@ -1149,16 +1206,7 @@ onBeforeUnmount(() => {
               {{ t("transcript.nextPage") }}
             </button>
           </div>
-          <div
-            v-if="
-              corrections &&
-              corrections.before !== corrections.after &&
-              corrections.before.length <= 512 &&
-              corrections.after.length <= 512 &&
-              corrections.after.trim()
-            "
-            class="transcript-remember"
-          >
+          <div v-if="rememberableCorrection" class="transcript-remember">
             <span>{{ t("transcript.rememberCorrection") }}</span
             ><button class="editor-button" :disabled="busy" @click="remember">
               {{ t("transcript.remember") }}
@@ -1206,10 +1254,7 @@ onBeforeUnmount(() => {
                 !revisionSelection ||
                 revisionSelection === state.revision
               "
-              @click="
-                restore(revisionSelection);
-                updateAncillary();
-              "
+              @click="restore(revisionSelection)"
             >
               {{ t("transcript.restoreRevision") }}
             </button>

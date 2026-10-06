@@ -7,6 +7,7 @@ import {
   validateTranscriptCommand,
   type Job,
   type TranscriptCommand,
+  type TranscriptSegment,
 } from "@openfilm/core";
 import {
   ApiError,
@@ -25,6 +26,19 @@ interface Editor {
   jobs: Ref<Job[]>;
   transcriptionPending: Ref<boolean>;
   localError: Ref<unknown>;
+  corrections: Ref<{
+    before: string;
+    after: string;
+    segmentId?: string;
+  } | null>;
+  text: Ref<string>;
+  selectedId: Ref<string>;
+  queueText: () => void;
+  remember: () => Promise<boolean>;
+  undo: (direction: "undo" | "redo") => Promise<void>;
+  restore: (revision: string) => Promise<boolean>;
+  structural: (command: TranscriptCommand) => Promise<void>;
+  select: (segment: TranscriptSegment) => Promise<void>;
   command: (command: TranscriptCommand) => boolean;
   load: () => Promise<boolean>;
   flush: () => Promise<boolean>;
@@ -65,6 +79,15 @@ const editorFactory = compile<Editor>(source, [
   "jobs",
   "transcriptionPending",
   "localError",
+  "corrections",
+  "text",
+  "selectedId",
+  "queueText",
+  "remember",
+  "undo",
+  "restore",
+  "structural",
+  "select",
   "command",
   "load",
   "flush",
@@ -146,11 +169,14 @@ async function fixture(initial?: TranscriptEditorState, initialize = true) {
     analyzeIntelligence: vi.fn(async () => ({
       job: job("submitted", "queued"),
     })),
-    editTranscript: vi.fn(async () => {
+    editTranscript: vi.fn(async (): Promise<TranscriptEditorState> => {
       throw new ApiError("Revision changed", 409, {
         code: "transcript.revisionConflict",
       });
     }),
+    transcriptHistory: vi.fn(async () => structuredClone(saved)),
+    selectTranscriptRevision: vi.fn(async () => structuredClone(saved)),
+    saveGlossary: vi.fn(async () => undefined),
   };
   const lifecycle = {
     onMounted: () => undefined,
@@ -207,6 +233,144 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("Remembered correction ownership", () => {
+  async function correctionFixture() {
+    const view = await fixture(document("foo", "original"));
+    const corrected = document("bar", "corrected");
+    corrected.revisionInfo!.source = "user";
+    view.api.editTranscript.mockImplementation(async () => {
+      view.publish(corrected, []);
+      return structuredClone(corrected);
+    });
+    view.editor.text.value = "bar";
+    view.editor.queueText();
+    await view.editor.flush();
+    await vue.nextTick();
+    expect(view.editor.corrections.value).toMatchObject({
+      before: "foo",
+      after: "bar",
+    });
+    return view;
+  }
+
+  it("drops a reverted correction after Undo and does not resurrect its intent on Redo", async () => {
+    const { editor, api, publish } = await correctionFixture();
+    api.transcriptHistory.mockImplementationOnce(async () => {
+      const restored = document("foo", "undone");
+      publish(restored, []);
+      return restored;
+    });
+    await editor.undo("undo");
+    expect(await editor.remember()).toBe(false);
+    expect(api.saveGlossary).not.toHaveBeenCalled();
+    expect(editor.corrections.value).toBeNull();
+    api.transcriptHistory.mockImplementationOnce(async () => {
+      const redone = document("bar", "redone");
+      publish(redone, []);
+      return redone;
+    });
+    await editor.undo("redo");
+    expect(editor.corrections.value).toBeNull();
+    expect(editor.state.value?.document?.segments[0]?.text).toBe("bar");
+  });
+
+  it("clears correction intent when restoring a revision even when the restored words match", async () => {
+    const { editor, api, publish } = await correctionFixture();
+    api.selectTranscriptRevision.mockImplementationOnce(async () => {
+      const restored = document("bar", "restored");
+      publish(restored, []);
+      return restored;
+    });
+    expect(await editor.restore("historical")).toBe(true);
+    expect(await editor.remember()).toBe(false);
+    expect(api.saveGlossary).not.toHaveBeenCalled();
+    expect(editor.corrections.value).toBeNull();
+  });
+
+  it("keeps one correction across ordinary keystrokes and autosave acknowledgments", async () => {
+    const { editor, api, publish } = await fixture(document("foo", "original"));
+    for (const value of ["b", "ba", "bar"]) {
+      editor.text.value = value;
+      editor.queueText();
+      await vue.nextTick();
+    }
+    api.editTranscript.mockImplementationOnce(async () => {
+      const saved = document("bar", "saved");
+      saved.revisionInfo!.source = "user";
+      publish(saved, []);
+      return saved;
+    });
+    await editor.flush();
+    expect(editor.corrections.value).toMatchObject({
+      before: "foo",
+      after: "bar",
+    });
+    expect(await editor.remember()).toBe(true);
+    expect(api.saveGlossary).toHaveBeenCalledWith({
+      scope: "project",
+      source: "foo",
+      replacement: "bar",
+      caseSensitive: true,
+      enabled: true,
+    });
+  });
+
+  it("does not offer an earlier segment's correction after selecting another segment", async () => {
+    const { editor, api, publish } = await correctionFixture();
+    const expanded = document("bar", "expanded");
+    const other = { id: "other", start: 2, end: 3, text: "bar" };
+    expanded.document!.segments.push(other);
+    expanded.total = 2;
+    publish(expanded, []);
+    await editor.load();
+    await editor.select(other);
+    expect(editor.selectedId.value).toBe("other");
+    expect(await editor.remember()).toBe(false);
+    expect(api.saveGlossary).not.toHaveBeenCalled();
+    expect(editor.corrections.value).toBeNull();
+  });
+
+  it.each<TranscriptCommand>([
+    { type: "delete-segment", segmentId: "segment" },
+    {
+      type: "split-segment",
+      segmentId: "segment",
+      cursorOffset: 1,
+      newSegmentId: "split-child",
+    },
+    { type: "merge-segment", segmentId: "segment", direction: "next" },
+    { type: "replace-all", query: "bar", replacement: "replacement" },
+  ])(
+    "discards the remembered intent after structural mutation $type",
+    async (command) => {
+      const { editor, api, publish } = await correctionFixture();
+      api.editTranscript.mockImplementationOnce(async () => {
+        const modified = document("replacement", "structural");
+        if (command.type === "delete-segment") {
+          modified.document!.segments = [];
+          modified.total = 0;
+        }
+        publish(modified, []);
+        return modified;
+      });
+      await editor.structural(command);
+      expect(await editor.remember()).toBe(false);
+      expect(api.saveGlossary).not.toHaveBeenCalled();
+      expect(editor.corrections.value).toBeNull();
+    },
+  );
+
+  it("invalidates a pair after successful retranscription even when recognized words match", async () => {
+    const { editor, api, publish } = await correctionFixture();
+    publish(document("bar", "new-provider"), [job("retranscribed")]);
+    await editor.updateAncillary();
+    expect(editor.state.value?.revision).toBe("new-provider");
+    expect(await editor.remember()).toBe(false);
+    expect(api.saveGlossary).not.toHaveBeenCalled();
+    expect(editor.corrections.value).toBeNull();
+  });
 });
 
 describe("Transcript workspace completed transcription jobs", () => {
