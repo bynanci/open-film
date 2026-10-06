@@ -218,14 +218,23 @@ Clip visual geometry is a core-domain contract rather than an adapter-specific
 interpretation. Coordinates use composition-frame pixels with the origin at the
 frame center: positive x moves right and positive y moves down. A visual source
 is contain-fit to the composition frame, then user scale and clockwise rotation
-are applied around the media center, x/y translation is applied in frame pixels,
-and the result is clipped by the composition frame.
+are applied around the actual fitted media center, x/y translation is applied in
+frame pixels, and the result is clipped by the composition frame.
 
-The desktop source preview fits that same composition frame into its viewport and
-scales x/y by the viewport fit ratio. The FFmpeg renderer applies the same ordering
-at output resolution. This keeps editor preview geometry independent of panel size
-and prevents renderer drift. The contract is versioned as
-`CLIP_GEOMETRY_CONTRACT_VERSION` in `@openfilm/core`.
+The desktop preview first fits an explicit composition-frame box into its viewport,
+then independently contain-fits the decoded source aspect inside that frame. User
+transforms apply to the fitted source box, not a letterboxed frame-sized element.
+The frame box owns clipping, so translating or rotating beyond its edges matches
+the renderer instead of leaking into spare UI space. Browser intrinsic dimensions
+replace catalog dimensions after decode, keeping generated proxies and orientation
+effects aligned with what the user is actually previewing.
+
+The FFmpeg renderer follows the same ordering at output resolution. It converts
+the transformed source to an alpha-capable format before rotation so transparent
+rotated corners reveal lower visual tracks rather than becoming black. Final
+encoding quantization remains pixel-based, while UI mapping may use fractional CSS
+pixels. The contract is versioned as `CLIP_GEOMETRY_CONTRACT_VERSION` in
+`@openfilm/core`.
 
 This contract does not claim NLE interchange support. Exporters that cannot
 faithfully represent a transform must continue to reject it or mark it metadata-only
