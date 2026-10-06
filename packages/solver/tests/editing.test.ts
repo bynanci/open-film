@@ -517,6 +517,41 @@ describe("scoped automatic editing", () => {
       transform: { scale: 1.7, x: 9 },
     });
   });
+  it("preserves cross-media solver order when regenerating a beat", () => {
+    const before = document();
+    clip(before, "video-clip").assetId = "alternate";
+    const beat = before.story.beats[0]!;
+    beat.candidateAssetIds = ["audio", "video"];
+    beat.selectedAssetIds = ["audio", "video"];
+    beat.targetDuration = 10;
+    beat.constraints = [
+      { type: "must-include", assetIds: ["audio", "video"] },
+      { type: "asset-order", assetIds: ["audio", "video"] },
+    ];
+    const current = edit(before, {
+      type: "regenerate-beat",
+      beatId: "intro",
+      mode: "regenerate",
+    });
+    const regenerated = clips(current)
+      .filter((item) => item.beatId === "intro")
+      .sort((left, right) => left.timelineStart - right.timelineStart);
+    expect(regenerated.map((item) => item.assetId)).toEqual(["audio", "video"]);
+    expect(regenerated.map((item) => item.timelineStart)).toEqual([0, 5]);
+    expect(
+      current.composition.tracks
+        .find((track) => track.type === "audio")
+        ?.clips.filter((item) => item.beatId === "intro")
+        .map((item) => item.assetId),
+    ).toEqual(["audio"]);
+    expect(
+      current.composition.tracks
+        .find((track) => track.type === "video")
+        ?.clips.filter((item) => item.beatId === "intro")
+        .map((item) => item.assetId),
+    ).toEqual(["video"]);
+    expect(clip(current, "next-clip").timelineStart).toBe(10);
+  });
   it("populates an empty beat at its story position with deterministic IDs", () => {
     const before = document();
     before.story.beats.splice(1, 0, {

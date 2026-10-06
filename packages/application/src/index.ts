@@ -935,11 +935,14 @@ export class OpenFilmApplication {
     return composition;
   }
 
-  private compositionAssets(composition: Composition): MediaAsset[] {
+  private compositionAssets(
+    composition: Composition,
+    includeTitleAssets = false,
+  ): MediaAsset[] {
     return [
       ...new Set(
         composition.tracks
-          .filter((track) => track.type !== "titles")
+          .filter((track) => includeTitleAssets || track.type !== "titles")
           .flatMap((track) => track.clips.map((clip) => clip.assetId)),
       ),
     ].map((id) => {
@@ -1084,7 +1087,7 @@ export class OpenFilmApplication {
     compositionId?: string,
   ): Promise<{ path: string; report: ExportReport }> {
     const composition = this.composition(compositionId);
-    const assets = this.compositionAssets(composition);
+    const assets = this.compositionAssets(composition, true);
     const exported = exportTimeline(
       format,
       composition,

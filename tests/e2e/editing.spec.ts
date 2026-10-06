@@ -482,6 +482,99 @@ test("retains a real conflicting draft through reload and reapplies it explicitl
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("acknowledges a committed draft batch before retrying commands queued after it", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request);
+  await openTimeline(page);
+  const initial = await editorState(request);
+  const firstCommand = { type: "delete", clipId: "opening-photo" } as const;
+  const queuedCommand = {
+    type: "volume",
+    clipId: "ending-motion",
+    volume: 0.25,
+  } as const;
+  const batch = {
+    baseRevision: initial.revision,
+    requestId: "44444444-4444-4444-8444-444444444444",
+    commands: [firstCommand],
+  };
+  const committed = await request.post(
+    base + "/api/compositions/editing-cut/edit",
+    { data: batch },
+  );
+  expect(committed.ok()).toBe(true);
+  const committedState = (await committed.json()) as EditorState;
+  const concurrentEdit = await request.post(
+    base + "/api/compositions/editing-cut/edit",
+    {
+      data: {
+        baseRevision: committedState.revision,
+        requestId: "55555555-5555-4555-8555-555555555555",
+        commands: [
+          { type: "volume", clipId: "ending-motion", volume: 0.15 },
+        ],
+      },
+    },
+  );
+  expect(concurrentEdit.ok()).toBe(true);
+  const concurrentState = (await concurrentEdit.json()) as EditorState;
+  const projectResponse = await request.get(base + "/project");
+  expect(projectResponse.ok()).toBe(true);
+  const projectId = (await projectResponse.json()).project.id as string;
+  const key = "openfilm:editor:" + projectId + ":editing-cut";
+  await page.evaluate(
+    ({ storageKey, draft }) =>
+      localStorage.setItem(storageKey, JSON.stringify(draft)),
+    {
+      storageKey: key,
+      draft: {
+        state: initial,
+        pending: [firstCommand, queuedCommand],
+        batch,
+      },
+    },
+  );
+  const retriedEdits: Record<string, unknown>[] = [];
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname ===
+        "/api/compositions/editing-cut/edit"
+    )
+      retriedEdits.push(entry.postDataJSON() as Record<string, unknown>);
+  });
+  await page.reload();
+  await navigate(page, "edit");
+  await expect(page.getByText("Save conflict", { exact: true })).toBeVisible();
+  expect(retriedEdits).toHaveLength(1);
+  expect(retriedEdits[0]).toMatchObject(batch);
+  await page
+    .getByRole("button", { name: "Apply draft to latest", exact: true })
+    .click();
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Review draft action",
+  });
+  await confirmation
+    .getByRole("button", { name: "Confirm", exact: true })
+    .click();
+  await saved(page);
+  expect(retriedEdits).toHaveLength(2);
+  expect(retriedEdits[1]?.commands).toEqual([queuedCommand]);
+  expect(retriedEdits[1]?.requestId).not.toBe(batch.requestId);
+  const recovered = await editorState(request);
+  expect(recovered.revision).not.toBe(concurrentState.revision);
+  expect(clips(recovered).some((clip) => clip.id === "opening-photo")).toBe(
+    false,
+  );
+  expect(clipById(recovered, "ending-motion").transform?.volume).toBe(0.25);
+  expect(clips(recovered).some((clip) => clip.id === "opening-photo")).toBe(
+    false,
+  );
+  expect(clipById(recovered, "ending-motion").transform?.volume).toBe(0.25);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
 test("previews and skips Fit without saving, protects skipped clips, and switches editor language in place", async ({
   page,
   request,

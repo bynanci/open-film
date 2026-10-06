@@ -15,6 +15,7 @@ import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
 export interface EditorState extends EditorDocument {
   assets: MediaAsset[];
   revision: string;
+  acknowledgedRevision?: string;
   canUndo: boolean;
   canRedo: boolean;
 }

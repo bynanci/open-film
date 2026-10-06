@@ -974,40 +974,55 @@ function regenerate(
     clip.id = id;
     existingIds.add(id);
   });
-  // Replace existing slots from the end, preserving every clip outside this beat.
-  const byType = new Map<boolean, Clip[]>([
-    [
-      false,
-      generated.filter(
-        (clip) => findAsset(assets, clip.assetId).mediaType !== "audio",
-      ),
-    ],
-    [
-      true,
-      generated.filter(
-        (clip) => findAsset(assets, clip.assetId).mediaType === "audio",
-      ),
-    ],
-  ]);
-  const assignments = editable.map((clip) => ({
+  // Keep the solver's combined media order; old slots cannot be matched by type.
+  const orderedSlots = [...editable].sort(
+    (left, right) => left.timelineStart - right.timelineStart,
+  );
+  const assignments = orderedSlots.map((clip, index) => ({
     oldId: clip.id,
-    next: byType
-      .get(findAsset(assets, clip.assetId).mediaType === "audio")!
-      .shift(),
+    next: generated[index],
     start: clip.timelineStart,
   }));
+  const trackForType = (type: "audio" | "video") => {
+    let track = document.composition.tracks.find((item) => item.type === type);
+    if (!track) {
+      let id = `${document.composition.id}:${type}`,
+        suffix = 1;
+      while (document.composition.tracks.some((item) => item.id === id))
+        id = `${document.composition.id}:${type}:${suffix++}`;
+      track = { id, type, clips: [] };
+      document.composition.tracks.push(track);
+    }
+    return track;
+  };
+  const insertSorted = (
+    track: (typeof document.composition.tracks)[number],
+    clip: Clip,
+  ) => {
+    const index = track.clips.findIndex(
+      (item) => item.timelineStart >= clip.timelineStart - EPSILON,
+    );
+    track.clips.splice(index < 0 ? track.clips.length : index, 0, clip);
+  };
   for (const assignment of assignments.sort((a, b) => b.start - a.start)) {
     const { clip, track } = findClip(document, assignment.oldId);
     if (!assignment.next) remove(document, clip);
     else {
       resize(document, clip, assignment.next.timelineDuration);
       assignment.next.timelineStart = clip.timelineStart;
-      track.clips[track.clips.indexOf(clip)] = assignment.next;
+      const index = track.clips.indexOf(clip);
+      const type =
+        findAsset(assets, assignment.next.assetId).mediaType === "audio"
+          ? "audio"
+          : "video";
+      if (track.type === type) track.clips[index] = assignment.next;
+      else {
+        track.clips.splice(index, 1);
+        insertSorted(trackForType(type), assignment.next);
+      }
     }
   }
-  const remaining = generated.filter((clip) =>
-    [...byType.values()].some((group) => group.includes(clip)),
-  );
+  const remaining = generated.slice(assignments.length);
   let insertion = Math.max(
     0,
     ...allClips(document)
@@ -1033,22 +1048,9 @@ function regenerate(
         other.timelineStart += clip.timelineDuration;
     const type =
       findAsset(assets, clip.assetId).mediaType === "audio" ? "audio" : "video";
-    let track = document.composition.tracks.find(
-      (track) => track.type === type,
-    );
-    if (!track) {
-      let id = `${document.composition.id}:${type}`,
-        suffix = 1;
-      while (document.composition.tracks.some((track) => track.id === id))
-        id = `${document.composition.id}:${type}:${suffix++}`;
-      track = { id, type, clips: [] };
-      document.composition.tracks.push(track);
-    }
+    const track = trackForType(type);
     clip.timelineStart = insertion;
-    const index = track.clips.findIndex(
-      (item) => item.timelineStart >= insertion - EPSILON,
-    );
-    track.clips.splice(index < 0 ? track.clips.length : index, 0, clip);
+    insertSorted(track, clip);
     insertion += clip.timelineDuration;
   }
   updateDuration(document);

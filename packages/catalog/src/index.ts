@@ -23,6 +23,8 @@ export interface CatalogRelinkChange {
   expectedContentHash?: string;
   newUri: string;
   reference: Record<string, unknown>;
+  /** Fresh technical metadata for a confirmed relink with no prior content hash. */
+  inspected?: MediaAsset;
 }
 
 function relinkError(
@@ -266,6 +268,23 @@ export class ProjectCatalog {
           !change.reference.contentHash.trim())
       )
         throw relinkError(400, "Invalid reference content hash");
+      if (change.inspected) {
+        try {
+          validateAsset(change.inspected);
+        } catch (error) {
+          throw relinkError(
+            400,
+            error instanceof Error
+              ? error.message
+              : "Invalid inspected replacement",
+          );
+        }
+        if (
+          change.inspected.uri !== change.newUri ||
+          change.inspected.contentHash !== change.reference.contentHash
+        )
+          throw relinkError(409, "Inspected replacement does not match relink");
+      }
     }
 
     this.database.exec("BEGIN IMMEDIATE");
@@ -299,11 +318,26 @@ export class ProjectCatalog {
             409,
             `Destination URI belongs to asset: ${existing.id}`,
           );
+        if (change.inspected && contentHash !== undefined)
+          throw relinkError(
+            409,
+            "Source inspection is only allowed for assets without a known content hash",
+          );
+        const metadata = { ...latest.metadata };
+        if (change.inspected) {
+          for (const key of Object.keys(metadata))
+            if (key.startsWith("openfilm.") && key !== "openfilm.reference")
+              delete metadata[key];
+          Object.assign(metadata, change.inspected.metadata);
+        }
         const next: MediaAsset = {
           ...latest,
+          ...(change.inspected
+            ? { contentHash: change.inspected.contentHash }
+            : {}),
           uri: change.newUri,
           metadata: {
-            ...latest.metadata,
+            ...metadata,
             "openfilm.reference": {
               ...change.reference,
               ...(typeof previous?.originalUri === "string"
@@ -312,6 +346,33 @@ export class ProjectCatalog {
             },
           },
         };
+        if (change.inspected) {
+          const updated = next as unknown as Record<string, unknown>;
+          const inspected = change.inspected as unknown as Record<
+            string,
+            unknown
+          >;
+          for (const key of [
+            "capturedAt",
+            "capturedAtConfidence",
+            "capturedAtSource",
+            "timezone",
+            "duration",
+            "dimensions",
+            "frameRate",
+            "codec",
+            "colorSpace",
+            "hdr",
+            "source",
+            "gps",
+          ]) {
+            if (inspected[key] === undefined) delete updated[key];
+            else updated[key] = structuredClone(inspected[key]);
+          }
+          delete updated.thumbnailUri;
+          delete updated.proxyUri;
+          delete updated.perceptualHash;
+        }
         try {
           validateAsset(next);
         } catch (error) {

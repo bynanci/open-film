@@ -211,4 +211,61 @@ describe("offline application workflow", () => {
     expect(await hashFile(path)).toBe(hash);
     app.close();
   });
+  it("exports media used only by a title track without adding it to render assets", async () => {
+    const app = await OpenFilmApplication.create(
+      join(directory, "title-track.openfilm"),
+      "Title track export",
+    );
+    try {
+      await app.importFolder(sources);
+      const assets = app.catalog.listAssets({ limit: 100 });
+      const image = assets.find((asset) => asset.name === "01-photo.png")!;
+      const video = assets.find((asset) => asset.name === "04-motion.mp4")!;
+      app.project.stories.push({
+        id: "title-story",
+        title: "Title story",
+        beats: [{ id: "title-beat", title: "Opening" }],
+      });
+      app.project.timelines.push({
+        id: "title-only-export",
+        storyId: "title-story",
+        duration: 4,
+        tracks: [
+          {
+            id: "picture",
+            type: "video",
+            clips: [
+              {
+                id: "picture-clip",
+                assetId: video.id,
+                sourceIn: 0,
+                sourceOut: 3,
+                timelineStart: 0,
+                timelineDuration: 3,
+              },
+            ],
+          },
+          {
+            id: "titles",
+            type: "titles",
+            clips: [
+              {
+                id: "title-clip",
+                assetId: image.id,
+                timelineStart: 1,
+                timelineDuration: 1,
+                title: "Opening",
+              },
+            ],
+          },
+        ],
+      });
+      const path = await app.export("otio", "title-only-export");
+      const exported = JSON.parse(await readFile(path, "utf8"));
+      expect(JSON.stringify(exported)).toContain(image.uri);
+      expect(exported.tracks.children).toHaveLength(2);
+    } finally {
+      app.close();
+    }
+  }, 60000);
 });

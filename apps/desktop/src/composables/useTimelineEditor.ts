@@ -108,22 +108,46 @@ export function useTimelineEditor(
       /* Invalid local storage never replaces the saved project. */
     }
     try {
-      const saved = await api.editor(compositionId);
       if (recovered) {
         pending = recovered.pending;
         batch = recovered.batch;
-        if (recovered.state.revision === saved.revision) {
-          publish(applyTo(saved, pending));
-          status.value = "failed";
-          reportNotice("editor.draft.recovered");
+        if (batch) {
+          const sending = batch;
+          const acknowledged = await api.edit(compositionId, sending);
+          pending = pending.slice(sending.commands.length);
+          batch = null;
+          const saved = await api.editor(compositionId);
+          const acknowledgedRevision =
+            acknowledged.acknowledgedRevision ?? acknowledged.revision;
+          if (pending.length && saved.revision !== acknowledgedRevision) {
+            publish(applyTo(acknowledged, pending));
+            status.value = "conflict";
+            reportNotice("editor.draft.conflictRecovered");
+          } else if (pending.length) {
+            publish(applyTo(saved, pending));
+            status.value = "failed";
+            reportNotice("editor.draft.recovered");
+          } else {
+            publish(saved);
+            status.value = "saved";
+            reportNotice("");
+          }
         } else {
-          publish(recovered.state);
-          status.value = "conflict";
-          reportNotice("editor.draft.conflictRecovered");
+          const saved = await api.editor(compositionId);
+          if (recovered.state.revision === saved.revision) {
+            publish(applyTo(saved, pending));
+            status.value = "failed";
+            reportNotice("editor.draft.recovered");
+          } else {
+            publish(recovered.state);
+            status.value = "conflict";
+            reportNotice("editor.draft.conflictRecovered");
+          }
         }
         retainDraft();
         edited();
       } else {
+        const saved = await api.editor(compositionId);
         publish(saved);
         status.value = "saved";
         reportNotice("");
