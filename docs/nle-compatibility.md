@@ -20,7 +20,10 @@ The Global Product Experience preflight rechecked repository, PR #1 and accessib
 workspace artifacts at candidate `239436cf672be287dbaec4dd9771165609d1d061`.
 Only generated fixtures and official-parser results exist; no actual Resolve QA
 record, `.drp`/`.dra`, import screenshots or application test results were found.
-The manual gate therefore remains open. Use [the QA record](resolve-qa-record.md)
+The 2026-10-06 application preflight also confirmed that the current cloud
+environment has neither Resolve nor exposed GPU devices or a graphical session.
+The actual application check is blocked there, not passed. The manual gate
+therefore remains open. Use [the QA record](resolve-qa-record.md)
 to record each capability independently when application testing is performed.
 
 Advanced edits are **metadata only**, a known implementation limit. Speed,
@@ -114,7 +117,8 @@ or Resolve playback evidence.
    operating system and project frame rate. Make a separate Resolve project;
    retain the OpenFilm files unchanged. Save the compatibility report with the QA
    record.
-2. Import `cuts.otio` through Resolve's timeline import UI if that installed
+2. Set the cut-reference project to **24 fps**, then import `cuts.otio` through
+   Resolve's timeline import UI if that installed
    version offers OTIO. If the version does not support it, record the limitation;
    do not infer OTIO support from another interchange format. Relink the `media
 files` folder if the bundle moved between machines.

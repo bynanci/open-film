@@ -44,8 +44,10 @@ than implying hardware or real NLE certification.
 - Perform actual Resolve import QA first, including manual recreation of advanced
   edits currently stored only in OTIO metadata. Expand native effect support only
   with tested preservation; other NLEs follow later.
-  The Global Product Experience preflight found no application QA evidence; the
-  [Resolve record](docs/resolve-qa-record.md) remains not run.
+  The 2026-10-06 application preflight is blocked by the cloud environment's
+  absent Resolve installation, GPU and desktop; the
+  [Resolve record](docs/resolve-qa-record.md) remains not run pending access to a
+  Resolve-capable workstation.
 - Validate removable volumes on Windows hardware and representative Pixel HDR,
   Motion Photo and Insta360 source files.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event

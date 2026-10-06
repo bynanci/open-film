@@ -79,7 +79,11 @@ review. These are generated CC0 assets, not private user media.
 The subsequent Global Product Experience preflight found no real Resolve import
 evidence in the repository, PR discussion or accessible workspace artifacts.
 Generated/parser fixtures are not application QA. The
-[Resolve QA record](resolve-qa-record.md) remains explicitly **not run**.
+[Resolve QA record](resolve-qa-record.md) remains explicitly **not run**. The
+2026-10-06 application preflight of candidate
+`713a8e4bb10a4f4dd926496d9999fe59d3ee4481` found no Resolve installation, GPU
+device access or graphical session; actual application QA is blocked on a
+Resolve-capable workstation. It produced no actual import or saved-project result.
 
 1. Actual DaVinci Resolve import, playback and reopen. Speed, volume/mute,
    transforms, crossfades and titles are **metadata only** in OTIO and require

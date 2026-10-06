@@ -83,8 +83,9 @@ Hardware and real NLE verification are recorded separately.
 - [x] Review regressions: import-scoped Insta360 directory indexes, accepted image
       and audio previews, current-state Fit savings, and paged media status beyond
       2,000 assets. Covered by unit, media/HTTP integration and browser tests.
-- [ ] Manual: actual DaVinci Resolve import. The Global UX preflight found no real
-      application QA evidence; see [the QA record](docs/resolve-qa-record.md).
+- [ ] Manual: actual DaVinci Resolve import. The 2026-10-06 application preflight
+      is blocked: this cloud environment has no Resolve, exposed GPU or desktop.
+      A Resolve-capable workstation is required; see [the QA record](docs/resolve-qa-record.md).
 - [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 
 Keep this file current when a pending capability gains working behavior and
