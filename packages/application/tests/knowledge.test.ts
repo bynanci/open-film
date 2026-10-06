@@ -1,4 +1,4 @@
-import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -138,6 +138,143 @@ async function fixture(
 }
 
 describe("offline terminology, revisions and durable review", () => {
+  it("pages and stales suggestions from a 10,000-segment persisted transcript without materializing its full document", async () => {
+    const context = await fixture(
+      Array.from(
+        { length: 10000 },
+        (_, index) => `Visit youtube memory ${index}`,
+      ),
+    );
+    const { knowledge, editor, app } = context;
+    knowledge.glossaryUpsert({
+      scope: "project",
+      source: "youtube",
+      replacement: "YouTube",
+    });
+    await knowledge.glossaryReview("source", {
+      segmentIds: Array.from({ length: 21 }, (_, index) => `segment-${index}`),
+    });
+    const original = await editor.get("source", { limit: 1 });
+    const expected = app.catalog.knowledge.suggestionsList("source", {
+      status: "pending",
+      offset: 7,
+      limit: 7,
+    });
+    const editorReads = vi.spyOn(editor, "get");
+    const guard = vi
+      .spyOn(app.catalog.transcripts, "getFull")
+      .mockImplementation(() => {
+        throw new Error(
+          "Suggestion polling must not materialize a complete transcript.",
+        );
+      });
+    expect(
+      await knowledge.suggestionsList("source", {
+        status: "pending",
+        offset: 7,
+        limit: 7,
+      }),
+    ).toEqual(expected);
+    expect(guard).not.toHaveBeenCalled();
+    expect(editorReads).toHaveBeenCalledWith("source", { limit: 1 });
+    guard.mockRestore();
+    editorReads.mockRestore();
+    const edited = await editor.edit("source", {
+      baseRevision: original.revision!,
+      requestId: "edit-before-staling",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "segment-0",
+          text: "User authored memory",
+        },
+      ],
+    });
+    const stalingGuard = vi
+      .spyOn(app.catalog.transcripts, "getFull")
+      .mockImplementation(() => {
+        throw new Error("Staling a suggestion page must stay bounded.");
+      });
+    expect(
+      (
+        await knowledge.suggestionsList("source", {
+          status: "pending",
+          limit: 7,
+        })
+      ).total,
+    ).toBe(0);
+    const stale = await knowledge.suggestionsList("source", {
+      status: "stale",
+      offset: 14,
+      limit: 7,
+    });
+    expect(stale.total).toBe(21);
+    expect(stale.suggestions).toHaveLength(7);
+    expect(stalingGuard).not.toHaveBeenCalled();
+    expect(
+      stale.suggestions.every(
+        (row) => row.sourceRevisionId === original.revision,
+      ),
+    ).toBe(true);
+    stalingGuard.mockRestore();
+    await context.reopen();
+    const reopenedGuard = vi
+      .spyOn(context.app.catalog.transcripts, "getFull")
+      .mockImplementation(() => {
+        throw new Error("Reopened suggestion polling must stay bounded.");
+      });
+    expect(
+      await context.knowledge.suggestionsList("source", {
+        status: "stale",
+        offset: 14,
+        limit: 7,
+      }),
+    ).toEqual(stale);
+    expect((await context.editor.get("source", { limit: 1 })).revision).toBe(
+      edited.revision,
+    );
+    await writeFile(
+      join(context.root, "source.wav"),
+      "Changed source bytes must invalidate suggestion access.",
+    );
+    await expect(
+      context.knowledge.suggestionsList("source", { limit: 7 }),
+    ).rejects.toMatchObject({ code: "source.changed" });
+    await rm(join(context.root, "source.wav"));
+    await expect(
+      context.knowledge.suggestionsList("source", { limit: 7 }),
+    ).rejects.toMatchObject({ code: "media.missing" });
+    expect(reopenedGuard).not.toHaveBeenCalled();
+    expect(
+      context.app.catalog.knowledge.suggestionsList("source", {
+        status: "stale",
+        offset: 14,
+        limit: 7,
+      }),
+    ).toEqual(stale);
+  });
+
+  it("keeps the missing-transcript error and source checks when suggestions use a bounded revision read", async () => {
+    const { app, asset, knowledge, root } = await fixture();
+    const untranscribed = join(root, "untranscribed.wav");
+    await copyFile(join(root, "source.wav"), untranscribed);
+    app.catalog.upsertAsset({
+      ...asset,
+      id: "untranscribed",
+      uri: pathToFileURL(untranscribed).href,
+    });
+    const guard = vi
+      .spyOn(app.catalog.transcripts, "getFull")
+      .mockImplementation(() => {
+        throw new Error(
+          "No complete transcript is required for missing-transcript detection.",
+        );
+      });
+    await expect(
+      knowledge.suggestionsList("untranscribed", { limit: 1 }),
+    ).rejects.toMatchObject({ code: "request.notFound", status: 404 });
+    expect(guard).not.toHaveBeenCalled();
+  });
   it.each(["retry", "skip"] as const)(
     "terminalizes an oversized glossary batch and allows offline %s without dropping completed results",
     async (action) => {

@@ -208,7 +208,15 @@ export class KnowledgeService {
     assetId: string,
     options: Parameters<ProjectCatalog["knowledge"]["suggestionsList"]>[1] = {},
   ) {
-    const current = await this.current(assetId);
+    // Polling needs only the verified source identity and active revision. Keep
+    // document materialization for operations that actually inspect its text.
+    const current = await this.editor.get(assetId, { limit: 1 });
+    if (!current.revision)
+      throw new ApplicationError(
+        "request.notFound",
+        "Transcribe this media before editing or reviewing its text.",
+        404,
+      );
     this.catalog.knowledge.staleSuggestions(assetId, current.revision);
     return this.catalog.knowledge.suggestionsList(assetId, options);
   }
