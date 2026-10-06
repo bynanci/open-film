@@ -403,6 +403,7 @@ async function split(cursor = false) {
     });
 }
 async function find() {
+  clearTimeout(searchTimer);
   const stamp = ++searchGeneration,
     requestedQuery = query.value,
     requestedCase = caseSensitive.value;

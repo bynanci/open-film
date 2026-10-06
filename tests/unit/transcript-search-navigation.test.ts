@@ -44,6 +44,7 @@ interface Editor {
   load: (offset?: number, recover?: boolean) => Promise<boolean>;
   find: () => Promise<void>;
   seekMatch: (direction: number) => Promise<void>;
+  command: (value: core.TranscriptCommand) => boolean;
 }
 let queueFactory: (
   dependencies: Record<string, unknown>,
@@ -80,7 +81,7 @@ beforeAll(async () => {
   );
   editorFactory = await compile(
     source.match(/<script setup[^>]*>([\s\S]*?)<\/script>/)![1]!,
-    "return {state,query,caseSensitive,search,searchIsCurrent,searchBusy,matchIndex,currentMatch,selectedId,localError,load,find,seekMatch};",
+    "return {state,query,caseSensitive,search,searchIsCurrent,searchBusy,matchIndex,currentMatch,selectedId,localError,load,find,seekMatch,command};",
   );
 });
 afterEach(async () => {
@@ -177,6 +178,12 @@ async function fixture(count = 101) {
           limit,
         }),
     ),
+    editTranscript: vi.fn(
+      (
+        assetId: string,
+        input: Parameters<typeof app.transcriptEditor.edit>[1],
+      ) => app.transcriptEditor.edit(assetId, input),
+    ),
   };
   const lifecycle = {
     onMounted: () => {},
@@ -220,6 +227,7 @@ async function fixture(count = 101) {
   )!;
   await editor.load();
   editor.query.value = "alpha";
+  await vue.nextTick();
   await editor.find();
   await vue.nextTick();
   return { app, api, editor };
@@ -280,6 +288,93 @@ describe("actual transcript component with SQLite search pages", () => {
     expect(editor.currentMatch.value?.range.start).toBe(17);
     expect(api.transcriptSearch).not.toHaveBeenCalled();
   });
+  it("keeps the navigated occurrence after an explicit revision refresh consumes its scheduled search", async () => {
+    const { app, api, editor } = await fixture();
+    await app.transcriptEditor.edit("asset", {
+      baseRevision: editor.state.value!.revision!,
+      requestId: "revision-refresh",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "segment-49",
+          text: "alpha refreshed memory",
+        },
+      ],
+    });
+    await editor.load(0, false);
+    await vue.nextTick();
+    await editor.find();
+    await editor.seekMatch(1);
+    expect(editor.currentMatch.value?.range.start).toBe(12);
+    const reads = api.transcriptSearch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(250);
+    await api.transcriptSearch.mock.results.at(-1)!.value;
+    await vue.nextTick();
+    expect(editor.currentMatch.value?.range.start).toBe(12);
+    expect(api.transcriptSearch).toHaveBeenCalledTimes(reads);
+  });
+  it.each(["query", "case"] as const)(
+    "still debounces a later %s change after an explicit search",
+    async (change) => {
+      const { api, editor } = await fixture();
+      const reads = api.transcriptSearch.mock.calls.length;
+      if (change === "query") editor.query.value = "first";
+      else editor.caseSensitive.value = true;
+      expect(editor.search.value).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(249);
+      expect(api.transcriptSearch).toHaveBeenCalledTimes(reads);
+      await vi.advanceTimersByTimeAsync(1);
+      await api.transcriptSearch.mock.results.at(-1)!.value;
+      await vue.nextTick();
+      expect(editor.searchIsCurrent.value).toBe(true);
+      expect(api.transcriptSearch).toHaveBeenCalledTimes(reads + 1);
+      expect(api.transcriptSearch.mock.calls.at(-1)?.slice(1, 3)).toEqual(
+        change === "query" ? ["first", false] : ["alpha", true],
+      );
+    },
+  );
+  it.each(["query", "case", "revision"] as const)(
+    "preserves a newer %s search scheduled while an explicit search awaits a real save",
+    async (change) => {
+      const { api, editor } = await fixture();
+      const committed = deferred();
+      const acknowledgment = deferred();
+      const actualSave = api.editTranscript.getMockImplementation()!;
+      api.editTranscript.mockImplementationOnce(async (...args) => {
+        const result = await actualSave(...args);
+        committed.resolve();
+        await acknowledgment.promise;
+        return result;
+      });
+      expect(
+        editor.command({
+          type: "replace-text",
+          segmentId: "segment-49",
+          text: "alpha pending manual save",
+        }),
+      ).toBe(true);
+      api.transcriptSearch.mockClear();
+      const finding = editor.find();
+      try {
+        await committed.promise;
+        if (change === "query") editor.query.value = "first";
+        else if (change === "case") editor.caseSensitive.value = true;
+      } finally {
+        acknowledgment.resolve();
+      }
+      await finding;
+      expect(api.transcriptSearch).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(250);
+      await api.transcriptSearch.mock.results.at(-1)!.value;
+      await vue.nextTick();
+      expect(api.transcriptSearch).toHaveBeenCalledTimes(1);
+      expect(api.transcriptSearch.mock.calls[0]?.slice(1, 3)).toEqual(
+        change === "query" ? ["first", false] : ["alpha", change === "case"],
+      );
+      expect(editor.searchIsCurrent.value).toBe(true);
+      expect(editor.search.value?.revision).toBe(editor.state.value?.revision);
+    },
+  );
   it.each(["query", "case", "revision"] as const)(
     "discards a delayed boundary page after its %s context changes",
     async (change) => {

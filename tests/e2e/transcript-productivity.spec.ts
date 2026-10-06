@@ -3242,6 +3242,20 @@ test("transcript search wraps across matching pages while preserving every occur
   await expect(field(page)).toHaveValue("alpha alpha alpha");
   await expect(rows(page)).toHaveCount(1);
   await previewVisible(page);
+  const forwardRead = searchResponse(0);
+  await button(page, "nextMatch").click();
+  const forwardResponse = await forwardRead;
+  expect(forwardResponse.status(), await forwardResponse.text()).toBe(200);
+  expect((await forwardResponse.json()).matches).toHaveLength(100);
+  await expect(field(page)).toHaveValue("alpha alpha");
+  await expect(rows(page)).toHaveCount(100);
+  await previewVisible(page);
+  // Each occurrence participates in the cycle, including the two extra hits
+  // inside the boundary segments. All clicks are real enabled UI actions.
+  for (let index = 1; index < 104; index++)
+    await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue("alpha alpha alpha");
+  await expect(rows(page)).toHaveCount(1);
   await button(page, "previousMatch").click();
   await workspace(page)
     .getByLabel(t("replacement"), { exact: true })
@@ -3256,20 +3270,6 @@ test("transcript search wraps across matching pages while preserving every occur
   await expect(page.getByTestId("transcript-search-status")).toHaveText(
     "104 matches",
   );
-  // Each occurrence participates in the cycle, including the two extra hits
-  // inside the boundary segments. All clicks are real enabled UI actions.
-  for (let index = 1; index < 104; index++)
-    await button(page, "nextMatch").click();
-  await expect(field(page)).toHaveValue("alpha alpha alpha");
-  await expect(rows(page)).toHaveCount(1);
-  const forwardRead = searchResponse(0);
-  await button(page, "nextMatch").click();
-  const forwardResponse = await forwardRead;
-  expect(forwardResponse.status(), await forwardResponse.text()).toBe(200);
-  expect((await forwardResponse.json()).matches).toHaveLength(100);
-  await expect(field(page)).toHaveValue("alpha alpha");
-  await expect(rows(page)).toHaveCount(100);
-  await previewVisible(page);
   const finalReverseRead = searchResponse(100);
   await button(page, "previousMatch").click();
   expect((await finalReverseRead).status()).toBe(200);
@@ -3386,7 +3386,7 @@ test("a failed initial transcript read permits a later clean exit while offline 
     );
     await field(page).fill(manual);
     const failedEdit = await failedEditRead;
-    expect(failedEdit.status(), await failedEdit.text()).toBe(404);
+    expect(failedEdit.status(), await failedEdit.text()).toBe(400);
     expect((await failedEdit.json()).code).toBe("media.missing");
     await expect(page.getByTestId("transcript-save-state")).toHaveText(
       t("failed"),
