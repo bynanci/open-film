@@ -713,7 +713,7 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
-        const startReview = (
+        const startReview = async (
           job: Job,
           work: (options: ReviewOptions) => Promise<Job>,
           initialReservation = true,
@@ -731,6 +731,14 @@ export async function startServer(options: ServerOptions = {}) {
             ownedJob = job;
           }
           active.set(job.id, controller);
+          let acceptPrepared: ((job: Job) => void) | undefined;
+          let rejectPreparation: ((error: unknown) => void) | undefined;
+          const prepared = initialReservation
+            ? undefined
+            : new Promise<Job>((accept, reject) => {
+                acceptPrepared = accept;
+                rejectPreparation = reject;
+              });
           const handled = Promise.resolve()
             .then(() =>
               work({
@@ -738,10 +746,20 @@ export async function startServer(options: ServerOptions = {}) {
                 signal: controller.signal,
                 onJob: (observed) => {
                   ownedJob = observed;
+                  if (observed.reviewOwner)
+                    acceptPrepared?.(structuredClone(observed));
                 },
               }),
             )
+            .then(() => {
+              if (!initialReservation && !ownedJob?.reviewOwner)
+                throw new HttpError(
+                  409,
+                  "The review retry did not acquire its job. Refresh the review before retrying.",
+                );
+            })
             .catch((error) => {
+              rejectPreparation?.(error);
               // A retry owns nothing until its atomic claim and preflight
               // succeed. Its rejection must not rewrite another execution.
               if (!ownedJob?.reviewOwner) return;
@@ -770,7 +788,9 @@ export async function startServer(options: ServerOptions = {}) {
               tasks.delete(handled);
             });
           tasks.add(handled);
-          json(response, 202, { job });
+          // A retry is accepted only after claim and preflight succeed. Provider
+          // work stays in the background; preparation errors reach this request.
+          json(response, 202, { job: prepared ? await prepared : job });
         };
         const transcriptSegmentBody =
           /^\/api\/assets\/([^/]+)\/transcript\/segment$/.exec(route);
@@ -1016,7 +1036,7 @@ export async function startServer(options: ServerOptions = {}) {
           if (!application.catalog.getAsset(assetId))
             throw new HttpError(404, "Media not found.", "media.notFound");
           const source = data.source;
-          startReview(
+          await startReview(
             {
               id: randomUUID(),
               type:
@@ -1110,7 +1130,7 @@ export async function startServer(options: ServerOptions = {}) {
                 .find((item) => item.id === jobId),
             });
           } else
-            startReview(
+            await startReview(
               { ...job, status: "queued" },
               (options) =>
                 application.retryKnowledgeReview(jobId, index, options),

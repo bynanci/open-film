@@ -122,6 +122,13 @@ previous batch and job are restored together only while that reservation still
 belongs to the retry. Later work cannot overwrite a newer owner's checkpoint or
 publish suggestions from an obsolete attempt.
 
+The API acknowledges a retry only after that preparation succeeds. A failed
+check returns its structured error to the current request, so the panel can
+explain the rejection without replacing the previous job's recovery state.
+A successful retry returns its actual running Job while provider work continues
+in the background. Starting a new review still returns its queued reservation
+immediately.
+
 Starting a newer review does not hide an older review's Retry/Skip actions.
 Unfinished reviews are paged independently of suggestion cards, with at most five
 jobs' batches read in a refresh. Each action remains bound to its original job.

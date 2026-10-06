@@ -736,45 +736,166 @@ describe("transcript REST and CLI adapters", () => {
     await post("/review/consent", { allow: false });
     expect((await get("/review/provider")).available).toBe(false);
   });
-  it("does not rewrite a failed review checkpoint when HTTP retry preflight rejects", async () => {
+  it.each([
+    ["missing source", 400, "media.missing"],
+    ["stale transcript", 409, "review.suggestionStale"],
+    ["unconfigured provider", 400, "review.providerUnavailable"],
+  ] as const)(
+    "returns the %s retry preparation error without rewriting its checkpoint",
+    async (failure, status, code) => {
+      const generate = vi.fn(async () => {
+        throw new Error("fixture initial provider failure");
+      });
+      const { post, get, job, app, path, userDataDirectory } = await server({
+        languageProvider: {
+          id: "retry-preflight-fixture",
+          name: "Retry preflight fixture",
+          kind: "language",
+          execution: "local",
+          dataKinds: ["text", "transcripts"],
+          generate,
+        },
+      });
+      const started = await (
+        await post("/assets/audio/review", { source: "language", batchSize: 1 })
+      ).json();
+      const originalJob = await job(started.job.id);
+      expect(originalJob.status).toBe("failed");
+      const originalBatches = await get(
+        `/review/jobs/${started.job.id}/batches`,
+      );
+      expect(originalBatches.batches[0].status).toBe("failed");
+      const calls = generate.mock.calls.length;
+      let retryPost = post;
+      if (failure === "missing source") await rm(path);
+      else if (failure === "stale transcript") {
+        const transcript = await get("/assets/audio/transcript");
+        const edited = await post("/assets/audio/transcript/edit", {
+          baseRevision: transcript.revision,
+          requestId: "edit-before-retry",
+          commands: [
+            {
+              type: "replace-text",
+              segmentId: "segment-0",
+              text: "A manual correction before retry.",
+            },
+          ],
+        });
+        expect(edited.status).toBe(200);
+        expect((await edited.json()).revision).not.toBe(transcript.revision);
+      } else {
+        // Another normal application opens the existing ledger without any
+        // language provider configured. It must report its unavailable capability.
+        const runtime = await startServer({
+          port: 0,
+          project: app.directory,
+          userDataDirectory,
+        });
+        cleanups.push(() => runtime.close());
+        const base = `http://127.0.0.1:${runtime.port}/api`;
+        expect(await (await fetch(base + "/review/provider")).json()).toEqual({
+          configured: false,
+          available: false,
+        });
+        retryPost = (path, data) =>
+          fetch(base + path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+      }
+      const rejected = await retryPost(
+        `/review/jobs/${started.job.id}/batches/0/retry`,
+        {},
+      );
+      expect(rejected.status).toBe(status);
+      expect(await rejected.json()).toMatchObject({ code });
+      expect(await job(started.job.id)).toEqual(originalJob);
+      expect(await get(`/review/jobs/${started.job.id}/batches`)).toEqual(
+        originalBatches,
+      );
+      expect(generate).toHaveBeenCalledTimes(calls);
+      await expect
+        .poll(async () => (await post("/project/close", {})).status)
+        .toBe(200);
+      expect(
+        (await post("/project/open", { path: app.directory })).status,
+      ).toBe(200);
+      expect(await job(started.job.id)).toEqual(originalJob);
+      expect(await get(`/review/jobs/${started.job.id}/batches`)).toEqual(
+        originalBatches,
+      );
+      expect(generate).toHaveBeenCalledTimes(calls);
+    },
+  );
+  it("acknowledges an owned retry before its deferred provider completes", async () => {
+    let first = true,
+      finished = false;
+    let entered!: () => void, release!: () => void;
+    const providerEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const generate = vi.fn(async () => {
-      throw new Error("fixture initial provider failure");
+      if (first) {
+        first = false;
+        throw new Error("fixture initial provider failure");
+      }
+      entered();
+      await providerGate;
+      finished = true;
+      return '{"suggestions":[]}';
     });
-    const { post, get, job, app, path } = await server({
-      languageProvider: {
-        id: "retry-preflight-fixture",
-        name: "Retry preflight fixture",
-        kind: "language",
-        execution: "local",
-        dataKinds: ["text", "transcripts"],
-        generate,
+    const { post, get, job } = await server(
+      {
+        languageProvider: {
+          id: "retry-ack-fixture",
+          name: "Deferred retry fixture",
+          kind: "language",
+          execution: "local",
+          dataKinds: ["text", "transcripts"],
+          generate,
+        },
       },
-    });
+      [result.segments[0]!],
+    );
+    cleanups.push(release);
     const started = await (
-      await post("/assets/audio/review", { source: "language", batchSize: 1 })
+      await post("/assets/audio/review", { source: "language" })
     ).json();
-    const originalJob = await job(started.job.id);
-    expect(originalJob.status).toBe("failed");
-    const originalBatches = await get(`/review/jobs/${started.job.id}/batches`);
-    expect(originalBatches.batches[0].status).toBe("failed");
-    const calls = generate.mock.calls.length;
-    await rm(path);
-    expect(
-      (await post(`/review/jobs/${started.job.id}/batches/0/retry`, {})).status,
-    ).toBe(202);
-    // Closing is refused while work owns the request, so this observes actual
-    // retry completion rather than sampling its temporary claimed state.
-    await expect
-      .poll(async () => (await post("/project/close", {})).status)
-      .toBe(200);
-    expect((await post("/project/open", { path: app.directory })).status).toBe(
-      200,
-    );
-    expect(await job(started.job.id)).toEqual(originalJob);
-    expect(await get(`/review/jobs/${started.job.id}/batches`)).toEqual(
-      originalBatches,
-    );
-    expect(generate).toHaveBeenCalledTimes(calls);
+    expect(started.job.status).toBe("queued");
+    const failed = await job(started.job.id);
+    expect(failed.status).toBe("failed");
+    let response: Response | undefined;
+    const acknowledgement = post(
+      `/review/jobs/${failed.id}/batches/0/retry`,
+      {},
+    ).then((value) => {
+      response = value;
+    });
+    try {
+      await providerEntered;
+      await expect.poll(() => response?.status).toBe(202);
+      expect(finished).toBe(false);
+      const accepted = (await response!.json()).job as Job;
+      expect(accepted).toMatchObject({ id: failed.id, status: "running" });
+      expect(accepted.reviewOwner?.token).toBeDefined();
+      expect(accepted.reviewOwner?.token).not.toBe(failed.reviewOwner?.token);
+      expect(
+        (await get("/jobs")).jobs.find((value: Job) => value.id === failed.id),
+      ).toMatchObject({ status: "running", reviewOwner: accepted.reviewOwner });
+      expect(
+        (await get(`/review/jobs/${failed.id}/batches`)).batches[0].status,
+      ).toBe("running");
+      expect(generate).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
+      await acknowledgement;
+    }
+    expect((await job(failed.id)).status).toBe("completed");
+    expect(finished).toBe(true);
   });
   it("keeps cancellation available and blocks project switching while a review owns the project", async () => {
     let entered!: () => void;

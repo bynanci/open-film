@@ -2756,6 +2756,11 @@ test("retrying a cancelled review saves the manual draft first and rejects the o
   );
   expect(retained.batches).toHaveLength(1);
   expect(retained.batches[0]?.attempts).toBe(1);
+  await waitJob(request, job.id, "cancelled");
+  const retainedJob = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+    (item) => item.id === job.id,
+  );
+  expect(retainedJob?.status).toBe("cancelled");
   const retryPattern = `**/api/review/jobs/${job.id}/batches/0/retry`;
   const retryResponses: {
     status: number;
@@ -2802,11 +2807,10 @@ test("retrying a cancelled review saves the manual draft first and rejects the o
       await expect.poll(() => held.responses.length).toBe(1);
       expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
       await expect.poll(() => retryResponses.length).toBe(1);
-      expect(retryResponses[0]?.status, retryResponses[0]?.body).toBe(202);
-      expect(JSON.parse(retryResponses[0]!.body).job).toMatchObject({
-        id: job.id,
-        status: "queued",
-      });
+      expect(retryResponses[0]?.status, retryResponses[0]?.body).toBe(409);
+      expect(JSON.parse(retryResponses[0]!.body).code).toBe(
+        "review.suggestionStale",
+      );
     });
   } finally {
     await page.unroute(retryPattern, retryHandler);
@@ -2818,19 +2822,20 @@ test("retrying a cancelled review saves the manual draft first and rejects the o
   expect((await transcript(request, asset.id)).revision).not.toBe(
     before.revision,
   );
-  // The HTTP acknowledgment starts a real asynchronous retry. Its worker must
-  // reject the changed revision before touching the retained batch/provider.
-  await expect
-    .poll(async () => {
-      const retryJob = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
-        (item) => item.id === job.id,
-      );
-      return {
-        status: retryJob?.status,
-        codes: retryJob?.errors?.map((error) => error.code),
-      };
-    })
-    .toEqual({ status: "failed", codes: ["review.suggestionStale"] });
+  // Preflight rejects the changed revision before acknowledging a retry or
+  // touching the retained batch/provider, and the UI exposes that rejection.
+  await expect(
+    workspace(page)
+      .getByRole("alert")
+      .filter({
+        hasText: uiText("en-US", "errors.review.suggestionStale"),
+      }),
+  ).toBeVisible();
+  expect(
+    (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+      (item) => item.id === job.id,
+    ),
+  ).toEqual(retainedJob);
   expect(
     await get<{ batches: ReviewBatch[] }>(
       request,
