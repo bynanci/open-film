@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { Clip, Composition, MediaAsset } from "@openfilm/core";
+import {
+  resolveClipGeometry,
+  type Clip,
+  type Composition,
+  type MediaAsset,
+} from "@openfilm/core";
 import {
   checkAbort,
   localPath,
@@ -148,19 +153,24 @@ export class FFmpegRenderer {
           const input = inputIndex++;
           if (visual) {
             const label = `visual${suffix}`;
-            const scale = clip.transform?.scale ?? 1;
-            const rotation = clip.transform?.rotation ?? 0;
+            const geometry = resolveClipGeometry(clip.transform);
             const transform: string[] = await previewVideoFilters(
               asset,
               options.signal,
             );
-            if (rotation)
-              transform.push(
-                `rotate=${number((rotation * Math.PI) / 180)}:ow=rotw(${number((rotation * Math.PI) / 180)}):oh=roth(${number((rotation * Math.PI) / 180)}):c=black`,
-              );
+            // Geometry contract: source is contain-fit to the composition frame,
+            // then user scale and clockwise rotation are applied around its center.
             transform.push(
-              `scale=${Math.max(2, Math.round((settings.width * scale) / 2) * 2)}:${Math.max(2, Math.round((settings.height * scale) / 2) * 2)}:force_original_aspect_ratio=decrease`,
+              `scale=${settings.width}:${settings.height}:force_original_aspect_ratio=decrease`,
             );
+            if (geometry.scale !== 1)
+              transform.push(
+                `scale=ceil(iw*${number(geometry.scale)}/2)*2:ceil(ih*${number(geometry.scale)}/2)*2`,
+              );
+            if (geometry.rotation)
+              transform.push(
+                `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=black@0`,
+              );
             transform.push(
               "setsar=1",
               `fps=${number(settings.frameRate)}`,
@@ -190,7 +200,7 @@ export class FFmpegRenderer {
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=(W-w)/2+${number(clip.transform?.x ?? 0)}:y=(H-h)/2+${number(clip.transform?.y ?? 0)}:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=(W-w)/2+${number(geometry.x)}:y=(H-h)/2+${number(geometry.y)}:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }
