@@ -1920,6 +1920,216 @@ test("long multiline glossary replacements and remembered corrections retain the
   await unchangedSource();
 });
 
+test("oversized merged text and Replace All results reject safely with localized draft recovery", async ({
+  page,
+  request,
+}) => {
+  const locale = "zh-TW";
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Bounded transcript changes",
+  );
+  await transcribe(request, asset.id);
+  const projectId = (await project(request)).id;
+  const storageKey = `openfilm:transcript:${projectId}:${asset.id}`;
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const action = (key: string) =>
+    workspace(page).getByRole("button", { name: t(key, locale), exact: true });
+  const savedHere = () =>
+    expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("saved", locale),
+    );
+  const revisionCount = async () =>
+    (
+      await get<{ total: number }>(
+        request,
+        `/assets/${asset.id}/transcript/revisions?limit=100`,
+      )
+    ).total;
+  const receipt = () =>
+    page.evaluate((key) => {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    }, storageKey);
+  const editResponse = () =>
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${asset.id}/transcript/edit` &&
+        response.request().method() === "POST",
+    );
+  const discardRejectedCommand = async () => {
+    await action("discardDraft").click();
+    const confirmation = workspace(page).locator(".transcript-confirm");
+    await expect(confirmation).toContainText(t("discardDraftConfirm", locale));
+    await confirmation
+      .getByRole("button", { name: t("discardDraft", locale), exact: true })
+      .click();
+    await savedHere();
+    expect(await receipt()).toBeNull();
+  };
+  await initialLocale(page, locale);
+  await page.goto("/");
+  await transcriptMode(page, locale);
+  await selectRow(page);
+  const first = "合".repeat(11_000);
+  const second = "併".repeat(11_000);
+  // Each manual segment is independently valid and acknowledged before the
+  // structural command; rejecting that command must preserve both saved edits.
+  const firstSave = editResponse();
+  await field(page).fill(first);
+  const firstAcknowledgment = await firstSave;
+  expect(firstAcknowledgment.status(), await firstAcknowledgment.text()).toBe(
+    200,
+  );
+  await savedHere();
+  await selectRow(page, 1);
+  const secondSave = editResponse();
+  await field(page).fill(second);
+  const secondAcknowledgment = await secondSave;
+  expect(secondAcknowledgment.status(), await secondAcknowledgment.text()).toBe(
+    200,
+  );
+  await savedHere();
+  const approved = await transcript(request, asset.id);
+  const approvedCount = await revisionCount();
+  expect(approvedCount).toBe(3);
+  expect(approved.document!.segments.map((segment) => segment.text)).toEqual([
+    first,
+    second,
+  ]);
+  const mergedResponse = editResponse();
+  await action("mergePrevious").click();
+  const rejectedMerge = await mergedResponse;
+  expect(rejectedMerge.status(), await rejectedMerge.text()).toBe(400);
+  expect((await rejectedMerge.json()).code).toBe("transcript.invalidCommand");
+  await expect(page.getByTestId("transcript-save-state")).toHaveText(
+    t("failed", locale),
+  );
+  await expect(
+    workspace(page)
+      .getByRole("alert")
+      .getByText(uiText(locale, "errors.transcript.invalidCommand"), {
+        exact: true,
+      }),
+  ).toBeVisible();
+  expect(await transcript(request, asset.id)).toEqual(approved);
+  expect(await revisionCount()).toBe(approvedCount);
+  const mergeDraft = await receipt();
+  const mergeCommand = {
+    type: "merge-segment",
+    segmentId: approved.document!.segments[1]!.id,
+    direction: "previous",
+  };
+  expect(mergeDraft.pending).toEqual([mergeCommand]);
+  expect(mergeDraft.receipt).toEqual({
+    baseRevision: approved.revision,
+    requestId: rejectedMerge.request().postDataJSON().requestId,
+    commands: [mergeCommand],
+  });
+  expect(mergeDraft.state.document).toEqual(approved.document);
+  await expect(field(page)).toHaveValue(second);
+  await expect(rows(page)).toHaveCount(2);
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await discardRejectedCommand();
+  expect(await transcript(request, asset.id)).toEqual(approved);
+  await selectRow(page);
+  // This bounded expansion is 50,000 characters. The dangerous hundreds-of-
+  // millions case is covered by allocation instrumentation outside the browser.
+  const repeated = "x".repeat(500);
+  const recoverySave = editResponse();
+  await field(page).fill(repeated);
+  const recoveryAcknowledgment = await recoverySave;
+  expect(
+    recoveryAcknowledgment.status(),
+    await recoveryAcknowledgment.text(),
+  ).toBe(200);
+  await savedHere();
+  const beforeReplace = await transcript(request, asset.id);
+  const beforeReplaceCount = await revisionCount();
+  expect(beforeReplaceCount).toBe(approvedCount + 1);
+  await workspace(page)
+    .getByLabel(t("search", locale), { exact: true })
+    .fill("x");
+  await expect(action("replaceAll")).toBeEnabled();
+  await workspace(page)
+    .getByLabel(t("replacement", locale), { exact: true })
+    .fill("回".repeat(100));
+  const replaceResponse = editResponse();
+  await action("replaceAll").click();
+  const rejectedReplace = await replaceResponse;
+  expect(rejectedReplace.status(), await rejectedReplace.text()).toBe(400);
+  expect((await rejectedReplace.json()).code).toBe("transcript.invalidCommand");
+  await expect(page.getByTestId("transcript-save-state")).toHaveText(
+    t("failed", locale),
+  );
+  await expect(
+    workspace(page)
+      .getByRole("alert")
+      .getByText(uiText(locale, "errors.transcript.invalidCommand"), {
+        exact: true,
+      }),
+  ).toBeVisible();
+  expect(await transcript(request, asset.id)).toEqual(beforeReplace);
+  expect(await revisionCount()).toBe(beforeReplaceCount);
+  const replacementCommand = {
+    type: "replace-all",
+    query: "x",
+    replacement: "回".repeat(100),
+    caseSensitive: false,
+  };
+  const replaceDraft = await receipt();
+  expect(replaceDraft.pending).toEqual([replacementCommand]);
+  expect(replaceDraft.receipt).toEqual({
+    baseRevision: beforeReplace.revision,
+    requestId: rejectedReplace.request().postDataJSON().requestId,
+    commands: [replacementCommand],
+  });
+  expect(replaceDraft.state.document).toEqual(beforeReplace.document);
+  await expect(field(page)).toHaveValue(repeated);
+  await expect(rows(page)).toHaveCount(2);
+  await discardRejectedCommand();
+  expect(await transcript(request, asset.id)).toEqual(beforeReplace);
+  await workspace(page)
+    .getByLabel(t("replacement", locale), { exact: true })
+    .fill("回");
+  const validResponse = editResponse();
+  await action("replaceAll").click();
+  const accepted = await validResponse;
+  expect(accepted.status(), await accepted.text()).toBe(200);
+  await savedHere();
+  expect(
+    (await transcript(request, asset.id)).document!.segments[0]!.text,
+  ).toBe("回".repeat(500));
+  expect(await revisionCount()).toBe(beforeReplaceCount + 1);
+  expect(await receipt()).toBeNull();
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path, locale);
+  await transcriptMode(page, locale);
+  await selectRow(page);
+  await expect(field(page)).toHaveValue("回".repeat(500));
+  expect(
+    (await transcript(request, asset.id)).document!.segments[1]!.text,
+  ).toBe(second);
+  expect(await revisionCount()).toBe(beforeReplaceCount + 1);
+  expect(await receipt()).toBeNull();
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
 test("lost edit responses retry one receipt and conflicting drafts preserve server text and independent input history", async ({
   page,
   request,
