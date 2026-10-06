@@ -90,13 +90,16 @@ const reviewPending = ref(false);
 const glossaryBusy = ref(false);
 const rememberBusy = ref(false);
 let rememberMutation: Promise<boolean> | undefined;
+const transcriptionPending = ref(false);
+let transcriptionMutation: Promise<boolean> | undefined;
 const hasPending = computed(
   () =>
     transcriptHasPending.value ||
     reviewBusy.value ||
     reviewPending.value ||
     glossaryBusy.value ||
-    rememberBusy.value,
+    rememberBusy.value ||
+    transcriptionPending.value,
 );
 const tool = ref<"glossary" | "suggestions">("glossary");
 const corrections = ref<{ before: string; after: string } | null>(null);
@@ -164,6 +167,7 @@ const busy = computed(
     reviewPending.value ||
     glossaryBusy.value ||
     rememberBusy.value ||
+    transcriptionPending.value ||
     historyBusy.value ||
     status.value === "loading" ||
     status.value === "conflict",
@@ -199,12 +203,16 @@ function timed(segment: TranscriptSegment) {
     segment.alignmentState === "realigned"
   );
 }
-async function flush() {
+async function flushEditing() {
   if (!(await flushTranscript())) return false;
   if ((await reviewPanel.value?.flush()) === false) return false;
   if ((await glossaryPanel.value?.flush()) === false) return false;
   if (rememberMutation && !(await rememberMutation)) return false;
   return true;
+}
+async function flush() {
+  if (transcriptionMutation && !(await transcriptionMutation)) return false;
+  return flushEditing();
 }
 defineExpose({ flush, hasPending, reload: () => load(0, false) });
 async function toggleTools() {
@@ -538,32 +546,42 @@ async function transcription() {
     !transcriptionReady.value ||
     taskBusy.value ||
     pending.value ||
-    !(await flush())
+    transcriptionPending.value
   )
     return;
-  if (
-    state.value?.revisionInfo?.source !== undefined &&
-    state.value.revisionInfo.source !== "provider" &&
-    !transcribeWarning.value
-  ) {
-    transcribeWarning.value = true;
-    return;
-  }
-  pending.value = true;
-  try {
-    await api.analyzeIntelligence(props.asset.id, {
-      operation: "transcribe",
-      language: language.value,
-      execution: execution.value,
-    });
-    transcribeWarning.value = false;
-    emit("activity");
-    await updateAncillary();
-  } catch (cause) {
-    localError.value = cause;
-  } finally {
-    pending.value = false;
-  }
+  const options = {
+    operation: "transcribe" as const,
+    language: language.value,
+    execution: execution.value,
+  };
+  transcriptionPending.value = true;
+  transcriptionMutation = (async () => {
+    try {
+      // Use the editing-only barrier so this request never awaits itself.
+      if (!(await flushEditing())) return false;
+      if (
+        state.value?.revisionInfo?.source !== undefined &&
+        state.value.revisionInfo.source !== "provider" &&
+        !transcribeWarning.value
+      ) {
+        transcribeWarning.value = true;
+        return true;
+      }
+      await api.analyzeIntelligence(props.asset.id, options);
+      transcribeWarning.value = false;
+      emit("activity");
+      await updateAncillary();
+      return true;
+    } catch (cause) {
+      localError.value = cause;
+      return false;
+    } finally {
+      transcriptionPending.value = false;
+    }
+  })().finally(() => {
+    transcriptionMutation = undefined;
+  });
+  return transcriptionMutation;
 }
 async function cancel(job: Job) {
   try {

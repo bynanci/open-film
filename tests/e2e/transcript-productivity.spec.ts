@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1132,6 +1132,159 @@ test("delayed suggestion acceptance guards typing and waits before changing mode
   expect(
     (await transcript(request, asset.id)).document?.segments[position]?.text,
   ).toBe("Final reviewed correction keeps durable receipts.");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("a pending transcription request stays with its original film before project switching and recovers after transport failure", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Dispatch A",
+  );
+  const original = await project(request);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const copiedPath = join(root, "Dispatch B.openfilm");
+  await closeProject(request);
+  await cp(path, copiedPath, { recursive: true });
+  const manifestPath = join(copiedPath, "project.json");
+  const manifest = JSON.parse(
+    await readFile(manifestPath, "utf8"),
+  ) as OpenFilmProject;
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      ...manifest,
+      id: `project-${randomUUID()}`,
+      title: "Dispatch B",
+    }),
+  );
+  await post(request, "/project/open", { path: copiedPath });
+  const copied = await project(request);
+  expect(copied.id).not.toBe(original.id);
+  expect(
+    (
+      await get<{ assets: MediaAsset[] }>(request, "/assets?limit=100")
+    ).assets.map((item) => item.id),
+  ).toContain(asset.id);
+  const copiedBaseline = await immutableCut(request, asset.id, compositionId);
+  expect((await transcript(request, asset.id)).revision).toBeUndefined();
+  expect(
+    (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+      (item) => item.type === "transcribe",
+    ),
+  ).toEqual([]);
+  await closeProject(request);
+  await post(request, "/project/open", { path });
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  const start = button(page, "transcribe");
+  const switchProject = page.getByRole("button", {
+    name: uiText("en-US", "app.navigation.switchProject"),
+    exact: true,
+  });
+  const pattern = `**/api/assets/${asset.id}/intelligence`;
+  for (const outcome of ["failed", "acknowledged"] as const) {
+    let received = false;
+    let finished = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handler: Parameters<Page["route"]>[1] = async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({
+        operation: "transcribe",
+      });
+      received = true;
+      await gate;
+      if (outcome === "failed") await route.abort("failed");
+      else await route.continue();
+      finished = true;
+    };
+    await page.route(pattern, handler);
+    try {
+      await start.click();
+      await expect
+        .poll(() => received, {
+          message: `${outcome}: transcription is held before backend arrival`,
+        })
+        .toBe(true);
+      await expect(start).toBeDisabled();
+      await expect(page.getByTestId("transcript-source-picker")).toBeDisabled();
+      await switchProject.click();
+      await expect(workspace(page)).toBeVisible();
+      expect((await project(request)).id).toBe(original.id);
+      expect(
+        (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+          (item) => item.type === "transcribe",
+        ),
+      ).toEqual([]);
+      expect((await transcript(request, asset.id)).revision).toBeUndefined();
+    } finally {
+      release();
+    }
+    await expect.poll(() => finished).toBe(true);
+    if (outcome === "failed") {
+      // A rejected dispatch releases local controls but blocks the waiting switch.
+      await expect(workspace(page).getByRole("alert").first()).toBeVisible();
+      await expect(start).toBeEnabled();
+      expect((await project(request)).id).toBe(original.id);
+      expect(
+        (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+          (item) => item.type === "transcribe",
+        ),
+      ).toEqual([]);
+    } else {
+      await expect
+        .poll(
+          async () =>
+            (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+              (item) => item.type === "transcribe",
+            ).length,
+        )
+        .toBe(1);
+      const job = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+        (item) => item.type === "transcribe",
+      )!;
+      await waitJob(request, job.id);
+      expect(
+        (await transcript(request, asset.id)).document?.provenance.model,
+      ).toBe("fixture-protocol-not-asr");
+      expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+        baseline,
+      );
+      await expect(switchProject).toBeEnabled();
+      await switchProject.click();
+      await expect(page.locator(".launcher-actions")).toBeVisible();
+    }
+    await page.unroute(pattern, handler);
+  }
+  await openFilm(page, copiedPath);
+  expect((await project(request)).id).toBe(copied.id);
+  expect((await transcript(request, asset.id)).revision).toBeUndefined();
+  expect(
+    (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+      (item) => item.type === "transcribe",
+    ),
+  ).toEqual([]);
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    copiedBaseline,
+  );
+  await switchProject.click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  const jobs = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.filter(
+    (item) => item.type === "transcribe",
+  );
+  expect(jobs).toHaveLength(1);
+  expect(jobs[0]?.status).toBe("completed");
+  expect((await transcript(request, asset.id)).total).toBe(2);
   expect(await immutableCut(request, asset.id, compositionId)).toEqual(
     baseline,
   );
