@@ -518,7 +518,7 @@ test("acknowledges a recovered batch before retrying queued edits", async ({
   );
   expect(concurrentEdit.ok()).toBe(true);
   const concurrentState = (await concurrentEdit.json()) as EditorState;
-  const projectResponse = await request.get(base + "/project");
+  const projectResponse = await request.get(base + "/api/project");
   expect(projectResponse.ok()).toBe(true);
   const projectId = (await projectResponse.json()).project.id as string;
   const key = "openfilm:editor:" + projectId + ":editing-cut";
