@@ -103,6 +103,10 @@ export interface Story {
 }
 
 export interface ClipTransform {
+  /**
+   * Visual geometry follows the shared OpenFilm geometry contract:
+   * contain-fit source -> scale -> clockwise rotation -> frame-pixel x/y -> clip.
+   */
   scale?: number;
   rotation?: number;
   x?: number;
