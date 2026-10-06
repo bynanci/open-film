@@ -1078,6 +1078,49 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        const reviewRecovery =
+          /^\/api\/review\/jobs\/([^/]+)\/recovery$/.exec(route);
+        if (reviewRecovery && method === "GET") {
+          json(
+            response,
+            200,
+            application.knowledge.reviewRecoveryStatus(
+              decodeURIComponent(reviewRecovery[1]!),
+            ),
+          );
+          return;
+        }
+        if (reviewRecovery && method === "POST") {
+          const data = await body(request);
+          keys(data, ["confirmStopped", "ownerToken", "updatedAt"]);
+          if (typeof data.confirmStopped !== "boolean")
+            throw new HttpError(400, "confirmStopped must be a boolean.");
+          if (
+            data.ownerToken !== undefined &&
+            typeof data.ownerToken !== "string"
+          )
+            throw new HttpError(400, "ownerToken must be a string.");
+          if (
+            data.updatedAt !== undefined &&
+            typeof data.updatedAt !== "string"
+          )
+            throw new HttpError(400, "updatedAt must be a string.");
+          const jobId = decodeURIComponent(reviewRecovery[1]!);
+          if (active.has(jobId))
+            throw new HttpError(
+              409,
+              "The review is still active in this application process.",
+              "jobs.busy",
+            );
+          json(response, 200, {
+            job: application.knowledge.manualRecoverReview(jobId, {
+              confirmStopped: data.confirmStopped,
+              ownerToken: data.ownerToken,
+              updatedAt: data.updatedAt,
+            }),
+          });
+          return;
+        }
         const batch =
           /^\/api\/review\/jobs\/([^/]+)\/batches(?:\/(\d+)\/(retry|skip))?$/.exec(
             route,
