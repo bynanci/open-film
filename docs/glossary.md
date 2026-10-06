@@ -40,8 +40,11 @@ text. Undo, revision restore, deletion, structural edits or selecting another
 segment clear or invalidate the offer. Ordinary typing and autosave preserve the
 current correction; a reverted correction cannot silently become a glossary rule.
 
-Each scope is bounded to 1,000 entries. Source terms have at most 512 characters;
-replacements have at most 4,096. Matching compiles term tries and processes
+Each scope is bounded to 1,000 entries. Source terms have at most 512 UTF-16 units;
+replacements have at most 4,096. Desktop uses multiline fields with these same
+shared limits, including for Remember's correction text. Valid line feeds,
+carriage returns and tabs remain content; native textarea input behavior applies.
+Matching compiles term tries and processes
 transcripts in bounded batches. These limits keep behavior predictable; they are
 not a claim of unlimited archive-scale search performance.
 

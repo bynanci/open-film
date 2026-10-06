@@ -20,6 +20,11 @@ Leaving the workspace waits for pending edits. Failed requests keep a recovery
 draft tied to the revision on which it was made; a draft cannot overwrite a newer
 transcript automatically.
 
+Undo, Redo and revision restore reserve their operation before waiting for a
+pending save. A rapid second action cannot replace the first recovery receipt,
+and navigation waits for both preparation and acknowledgement. A lost response
+retains the original request for exact retry, including after reopening.
+
 Deleting or merging the last row of a page, changing revisions, or recovering a
 saved edit returns to the last valid page. A shorter transcript cannot leave the
 editor showing an empty page beyond its end.
@@ -155,6 +160,10 @@ Invalid input and revision conflicts are structured errors.
 
 Reads and searches are paged. Search streams parameterized SQLite rows through
 an exact literal matcher; there is no regex, FTS or semantic-search service.
+Legacy text containing NUL or isolated-surrogate evidence is read from canonical
+escaped data before matching, preserving exact offsets. Manual text validation
+still applies: a correction that retains invalid controls is rejected without a
+revision; explicit valid whole-segment replacement can clean that legacy text.
 A generated search/matching benchmark and its limits are recorded in the
 [validation record](validation-transcript-productivity.md). Very large archives still require
 published hardware benchmarks before any performance claim.

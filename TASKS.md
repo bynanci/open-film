@@ -188,5 +188,9 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Validate maximum-size review selections with linear work while preserving exact IDs and privacy checks.
 - [x] Save transcript drafts before batch retry without rebasing immutable review evidence.
 - [x] Share the project-owned jobs snapshot instead of polling full history separately from each editor.
+- [x] Search canonical legacy text across NUL and surrogate boundaries without losing offsets or inventing replacement-character matches.
+- [x] Preserve full multiline glossary terms and valid long remembered corrections through review and reopen.
+- [x] Return editable revision tokens from both CLI transcript read forms while preserving intelligence fields.
+- [x] Reserve Undo, Redo and revision restore before pending saves so competing actions cannot replace an exact recovery receipt.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.

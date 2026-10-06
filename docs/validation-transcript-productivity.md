@@ -23,10 +23,10 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`0dcbcabec1737e5350d6747657048811b4872227` passed all required local regression
-gates. The complete browser run passed **54 tests** (34 existing, 20 new) with no
-failures, skips or retries. The full unit/integration suite passed **814 tests in
-72 files**. Documentation finalization follows these runs; current-head GitHub
+`acc89583c90e6e58f847023cc5a271e699e38616` passed all required local regression
+gates. The complete browser run passed **56 tests** (34 existing, 22 new) with no
+failures, skips or retries. The full unit/integration suite passed **851 tests in
+74 files**. Documentation finalization follows these runs; current-head GitHub
 checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 814 tests / 72 files                                                                                 |
+| `pnpm test`             | Passed: 851 tests / 74 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 54 tests, 10.3 minutes, one worker and zero retries                                                  |
+| `pnpm test:e2e`         | Passed: 56 tests, 10.4 minutes, one worker and zero retries                                                  |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -379,6 +379,70 @@ failures, skips or retries. All 21 Codex findings across five review rounds have
 implementation and regression evidence. Published replies, resolved threads and
 fresh exact-head GitHub CI/review remain separate final PR readiness checks.
 
+## Sixth Codex review
+
+The documentation head `e54b5e522f8116cfb2e69b37244fb3abdf5e5a4a` passed both
+[push CI](https://github.com/bynanci/open-film/actions/runs/37468470250) and
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37468477418).
+Its completed review nevertheless found five additional P2 cases: SQLite TEXT
+truncation hiding search matches after NUL; Desktop restricting valid glossary
+replacements to 512 characters and a single line; Remember hiding valid long
+corrections; CLI transcript reads omitting the editable revision token; and rapid
+Undo/Redo overwriting the receipt while awaiting a pending save. Green CI did
+not close these findings.
+
+Canonical escaped text is now projected before matching rows containing NUL or
+U+FFFD. Independent reproduction also confirmed isolated-surrogate legacy text
+was normalized into U+FFFD by native SQLite TEXT conversion. Both boundaries
+preserve exact source text and offsets without false replacement-character hits.
+Nine real catalog/application/migration regressions failed before; all 40 focused
+tests passed afterward, including paging, legacy-v2 reopen and bounded full-row
+reads. Core text validation is unchanged: invalid legacy text can be searched,
+but replacements that retain invalid controls are rejected without a revision or
+receipt. An explicit valid whole-segment correction then permits normal edits.
+
+The shared glossary limits remain 512 UTF-16 units for source and 4,096 for
+replacement. Both Desktop fields now support multiline terms and preserve empty
+replacements, scope and enabled state; Remember uses the replacement bound.
+Fourteen actual SFC/SQLite regressions cover valid boundaries, invalid over-limit
+values and project/global persistence. Five original contract tests failed before;
+the final 58 focused cases passed. Literal line endings remain stored evidence;
+the browser uses its native textarea input behavior.
+
+Both CLI transcript read forms return an editor revision and document while
+retaining earlier intelligence fields and aliases from the same editor page.
+Four bundled CLI tests failed before, then all 28 read/grammar/adapter cases
+passed. They use the emitted revision to edit, Undo, Redo and reopen real SQLite
+projects, including reserved asset names and opaque segment IDs.
+
+Undo/Redo now reserve their operation before waiting for manual-save preparation.
+Navigation waits for preparation and acknowledgement together; the operation's
+internal save path avoids awaiting its own barrier. Two actual SQLite regressions
+failed before, then 66 focused queue/component cases passed. Lost history ACK
+recovery replays the original receipt and records one history change. Independent
+review additionally identified revision Restore needing the same ownership
+boundary. Two actual SQLite reproductions showed the requested Restore being
+replaced by keyboard history before dispatch. Restore now shares the same
+reservation helper; six new tests cover both ordering directions, failed
+preparation, disposal and lost-ACK reopen. All 72 focused queue/component cases
+passed. This related Restore finding and the surrogate-text search finding came
+from independent review, rather than the five Codex threads.
+
+Both new browser regressions passed on `acc8958` in 34.0 seconds without skips or
+retries. Genuine rapid buttons and keyboard shortcuts exercise held manual saves,
+history/Restore lost acknowledgements, exact replay, reload and explicit Retry;
+actual SQLite revisions and Story/source isolation are checked. The other case
+creates, edits and accepts a 4,096-unit multiline replacement, remembers a long
+manual correction and verifies exact text after reopening.
+
+The frozen production/test tree `acc8958` then passed all nine complete local
+gates, 851 unit/integration cases in 74 files and 56 browser cases in 10.4 minutes,
+with no browser failures, skips or retries. Built CLI smoke also passed. All 26
+Codex findings across six rounds now have implementation and regression evidence;
+published replies, resolved threads and fresh exact-head GitHub CI/review remain
+separate final readiness checks. The native gate compiles a test harness with zero
+native behavior tests; actual hardware and NLE gates remain manual.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -419,16 +483,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`3ae31a8edcc7c46c0079f7df396c1892a877ccaf`, Node 24.14.0, SQLite 3.51.2,
+`acc89583c90e6e58f847023cc5a271e699e38616`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **6.79–31.46 ms**, with a recorded maximum **32.35 ms**. Case-sensitive,
+  **9.23–43.83 ms**, with a recorded maximum **46.79 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **75.13 ms** and is outside the search interval.
+- Database seeding took **91.25 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **11.67 ms** matcher compilation and **41.33 ms** scanning, including
+  warm-up, **13.06 ms** matcher compilation and **51.62 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache
@@ -439,9 +503,9 @@ For maximum-size review selection, run
 `pnpm exec tsx scripts/benchmark-review-selection.ts output.json`. This generated
 SQLite fixture selects 10,000 IDs in reverse order and verifies 100 cancelled
 batches retain transcript order. On the same shared host, at
-`90a4b37fe56bb4d4c8e0f913ce9e8e7c381e4c6a`, five preparation samples had a
-**24.34 ms** median and **20.85–39.61 ms** range. Setup took **60.15 ms**, including
-**47.48 ms** seeding, outside the interval. Preparation includes source
+`acc89583c90e6e58f847023cc5a271e699e38616`, five preparation samples had a
+**20.81 ms** median and **19.74–30.56 ms** range. Setup took **58.56 ms**, including
+**46.45 ms** seeding, outside the interval. Preparation includes source
 verification, transcript loading, selection validation, partitioning and initial
 queued-job persistence; later batch writes, cancellation and full review are
 excluded. The output records exact source/runtime/fixture hashes. This is not
