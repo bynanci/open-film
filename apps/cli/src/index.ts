@@ -337,7 +337,18 @@ async function main() {
               })
             : await app.transcriptEditor[action](id, input),
         );
-      } else print(await app.intelligence.read(id, paging));
+      } else {
+        const intelligence = await app.intelligence.read(id, paging);
+        const transcript = await app.transcriptEditor.get(id, paging);
+        print({
+          ...intelligence,
+          ...transcript,
+          // Keep legacy reads compatible, with text and revision from one page.
+          transcript: transcript.document,
+          transcriptTotal: transcript.total,
+          transcriptOffset: transcript.offset,
+        });
+      }
     } else if (command === "glossary") {
       const action = positional[1],
         scope =

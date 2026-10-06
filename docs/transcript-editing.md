@@ -122,6 +122,14 @@ pnpm cli transcript revisions source-id --project /path/film.openfilm
 `edit`, `search`, `revisions`, `undo`, `redo`, `select` or `get`. The earlier
 `transcript <asset-id>` shorthand remains available for non-action names.
 
+Both read forms return the current editor state: top-level `revision`,
+`revisionInfo`, `document`, `total`, `offset`, `limit`, `canUndo`, `canRedo`, and
+`sourceHash`. Use the returned `revision` as `baseRevision` for the next mutation.
+Before transcription there is no `revision` or `document`, and history flags are
+false. Existing `transcript`, `transcriptTotal`, and `transcriptOffset` fields remain
+aliases of that same editor page; waveform, scenes, and markers remain available
+when present. The aliases and editor state describe the same transcript revision.
+
 `edit.json` contains the current revision from the read response, a fresh request
 ID and validated commands:
 
