@@ -224,30 +224,42 @@ async function run(source: "glossary" | "language") {
 }
 async function transmitAcceptance(value: Acceptance) {
   if (busy.value) return;
+  const projectId = props.projectId,
+    assetId = props.assetId;
+  const current = () =>
+    !disposed &&
+    props.projectId === projectId &&
+    props.assetId === assetId &&
+    acceptanceKey === `openfilm:review-accept:${projectId}:${assetId}`;
+  if (!current()) return;
   busy.value = true;
   error.value = null;
   mutation = (async () => {
     try {
       await api.acceptSuggestion(value.suggestionId, value.receipt);
+      if (!current() || uncertainAcceptance.value !== value) return;
       uncertainAcceptance.value = undefined;
       retainAcceptance();
       emit("changed");
       await refresh();
     } catch (cause) {
+      if (!current() || uncertainAcceptance.value !== value) return;
       error.value = cause;
-      // These conflicts prove this request was not accepted. Transport errors,
-      // failed responses and offline sources leave its outcome uncertain.
+      // A definitive rejection in this project ends recovery for this receipt,
+      // including copies restored without the original suggestion. Transport
+      // failures and offline sources still leave the outcome uncertain.
       if (
         cause instanceof ApiError &&
         (cause.code === "review.suggestionStale" ||
-          cause.code === "transcript.revisionConflict")
+          cause.code === "transcript.revisionConflict" ||
+          (cause.status === 404 && cause.code === "request.notFound"))
       ) {
         uncertainAcceptance.value = undefined;
         retainAcceptance();
         emit("changed");
       }
     } finally {
-      busy.value = false;
+      if (current()) busy.value = false;
     }
   })();
   await mutation;

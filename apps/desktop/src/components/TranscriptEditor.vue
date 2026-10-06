@@ -127,6 +127,8 @@ const pending = ref(false);
 let polling: ReturnType<typeof setTimeout> | undefined;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchGeneration = 0;
+let ancillaryGeneration = 0;
+const observedCompletedTranscriptions = new Set<string>();
 const searchContext = shallowRef<{
   query: string;
   caseSensitive: boolean;
@@ -249,34 +251,45 @@ async function selectTool(value: "glossary" | "suggestions") {
   tool.value = value;
 }
 async function updateAncillary() {
+  const stamp = ++ancillaryGeneration;
+  const capturedRevisionOffset = revisionOffset.value;
+  const current = () =>
+    !disposed &&
+    stamp === ancillaryGeneration &&
+    capturedRevisionOffset === revisionOffset.value;
   try {
     const [providerState, jobState, revisionState] = await Promise.all([
       api.intelligenceProviders(),
       api.jobs(),
-      api.transcriptRevisions(props.asset.id, revisionOffset.value),
+      api.transcriptRevisions(props.asset.id, capturedRevisionOffset),
     ]);
-    if (disposed) return;
+    if (!current()) return;
     providers.value = providerState;
     jobs.value = jobState.jobs;
     revisions.value = revisionState.revisions;
     revisionTotal.value = revisionState.total;
+    const completed = transcriptionJobs.value.filter(
+      (job) =>
+        job.status === "completed" &&
+        !observedCompletedTranscriptions.has(job.id),
+    );
+    if (completed.length && status.value !== "loading") {
+      for (const job of completed) observedCompletedTranscriptions.add(job.id);
+      // A fast job can finish before any poll observes it running. Reconcile a
+      // draft instead of flushing its old revision over the provider result.
+      const refreshed = transcriptHasPending.value
+        ? await reconcile()
+        : await load(0, false);
+      if (!refreshed && status.value !== "conflict")
+        for (const job of completed)
+          observedCompletedTranscriptions.delete(job.id);
+    }
   } catch (cause) {
-    if (!disposed) localError.value = cause;
+    if (current()) localError.value = cause;
   }
 }
 async function poll() {
-  const previouslyRunning = transcriptionJobs.value.some(
-    (job) => job.status === "running" || job.status === "queued",
-  );
   await updateAncillary();
-  if (
-    previouslyRunning &&
-    !transcriptionJobs.value.some(
-      (job) => job.status === "running" || job.status === "queued",
-    )
-  ) {
-    if (await flushTranscript()) await load(0, false);
-  }
   if (!disposed) polling = setTimeout(() => void poll(), 1200);
 }
 function seek(value: number) {

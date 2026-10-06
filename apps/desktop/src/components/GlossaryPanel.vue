@@ -103,7 +103,6 @@ async function save() {
       scope: scope.value,
       caseSensitive: caseSensitive.value,
       ...(editId.value ? { id: editId.value } : {}),
-      enabled: true,
     });
     reset();
     await load();

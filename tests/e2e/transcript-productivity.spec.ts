@@ -880,6 +880,404 @@ test("empty glossary replacements can be created, edited and accepted as an undo
   await unchangedSource();
 });
 
+test("editing disabled project and global glossary terms preserves their opt-out and excludes them from corrections", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Disabled glossary edits",
+  );
+  const initial = await transcribe(request, asset.id);
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: "disabled project phrase and disabled global phrase",
+    },
+  ]);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const terms: GlossaryEntry[] = [];
+  for (const scope of ["project", "global"] as const) {
+    const { entry } = await post<{ entry: GlossaryEntry }>(
+      request,
+      "/glossary",
+      {
+        scope,
+        source: `disabled ${scope} phrase`,
+        replacement: `Original ${scope} correction`,
+        enabled: false,
+      },
+    );
+    terms.push(entry);
+  }
+  try {
+    await initialLocale(page);
+    await page.goto("/");
+    await transcriptMode(page);
+    await tools(page, "glossary");
+    const panel = page.locator(".transcript-side-panel");
+    for (const term of terms) {
+      await panel
+        .getByRole("button", { name: t(`${term.scope}Scope`), exact: true })
+        .click();
+      const entry = page
+        .getByTestId("glossary-entry")
+        .filter({ hasText: term.source });
+      await expect(entry.getByRole("checkbox")).not.toBeChecked();
+      await entry.locator(".transcript-term").click();
+      await panel
+        .getByLabel(t("replacementTerm"), { exact: true })
+        .fill(`Edited ${term.scope} correction`);
+      await panel
+        .getByRole("button", { name: t("saveTerm"), exact: true })
+        .click();
+      await expect(
+        panel.getByLabel(t("sourceTerm"), { exact: true }),
+      ).toHaveValue("");
+      await expect(entry.getByRole("checkbox")).not.toBeChecked();
+      const stored = (
+        await get<{ entries: GlossaryEntry[] }>(
+          request,
+          `/glossary?scope=${term.scope}`,
+        )
+      ).entries.find((item) => item.id === term.id)!;
+      expect(stored.enabled).toBe(false);
+      expect(stored.replacement).toBe(`Edited ${term.scope} correction`);
+    }
+    const effective = (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=effective",
+      )
+    ).entries;
+    expect(
+      effective.some((entry) => terms.some((term) => term.id === entry.id)),
+    ).toBe(false);
+    // New rules keep the normal enabled default, and the explicit checkbox
+    // remains the action that changes whether the rule is active.
+    await addTerm(page, "Unmatched enabled term", "New correction");
+    const enabled = page
+      .getByTestId("glossary-entry")
+      .filter({ hasText: "Unmatched enabled term" })
+      .getByRole("checkbox");
+    await expect(enabled).toBeChecked();
+    await enabled.uncheck();
+    await expect(enabled).not.toBeChecked();
+    await enabled.check();
+    await expect(enabled).toBeChecked();
+    const reviewRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/assets/${asset.id}/review` &&
+        response.request().method() === "POST",
+    );
+    await panel
+      .getByRole("button", { name: t("findMatches"), exact: true })
+      .click();
+    const { job } = (await (await reviewRead).json()) as { job: Job };
+    await waitJob(request, job.id);
+    expect((await suggestions(request, asset.id, "pending")).total).toBe(0);
+    await expect(page.getByTestId("review-suggestion")).toHaveCount(0);
+    await page
+      .getByRole("button", {
+        name: uiText("en-US", "app.navigation.switchProject"),
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".launcher-actions")).toBeVisible();
+    await openFilm(page, path);
+    await transcriptMode(page);
+    await tools(page, "glossary");
+    for (const term of terms) {
+      await panel
+        .getByRole("button", { name: t(`${term.scope}Scope`), exact: true })
+        .click();
+      await expect(
+        page
+          .getByTestId("glossary-entry")
+          .filter({ hasText: term.source })
+          .getByRole("checkbox"),
+      ).not.toBeChecked();
+    }
+    expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+      baseline,
+    );
+    await unchangedSource();
+  } finally {
+    const global = terms.find((term) => term.scope === "global")!;
+    const removed = await request.delete(
+      `${api}/glossary/${global.id}?scope=global`,
+    );
+    expect(removed.ok(), await removed.text()).toBe(true);
+  }
+});
+
+test("transcription completed before browser polling refreshes in place and later completion preserves a pending manual draft", async ({
+  page,
+  request,
+}) => {
+  const { asset, compositionId } = await createSource(
+    request,
+    "Fast completed transcription",
+  );
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  const mounted = await workspace(page).elementHandle();
+  const completed: TranscriptState[] = [];
+  let jobsGate: Promise<void> | undefined;
+  let releaseJobs: (() => void) | undefined;
+  const observedStatuses: string[][] = [];
+  function holdJobs() {
+    jobsGate = new Promise<void>((resolve) => {
+      releaseJobs = resolve;
+    });
+  }
+  await page.route("**/api/jobs", async (route) => {
+    if (jobsGate) await jobsGate;
+    const response = await route.fetch();
+    const { jobs } = (await response.json()) as { jobs: Job[] };
+    observedStatuses.push(jobs.map((job) => job.status));
+    await route.fulfill({ response });
+  });
+  let holdUntilCompleted = true;
+  let backgroundJob: Job | undefined;
+  await page.route(`**/api/assets/${asset.id}/intelligence`, async (route) => {
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    const { job } = (await response.json()) as { job: Job };
+    if (holdUntilCompleted) {
+      await waitJob(request, job.id);
+      completed.push(await transcript(request, asset.id));
+      releaseJobs?.();
+      jobsGate = undefined;
+    } else backgroundJob = job;
+    await route.fulfill({ response });
+  });
+  try {
+    holdJobs();
+    await expect(button(page, "transcribe")).toBeEnabled();
+    await button(page, "transcribe").click();
+    await expect(rows(page)).toHaveCount(2, { timeout: 15_000 });
+    expect(completed).toHaveLength(1);
+    expect(
+      observedStatuses.flat().every((status) => status === "completed"),
+    ).toBe(true);
+    expect(await mounted!.evaluate((node) => node.isConnected)).toBe(true);
+    await selectRow(page);
+    await expect(field(page)).toHaveValue(
+      completed[0]!.document!.segments[0]!.text,
+    );
+    await typeText(page, "Manual revision preserved before retranscription.");
+    const manual = await transcript(request, asset.id);
+    await workspace(page).locator(".transcript-transcribe > summary").click();
+    await button(page, "retranscribe").click();
+    await expect(workspace(page)).toContainText(t("retranscribeWarning"));
+    holdJobs();
+    const retranscriptionAck = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/assets/${asset.id}/intelligence` &&
+        response.request().method() === "POST",
+    );
+    await button(page, "continueTranscription").click();
+    expect((await retranscriptionAck).ok()).toBe(true);
+    expect(completed).toHaveLength(2);
+    await expect(field(page)).toHaveValue(
+      completed[1]!.document!.segments[0]!.text,
+      { timeout: 10_000 },
+    );
+    expect(await mounted!.evaluate((node) => node.isConnected)).toBe(true);
+    expect(completed[1]?.revision).not.toBe(manual.revision);
+    const historical = await get<TranscriptState>(
+      request,
+      `/assets/${asset.id}/transcript?revisionId=${manual.revision}&limit=100`,
+    );
+    expect(historical.document?.segments[0]?.text).toBe(
+      "Manual revision preserved before retranscription.",
+    );
+    // Acknowledged running jobs allow normal text editing. Keep the completion
+    // poll delayed until the real provider result exists, then enter a draft
+    // against the prior revision before releasing that poll.
+    holdUntilCompleted = false;
+    await button(page, "retranscribe").click();
+    await expect.poll(() => backgroundJob?.id).toBeDefined();
+    await expect(field(page)).toBeEnabled();
+    holdJobs();
+    await waitJob(request, backgroundJob!.id);
+    const providerCurrent = await transcript(request, asset.id);
+    const draft = "A manual draft remains recoverable after completion.";
+    await field(page).fill(draft);
+    releaseJobs?.();
+    jobsGate = undefined;
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("conflict"),
+      { timeout: 10_000 },
+    );
+    await expect(field(page)).toHaveValue(draft);
+    expect((await transcript(request, asset.id)).document).toEqual(
+      providerCurrent.document,
+    );
+    await button(page, "discardDraft").click();
+    await workspace(page)
+      .locator(".transcript-confirm")
+      .getByRole("button", { name: t("discardDraft"), exact: true })
+      .click();
+    await saved(page);
+    await expect(field(page)).toHaveValue(
+      providerCurrent.document!.segments[0]!.text,
+    );
+    expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+      baseline,
+    );
+    await unchangedSource();
+  } finally {
+    releaseJobs?.();
+  }
+});
+
+test("a definitive missing acceptance on a restored project copy clears only that receipt and releases navigation", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Restored acceptance receipt",
+  );
+  const initial = await transcribe(request, asset.id);
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: "Open Flim restored memory.",
+    },
+  ]);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const original = await project(request);
+  const restoredPath = join(root, "Restored same identity.openfilm");
+  await closeProject(request);
+  await cp(path, restoredPath, { recursive: true });
+  await post(request, "/project/open", { path });
+  await post(request, "/glossary", {
+    source: "Open Flim",
+    replacement: "OpenFilm",
+    scope: "project",
+  });
+  const { job } = await post<{ job: Job }>(
+    request,
+    `/assets/${asset.id}/review`,
+    { source: "glossary" },
+  );
+  await waitJob(request, job.id);
+  const target = (await suggestions(request, asset.id, "pending"))
+    .suggestions[0]!;
+  const key = `openfilm:review-accept:${original.id}:${asset.id}`;
+  const packets: string[] = [];
+  let loseResponse = true;
+  const pattern = `**/api/review/suggestions/${target.id}/accept`;
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.route(pattern, async (route) => {
+    packets.push(route.request().postData()!);
+    if (loseResponse) {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "suggestions");
+  await page
+    .locator(`[data-suggestion-id="${target.id}"]`)
+    .getByRole("button", { name: t("accept"), exact: true })
+    .click();
+  const recovery = page.getByTestId("review-acceptance-recovery");
+  await expect(recovery).toBeVisible();
+  const receipt = await page.evaluate(
+    (storageKey) => localStorage.getItem(storageKey),
+    key,
+  );
+  expect(receipt).toBeTruthy();
+  // A second uncertain transport result must retain the exact packet even
+  // though the original acceptance already committed successfully.
+  await recovery
+    .getByRole("button", { name: t("retryAcceptance"), exact: true })
+    .click();
+  await expect.poll(() => packets.length).toBe(2);
+  await expect(recovery).toBeVisible();
+  await expect(
+    recovery.getByRole("button", { name: t("retryAcceptance"), exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate((storageKey) => localStorage.getItem(storageKey), key),
+  ).toBe(receipt);
+  await expect(field(page)).toBeDisabled();
+  await expect(button(page, "hideTools")).toBeDisabled();
+  // Restore the portable project while the app is closed, preserving browser
+  // storage but avoiding live reads against the externally closed database.
+  await page.goto("about:blank");
+  await closeProject(request);
+  await post(request, "/project/open", { path: restoredPath });
+  expect((await project(request)).id).toBe(original.id);
+  const restored = await transcript(request, asset.id);
+  expect(restored.document?.segments[0]?.text).toBe(
+    "Open Flim restored memory.",
+  );
+  expect((await suggestions(request, asset.id)).total).toBe(0);
+  loseResponse = false;
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "suggestions");
+  await expect(recovery).toBeVisible();
+  const missingRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/review/suggestions/${target.id}/accept`,
+  );
+  await recovery
+    .getByRole("button", { name: t("retryAcceptance"), exact: true })
+    .click();
+  const missing = await missingRead;
+  expect(missing.status()).toBe(404);
+  expect((await missing.json()).code).toBe("request.notFound");
+  await expect(recovery).toHaveCount(0);
+  expect(
+    await page.evaluate((storageKey) => localStorage.getItem(storageKey), key),
+  ).toBeNull();
+  expect(new Set(packets).size).toBe(1);
+  await expect(field(page)).toBeEnabled();
+  expect((await transcript(request, asset.id)).document).toEqual(
+    restored.document,
+  );
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await page
+    .getByRole("group", {
+      name: uiText("en-US", "precision.modeLabel"),
+      exact: true,
+    })
+    .getByRole("button", {
+      name: uiText("en-US", "precision.precisionMode"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".precision-editor")).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await unchangedSource();
+});
+
 test("opaque legacy transcript IDs preserve seeking, text edits, search and row keyboard focus through reopening", async ({
   page,
   request,
