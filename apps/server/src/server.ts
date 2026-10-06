@@ -45,6 +45,7 @@ import {
   validateProject,
   migrateProject,
   validateStory,
+  validateTranscriptSegmentId,
   ApplicationError,
   errorInfo,
   PROJECT_CONTENT_LOCALES,
@@ -137,15 +138,24 @@ function reviewOptions(
     (!Array.isArray(data.segmentIds) ||
       data.segmentIds.length > 10000 ||
       !data.segmentIds.length ||
-      data.segmentIds.some(
-        (id) => typeof id !== "string" || !id.trim() || id.length > 256,
-      ) ||
       new Set(data.segmentIds).size !== data.segmentIds.length)
   )
     throw new HttpError(400, "Choose unique transcript segment identifiers.");
+  let segmentIds: string[] | undefined;
+  if (Array.isArray(data.segmentIds)) {
+    try {
+      segmentIds = data.segmentIds.map((id) => validateTranscriptSegmentId(id));
+    } catch {
+      throw new HttpError(
+        400,
+        "Choose nonblank transcript segment identifiers.",
+        "request.invalid",
+      );
+    }
+  }
   return {
     batchSize: data.batchSize as number | undefined,
-    segmentIds: data.segmentIds as string[] | undefined,
+    segmentIds,
   };
 }
 function filePath(data: Body, key: string): string {

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, runProcess } from "@openfilm/media";
-import type { Job } from "@openfilm/core";
+import type { Job, TranscriptSegment } from "@openfilm/core";
 import type {
   LanguageProvider,
   TranscriptionOptions,
@@ -55,7 +55,7 @@ function transcription(
     transcribe,
   };
 }
-async function fixture() {
+async function fixture(segments: TranscriptSegment[] = result.segments) {
   const directory = await mkdtemp(
     join(tmpdir(), "openfilm-transcript-adapters-"),
   );
@@ -104,12 +104,15 @@ async function fixture() {
       sourceHash,
       createdAt: new Date().toISOString(),
     },
-    segments: result.segments,
+    segments,
   });
   return { directory, path, app, close, assetId, userDataDirectory };
 }
-async function server(options: Partial<ServerOptions> = {}) {
-  const setup = await fixture();
+async function server(
+  options: Partial<ServerOptions> = {},
+  segments?: TranscriptSegment[],
+) {
+  const setup = await fixture(segments);
   setup.close();
   const runtime = await startServer({
     port: 0,
@@ -140,6 +143,104 @@ async function server(options: Partial<ServerOptions> = {}) {
 }
 
 describe("transcript REST and CLI adapters", () => {
+  it("preserves opaque provider segment IDs through HTTP paging, encoded lookup, editing, reopen and selected review acceptance", async () => {
+    const ids = [
+      "provider-" + "長".repeat(350) + " %/#&",
+      "provider-\u0000\u0001\t\n %/#&",
+    ];
+    const segments = ids.map((id, index) => ({
+      id,
+      start: index * 2,
+      end: index * 2 + 1,
+      text: "Visit youtube",
+      words: [{ start: index * 2, end: index * 2 + 1, text: "Visit youtube" }],
+    }));
+    const { app, get, post, job } = await server({}, segments);
+    const initial = await get("/assets/audio/transcript?limit=1&offset=1");
+    expect(initial.total).toBe(2);
+    expect(initial.document.segments[0].id).toBe(ids[1]);
+    for (const [position, id] of ids.entries()) {
+      const found = await get(
+        "/assets/audio/transcript/segments/" + encodeURIComponent(id),
+      );
+      expect(found.segment.id).toBe(id);
+      expect(found.position).toBe(position);
+    }
+    const editedResponse = await post("/assets/audio/transcript/edit", {
+      baseRevision: initial.revision,
+      requestId: "opaque-edit",
+      commands: ids.map((segmentId) => ({
+        type: "replace-text",
+        segmentId,
+        text: "Manual memory",
+      })),
+    });
+    expect(editedResponse.status).toBe(200);
+    const edited = await editedResponse.json();
+    expect(
+      edited.document.segments.map((segment: TranscriptSegment) => segment.id),
+    ).toEqual(ids);
+    const undoneResponse = await post("/assets/audio/transcript/undo", {
+      baseRevision: edited.revision,
+      requestId: "opaque-undo",
+    });
+    expect(undoneResponse.status).toBe(200);
+    expect(
+      (await undoneResponse.json()).document.segments.map(
+        (segment: TranscriptSegment) => segment.text,
+      ),
+    ).toEqual(["Visit youtube", "Visit youtube"]);
+    expect((await post("/project/close", {})).status).toBe(200);
+    expect((await post("/project/open", { path: app.directory })).status).toBe(
+      200,
+    );
+    expect(
+      (await get("/assets/audio/transcript")).document.segments.map(
+        (segment: TranscriptSegment) => segment.id,
+      ),
+    ).toEqual(ids);
+    await post("/glossary", {
+      scope: "project",
+      source: "youtube",
+      replacement: "YouTube",
+    });
+    for (const id of ids) {
+      const before = await get("/assets/audio/transcript");
+      const started = await post("/assets/audio/review", {
+        source: "glossary",
+        segmentIds: [id],
+      });
+      expect(started.status).toBe(202);
+      const completed = await job((await started.json()).job.id);
+      expect(completed.status, JSON.stringify(completed)).toBe("completed");
+      const pending = await get(
+        "/assets/audio/review/suggestions?status=pending",
+      );
+      expect(pending.suggestions).toHaveLength(1);
+      expect(pending.suggestions[0].target.segmentId).toBe(id);
+      const accepted = await post(
+        `/review/suggestions/${pending.suggestions[0].id}/accept`,
+        {
+          baseRevision: before.revision,
+          requestId: "opaque-accept-" + ids.indexOf(id),
+        },
+      );
+      expect(accepted.status).toBe(200);
+      expect(
+        (await accepted.json()).document.segments.find(
+          (segment: TranscriptSegment) => segment.id === id,
+        ).text,
+      ).toBe("Visit YouTube");
+    }
+    for (const segmentIds of [[null], ["  "], [ids[0], ids[0]]]) {
+      const rejected = await post("/assets/audio/review", {
+        source: "glossary",
+        segmentIds,
+      });
+      expect(rejected.status).toBe(400);
+      expect((await rejected.json()).code).toBe("request.invalid");
+    }
+  });
   it("edits, searches, locates, undoes/redoes and selects durable revisions with strict mutation receipts", async () => {
     const { get, post, base } = await server();
     const original = await get("/assets/audio/transcript");
