@@ -54,7 +54,12 @@ command, and records acceptance and its resulting revision in the same catalog
 transaction. It is undoable. Lost response retries use the same request ID without
 applying twice. Desktop retains an uncertain-acceptance receipt and shows Retry
 even if the accepted card has disappeared or the application has restarted.
-Reconciliation preserves any pending manual draft as a conflict. If the transcript
+Reconciliation preserves any pending manual draft as a conflict. If a retry
+receives a definitive missing-suggestion response, such as after opening
+a restored project copy, that receipt is cleared and navigation is released.
+Network, server and missing-source failures retain uncertain receipts for Retry.
+Responses from a disposed or changed project/asset cannot clear a newer receipt.
+If the transcript
 changed since generation, Accept reports
 `review.suggestionStale`; regenerate suggestions against the current text. Even
 Undo creates a new revision token, so it cannot accidentally revive old evidence.
@@ -90,6 +95,10 @@ jobs' batches read in a refresh. Each action remains bound to its original job.
 Paged review navigation retains the requested page while background activity
 refreshes. Paging controls wait for that page's acknowledgement, so polling cannot
 replace a pending Next request with the previous page.
+
+Suggestion paging reads the source-verified current revision with a bounded
+transcript read; polling does not materialize the full document. Real text review
+and acceptance still validate the content needed for their commands.
 
 No Accept All AI shortcut is required. A person's manually edited text always wins:
 glossary and language review only propose changes. Story, composition, media and

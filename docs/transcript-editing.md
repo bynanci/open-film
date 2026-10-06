@@ -26,6 +26,16 @@ delayed request into a different project, even when portable copies share asset
 IDs. Failed requests retain their error, block an already-waiting switch and
 allow an explicit retry.
 
+The editor observes newly completed transcription jobs even when they finish
+before a poll sees them running. A clean editor reloads the new provider revision;
+pending manual drafts are reconciled, with conflicts preserving edits when the
+provider revision changed. Completion refresh waits for initial draft recovery;
+stale ancillary responses cannot replace newer job/revision-page state.
+
+Reconciliation waits while a save or exact request receipt remains unresolved.
+Delayed reads and errors belong to their original draft base; they cannot mark a
+newly acknowledged save conflicted or block its receipt retry.
+
 ## Timing after correction
 
 Every segment has an alignment state:

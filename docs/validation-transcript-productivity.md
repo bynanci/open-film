@@ -23,10 +23,10 @@ derived film or geometry feature is included.
 ## Automated evidence
 
 The remediated production/test tree at
-`757fd74bc1d678fc8a17ab13857db854ffc71249` passed all required local regression
-gates. The complete browser run passed **46 tests** (34 existing, 12 new) with no
-failures, skips or retries. The full unit/integration suite passed **702 tests in
-66 files**. Documentation finalization follows these runs; current-head GitHub
+`807bc90b4e869e40a3cc1219f6d3f0faf61459b2` passed all required local regression
+gates. The complete browser run passed **49 tests** (34 existing, 15 new) with no
+failures, skips or retries. The full unit/integration suite passed **729 tests in
+69 files**. Documentation finalization follows these runs; current-head GitHub
 checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 702 tests / 66 files                                                                                 |
+| `pnpm test`             | Passed: 729 tests / 69 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 46 tests, 8.6 minutes, one worker and zero retries                                                   |
+| `pnpm test:e2e`         | Passed: 49 tests, 9.2 minutes, one worker and zero retries                                                   |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -198,9 +198,50 @@ created by taking its source offline, not injecting a fake job. Full reruns and
 current-head GitHub checks establish the final remediation result.
 
 All nine Codex findings from the first two review rounds have implementation and
-regression replies, and their threads are resolved. A fresh review of `757fd74`
-and its GitHub CI are separate final checks; their result must be read from PR #4
-rather than inferred from the earlier green candidate.
+regression replies, and their threads are resolved. Review and GitHub CI of the
+current candidate are separate final checks; their result must be read from
+PR #4 rather than inferred from the earlier green candidate.
+
+## Third Codex review
+
+The documentation-only head `36736bb0e052d21ca9ecf49730a992cdd03a99fe` passed
+both [push CI](https://github.com/bynanci/open-film/actions/runs/37448263400) and
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37448268543).
+Its review nevertheless found four additional P2 issues: editing a disabled
+glossary term re-enabled it; paged suggestion polling materialized the full
+transcript; a definitive missing-suggestion acceptance receipt blocked navigation;
+and a transcription completing before its first poll did not refresh the editor.
+These findings were addressed in commits `49f3f70`, `50fd95f` and `807bc90`.
+The earlier green CI does not close their review gate; the remediated tree needs
+its own complete rerun, review and GitHub checks.
+
+Focused reproductions use the actual SFC scripts, their durable editor queue,
+real browser actions and an actual 10,000-segment SQLite catalog. The bounded
+page guard failed before its change, then all 41 knowledge tests passed, including
+source-change/missing-source and reopen checks. Ordinary glossary Save reproduced
+the disabled term becoming enabled. Fast-completion tests failed before the
+completion observer and preserve pending drafts as conflicts after the fix.
+Definitive missing-suggestion responses release their exact acceptance receipt;
+network, server and offline-source uncertainty still retain it. Captured scope
+guards prevent late responses from clearing newer recovery state.
+
+Independent review of that remediation also reproduced startup completion
+refresh superseding a recovered-draft load, and a delayed reconciliation read
+marking a false conflict after autosave had already succeeded. Focused tests
+execute the actual component and durable queue, including preserved provider
+conflicts and uncertain request receipts. Completion refresh now waits for
+initial recovery. Reconciliation binds reads to their draft base and waits for
+unresolved saves/receipts, including the server-committed/lost-acknowledgment case.
+The 25 focused component/queue tests passed, with real SQLite proving identical
+request retry produces one committed manual revision. All three final focused
+browser cases also passed before the complete 49-case rerun.
+
+The final full rerun at `807bc90` passed all nine local gates, 729 unit/integration
+tests and 49 browser cases with zero skips/retries. Independent read-only review
+reran the original race reproduction: the late read now leaves `saved`, the
+acknowledged manual revision and `nextFlush=true`. Its five focused real SQLite
+regressions passed again; no further P1/P2 was reproduced. Final candidate GitHub
+review/thread state and exact-head CI remain the publication readiness checks.
 
 ## Desktop QA
 

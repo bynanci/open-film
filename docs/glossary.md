@@ -21,6 +21,10 @@ another replacement cascade. Overlapping terms prefer the longer match and
 project scope. Creating the same source twice in a scope updates its definition;
 conflicting ID/source updates are rejected.
 
+Editing and saving an existing term preserves its enabled/disabled state.
+Enable or disable it explicitly with the checkbox; saving its preferred spelling
+does not silently opt it back into reviews or transcription hints.
+
 An empty replacement explicitly suggests removing the matched term. Desktop,
 API and CLI preserve that literal empty value; saving it never changes a
 transcript automatically. Accepting a resulting deletion remains undoable.

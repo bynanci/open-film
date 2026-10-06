@@ -175,5 +175,8 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Keep delayed transcription in its owning project and preserve valid multiline terms without invalid provider hints.
 - [x] Keep earlier unfinished review recovery reachable after starting a new review; bound complete provider prompts without truncating evidence.
 - [x] Preserve existing opaque segment IDs through search, keyboard edits and reopen; allow reviewable, undoable empty-term removal.
+- [x] Preserve disabled terminology when saving edits and release missing-suggestion recovery without discarding uncertain requests.
+- [x] Refresh short transcriptions without losing restored drafts; discard obsolete reconciliation reads and retain idempotent save retry.
+- [x] Keep suggestion polling bounded on large transcripts while retaining source validation and stale-revision protection.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.
