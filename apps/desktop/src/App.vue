@@ -2541,6 +2541,7 @@ onUnmounted(() => {
             ref="timelineEditor"
             :project-id="project.id"
             :composition-id="activeComposition.id"
+            :project-settings="project.settings"
             :active="tab === 'edit'"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
