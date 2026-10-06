@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, copyFile } from "node:fs/promises";
 
 await mkdir("dist", { recursive: true });
 for (const app of ["cli", "server"]) {
@@ -15,6 +15,10 @@ for (const app of ["cli", "server"]) {
     banner: { js: "#!/usr/bin/env node" },
   });
   await chmod(`dist/${app}/index.mjs`, 0o755);
+  await copyFile(
+    "packages/provider-whisper/src/whisper_runner.py",
+    `dist/${app}/whisper_runner.py`,
+  );
 }
 execFileSync("pnpm", ["--filter", "@openfilm/desktop", "run", "build"], {
   stdio: "inherit",

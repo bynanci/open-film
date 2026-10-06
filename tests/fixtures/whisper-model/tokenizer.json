@@ -1,0 +1,4 @@
+{
+  "fixture": true,
+  "purpose": "Not a tokenizer; only the explicit test runner accepts this directory"
+}

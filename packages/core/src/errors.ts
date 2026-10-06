@@ -30,6 +30,16 @@ export const applicationErrorCodes = [
   "import.failed",
   "export.failed",
   "source.changed",
+  "media.transcriptionFailed",
+  "model.unavailable",
+  "media.sceneFailed",
+  "media.waveformFailed",
+  "transcription.modelRequired",
+  "transcription.modelInvalid",
+  "transcription.runtimeUnavailable",
+  "transcription.noAudio",
+  "transcription.failed",
+  "transcription.invalidOutput",
   "operation.failed",
 ] as const;
 export type ApplicationErrorCode = (typeof applicationErrorCodes)[number];

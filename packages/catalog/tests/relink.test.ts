@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { MediaAsset } from "@openfilm/core";
-import { ProjectCatalog, type CatalogRelinkChange } from "../src/index";
+import {
+  CATALOG_SCHEMA_VERSION,
+  ProjectCatalog,
+  type CatalogRelinkChange,
+} from "../src/index";
 
 const directories: string[] = [];
 const catalogs: ProjectCatalog[] = [];
@@ -278,7 +282,7 @@ describe("atomic catalog relinking", () => {
       database.exec("DROP TRIGGER reject_second_relink");
       expect(catalog.relinkAssets([change("a"), change("b")])).toHaveLength(2);
       expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(
-        1,
+        CATALOG_SCHEMA_VERSION,
       );
     } finally {
       database.close();

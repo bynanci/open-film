@@ -27,3 +27,18 @@ synthesized tones. No personal photographs, recordings or commercial music are
 included. The fixture generator dedicates its generated media to the public
 domain under CC0-1.0. The application icon is original OpenFilm contributor work
 and is covered by this repository's license.
+
+## Optional transcription and capability reference
+
+`faster-whisper` and CTranslate2 are optional local Python dependencies under
+MIT licenses. OpenFilm does not redistribute their runtime or model weights in
+its application package. Models have their own terms; verify the selected
+publisher's license and retain required notices before redistribution. The local
+adapter loads a supplied directory with networking disabled during recognition.
+
+VidScribe is a capability reference, pinned in [the adaptation record](vidscribe-reference.md).
+Its upstream source is MIT, copyright 2026 VidScribe contributors. This foundation
+independently implements its adapted concepts; no substantial source, model or
+UI asset was copied. OpenFilm's Apache-2.0 license remains unchanged. If future
+work copies substantial upstream code, retain the upstream copyright and full
+MIT notice with that code and update NOTICE and this record.

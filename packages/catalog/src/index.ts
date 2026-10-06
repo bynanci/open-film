@@ -2,6 +2,21 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import { validateMediaAsset, type Job, type MediaAsset } from "@openfilm/core";
+import {
+  CATALOG_SCHEMA_VERSION,
+  CatalogIntelligenceStore,
+  migrateIntelligenceSchema,
+} from "./intelligence-store.js";
+
+export {
+  CATALOG_SCHEMA_VERSION,
+  CatalogIntelligenceStore,
+  INTELLIGENCE_CACHE_VERSION,
+  TRANSCRIPT_PAGE_LIMIT,
+  type AnalysisCacheOptions,
+  type TranscriptPage,
+  type TranscriptPageOptions,
+} from "./intelligence-store.js";
 
 export interface AssetListOptions {
   offset?: number;
@@ -147,6 +162,7 @@ function assetFilter(
 /** SQLite is an adapter, never a dependency of the portable domain. */
 export class ProjectCatalog {
   private database: DatabaseSync;
+  readonly intelligence: CatalogIntelligenceStore;
 
   constructor(directory: string) {
     if (
@@ -161,30 +177,47 @@ export class ProjectCatalog {
     )
       throw new Error("Catalog database must be a regular file");
     this.database = new DatabaseSync(path);
-    const version = Number(
-      this.database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
-    );
-    if (version > 1) {
+    try {
+      const version = Number(
+        this.database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+      );
+      if (version > CATALOG_SCHEMA_VERSION)
+        throw new Error(
+          `Unsupported future catalog schema ${version}; use a newer OpenFilm version`,
+        );
+      this.database.exec(`
+        PRAGMA journal_mode=WAL;
+        PRAGMA foreign_keys=ON;
+        PRAGMA busy_timeout=5000;
+      `);
+      if (version < CATALOG_SCHEMA_VERSION) {
+        this.database.exec("BEGIN IMMEDIATE");
+        try {
+          this.database.exec(`
+            CREATE TABLE IF NOT EXISTS assets (
+              id TEXT PRIMARY KEY, uri TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+              media_type TEXT NOT NULL, captured_at TEXT, rating REAL,
+              favorite INTEGER NOT NULL DEFAULT 0, rejected INTEGER NOT NULL DEFAULT 0,
+              locked INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS assets_capture ON assets(captured_at, id);
+            CREATE INDEX IF NOT EXISTS assets_media_type ON assets(media_type);
+            CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
+          `);
+          migrateIntelligenceSchema(this.database);
+          this.database.exec(
+            `PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`,
+          );
+        } catch (error) {
+          this.database.exec("ROLLBACK");
+          throw error;
+        }
+      }
+      this.intelligence = new CatalogIntelligenceStore(this.database);
+    } catch (error) {
       this.database.close();
-      throw new Error(
-        `Unsupported future catalog schema ${version}; use a newer OpenFilm version`,
-      );
+      throw error;
     }
-    this.database.exec(`
-      PRAGMA journal_mode=WAL;
-      PRAGMA foreign_keys=ON;
-      PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS assets (
-        id TEXT PRIMARY KEY, uri TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
-        media_type TEXT NOT NULL, captured_at TEXT, rating REAL,
-        favorite INTEGER NOT NULL DEFAULT 0, rejected INTEGER NOT NULL DEFAULT 0,
-        locked INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS assets_capture ON assets(captured_at, id);
-      CREATE INDEX IF NOT EXISTS assets_media_type ON assets(media_type);
-      CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
-      PRAGMA user_version=1;
-    `);
   }
 
   upsertAsset(asset: MediaAsset): void {

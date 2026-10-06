@@ -53,8 +53,13 @@ remains verbatim. These additive fields retain schema 1.0.0 and require no catal
 migration. UI language and theme are local preferences outside the project.
 
 The manifest is validated before atomic temporary-file replacement. The catalog
-uses SQLite schema `PRAGMA user_version=1`, WAL mode, indexed fields for listing,
-and JSON descriptors for extensible asset data. It stores media assets and jobs.
+uses SQLite schema `PRAGMA user_version=2`, WAL mode, indexed fields for listing,
+and JSON descriptors for extensible asset data. Version 1 migrates atomically to
+version 2 by adding transcript revision/segment tables, derived-analysis caches
+and source-bound manual markers. Existing asset/job descriptors are preserved;
+failed migration rolls back. Large transcripts use bounded segment pages, with
+words stored alongside each segment. Manifest schema remains 1.0.0. See
+[media intelligence](media-intelligence.md).
 User preference patches change rating/state/tags while keeping source descriptors.
 Future catalog schema versions are rejected. Access through `ProjectCatalog`
 preserves the schema's invariants; avoid ad-hoc SQL mutations.

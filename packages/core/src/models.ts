@@ -181,6 +181,13 @@ export interface Job {
   type: string;
   status: JobStatus;
   progress?: number;
+  /** Source-scoped analysis jobs share the same durable Activity model. */
+  assetId?: string;
+  stage?: string;
+  execution?: "cpu" | "gpu";
+  model?: string;
+  language?: string;
+  fallbackReason?: string;
   errors?: {
     uri: string;
     stage: string;

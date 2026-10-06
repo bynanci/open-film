@@ -11,6 +11,7 @@ import { compose } from "./index.js";
 
 export type TimelineCommand =
   | { type: "trim"; clipId: string; sourceIn: number; sourceOut: number }
+  | { type: "clip.split"; clipId: string; sourceTime: number }
   | { type: "duration"; clipId: string; duration: number }
   | { type: "speed"; clipId: string; speed: number }
   | { type: "volume"; clipId: string; volume: number }
@@ -335,6 +336,68 @@ export function applyTimelineCommand(
     fail(`Clip "${clip.id}" is locked. Unlock it before editing.`);
   const asset = findAsset(assets, clip.assetId);
   switch (command.type) {
+    case "clip.split": {
+      if (asset.mediaType !== "video" && asset.mediaType !== "audio")
+        fail(
+          "Split requires a flat video or audio source. Use photo duration for still images.",
+        );
+      if (asset.state.locked)
+        fail(`Source "${asset.name}" is locked. Unlock it before splitting.`);
+      if (track.type === "titles")
+        fail(
+          "Split source media on its video or audio track, rather than a title track.",
+        );
+      const speed = clip.transform?.speed ?? 1;
+      finite(speed, "Speed", 0, true);
+      const { sourceIn, sourceOut } = sourceBounds(clip, asset);
+      finite(command.sourceTime, "Split source time", sourceIn, true);
+      if (command.sourceTime >= sourceOut)
+        fail(
+          "Split source time must be strictly inside the selected source range.",
+        );
+      const duration = (sourceOut - sourceIn) / speed;
+      finite(duration, "Selected source duration", 0, true);
+      if (
+        Math.abs(duration - clip.timelineDuration) >
+        EPSILON * Math.max(1, duration)
+      )
+        fail(
+          "Source range and timeline duration disagree. Apply a source trim before splitting.",
+        );
+      const leftDuration = (command.sourceTime - sourceIn) / speed;
+      const rightDuration = clip.timelineDuration - leftDuration;
+      finite(leftDuration, "Left split duration", 0, true);
+      finite(rightDuration, "Right split duration", 0, true);
+      if (clip.transition && clip.transition.duration > leftDuration)
+        fail(
+          "Choose a split after the incoming crossfade or change the transition to Cut before splitting.",
+        );
+      const rightStart = clip.timelineStart + leftDuration;
+      finite(rightStart, "Right split timeline start", 0);
+      const ids = new Set(allClips(next).map((item) => item.id));
+      let rightId: string;
+      for (let index = 1; ; index++) {
+        const suffix = `-split-${index}`;
+        rightId = `${clip.id.slice(0, 256 - suffix.length)}${suffix}`;
+        if (!ids.has(rightId)) break;
+      }
+      const right: Clip = {
+        ...structuredClone(clip),
+        id: rightId,
+        sourceIn: command.sourceTime,
+        sourceOut,
+        timelineStart: rightStart,
+        timelineDuration: rightDuration,
+      };
+      // A transition belongs to the original incoming edge, not the new internal cut.
+      delete right.transition;
+      clip.sourceIn = sourceIn;
+      clip.sourceOut = command.sourceTime;
+      clip.timelineDuration = leftDuration;
+      track.clips.splice(track.clips.indexOf(clip) + 1, 0, right);
+      // No ripple: the two halves retain the original end, gaps and track positions.
+      break;
+    }
     case "trim": {
       if (asset.mediaType === "image")
         fail(

@@ -759,14 +759,26 @@ async function pollJobs() {
         jobs.value.find((previous) => previous.id === job.id)?.status !==
           job.status,
     );
+    const workflowChanged = result.jobs.some(
+      (job) =>
+        (job.type === "import" || job.type === "render") &&
+        !jobs.value.some(
+          (previous) =>
+            previous.id === job.id &&
+            previous.status === job.status &&
+            previous.progress === job.progress,
+        ),
+    );
     jobs.value = result.jobs;
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
       .join("|");
     if (signature !== lastJobSignature) {
       lastJobSignature = signature;
-      await reloadAssets();
-      await refreshProject();
+      if (workflowChanged) {
+        await reloadAssets();
+        await refreshProject();
+      }
       if (newlyImported) await checkMediaStatus();
     }
   } catch {
@@ -1094,6 +1106,8 @@ async function exportFilm(format: string) {
   });
 }
 function jobTitle(job: Job): string {
+  if (["transcribe", "waveform", "scenes"].includes(job.type))
+    return `${t(`precision.jobTypes.${job.type}`)} · ${t(`precision.jobStatuses.${job.status}`)}`;
   const kind = job.type === "render" ? "render" : "import";
   const status =
     job.status === "completed"
@@ -1393,7 +1407,9 @@ onUnmounted(() => {
             :aria-label="
               job.type === 'render'
                 ? t('app.activity.previewProgress')
-                : t('app.activity.importProgress')
+                : ['transcribe', 'waveform', 'scenes'].includes(job.type)
+                  ? t('precision.analysis')
+                  : t('app.activity.importProgress')
             "
           />
           <button
@@ -1405,9 +1421,11 @@ onUnmounted(() => {
             {{
               cancellingJobs[job.id]
                 ? t("app.activity.cancelling")
-                : job.type === "render"
-                  ? t("app.activity.cancelRender")
-                  : t("app.activity.cancelImport")
+                : ["transcribe", "waveform", "scenes"].includes(job.type)
+                  ? t("precision.cancel")
+                  : job.type === "render"
+                    ? t("app.activity.cancelRender")
+                    : t("app.activity.cancelImport")
             }}
           </button>
           <details v-if="job.errors?.length" class="job-errors">
@@ -2488,6 +2506,7 @@ onUnmounted(() => {
             @change="editorChanged"
             @edited="editorEdited"
             @playback="toggleRenderedPlayback"
+            @activity="refreshJobs"
           />
         </template>
       </section>

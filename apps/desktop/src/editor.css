@@ -1464,3 +1464,408 @@ button.editor-beat-heading:hover {
     padding-bottom: var(--of-space-1);
   }
 }
+
+.editor-mode-switch {
+  display: flex;
+  gap: var(--of-space-1);
+}
+
+.precision-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 26rem;
+  height: var(--precision-height, 30rem);
+  color: var(--of-text-primary);
+  background: var(--of-surface-1);
+}
+
+.precision-source-picker {
+  flex: 0 0 auto;
+  padding: var(--of-space-2) var(--of-space-4);
+  border-bottom: 1px solid var(--of-border-subtle);
+}
+
+.precision-source-picker .editor-field {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--of-space-3);
+}
+
+.precision-source-picker select {
+  width: min(28rem, 65%);
+}
+
+.precision-editor > .editor-empty {
+  flex: 1;
+}
+
+.precision-editor > .editor-message {
+  flex: 0 0 auto;
+  max-height: 6rem;
+  margin: var(--of-space-2) var(--of-space-4);
+}
+
+.precision-grid {
+  display: grid;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 19rem;
+  grid-template-rows: minmax(7rem, 1fr) minmax(12rem, 1.3fr);
+  grid-template-areas: "player panel" "waveform panel";
+}
+
+.precision-player-region {
+  grid-area: player;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: var(--of-space-2) var(--of-space-4);
+  background: var(--of-player);
+}
+
+.precision-player-region video {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+
+.precision-player-region audio {
+  width: 100%;
+  min-width: 0;
+  margin: auto 0;
+}
+
+.precision-transport {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--of-space-2);
+  padding-top: var(--of-space-2);
+  color: var(--of-on-media);
+}
+
+.precision-time {
+  margin-left: auto;
+  font-size: var(--of-font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.precision-time small {
+  display: block;
+  color: var(--of-on-media-muted);
+  font-size: inherit;
+}
+
+.precision-panel {
+  grid-area: panel;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--of-space-3);
+  border-left: 1px solid var(--of-border-subtle);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.precision-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--of-space-1);
+  margin-bottom: var(--of-space-3);
+}
+
+.precision-panel-tabs button {
+  min-height: 2rem;
+  padding: var(--of-space-1) var(--of-space-2);
+  color: var(--of-text-secondary);
+  border-radius: var(--of-radius-sm);
+}
+
+.precision-panel-tabs button.selected {
+  color: var(--of-accent);
+  background: var(--of-accent-soft);
+}
+
+.precision-analysis,
+.precision-transcript,
+.precision-markers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--of-space-3);
+}
+
+.precision-analysis > .editor-button {
+  align-self: flex-start;
+}
+
+.precision-segment {
+  padding: var(--of-space-2);
+  border-bottom: 1px solid var(--of-border-subtle);
+}
+
+.precision-segment.current {
+  background: var(--of-accent-soft);
+}
+
+.precision-segment-seek {
+  display: block;
+  width: 100%;
+  min-height: 1.75rem;
+  text-align: left;
+  font-size: var(--of-font-small);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.precision-segment-seek time {
+  display: block;
+  margin-bottom: var(--of-space-1);
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.precision-words {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--of-space-1);
+}
+
+.precision-words button {
+  min-height: 1.75rem;
+  padding: 0 var(--of-space-1);
+  border-radius: var(--of-radius-sm);
+  text-align: left;
+  font-size: var(--of-font-small);
+  overflow-wrap: anywhere;
+}
+
+.precision-words button.current {
+  color: var(--of-accent-ink);
+  background: var(--of-accent);
+}
+
+.precision-panel :is(button:hover, button:focus-visible) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.precision-analysis dd {
+  margin: 0 0 var(--of-space-2);
+  overflow-wrap: anywhere;
+}
+
+.precision-marker,
+.precision-job {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--of-space-2);
+}
+
+.precision-marker > button:first-child {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.precision-job {
+  margin-top: var(--of-space-4);
+  padding-top: var(--of-space-3);
+  border-top: 1px solid var(--of-border-subtle);
+}
+
+.precision-job progress {
+  flex: 1;
+  min-width: 3rem;
+  width: 6rem;
+  accent-color: var(--of-accent);
+}
+
+.precision-source-timeline {
+  grid-area: waveform;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: var(--of-space-2) var(--of-space-4);
+  border-top: 1px solid var(--of-border-subtle);
+}
+
+.precision-wave-toolbar,
+.precision-trim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--of-space-2);
+  margin-bottom: var(--of-space-2);
+}
+
+.precision-wave-toolbar > label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--of-space-1);
+  min-height: 1.75rem;
+}
+
+.precision-wave-toolbar input {
+  accent-color: var(--of-accent);
+}
+
+.precision-waveform {
+  position: relative;
+  height: 5rem;
+  margin-inline: var(--of-space-2);
+  background: var(--of-bg);
+  border: 1px solid var(--of-border-subtle);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.precision-waveform svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.precision-wave-path {
+  fill: none;
+  stroke: var(--of-text-secondary);
+  stroke-width: 0.8;
+}
+
+.precision-selected-range {
+  fill: var(--of-accent-soft);
+}
+
+.precision-marker-line {
+  stroke: var(--of-warning);
+  stroke-width: 1;
+}
+
+.precision-playhead {
+  stroke: var(--of-accent);
+  stroke-width: 2;
+}
+
+.precision-hover {
+  stroke: var(--of-text-primary);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.precision-wave-empty {
+  position: absolute;
+  inset: var(--of-space-2);
+  display: grid;
+  align-content: center;
+  color: var(--of-text-secondary);
+  text-align: center;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.precision-trim-handle {
+  position: absolute;
+  top: 0;
+  width: 1.5rem;
+  height: 100%;
+  padding: 0;
+  transform: translateX(-50%);
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.precision-trim-handle::before {
+  position: absolute;
+  inset-block: 0;
+  left: calc(50% - 0.1875rem);
+  width: 0.375rem;
+  border: 1px solid var(--of-accent);
+  border-radius: var(--of-radius-sm);
+  background: var(--of-accent-soft);
+  content: "";
+}
+
+.precision-trim-handle:disabled {
+  cursor: not-allowed;
+}
+
+.precision-hover-time {
+  position: absolute;
+  right: var(--of-space-2);
+  top: var(--of-space-1);
+  padding-inline: var(--of-space-1);
+  color: var(--of-text-primary);
+  background: var(--of-surface-1);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.precision-ruler,
+.precision-view-start {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--of-space-3);
+  margin-block: var(--of-space-1);
+  color: var(--of-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.precision-view-start input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--of-accent);
+}
+
+.precision-trim-controls {
+  align-items: end;
+}
+
+.precision-trim-controls .editor-field {
+  width: 6.5rem;
+}
+
+.precision-snap-result {
+  color: var(--of-accent);
+}
+
+.precision-shortcuts {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--of-space-1) var(--of-space-4);
+  color: var(--of-text-secondary);
+  border-top: 1px solid var(--of-border-subtle);
+  font-size: var(--of-font-caption);
+}
+
+@media (max-width: 1100px) {
+  .precision-grid {
+    grid-template-columns: minmax(0, 1fr) 16rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .precision-editor {
+    height: auto;
+  }
+  .precision-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 16rem auto auto;
+    grid-template-areas: "player" "waveform" "panel";
+  }
+  .precision-source-timeline,
+  .precision-panel {
+    max-height: 24rem;
+  }
+}

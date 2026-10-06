@@ -49,6 +49,14 @@ Read [media portability](docs/media-portability.md) for offline/relink behavior,
 [source support](docs/source-support.md) for camera limitations, and the
 [desktop guide](apps/desktop/README.md) for shortcuts and save recovery.
 
+The **0.3 Media Intelligence foundation** adds Precision mode inside Edit:
+waveform, scene cuts, markers, snapping and transcript/word seeking. Trim and
+split use existing composition history and autosave. FFmpeg powers waveform and
+scene analysis; optional local Whisper requires an explicitly supplied model.
+No model is bundled or downloaded during recognition. See [media intelligence](docs/media-intelligence.md),
+[transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
+This development milestone does not certify camera/GPU or real ASR quality.
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`
