@@ -344,7 +344,10 @@ describe("media relinking application", () => {
       uri,
       name: basename(replacement),
     });
-    const plan = await relinker.plan({ assetIds: ["photo"], file: replacement });
+    const plan = await relinker.plan({
+      assetIds: ["photo"],
+      file: replacement,
+    });
     const candidate = plan.matches[0]!.candidates[0]!;
     expect(candidate.automatic).toBe(false);
     const { assets } = await relinker.apply({
