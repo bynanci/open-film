@@ -97,6 +97,7 @@ Export via @openfilm/application:
 interface TimelineEditorState extends EditorDocument {
   assets: MediaAsset[];
   revision: string;
+  acknowledgedRevision?: string;
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -127,6 +128,11 @@ Validate JSON input at the boundary; do not trust TypeScript casts. A stale revi
 throws an error with status409. Persist edits before acknowledging success;
 rollback in-memory state/history if validation or disk write fails. Preserve
 per-clip locks and all existing project references. Deduplicate request IDs.
+
+A duplicate edit request returns the latest editor state with optional
+`acknowledgedRevision` set to the revision written by the original request. The
+desktop acknowledges that request's commands before checking the latest revision
+for intervening edits.
 
 ## HTTP — root-owned
 

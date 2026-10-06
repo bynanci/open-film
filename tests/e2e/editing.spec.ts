@@ -540,8 +540,7 @@ test("acknowledges a recovered batch before retrying queued edits", async ({
   page.on("request", (entry) => {
     if (
       entry.method() === "POST" &&
-      new URL(entry.url()).pathname ===
-        "/api/compositions/editing-cut/edit"
+      new URL(entry.url()).pathname === "/api/compositions/editing-cut/edit"
     )
       retriedEdits.push(entry.postDataJSON() as Record<string, unknown>);
   });
