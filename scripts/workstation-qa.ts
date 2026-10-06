@@ -96,9 +96,7 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
     return ["record must be an object"];
   const record = value as Partial<WorkstationQaRecord>;
   if (record.schemaVersion !== WORKSTATION_QA_SCHEMA_VERSION)
-    errors.push(
-      `schemaVersion must be ${WORKSTATION_QA_SCHEMA_VERSION}`,
-    );
+    errors.push(`schemaVersion must be ${WORKSTATION_QA_SCHEMA_VERSION}`);
   if (
     typeof record.candidateSha !== "string" ||
     !/^[0-9a-f]{40}$/iu.test(record.candidateSha)
@@ -178,9 +176,13 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
 async function main(argv: string[]) {
   const [command, path, ...rest] = argv;
   if (command === "init") {
-    if (!path) throw new Error("Usage: workstation-qa init <output.json> --candidate <sha>");
+    if (!path)
+      throw new Error(
+        "Usage: workstation-qa init <output.json> --candidate <sha>",
+      );
     const candidateIndex = rest.indexOf("--candidate");
-    const candidate = candidateIndex >= 0 ? rest[candidateIndex + 1] : undefined;
+    const candidate =
+      candidateIndex >= 0 ? rest[candidateIndex + 1] : undefined;
     if (!candidate) throw new Error("--candidate <full-sha> is required");
     const output = resolve(path);
     await writeFile(
@@ -192,7 +194,8 @@ async function main(argv: string[]) {
     return;
   }
   if (command === "validate") {
-    if (!path) throw new Error("Usage: workstation-qa validate <evidence.json>");
+    if (!path)
+      throw new Error("Usage: workstation-qa validate <evidence.json>");
     const input = JSON.parse(await readFile(resolve(path), "utf8")) as unknown;
     const errors = validateWorkstationQaRecord(input);
     process.stdout.write(
