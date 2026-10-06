@@ -20,6 +20,10 @@ Leaving the workspace waits for pending edits. Failed requests keep a recovery
 draft tied to the revision on which it was made; a draft cannot overwrite a newer
 transcript automatically.
 
+Deleting or merging the last row of a page, changing revisions, or recovering a
+saved edit returns to the last valid page. A shorter transcript cannot leave the
+editor showing an empty page beyond its end.
+
 Transcription and re-transcription requests also participate in the navigation
 barrier from preflight through acknowledgement. A project switch cannot send a
 delayed request into a different project, even when portable copies share asset
@@ -35,6 +39,15 @@ stale ancillary responses cannot replace newer job/revision-page state.
 Reconciliation waits while a save or exact request receipt remains unresolved.
 Delayed reads and errors belong to their original draft base; they cannot mark a
 newly acknowledged save conflicted or block its receipt retry.
+
+Navigation waits for an accepted transcript load, including provider refresh and
+draft recovery, before checking whether edits can be flushed. A newer accepted
+load supersedes an older read; a refused read cannot replace recovery ownership.
+Read failure, draft conflict or disposal blocks the waiting transition rather than
+discarding edits or treating an in-flight refresh as a completed save.
+A later explicit navigation may leave a failed read when there are no unsaved
+commands or receipts. Failed saves, uncertain receipts and conflicting drafts
+still require recovery; an offline source cannot trap a clean project indefinitely.
 
 ## Timing after correction
 
@@ -71,11 +84,17 @@ Re-transcription keeps the current result until a new run succeeds; failed or
 cancelled recognition preserves existing edits. A concurrent edit causes a
 revision conflict instead of being replaced by an in-flight provider result.
 
-SQLite catalog v3 migrates v1/v2 projects in a transaction and adds transcript
+SQLite catalog v3 added transcript
 revision/history/request receipts and text knowledge tables. The `.openfilm`
 manifest and composition schema are unchanged. Request IDs are durable: retrying
 the same request after a lost response acknowledges its original result without
 applying it twice. Reusing an ID for another command is rejected.
+
+Catalog v4 transactionally migrates v1/v2/v3 projects. Its internal segment lookup
+keys use JSON string encoding so isolated UTF-16 surrogates and literal U+FFFD
+remain distinct. Original IDs, transcript evidence and text are preserved;
+malformed legacy data rolls back the migration instead of partially updating the
+catalog. This changes internal indexing, not user-visible IDs.
 
 ## Shared application contract
 
@@ -88,17 +107,20 @@ Vue-only.
 Existing provider and legacy segment IDs remain opaque, nonblank strings. Reads,
 commands, review targets and keyboard focus preserve them exactly, including
 long IDs and control-bearing values. Newly generated split IDs, asset/revision
-IDs and request IDs keep their separate strict validation. No ID rewrite or
-additional schema migration is needed for this compatibility fix.
+IDs and request IDs keep their separate strict validation.
 
 Headless examples (replace the project path and asset ID with your own):
 
 ```bash
-pnpm cli transcript source-id --project /path/film.openfilm
+pnpm cli transcript get source-id --project /path/film.openfilm
 pnpm cli transcript search source-id --project /path/film.openfilm --query "十河田"
 pnpm cli transcript edit source-id --project /path/film.openfilm --commands /path/edit.json
 pnpm cli transcript revisions source-id --project /path/film.openfilm
 ```
+
+`transcript get <asset-id>` is the canonical read syntax and accepts IDs named
+`edit`, `search`, `revisions`, `undo`, `redo`, `select` or `get`. The earlier
+`transcript <asset-id>` shorthand remains available for non-action names.
 
 `edit.json` contains the current revision from the read response, a fresh request
 ID and validated commands:
@@ -116,8 +138,12 @@ ID and validated commands:
 Reuse that exact request after an uncertain network response; use a new request
 ID for a different operation. CLI command files are bounded to 1 MiB. The local
 API exposes `GET /api/assets/:id/transcript` and POST suffixes `/edit`, `/undo`,
-`/redo` and `/select`, plus paged GET `/search`, `/revisions` and
-`/segments/:segmentId`. Invalid input and revision conflicts are structured errors.
+`/redo` and `/select`, plus paged GET `/search` and `/revisions`. Exact segment
+lookup uses `POST /api/assets/:id/transcript/segment` with JSON `{ "segmentId":
+"..." }`, bounded by the existing 1 MiB request-body limit. IDs do not enter a
+request URL, so valid long or isolated-surrogate IDs can be transported exactly.
+The existing GET `/segments/:segmentId` remains available for compatible IDs.
+Invalid input and revision conflicts are structured errors.
 
 Reads and searches are paged. Search streams parameterized SQLite rows through
 an exact literal matcher; there is no regex, FTS or semantic-search service.

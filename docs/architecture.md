@@ -91,6 +91,12 @@ revision reuse. Accepted text commands and their suggestion audit commit in one
 SQLite transaction. v1/v2 migrations retain original provider results and roll
 back on failure.
 
+Catalog v4 rebuilds only the transcript segment index inside the migration
+transaction. JSON-encoded opaque ID keys avoid SQLite UTF-8 collisions for
+isolated surrogate code units without changing original segment JSON, timings,
+words, revisions, receipts or review evidence. v1/v2/v3 upgrades and malformed
+legacy-data rollback share the same migration boundary.
+
 Global terminology uses a validated, atomic, backed-up user-data file outside the
 project. Trusted runtime options configure its path and an optional generic
 LanguageProvider; project data and HTTP bodies cannot configure executables or

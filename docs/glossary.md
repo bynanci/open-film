@@ -21,6 +21,12 @@ another replacement cascade. Overlapping terms prefer the longer match and
 project scope. Creating the same source twice in a scope updates its definition;
 conflicting ID/source updates are rejected.
 
+Case-insensitive matching uses the same Unicode simple-case equivalence as
+transcript search/replace. For example, long-s and Greek final-sigma variants match
+their corresponding letters. It does not normalize accents, apply locale-specific
+Turkish rules or expand `ß` into `ss`. Match ranges retain original UTF-16 offsets,
+including when emoji precede a term; UI language does not affect matching.
+
 Editing and saving an existing term preserves its enabled/disabled state.
 Enable or disable it explicitly with the checkbox; saving its preferred spelling
 does not silently opt it back into reviews or transcription hints.
@@ -28,6 +34,11 @@ does not silently opt it back into reviews or transcription hints.
 An empty replacement explicitly suggests removing the matched term. Desktop,
 API and CLI preserve that literal empty value; saving it never changes a
 transcript automatically. Accepting a resulting deletion remains undoable.
+
+Remembering an inline correction belongs to its selected segment and current
+text. Undo, revision restore, deletion, structural edits or selecting another
+segment clear or invalidate the offer. Ordinary typing and autosave preserve the
+current correction; a reverted correction cannot silently become a glossary rule.
 
 Each scope is bounded to 1,000 entries. Source terms have at most 512 characters;
 replacements have at most 4,096. Matching compiles term tries and processes

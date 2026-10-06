@@ -16,17 +16,17 @@ an atomic transcript command plus immutable suggestion audit; stale evidence is
 rejected for application but can be dismissed. Story, composition, trims, locks
 and media bytes stay outside this text mutation boundary.
 
-Catalog v3 transactionally migrates v1/v2 projects and preserves earlier provider
+Catalog v4 transactionally migrates v1/v2/v3 projects and preserves earlier provider
 results. No new timeline engine, LLM runtime, caption pipeline, face analysis,
 derived film or geometry feature is included.
 
 ## Automated evidence
 
 The remediated production/test tree at
-`807bc90b4e869e40a3cc1219f6d3f0faf61459b2` passed all required local regression
-gates. The complete browser run passed **49 tests** (34 existing, 15 new) with no
-failures, skips or retries. The full unit/integration suite passed **729 tests in
-69 files**. Documentation finalization follows these runs; current-head GitHub
+`3ae31a8edcc7c46c0079f7df396c1892a877ccaf` passed all required local regression
+gates. The complete browser run passed **51 tests** (34 existing, 17 new) with no
+failures, skips or retries. The full unit/integration suite passed **798 tests in
+71 files**. Documentation finalization follows these runs; current-head GitHub
 checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
@@ -35,10 +35,10 @@ checks remain the separate merge-readiness evidence.
 | `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 729 tests / 69 files                                                                                 |
+| `pnpm test`             | Passed: 798 tests / 71 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 49 tests, 9.2 minutes, one worker and zero retries                                                   |
+| `pnpm test:e2e`         | Passed: 51 tests, 9.7 minutes, one worker and zero retries                                                   |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -243,6 +243,90 @@ acknowledged manual revision and `nextFlush=true`. Its five focused real SQLite
 regressions passed again; no further P1/P2 was reproduced. Final candidate GitHub
 review/thread state and exact-head CI remain the publication readiness checks.
 
+## Fourth PR review remediation
+
+The documentation head `30586d402d460b6905a3e6130881af1d455466f4` passed
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37452568255), while
+[push CI](https://github.com/bynanci/open-film/actions/runs/37452562638) failed its
+browser step. Native checks passed in both. This earlier candidate is not an
+all-green publication gate.
+
+Annotations name two browser failures (47 passed). Signed logs/artifacts were
+unavailable, so their exact timing is not asserted. A controlled reproduction
+using the actual App functions and editor queue proved an enabled project switch
+could reject a clean in-flight provider refresh as a failed save. A separate
+reproduction proved the test's late jobs interception failed on the ordinary
+no-project response during cleanup. A real browser before/after test then held a
+successful provider read: the original Switch intent failed before the change
+and completed after it, within the same five-second assertion bound. Both focused
+CI cases passed after explicit interception cleanup and the read/flush barrier.
+No timeout increase or retry was used. Complete reruns remain separate evidence.
+
+Codex identified four more P2 cases: removing the only row on the last transcript
+page left the editor beyond its end; undo/history changes retained an obsolete
+Remember correction; valid opaque IDs failed URL encoding or exceeded request-line
+limits; and asset IDs matching CLI action names could not be read unambiguously.
+Actual SQLite/component/browser and bundled CLI reproductions failed before the
+changes. Focused actual-client/HTTP tests passed 14 cases, all catalog suites
+passed 52 cases (including nine new identity/migration regressions), and ten
+bundled CLI grammar tests passed. The two new browser regressions passed; the
+fresh complete run is recorded separately.
+
+The ID transport reproduction also exposed a catalog correctness issue: SQLite's
+native UTF-8 binding made an isolated UTF-16 surrogate collide with literal
+U+FFFD. Catalog v4 uses injective JSON-string index keys and transactionally
+rebuilds only segment indexing from original canonical JSON. Original IDs and
+non-key evidence are retained; quoted IDs cannot collide during the rebuild.
+Malformed legacy data rolls back rather than partially relabeling the database.
+Desktop exact lookup uses bounded JSON POST; the legacy GET remains supported.
+
+Independent lifecycle review also reproduced forced startup disposal deleting an
+unhydrated recovery draft. Normal guarded UI navigation was not shown to trigger
+that disposal. A minimal retention guard now preserves exact bytes before read or
+ACK recovery can publish state. Actual SQLite tests cover both unsent commands
+and a server-committed/lost-ACK receipt across the next reopen, with one manual
+revision and exact request replay. All 48 focused queue/component cases passed.
+Independent proofs cover late responses, unsent suffixes, provider conflicts and
+repeated failed GET/ACK attempts; no new correctness blocker was reproduced.
+
+The clean-read error policy is explicit: the transition waiting on a failed read
+is refused and retains its feedback. A fresh explicit navigation may leave only
+when there is no pending draft or receipt, so offline media cannot trap a clean
+project. Failed saves and uncertain receipts still require safe recovery.
+
+The resulting tree `02b4337b807fd669835251a3a0352855675bb543` passed all nine
+local gates: 774 unit/integration tests in 71 files and 51 browser cases in
+9.8 minutes, without failures, skips or retries. A final independent text review
+nevertheless reproduced case-insensitive glossary matching missing long-s and
+Greek final-sigma forms that literal transcript search/replace already recognized.
+That Unicode-folding discrepancy requires its own correction and new-head
+verification; earlier green tests alone do not close that review boundary.
+
+The glossary trie now uses bounded Unicode simple-fold keys validated by the same
+`/iu` equivalence as literal search. Exact source shadowing and case-sensitive
+matching are unchanged. Five focused tests failed before the change; all 60
+Core/application cases passed afterward, including actual offline suggestions,
+Accept, Undo, reopen and provider/source evidence preservation. An independent
+temporary conformance script scanned 1,112,064 valid scalars and checked 2,990
+engine-equivalent transforms plus 1,426 single-codepoint Unicode 15 fold pairs,
+with no mismatch in those checked pairs. This is a developer conformance record,
+not a proof of every possible string or a production latency guarantee.
+
+A separate pairwise review still found three missing Unicode simple-fold classes:
+`ΐ`/`ΐ`, `ΰ`/`ΰ` and `ﬅ`/`ﬆ`. Their full uppercase conversions expand into
+multiple codepoints, so upper/lower conversion alone is insufficient. The
+exported matcher reproduced all six directional omissions. Twelve new directional Core/application regressions failed before the correction.
+Explicit single-scalar candidates, still validated by the runtime `/iu` engine,
+now pass all 72 focused cases without accent normalization or multi-character
+expansion. Actual SQLite suggestions, acceptance, Undo, reopen, original timing
+evidence and film isolation are covered in both directions.
+
+The unchanged independent oracle then passed 9,223,369 pairwise comparisons among
+all 3,037 engine case-changing scalars, plus 1,112,064 scalar key-stability and
+false-positive checks and 179 exported-matcher range checks. This is evidence for
+the inspected Node 24 / Unicode 17 runtime, not all possible strings, future
+Unicode versions or locale-specific normalization.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -275,16 +359,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`757fd74bc1d678fc8a17ab13857db854ffc71249`, Node 24.14.0, SQLite 3.51.2,
+`3ae31a8edcc7c46c0079f7df396c1892a877ccaf`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **7.22–31.92 ms**, with a recorded maximum **52.89 ms**. Case-sensitive,
+  **6.79–31.46 ms**, with a recorded maximum **32.35 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **93.48 ms** and is outside the search interval.
+- Database seeding took **75.13 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **16.90 ms** matcher compilation and **45.40 ms** scanning, including
+  warm-up, **11.67 ms** matcher compilation and **41.33 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache

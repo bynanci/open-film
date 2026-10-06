@@ -178,5 +178,11 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Preserve disabled terminology when saving edits and release missing-suggestion recovery without discarding uncertain requests.
 - [x] Refresh short transcriptions without losing restored drafts; discard obsolete reconciliation reads and retain idempotent save retry.
 - [x] Keep suggestion polling bounded on large transcripts while retaining source validation and stale-revision protection.
+- [x] Return shrinking transcripts to a valid page across edits, history, recovery and revision restore.
+- [x] Offer Remember only for the selected segment's current correction; reverted text cannot create a stale glossary rule.
+- [x] Preserve opaque segment IDs with exact JSON transport and transactional v4 indexing without losing legacy evidence.
+- [x] Read reserved asset IDs through canonical transcript CLI grammar while retaining existing actions.
+- [x] Wait for owned transcript reads before navigation; retain startup recovery bytes through disposal and exact receipt retry.
+- [x] Match Unicode case variants consistently across glossary and transcript search without changing original text offsets or expanding characters.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.
