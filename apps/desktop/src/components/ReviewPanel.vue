@@ -15,6 +15,7 @@ import type {
 } from "@openfilm/core";
 import {
   api,
+  ApiError,
   post,
   type ReviewProviderState,
   type ReviewSuggestionsState,
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   seek: [segmentId: string];
   activity: [];
   busy: [value: boolean];
+  pending: [value: boolean];
 }>();
 const { t } = useI18n();
 const data = shallowRef<ReviewSuggestionsState>({
@@ -43,6 +45,42 @@ const provider = shallowRef<ReviewProviderState>();
 const jobs = ref<Job[]>([]);
 const batches = ref<ReviewBatch[]>([]);
 const busy = ref(false);
+type Acceptance = {
+  suggestionId: string;
+  receipt: { baseRevision: string; requestId: string };
+};
+const acceptanceKey = `openfilm:review-accept:${props.projectId}:${props.assetId}`;
+const uncertainAcceptance = shallowRef<Acceptance>();
+try {
+  const raw = localStorage.getItem(acceptanceKey);
+  if (raw) {
+    const parsed = JSON.parse(raw) as Acceptance;
+    if (
+      typeof parsed.suggestionId === "string" &&
+      typeof parsed.receipt?.baseRevision === "string" &&
+      typeof parsed.receipt?.requestId === "string"
+    )
+      uncertainAcceptance.value = parsed;
+  }
+} catch {
+  /* Invalid local receipts never create a new correction. */
+}
+watch(uncertainAcceptance, (value) => emit("pending", !!value), {
+  flush: "sync",
+  immediate: true,
+});
+function retainAcceptance() {
+  try {
+    if (uncertainAcceptance.value)
+      localStorage.setItem(
+        acceptanceKey,
+        JSON.stringify(uncertainAcceptance.value),
+      );
+    else localStorage.removeItem(acceptanceKey);
+  } catch {
+    /* Keep the exact request in memory if browser storage is unavailable. */
+  }
+}
 const projectBusy = ref(false);
 watch(busy, (value) => emit("busy", value), { flush: "sync" });
 const error = shallowRef<unknown>(null);
@@ -121,7 +159,13 @@ async function refresh(offset = data.value.offset) {
   }
 }
 async function run(source: "glossary" | "language") {
-  if (busy.value || projectBusy.value || !(await props.flush())) return;
+  if (
+    busy.value ||
+    uncertainAcceptance.value ||
+    projectBusy.value ||
+    !(await props.flush())
+  )
+    return;
   busy.value = true;
   error.value = null;
   try {
@@ -134,43 +178,56 @@ async function run(source: "glossary" | "language") {
     busy.value = false;
   }
 }
-async function accept(suggestion: ReviewSuggestion) {
-  if (busy.value || !props.revision || !(await props.flush())) return;
+async function transmitAcceptance(value: Acceptance) {
+  if (busy.value) return;
   busy.value = true;
   error.value = null;
   mutation = (async () => {
-    const key = `openfilm:suggestion:${props.projectId}:${props.assetId}:${suggestion.id}`;
     try {
-      let receipt = {
-        baseRevision: props.revision!,
-        requestId: crypto.randomUUID(),
-      };
-      try {
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          const parsed = JSON.parse(saved) as typeof receipt;
-          if (
-            typeof parsed.baseRevision === "string" &&
-            typeof parsed.requestId === "string"
-          )
-            receipt = parsed;
-        }
-        localStorage.setItem(key, JSON.stringify(receipt));
-      } catch {
-        /* Live request still retains its identity. */
-      }
-      await api.acceptSuggestion(suggestion.id, receipt);
-      localStorage.removeItem(key);
+      await api.acceptSuggestion(value.suggestionId, value.receipt);
+      uncertainAcceptance.value = undefined;
+      retainAcceptance();
       emit("changed");
       await refresh();
     } catch (cause) {
       error.value = cause;
+      // These conflicts prove this request was not accepted. Transport errors,
+      // failed responses and offline sources leave its outcome uncertain.
+      if (
+        cause instanceof ApiError &&
+        (cause.code === "review.suggestionStale" ||
+          cause.code === "transcript.revisionConflict")
+      ) {
+        uncertainAcceptance.value = undefined;
+        retainAcceptance();
+        emit("changed");
+      }
     } finally {
       busy.value = false;
     }
   })();
   await mutation;
   mutation = undefined;
+}
+async function accept(suggestion: ReviewSuggestion) {
+  if (
+    busy.value ||
+    uncertainAcceptance.value ||
+    !props.revision ||
+    !(await props.flush())
+  )
+    return;
+  const value: Acceptance = {
+    suggestionId: suggestion.id,
+    receipt: { baseRevision: props.revision, requestId: crypto.randomUUID() },
+  };
+  uncertainAcceptance.value = value;
+  retainAcceptance();
+  await transmitAcceptance(value);
+}
+async function retryAcceptance() {
+  if (uncertainAcceptance.value)
+    await transmitAcceptance(uncertainAcceptance.value);
 }
 async function skip(suggestion: ReviewSuggestion) {
   if (busy.value) return;
@@ -224,7 +281,7 @@ async function tick() {
 }
 async function flushPending() {
   if (mutation) await mutation;
-  return !busy.value;
+  return !busy.value && !uncertainAcceptance.value;
 }
 defineExpose({ refresh, flush: flushPending });
 onMounted(() => void tick());
@@ -241,7 +298,7 @@ onBeforeUnmount(() => {
     <div class="editor-actions">
       <button
         class="editor-button"
-        :disabled="busy || projectBusy"
+        :disabled="busy || !!uncertainAcceptance || projectBusy"
         @click="run('glossary')"
       >
         {{ t("transcript.findMatches") }}</button
@@ -256,6 +313,17 @@ onBeforeUnmount(() => {
         {{
           t(history ? "transcript.closeHistory" : "transcript.reviewHistory")
         }}
+      </button>
+    </div>
+    <div
+      v-if="uncertainAcceptance"
+      class="editor-error"
+      data-testid="review-acceptance-recovery"
+      role="status"
+    >
+      <p>{{ t("transcript.uncertainAcceptance") }}</p>
+      <button class="editor-button" :disabled="busy" @click="retryAcceptance">
+        {{ t("transcript.retryAcceptance") }}
       </button>
     </div>
     <p role="status">
@@ -324,7 +392,7 @@ onBeforeUnmount(() => {
         ><button
           v-if="suggestion.status === 'pending'"
           class="editor-button primary"
-          :disabled="busy"
+          :disabled="busy || !!uncertainAcceptance"
           @click="accept(suggestion)"
         >
           {{ t("transcript.accept") }}</button
@@ -362,6 +430,9 @@ onBeforeUnmount(() => {
       </p></template
     >
     <template v-else>
+      <p v-if="provider.provider?.name" class="editor-note">
+        {{ provider.provider.name }}
+      </p>
       <p v-if="remote" class="editor-note">
         {{ t("transcript.remoteConsent") }}
       </p>
@@ -382,7 +453,9 @@ onBeforeUnmount(() => {
       </button>
       <button
         class="editor-button"
-        :disabled="busy || projectBusy || !provider.available"
+        :disabled="
+          busy || !!uncertainAcceptance || projectBusy || !provider.available
+        "
         @click="run('language')"
       >
         {{ t("transcript.languageReview") }}
@@ -390,7 +463,7 @@ onBeforeUnmount(() => {
       <button
         v-if="remote && provider.available"
         class="editor-button"
-        :disabled="busy || projectBusy"
+        :disabled="busy || !!uncertainAcceptance || projectBusy"
         @click="consent(false)"
       >
         {{ t("transcript.revokeConsent") }}

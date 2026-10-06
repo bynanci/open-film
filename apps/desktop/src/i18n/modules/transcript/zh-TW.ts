@@ -2,6 +2,8 @@ export default {
   transcript: {
     jobTypes: { glossaryReview: "尋找詞彙校正", languageReview: "審閱逐字稿" },
     jobStages: { reviewing: "審閱文字" },
+    uncertainAcceptance: "此校正可能已儲存。請先確認結果，再繼續修改。",
+    retryAcceptance: "重試接受校正",
     mode: "逐字稿",
     title: "理解與校正你的回憶",
     selectedSource: "所選素材",
@@ -115,7 +117,7 @@ export default {
     regenerate: "產生新建議",
     previousSuggestions: "上一頁建議",
     nextSuggestions: "下一頁建議",
-    reviewHistory: "顯示已審阅建議",
+    reviewHistory: "顯示已審閱建議",
     closeHistory: "顯示待審建議",
     alignmentNotice:
       "修改後保留的逐字時間僅供參考，該段落的精準逐字跳轉與吸附已停用。",

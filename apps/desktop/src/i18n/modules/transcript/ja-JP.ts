@@ -5,6 +5,9 @@ export default {
       languageReview: "文字起こしを確認中",
     },
     jobStages: { reviewing: "文字を確認中" },
+    uncertainAcceptance:
+      "この修正は保存済みの可能性があります。結果を確認してから次の変更を行ってください。",
+    retryAcceptance: "承認を再試行",
     mode: "文字起こし",
     title: "思い出を理解して修正する",
     selectedSource: "選択した素材",

@@ -5,6 +5,9 @@ export default {
       languageReview: "Reviewing transcript",
     },
     jobStages: { reviewing: "Reviewing text" },
+    uncertainAcceptance:
+      "This correction may already be saved. Confirm its result before making another change.",
+    retryAcceptance: "Retry acceptance",
     mode: "Transcript",
     title: "Understand and correct your memories",
     selectedSource: "Selected source",

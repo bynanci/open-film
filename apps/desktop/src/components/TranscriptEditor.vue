@@ -59,6 +59,7 @@ const {
   discardDraft,
   downloadDraft,
   restore,
+  reconcile,
 } = useTranscriptEditor(props.projectId, props.asset.id, () => emit("changed"));
 const root = ref<HTMLElement | null>(null);
 const player = ref<HTMLMediaElement | null>(null);
@@ -84,8 +85,9 @@ const searchBusy = ref(false);
 const localError = shallowRef<unknown>(null);
 const toolsOpen = ref(false);
 const reviewBusy = ref(false);
+const reviewPending = ref(false);
 const hasPending = computed(
-  () => transcriptHasPending.value || reviewBusy.value,
+  () => transcriptHasPending.value || reviewBusy.value || reviewPending.value,
 );
 const tool = ref<"glossary" | "suggestions">("glossary");
 const corrections = ref<{ before: string; after: string } | null>(null);
@@ -150,6 +152,7 @@ const busy = computed(
   () =>
     pending.value ||
     reviewBusy.value ||
+    reviewPending.value ||
     historyBusy.value ||
     status.value === "loading" ||
     status.value === "conflict",
@@ -191,11 +194,17 @@ async function flush() {
 }
 defineExpose({ flush, hasPending, reload: () => load(0, false) });
 async function toggleTools() {
-  if (reviewBusy.value || !(await flush())) return;
+  if (reviewBusy.value || reviewPending.value || !(await flush())) return;
   toolsOpen.value = !toolsOpen.value;
 }
 async function selectTool(value: "glossary" | "suggestions") {
-  if (value === tool.value || reviewBusy.value || !(await flush())) return;
+  if (
+    value === tool.value ||
+    reviewBusy.value ||
+    reviewPending.value ||
+    !(await flush())
+  )
+    return;
   tool.value = value;
 }
 async function updateAncillary() {
@@ -750,7 +759,7 @@ onBeforeUnmount(() => {
         ><button
           class="editor-button"
           :aria-expanded="toolsOpen"
-          :disabled="reviewBusy"
+          :disabled="reviewBusy || reviewPending"
           @click="toggleTools"
         >
           {{ t(toolsOpen ? "transcript.hideTools" : "transcript.showTools") }}
@@ -1110,7 +1119,18 @@ onBeforeUnmount(() => {
                             : "transcript.revisionReview",
                     )
                   }}
-                  · {{ formatDate(revision.createdAt) }}
+                  ·
+                  {{
+                    formatDate(revision.createdAt, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      fractionalSecondDigits: 3,
+                    })
+                  }}
                 </option>
               </select></label
             ><button
@@ -1289,7 +1309,7 @@ onBeforeUnmount(() => {
             :key="value"
             class="editor-button"
             :aria-pressed="tool === value"
-            :disabled="reviewBusy"
+            :disabled="reviewBusy || reviewPending"
             @click="selectTool(value)"
           >
             {{ t(`transcript.${value}`) }}
@@ -1312,13 +1332,14 @@ onBeforeUnmount(() => {
           :revision="state?.revision"
           :flush="flushTranscript"
           @changed="
-            load(state?.offset ?? 0, false);
+            reconcile();
             updateAncillary();
             emit('changed');
           "
           @seek="seekSegment"
           @activity="emit('activity')"
           @busy="reviewBusy = $event"
+          @pending="reviewPending = $event"
         />
       </aside>
     </div>
@@ -1327,6 +1348,7 @@ onBeforeUnmount(() => {
 </template>
 <style scoped>
 .transcript-workspace {
+  --transcript-preview-height: 220px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1375,6 +1397,9 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
   padding-right: 6px;
 }
+.transcript-main {
+  scroll-padding-top: calc(var(--transcript-preview-height) + 48px);
+}
 .transcript-tools {
   border-left: 1px solid var(--of-border-subtle);
   padding-left: 16px;
@@ -1383,7 +1408,9 @@ onBeforeUnmount(() => {
   background: var(--of-surface-1);
   border-radius: var(--of-radius-lg);
   overflow: hidden;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: var(--of-z-media);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -1393,7 +1420,7 @@ onBeforeUnmount(() => {
 .transcript-player video {
   display: block;
   width: 100%;
-  max-height: 220px;
+  height: var(--transcript-preview-height);
   object-fit: contain;
   background: var(--of-bg);
 }
@@ -1651,8 +1678,13 @@ onBeforeUnmount(() => {
   .transcript-toolbar .editor-actions {
     flex-wrap: wrap;
   }
-  .transcript-player video {
-    max-height: 180px;
+  .transcript-workspace {
+    --transcript-preview-height: 180px;
+  }
+}
+@media (max-height: 800px) {
+  .transcript-workspace {
+    --transcript-preview-height: 120px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

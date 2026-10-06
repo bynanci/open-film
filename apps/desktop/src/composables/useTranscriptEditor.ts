@@ -261,6 +261,28 @@ export function useTranscriptEditor(
     if (!(await flush())) return false;
     return load(offset, false);
   }
+  async function reconcile() {
+    if (!hasPending.value) return load(state.value?.offset ?? 0, false);
+    const stamp = ++readGeneration;
+    try {
+      const saved = await api.transcript(
+        assetId,
+        state.value?.offset ?? 0,
+        100,
+      );
+      if (disposed || stamp !== readGeneration) return false;
+      if (saved.revision !== state.value?.revision) {
+        status.value = "conflict";
+        notice.value = "transcript.draftConflict";
+        retain();
+        return false;
+      }
+      return true;
+    } catch (cause) {
+      if (!disposed && stamp === readGeneration) fail(cause);
+      return false;
+    }
+  }
   async function discardDraft() {
     if (saving) await saving;
     pending = [];
@@ -313,5 +335,6 @@ export function useTranscriptEditor(
     discardDraft,
     downloadDraft,
     restore,
+    reconcile,
   };
 }
