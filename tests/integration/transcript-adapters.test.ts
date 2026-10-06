@@ -217,11 +217,8 @@ describe("transcript REST and CLI adapters", () => {
       stage: "interrupted",
     });
     expect(
-      (
-        await (
-          await fetch(`${base}/review/jobs/${job.id}/batches`)
-        ).json()
-      ).batches[0].status,
+      (await (await fetch(`${base}/review/jobs/${job.id}/batches`)).json())
+        .batches[0].status,
     ).toBe("cancelled");
   });
 
