@@ -165,17 +165,16 @@ export class FFmpegRenderer {
             );
             if (geometry.scale !== 1)
               transform.push(
-                `scale=ceil(iw*${number(geometry.scale)}/2)*2:ceil(ih*${number(geometry.scale)}/2)*2`,
+                `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
               );
+            // Rotation must happen in an alpha-capable format. Otherwise transparent
+            // rotated corners become black and diverge from the browser preview.
+            transform.push("setsar=1", "format=rgba");
             if (geometry.rotation)
               transform.push(
-                `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=black@0`,
+                `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
               );
-            transform.push(
-              "setsar=1",
-              `fps=${number(settings.frameRate)}`,
-              "format=yuva420p",
-            );
+            transform.push(`fps=${number(settings.frameRate)}`);
             const fade = clip.transition?.duration ?? 0;
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
