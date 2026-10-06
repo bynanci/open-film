@@ -232,6 +232,8 @@ export interface TranscriptionOptions extends OperationOptions {
   modelPath?: string;
   execution?: "auto" | "cpu" | "gpu";
   onStage?: (stage: TranscriptionStage) => void;
+  /** Optional terminology context, never automatic transcript replacements. */
+  promptHints?: string[];
 }
 
 export interface TranscriptionProvider extends AIProviderDescriptor {
@@ -240,6 +242,7 @@ export interface TranscriptionProvider extends AIProviderDescriptor {
     wordTimestamps: boolean;
     languages: string[];
     cpuFallback: boolean;
+    supportsPromptHints?: boolean;
   };
   transcribe(
     asset: MediaAsset,

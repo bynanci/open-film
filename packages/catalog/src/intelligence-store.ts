@@ -9,8 +9,9 @@ import {
   type TranscriptDocument,
   type WaveformData,
 } from "@openfilm/core";
+import { recordTranscriptRevision } from "./transcript-editor-store.js";
 
-export const CATALOG_SCHEMA_VERSION = 2;
+export const CATALOG_SCHEMA_VERSION = 3;
 export const INTELLIGENCE_CACHE_VERSION = "1";
 export const TRANSCRIPT_PAGE_LIMIT = 200;
 
@@ -241,7 +242,10 @@ export class CatalogIntelligenceStore {
     );
   }
 
-  replaceTranscript(value: TranscriptDocument): void {
+  replaceTranscript(
+    value: TranscriptDocument,
+    options: { expectedRevision?: string | null } = {},
+  ): void {
     const document = validateTranscriptDocument(value);
     const { segments, ...header } = document;
     this.transaction(() => {
@@ -279,6 +283,12 @@ export class CatalogIntelligenceStore {
           segment.text,
           JSON.stringify(segment),
         );
+      recordTranscriptRevision(
+        this.database,
+        inserted.lastInsertRowid,
+        document,
+        options,
+      );
     });
   }
 

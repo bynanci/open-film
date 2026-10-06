@@ -123,7 +123,12 @@ export function candidatesFromIntelligence(
         priority: PRIORITY["transcript-segment"]!,
         label: segment.text,
       });
-    for (const [index, word] of (segment.words ?? []).entries())
+    // Words remain historical evidence after correction. Segment timing still supports
+    // seeking, but text-edited words must never be advertised as aligned snap targets.
+    for (const [index, word] of (segment.alignmentState === "text-edited"
+      ? []
+      : (segment.words ?? [])
+    ).entries())
       for (const edge of ["start", "end"] as const)
         candidates.push({
           id: `${segment.id}:word:${index}:${edge}`,

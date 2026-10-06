@@ -25,6 +25,10 @@ export interface TranscriptSegment {
   end: number;
   text: string;
   words?: TranscriptWord[];
+  /** Missing on pre-0.3.1 analysis is equivalent to original. */
+  alignmentState?: "original" | "text-edited" | "realigned";
+  /** The authority used for segment boundaries after a split. */
+  timingSource?: "provider" | "playhead" | "word-boundary" | "estimated";
 }
 
 export interface TranscriptDocument {
@@ -268,6 +272,24 @@ export function validateTranscriptDocument(
         end,
         text: text(segment.text, `${p}.text`),
         ...(words === undefined ? {} : { words }),
+        ...(segment.alignmentState === undefined
+          ? {}
+          : {
+              alignmentState: enumValue(
+                segment.alignmentState,
+                ["original", "text-edited", "realigned"] as const,
+                `${p}.alignmentState`,
+              ),
+            }),
+        ...(segment.timingSource === undefined
+          ? {}
+          : {
+              timingSource: enumValue(
+                segment.timingSource,
+                ["provider", "playhead", "word-boundary", "estimated"] as const,
+                `${p}.timingSource`,
+              ),
+            }),
       };
     },
   );
@@ -280,6 +302,16 @@ export function validateTranscriptDocument(
     provenance: provenance(data.provenance, `${path}.provenance`),
     segments,
   };
+}
+
+function enumValue<T extends string>(
+  value: unknown,
+  values: readonly T[],
+  path: string,
+): T {
+  if (typeof value !== "string" || !values.includes(value as T))
+    fail(path, `expected one of ${values.join(", ")}`);
+  return value as T;
 }
 
 export function validateWaveformData(value: unknown): WaveformData {

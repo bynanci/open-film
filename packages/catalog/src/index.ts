@@ -7,6 +7,17 @@ import {
   CatalogIntelligenceStore,
   migrateIntelligenceSchema,
 } from "./intelligence-store.js";
+import {
+  CatalogTranscriptEditorStore,
+  migrateTranscriptEditorSchema,
+} from "./transcript-editor-store.js";
+import {
+  CatalogKnowledgeStore,
+  migrateKnowledgeSchema,
+} from "./knowledge-store.js";
+
+export * from "./transcript-editor-store.js";
+export * from "./knowledge-store.js";
 
 export {
   CATALOG_SCHEMA_VERSION,
@@ -163,6 +174,8 @@ function assetFilter(
 export class ProjectCatalog {
   private database: DatabaseSync;
   readonly intelligence: CatalogIntelligenceStore;
+  readonly transcripts: CatalogTranscriptEditorStore;
+  readonly knowledge: CatalogKnowledgeStore;
 
   constructor(directory: string) {
     if (
@@ -190,6 +203,9 @@ export class ProjectCatalog {
         PRAGMA foreign_keys=ON;
         PRAGMA busy_timeout=5000;
       `);
+      // Verify the complete older schema before starting an additive migration.
+      // A malformed v2 database must not be relabeled as a healthy v3 project.
+      if (version >= 2) new CatalogIntelligenceStore(this.database);
       if (version < CATALOG_SCHEMA_VERSION) {
         this.database.exec("BEGIN IMMEDIATE");
         try {
@@ -204,7 +220,9 @@ export class ProjectCatalog {
             CREATE INDEX IF NOT EXISTS assets_media_type ON assets(media_type);
             CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
           `);
-          migrateIntelligenceSchema(this.database);
+          if (version < 2) migrateIntelligenceSchema(this.database);
+          migrateTranscriptEditorSchema(this.database);
+          migrateKnowledgeSchema(this.database);
           this.database.exec(
             `PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`,
           );
@@ -214,6 +232,8 @@ export class ProjectCatalog {
         }
       }
       this.intelligence = new CatalogIntelligenceStore(this.database);
+      this.transcripts = new CatalogTranscriptEditorStore(this.database);
+      this.knowledge = new CatalogKnowledgeStore(this.database);
     } catch (error) {
       this.database.close();
       throw error;

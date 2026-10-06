@@ -358,5 +358,5 @@ it("rejects out-of-source analysis and isolates manual marker edits between asse
     ),
   ).toThrow("Only manual");
   expect(() => store.saveWaveform({ ...waveform(), peaks: [NaN] })).toThrow();
-  expect(CATALOG_SCHEMA_VERSION).toBe(2);
+  expect(CATALOG_SCHEMA_VERSION).toBe(3);
 });

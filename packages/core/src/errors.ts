@@ -40,6 +40,14 @@ export const applicationErrorCodes = [
   "transcription.noAudio",
   "transcription.failed",
   "transcription.invalidOutput",
+  "transcript.revisionConflict",
+  "transcript.segmentNotFound",
+  "transcript.alignmentStale",
+  "transcript.invalidCommand",
+  "glossary.entryConflict",
+  "review.providerUnavailable",
+  "review.suggestionStale",
+  "review.invalidOutput",
   "operation.failed",
 ] as const;
 export type ApplicationErrorCode = (typeof applicationErrorCodes)[number];
