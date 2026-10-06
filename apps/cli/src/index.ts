@@ -448,8 +448,7 @@ async function main() {
             updatedAt: recovery.updatedAt,
           }),
         });
-      }
-      else if (action === "skip-batch") {
+      } else if (action === "skip-batch") {
         const index = Number(value(options, "index"));
         if (
           value(options, "index") === undefined ||
