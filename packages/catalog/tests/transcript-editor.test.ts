@@ -180,6 +180,147 @@ it("returns complete opaque NUL IDs from paged search, navigation lookups and re
   expect(store.getFull("source", hash)!.document).toEqual(provider);
 });
 
+it.each([true, false])(
+  "searches canonical text before and after NUL with exact paged ranges (caseSensitive=%s)",
+  async (caseSensitive) => {
+    const context = await fixture(4);
+    const provider = { ...document(4), id: "nul-text-provider" };
+    const texts = [
+      "記憶😀 \u0000OpenFilm tail",
+      "記憶😀 Open\u0000Film tail",
+      "記憶😀 OpenFilm\u0000tail",
+      "記憶😀 OpenFilm\u0000OpenFilm",
+    ];
+    provider.segments = provider.segments.map((segment, index) => ({
+      ...segment,
+      id: `provider\u0000segment-${index}`,
+      text: texts[index]!,
+    }));
+    context.catalog.intelligence.replaceTranscript(provider);
+    const options = {
+      query: caseSensitive ? "OpenFilm" : "oPeNfIlM",
+      caseSensitive,
+      limit: 1,
+    };
+    for (const [offset, position] of [0, 2, 3].entries()) {
+      const result = context.catalog.transcripts.search("source", hash, {
+        ...options,
+        offset,
+      });
+      expect(result).toMatchObject({ totalMatches: 4, totalSegments: 3 });
+      expect(result.matches).toEqual([
+        {
+          segmentId: provider.segments[position]!.id,
+          position,
+          start: position * 3,
+          end: position * 3 + 2,
+          text: texts[position],
+          ranges:
+            position === 0
+              ? [{ start: 6, end: 14 }]
+              : position === 2
+                ? [{ start: 5, end: 13 }]
+                : [
+                    { start: 5, end: 13 },
+                    { start: 14, end: 22 },
+                  ],
+        },
+      ]);
+    }
+    const afterNul = context.catalog.transcripts.search("source", hash, {
+      query: caseSensitive ? "Film" : "fIlM",
+      caseSensitive,
+      offset: 1,
+      limit: 1,
+    });
+    expect(afterNul).toMatchObject({
+      totalMatches: 5,
+      totalSegments: 4,
+      matches: [
+        {
+          segmentId: provider.segments[1]!.id,
+          text: texts[1],
+          ranges: [{ start: 10, end: 14 }],
+        },
+      ],
+    });
+    expect(() =>
+      context.catalog.transcripts.search("source", hash, {
+        query: "Open\u0000Film",
+        caseSensitive,
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "transcript.invalidCommand" }),
+    );
+    const reopened = context.reopen();
+    expect(
+      reopened.transcripts.search("source", hash, {
+        query: caseSensitive ? "Film" : "fIlM",
+        caseSensitive,
+        offset: 1,
+        limit: 1,
+      }),
+    ).toEqual(afterNul);
+    expect(reopened.transcripts.getFull("source", hash)!.document).toEqual(
+      provider,
+    );
+  },
+);
+
+it.each([true, false])(
+  "keeps canonical isolated-surrogate text distinct from literal replacement characters (caseSensitive=%s)",
+  async (caseSensitive) => {
+    const context = await fixture();
+    const provider = { ...document(), id: "surrogate-text-provider" };
+    const texts = [
+      "記憶😀 \ud800Memory \udc00",
+      "記憶😀 \ufffdMemory \ufffd",
+      "記憶😀 Memory",
+    ];
+    provider.segments = provider.segments.map((segment, index) => ({
+      ...segment,
+      text: texts[index]!,
+    }));
+    context.catalog.intelligence.replaceTranscript(provider);
+    const options = {
+      query: caseSensitive ? "Memory" : "mEmOrY",
+      caseSensitive,
+    };
+    const found = context.catalog.transcripts.search("source", hash, options);
+    expect(found.totalMatches).toBe(3);
+    expect(found.matches.map(({ text }) => text)).toEqual(texts);
+    expect(found.matches.map(({ ranges }) => ranges)).toEqual([
+      [{ start: 6, end: 12 }],
+      [{ start: 6, end: 12 }],
+      [{ start: 5, end: 11 }],
+    ]);
+    const replacement = context.catalog.transcripts.search("source", hash, {
+      query: "\ufffd",
+      caseSensitive,
+    });
+    expect(replacement).toMatchObject({
+      totalMatches: 2,
+      totalSegments: 1,
+      matches: [
+        {
+          segmentId: "segment-1",
+          text: texts[1],
+          ranges: [
+            { start: 5, end: 6 },
+            { start: 13, end: 14 },
+          ],
+        },
+      ],
+    });
+    expect(
+      context.reopen().transcripts.search("source", hash, options),
+    ).toEqual(found);
+    expect(
+      context.catalog.transcripts.getFull("source", hash)!.document,
+    ).toEqual(provider);
+  },
+);
+
 it("preserves provider provenance, every original revision and independent transcript history through edits and reopen", async () => {
   const test = await fixture();
   let store = test.catalog.transcripts;
@@ -499,6 +640,14 @@ it("bounds 10,000-segment page/revision/search results and performs matching wit
   expect(result.matches).toHaveLength(10);
   expect(result.matches[0]!.position).toBe(9990);
   expect(result.matches[0]!.ranges).toEqual([{ start: 0, end: 3 }]);
+  expect(
+    store.search("source", hash, {
+      query: "十河田",
+      caseSensitive: false,
+      offset: 9990,
+      limit: 10,
+    }),
+  ).toEqual(result);
   expect(elapsed).toBeLessThan(3000);
   expect(() => store.get("source", hash, { limit: 201 })).toThrow("limit");
   expect(() =>

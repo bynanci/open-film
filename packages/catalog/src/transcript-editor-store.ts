@@ -428,13 +428,22 @@ export class CatalogTranscriptEditorStore {
     );
     const rows = this.database
       .prepare(
-        `SELECT position,start,end,text FROM intelligence_segments WHERE revision=? ${sensitive ? "AND instr(text,?)>0" : ""} ORDER BY position`,
+        `SELECT position,start,end,text,
+          CASE WHEN instr(text,char(0))>0 OR instr(text,char(65533))>0
+            THEN data -> '$.text' ELSE NULL END AS canonical_text
+          FROM intelligence_segments WHERE revision=? ${sensitive ? "AND instr(text,?)>0" : ""} ORDER BY position`,
       )
       .iterate(
         ...(sensitive ? [stored.revision!, options.query] : [stored.revision!]),
       );
     for (const row of rows) {
-      const text = String(row.text),
+      // Native TEXT truncates NUL and normalizes isolated surrogates to U+FFFD.
+      // Recover only those rows' escaped canonical text before matching; ordinary
+      // rows still avoid JSON parsing, and full segment reads stay page-bounded.
+      const text: string =
+          row.canonical_text === null
+            ? String(row.text)
+            : JSON.parse(String(row.canonical_text)),
         ranges = findMatches(text);
       if (!ranges.length) continue;
       if (totalSegments >= page.offset && matches.length < page.limit) {

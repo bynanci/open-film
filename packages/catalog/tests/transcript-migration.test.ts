@@ -9,7 +9,7 @@ const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
-async function legacyV2(segmentId = "segment") {
+async function legacyV2(segmentId = "segment", text = "Original words") {
   const directory = await mkdtemp(join(tmpdir(), "openfilm-transcript-v2-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const catalog = new ProjectCatalog(directory);
@@ -39,7 +39,7 @@ async function legacyV2(segmentId = "segment") {
         id: segmentId,
         start: 1,
         end: 2,
-        text: "Original words",
+        text,
         words: [{ start: 1, end: 2, text: "Original" }],
       },
     ],
@@ -100,6 +100,52 @@ it.each(["legacy-" + "x".repeat(300), "legacy\u0000\nsegment"])(
     });
   },
 );
+it("searches original legacy NUL and surrogate text after v2 migration without rewriting evidence", async () => {
+  const text = "記憶😀 \u0000\ud800OpenFilm \ufffd";
+  const legacy = await legacyV2("legacy\u0000segment", text);
+  const database = new DatabaseSync(legacy.path);
+  database
+    .prepare("UPDATE intelligence_segments SET segment_id=?")
+    .run("legacy\u0000segment");
+  const before = database
+    .prepare("SELECT data FROM intelligence_segments")
+    .get()!.data;
+  database.close();
+  const catalog = new ProjectCatalog(legacy.directory);
+  cleanup.push(() => catalog.close());
+  for (const caseSensitive of [true, false]) {
+    const found = catalog.transcripts.search("asset", "hash", {
+      query: caseSensitive ? "OpenFilm" : "oPeNfIlM",
+      caseSensitive,
+    });
+    expect(found).toMatchObject({
+      totalMatches: 1,
+      totalSegments: 1,
+      matches: [
+        {
+          segmentId: "legacy\u0000segment",
+          text,
+          ranges: [{ start: 7, end: 15 }],
+        },
+      ],
+    });
+    expect(
+      catalog.transcripts.search("asset", "hash", {
+        query: "\ufffd",
+        caseSensitive,
+      }).matches[0]!.ranges,
+    ).toEqual([{ start: 16, end: 17 }]);
+  }
+  const migrated = new DatabaseSync(legacy.path);
+  try {
+    expect(
+      migrated.prepare("SELECT data FROM intelligence_segments").get()!.data,
+    ).toBe(before);
+  } finally {
+    migrated.close();
+  }
+});
+
 it("upgrades real v2 transcript tables transactionally without rebuilding analysis or modifying original provider bytes", async () => {
   const legacy = await legacyV2();
   let catalog = new ProjectCatalog(legacy.directory);
