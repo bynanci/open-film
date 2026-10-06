@@ -20,6 +20,12 @@ Leaving the workspace waits for pending edits. Failed requests keep a recovery
 draft tied to the revision on which it was made; a draft cannot overwrite a newer
 transcript automatically.
 
+Transcription and re-transcription requests also participate in the navigation
+barrier from preflight through acknowledgement. A project switch cannot send a
+delayed request into a different project, even when portable copies share asset
+IDs. Failed requests retain their error, block an already-waiting switch and
+allow an explicit retry.
+
 ## Timing after correction
 
 Every segment has an alignment state:
@@ -68,6 +74,12 @@ applying it twice. Reusing an ID for another command is rejected.
 unique `requestId`. Core validates commands before the catalog applies them.
 Desktop and CLI use the same application boundary; transcript state is not
 Vue-only.
+
+Existing provider and legacy segment IDs remain opaque, nonblank strings. Reads,
+commands, review targets and keyboard focus preserve them exactly, including
+long IDs and control-bearing values. Newly generated split IDs, asset/revision
+IDs and request IDs keep their separate strict validation. No ID rewrite or
+additional schema migration is needed for this compatibility fix.
 
 Headless examples (replace the project path and asset ID with your own):
 

@@ -21,6 +21,10 @@ another replacement cascade. Overlapping terms prefer the longer match and
 project scope. Creating the same source twice in a scope updates its definition;
 conflicting ID/source updates are rejected.
 
+An empty replacement explicitly suggests removing the matched term. Desktop,
+API and CLI preserve that literal empty value; saving it never changes a
+transcript automatically. Accepting a resulting deletion remains undoable.
+
 Each scope is bounded to 1,000 entries. Source terms have at most 512 characters;
 replacements have at most 4,096. Matching compiles term tries and processes
 transcripts in bounded batches. These limits keep behavior predictable; they are
@@ -32,6 +36,14 @@ Global data is a versioned `global-glossary.json`, validated before use and writ
 with an atomic replacement and a validated backup. Corrupt primary data can be
 recovered from the backup; unsupported future versions and invalid backups are
 reported rather than overwritten. Opening a project does not create global files.
+
+Writes and backup repair use an exclusive same-host process lock around the
+complete read–modify–write operation. A competing Desktop, server or CLI process
+receives `glossary.storageBusy` (HTTP 409); retry after the other write finishes.
+Successful writes therefore do not silently discard another process's terms.
+Verified dead owners can be recovered, while live, malformed or unverified lock
+owners are retained and reported as busy. The lock requires filesystem hard-link
+support and is not a distributed storage protocol.
 
 The trusted runtime path comes from an explicit application/server option, then
 `OPENFILM_USER_DATA_DIR`, then the platform user-data location:
@@ -56,7 +68,10 @@ pnpm cli glossary delete --project /path/film.openfilm --scope project --id term
 ```
 
 Use `--scope global` for user-owned terms and `--user-data-dir` for a trusted
-headless runtime location. API clients use `GET /api/glossary?scope=...`,
+headless runtime location. Omit case flags to preserve an existing term or use
+the case-sensitive default for a new term. `--case-sensitive` and
+`--case-insensitive` explicitly change either mode and are mutually exclusive.
+API clients use `GET /api/glossary?scope=...`,
 `POST /api/glossary` for add/update and `DELETE /api/glossary/:id?scope=...`.
 
 ## Before transcription
@@ -66,7 +81,9 @@ existing `TranscriptionProvider` port. A provider advertises
 `supportsPromptHints`; unsupported providers receive no hints. The application
 uses up to 50 unique nonblank preferred terms, each at most 200 characters and
 2,000 characters total. Longer glossary replacements remain valid for suggestions
-but are omitted from this compact hint list.
+but are omitted from this compact hint list. Replacements containing control
+characters, including valid multiline/tabbed glossary content, are also omitted
+from provider hints. Their saved text and review suggestions remain unchanged.
 
 Whisper adapts these hints to its initial prompt. Hints are assistance, not a
 recognition guarantee or post-processing replacement. Original recognition remains

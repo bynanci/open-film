@@ -22,20 +22,23 @@ derived film or geometry feature is included.
 
 ## Automated evidence
 
-All required local regression gates passed on the final production changes.
-The complete browser run passed **43 tests** (34 existing, 9 new) with no failures,
-skips or retries. The full unit/integration suite passed **661 tests in 65 files**.
+The remediated production/test tree at
+`757fd74bc1d678fc8a17ab13857db854ffc71249` passed all required local regression
+gates. The complete browser run passed **46 tests** (34 existing, 12 new) with no
+failures, skips or retries. The full unit/integration suite passed **702 tests in
+66 files**. Documentation finalization follows these runs; current-head GitHub
+checks remain the separate merge-readiness evidence.
 
 | Gate                    | Result                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `pnpm format:check`     | Passed                                                                                                       |
-| `pnpm test:i18n`        | Passed: 1,007 semantic keys, three locale catalogs and placeholders                                          |
+| `pnpm test:i18n`        | Passed: 1,013 semantic keys, three locale catalogs and placeholders                                          |
 | `pnpm lint`             | Passed                                                                                                       |
 | `pnpm typecheck`        | Passed: TypeScript and Vue                                                                                   |
-| `pnpm test`             | Passed: 661 tests / 65 files                                                                                 |
+| `pnpm test`             | Passed: 702 tests / 66 files                                                                                 |
 | `pnpm build`            | Passed                                                                                                       |
 | Built CLI smoke         | Passed: actual import, analysis, Story, render, reopen and export                                            |
-| `pnpm test:e2e`         | Passed: 43 tests, 7.7 minutes                                                                                |
+| `pnpm test:e2e`         | Passed: 46 tests, 8.6 minutes, one worker and zero retries                                                   |
 | `pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 parser, source validation, round-trip and 18 workstation-helper tests |
 | `pnpm test:native`      | Passed: Rust format, Clippy and test-harness compilation; zero native behavior tests                         |
 
@@ -95,6 +98,110 @@ were fixed rather than skipped. An initial full browser attempt was deliberately
 cancelled after 13 legacy passes so the source-player viewport layout could be
 corrected. Partial/cancelled runs are not full-suite success evidence.
 
+## First PR review and CI evidence
+
+PR #4's initial head was `66a810c676691f08d498df9b0a54d4d94a5d1648`.
+Its [push CI](https://github.com/bynanci/open-film/actions/runs/37438183106)
+passed, while the [PR CI](https://github.com/bynanci/open-film/actions/runs/37438205975)
+passed 41 browser tests and failed two: an acceptance-test handshake timed out,
+and pseudo-locale pagination remained on the previous 50-row page. Native jobs
+passed in both runs. This is not an all-green exact-head gate. Signed log/artifact
+URLs returned Forbidden in the cloud; check annotations supplied the failure
+locations and results.
+
+Codex's exact-head review raised five findings: shared interrupted-job recovery,
+cancelled-batch retry controls, concurrent global glossary writes, nonterminal
+failed glossary batches and inconsistent CLI case flags. Normal application open
+already terminalized abandoned jobs; shared recovery also needs to handle raw
+queued/running review state independently. The implementation and complete
+regression evidence below address these findings; current-head CI and resolved
+review-thread state remain separate GitHub merge gates.
+
+Remediation adds focused regressions for all five findings:
+
+| Finding                     | Correction and regression                                                                                                                                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interrupted review recovery | Shared recovery terminalizes raw persisted queued/running jobs and unfinished batches; completed evidence survives catalog reopen.                                                                                                           |
+| Cancelled batch controls    | Both failed and cancelled batches expose Retry/Skip; browser actions retry one cancelled batch and skip another while retaining earlier suggestions.                                                                                         |
+| Concurrent global writes    | Atomic owner publication and ownership-checked recovery serialize read–modify–write; actual competing child processes receive a busy conflict, and retry preserves both terms. Crash/reclaimer and backup-repair regressions cover recovery. |
+| Failed glossary batches     | Processing errors leave failed/cancelled batches rather than running forever; offline retry succeeds with corrected terms and skip/reopen retain completed results.                                                                          |
+| CLI case settings           | Omitted flags preserve defaults/current settings; explicit case-sensitive/insensitive flags update both directions. Real project/global CLI calls reject contradictory flags before writing.                                                 |
+
+The pagination failure exposed a real requested-page/polling race. The panel now
+retains navigation intent and disables paging until acknowledgement. Its browser
+regression holds the page response through a real background poll and verifies
+disjoint suggestion IDs on the requested page.
+
+The acceptance timeout had separate test causes: a dynamic first-card locator
+could retain stale evidence while regeneration was pending, and removing network
+interception during active reads could strand the request awaited by the panel.
+The test now proves regeneration acknowledgement, pins a durable pending ID and
+keeps interception enabled until fixture teardown. Five controlled repetitions
+passed without timeout increases or retries. No production acceptance-hang claim
+follows from that interception failure.
+
+A subsequent whole-PR independent review found another P2: valid glossary
+replacements containing a line feed, carriage return or tab were passed as
+unsupported Whisper prompt hints. The application now omits those terms only
+from the compact hint list. Three before/after regressions use the real local
+adapter's validation and audio extraction with the declared protocol fixture;
+they verify successful transcription, exact glossary preservation, word timing,
+reviewable suggestions and reopen. No original content is normalized or silently
+replaced.
+
+The same review also reproduced a pre-dispatch transcription ownership race:
+the editor's exposed flush did not track its analysis POST, so project switching
+could precede that request reaching the server. Transcription now reserves
+ownership synchronously before preflight and participates in the parent flush
+barrier without awaiting itself. An actual compiled SFC with two SQLite projects
+sharing an asset ID verified that the held request updates only its original
+project. Rejection blocks the waiting switch, preserves the error and permits
+retry. A dedicated copied-project browser regression covers the same boundary,
+including transport failure, explicit retry and original/copy close/reopen state.
+
+## Second Codex review
+
+The production/test tree `02db0ee9e51461f5c4cb1aa674b9f3dad3a91d17` passed
+both [push CI](https://github.com/bynanci/open-film/actions/runs/37443235437) and
+[PR CI](https://github.com/bynanci/open-film/actions/runs/37443242452).
+Codex still identified four P2 issues. CI success alone did not close the review
+gate:
+
+- Starting a newer review could hide older unfinished batch recovery. Recovery
+  now pages unfinished jobs independently, with at most five batch reads per
+  refresh and actions bound to their original job IDs.
+- Desktop disallowed valid empty glossary replacements. Add/edit/resave now keep
+  empty values and explicitly describe removal; deterministic deletion
+  suggestions remain reviewable and undoable.
+- A single oversized provider/legacy segment could bypass batching limits.
+  Source text now remains intact in a failed durable batch before provider
+  invocation; actual prompt-byte grouping accounts for CJK, escaping and context.
+- Existing provider segment IDs accepted at ingestion could be rejected by
+  editing/review. References now share the opaque nonblank ID contract across
+  Core, catalog and HTTP. Original IDs/evidence remain unchanged; generated IDs
+  retain strict validation. Exact dataset lookup also preserves keyboard focus
+  for NUL-bearing IDs instead of relying on CSS escaping.
+
+The opaque-ID browser regression additionally exposed an old row's null textarea
+ref clearing the newly selected editor, and Node SQLite returning a truncated
+NUL-bearing ID from raw TEXT search results. The editor now binds its ref to its
+own segment; search retrieves each returned ID from canonical escaped segment
+JSON using the existing revision/position index, with at most 200 indexed
+lookups per page. Core, legacy v2 migration, HTTP and browser tests preserve the
+same original ID through search, seeking, keyboard selection, Enter editing,
+Undo/Redo and reopen. The focused browser rerun passed all three remediation
+cases; the complete local unit/integration rerun passed 702 tests in 66 files.
+
+Before/after tests reproduce these cases through actual provider-call recording,
+SQLite migration/HTTP calls and browser interactions. An older failed review is
+created by taking its source offline, not injecting a fake job. Full reruns and
+current-head GitHub checks establish the final remediation result.
+
+All nine Codex findings from the first two review rounds have implementation and
+regression replies, and their threads are resolved. A fresh review of `757fd74`
+and its GitHub CI are separate final checks; their result must be read from PR #4
+rather than inferred from the earlier green candidate.
+
 ## Desktop QA
 
 New focused browser cases cover the offline edit/split/merge/search/replace/history
@@ -127,16 +234,16 @@ query-only and warm application-wrapper timings. It does not decode audio or
 invoke a provider.
 
 Observed on 2026-10-06 at repository head
-`f18b28270b979840973b74ba439615654729192c`, Node 24.14.0, SQLite 3.51.2,
+`757fd74bc1d678fc8a17ab13857db854ffc71249`, Node 24.14.0, SQLite 3.51.2,
 Linux x64, AMD EPYC 7763 on this shared development machine:
 
 - 10,000 segments / 1,386,568 generated text characters; six literal queries,
   five samples each, at most 100 returned segments. Query-only medians ranged
-  **6.73–33.08 ms**, with a recorded maximum **33.21 ms**. Case-sensitive,
+  **7.22–31.92 ms**, with a recorded maximum **52.89 ms**. Case-sensitive,
   case-insensitive, CJK, symbols, absent terms and late pages were verified.
-- Database seeding took **76.51 ms** and is outside the search interval.
+- Database seeding took **93.48 ms** and is outside the search interval.
 - 1,000 exact glossary terms over 10,000 generated short lines: one run without
-  warm-up, **12.57 ms** matcher compilation and **47.93 ms** scanning, including
+  warm-up, **16.90 ms** matcher compilation and **45.40 ms** scanning, including
   constructing the strings. All 10,000 matches were checked.
 
 These observations are not latency guarantees, real ASR/LLM benchmarks, cold-cache

@@ -65,11 +65,31 @@ Stale evidence may also be skipped to dismiss it. Accepted items stay accepted;
 Undo changes transcript history rather than rewriting the review audit.
 
 Review jobs use the shared Activity/cancellation model. Batches default to 50
-segments, with configurable bounds of 1–100 and bounded prompt length. Completed
-batches become visible while later batches run. One failed batch can be retried
+segments, with configurable bounds of 1–100. Language review permits at most
+20,000 text characters per segment and 60,000 UTF-8 prompt bytes, including
+instructions, serialized IDs/text and terminology context. Grouping accounts for
+CJK and JSON escaping. Oversized source text stays intact in a failed durable
+batch; it is not truncated or sent to the provider. Other valid batches can finish.
+Completed batches become visible while later batches run. One failed batch can be retried
 or skipped while other completed evidence is retained. Cancellation preserves
 partial results and marks unfinished work for explicit retry; restart does not
 pretend an interrupted provider call completed.
+
+Both failed and cancelled batches expose Retry and Skip. Glossary retry remains
+offline and uses the current term definitions against the job's bound transcript
+revision; it requires no LanguageProvider. A failed batch is terminalized even
+when a valid glossary replacement exceeds the suggestion-size limit. Restart
+recovery marks abandoned queued/running review jobs failed and their unfinished
+batches cancelled, retaining completed suggestions. Retry never rebases evidence
+onto a newer transcript revision.
+
+Starting a newer review does not hide an older review's Retry/Skip actions.
+Unfinished reviews are paged independently of suggestion cards, with at most five
+jobs' batches read in a refresh. Each action remains bound to its original job.
+
+Paged review navigation retains the requested page while background activity
+refreshes. Paging controls wait for that page's acknowledgement, so polling cannot
+replace a pending Next request with the previous page.
 
 No Accept All AI shortcut is required. A person's manually edited text always wins:
 glossary and language review only propose changes. Story, composition, media and
