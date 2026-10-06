@@ -26,6 +26,11 @@ import type {
 import { GlobalGlossaryStore } from "./global-glossary.js";
 import type { TranscriptEditor } from "./transcript-editor.js";
 import { resolveUserDataDirectory } from "./user-data.js";
+import {
+  createReviewOwner,
+  ownsReviewOwner,
+  reviewOwnerState,
+} from "./review-owner.js";
 
 export interface KnowledgeOptions {
   userDataDirectory?: string;
@@ -294,7 +299,12 @@ export class KnowledgeService {
 
   private notify(job: Job, options: ReviewOptions) {
     job.updatedAt = new Date().toISOString();
-    this.catalog.saveJob(job);
+    if (!this.catalog.knowledge.saveOwnedReviewJob(job))
+      throw new ApplicationError(
+        "request.invalid",
+        "The review execution changed ownership. Reload its current status.",
+        409,
+      );
     try {
       options.onJob?.(structuredClone(job));
     } catch {
@@ -303,12 +313,23 @@ export class KnowledgeService {
   }
   private start(assetId: string, type: string, options: ReviewOptions): Job {
     const id = options.jobId ?? randomUUID();
+    if (
+      typeof id !== "string" ||
+      !id.trim() ||
+      id.length > 256 ||
+      [...id].some((character) => character.charCodeAt(0) < 32)
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Review job IDs must be nonblank strings of at most 256 characters without control characters.",
+      );
     const reserved = this.catalog.listJobs().find((job) => job.id === id);
     if (
       reserved &&
       (reserved.status !== "queued" ||
         reserved.type !== type ||
         reserved.assetId !== assetId ||
+        !ownsReviewOwner(reserved.reviewOwner) ||
         this.catalog.knowledge.batches(id).length > 0)
     )
       throw new ApplicationError(
@@ -324,6 +345,7 @@ export class KnowledgeService {
       progress: 0,
       stage: "reviewing",
       createdAt: reserved?.createdAt ?? new Date().toISOString(),
+      reviewOwner: reserved?.reviewOwner ?? createReviewOwner(),
     };
     this.notify(job, options);
     return job;
@@ -398,15 +420,24 @@ export class KnowledgeService {
       const cancelled =
         options.signal?.aborted ||
         (error instanceof Error && error.name === "AbortError");
+      const checkpoint = structuredClone(job);
       this.finishFailure(job, error, options.signal);
       for (const batch of this.catalog.knowledge.batches(job.id)) {
         if (!["pending", "running"].includes(batch.status)) continue;
-        this.catalog.knowledge.saveBatch({
-          ...batch,
-          status:
-            cancelled || batch.status === "pending" ? "cancelled" : "failed",
-          error: errorInfo(error, "review.invalidOutput").detail,
-        });
+        this.catalog.knowledge.compareAndSetBatch(
+          batch,
+          {
+            ...batch,
+            status:
+              cancelled || batch.status === "pending" ? "cancelled" : "failed",
+            error: errorInfo(error, "review.invalidOutput").detail,
+          },
+          () =>
+            this.catalog.knowledge.compareAndSetReviewJob(
+              checkpoint,
+              checkpoint,
+            ),
+        );
       }
     }
     this.notify(job, options);
@@ -421,13 +452,7 @@ export class KnowledgeService {
     selectedSegments?: TranscriptSegment[],
   ) {
     abort(options.signal);
-    const running = {
-      ...batch,
-      status: "running" as const,
-      attempts: batch.attempts + 1,
-      error: undefined,
-    };
-    this.catalog.knowledge.saveBatch(running);
+    const running = batch.status === "running" ? batch : this.claimBatch(batch);
     const ids = new Set(batch.segmentIds);
     const suggestions: ReviewSuggestion[] = [];
     const segments =
@@ -738,12 +763,7 @@ export class KnowledgeService {
     const segments = current.document.segments.filter((segment) =>
       batch.segmentIds.includes(segment.id),
     );
-    this.catalog.knowledge.saveBatch({
-      ...batch,
-      status: "running",
-      attempts: batch.attempts + 1,
-      error: undefined,
-    });
+    const running = batch.status === "running" ? batch : this.claimBatch(batch);
     const text = await cancellableProviderResult(
       registry.generate(
         batch.providerId,
@@ -762,10 +782,18 @@ export class KnowledgeService {
         409,
       );
     const suggestions = this.output(text, batch, segments);
-    this.catalog.knowledge.completeBatch(
-      { ...batch, attempts: batch.attempts + 1 },
-      suggestions,
-    );
+    this.catalog.knowledge.completeBatch(running, suggestions);
+  }
+
+  private claimBatch(batch: ReviewBatch, commitHook?: () => void): ReviewBatch {
+    const running: ReviewBatch = {
+      ...batch,
+      status: "running",
+      attempts: batch.attempts + 1,
+      error: undefined,
+    };
+    this.catalog.knowledge.compareAndSetBatch(batch, running, commitHook);
+    return running;
   }
 
   async languageReview(assetId: string, options: ReviewOptions = {}) {
@@ -801,9 +829,12 @@ export class KnowledgeService {
     job.status = "running";
     this.notify(job, options);
     for (const batch of batches) {
+      const running = this.claimBatch(batch, () =>
+        this.catalog.knowledge.compareAndSetReviewJob(job, job),
+      );
       try {
         await this.processBatch(
-          batch,
+          running,
           current,
           options,
           registry,
@@ -813,12 +844,20 @@ export class KnowledgeService {
         const cancelled =
           options.signal?.aborted ||
           (error instanceof Error && error.name === "AbortError");
-        this.catalog.knowledge.saveBatch({
-          ...batch,
-          attempts: batch.attempts + 1,
-          status: cancelled ? "cancelled" : "failed",
-          error: errorInfo(error, "review.invalidOutput").detail,
-        });
+        const checkpoint = structuredClone(job);
+        this.catalog.knowledge.compareAndSetBatch(
+          running,
+          {
+            ...running,
+            status: cancelled ? "cancelled" : "failed",
+            error: errorInfo(error, "review.invalidOutput").detail,
+          },
+          () =>
+            this.catalog.knowledge.compareAndSetReviewJob(
+              checkpoint,
+              checkpoint,
+            ),
+        );
         this.finishFailure(job, error, options.signal);
         if (
           cancelled ||
@@ -826,10 +865,15 @@ export class KnowledgeService {
             error.code === "review.suggestionStale")
         ) {
           for (const pending of batches.slice(batch.index + 1))
-            this.catalog.knowledge.saveBatch({
-              ...pending,
-              status: "cancelled",
-            });
+            this.catalog.knowledge.compareAndSetBatch(
+              pending,
+              { ...pending, status: "cancelled" },
+              () =>
+                this.catalog.knowledge.compareAndSetReviewJob(
+                  checkpoint,
+                  checkpoint,
+                ),
+            );
           break;
         }
         job.status = "running";
@@ -861,40 +905,70 @@ export class KnowledgeService {
         "request.invalid",
         "Only failed or cancelled review batches can be retried.",
       );
-    const current = await this.current(batch.assetId);
-    if (current.revision !== batch.sourceRevisionId)
+    if (
+      ["queued", "running"].includes(job.status) &&
+      reviewOwnerState(job.reviewOwner) !== "dead"
+    )
       throw new ApplicationError(
-        "review.suggestionStale",
-        "This batch belongs to an older transcript revision.",
+        "jobs.busy",
+        "Wait for the active review before retrying this batch.",
         409,
       );
     const glossary =
       job.type === "glossary-review" && batch.providerId === "glossary";
-    if (!glossary) {
-      const readiness = this.languageProvider();
-      if (!readiness.available || readiness.provider?.id !== batch.providerId)
-        throw new ApplicationError(
-          "review.providerUnavailable",
-          "The original review provider must be configured and authorized.",
-        );
-    }
-    job.status = "running";
-    this.notify(job, options);
+    const ownedJob: Job = {
+      ...job,
+      status: "running",
+      reviewOwner: createReviewOwner(),
+      updatedAt: new Date().toISOString(),
+    };
+    const running = this.claimBatch(batch, () =>
+      this.catalog.knowledge.compareAndSetReviewJob(job, ownedJob),
+    );
+    let current: Awaited<ReturnType<KnowledgeService["current"]>>;
     try {
-      if (glossary) this.processGlossaryBatch(batch, current, options);
-      else await this.processBatch(batch, current, options, this.registry);
-      job.status = this.batchJobStatus(jobId);
+      current = await this.current(batch.assetId);
+      if (current.revision !== batch.sourceRevisionId)
+        throw new ApplicationError(
+          "review.suggestionStale",
+          "This batch belongs to an older transcript revision.",
+          409,
+        );
+      if (!glossary) {
+        const readiness = this.languageProvider();
+        if (!readiness.available || readiness.provider?.id !== batch.providerId)
+          throw new ApplicationError(
+            "review.providerUnavailable",
+            "The original review provider must be configured and authorized.",
+          );
+      }
     } catch (error) {
-      this.catalog.knowledge.saveBatch({
-        ...batch,
-        attempts: batch.attempts + 1,
-        status: options.signal?.aborted ? "cancelled" : "failed",
+      // Preparation never invoked the provider. Restore only our exact claim
+      // and checkpoint; a successor's changes make this transaction fail.
+      this.catalog.knowledge.compareAndSetBatch(running, batch, () =>
+        this.catalog.knowledge.compareAndSetReviewJob(ownedJob, job),
+      );
+      throw error;
+    }
+    this.notify(ownedJob, options);
+    try {
+      if (glossary) this.processGlossaryBatch(running, current, options);
+      else await this.processBatch(running, current, options, this.registry);
+      ownedJob.status = this.batchJobStatus(jobId);
+    } catch (error) {
+      this.catalog.knowledge.compareAndSetBatch(running, {
+        ...running,
+        status:
+          options.signal?.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+            ? "cancelled"
+            : "failed",
         error: errorInfo(error, "review.invalidOutput").detail,
       });
-      this.finishFailure(job, error, options.signal);
+      this.finishFailure(ownedJob, error, options.signal);
     }
-    this.notify(job, options);
-    return job;
+    this.notify(ownedJob, options);
+    return ownedJob;
   }
   skipBatch(jobId: string, index: number) {
     const batch = this.catalog.knowledge
@@ -905,23 +979,29 @@ export class KnowledgeService {
         "request.invalid",
         "This batch cannot be skipped.",
       );
-    this.catalog.knowledge.saveBatch({ ...batch, status: "skipped" });
-    const job = this.catalog.listJobs().find((job) => job.id === jobId);
-    if (job) {
-      job.status = this.batchJobStatus(jobId);
-      this.notify(job, {});
-    }
-    return { ...batch, status: "skipped" as const };
+    const skipped = { ...batch, status: "skipped" as const };
+    this.catalog.knowledge.compareAndSetBatch(batch, skipped, () => {
+      const job = this.catalog.listJobs().find((job) => job.id === jobId);
+      if (
+        !job ||
+        (["queued", "running"].includes(job.status) &&
+          reviewOwnerState(job.reviewOwner) !== "dead")
+      )
+        return;
+      this.catalog.knowledge.compareAndSetReviewJob(job, {
+        ...job,
+        status: this.batchJobStatus(jobId),
+        updatedAt: new Date().toISOString(),
+      });
+    });
+    return skipped;
   }
   private batchJobStatus(jobId: string): Job["status"] {
     const batches = this.catalog.knowledge.batches(jobId);
     if (batches.some((batch) => batch.status === "failed")) return "failed";
     if (
-      batches.some(
-        (batch) =>
-          batch.status === "cancelled" ||
-          batch.status === "pending" ||
-          batch.status === "running",
+      batches.some((batch) =>
+        ["cancelled", "pending", "running"].includes(batch.status),
       )
     )
       return "cancelled";
@@ -930,30 +1010,29 @@ export class KnowledgeService {
   recoverInterruptedReviews() {
     for (const job of this.catalog.listJobs()) {
       if (!["language-review", "glossary-review"].includes(job.type)) continue;
-      // This is a startup-only operation: no in-process task owns these persisted jobs.
-      if (["queued", "running"].includes(job.status))
-        this.catalog.saveJob({
-          ...job,
-          status: "failed",
-          stage: "interrupted",
-          updatedAt: new Date().toISOString(),
-          errors: [
-            ...(job.errors ?? []),
-            {
-              uri: "",
-              stage: "interrupted",
-              message:
-                "The previous process stopped. Retry unfinished review batches; completed suggestions remain available.",
-            },
-          ],
-        });
-      for (const batch of this.catalog.knowledge.batches(job.id))
-        if (["pending", "running"].includes(batch.status))
-          this.catalog.knowledge.saveBatch({
-            ...batch,
-            status: "cancelled",
-            error: "The previous process stopped before this batch completed.",
-          });
+      if (reviewOwnerState(job.reviewOwner) !== "dead") continue;
+      const unfinished = this.catalog.knowledge
+        .batches(job.id)
+        .some((batch) => ["pending", "running"].includes(batch.status));
+      if (!["queued", "running"].includes(job.status) && !unfinished) continue;
+      // A retry can acquire a new owner after the liveness probe. The catalog
+      // verifies this exact job checkpoint and terminalizes its unfinished
+      // batches atomically, preserving any newer claim and completed evidence.
+      this.catalog.knowledge.recoverReviewJob(job, {
+        ...job,
+        status: "failed",
+        stage: "interrupted",
+        updatedAt: new Date().toISOString(),
+        errors: [
+          ...(job.errors ?? []),
+          {
+            uri: "",
+            stage: "interrupted",
+            message:
+              "The previous process stopped. Retry unfinished review batches; completed suggestions remain available.",
+          },
+        ],
+      });
     }
   }
   batches(jobId: string) {

@@ -8,6 +8,7 @@ import {
   validateTranscriptReviewSuggestion,
   type GlossaryEntry,
   type GlossaryInput,
+  type Job,
   type ReviewBatch,
   type TranscriptReviewSuggestion as ReviewSuggestion,
 } from "@openfilm/core";
@@ -259,7 +260,7 @@ export class CatalogKnowledgeStore {
       .run(assetId, revisionId);
   }
 
-  saveBatch(batch: ReviewBatch): void {
+  private validateBatch(batch: ReviewBatch): void {
     if (
       !Number.isSafeInteger(batch.index) ||
       batch.index < 0 ||
@@ -278,6 +279,10 @@ export class CatalogKnowledgeStore {
       batch.segmentIds.some((id) => typeof id !== "string" || !id)
     )
       throw new ApplicationError("request.invalid", "Invalid review batch.");
+  }
+
+  saveBatch(batch: ReviewBatch): void {
+    this.validateBatch(batch);
     this.database
       .prepare(
         `INSERT INTO review_batches(job_id,batch_index,asset_id,source_revision_id,data) VALUES(?,?,?,?,?) ON CONFLICT(job_id,batch_index) DO UPDATE SET data=excluded.data`,
@@ -289,6 +294,104 @@ export class CatalogKnowledgeStore {
         batch.sourceRevisionId,
         JSON.stringify(batch),
       );
+  }
+
+  /** Claim or finish only the exact durable attempt that the caller observed. */
+  compareAndSetBatch(
+    observed: ReviewBatch,
+    next: ReviewBatch,
+    commitHook?: () => void,
+  ): void {
+    this.validateBatch(next);
+    if (observed.jobId !== next.jobId || observed.index !== next.index)
+      throw new ApplicationError("request.invalid", "Invalid review batch.");
+    if (commitHook) this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.database
+        .prepare(
+          "UPDATE review_batches SET data=? WHERE job_id=? AND batch_index=? AND data=?",
+        )
+        .run(
+          JSON.stringify(next),
+          observed.jobId,
+          observed.index,
+          JSON.stringify(observed),
+        );
+      if (Number(result.changes) !== 1)
+        throw new ApplicationError(
+          "request.invalid",
+          "This review batch changed. Reload it before retrying or skipping it.",
+          409,
+        );
+      commitHook?.();
+      if (commitHook) this.database.exec("COMMIT");
+    } catch (error) {
+      if (commitHook) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** Used inside a batch claim transaction to publish the same execution owner. */
+  compareAndSetReviewJob(observed: Job, next: Job): void {
+    if (observed.id !== next.id)
+      throw new ApplicationError("request.invalid", "Invalid review job.");
+    const result = this.database
+      .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+      .run(JSON.stringify(next), observed.id, JSON.stringify(observed));
+    if (Number(result.changes) !== 1)
+      throw new ApplicationError(
+        "request.invalid",
+        "This review job changed. Reload it before trying again.",
+        409,
+      );
+  }
+
+  /** A late execution can publish only while its exact owner is still current. */
+  saveOwnedReviewJob(job: Job): boolean {
+    const owner = job.reviewOwner;
+    if (!owner) return false;
+    const result = this.database
+      .prepare(
+        `INSERT INTO jobs(id,created_at,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data WHERE json_extract(jobs.data,'$.reviewOwner.host')=? AND json_extract(jobs.data,'$.reviewOwner.pid')=? AND json_extract(jobs.data,'$.reviewOwner.token')=?`,
+      )
+      .run(
+        job.id,
+        job.createdAt ?? new Date().toISOString(),
+        JSON.stringify(job),
+        owner.host,
+        owner.pid,
+        owner.token,
+      );
+    return Number(result.changes) === 1;
+  }
+
+  /** Recovery cannot terminalize a retry that claimed the job after its read. */
+  recoverReviewJob(observed: Job, recovered: Job): boolean {
+    if (observed.id !== recovered.id)
+      throw new ApplicationError("request.invalid", "Invalid review job.");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.database
+        .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+        .run(JSON.stringify(recovered), observed.id, JSON.stringify(observed));
+      if (Number(result.changes) !== 1) {
+        this.database.exec("ROLLBACK");
+        return false;
+      }
+      for (const batch of this.batches(observed.id)) {
+        if (!["pending", "running"].includes(batch.status)) continue;
+        this.compareAndSetBatch(batch, {
+          ...batch,
+          status: "cancelled",
+          error: "The previous process stopped before this batch completed.",
+        });
+      }
+      this.database.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   batches(jobId: string): ReviewBatch[] {
@@ -305,7 +408,7 @@ export class CatalogKnowledgeStore {
     this.database.exec("BEGIN IMMEDIATE");
     try {
       for (const suggestion of suggestions) this.saveSuggestion(suggestion);
-      this.saveBatch({ ...batch, status: "completed" });
+      this.compareAndSetBatch(batch, { ...batch, status: "completed" });
       this.database.exec("COMMIT");
     } catch (error) {
       this.database.exec("ROLLBACK");

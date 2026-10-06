@@ -98,6 +98,11 @@ export {
 } from "./knowledge.js";
 export { GlobalGlossaryStore } from "./global-glossary.js";
 export { resolveUserDataDirectory } from "./user-data.js";
+export {
+  createReviewOwner,
+  ownsReviewOwner,
+  reviewOwnerState,
+} from "./review-owner.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions;
 
 export interface ImportOptions {
@@ -298,6 +303,7 @@ export class OpenFilmApplication {
         });
     }
     for (const job of application.catalog.listJobs()) {
+      if (["language-review", "glossary-review"].includes(job.type)) continue;
       if (job.status === "running" || job.status === "queued")
         application.catalog.saveJob({
           ...job,

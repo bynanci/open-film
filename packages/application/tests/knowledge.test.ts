@@ -1,13 +1,20 @@
 import { copyFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Job, MediaAsset } from "@openfilm/core";
 import type { LanguageProvider } from "@openfilm/plugin-sdk";
 import { hashFile } from "@openfilm/media";
 import { ProjectCatalog } from "@openfilm/catalog";
-import { OpenFilmApplication } from "../src/index.js";
+import {
+  createReviewOwner,
+  OpenFilmApplication,
+  reviewOwnerState,
+} from "../src/index.js";
 import { TranscriptEditor } from "../src/transcript-editor.js";
 import { KnowledgeService } from "../src/knowledge.js";
 
@@ -49,6 +56,25 @@ function correction(prompt: string) {
       },
     ],
   });
+}
+async function provenDeadReviewOwner() {
+  // A completed actual process supplies its own original identity; neither an
+  // owner-less legacy checkpoint nor a made-up PID proves an interrupted run.
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    "--import",
+    createRequire(import.meta.url).resolve("tsx"),
+    "--input-type=module",
+    "--eval",
+    `import {createReviewOwner} from ${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)};console.log(JSON.stringify(createReviewOwner()));`,
+  ]);
+  const owner = JSON.parse(stdout.trim()) as ReturnType<
+    typeof createReviewOwner
+  >;
+  expect(() => process.kill(owner.pid, 0)).toThrowError(
+    expect.objectContaining({ code: "ESRCH" }),
+  );
+  expect(reviewOwnerState(owner)).toBe("dead");
+  return owner;
 }
 async function fixture(
   lines = ["我們去十河田湖", "Visit youtube", "Visit youtube again"],
@@ -481,6 +507,7 @@ describe("offline terminology, revisions and durable review", () => {
       assetId: "source",
       status: "queued",
       createdAt: "2026-10-06T00:00:00Z",
+      reviewOwner: createReviewOwner(),
     });
     const job = await knowledge.glossaryReview("source", {
       jobId: "reserved-review",
@@ -1133,7 +1160,7 @@ describe("optional provider review, privacy and recoverable batches", () => {
         .segmentId,
     ).toBe(id);
   });
-  it.each(["queued", "running"] as const)(
+  it.skipIf(process.platform !== "linux").each(["queued", "running"] as const)(
     "recovers an actual reopened catalog containing an interrupted %s review and preserves completed suggestions",
     async (status) => {
       const context = await fixture();
@@ -1147,7 +1174,11 @@ describe("optional provider review, privacy and recoverable batches", () => {
       const completed = (await knowledge.suggestionsList("source"))
         .suggestions[0]!;
       const completedBatch = knowledge.batches(job.id)[0]!;
-      app.catalog.saveJob({ ...job, status });
+      app.catalog.saveJob({
+        ...job,
+        status,
+        reviewOwner: await provenDeadReviewOwner(),
+      });
       app.catalog.knowledge.saveBatch({
         ...completedBatch,
         index: 1,
@@ -1520,49 +1551,53 @@ describe("optional provider review, privacy and recoverable batches", () => {
     expect((await work).errors?.[0]?.code).toBe("review.suggestionStale");
     expect((await knowledge.suggestionsList("source")).total).toBe(0);
   });
-  it("durably skips failed batches and marks interrupted pending batches retryable after restart", async () => {
-    const context = await fixture();
-    const { knowledge, app } = context;
-    knowledge.registerLanguageProvider(
-      languageProvider(async () => {
-        throw new Error("provider offline");
-      }),
-    );
-    const job = await knowledge.languageReview("source", { batchSize: 2 });
-    expect(job.status).toBe("failed");
-    knowledge.skipBatch(job.id, 0);
-    knowledge.skipBatch(job.id, 1);
-    expect(
-      app.catalog.listJobs().find((row) => row.id === job.id)?.status,
-    ).toBe("completed");
-    const state = await context.editor.get("source");
-    app.catalog.saveJob({
-      id: "interrupted",
-      type: "language-review",
-      assetId: "source",
-      status: "running",
-    });
-    app.catalog.knowledge.saveBatch({
-      jobId: "interrupted",
-      index: 0,
-      assetId: "source",
-      sourceRevisionId: state.revision!,
-      providerId: "explicit-test-language",
-      segmentIds: ["segment-0"],
-      status: "running",
-      attempts: 1,
-    });
-    await context.reopen();
-    expect(context.knowledge.batches("interrupted")[0]?.status).toBe(
-      "cancelled",
-    );
-    context.knowledge.registerLanguageProvider(
-      languageProvider(async (prompt) => correction(prompt)),
-    );
-    expect((await context.knowledge.retryBatch("interrupted", 0)).status).toBe(
-      "completed",
-    );
-  });
+  it.skipIf(process.platform !== "linux")(
+    "durably skips failed batches and marks interrupted pending batches retryable after restart",
+    async () => {
+      const context = await fixture();
+      const { knowledge, app } = context;
+      knowledge.registerLanguageProvider(
+        languageProvider(async () => {
+          throw new Error("provider offline");
+        }),
+      );
+      const job = await knowledge.languageReview("source", { batchSize: 2 });
+      expect(job.status).toBe("failed");
+      knowledge.skipBatch(job.id, 0);
+      knowledge.skipBatch(job.id, 1);
+      expect(
+        app.catalog.listJobs().find((row) => row.id === job.id)?.status,
+      ).toBe("completed");
+      const state = await context.editor.get("source");
+      app.catalog.saveJob({
+        id: "interrupted",
+        type: "language-review",
+        assetId: "source",
+        status: "running",
+        reviewOwner: await provenDeadReviewOwner(),
+      });
+      app.catalog.knowledge.saveBatch({
+        jobId: "interrupted",
+        index: 0,
+        assetId: "source",
+        sourceRevisionId: state.revision!,
+        providerId: "explicit-test-language",
+        segmentIds: ["segment-0"],
+        status: "running",
+        attempts: 1,
+      });
+      await context.reopen();
+      expect(context.knowledge.batches("interrupted")[0]?.status).toBe(
+        "cancelled",
+      );
+      context.knowledge.registerLanguageProvider(
+        languageProvider(async (prompt) => correction(prompt)),
+      );
+      expect(
+        (await context.knowledge.retryBatch("interrupted", 0)).status,
+      ).toBe("completed");
+    },
+  );
   it("defaults to bounded batches rather than a 10,000-line prompt or one request per line", async () => {
     const { knowledge } = await fixture(
       Array.from({ length: 105 }, (_, id) => `Line ${id}`),

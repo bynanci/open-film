@@ -176,6 +176,13 @@ export interface SimilarityGroup {
 export type JobStatus =
   "queued" | "running" | "completed" | "failed" | "cancelled";
 
+/** Local review execution identity; unknown or foreign owners are never assumed dead. */
+export interface ReviewExecutionOwner {
+  host: string;
+  pid: number;
+  token: string;
+}
+
 export interface Job {
   id: string;
   type: string;
@@ -188,6 +195,7 @@ export interface Job {
   model?: string;
   language?: string;
   fallbackReason?: string;
+  reviewOwner?: ReviewExecutionOwner;
   errors?: {
     uri: string;
     stage: string;
