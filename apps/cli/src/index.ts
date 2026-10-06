@@ -18,7 +18,7 @@ Usage:
   openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
   openfilm waveform <asset-id> --project <film.openfilm>
   openfilm scenes <asset-id> --project <film.openfilm>
-  openfilm transcript <asset-id> --project <film.openfilm> [--offset 0 --limit 100]
+  openfilm transcript get <asset-id> --project <film.openfilm> [--offset 0 --limit 100]
   openfilm transcript edit <asset-id> --project <film.openfilm> --commands <request.json>
   openfilm transcript search <asset-id> --project <film.openfilm> --query "literal text" [--case-sensitive|--case-insensitive]
   openfilm transcript revisions <asset-id> --project <film.openfilm>
@@ -43,6 +43,8 @@ for an explicit story scope in large libraries. Outputs are JSON.
 Use --user-data-dir <folder> for trusted global glossary storage (or OPENFILM_USER_DATA_DIR).
 --commands reads a JSON object {baseRevision,requestId,commands} of at most 1 MiB.
 Review suggestions never change text until accepted. No language provider is configured by default.
+Transcript reads also accept transcript <asset-id> when the ID is not an action name.
+Use transcript get <asset-id> for all IDs, including edit, search, revisions, undo, redo, select and get.
 `;
 
 type Options = Record<string, string | boolean>;
@@ -290,7 +292,15 @@ async function main() {
       else if (job.status === "failed") process.exitCode = 1;
     } else if (command === "transcript") {
       const action = positional[1];
-      const actions = ["edit", "search", "revisions", "undo", "redo", "select"];
+      const actions = [
+        "get",
+        "edit",
+        "search",
+        "revisions",
+        "undo",
+        "redo",
+        "select",
+      ];
       const id = action && actions.includes(action) ? positional[2] : action;
       if (!id) throw new Error("Specify a media asset ID.");
       const paging = {
