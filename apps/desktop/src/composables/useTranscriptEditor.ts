@@ -212,6 +212,7 @@ export function useTranscriptEditor(
   }
   function command(input: TranscriptCommand): boolean {
     if (
+      disposed ||
       !state.value?.revision ||
       historyBusy.value ||
       status.value === "loading" ||
@@ -331,18 +332,21 @@ export function useTranscriptEditor(
   function reserveRevisionChange(
     createReceipt: (baseRevision: string) => Receipt,
   ): Promise<boolean> {
+    return reserveMutation(async () => {
+      if (!(await flushQueue()) || disposed || !state.value?.revision)
+        return false;
+      receipt = createReceipt(state.value.revision);
+      retain();
+      return flushQueue();
+    });
+  }
+  function reserveMutation(action: () => Promise<boolean>): Promise<boolean> {
     if (disposed || historyBusy.value || revisionMutation)
       return Promise.resolve(false);
     // Reserve preparation and receipt delivery before publishing the busy state.
     // Navigation waits for this operation; its own saves use the queue directly.
     const operation = Promise.resolve()
-      .then(async () => {
-        if (!(await flushQueue()) || disposed || !state.value?.revision)
-          return false;
-        receipt = createReceipt(state.value.revision);
-        retain();
-        return flushQueue();
-      })
+      .then(action)
       .finally(() => {
         if (revisionMutation === operation) {
           revisionMutation = null;
@@ -350,6 +354,7 @@ export function useTranscriptEditor(
         }
       });
     revisionMutation = operation;
+    clearTimeout(timer);
     historyBusy.value = true;
     return operation;
   }
@@ -391,14 +396,17 @@ export function useTranscriptEditor(
       return false;
     }
   }
-  async function discardDraft() {
-    if (saving) await saving;
-    pending = [];
-    receipt = null;
-    retain();
-    error.value = null;
-    notice.value = "";
-    return load(state.value?.offset ?? 0, false);
+  function discardDraft(): Promise<boolean> {
+    return reserveMutation(async () => {
+      if (saving) await saving;
+      if (disposed) return false;
+      pending = [];
+      receipt = null;
+      retain();
+      error.value = null;
+      notice.value = "";
+      return load(state.value?.offset ?? 0, false);
+    });
   }
   function downloadDraft() {
     const blob = new Blob(

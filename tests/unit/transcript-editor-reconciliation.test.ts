@@ -38,6 +38,7 @@ type Editor = {
   loadPage: (offset: number) => Promise<boolean>;
   history: (direction: "undo" | "redo") => Promise<boolean>;
   restore: (revisionId: string) => Promise<boolean>;
+  discardDraft: () => Promise<boolean>;
   reconcile: () => Promise<boolean>;
   command: (command: TranscriptCommand) => boolean;
   flush: () => Promise<boolean>;
@@ -262,6 +263,231 @@ async function fixture(segmentCount = 1) {
     },
   };
 }
+
+describe("transcript draft disposal ownership", () => {
+  it("reserves confirmed Discard before a failed retry and holds navigation through its reload", async () => {
+    const test = await fixture();
+    const failure = new ApiError("Save unavailable", 503, {
+      code: "operation.failed",
+    });
+    test.api.editTranscript.mockRejectedValueOnce(failure);
+    expect(test.editor.command(test.correction)).toBe(true);
+    expect(await test.editor.flush()).toBe(false);
+    const retryEntered = deferred<void>(),
+      retryResponse = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async () => {
+      retryEntered.resolve();
+      await retryResponse.promise;
+      throw failure;
+    });
+    const retry = test.editor.flush();
+    await retryEntered.promise;
+    const reload = test.holdRead();
+    const discarding = test.editor.discardDraft();
+    const reservedBeforeAwait = test.editor.historyBusy.value;
+    const lateAccepted = test.editor.command({
+      ...test.correction,
+      text: "Typed after confirming Discard",
+    });
+    const repeatedDiscard = test.editor.discardDraft();
+    const history = test.editor.history("undo");
+    const restore = test.editor.restore(test.baseRevision);
+    let navigationSettled = false;
+    const navigation = test.editor.flush().then((result) => {
+      navigationSettled = true;
+      return result;
+    });
+    retryResponse.resolve();
+    await reload.entered;
+    const reservedThroughReload = test.editor.historyBusy.value;
+    const lateReloadAccepted = test.editor.command({
+      ...test.correction,
+      text: "Typed during reload",
+    });
+    const settledBeforeReload = navigationSettled;
+    reload.release();
+    const results = await Promise.all([
+      retry,
+      discarding,
+      repeatedDiscard,
+      history,
+      restore,
+      navigation,
+    ]);
+    expect(reservedBeforeAwait).toBe(true);
+    expect(lateAccepted).toBe(false);
+    expect(reservedThroughReload).toBe(true);
+    expect(lateReloadAccepted).toBe(false);
+    expect(settledBeforeReload).toBe(false);
+    expect(results).toEqual([false, true, false, false, false, true]);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.editor.hasPending.value).toBe(false);
+    expect(test.storage.size).toBe(0);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "Original text",
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(1);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+    expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+    expect(
+      test.editor.command({ ...test.correction, text: "New explicit edit" }),
+    ).toBe(true);
+    expect(await test.editor.flush()).toBe(true);
+    const reopened = await test.reopenProject();
+    expect(
+      (await reopened.transcriptEditor.get("asset")).document!.segments[0]!
+        .text,
+    ).toBe("New explicit edit");
+  });
+
+  it("waits for a committed lost acknowledgment before explicitly clearing its draft and loading saved text", async () => {
+    const test = await fixture();
+    const committed = deferred<void>(),
+      response = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async (assetId, input) => {
+      await test.app.transcriptEditor.edit(assetId, input);
+      committed.resolve();
+      await response.promise;
+      throw new TypeError("Committed save acknowledgment lost");
+    });
+    expect(test.editor.command(test.correction)).toBe(true);
+    const saving = test.editor.flush();
+    await committed.promise;
+    const packet = test.storage.get(test.storageKey);
+    const discarding = test.editor.discardDraft();
+    const reserved = test.editor.historyBusy.value;
+    const lateAccepted = test.editor.command({
+      ...test.correction,
+      text: "Cannot overwrite confirmed disposal",
+    });
+    const navigation = test.editor.flush();
+    const packetUnchangedBeforeAck =
+      test.storage.get(test.storageKey) === packet;
+    response.resolve();
+    const results = await Promise.all([saving, discarding, navigation]);
+    expect(packetUnchangedBeforeAck).toBe(true);
+    expect(reserved).toBe(true);
+    expect(lateAccepted).toBe(false);
+    expect(results).toEqual([false, true, true]);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect(test.editor.hasPending.value).toBe(false);
+    expect(test.storage.size).toBe(0);
+    expect(test.api.editTranscript).toHaveBeenCalledTimes(1);
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+    const reopened = await test.reopenProject();
+    expect(
+      (await reopened.transcriptEditor.get("asset")).document!.segments[0]!
+        .text,
+    ).toBe("User correction");
+  });
+
+  it("releases a failed Discard reload with its error intact and permits an explicit retry", async () => {
+    const test = await fixture();
+    expect(test.editor.command(test.correction)).toBe(true);
+    const failure = new TypeError("Discard reload connection lost");
+    test.api.transcript.mockRejectedValueOnce(failure);
+    const discarding = test.editor.discardDraft();
+    const reserved = test.editor.historyBusy.value;
+    const lateAccepted = test.editor.command({
+      ...test.correction,
+      text: "Too late for this confirmed draft",
+    });
+    const navigation = test.editor.flush();
+    const results = await Promise.all([discarding, navigation]);
+    expect(reserved).toBe(true);
+    expect(lateAccepted).toBe(false);
+    expect(results).toEqual([false, false]);
+    expect(test.editor.historyBusy.value).toBe(false);
+    expect(test.editor.status.value).toBe("failed");
+    expect(test.editor.error.value).toBe(failure);
+    expect(test.editor.hasPending.value).toBe(false);
+    expect(test.storage.size).toBe(0);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(1);
+    expect(await test.editor.load(0, false)).toBe(true);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "Original text",
+    );
+    expect(test.editor.error.value).toBeNull();
+    expect(test.editor.command(test.correction)).toBe(true);
+    expect(await test.editor.flush()).toBe(true);
+  });
+
+  it("does not clear an owning draft or reload after disposal while a save remains unresolved", async () => {
+    const test = await fixture();
+    const entered = deferred<void>(),
+      response = deferred<void>();
+    test.api.editTranscript.mockImplementationOnce(async () => {
+      entered.resolve();
+      await response.promise;
+      throw new TypeError("Uncommitted save failed after disposal");
+    });
+    expect(test.editor.command(test.correction)).toBe(true);
+    const saving = test.editor.flush();
+    await entered.promise;
+    const packet = test.storage.get(test.storageKey)!;
+    const reads = test.api.transcript.mock.calls.length;
+    const discarding = test.editor.discardDraft();
+    test.dispose();
+    response.resolve();
+    const results = await Promise.all([saving, discarding]);
+    expect(results).toEqual([false, false]);
+    expect(test.storage.get(test.storageKey)).toBe(packet);
+    expect(test.api.transcript).toHaveBeenCalledTimes(reads);
+    expect(
+      test.editor.command({ ...test.correction, text: "Obsolete component" }),
+    ).toBe(false);
+    const fresh = test.createEditor();
+    expect(await fresh.editor.load()).toBe(true);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect(test.storage.size).toBe(0);
+    expect(fresh.editor.state.value?.document?.segments[0]?.text).toBe(
+      "User correction",
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+  });
+
+  it("cannot discard a reserved history receipt and retains its exact idempotent retry", async () => {
+    const test = await fixture();
+    expect(test.editor.command(test.correction)).toBe(true);
+    expect(await test.editor.flush()).toBe(true);
+    const committed = deferred<void>(),
+      response = deferred<void>();
+    test.api.transcriptHistory.mockImplementationOnce(
+      async (assetId, direction, input) => {
+        await test.app.transcriptEditor[direction](assetId, input);
+        committed.resolve();
+        await response.promise;
+        throw new TypeError("Committed history ACK lost");
+      },
+    );
+    const history = test.editor.history("undo");
+    await committed.promise;
+    const packet = test.storage.get(test.storageKey)!;
+    const discarding = test.editor.discardDraft();
+    response.resolve();
+    const results = await Promise.all([history, discarding]);
+    expect(results).toEqual([false, false]);
+    expect(test.storage.get(test.storageKey)).toBe(packet);
+    expect(test.editor.hasPending.value).toBe(true);
+    expect(await test.editor.flush()).toBe(true);
+    expect(test.api.transcriptHistory.mock.calls[1]).toEqual(
+      test.api.transcriptHistory.mock.calls[0],
+    );
+    expect(test.storage.size).toBe(0);
+    expect(test.editor.state.value?.document?.segments[0]?.text).toBe(
+      "Original text",
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(3);
+  });
+});
 
 describe("transcript history operation ownership", () => {
   it.each(["undo", "redo"] as const)(
