@@ -256,8 +256,19 @@ export function useTranscriptEditor(
     }
     if (saving) return saving;
     if (status.value === "conflict") return Promise.resolve(false);
-    if (!hasPending.value)
-      return Promise.resolve(status.value !== "loading" && !!state.value);
+    if (!hasPending.value) {
+      if (status.value === "loading") return Promise.resolve(false);
+      if (state.value) return Promise.resolve(true);
+      // A failed first read owns no edits. A later explicit leave is safe only
+      // after confirming this source has no unhydrated recovery bytes either.
+      if (status.value !== "failed" || pending.length || receipt)
+        return Promise.resolve(false);
+      try {
+        return Promise.resolve(localStorage.getItem(storageKey) === null);
+      } catch {
+        return Promise.resolve(false);
+      }
+    }
     saving = (async () => {
       while ((pending.length || receipt) && state.value?.revision) {
         if (!receipt)

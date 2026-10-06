@@ -845,6 +845,148 @@ describe("accepted transcript load ownership", () => {
   });
 });
 
+describe("failed initial transcript read navigation", () => {
+  it.each(["network", "offline-source"] as const)(
+    "refuses the waiting transition but lets a later explicit clean leave after an initial %s failure",
+    async (failureKind) => {
+      const test = await fixture();
+      test.dispose();
+      const fresh = test.createEditor();
+      const entered = deferred<void>(),
+        response = deferred<void>();
+      const source = new URL(test.app.catalog.getAsset("asset")!.uri);
+      if (failureKind === "offline-source") await rm(source);
+      test.api.transcript.mockImplementationOnce(async () => {
+        entered.resolve();
+        await response.promise;
+        if (failureKind === "network")
+          throw new TypeError("Initial transcript connection unavailable");
+        return test.app.transcriptEditor.get("asset");
+      });
+      const loading = fresh.editor.load();
+      await entered.promise;
+      let navigationSettled = false;
+      const waiting = fresh.editor.flush().then((result) => {
+        navigationSettled = true;
+        return result;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(navigationSettled).toBe(false);
+      response.resolve();
+      expect(await loading).toBe(false);
+      expect(await waiting).toBe(false);
+      const failure = fresh.editor.error.value;
+      expect(fresh.editor.state.value).toBeNull();
+      expect(fresh.editor.status.value).toBe("failed");
+      expect(fresh.editor.hasPending.value).toBe(false);
+      expect(test.storage.size).toBe(0);
+      expect(await fresh.editor.flush()).toBe(true);
+      expect(fresh.editor.state.value).toBeNull();
+      expect(fresh.editor.status.value).toBe("failed");
+      expect(fresh.editor.error.value).toBe(failure);
+      expect(await fresh.editor.history("undo")).toBe(false);
+      expect(await fresh.editor.restore(test.baseRevision)).toBe(false);
+      expect(fresh.editor.historyBusy.value).toBe(false);
+      expect(await fresh.editor.flush()).toBe(true);
+      expect(test.api.editTranscript).not.toHaveBeenCalled();
+      expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+      expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+      expect(
+        test.app.catalog.transcripts.revisions("asset", test.sourceHash).total,
+      ).toBe(1);
+      if (failureKind === "offline-source")
+        await writeFile(
+          source,
+          "Identity-only fixture, not speech recognition.",
+        );
+      expect(await fresh.editor.load()).toBe(true);
+      expect(fresh.editor.state.value?.revision).toBe(test.baseRevision);
+      expect(fresh.editor.status.value).toBe("saved");
+      expect(fresh.editor.error.value).toBeNull();
+    },
+  );
+
+  it("cannot leave a failed unhydrated read while exact recovery bytes remain in this source's storage", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.dispose();
+    const retained = test.storage.get(test.storageKey)!;
+    const fresh = test.createEditor();
+    test.api.transcript.mockRejectedValueOnce(
+      new TypeError("Initial clean reload unavailable"),
+    );
+    expect(await fresh.editor.load(0, false)).toBe(false);
+    expect(fresh.editor.state.value).toBeNull();
+    expect(fresh.editor.hasPending.value).toBe(false);
+    expect(await fresh.editor.flush()).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(test.api.editTranscript).not.toHaveBeenCalled();
+    fresh.dispose();
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    const recovered = test.createEditor();
+    expect(await recovered.editor.load()).toBe(true);
+    expect(recovered.editor.hasPending.value).toBe(true);
+    expect(await recovered.editor.flush()).toBe(true);
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+  });
+
+  it("cannot bypass a failed recovered draft or discard it as a failed clean read", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.dispose();
+    const retained = JSON.parse(test.storage.get(test.storageKey)!);
+    const fresh = test.createEditor();
+    const failure = new TypeError("Recovery destination unavailable");
+    test.api.transcript.mockRejectedValueOnce(failure);
+    test.api.editTranscript.mockRejectedValue(failure);
+    expect(await fresh.editor.load()).toBe(false);
+    expect(fresh.editor.hasPending.value).toBe(true);
+    expect(await fresh.editor.flush()).toBe(false);
+    expect(fresh.editor.status.value).toBe("failed");
+    expect(fresh.editor.state.value).toEqual(retained.state);
+    expect(JSON.parse(test.storage.get(test.storageKey)!).pending).toEqual(
+      retained.pending,
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(1);
+    expect(test.api.transcriptHistory).not.toHaveBeenCalled();
+    expect(test.api.selectTranscriptRevision).not.toHaveBeenCalled();
+  });
+
+  it("retains an unresolved committed receipt through failed initial recovery and repeated leave, then replays it exactly", async () => {
+    const test = await fixture();
+    test.editor.command(test.correction);
+    test.loseAcknowledgment();
+    expect(await test.editor.flush()).toBe(false);
+    test.dispose();
+    const retained = test.storage.get(test.storageKey)!;
+    const send = test.api.editTranscript.getMockImplementation()!;
+    test.api.editTranscript.mockRejectedValue(
+      new TypeError("Recovery acknowledgment unavailable"),
+    );
+    const fresh = test.createEditor();
+    expect(await fresh.editor.load()).toBe(false);
+    expect(fresh.editor.hasPending.value).toBe(true);
+    expect(await fresh.editor.flush()).toBe(false);
+    expect(test.storage.get(test.storageKey)).toBe(retained);
+    expect(test.api.editTranscript.mock.calls[1]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect(test.api.editTranscript.mock.calls[2]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+    test.api.editTranscript.mockImplementation(send);
+    expect(await fresh.editor.flush()).toBe(true);
+    expect(test.api.editTranscript.mock.calls[3]).toEqual(
+      test.api.editTranscript.mock.calls[0],
+    );
+    expect(fresh.editor.hasPending.value).toBe(false);
+    expect(fresh.editor.status.value).toBe("saved");
+    expect(test.storage.has(test.storageKey)).toBe(false);
+    expect((await test.app.transcriptEditor.revisions("asset")).total).toBe(2);
+  });
+});
+
 describe("startup transcript recovery retention", () => {
   it("keeps exact validated draft bytes when disposed before the initial recovery read completes", async () => {
     const test = await fixture();
