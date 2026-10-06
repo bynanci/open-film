@@ -47,6 +47,8 @@ export default {
     noMarkers: "Double-click the waveform or press M to add a source marker.",
     locked:
       "This clip is locked. Source navigation and analysis remain available; unlock it to trim or split.",
+    assetLocked:
+      "This source is locked in Library. Unlock it there to split. Trimming remains available.",
     transcript: "Transcript",
     transcriptHint:
       "Read-only source transcript. Select a segment or word to seek; transcription does not change your cut.",

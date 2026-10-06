@@ -92,6 +92,13 @@ const editable = computed(
     !props.clip?.locked &&
     !props.busy,
 );
+const canSplit = computed(
+  () =>
+    editable.value &&
+    !props.asset?.state.locked &&
+    playhead.value > trimIn.value &&
+    playhead.value < trimOut.value,
+);
 const sourceKey = computed(
   () =>
     `${props.projectId}:${props.asset?.id}:${props.asset?.uri}:${props.asset?.contentHash}:${props.sourceVersion ?? 0}`,
@@ -577,13 +584,7 @@ function moveTrim(event: KeyboardEvent, side: "in" | "out") {
   applyTrim();
 }
 function split() {
-  if (
-    !editable.value ||
-    !props.clip ||
-    playhead.value <= trimIn.value ||
-    playhead.value >= trimOut.value
-  )
-    return;
+  if (!canSplit.value || !props.clip) return;
   props.submit({
     type: "clip.split",
     clipId: props.clip.id,
@@ -1253,11 +1254,7 @@ onBeforeUnmount(() => {
               "
             >
               {{ t("precision.setOut") }}</button
-            ><button
-              class="editor-button"
-              :disabled="!editable || playhead <= trimIn || playhead >= trimOut"
-              @click="split"
-            >
+            ><button class="editor-button" :disabled="!canSplit" @click="split">
               {{ t("precision.split") }}</button
             ><button
               class="editor-button"
@@ -1269,6 +1266,9 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="clip?.locked" class="editor-note">
             {{ t("precision.locked") }}
+          </p>
+          <p v-else-if="asset?.state.locked" class="editor-note">
+            {{ t("precision.assetLocked") }}
           </p>
           <p v-if="snapResult" class="precision-snap-result" role="status">
             {{

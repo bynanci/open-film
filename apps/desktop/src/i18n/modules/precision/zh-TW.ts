@@ -43,6 +43,8 @@ export default {
     removeMarker: "移除 {time} 的標記",
     noMarkers: "在波形上按兩下或按 M，即可新增來源標記。",
     locked: "此片段已鎖定。仍可瀏覽與分析來源；請先解鎖，再裁切或分割。",
+    assetLocked:
+      "此來源已在媒體庫中鎖定。請到媒體庫解鎖後再分割；仍可裁切片段。",
     transcript: "逐字稿",
     transcriptHint:
       "來源逐字稿僅供閱讀。選取段落或字詞即可定位；語音辨識不會變更剪輯。",

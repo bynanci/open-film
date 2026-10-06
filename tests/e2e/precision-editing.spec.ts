@@ -452,6 +452,124 @@ async function seekWord(
     .toBeCloseTo(expected, 2);
 }
 
+test("Library asset locks prevent precision splits while allowing trims, then unlocking restores splitting", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { video, clip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-asset-lock",
+  );
+  expect(clip.locked).not.toBe(true);
+  const before = await composition(request);
+  const split = page.getByRole("button", {
+    name: text(locale, "precision.split"),
+    exact: true,
+  });
+  const trimIn = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  const waveform = page.locator(".precision-waveform");
+  const sourceTime = (clip.sourceIn! + clip.sourceOut!) / 2;
+  const seekInterior = async () => {
+    const bounds = (await waveform.boundingBox())!;
+    await waveform.click({
+      position: {
+        x: (sourceTime / video.duration!) * bounds.width,
+        y: bounds.height / 2,
+      },
+    });
+  };
+  await seekInterior();
+  await expect(split).toBeEnabled();
+  const libraryLock = async (locked: boolean) => {
+    await navigate(page, "library", locale);
+    const changed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/assets/${video.id}` &&
+        response.request().method() === "PATCH",
+    );
+    await page
+      .getByRole("button", {
+        name: uiText(locale, locked ? "media.card.lock" : "media.card.unlock", {
+          name: videoName,
+        }),
+        exact: true,
+      })
+      .click();
+    const response = await changed;
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).asset.state.locked).toBe(locked);
+    await navigate(page, "edit", locale);
+    await mode(page, locale, "precision");
+    await expect(trimIn).toBeEnabled();
+    await seekInterior();
+  };
+  await libraryLock(true);
+  expect(clipById(await composition(request), clip.id).locked).not.toBe(true);
+  await expect(split).toBeDisabled();
+  await expect(
+    page.getByText(text(locale, "precision.assetLocked"), { exact: true }),
+  ).toBeVisible();
+  await waveform.press("b");
+  expect(await composition(request)).toEqual(before);
+  await expect(page.locator(".editor-message.error")).toHaveCount(0);
+
+  // The Library source lock only protects splitting. A manual trim on the
+  // unlocked timeline clip still commits through the normal command path.
+  const newIn = clip.sourceIn! + (sourceTime - clip.sourceIn!) / 2;
+  await trimIn.fill(String(newIn));
+  await trimIn.press("Tab");
+  await saved(page, locale);
+  const trimmed = await composition(request);
+  expect(clipById(trimmed, clip.id).sourceIn).toBeCloseTo(newIn, 6);
+  expect(allClips(trimmed)).toHaveLength(allClips(before).length);
+  await expect(split).toBeDisabled();
+
+  await libraryLock(false);
+  await expect(
+    page.getByText(text(locale, "precision.assetLocked"), { exact: true }),
+  ).toHaveCount(0);
+  await expect(split).toBeEnabled();
+  const preview = page.getByLabel(text(locale, "precision.sourcePreview"), {
+    exact: true,
+  });
+  const pixelTolerance =
+    (video.duration! / (await waveform.boundingBox())!.width) * 2;
+  let splitTime = 0;
+  // Pointer coordinates are quantized to pixels. Verify the seek, then compare
+  // the split with the actual paused source playhead rather than the ideal x.
+  await expect
+    .poll(async () => {
+      const source = await preview.evaluate((node) => {
+        const media = node as HTMLMediaElement;
+        return { time: media.currentTime, paused: media.paused };
+      });
+      splitTime = source.time;
+      return (
+        source.paused &&
+        splitTime > newIn &&
+        splitTime < clip.sourceOut! &&
+        Math.abs(splitTime - sourceTime) <= pixelTolerance
+      );
+    })
+    .toBe(true);
+  await waveform.press("b");
+  await saved(page, locale);
+  const divided = await composition(request);
+  expect(allClips(divided)).toHaveLength(allClips(trimmed).length + 1);
+  const halves = allClips(divided).filter(
+    (entry) => entry.assetId === video.id,
+  );
+  expect(halves).toHaveLength(2);
+  expect(halves[0]!.sourceOut).toBeCloseTo(splitTime, 3);
+  expect(halves[1]!.sourceIn).toBeCloseTo(splitTime, 3);
+});
+
 test("invalidates source evidence after rejected reads, marker writes and failed jobs, then recovers on refresh", async ({
   page,
   request,

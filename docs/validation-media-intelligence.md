@@ -27,12 +27,12 @@ The existing regression gates also execute the new suites through CI:
 | Gate                               | Evidence                                                                                                                                                                                                   |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm format:check`                | **Passed.** Repository formatting check.                                                                                                                                                                   |
-| `pnpm test:i18n`                   | **Passed.** 856 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
+| `pnpm test:i18n`                   | **Passed.** 857 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
 | `pnpm lint`, `pnpm typecheck`      | **Passed.** TypeScript, Vue and strict lint checks.                                                                                                                                                        |
 | `pnpm test`                        | **Passed: 502 tests in 55 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
 | `pnpm build`                       | **Passed.** CLI/server bundles, Python sidecar copies and Desktop production build.                                                                                                                        |
 | `node scripts/smoke-built-cli.mjs` | **Passed.** Built CLI import/Story/Compose, real waveform/scenes, missing-model failure, protocol-fixture transcription, paged words, markers, reopen, MP4 and exports.                                    |
-| `pnpm test:e2e`                    | **Passed: 27 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus four Precision browser cases; the 500-clip regression remains green.                                 |
+| `pnpm test:e2e`                    | **Passed: 28 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus five Precision browser cases; the 500-clip regression remains green.                                 |
 | `pnpm test:interchange`            | **Passed.** Official OpenTimelineIO 0.18.1 serialization/source validation and 18 offline workstation-helper regressions. Actual Resolve is not run.                                                       |
 | `pnpm test:native`                 | **Passed.** Rust formatting, Clippy and compile/test harness; the harness contains zero native behavior tests.                                                                                             |
 
@@ -71,6 +71,9 @@ Independent reviews and browser execution identified and corrected:
   operation; Precision now waits for a verified read and can refresh after recovery.
 - Waveform SVG stretching a partial final bucket; geometry uses actual peak
   sample rate at all zoom levels.
+- Library-locked assets offering Split even though the command rejects them;
+  split availability and its keyboard guard now respect the source lock while
+  preserving valid trim controls on unlocked clips.
 
 Each correction has a protocol, integration, media or browser regression rather
 than only an interface declaration.

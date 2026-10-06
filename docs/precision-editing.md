@@ -34,6 +34,11 @@ that history. It does not split or modify the original media file. A locked
 clip can still be played or analyzed, but must be unlocked before trimming or
 splitting.
 
+A source locked in Library also prevents splitting, even when its selected
+timeline clip is unlocked. Precision explains the source lock and disables both
+the Split action and B shortcut until it is unlocked in Library. Source locking
+does not disable a valid trim of an unlocked clip.
+
 The editor must flush pending work before operations that switch project or
 export. A failed/conflicting save remains visible and keeps the existing draft
 recovery behavior. Reopening the project loads the saved cut, not a separate
