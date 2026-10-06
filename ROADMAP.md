@@ -92,7 +92,21 @@ is independent of interface/film languages. CI fixture output validates protocol
 and application behavior; real model accuracy/performance is a separate gate.
 See [media intelligence](docs/media-intelligence.md) and [transcription setup](docs/transcription.md).
 
-Next: Transcript Editing + Glossary + Review Suggestions. Geometry/safe frames,
-local face detection, highlights/derived compositions and captions follow only
-after this foundation is stable. They are not part of this PR. Real Resolve QA
-continues to require a workstation; generated OTIO/parser checks do not replace it.
+The foundation is merged as PR #3. Transcript productivity builds on it in 0.3.1
+below. Geometry/safe frames, local face detection, highlights/derived compositions
+and captions follow subsequent milestones. Real Resolve QA continues to require
+a workstation; generated OTIO/parser checks do not replace it.
+
+## 0.3.1 — Transcript Productivity & Reviewable Intelligence
+
+This round builds a correctable text knowledge layer above the merged media
+intelligence foundation: shared transcript commands and revisions, conservative
+word-alignment state, separate durable undo/redo, search/replace, scoped terminology
+and reviewable correction evidence. Offline glossary review is useful without an
+AI provider; optional language review stays consented, bounded and human-approved.
+The Story-first composition engine and main Library/Story/Edit/Export navigation
+remain the same. See [transcript editing](docs/transcript-editing.md),
+[glossary](docs/glossary.md) and [review suggestions](docs/review-suggestions.md).
+
+Geometry/safe frames, local vision, smart reframing, highlights/derived films and
+captions remain subsequent milestones. They are not implemented in this round.

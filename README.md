@@ -57,6 +57,15 @@ No model is bundled or downloaded during recognition. See [media intelligence](d
 [transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
 This development milestone does not certify camera/GPU or real ASR quality.
 
+**0.3.1 Transcript Productivity** adds **Edit → Transcript**: correct text,
+split/merge segments, search/replace and undo independently of the film timeline.
+Immutable revisions preserve recognition evidence and mark edited word timing
+as stale. Project/global terminology produces offline suggestions to preview,
+accept or skip; optional language review uses the existing provider consent
+boundary. See [transcript editing](docs/transcript-editing.md),
+[glossary](docs/glossary.md), [review suggestions](docs/review-suggestions.md) and
+the [validation record](docs/validation-transcript-productivity.md).
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`

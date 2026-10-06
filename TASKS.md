@@ -153,5 +153,23 @@ from model, camera and hardware certification.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
-Transcript text editing, Glossary, Review Suggestions, Geometry/Vision, Highlights
-and Captions are deferred; no interface-only completion claims are made for them.
+Geometry/Vision, Highlights and Captions remain deferred. Transcript productivity
+is the next milestone below; interface-only work is not completion.
+
+## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
+
+Evidence: [validation record](docs/validation-transcript-productivity.md).
+
+- [x] Let people correct, split, merge and delete transcript text without changing media or the film.
+- [x] Preserve provider evidence and manual revisions without silently claiming stale word timing is precise.
+- [x] Search and replace occurrences, including one-step Undo/Redo for Replace All.
+- [x] Recover autosaved edits after restart without duplicate requests or overwriting newer revisions.
+- [x] Remember exact preferred terms globally or with the portable project, with project precedence.
+- [x] Find glossary corrections offline and review, preview, accept or skip durable suggestions.
+- [x] Offer optional bounded LanguageProvider review with consent, streaming evidence, cancellation and retry.
+- [x] Reject stale or invalid suggestions and atomically preserve accepted correction audit evidence.
+- [x] Share transcript/terminology/review commands across Desktop, API and CLI.
+- [x] Verify localized, accessible Transcript UX and preserve Precision/Story behavior.
+- [x] Pass complete local regression gates and address reproduced correctness review findings.
+- [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
+- [ ] Manual: actual Resolve QA remains a separate workstation gate.

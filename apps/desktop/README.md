@@ -43,6 +43,22 @@ and film language. Missing optional model/runtime has localized setup guidance
 and leaves the other editing tools available. See [setup](../../docs/transcription.md)
 and [precision editing](../../docs/precision-editing.md).
 
+## Transcript mode
+
+**Edit → Transcript** opens the selected source's spoken text with inline editing,
+source playback, search/replace, split/merge and a separate Undo/Redo history.
+Autosave and revision recovery preserve corrections when reopening a film. The
+collapsed tools panel exposes project/global Glossary and review Suggestions;
+glossary review works without a language provider. Accept is a normal undoable
+text command, and stale suggestions require regeneration.
+
+Changing text marks word alignment stale. Precision keeps segment seeking and
+excludes edited word boundaries from snapping; original words remain revision
+evidence. Re-transcribing creates another provider revision after success rather
+than discarding manual corrections during a failed run. See
+[transcript editing](../../docs/transcript-editing.md),
+[glossary](../../docs/glossary.md) and [review](../../docs/review-suggestions.md).
+
 ## Native shell
 
 With the platform's Tauri prerequisites installed, run

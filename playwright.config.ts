@@ -16,7 +16,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "pnpm server",
+      command: "pnpm exec tsx tests/fixtures/transcript-productivity-server.ts",
+      // Explicit offline review protocol fixture; production defaults remain unconfigured.
       // Explicit test-only protocol runner; this is not a speech model or ASR QA.
       env: {
         OPENFILM_WHISPER_PYTHON: "python3",
