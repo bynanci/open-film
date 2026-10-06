@@ -3398,6 +3398,122 @@ async function seedManySegments(
   return state;
 }
 
+test("matching-only transcript pages retain their rows and independent global search cursor", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(sizes[2]!);
+  const { asset, compositionId } = await createSource(
+    request,
+    "Filtered transcript pages",
+  );
+  const initial = await seedManySegments(request, asset.id, 200);
+  const lastPage = await transcript(request, asset.id, 100);
+  const firstId = initial.document!.segments[0]!.id;
+  const lastId = lastPage.document!.segments.at(-1)!.id;
+  await edit(request, asset.id, [
+    { type: "replace-text", segmentId: firstId, text: "alpha alpha" },
+    { type: "replace-text", segmentId: lastId, text: "alpha alpha alpha" },
+  ]);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  const searchResponse = (query: string, sensitive = false) =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === `/api/assets/${asset.id}/transcript/search` &&
+        url.searchParams.get("query") === query &&
+        url.searchParams.get("caseSensitive") === String(sensitive) &&
+        Number(url.searchParams.get("offset")) === 0
+      );
+    });
+  const searchRead = searchResponse("alpha");
+  await workspace(page).getByLabel(t("search"), { exact: true }).fill("alpha");
+  const found = await searchRead;
+  expect(found.status(), await found.text()).toBe(200);
+  expect(await found.json()).toMatchObject({
+    totalSegments: 200,
+    totalMatches: 203,
+    offset: 0,
+    limit: 100,
+  });
+  await workspace(page).getByLabel(t("filterMatches"), { exact: true }).check();
+  await expect(rows(page)).toHaveCount(100);
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(100);
+  await expect(rows(page).first()).toHaveAttribute(
+    "data-segment-id",
+    "fixture-split-100",
+  );
+  await expect(rows(page).last()).toHaveAttribute("data-segment-id", lastId);
+  // Document paging must not move the global cursor from the first occurrence.
+  // Next still selects the second occurrence within the first segment.
+  await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue("alpha alpha");
+  await workspace(page)
+    .getByLabel(t("replacement"), { exact: true })
+    .fill("omega");
+  await button(page, "replaceCurrent").click();
+  await saved(page);
+  expect(
+    (await transcript(request, asset.id)).document!.segments[0]!.text,
+  ).toBe("alpha omega");
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(page.getByTestId("transcript-search-status")).toHaveText(
+    "203 matches",
+  );
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(100);
+  await button(page, "previousMatch").click();
+  await expect(field(page)).toHaveValue("alpha alpha alpha");
+  await button(page, "previousPage").click();
+  await expect(rows(page)).toHaveCount(100);
+  await expect(rows(page).first()).toHaveAttribute("data-segment-id", firstId);
+  await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue("alpha alpha");
+  await previewVisible(page);
+  const sparseRead = searchResponse("Fixture line 150");
+  await workspace(page)
+    .getByLabel(t("search"), { exact: true })
+    .fill("Fixture line 150");
+  expect((await sparseRead).status()).toBe(200);
+  await expect(rows(page)).toHaveCount(0);
+  await button(page, "nextPage").click();
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toHaveAttribute(
+    "data-segment-id",
+    "fixture-split-150",
+  );
+  const insensitiveRead = searchResponse("ALPHA");
+  await workspace(page).getByLabel(t("search"), { exact: true }).fill("ALPHA");
+  expect((await insensitiveRead).status()).toBe(200);
+  await expect(rows(page)).toHaveCount(100);
+  const sensitiveRead = searchResponse("ALPHA", true);
+  await workspace(page).getByLabel(t("caseSensitive"), { exact: true }).check();
+  expect((await sensitiveRead).status()).toBe(200);
+  await expect(rows(page)).toHaveCount(0);
+  const restoredRead = searchResponse("ALPHA");
+  await workspace(page)
+    .getByLabel(t("caseSensitive"), { exact: true })
+    .uncheck();
+  expect((await restoredRead).status()).toBe(200);
+  await expect(rows(page)).toHaveCount(100);
+  expect(
+    (await transcript(request, asset.id)).document!.segments[0]!.text,
+  ).toBe("alpha alpha");
+  expect(
+    (await transcript(request, asset.id, 100)).document!.segments.at(-1)!.text,
+  ).toBe("alpha alpha alpha");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
 test("transcript search wraps across matching pages while preserving every occurrence within a segment", async ({
   page,
   request,

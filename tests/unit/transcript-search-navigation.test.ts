@@ -29,6 +29,8 @@ interface Editor {
   state: Ref<TranscriptEditorState | null>;
   query: Ref<string>;
   caseSensitive: Ref<boolean>;
+  filter: Ref<boolean>;
+  visible: Ref<core.TranscriptSegment[]>;
   search: Ref<TranscriptSearchState | undefined>;
   searchIsCurrent: Ref<boolean>;
   searchBusy: Ref<boolean>;
@@ -42,6 +44,7 @@ interface Editor {
   selectedId: Ref<string>;
   localError: Ref<unknown>;
   load: (offset?: number, recover?: boolean) => Promise<boolean>;
+  loadPage: (offset: number) => Promise<boolean>;
   find: () => Promise<void>;
   seekMatch: (direction: number) => Promise<void>;
   command: (value: core.TranscriptCommand) => boolean;
@@ -81,7 +84,7 @@ beforeAll(async () => {
   );
   editorFactory = await compile(
     source.match(/<script setup[^>]*>([\s\S]*?)<\/script>/)![1]!,
-    "return {state,query,caseSensitive,search,searchIsCurrent,searchBusy,matchIndex,currentMatch,selectedId,localError,load,find,seekMatch,command};",
+    "return {state,query,caseSensitive,filter,visible,search,searchIsCurrent,searchBusy,matchIndex,currentMatch,selectedId,localError,load,loadPage,find,seekMatch,command};",
   );
 });
 afterEach(async () => {
@@ -97,7 +100,7 @@ function deferred() {
   });
   return { promise, resolve };
 }
-async function fixture(count = 101) {
+async function fixture(count = 101, textAt?: (index: number) => string) {
   vi.useFakeTimers();
   const directory = await mkdtemp(
     join(tmpdir(), "openfilm-search-navigation-"),
@@ -141,8 +144,9 @@ async function fixture(count = 101) {
       id: `segment-${index}`,
       start: index,
       end: index + 1,
-      text:
-        index === 0
+      text: textAt
+        ? textAt(index)
+        : index === 0
           ? "alpha first alpha"
           : index === count - 1
             ? "alpha last alpha alpha"
@@ -238,6 +242,184 @@ async function lastOccurrence(editor: Editor) {
 }
 
 describe("actual transcript component with SQLite search pages", () => {
+  it("filtered transcript pages use their loaded text while retaining the global occurrence cursor", async () => {
+    const { api, editor } = await fixture(200);
+    editor.filter.value = true;
+    expect(editor.visible.value).toHaveLength(100);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-0");
+    const reads = api.transcriptSearch.mock.calls.length;
+    await editor.loadPage(100);
+    expect(editor.state.value?.offset).toBe(100);
+    expect(editor.visible.value.map((segment) => segment.id)).toEqual(
+      Array.from({ length: 100 }, (_, index) => `segment-${index + 100}`),
+    );
+    expect(editor.search.value?.offset).toBe(0);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-0");
+    expect(api.transcriptSearch).toHaveBeenCalledTimes(reads);
+    await editor.seekMatch(-1);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-199");
+    expect(editor.currentMatch.value?.range.start).toBe(17);
+    await editor.loadPage(0);
+    expect(editor.visible.value).toHaveLength(100);
+    expect(editor.search.value?.offset).toBe(100);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-199");
+    expect(editor.currentMatch.value?.range.start).toBe(17);
+    await editor.seekMatch(1);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-0");
+    expect(editor.currentMatch.value?.range.start).toBe(0);
+  });
+  it("filtered rows follow literal queries, case and accepted revisions on a different transcript page", async () => {
+    const { app, editor } = await fixture(200, (index) =>
+      index === 100
+        ? "ALPHA"
+        : index === 101
+          ? "回憶 [ONE].*"
+          : `alpha ${index}`,
+    );
+    editor.filter.value = true;
+    await editor.loadPage(100);
+    expect(editor.visible.value).toHaveLength(99);
+    editor.query.value = "ALPHA";
+    editor.caseSensitive.value = true;
+    expect(editor.visible.value).toEqual([]);
+    await editor.find();
+    expect(editor.visible.value.map((segment) => segment.id)).toEqual([
+      "segment-100",
+    ]);
+    editor.query.value = "回憶 [ONE].*";
+    expect(editor.visible.value).toEqual([]);
+    await editor.find();
+    expect(editor.visible.value.map((segment) => segment.id)).toEqual([
+      "segment-101",
+    ]);
+    await app.transcriptEditor.edit("asset", {
+      baseRevision: editor.state.value!.revision!,
+      requestId: "filtered-revision",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "segment-101",
+          text: "a different line",
+        },
+      ],
+    });
+    await editor.load(100, false);
+    expect(editor.visible.value).toEqual([]);
+    expect(editor.currentMatch.value).toBeUndefined();
+    await editor.find();
+    expect(editor.search.value?.totalMatches).toBe(0);
+    expect(editor.visible.value).toEqual([]);
+  });
+  it("loaded-page filtering agrees with SQLite Unicode matching and canonical legacy text", async () => {
+    const special = new Map([
+      [100, "ſ"],
+      [101, "ς"],
+      [102, "legacy \ud800 alpha"],
+      [103, "literal \ufffd"],
+      [104, "\u0000after"],
+    ]);
+    const { app, editor } = await fixture(
+      200,
+      (index) => special.get(index) ?? `alpha ${index}`,
+    );
+    editor.filter.value = true;
+    await editor.loadPage(100);
+    for (const [query, sensitive] of [
+      ["s", false],
+      ["s", true],
+      ["σ", false],
+      ["σ", true],
+      ["\ufffd", false],
+      ["after", true],
+      ["alpha", false],
+    ] as const) {
+      editor.query.value = query;
+      editor.caseSensitive.value = sensitive;
+      await editor.find();
+      const matches = [];
+      for (const offset of [0, 100]) {
+        const found = await app.transcriptEditor.search("asset", {
+          query,
+          caseSensitive: sensitive,
+          offset,
+          limit: 100,
+        });
+        matches.push(
+          ...found.matches
+            .filter((match) => match.position >= 100)
+            .map((match) => match.segmentId),
+        );
+      }
+      expect(
+        editor.visible.value.map((segment) => segment.id),
+        `${query}/${sensitive}`,
+      ).toEqual(matches);
+    }
+    expect(
+      editor.visible.value.some((segment) => segment.text.includes("\ud800")),
+    ).toBe(true);
+  });
+  it("an empty query and disabled filter expose the loaded page without changing the occurrence cursor", async () => {
+    const { api, editor } = await fixture(200);
+    editor.filter.value = true;
+    await editor.loadPage(100);
+    const reads = api.transcriptSearch.mock.calls.length;
+    editor.filter.value = false;
+    expect(editor.visible.value).toHaveLength(100);
+    expect(editor.currentMatch.value?.segmentId).toBe("segment-0");
+    editor.filter.value = true;
+    editor.query.value = "";
+    await editor.find();
+    expect(editor.visible.value).toHaveLength(100);
+    expect(api.transcriptSearch).toHaveBeenCalledTimes(reads);
+  });
+  it.each(["query", "case", "revision"] as const)(
+    "a delayed transcript page cannot restore filtered rows from an old %s context",
+    async (change) => {
+      const { app, api, editor } = await fixture(200);
+      editor.filter.value = true;
+      const gate = deferred();
+      const arrived = deferred();
+      const actualRead = api.transcript.getMockImplementation()!;
+      api.transcript.mockImplementationOnce(async (...args) => {
+        const result = await actualRead(...args);
+        arrived.resolve();
+        await gate.promise;
+        return result;
+      });
+      const reading = editor.loadPage(100);
+      try {
+        await arrived.promise;
+        if (change === "query") editor.query.value = "first";
+        else if (change === "case") editor.caseSensitive.value = true;
+        else {
+          await app.transcriptEditor.edit("asset", {
+            baseRevision: editor.state.value!.revision!,
+            requestId: "new-page-revision",
+            commands: [
+              {
+                type: "replace-text",
+                segmentId: "segment-100",
+                text: "changed line",
+              },
+            ],
+          });
+          await editor.load(100, false);
+        }
+        expect(editor.visible.value).toEqual([]);
+      } finally {
+        gate.resolve();
+      }
+      await reading;
+      await editor.find();
+      expect(editor.searchIsCurrent.value).toBe(true);
+      expect(editor.state.value?.offset).toBe(100);
+      expect(editor.visible.value).toHaveLength(
+        change === "query" ? 0 : change === "revision" ? 99 : 100,
+      );
+      expect(editor.search.value?.revision).toBe(editor.state.value?.revision);
+    },
+  );
   it.each([101, 201])(
     "Next wraps from the final occurrence to the first page across %i matching segments",
     async (count) => {

@@ -161,15 +161,6 @@ const rememberableCorrection = computed(() => {
     ? correction
     : null;
 });
-const visible = computed(
-  () =>
-    state.value?.document?.segments.filter(
-      (segment) =>
-        !filter.value ||
-        !query.value ||
-        search.value?.matches.some((match) => match.segmentId === segment.id),
-    ) ?? [],
-);
 const matchRanges = computed(
   () =>
     search.value?.matches.flatMap((match) =>
@@ -184,6 +175,16 @@ const searchIsCurrent = computed(
     searchContext.value.revision === state.value?.revision &&
     search.value?.revision === searchContext.value.revision,
 );
+const visible = computed(() => {
+  const segments = state.value?.document?.segments ?? [];
+  if (!filter.value || !query.value) return segments;
+  if (!searchIsCurrent.value) return [];
+  // Match this bounded transcript page independently of the global hit page.
+  // Literal escaping and Unicode case flags mirror transcript text search.
+  const escaped = query.value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const matches = new RegExp(escaped, caseSensitive.value ? "u" : "iu");
+  return segments.filter((segment) => matches.test(segment.text));
+});
 const currentMatch = computed(() =>
   searchIsCurrent.value ? matchRanges.value[matchIndex.value] : undefined,
 );
