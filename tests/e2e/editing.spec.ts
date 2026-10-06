@@ -512,9 +512,7 @@ test("acknowledges a recovered batch before retrying queued edits", async ({
       data: {
         baseRevision: committedState.revision,
         requestId: "55555555-5555-4555-8555-555555555555",
-        commands: [
-          { type: "volume", clipId: "ending-motion", volume: 0.15 },
-        ],
+        commands: [{ type: "volume", clipId: "ending-motion", volume: 0.15 }],
       },
     },
   );
