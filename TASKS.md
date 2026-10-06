@@ -90,6 +90,8 @@ Hardware and real NLE verification are recorded separately.
 
 Keep this file current when a pending capability gains working behavior and
 validation; keep host-dependent checks distinct from source implementation.
+Use [the workstation QA evidence contract](docs/workstation-qa.md) for Resolve,
+ASR/LLM, GPU, camera, 4K, Windows installer and cross-process recovery gates.
 
 ## Global product experience and i18n round
 
@@ -204,6 +206,8 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Filter the current transcript page literally without changing the global search occurrence cursor.
 - [x] Bind remote review consent to the configured provider identity, displayed destination and all declared data kinds while sending only bounded text and terminology.
 - [x] Claim a retry batch and its job owner atomically before preparation, with exact rollback and protection from obsolete attempts.
-- [x] Recover review work only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
+- [x] Recover review work automatically only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
+- [x] Provide exact-checkpoint, user-confirmed manual recovery for unknown review owners without claiming Windows/macOS automatic liveness proof.
+- [ ] Automatic Windows/macOS cross-process dead-owner recovery with verified OS-specific process identity/liveness evidence.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.
