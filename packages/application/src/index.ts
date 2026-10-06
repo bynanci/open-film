@@ -354,7 +354,17 @@ export class OpenFilmApplication {
       if (options.operation === "transcribe") {
         for (const entry of this.knowledge.glossaryList("effective")) {
           const term = entry.replacement;
-          if (!term.trim() || term.length > 200 || promptHints.includes(term))
+          if (
+            !term.trim() ||
+            term.length > 200 ||
+            promptHints.includes(term) ||
+            // Multiline glossary text stays valid content. Compact provider
+            // hints must not turn that text into an invalid transcription request.
+            [...term].some(
+              (character) =>
+                character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+            )
+          )
             continue;
           if (promptHints.length >= 50 || hintLength + term.length > 2000)
             continue;
