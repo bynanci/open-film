@@ -10,9 +10,16 @@ import type {
   FilmSettings,
   ProjectContentLocale,
   TranscriptDocument,
+  TranscriptSegment,
   WaveformData,
   SceneAnalysis,
   TimelineMarker,
+  TranscriptRevision,
+  TranscriptCommand,
+  GlossaryEntry,
+  GlossaryInput,
+  TranscriptReviewSuggestion as ReviewSuggestion,
+  ReviewBatch,
 } from "@openfilm/core";
 import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
 
@@ -116,6 +123,50 @@ export interface IntelligenceProviders {
     };
   };
 }
+export interface TranscriptEditorState {
+  document?: TranscriptDocument;
+  revision?: string;
+  revisionInfo?: TranscriptRevision;
+  total: number;
+  offset: number;
+  limit: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  acknowledgedRevision?: string;
+}
+export interface TranscriptSearchState {
+  revision: string;
+  totalMatches: number;
+  totalSegments: number;
+  offset: number;
+  limit: number;
+  matches: {
+    segmentId: string;
+    position: number;
+    start: number;
+    end: number;
+    text: string;
+    ranges: { start: number; end: number }[];
+  }[];
+}
+export interface ReviewProviderState {
+  configured: boolean;
+  available: boolean;
+  provider?: {
+    id: string;
+    name?: string;
+    execution: string;
+    model?: string;
+    endpoint?: string;
+  };
+}
+export interface ReviewSuggestionsState {
+  suggestions: ReviewSuggestion[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface CreateFilmInput {
   title: string;
   path?: string;
@@ -339,6 +390,114 @@ export const api = {
     request<{ ok: true }>(
       `/assets/${encodeURIComponent(assetId)}/markers/${encodeURIComponent(markerId)}`,
       { method: "DELETE" },
+    ),
+  transcript: (assetId: string, offset = 0, limit = 100, revisionId?: string) =>
+    request<TranscriptEditorState>(
+      `/assets/${encodeURIComponent(assetId)}/transcript?${new URLSearchParams({ offset: String(offset), limit: String(limit), ...(revisionId ? { revisionId } : {}) })}`,
+    ),
+  transcriptSegment: (assetId: string, segmentId: string) =>
+    request<{ segment: TranscriptSegment; position: number; revision: string }>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/segments/${encodeURIComponent(segmentId)}`,
+    ),
+  editTranscript: (
+    assetId: string,
+    body: {
+      baseRevision: string;
+      requestId: string;
+      commands: TranscriptCommand[];
+    },
+  ) =>
+    post<TranscriptEditorState>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/edit`,
+      body,
+    ),
+  transcriptHistory: (
+    assetId: string,
+    direction: "undo" | "redo",
+    body: { baseRevision: string; requestId: string },
+  ) =>
+    post<TranscriptEditorState>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/${direction}`,
+      body,
+    ),
+  transcriptSearch: (
+    assetId: string,
+    query: string,
+    caseSensitive = false,
+    offset = 0,
+    limit = 100,
+  ) =>
+    request<TranscriptSearchState>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/search?${new URLSearchParams({ query, caseSensitive: String(caseSensitive), offset: String(offset), limit: String(limit) })}`,
+    ),
+  transcriptRevisions: (assetId: string, offset = 0, limit = 100) =>
+    request<{
+      revisions: TranscriptRevision[];
+      total: number;
+      offset: number;
+      limit: number;
+    }>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/revisions?${new URLSearchParams({ offset: String(offset), limit: String(limit) })}`,
+    ),
+  selectTranscriptRevision: (
+    assetId: string,
+    body: { baseRevision: string; requestId: string; revisionId: string },
+  ) =>
+    post<TranscriptEditorState>(
+      `/assets/${encodeURIComponent(assetId)}/transcript/select`,
+      body,
+    ),
+  glossary: (scope: "global" | "project" | "effective" = "project") =>
+    request<{ entries: GlossaryEntry[] }>(
+      `/glossary?${new URLSearchParams({ scope })}`,
+    ),
+  saveGlossary: (body: GlossaryInput) =>
+    post<{ entry: GlossaryEntry }>("/glossary", body),
+  deleteGlossary: (id: string, scope: "global" | "project") =>
+    request<{ ok: true }>(
+      `/glossary/${encodeURIComponent(id)}?${new URLSearchParams({ scope })}`,
+      { method: "DELETE" },
+    ),
+  reviewProvider: () => request<ReviewProviderState>("/review/provider"),
+  reviewConsent: (allow: boolean) =>
+    post<ReviewProviderState>("/review/consent", { allow }),
+  reviewSuggestions: (
+    assetId: string,
+    status?: ReviewSuggestion["status"],
+    offset = 0,
+    limit = 100,
+  ) =>
+    request<ReviewSuggestionsState>(
+      `/assets/${encodeURIComponent(assetId)}/review/suggestions?${new URLSearchParams({ offset: String(offset), limit: String(limit), ...(status ? { status } : {}) })}`,
+    ),
+  runReview: (
+    assetId: string,
+    body: {
+      source: "glossary" | "language";
+      segmentIds?: string[];
+      batchSize?: number;
+    },
+  ) =>
+    post<{ job: Job }>(`/assets/${encodeURIComponent(assetId)}/review`, body),
+  acceptSuggestion: (
+    id: string,
+    body: { baseRevision: string; requestId: string },
+  ) =>
+    post<TranscriptEditorState>(
+      `/review/suggestions/${encodeURIComponent(id)}/accept`,
+      body,
+    ),
+  skipSuggestion: (id: string) =>
+    post<{ suggestion: ReviewSuggestion }>(
+      `/review/suggestions/${encodeURIComponent(id)}/skip`,
+    ),
+  reviewBatches: (jobId: string) =>
+    request<{ batches: ReviewBatch[] }>(
+      `/review/jobs/${encodeURIComponent(jobId)}/batches`,
+    ),
+  reviewBatchAction: (jobId: string, index: number, action: "retry" | "skip") =>
+    post<{ job: Job }>(
+      `/review/jobs/${encodeURIComponent(jobId)}/batches/${index}/${action}`,
     ),
   workspace: () => request<WorkspaceInfo>("/workspace"),
   projectAvailability: (paths: string[]) =>

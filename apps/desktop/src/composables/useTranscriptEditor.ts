@@ -1,0 +1,317 @@
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import {
+  validateTranscriptCommand,
+  type TranscriptCommand,
+} from "@openfilm/core";
+import { api, ApiError, type TranscriptEditorState } from "../api";
+
+type Receipt =
+  | { baseRevision: string; requestId: string; commands: TranscriptCommand[] }
+  | { baseRevision: string; requestId: string; direction: "undo" | "redo" }
+  | { baseRevision: string; requestId: string; revisionId: string };
+type Draft = {
+  state: TranscriptEditorState;
+  pending: TranscriptCommand[];
+  receipt: Receipt | null;
+};
+
+/** Source-scoped durable queue. A retry always reuses its original receipt. */
+export function useTranscriptEditor(
+  projectId: string,
+  assetId: string,
+  changed: () => void,
+) {
+  const state = shallowRef<TranscriptEditorState | null>(null);
+  const status = ref<
+    "loading" | "dirty" | "saving" | "saved" | "failed" | "conflict"
+  >("loading");
+  const error = shallowRef<unknown>(null);
+  const notice = ref("");
+  const historyBusy = ref(false);
+  const pendingCount = ref(0);
+  const hasPending = computed(() => pendingCount.value > 0);
+  const storageKey = `openfilm:transcript:${projectId}:${assetId}`;
+  let pending: TranscriptCommand[] = [];
+  let receipt: Receipt | null = null;
+  let saving: Promise<boolean> | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let disposed = false;
+  let readGeneration = 0;
+  const view = (
+    saved: TranscriptEditorState,
+    commands: TranscriptCommand[],
+  ) => {
+    const next = structuredClone(saved);
+    for (const command of commands) {
+      if (command.type !== "replace-text") continue;
+      const segment = next.document?.segments.find(
+        (item) => item.id === command.segmentId,
+      );
+      if (segment) {
+        segment.text = command.text;
+        segment.alignmentState = "text-edited";
+      }
+    }
+    return next;
+  };
+  function retain() {
+    pendingCount.value = pending.length + (receipt ? 1 : 0);
+    try {
+      if ((pending.length || receipt) && state.value)
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            state: state.value,
+            pending,
+            receipt,
+          } satisfies Draft),
+        );
+      else localStorage.removeItem(storageKey);
+    } catch {
+      /* A full recovery store must not interrupt live editing. */
+    }
+  }
+  function fail(cause: unknown) {
+    error.value = cause;
+    status.value =
+      cause instanceof ApiError && cause.status === 409 ? "conflict" : "failed";
+    retain();
+  }
+  async function receiptSend(value: Receipt) {
+    return "commands" in value
+      ? api.editTranscript(assetId, value)
+      : "revisionId" in value
+        ? api.selectTranscriptRevision(assetId, value)
+        : api.transcriptHistory(assetId, value.direction, {
+            baseRevision: value.baseRevision,
+            requestId: value.requestId,
+          });
+  }
+  async function load(offset = state.value?.offset ?? 0, recover = true) {
+    if (disposed || (!recover && hasPending.value)) return false;
+    const stamp = ++readGeneration;
+    status.value = "loading";
+    let draft: Draft | null = null;
+    if (recover)
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const value = JSON.parse(raw) as Draft;
+          if (
+            value.state?.document?.assetId === assetId &&
+            Array.isArray(value.pending) &&
+            value.pending.every(
+              (command) => !!validateTranscriptCommand(command),
+            )
+          )
+            draft = value;
+        }
+      } catch {
+        /* Invalid local data never replaces a saved transcript. */
+      }
+    try {
+      if (draft) {
+        pending = draft.pending;
+        receipt = draft.receipt;
+        let acknowledged: TranscriptEditorState | undefined;
+        if (receipt) {
+          const sent = receipt;
+          acknowledged = await receiptSend(sent);
+          if ("commands" in sent) pending = pending.slice(sent.commands.length);
+          receipt = null;
+        }
+        const saved = await api.transcript(assetId, draft.state.offset, 100);
+        if (disposed || stamp !== readGeneration) return false;
+        const expected =
+          acknowledged?.acknowledgedRevision ??
+          acknowledged?.revision ??
+          draft.state.revision;
+        if (pending.length && saved.revision !== expected) {
+          state.value = draft.state;
+          status.value = "conflict";
+          notice.value = "transcript.draftConflict";
+        } else {
+          state.value = view(saved, pending);
+          status.value = pending.length ? "failed" : "saved";
+          notice.value = pending.length ? "transcript.draftRecovered" : "";
+        }
+        retain();
+        changed();
+      } else {
+        const saved = await api.transcript(assetId, offset, 100);
+        if (disposed || stamp !== readGeneration) return false;
+        state.value = saved;
+        status.value = "saved";
+        error.value = null;
+        notice.value = "";
+      }
+      return true;
+    } catch (cause) {
+      if (disposed || stamp !== readGeneration) return false;
+      if (draft) {
+        pending = draft.pending;
+        receipt = draft.receipt;
+        state.value = draft.state;
+      }
+      fail(cause);
+      return false;
+    }
+  }
+  function command(input: TranscriptCommand): boolean {
+    if (
+      !state.value?.revision ||
+      historyBusy.value ||
+      status.value === "loading" ||
+      status.value === "conflict"
+    )
+      return false;
+    try {
+      const value = validateTranscriptCommand(input);
+      // Typing updates the visible segment. The application applies structural
+      // and whole-document commands against the complete saved transcript.
+      state.value = view(state.value, [value]);
+      pending.push(value);
+      retain();
+      error.value = null;
+      notice.value = "";
+      status.value = "dirty";
+      clearTimeout(timer);
+      timer = setTimeout(() => void flush(), 400);
+      return true;
+    } catch (cause) {
+      error.value = cause;
+      return false;
+    }
+  }
+  function flush(): Promise<boolean> {
+    clearTimeout(timer);
+    if (saving) return saving;
+    if (status.value === "conflict") return Promise.resolve(false);
+    if (!hasPending.value)
+      return Promise.resolve(status.value !== "loading" && !!state.value);
+    saving = (async () => {
+      while ((pending.length || receipt) && state.value?.revision) {
+        if (!receipt)
+          receipt = {
+            baseRevision: state.value.revision,
+            requestId: crypto.randomUUID(),
+            commands: pending.slice(0, 100),
+          };
+        const sending = receipt;
+        status.value = "saving";
+        retain();
+        try {
+          const acknowledged = await receiptSend(sending);
+          const offset = state.value.offset;
+          // A paged edit receipt can be followed by a newer revision from a
+          // different editor. Never replay an unsaved suffix over that revision.
+          const saved = await api.transcript(assetId, offset, 100);
+          if ("commands" in sending)
+            pending = pending.slice(sending.commands.length);
+          receipt = null;
+          if (
+            pending.length &&
+            saved.revision !==
+              (acknowledged.acknowledgedRevision ?? acknowledged.revision)
+          ) {
+            state.value = {
+              ...state.value,
+              revision:
+                acknowledged.acknowledgedRevision ?? acknowledged.revision,
+            };
+            status.value = "conflict";
+            notice.value = "transcript.draftConflict";
+            retain();
+            return false;
+          }
+          state.value = view(saved, pending);
+          retain();
+          changed();
+          error.value = null;
+          notice.value = "";
+        } catch (cause) {
+          fail(cause);
+          return false;
+        }
+      }
+      status.value = "saved";
+      return true;
+    })().finally(() => {
+      saving = null;
+    });
+    return saving;
+  }
+  async function history(direction: "undo" | "redo") {
+    if (historyBusy.value || !(await flush()) || !state.value?.revision)
+      return false;
+    historyBusy.value = true;
+    try {
+      receipt = {
+        baseRevision: state.value.revision,
+        requestId: crypto.randomUUID(),
+        direction,
+      };
+      retain();
+      return await flush();
+    } finally {
+      historyBusy.value = false;
+    }
+  }
+  async function loadPage(offset: number) {
+    if (!(await flush())) return false;
+    return load(offset, false);
+  }
+  async function discardDraft() {
+    if (saving) await saving;
+    pending = [];
+    receipt = null;
+    retain();
+    error.value = null;
+    notice.value = "";
+    return load(state.value?.offset ?? 0, false);
+  }
+  function downloadDraft() {
+    const blob = new Blob(
+      [JSON.stringify({ state: state.value, pending, receipt }, null, 2)],
+      { type: "application/json" },
+    );
+    const href = URL.createObjectURL(blob),
+      link = document.createElement("a");
+    link.href = href;
+    link.download = `openfilm-transcript-draft-${assetId}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+  }
+  async function restore(revisionId: string) {
+    if (!(await flush()) || !state.value?.revision) return false;
+    receipt = {
+      baseRevision: state.value.revision,
+      requestId: crypto.randomUUID(),
+      revisionId,
+    };
+    retain();
+    return flush();
+  }
+  onMounted(() => void load());
+  onBeforeUnmount(() => {
+    disposed = true;
+    clearTimeout(timer);
+    retain();
+  });
+  return {
+    state,
+    status,
+    error,
+    notice,
+    historyBusy,
+    hasPending,
+    command,
+    flush,
+    history,
+    load,
+    loadPage,
+    discardDraft,
+    downloadDraft,
+    restore,
+  };
+}

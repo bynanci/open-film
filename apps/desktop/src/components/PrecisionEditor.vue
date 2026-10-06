@@ -199,10 +199,20 @@ const pageMarkers = computed(() =>
   ),
 );
 const candidates = computed(() =>
-  candidatesFromIntelligence(markers.value, data.value?.transcript, [
-    props.clip?.sourceIn ?? 0,
-    props.clip?.sourceOut ?? sourceDuration.value,
-  ]),
+  candidatesFromIntelligence(
+    markers.value,
+    data.value?.transcript
+      ? {
+          ...data.value.transcript,
+          segments: data.value.transcript.segments.map((segment) =>
+            segment.alignmentState === "text-edited"
+              ? { ...segment, words: undefined }
+              : segment,
+          ),
+        }
+      : undefined,
+    [props.clip?.sourceIn ?? 0, props.clip?.sourceOut ?? sourceDuration.value],
+  ),
 );
 const analysisBusy = computed(
   () =>
@@ -917,9 +927,28 @@ onBeforeUnmount(() => {
                   @click="seek(segment.start)"
                 >
                   <time>{{ time(segment.start) }}</time
-                  ><span v-if="!segment.words?.length">{{ segment.text }}</span>
+                  ><span
+                    v-if="
+                      !segment.words?.length ||
+                      segment.alignmentState === 'text-edited'
+                    "
+                    >{{ segment.text }}</span
+                  >
                 </button>
-                <div v-if="segment.words?.length" class="precision-words">
+                <p
+                  v-if="segment.alignmentState === 'text-edited'"
+                  class="editor-note"
+                  data-testid="stale-alignment"
+                >
+                  {{ t("transcript.alignmentNotice") }}
+                </p>
+                <div
+                  v-if="
+                    segment.words?.length &&
+                    segment.alignmentState !== 'text-edited'
+                  "
+                  class="precision-words"
+                >
                   <button
                     v-for="(word, index) in segment.words"
                     :key="index"

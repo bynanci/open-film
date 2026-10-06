@@ -109,6 +109,28 @@ export default {
       invalidOutput:
         "The transcription result had invalid text or timing and wasn't saved. Check the provider setup and try again.",
     },
+    transcript: {
+      revisionConflict:
+        "The transcript changed while you were editing. Your local draft is preserved; load the newer revision before continuing.",
+      segmentNotFound:
+        "This transcript segment is no longer available. Reload the current transcript.",
+      alignmentStale:
+        "This text was edited. Word timing is historical and cannot be used as precise alignment.",
+      invalidCommand:
+        "This transcript change is invalid. Check the selected text, segment and split time.",
+    },
+    glossary: {
+      entryConflict:
+        "A glossary term changed or conflicts with another entry. Reload the glossary and try again.",
+    },
+    review: {
+      providerUnavailable:
+        "A language review provider is unavailable or needs text consent. Glossary suggestions are still available.",
+      suggestionStale:
+        "The transcript changed after this suggestion was created. Find new suggestions before applying a correction.",
+      invalidOutput:
+        "The review result was invalid and was not applied. Completed valid suggestions remain available.",
+    },
     operation: {
       failed:
         "This action couldn't finish. Your saved work is safe. Try again or open the technical details.",

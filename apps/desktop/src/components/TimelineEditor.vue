@@ -27,6 +27,7 @@ import { useTimelineEditor } from "../composables/useTimelineEditor";
 import Icon from "./Icon.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
+import TranscriptEditor from "./TranscriptEditor.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
@@ -55,10 +56,10 @@ const {
   messageDetail,
   reportError,
   reportNotice,
-  hasPending,
+  hasPending: compositionHasPending,
   historyBusy,
   command,
-  flush,
+  flush: flushComposition,
   history,
   reapplyDraft,
   discardDraft,
@@ -70,16 +71,31 @@ const {
   (value) => emit("change", value),
   () => emit("edited"),
 );
+const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
+  null,
+);
+const hasPending = computed(
+  () => compositionHasPending.value || !!transcriptEditor.value?.hasPending,
+);
+async function flush() {
+  if (!(await flushComposition())) return false;
+  return (await transcriptEditor.value?.flush()) ?? true;
+}
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
 const inspector = ref<"clip" | "beat">("clip");
-const editMode = ref<"story" | "precision">("story");
+const editMode = ref<"story" | "precision" | "transcript">("story");
 const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
 const precisionElement = ref<HTMLElement | null>(null);
+const transcriptElement = ref<HTMLElement | null>(null);
+async function setEditMode(mode: "story" | "precision" | "transcript") {
+  if (mode === editMode.value || !(await flush())) return;
+  editMode.value = mode;
+}
 const workspaceHeight = ref<number>();
 let layoutObserver: ResizeObserver | undefined;
 let layoutFrame = 0;
@@ -258,6 +274,15 @@ function beatDuration(clips: Clip[]) {
     : 0;
 }
 function chooseClip(clip: Clip, openInspector = true) {
+  if (editMode.value === "transcript" && transcriptEditor.value) {
+    void transcriptEditor.value.flush().then((saved) => {
+      if (saved) applyClipSelection(clip, openInspector);
+    });
+    return;
+  }
+  applyClipSelection(clip, openInspector);
+}
+function applyClipSelection(clip: Clip, openInspector = true) {
   fitPreview.value = null;
   if (openInspector) inspectorOpen.value = true;
   selectedClipId.value = clip.id;
@@ -398,6 +423,7 @@ function togglePlayback() {
   else player.pause();
 }
 function keyboard(event: KeyboardEvent) {
+  if (editMode.value === "transcript") return;
   if (!props.active || event.defaultPrevented) return;
   if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
   if (draftAction.value) {
@@ -456,12 +482,14 @@ function measureWorkspace() {
     const workspace =
       editMode.value === "precision"
         ? precisionElement.value
-        : workspaceElement.value;
+        : editMode.value === "transcript"
+          ? transcriptElement.value
+          : workspaceElement.value;
     if (!props.active || !workspace) return;
     const footer = editorElement.value?.querySelector(".editor-shortcuts");
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
     workspaceHeight.value = Math.max(
-      editMode.value === "precision" ? 416 : 272,
+      editMode.value !== "story" ? 416 : 272,
       Math.floor(
         window.innerHeight -
           Math.max(0, workspace.getBoundingClientRect().top) -
@@ -719,18 +747,20 @@ onBeforeUnmount(() => {
         :aria-label="t('precision.modeLabel')"
       >
         <button
-          v-for="mode in ['story', 'precision'] as const"
+          v-for="mode in ['story', 'precision', 'transcript'] as const"
           :key="mode"
           class="editor-button"
           :aria-pressed="editMode === mode"
           :class="{ selected: editMode === mode }"
-          @click="editMode = mode"
+          @click="setEditMode(mode)"
         >
           {{
             t(
               mode === "story"
                 ? "precision.storyMode"
-                : "precision.precisionMode",
+                : mode === "precision"
+                  ? "precision.precisionMode"
+                  : "transcript.mode",
             )
           }}
         </button>
@@ -749,6 +779,7 @@ onBeforeUnmount(() => {
       >
       <div class="editor-actions">
         <button
+          v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.undoLabel')"
           :disabled="historyBusy || (!state?.canUndo && !hasPending)"
@@ -757,6 +788,7 @@ onBeforeUnmount(() => {
           {{ t("editor.undo") }}
         </button>
         <button
+          v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.redoLabel')"
           :disabled="historyBusy || !state?.canRedo || hasPending"
@@ -1053,6 +1085,32 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+        />
+      </div>
+      <div v-show="editMode === 'transcript'" ref="transcriptElement">
+        <TranscriptEditor
+          v-if="editMode === 'transcript' && selectedAsset"
+          :key="`${projectId}:${selectedAsset.id}`"
+          ref="transcriptEditor"
+          :project-id="projectId"
+          :asset="selectedAsset"
+          :clip="selectedClip"
+          :active="active && editMode === 'transcript' && !draftAction"
+          :unavailable="
+            !!sourceUnavailable ||
+            selectedSourceInfo?.previewSupported === false
+          "
+          :source-version="sourceVersion"
+          :height="workspaceHeight"
+          :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
+          @select="
+            (id) => {
+              const clip = allClips.find((item) => item.id === id);
+              if (clip) chooseClip(clip);
+            }
+          "
+          @activity="emit('activity')"
+          @changed="emit('activity')"
         />
       </div>
       <div

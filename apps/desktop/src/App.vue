@@ -1106,6 +1106,11 @@ async function exportFilm(format: string) {
   });
 }
 function jobTitle(job: Job): string {
+  if (["glossary-review", "language-review"].includes(job.type)) {
+    const kind =
+      job.type === "glossary-review" ? "glossaryReview" : "languageReview";
+    return `${t(`transcript.jobTypes.${kind}`)} · ${t(`precision.jobStatuses.${job.status}`)}`;
+  }
   if (["transcribe", "waveform", "scenes"].includes(job.type))
     return `${t(`precision.jobTypes.${job.type}`)} · ${t(`precision.jobStatuses.${job.status}`)}`;
   const kind = job.type === "render" ? "render" : "import";
@@ -1384,7 +1389,13 @@ onUnmounted(() => {
         >
           <div class="job-summary">
             <Icon
-              :name="job.type === 'render' ? 'film' : 'folder'"
+              :name="
+                job.type === 'render'
+                  ? 'film'
+                  : ['glossary-review', 'language-review'].includes(job.type)
+                    ? 'search'
+                    : 'folder'
+              "
               :size="17"
             />
             <strong>{{ jobTitle(job) }}</strong>
@@ -1409,7 +1420,9 @@ onUnmounted(() => {
                 ? t('app.activity.previewProgress')
                 : ['transcribe', 'waveform', 'scenes'].includes(job.type)
                   ? t('precision.analysis')
-                  : t('app.activity.importProgress')
+                  : ['glossary-review', 'language-review'].includes(job.type)
+                    ? t('transcript.jobStages.reviewing')
+                    : t('app.activity.importProgress')
             "
           />
           <button
@@ -1421,7 +1434,13 @@ onUnmounted(() => {
             {{
               cancellingJobs[job.id]
                 ? t("app.activity.cancelling")
-                : ["transcribe", "waveform", "scenes"].includes(job.type)
+                : [
+                      "transcribe",
+                      "waveform",
+                      "scenes",
+                      "glossary-review",
+                      "language-review",
+                    ].includes(job.type)
                   ? t("precision.cancel")
                   : job.type === "render"
                     ? t("app.activity.cancelRender")
