@@ -37,6 +37,7 @@ import { runProcess } from "@openfilm/media";
 import { OpenFilmApplication } from "@openfilm/application";
 import { candidatesFromIntelligence } from "@openfilm/analysis";
 import axe from "axe-core";
+import { closeProject } from "../fixtures/close-browser-project.js";
 import {
   chooseImportFolder,
   createFilm,
@@ -127,10 +128,10 @@ test.beforeAll(async () => {
     .update(await readFile(join(media, filename)))
     .digest("hex");
 });
-test.beforeEach(async ({ request }) => closeProject(request));
-test.afterEach(async ({ request }) => closeProject(request));
-test.afterAll(async ({ request }) => {
-  await closeProject(request);
+test.beforeEach(async () => closeProject());
+test.afterEach(async () => closeProject());
+test.afterAll(async () => {
+  await closeProject();
   if (root) await rm(root, { recursive: true, force: true });
 });
 
@@ -147,27 +148,6 @@ async function post<T>(
   const response = await request.post(`${api}${path}`, { data });
   expect(response.ok(), `${path}: ${await response.text()}`).toBe(true);
   return response.json() as Promise<T>;
-}
-async function closeProject(request: APIRequestContext) {
-  const response = await request.post(`${api}/project/close`, { data: {} });
-  if (response.ok()) return;
-  expect(response.status()).toBe(409);
-  const { jobs } = await get<{ jobs: Job[] }>(request, "/jobs");
-  for (const job of jobs.filter((item) =>
-    ["queued", "running"].includes(item.status),
-  )) {
-    const cancelled = await request.post(`${api}/jobs/${job.id}/cancel`, {
-      data: {},
-    });
-    expect([200, 409]).toContain(cancelled.status());
-  }
-  await expect
-    .poll(
-      async () =>
-        (await request.post(`${api}/project/close`, { data: {} })).status(),
-      { timeout: 30_000 },
-    )
-    .toBe(200);
 }
 async function project(request: APIRequestContext) {
   return (await get<{ project: OpenFilmProject }>(request, "/project")).project;
@@ -776,7 +756,7 @@ test("offline transcript corrections, glossary decisions and cancelled retranscr
       baseline,
     );
     await saved(page);
-    await closeProject(request);
+    await closeProject();
     await page.reload();
     await openFilm(page, path);
     await transcriptMode(page);
@@ -1234,7 +1214,7 @@ test("a definitive missing acceptance on a restored project copy clears only tha
   const baseline = await immutableCut(request, asset.id, compositionId);
   const original = await project(request);
   const restoredPath = join(root, "Restored same identity.openfilm");
-  await closeProject(request);
+  await closeProject();
   await cp(path, restoredPath, { recursive: true });
   await post(request, "/project/open", { path });
   await post(request, "/glossary", {
@@ -1297,7 +1277,7 @@ test("a definitive missing acceptance on a restored project copy clears only tha
   // Restore the portable project while the app is closed, preserving browser
   // storage but avoiding live reads against the externally closed database.
   await page.goto("about:blank");
-  await closeProject(request);
+  await closeProject();
   await post(request, "/project/open", { path: restoredPath });
   expect((await project(request)).id).toBe(original.id);
   const restored = await transcript(request, asset.id);
@@ -1368,7 +1348,7 @@ test("opaque legacy transcript IDs preserve seeking, text edits, search and row 
     "provider-" + "長".repeat(350) + " %/#&",
     "provider-\u0000\u0001\t\n %/#&",
   ];
-  await closeProject(request);
+  await closeProject();
   // Explicit offline legacy document fixture. This validates imported identity
   // compatibility and browser controls; it is not an ASR provider result.
   const fixture = await OpenFilmApplication.open(path, {
@@ -2804,7 +2784,7 @@ test("a pending transcription request stays with its original film before projec
   const original = await project(request);
   const baseline = await immutableCut(request, asset.id, compositionId);
   const copiedPath = join(root, "Dispatch B.openfilm");
-  await closeProject(request);
+  await closeProject();
   await cp(path, copiedPath, { recursive: true });
   const manifestPath = join(copiedPath, "project.json");
   const manifest = JSON.parse(
@@ -2833,7 +2813,7 @@ test("a pending transcription request stays with its original film before projec
       (item) => item.type === "transcribe",
     ),
   ).toEqual([]);
-  await closeProject(request);
+  await closeProject();
   await post(request, "/project/open", { path });
   await initialLocale(page);
   await page.route("**/api/**", (route) => route.continue());
@@ -3020,9 +3000,9 @@ test("glossary saves, remembered corrections, toggles and removal finish in thei
     filmA.asset.id,
     filmA.compositionId,
   );
-  await closeProject(request);
+  await closeProject();
   const filmB = await createSource(request, "Glossary owner B");
-  await closeProject(request);
+  await closeProject();
   await post(request, "/project/open", { path: filmA.path });
   await initialLocale(page);
   await page.goto("/");
@@ -3208,6 +3188,296 @@ async function seedManySegments(
   return state;
 }
 
+test("transcript search wraps across matching pages while preserving every occurrence within a segment", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(sizes[2]!);
+  const { asset, compositionId } = await createSource(
+    request,
+    "Cyclic transcript search",
+  );
+  const seeded = await seedManySegments(request, asset.id, 101);
+  const last = await transcript(request, asset.id, 100);
+  const firstId = seeded.document!.segments[0]!.id;
+  const lastId = last.document!.segments[0]!.id;
+  await edit(request, asset.id, [
+    { type: "replace-text", segmentId: firstId, text: "alpha alpha" },
+    { type: "replace-text", segmentId: lastId, text: "alpha alpha alpha" },
+  ]);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  const searchResponse = (offset: number) =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === `/api/assets/${asset.id}/transcript/search` &&
+        Number(url.searchParams.get("offset")) === offset
+      );
+    });
+  const initialRead = searchResponse(0);
+  await workspace(page).getByLabel(t("search"), { exact: true }).fill("alpha");
+  const initialResponse = await initialRead;
+  expect(initialResponse.status(), await initialResponse.text()).toBe(200);
+  expect(await initialResponse.json()).toMatchObject({
+    totalSegments: 101,
+    totalMatches: 104,
+    offset: 0,
+    limit: 100,
+  });
+  await expect(page.getByTestId("transcript-search-status")).toHaveText(
+    "104 matches",
+  );
+  // Reverse from the very first occurrence lands on the last page's final
+  // occurrence, not the last occurrence on the first page.
+  const reverseRead = searchResponse(100);
+  await button(page, "previousMatch").click();
+  const reverseResponse = await reverseRead;
+  expect(reverseResponse.status(), await reverseResponse.text()).toBe(200);
+  expect((await reverseResponse.json()).matches).toHaveLength(1);
+  await expect(field(page)).toHaveValue("alpha alpha alpha");
+  await expect(rows(page)).toHaveCount(1);
+  await previewVisible(page);
+  await button(page, "previousMatch").click();
+  await workspace(page)
+    .getByLabel(t("replacement"), { exact: true })
+    .fill("omega");
+  await button(page, "replaceCurrent").click();
+  await saved(page);
+  expect(
+    (await transcript(request, asset.id, 100)).document!.segments[0]!.text,
+  ).toBe("alpha omega alpha");
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(page.getByTestId("transcript-search-status")).toHaveText(
+    "104 matches",
+  );
+  // Each occurrence participates in the cycle, including the two extra hits
+  // inside the boundary segments. All clicks are real enabled UI actions.
+  for (let index = 1; index < 104; index++)
+    await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue("alpha alpha alpha");
+  await expect(rows(page)).toHaveCount(1);
+  const forwardRead = searchResponse(0);
+  await button(page, "nextMatch").click();
+  const forwardResponse = await forwardRead;
+  expect(forwardResponse.status(), await forwardResponse.text()).toBe(200);
+  expect((await forwardResponse.json()).matches).toHaveLength(100);
+  await expect(field(page)).toHaveValue("alpha alpha");
+  await expect(rows(page)).toHaveCount(100);
+  await previewVisible(page);
+  const finalReverseRead = searchResponse(100);
+  await button(page, "previousMatch").click();
+  expect((await finalReverseRead).status()).toBe(200);
+  await button(page, "replaceCurrent").click();
+  await saved(page);
+  expect(
+    (await transcript(request, asset.id, 100)).document!.segments[0]!.text,
+  ).toBe("alpha alpha omega");
+  await button(page, "undo").click();
+  await saved(page);
+  expect(
+    (await transcript(request, asset.id)).document!.segments[0]!.text,
+  ).toBe("alpha alpha");
+  expect(
+    (await transcript(request, asset.id, 100)).document!.segments[0]!.text,
+  ).toBe("alpha alpha alpha");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("a failed initial transcript read permits a later clean exit while offline durable edits remain protected", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Failed transcript hydration",
+  );
+  const initial = await transcribe(request, asset.id);
+  const projectId = (await project(request)).id;
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const storageKey = `openfilm:transcript:${projectId}:${asset.id}`;
+  const writes: {
+    baseRevision: string;
+    requestId: string;
+    commands: TranscriptCommand[];
+  }[] = [];
+  const closes: string[] = [];
+  page.on("request", (incoming) => {
+    const pathname = new URL(incoming.url()).pathname;
+    if (incoming.method() !== "POST") return;
+    if (pathname === `/api/assets/${asset.id}/transcript/edit`)
+      writes.push(incoming.postDataJSON());
+    if (pathname === "/api/project/close") closes.push(pathname);
+  });
+  await initialLocale(page);
+  await page.route("**/api/**", (route) => route.continue());
+  let release!: () => void;
+  const gate = new Promise<void>((done) => {
+    release = done;
+  });
+  let held = false;
+  let firstRead = true;
+  let read: Promise<void> | undefined;
+  const pattern = `**/api/assets/${asset.id}/transcript?*`;
+  const handler: Parameters<Page["route"]>[1] = (route) => {
+    if (!firstRead || route.request().method() !== "GET")
+      return route.continue();
+    firstRead = false;
+    held = true;
+    read = (async () => {
+      await gate;
+      await route.abort("failed");
+    })();
+    return read;
+  };
+  await page.route(pattern, handler);
+  const sourcePath = fileURLToPath(asset.uri);
+  const offlinePath = join(root, `${randomUUID()}.offline`);
+  let parked = false;
+  let failure: { error: unknown } | undefined;
+  try {
+    await page.goto("/");
+    await transcriptMode(page);
+    await expect.poll(() => held).toBe(true);
+    const switchProject = page.getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    });
+    await expect(switchProject).toBeEnabled();
+    await switchProject.click();
+    expect(closes).toEqual([]);
+    await expect(workspace(page)).toBeVisible();
+    release();
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("failed"),
+    );
+    await expect(
+      page.getByText(uiText("en-US", "app.feedback.flushFailed"), {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(closes).toEqual([]);
+    expect(writes).toEqual([]);
+    expect((await project(request)).id).toBe(projectId);
+    await switchProject.click();
+    await expect(page.locator(".launcher-actions")).toBeVisible();
+    expect(closes).toHaveLength(1);
+    expect(writes).toEqual([]);
+    await page.unroute(pattern, handler);
+    await openFilm(page, path);
+    await transcriptMode(page);
+    await selectRow(page);
+    await rename(sourcePath, offlinePath);
+    parked = true;
+    const manual =
+      "This offline manual draft must survive a failed editor restart.";
+    const failedEditRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        `/api/assets/${asset.id}/transcript/edit`,
+    );
+    await field(page).fill(manual);
+    const failedEdit = await failedEditRead;
+    expect(failedEdit.status(), await failedEdit.text()).toBe(404);
+    expect((await failedEdit.json()).code).toBe("media.missing");
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("failed"),
+    );
+    const retained = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!),
+      storageKey,
+    );
+    expect(retained.pending[0].text).toBe(manual);
+    expect(retained.receipt.requestId).toBe(writes[0]?.requestId);
+    await page.reload();
+    await navigate(page, "edit");
+    await page
+      .getByRole("group", {
+        name: uiText("en-US", "precision.modeLabel"),
+        exact: true,
+      })
+      .getByRole("button", { name: t("mode"), exact: true })
+      .click();
+    await expect(workspace(page)).toBeVisible();
+    await expect(page.getByTestId("transcript-save-state")).toHaveText(
+      t("failed"),
+    );
+    const switchBox = await switchProject.boundingBox();
+    expect(switchBox).not.toBeNull();
+    await page.mouse.click(
+      switchBox!.x + switchBox!.width / 2,
+      switchBox!.y + switchBox!.height / 2,
+    );
+    await expect(workspace(page)).toBeVisible();
+    expect(closes).toHaveLength(1);
+    expect((await project(request)).id).toBe(projectId);
+    const recovered = await page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)!),
+      storageKey,
+    );
+    expect(recovered.pending).toEqual(retained.pending);
+    expect(recovered.receipt).toEqual(retained.receipt);
+    expect(recovered.state.document.segments[0].text).toBe(manual);
+    await rename(offlinePath, sourcePath);
+    parked = false;
+    await button(page, "retrySave").click();
+    await saved(page);
+    expect(new Set(writes.map((packet) => packet.requestId)).size).toBe(1);
+    expect(
+      writes.every(
+        (packet) => JSON.stringify(packet) === JSON.stringify(writes[0]),
+      ),
+    ).toBe(true);
+    expect(
+      (await transcript(request, asset.id)).document!.segments[0]!.text,
+    ).toBe(manual);
+    expect(
+      (
+        await get<{ total: number }>(
+          request,
+          `/assets/${asset.id}/transcript/revisions?limit=100`,
+        )
+      ).total,
+    ).toBe(2);
+    expect(
+      await page.evaluate((key) => localStorage.getItem(key), storageKey),
+    ).toBeNull();
+    expect(initial.document!.segments[0]!.text).not.toBe(manual);
+    await switchProject.click();
+    await expect(page.locator(".launcher-actions")).toBeVisible();
+    expect(closes).toHaveLength(2);
+    await openFilm(page, path);
+    await transcriptMode(page);
+    await selectRow(page);
+    await expect(field(page)).toHaveValue(manual);
+  } catch (error) {
+    failure = { error };
+  } finally {
+    release();
+    const cleanup = await Promise.allSettled([
+      page.unroute(pattern, handler),
+      ...(read ? [read] : []),
+      ...(parked ? [rename(offlinePath, sourcePath)] : []),
+    ]);
+    for (const result of cleanup)
+      if (result.status === "rejected" && !failure)
+        failure = { error: result.reason };
+  }
+  if (failure) throw failure.error;
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
 test("shrinking the last transcript page clamps its rows and history changes clear stale remembered corrections", async ({
   page,
   request,
@@ -3346,7 +3616,7 @@ test("opaque lone-surrogate and very long IDs use exact JSON lookup for review p
   ];
   const starts = [0.5, 3, 5.5, 8];
   const baseline = await immutableCut(request, asset.id, compositionId);
-  await closeProject(request);
+  await closeProject();
   // Explicit source-bound legacy identity fixture. JSON preserves every code
   // unit; this fixture does not represent ASR recognition or model quality.
   const fixture = await OpenFilmApplication.open(path, {
