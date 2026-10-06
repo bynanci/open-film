@@ -30,6 +30,18 @@ export interface FittedFrame {
   offsetY: number;
 }
 
+export interface PreviewClipGeometry {
+  frame: FittedFrame;
+  media: {
+    width: number;
+    height: number;
+  };
+  scale: number;
+  rotation: number;
+  x: number;
+  y: number;
+}
+
 function finite(value: number, label: string, positive = false): number {
   if (!Number.isFinite(value) || (positive ? value <= 0 : value < 0))
     throw new Error(
@@ -81,6 +93,36 @@ export function fitFrameToViewport(
     height,
     offsetX: (viewportWidth - width) / 2,
     offsetY: (viewportHeight - height) / 2,
+  };
+}
+
+/**
+ * Resolve browser preview geometry from the same frame-space contract used by
+ * the renderer. The composition frame is first fitted into the UI viewport;
+ * source pixels are independently contain-fitted into that composition frame.
+ *
+ * Keeping the source box separate from the frame box matters for rotation:
+ * rotating a letterboxed frame box would not match rotating the actual pixels.
+ */
+export function resolvePreviewClipGeometry(
+  transform: Pick<ClipTransform, "scale" | "rotation" | "x" | "y"> | undefined,
+  source: FrameSize,
+  frame: FrameSize,
+  viewport: FrameSize,
+): PreviewClipGeometry {
+  const geometry = resolveClipGeometry(transform);
+  const fittedFrame = fitFrameToViewport(frame, viewport);
+  const fittedSource = fitFrameToViewport(source, frame);
+  return {
+    frame: fittedFrame,
+    media: {
+      width: fittedSource.width * fittedFrame.scale,
+      height: fittedSource.height * fittedFrame.scale,
+    },
+    scale: geometry.scale,
+    rotation: geometry.rotation,
+    x: geometry.x * fittedFrame.scale,
+    y: geometry.y * fittedFrame.scale,
   };
 }
 
