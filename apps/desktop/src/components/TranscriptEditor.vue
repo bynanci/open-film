@@ -64,8 +64,18 @@ const {
 const root = ref<HTMLElement | null>(null);
 const player = ref<HTMLMediaElement | null>(null);
 const textarea = ref<HTMLTextAreaElement | null>(null);
-function setTextarea(element: unknown) {
-  textarea.value = element instanceof HTMLTextAreaElement ? element : null;
+let textareaSegmentId: string | undefined;
+function setTextarea(element: unknown, segmentId: string) {
+  if (element instanceof HTMLTextAreaElement) {
+    if (segmentId === selectedId.value) {
+      textarea.value = element;
+      textareaSegmentId = segmentId;
+    }
+  } else if (textareaSegmentId === segmentId) {
+    // An old row can unmount after the new selected row registers its field.
+    textarea.value = null;
+    textareaSegmentId = undefined;
+  }
 }
 const searchInput = ref<HTMLInputElement | null>(null);
 const reviewPanel = ref<InstanceType<typeof ReviewPanel> | null>(null);
@@ -608,19 +618,19 @@ function togglePlayback() {
     });
   else player.value.pause();
 }
+function focusSegment(id: string) {
+  const row = Array.from(
+    root.value?.querySelectorAll<HTMLElement>("[data-segment-id]") ?? [],
+  ).find((element) => element.dataset.segmentId === id);
+  row?.querySelector<HTMLElement>(".transcript-row-select")?.focus();
+}
 async function rowMove(direction: number, originId = selectedId.value) {
   const list = state.value?.document?.segments ?? [];
   const index = list.findIndex((item) => item.id === originId);
   const next = list[index + direction];
   if (next) {
     await select(next);
-    await nextTick(() =>
-      root.value
-        ?.querySelector<HTMLElement>(
-          `[data-segment-id="${CSS.escape(next.id)}"] .transcript-row-select`,
-        )
-        ?.focus(),
-    );
+    await nextTick(() => focusSegment(next.id));
   } else if (
     direction > 0 &&
     (state.value?.offset ?? 0) + 100 < (state.value?.total ?? 0)
@@ -629,26 +639,14 @@ async function rowMove(direction: number, originId = selectedId.value) {
     const segment = state.value?.document?.segments[0];
     if (segment) {
       await select(segment);
-      await nextTick(() =>
-        root.value
-          ?.querySelector<HTMLElement>(
-            `[data-segment-id="${CSS.escape(segment.id)}"] .transcript-row-select`,
-          )
-          ?.focus(),
-      );
+      await nextTick(() => focusSegment(segment.id));
     }
   } else if (direction < 0 && (state.value?.offset ?? 0) > 0) {
     await loadPage(state.value!.offset - 100);
     const segment = state.value?.document?.segments.at(-1);
     if (segment) {
       await select(segment);
-      await nextTick(() =>
-        root.value
-          ?.querySelector<HTMLElement>(
-            `[data-segment-id="${CSS.escape(segment.id)}"] .transcript-row-select`,
-          )
-          ?.focus(),
-      );
+      await nextTick(() => focusSegment(segment.id));
     }
   }
 }
@@ -1009,7 +1007,7 @@ onBeforeUnmount(() => {
                 <label class="editor-field"
                   >{{ t("transcript.text")
                   }}<textarea
-                    :ref="setTextarea"
+                    :ref="(element) => setTextarea(element, segment.id)"
                     v-model="text"
                     data-testid="transcript-text"
                     rows="3"

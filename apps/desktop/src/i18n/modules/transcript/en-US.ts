@@ -91,6 +91,8 @@ export default {
     globalScope: "Global",
     sourceTerm: "Original term",
     replacementTerm: "Corrected term",
+    emptyReplacementHint: "Leave empty to remove matching text",
+    removeMatchedText: "Remove matching text",
     enabled: "Enabled",
     addTerm: "Add term",
     saveTerm: "Save term",
@@ -156,6 +158,9 @@ export default {
       "A review batch failed. Completed suggestions are preserved. Retry or skip this batch.",
     cancelledBatch:
       "This review batch was cancelled. Completed suggestions are preserved. Retry or skip the unfinished work.",
+    unfinishedReviews: "Unfinished reviews",
+    noRecoveryBatches:
+      "These reviews have no unfinished batches. Check another page for earlier reviews.",
     glossaryLimit: "Load the next page to manage more terms.",
     selectAll: "All suggestions",
   },

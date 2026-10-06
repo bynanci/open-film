@@ -91,6 +91,8 @@ export default {
     globalScope: "共通",
     sourceTerm: "元の用語",
     replacementTerm: "正しい用語",
+    emptyReplacementHint: "空欄にすると一致する文字を削除します",
+    removeMatchedText: "一致する文字を削除",
     enabled: "有効",
     addTerm: "用語を追加",
     saveTerm: "用語を保存",
@@ -157,6 +159,9 @@ export default {
       "レビューバッチが失敗しました。完了済みの提案は保持され、再試行またはスキップできます。",
     cancelledBatch:
       "このレビューバッチはキャンセルされました。完了済みの提案は保持されています。未完了の処理を再試行またはスキップできます。",
+    unfinishedReviews: "未完了のレビュー",
+    noRecoveryBatches:
+      "このページのレビューに未完了のバッチはありません。別のページで以前のレビューを確認してください。",
     glossaryLimit: "次のページを読み込むとさらに用語を管理できます。",
     selectAll: "すべての提案",
   },

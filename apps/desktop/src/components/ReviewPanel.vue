@@ -44,6 +44,9 @@ const data = shallowRef<ReviewSuggestionsState>({
 const provider = shallowRef<ReviewProviderState>();
 const jobs = ref<Job[]>([]);
 const batches = ref<ReviewBatch[]>([]);
+const recoveryJobsPerPage = 5;
+const recoveryPage = ref(0);
+const recoveryLoading = ref(false);
 const busy = ref(false);
 type Acceptance = {
   suggestionId: string;
@@ -98,6 +101,12 @@ const active = computed(() =>
   jobs.value.find((job) => job.status === "queued" || job.status === "running"),
 );
 const lastJob = computed(() => jobs.value[0]);
+const recoveryJobs = computed(() =>
+  jobs.value.filter((job) => job.status !== "completed"),
+);
+const recoveryPages = computed(() =>
+  Math.max(1, Math.ceil(recoveryJobs.value.length / recoveryJobsPerPage)),
+);
 const recoverableBatches = computed(() =>
   batches.value.filter(
     (batch) => batch.status === "failed" || batch.status === "cancelled",
@@ -157,16 +166,41 @@ async function refresh(offset = requestedOffset.value) {
             job.type === "glossary-review"),
       )
       .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
-    if (lastJob.value) {
-      const found = await api.reviewBatches(lastJob.value.id);
-      if (current()) batches.value = found.batches;
+    recoveryPage.value = Math.min(recoveryPage.value, recoveryPages.value - 1);
+    const capturedRecoveryPage = recoveryPage.value;
+    const recoveryWindow = recoveryJobs.value.slice(
+      capturedRecoveryPage * recoveryJobsPerPage,
+      (capturedRecoveryPage + 1) * recoveryJobsPerPage,
+    );
+    recoveryLoading.value = true;
+    const found = await Promise.allSettled(
+      recoveryWindow.map((job) => api.reviewBatches(job.id)),
+    );
+    if (current() && capturedRecoveryPage === recoveryPage.value) {
+      batches.value = found.flatMap((result, index) => {
+        if (result.status === "fulfilled") return result.value.batches;
+        error.value = result.reason;
+        // A failed refresh must not hide recovery evidence already loaded.
+        return batches.value.filter(
+          (batch) => batch.jobId === recoveryWindow[index]!.id,
+        );
+      });
     }
   } catch (cause) {
     if (current()) {
       error.value = cause;
       requestedOffset.value = data.value.offset;
     }
+  } finally {
+    if (current()) recoveryLoading.value = false;
   }
+}
+async function pageRecovery(direction: number) {
+  recoveryPage.value = Math.max(
+    0,
+    Math.min(recoveryPages.value - 1, recoveryPage.value + direction),
+  );
+  await refresh();
 }
 async function run(source: "glossary" | "language") {
   if (
@@ -304,6 +338,7 @@ onBeforeUnmount(() => {
   <section
     class="transcript-side-panel"
     :aria-label="t('transcript.suggestions')"
+    :data-latest-job-id="lastJob?.id"
   >
     <div class="editor-actions">
       <button
@@ -500,6 +535,15 @@ onBeforeUnmount(() => {
     <p v-if="lastJob?.status === 'cancelled'" class="editor-note">
       {{ t("transcript.reviewPartial") }}
     </p>
+    <h3 v-if="recoverableBatches.length || recoveryPages > 1">
+      {{ t("transcript.unfinishedReviews") }}
+    </h3>
+    <p
+      v-if="recoveryPages > 1 && !recoverableBatches.length && !recoveryLoading"
+      class="editor-note"
+    >
+      {{ t("transcript.noRecoveryBatches") }}
+    </p>
     <div
       v-for="batch in recoverableBatches"
       :key="`${batch.jobId}:${batch.index}`"
@@ -530,6 +574,33 @@ onBeforeUnmount(() => {
         @click="batchAction(batch, 'skip')"
       >
         {{ t("transcript.skipBatch") }}
+      </button>
+    </div>
+    <div
+      v-if="recoveryPages > 1"
+      class="editor-actions"
+      data-testid="review-recovery-pagination"
+      role="group"
+      :aria-label="t('transcript.unfinishedReviews')"
+      :aria-busy="recoveryLoading"
+      :data-page="recoveryPage"
+    >
+      <button
+        class="editor-button"
+        :disabled="busy || recoveryLoading || recoveryPage === 0"
+        @click="pageRecovery(-1)"
+      >
+        {{ t("transcript.previousPage") }}
+      </button>
+      <span>{{
+        t("transcript.page", { page: recoveryPage + 1, pages: recoveryPages })
+      }}</span>
+      <button
+        class="editor-button"
+        :disabled="busy || recoveryLoading || recoveryPage + 1 >= recoveryPages"
+        @click="pageRecovery(1)"
+      >
+        {{ t("transcript.nextPage") }}
       </button>
     </div>
     <p class="editor-note">{{ t("transcript.reviewContext") }}</p>

@@ -95,7 +95,7 @@ function edit(entry: GlossaryEntry) {
   editId.value = entry.id;
 }
 async function save() {
-  if (!source.value.trim() || !replacement.value.trim()) return false;
+  if (!source.value.trim()) return false;
   return runMutation(async () => {
     await api.saveGlossary({
       source: source.value,
@@ -182,7 +182,7 @@ onBeforeUnmount(() => {
           v-model="replacement"
           maxlength="512"
           :disabled="unavailable"
-          required
+          :placeholder="t('transcript.emptyReplacementHint')"
       /></label>
       <label class="transcript-check"
         ><input
@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
         <button
           class="editor-button primary"
           type="submit"
-          :disabled="unavailable || !source.trim() || !replacement.trim()"
+          :disabled="unavailable || !source.trim()"
         >
           {{ t(editId ? "transcript.saveTerm" : "transcript.addTerm") }}</button
         ><button
@@ -227,7 +227,9 @@ onBeforeUnmount(() => {
         >
           <span>{{ entry.source }}</span
           ><span aria-hidden="true">→</span
-          ><strong>{{ entry.replacement }}</strong
+          ><strong>{{
+            entry.replacement || t("transcript.removeMatchedText")
+          }}</strong
           ><small>{{ t(`transcript.${entry.scope}Scope`) }}</small></button
         ><label class="transcript-check"
           ><input

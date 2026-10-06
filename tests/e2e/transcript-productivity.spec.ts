@@ -1,7 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   expect,
   test,
@@ -24,6 +33,7 @@ import type {
   TranscriptRevision,
 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
+import { OpenFilmApplication } from "@openfilm/application";
 import { candidatesFromIntelligence } from "@openfilm/analysis";
 import axe from "axe-core";
 import {
@@ -736,6 +746,296 @@ test("offline transcript corrections, glossary decisions and cancelled retranscr
       expect(removed.ok(), await removed.text()).toBe(true);
     }
   }
+});
+
+test("empty glossary replacements can be created, edited and accepted as an undoable deletion that survives reopening", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Deletion glossary",
+  );
+  const initial = await transcribe(request, asset.id);
+  const originalText = "REMOVE ME";
+  await edit(request, asset.id, [
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[0]!.id,
+      text: originalText,
+    },
+    {
+      type: "replace-text",
+      segmentId: initial.document!.segments[1]!.id,
+      text: "Keep the surviving memory.",
+    },
+  ]);
+  const before = await transcript(request, asset.id);
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await selectRow(page);
+  await tools(page, "glossary");
+  const panel = page.locator(".transcript-side-panel");
+  const source = panel.getByLabel(t("sourceTerm"), { exact: true });
+  const replacement = panel.getByLabel(t("replacementTerm"), { exact: true });
+  await source.fill(originalText);
+  await replacement.fill("");
+  await expect(
+    panel.getByRole("button", { name: t("addTerm"), exact: true }),
+  ).toBeEnabled();
+  await panel.getByRole("button", { name: t("addTerm"), exact: true }).click();
+  const entry = page.getByTestId("glossary-entry");
+  await expect(entry).toHaveCount(1);
+  const created = (
+    await get<{ entries: GlossaryEntry[] }>(request, "/glossary?scope=project")
+  ).entries[0]!;
+  expect(created.replacement).toBe("");
+  // Update and resave the same term, including an empty value, without changing
+  // its identity or creating a second rule.
+  for (const value of ["Temporary correction", "", ""]) {
+    await entry.locator(".transcript-term").click();
+    await replacement.fill(value);
+    await expect(
+      panel.getByRole("button", { name: t("saveTerm"), exact: true }),
+    ).toBeEnabled();
+    await panel
+      .getByRole("button", { name: t("saveTerm"), exact: true })
+      .click();
+    await expect(source).toHaveValue("");
+    const savedTerms = (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=project",
+      )
+    ).entries;
+    expect(savedTerms).toHaveLength(1);
+    expect(savedTerms[0]?.id).toBe(created.id);
+    expect(savedTerms[0]?.replacement).toBe(value);
+  }
+  await panel
+    .getByRole("button", { name: t("findMatches"), exact: true })
+    .click();
+  await expect(page.getByTestId("review-suggestion")).toHaveCount(1);
+  const proposed = (await suggestions(request, asset.id, "pending"))
+    .suggestions[0]!;
+  expect(proposed.before).toBe(originalText);
+  expect(proposed.after).toBe("");
+  expect(proposed.target.segmentId).toBe(initial.document!.segments[0]!.id);
+  await page
+    .locator(`[data-suggestion-id="${proposed.id}"]`)
+    .getByRole("button", { name: t("accept"), exact: true })
+    .click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(1);
+  const deleted = await transcript(request, asset.id);
+  expect(deleted.document?.segments.map((segment) => segment.text)).toEqual([
+    "Keep the surviving memory.",
+  ]);
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(2);
+  expect((await transcript(request, asset.id)).document?.segments).toEqual(
+    before.document?.segments,
+  );
+  await button(page, "redo").click();
+  await saved(page);
+  await expect(rows(page)).toHaveCount(1);
+  const redone = await transcript(request, asset.id);
+  expect(redone.document?.segments).toEqual(deleted.document?.segments);
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  await expect(rows(page)).toHaveCount(1);
+  expect((await transcript(request, asset.id)).document).toEqual(
+    redone.document,
+  );
+  await tools(page, "glossary");
+  await expect(entry).toHaveCount(1);
+  await entry.locator(".transcript-term").click();
+  await expect(replacement).toHaveValue("");
+  expect(
+    (
+      await get<{ entries: GlossaryEntry[] }>(
+        request,
+        "/glossary?scope=project",
+      )
+    ).entries[0]?.replacement,
+  ).toBe("");
+  expect(
+    (await suggestions(request, asset.id)).suggestions.find(
+      (item) => item.id === proposed.id,
+    )?.status,
+  ).toBe("accepted");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
+});
+
+test("opaque legacy transcript IDs preserve seeking, text edits, search and row keyboard focus through reopening", async ({
+  page,
+  request,
+}) => {
+  const { path, asset, compositionId } = await createSource(
+    request,
+    "Opaque legacy IDs",
+  );
+  const baseline = await immutableCut(request, asset.id, compositionId);
+  const ids = [
+    "provider-" + "長".repeat(350) + " %/#&",
+    "provider-\u0000\u0001\t\n %/#&",
+  ];
+  await closeProject(request);
+  // Explicit offline legacy document fixture. This validates imported identity
+  // compatibility and browser controls; it is not an ASR provider result.
+  const fixture = await OpenFilmApplication.open(path, {
+    userDataDirectory: join(root, "opaque-fixture-user-data"),
+  });
+  try {
+    const sourceHash = await fixture.intelligence.sourceIdentity(asset.id);
+    fixture.catalog.intelligence.replaceTranscript({
+      id: `opaque-fixture-${randomUUID()}`,
+      assetId: asset.id,
+      language: "en",
+      provenance: {
+        providerId: "fixture-opaque-legacy-identifiers",
+        model: "identity-fixture-not-asr",
+        version: "1",
+        sourceHash,
+        createdAt: new Date().toISOString(),
+      },
+      segments: ids.map((id, index) => ({
+        id,
+        start: 0.5 + index * 3,
+        end: 2.5 + index * 3,
+        text: index
+          ? "Legacy NUL fixture memory."
+          : "Legacy long identifier memory.",
+      })),
+    });
+  } finally {
+    fixture.close();
+  }
+  await post(request, "/project/open", { path });
+  await initialLocale(page);
+  await page.goto("/");
+  await transcriptMode(page);
+  await expect(rows(page)).toHaveCount(2);
+  expect(
+    await rows(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.segmentId),
+    ),
+  ).toEqual(ids);
+  const first = rows(page).nth(0).locator(".transcript-row-select");
+  const second = rows(page).nth(1).locator(".transcript-row-select");
+  await first.click();
+  await previewVisible(page);
+  await typeText(page, "Edited long identifier memory.");
+  await first.focus();
+  await first.press("ArrowDown");
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute("aria-current", "true");
+  await expect(field(page)).toHaveValue("Legacy NUL fixture memory.");
+  await previewVisible(page);
+  const preview = page
+    .getByTestId("transcript-source-preview")
+    .locator("video");
+  await expect
+    .poll(() =>
+      preview.evaluate((node) => (node as HTMLVideoElement).currentTime),
+    )
+    .toBeCloseTo(3.5, 1);
+  await second.press("ArrowUp");
+  await expect(first).toBeFocused();
+  await expect(field(page)).toHaveValue("Edited long identifier memory.");
+  await first.press("Tab");
+  await expect(second).toBeFocused();
+  await second.press("Shift+Tab");
+  await expect(first).toBeFocused();
+  await first.press("Enter");
+  await expect(field(page)).toBeFocused();
+  await field(page).press("Control+f");
+  const search = workspace(page).getByLabel(t("search"), { exact: true });
+  await expect(search).toBeFocused();
+  const searchRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === `/api/assets/${asset.id}/transcript/search` &&
+      url.searchParams.get("query") === "Legacy NUL fixture"
+    );
+  });
+  await search.fill("Legacy NUL fixture");
+  const searchResult = (await (await searchRead).json()) as {
+    matches: { segmentId: string }[];
+  };
+  expect(searchResult.matches.map((match) => match.segmentId)).toEqual([
+    ids[1],
+  ]);
+  await expect(page.getByTestId("transcript-search-status")).toHaveText(
+    "1 match",
+  );
+  await button(page, "nextMatch").click();
+  await expect(field(page)).toHaveValue("Legacy NUL fixture memory.");
+  await previewVisible(page);
+  await expect
+    .poll(() =>
+      preview.evaluate((node) => (node as HTMLVideoElement).currentTime),
+    )
+    .toBeCloseTo(3.5, 1);
+  await typeText(page, "Edited NUL identifier memory.");
+  await search.fill("");
+  await button(page, "undo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue("Legacy NUL fixture memory.");
+  await button(page, "redo").click();
+  await saved(page);
+  await expect(field(page)).toHaveValue("Edited NUL identifier memory.");
+  for (const [position, id] of ids.entries()) {
+    const found = await get<{
+      segment: { id: string; text: string };
+      position: number;
+    }>(
+      request,
+      `/assets/${asset.id}/transcript/segments/${encodeURIComponent(id)}`,
+    );
+    expect(found.position).toBe(position);
+    expect(found.segment.id).toBe(id);
+    expect(found.segment.text).toBe(
+      position
+        ? "Edited NUL identifier memory."
+        : "Edited long identifier memory.",
+    );
+  }
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  await openFilm(page, path);
+  await transcriptMode(page);
+  expect(
+    await rows(page).evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.segmentId),
+    ),
+  ).toEqual(ids);
+  await first.click();
+  await first.press("Tab");
+  await expect(second).toBeFocused();
+  await expect(field(page)).toHaveValue("Edited NUL identifier memory.");
+  expect(await immutableCut(request, asset.id, compositionId)).toEqual(
+    baseline,
+  );
+  await unchangedSource();
 });
 
 test("lost edit responses retry one receipt and conflicting drafts preserve server text and independent input history", async ({
@@ -1603,6 +1903,49 @@ test("bounded transcript pages stream completed review batches and preserve part
       ),
   ).toBe(true);
   const recovery = page.getByTestId("review-recovery-batch");
+  await expect(recovery).toHaveCount(2);
+  // A real source-read failure happens before review batches are created. This
+  // newer failed job must not hide the earlier cancelled job's recovery actions.
+  const sourcePath = fileURLToPath(asset.uri);
+  const offlinePath = `${sourcePath}.offline-for-review-test`;
+  let newer!: Job;
+  await rename(sourcePath, offlinePath);
+  try {
+    const response = await post<{ job: Job }>(
+      request,
+      `/assets/${asset.id}/review`,
+      { source: "glossary" },
+    );
+    newer = response.job;
+    await expect
+      .poll(
+        async () =>
+          (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+            (item) => item.id === newer.id,
+          )?.status,
+      )
+      .toBe("failed");
+    expect(
+      (
+        await get<{ batches: ReviewBatch[] }>(
+          request,
+          `/review/jobs/${newer.id}/batches`,
+        )
+      ).batches,
+    ).toEqual([]);
+  } finally {
+    await rename(offlinePath, sourcePath);
+  }
+  const newerRead = await page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/review/jobs/${newer.id}/batches`,
+  );
+  await newerRead.finished();
+  await expect(page.locator(".transcript-side-panel")).toHaveAttribute(
+    "data-latest-job-id",
+    newer.id,
+  );
   await expect(recovery).toHaveCount(2);
   for (let index = 0; index < 2; index++)
     await expect(recovery.nth(index)).toHaveAttribute("data-job-id", job.id);

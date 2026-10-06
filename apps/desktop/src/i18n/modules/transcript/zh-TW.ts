@@ -79,6 +79,8 @@ export default {
     globalScope: "全域",
     sourceTerm: "原始詞彙",
     replacementTerm: "正確詞彙",
+    emptyReplacementHint: "留空即可移除符合的文字",
+    removeMatchedText: "移除符合的文字",
     enabled: "啟用",
     addTerm: "新增詞彙",
     saveTerm: "儲存詞彙",
@@ -136,6 +138,8 @@ export default {
     failedBatch: "一個審閱批次失敗。已完成的建議已保留，可重試或略過此批次。",
     cancelledBatch:
       "此審閱批次已取消。已完成的建議仍保留，可重試或略過尚未完成的工作。",
+    unfinishedReviews: "未完成的審閱",
+    noRecoveryBatches: "此頁審閱沒有未完成的批次，可換頁尋找更早的審閱。",
     glossaryLimit: "載入下一頁即可管理更多詞彙。",
     selectAll: "所有建議",
   },
