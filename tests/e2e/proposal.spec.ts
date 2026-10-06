@@ -1,4 +1,12 @@
 import { createHash } from "node:crypto";
+import {
+  initialLocale,
+  navigate,
+  createFilm,
+  chooseImportFolder,
+  openFilm,
+  openAdvancedExports,
+} from "./ui-helpers.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -17,6 +25,10 @@ import type {
 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import { generateProposalMedia } from "../../fixtures/proposal-film/generate.mjs";
+
+test.beforeEach(async ({ page }) => {
+  await initialLocale(page);
+});
 
 const base = "http://127.0.0.1:4310";
 test.use({ actionTimeout: 15_000 });
@@ -76,10 +88,7 @@ async function importFolder(page: Page, path: string, first = false) {
       exact: true,
     })
     .click();
-  await page.getByLabel("Media folder", { exact: true }).fill(path);
-  await page
-    .getByRole("button", { name: "Import folder", exact: true })
-    .click();
+  await chooseImportFolder(page, path);
   await expect(page.getByText("Import complete", { exact: true })).toBeVisible({
     timeout: 60_000,
   });
@@ -96,13 +105,10 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   const fixture = await generateProposalMedia(join(root, "originals"));
   const projectPath = join(root, "our-story.openfilm");
   await page.goto("/");
-  await page
-    .getByLabel("Film title", { exact: true })
-    .fill("A question, made of memories");
-  await page.getByLabel("Project folder", { exact: true }).fill(projectPath);
-  await page
-    .getByRole("button", { name: "Create project", exact: true })
-    .click();
+  await createFilm(page, {
+    title: "A question, made of memories",
+    path: projectPath,
+  });
   await importFolder(page, fixture.mediaDirectory, true);
   await page
     .getByRole("button", {
@@ -168,7 +174,7 @@ test("turns generated device media into a protected, edited and fitted Proposal 
       .first(),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Stories", exact: true }).click();
+  await navigate(page, "story");
   await page
     .getByRole("button", { name: "Create your first story", exact: true })
     .click();
@@ -393,7 +399,8 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     test.info().outputPath("proposal-preview.mp4"),
     await rendered.body(),
   );
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await navigate(page, "export");
+  await openAdvancedExports(page);
   await page
     .getByRole("button", { name: "OpenFilm timeline", exact: false })
     .click();
@@ -412,11 +419,10 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     exact: true,
   });
   await expect(report).toContainText(
-    "Import in DaVinci Resolve still needs manual verification.",
+    "DaVinci Resolve import still needs manual verification.",
   );
-  await expect(report).toContainText(
-    "Advanced edits need recreation in Resolve",
-  );
+  await expect(report).toContainText("Edits to recreate in Resolve");
+  await report.getByText(/Technical export details/).click();
   await expect(
     report.getByRole("list", { name: "Export warnings", exact: true }),
   ).toContainText("METADATA ONLY");
@@ -462,21 +468,11 @@ print(json.dumps({'duration': timeline.duration().to_seconds(), 'clip_count': le
   await page
     .getByRole("button", { name: "Switch project", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Open project", exact: true })
-    .first()
-    .click();
-  await page
-    .getByLabel("Existing .openfilm folder", { exact: true })
-    .fill(projectPath);
-  await page
-    .getByRole("button", { name: "Open project", exact: true })
-    .last()
-    .click();
+  await openFilm(page, projectPath);
   await expect(
     page.getByRole("button", { name: "Switch project", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await saved(page);
   expect((await state(request)).composition).toEqual(current.composition);
   for (const file of fixture.files)

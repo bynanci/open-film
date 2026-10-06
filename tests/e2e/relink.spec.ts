@@ -1,4 +1,10 @@
 import {
+  initialLocale,
+  navigate,
+  openFilm,
+  chooseImportFolder,
+} from "./ui-helpers.js";
+import {
   mkdir,
   mkdtemp,
   readFile,
@@ -18,6 +24,11 @@ import {
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Composition, MediaAsset } from "@openfilm/core";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
+
+test.use({ actionTimeout: 15_000 });
+test.beforeEach(async ({ page }) => {
+  await initialLocale(page);
+});
 
 const base = "http://127.0.0.1:4310";
 const cleanup: Array<() => Promise<void>> = [];
@@ -159,17 +170,7 @@ async function field(page: Page, label: string, value: string) {
 }
 
 async function openProject(page: Page, path: string) {
-  await page
-    .getByRole("button", { name: "Open project", exact: true })
-    .first()
-    .click();
-  await page
-    .getByLabel("Existing .openfilm folder", { exact: true })
-    .fill(path);
-  await page
-    .getByRole("button", { name: "Open project", exact: true })
-    .last()
-    .click();
+  await openFilm(page, path);
   await expect(
     page.getByRole("heading", { name: "A film that travels", exact: true }),
   ).toBeVisible();
@@ -181,7 +182,7 @@ test("moves a real edited project and its media, restores sources and imports th
 }) => {
   const fixture = await travelingFilm(request);
   await page.goto("/");
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await saved(page);
   await page.locator("#clip-traveling-motion").click();
   await field(page, "Source in", "0.25");
@@ -214,7 +215,7 @@ test("moves a real edited project and its media, restores sources and imports th
   await openProject(page, fixture.movedProject);
   // Source availability is transient. Moving either folder must not remove
   // assets, cached thumbnails, story selections or the edited timeline.
-  await expect(page.getByText(/Missing Media/i).first()).toBeVisible();
+  await expect(page.getByText(/files are offline/i).first()).toBeVisible();
   await expect(page.getByText(/offline/i).first()).toBeVisible();
   await expect
     .poll(() =>
@@ -229,7 +230,7 @@ test("moves a real edited project and its media, restores sources and imports th
   );
   expect(await composition(request)).toEqual(edited);
 
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await saved(page);
   await page.locator("#clip-traveling-photo").click();
   await expect(page.getByLabel("Photo duration", { exact: true })).toHaveValue(
@@ -242,7 +243,7 @@ test("moves a real edited project and its media, restores sources and imports th
     edited.tracks[0]!.clips.find((clip) => clip.id === "traveling-photo")!
       .timelineDuration,
   ).toBe(4.5);
-  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await navigate(page, "library");
 
   const impostors = join(fixture.root, "impostors");
   await mkdir(impostors);
@@ -253,18 +254,14 @@ test("moves a real edited project and its media, restores sources and imports th
   await page
     .getByRole("button", { name: "Inspect 04-motion.mp4", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Relink selected media", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Find File", exact: true }).click();
   const relink = page.getByRole("region", {
-    name: "Relink media",
+    name: "Find missing media",
     exact: true,
   });
+  await relink.getByRole("button", { name: "Find File", exact: true }).click();
   await relink
-    .getByRole("button", { name: "Choose one file", exact: true })
-    .click();
-  await relink
-    .getByLabel("Media to relink", { exact: true })
+    .getByLabel("Media to reconnect", { exact: true })
     .selectOption(fixture.motion.id);
   await relink
     .getByLabel("Replacement file path", { exact: true })
@@ -272,6 +269,7 @@ test("moves a real edited project and its media, restores sources and imports th
   await relink
     .getByRole("button", { name: "Find matches", exact: true })
     .click();
+  await relink.getByText("Matching details", { exact: true }).first().click();
   await expect(relink.getByText(/hash|fingerprint/i).first()).toBeVisible();
   await expect(
     relink.getByRole("button", { name: "Apply selected matches", exact: true }),
@@ -298,10 +296,10 @@ test("moves a real edited project and its media, restores sources and imports th
     .getByRole("button", { name: "Apply selected matches", exact: true })
     .click();
   await expect(
-    relink.getByText("1 media item reconnected.", { exact: true }),
+    relink.getByText("One file reconnected.", { exact: true }),
   ).toBeVisible();
   await relink
-    .getByRole("button", { name: "Close relink media", exact: true })
+    .getByRole("button", { name: "Close find missing media", exact: true })
     .click();
   await expect(relink).not.toBeVisible();
   const detailClose = page.getByRole("button", {
@@ -309,7 +307,7 @@ test("moves a real edited project and its media, restores sources and imports th
     exact: true,
   });
   if (await detailClose.isVisible()) await detailClose.click();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await saved(page);
   await page.locator("#clip-traveling-motion").click();
   const source = page.getByLabel("Selected clip source preview", {
@@ -329,10 +327,10 @@ test("moves a real edited project and its media, restores sources and imports th
   await source.evaluate((video) => (video as HTMLVideoElement).pause());
   expect(await composition(request)).toEqual(edited);
 
-  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await navigate(page, "library");
   await page.getByRole("button", { name: "Relink Media", exact: true }).click();
   await relink
-    .getByRole("button", { name: "Search a folder", exact: true })
+    .getByRole("button", { name: "Find Folder", exact: true })
     .click();
   await relink
     .getByLabel("Search folder path", { exact: true })
@@ -346,9 +344,9 @@ test("moves a real edited project and its media, restores sources and imports th
   await relink
     .getByRole("button", { name: "Apply selected matches", exact: true })
     .click();
-  await expect(relink.getByText(/media items reconnected/)).toBeVisible();
+  await expect(relink.getByText(/files reconnected/)).toBeVisible();
   await relink
-    .getByRole("button", { name: "Close relink media", exact: true })
+    .getByRole("button", { name: "Close find missing media", exact: true })
     .click();
   await expect(relink).not.toBeVisible();
   const status = await (await request.get(`${base}/api/media/status`)).json();
@@ -383,12 +381,7 @@ test("moves a real edited project and its media, restores sources and imports th
   });
 
   await page.getByRole("button", { name: "Add media", exact: true }).click();
-  await page
-    .getByLabel("Media folder", { exact: true })
-    .fill(fixture.movedMedia);
-  await page
-    .getByRole("button", { name: "Import folder", exact: true })
-    .click();
+  await chooseImportFolder(page, fixture.movedMedia);
   await expect(page.getByText("Import complete", { exact: true })).toBeVisible({
     timeout: 60_000,
   });

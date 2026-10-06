@@ -22,6 +22,28 @@ missing/offline state, portable cache references, Pixel/Insta360 source adapters
 and safe supported HDR previews are implemented. The generated Proposal reference
 workflow and independent OTIO/Resolve preparation make these capabilities testable.
 
+## Global product experience — Working development tree
+
+The editing foundation is merged in PR #1. The product round adds Welcome and
+guided film creation, a nonblocking workflow indicator, goal-based import/export,
+story boards with separate selected/suggested memories, contextual editing and
+recoverable offline-media guidance. Stable workspace IDs, structured error codes
+and Vue I18n support English, Traditional Chinese and Japanese without changing
+user-authored film text. A separate persisted film locale controls template-owned
+defaults; legacy text stays intact. Local theme/preferences, shared visual tokens,
+CJK/pseudo layouts and browser accessibility checks support the desktop experience.
+See [product workflow](docs/product-workflow.md), [i18n](docs/i18n.md) and
+[design system](docs/design-system.md). Exact completed gates remain in TASKS and
+the [validation record](docs/validation-global-product.md) and PR checks rather
+than implying hardware or real NLE certification.
+
+The Impeccable refinement keeps the same visual system while reducing chrome,
+retaining preview visibility during story-rail editing and making editable exports
+downloadable. The [portable Resolve QA flow](docs/resolve-workstation-qa.md) moves
+the generated reference onto a real workstation via a CI artifact, with hash-checked
+local paths and separate manual/API observations. Actual application verification
+remains the next external gate; it is not replaced by helper tests.
+
 ## Next — Real-world verification and delivery
 
 - Package the native shell with a verified local Node service and media runtime;
@@ -29,8 +51,10 @@ workflow and independent OTIO/Resolve preparation make these capabilities testab
 - Perform actual Resolve import QA first, including manual recreation of advanced
   edits currently stored only in OTIO metadata. Expand native effect support only
   with tested preservation; other NLEs follow later.
-  The Global Product Experience preflight found no application QA evidence; the
-  [Resolve record](docs/resolve-qa-record.md) remains not run.
+  The 2026-10-06 application preflight is blocked by the cloud environment's
+  absent Resolve installation, GPU and desktop; the
+  [Resolve record](docs/resolve-qa-record.md) remains not run pending access to a
+  Resolve-capable workstation.
 - Validate removable volumes on Windows hardware and representative Pixel HDR,
   Motion Photo and Insta360 source files.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event

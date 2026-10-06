@@ -30,6 +30,8 @@ import {
 import { pathToFileURL } from "node:url";
 import {
   createProject,
+  ApplicationError,
+  errorInfo,
   migrateProject,
   validateProject,
   type Composition,
@@ -39,10 +41,17 @@ import {
   type OpenFilmProject,
   type SimilarityGroup,
   type Story,
+  type FilmSettings,
+  type ProjectContentLocale,
 } from "@openfilm/core";
 import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
-import { createStory } from "@openfilm/story";
+import {
+  createStory,
+  resolveFilmSettings,
+  localizeProjectContent,
+  scoreAsset,
+} from "@openfilm/story";
 import { compose as solve } from "@openfilm/solver";
 import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
@@ -61,6 +70,7 @@ import {
   FilesystemSource,
   hashFile,
   inspectMedia,
+  isSupportedMediaFile,
   localPath,
   perceptualHash,
   safeProjectCachePath,
@@ -71,6 +81,7 @@ import {
   type MediaCandidate,
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
+import { isInside } from "./path-safety.js";
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -93,8 +104,13 @@ export interface StoryOptions {
   assetIds?: string[];
 }
 
+export interface CreateFilmOptions {
+  projectContentLocale?: ProjectContentLocale;
+  filmSettings?: Partial<FilmSettings>;
+}
+
 export interface ExportReport {
-  format: "json" | "otio" | "fcpxml" | "edl";
+  format: "json" | "otio" | "fcpxml" | "edl" | "mp4";
   warnings: string[];
   realNleVerified?: false;
   advancedEdits?: "metadata-only";
@@ -126,14 +142,6 @@ function atomicJsonSync(path: string, value: unknown): void {
   renameSync(temporary, path);
 }
 
-function isInside(parent: string, child: string): boolean {
-  const rel = relative(parent, child);
-  return (
-    rel === "" ||
-    (rel !== ".." && !rel.startsWith(`..${sep}`) && !rel.startsWith(sep))
-  );
-}
-
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
   readonly catalog: ProjectCatalog;
@@ -149,9 +157,17 @@ export class OpenFilmApplication {
   static async create(
     directory: string,
     title: string,
+    options: CreateFilmOptions = {},
   ): Promise<OpenFilmApplication> {
     const path = resolve(directory);
     const project = createProject(title);
+    if (options.projectContentLocale !== undefined)
+      project.projectContentLocale = options.projectContentLocale;
+    if (options.filmSettings !== undefined)
+      project.filmSettings = resolveFilmSettings(options.filmSettings, [
+        proposalTemplate,
+      ]);
+    validateProject(project);
     try {
       const info = await lstat(path);
       if (!info.isDirectory() || info.isSymbolicLink())
@@ -194,7 +210,44 @@ export class OpenFilmApplication {
     const application = new OpenFilmApplication(canonical, project);
     // Cache references are relative to the project, so its complete directory can move.
     for (const summary of application.catalog.iterateAssetSummaries()) {
-      const asset = application.catalog.getAsset(summary.id)!;
+      let asset = application.catalog.getAsset(summary.id)!;
+      const managed = asset.metadata["openfilm.managedSource"] as
+        { relativePath?: unknown; uri?: unknown } | undefined;
+      if (
+        typeof managed?.relativePath === "string" &&
+        managed.uri === asset.uri &&
+        managed.relativePath.startsWith("sources/") &&
+        !managed.relativePath.includes("\\")
+      ) {
+        const managedRoot = join(canonical, "sources");
+        const path = resolve(canonical, managed.relativePath);
+        if (isInside(managedRoot, path) && path !== managedRoot) {
+          const uri = pathToFileURL(path).href;
+          const reference = referenceFor(asset, project.mediaLibraries);
+          if (asset.uri !== uri) {
+            asset = {
+              ...asset,
+              uri,
+              metadata: {
+                ...asset.metadata,
+                "openfilm.managedSource": { ...managed, uri },
+                "openfilm.reference": {
+                  ...reference,
+                  rootUri: pathToFileURL(managedRoot).href,
+                  relativePath: relative(managedRoot, path)
+                    .split(sep)
+                    .join("/"),
+                },
+              },
+            };
+            application.catalog.upsertAsset(asset);
+            const library = project.mediaLibraries.find(
+              (item) => item.id === reference.mediaLibraryId,
+            );
+            if (library) library.uri = pathToFileURL(managedRoot).href;
+          }
+        }
+      }
       const thumbnailUri =
         asset.thumbnailUri &&
         portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
@@ -257,9 +310,37 @@ export class OpenFilmApplication {
     folder: string,
     options: ImportOptions = {},
   ): Promise<ImportResult> {
-    const sourceFolder = folder.startsWith("file:")
-      ? localPath(folder)
-      : folder;
+    return this.importSources({ folder }, options);
+  }
+
+  async importFiles(
+    files: string[],
+    options: ImportOptions = {},
+  ): Promise<ImportResult> {
+    return this.importSources({ files }, options);
+  }
+
+  /** The server calls this only for completed upload receipts owned by this project. */
+  async importManagedSources(
+    files: string[],
+    options: ImportOptions = {},
+  ): Promise<ImportResult> {
+    return this.importSources({ files, managed: true }, options);
+  }
+
+  private async importSources(
+    input: { folder?: string; files?: string[]; managed?: boolean },
+    options: ImportOptions,
+  ): Promise<ImportResult> {
+    const sourceFolder =
+      input.folder === undefined
+        ? undefined
+        : resolve(
+            input.folder.startsWith("file:")
+              ? localPath(input.folder)
+              : input.folder,
+          );
+    const sourceLabel = sourceFolder ?? "Selected files";
     const job: Job = {
       id: options.jobId ?? randomUUID(),
       type: "import",
@@ -285,17 +366,30 @@ export class OpenFilmApplication {
     this.activeJobs++;
     const pending = new Set<Promise<void>>();
     const insta360Context = new Insta360ImportContext();
-    let library: OpenFilmProject["mediaLibraries"][number] | undefined;
+    const managedRoot = join(this.directory, "sources");
+    let folderRoot: string | undefined;
     const process = async (candidate: MediaCandidate): Promise<void> => {
       let stage = "fingerprint";
       const partials: string[] = [];
       try {
         checkAbort(options.signal);
-        if (isInside(this.directory, candidate.path)) {
+        const locationMatch = this.catalog.getAssetByUri(candidate.uri);
+        const managed = locationMatch?.metadata["openfilm.managedSource"] as
+          { uri?: unknown; relativePath?: unknown } | undefined;
+        const knownManaged =
+          !!input.files &&
+          managed?.uri === candidate.uri &&
+          managed.relativePath ===
+            relative(this.directory, candidate.path).split(sep).join("/") &&
+          isInside(managedRoot, candidate.path);
+        const managedSource = input.managed || knownManaged;
+        if (isInside(this.directory, candidate.path) && !managedSource) {
           result.skipped++;
           return;
         }
-        const locationMatch = this.catalog.getAssetByUri(candidate.uri);
+        const library = libraryFor(
+          managedSource ? managedRoot : (folderRoot ?? dirname(candidate.path)),
+        );
         const locationId = createHash("sha256")
           .update(candidate.uri)
           .digest("hex")
@@ -379,6 +473,13 @@ export class OpenFilmApplication {
             .size,
         };
         asset.metadata["openfilm.importPipeline"] = 2;
+        if (managedSource)
+          asset.metadata["openfilm.managedSource"] = {
+            uri: candidate.uri,
+            relativePath: relative(this.directory, candidate.path)
+              .split(sep)
+              .join("/"),
+          };
         if (!previewIssue(asset)) {
           try {
             await previewVideoFilters(asset, options.signal);
@@ -452,6 +553,7 @@ export class OpenFilmApplication {
             uri: candidate.uri,
             stage,
             message: error instanceof Error ? error.message : String(error),
+            ...errorInfo(error, "import.failed"),
           });
         }
       } finally {
@@ -464,37 +566,86 @@ export class OpenFilmApplication {
         publish();
       }
     };
-    try {
-      checkAbort(options.signal);
-      const uri = pathToFileURL(await realpath(sourceFolder)).href;
-      library = this.project.mediaLibraries.find((item) => item.uri === uri);
-      if (!library) {
-        for (const summary of this.catalog.iterateAssetSummaries()) {
-          const reference = referenceFor(
-            this.catalog.getAsset(summary.id)!,
-            this.project.mediaLibraries,
+    const libraries = new Map(
+      this.project.mediaLibraries.map((library) => [library.uri, library]),
+    );
+    let indexedReferences = false;
+    const libraryFor = (root: string) => {
+      const uri = pathToFileURL(root).href;
+      if (!libraries.has(uri) && !indexedReferences) {
+        for (const summary of this.catalog.iterateAssetSummaries({
+          includeReference: true,
+        })) {
+          const reference = referenceFor(summary, this.project.mediaLibraries);
+          const original = this.project.mediaLibraries.find(
+            (library) => library.id === reference.mediaLibraryId,
           );
-          if (reference.rootUri === uri) {
-            library = this.project.mediaLibraries.find(
-              (item) => item.id === reference.mediaLibraryId,
-            );
-            if (library) break;
-          }
+          if (original)
+            libraries.set(reference.rootUri, {
+              ...original,
+              uri: reference.rootUri,
+            });
         }
+        indexedReferences = true;
       }
+      let library = libraries.get(uri);
       if (!library) {
-        library = { id: randomUUID(), uri, name: basename(sourceFolder) };
+        library = { id: randomUUID(), uri, name: basename(root) };
         this.project.mediaLibraries.push(library);
+        libraries.set(uri, library);
         this.saveSync();
       }
-      library = { ...library, uri };
+      return library;
+    };
+    const candidates = async function* () {
+      if (sourceFolder !== undefined) {
+        yield* new FilesystemSource().discover(sourceFolder, options.signal);
+      } else {
+        if (!input.files?.length)
+          throw new ApplicationError(
+            "request.invalid",
+            "Choose at least one media file.",
+          );
+        for (const file of [...new Set(input.files)]) {
+          checkAbort(options.signal);
+          const path = resolve(
+            file.startsWith("file:") ? localPath(file) : file,
+          );
+          const info = await lstat(path);
+          if (
+            !info.isFile() ||
+            info.isSymbolicLink() ||
+            (await realpath(path)) !== resolve(path)
+          )
+            throw new ApplicationError(
+              "request.invalid",
+              "Selected media must be regular files without symlinks.",
+            );
+          if (!isSupportedMediaFile(path))
+            throw new ApplicationError(
+              "media.unsupported",
+              `Unsupported media file: ${basename(path)}`,
+              400,
+              { name: basename(path) },
+            );
+          yield { path, uri: pathToFileURL(path).href, name: basename(path) };
+        }
+      }
+    };
+    try {
+      checkAbort(options.signal);
+      folderRoot =
+        sourceFolder === undefined ? undefined : await realpath(sourceFolder);
       job.status = "running";
       publish();
-      for await (const candidate of new FilesystemSource().discover(
-        sourceFolder,
-        options.signal,
-      )) {
+      for await (const candidate of candidates()) {
         checkAbort(options.signal);
+        if (input.managed && !isInside(managedRoot, candidate.path))
+          throw new ApplicationError(
+            "request.forbidden",
+            "Managed import source must belong to this project.",
+            403,
+          );
         discovered++;
         const task = process(candidate);
         pending.add(task);
@@ -517,9 +668,10 @@ export class OpenFilmApplication {
       if (job.status === "failed") {
         result.failed++;
         job.errors!.push({
-          uri: folder,
+          uri: sourceLabel,
           stage: "discover",
           message: String(error),
+          ...errorInfo(error, "import.failed"),
         });
       }
     } finally {
@@ -547,19 +699,62 @@ export class OpenFilmApplication {
     return result;
   }
 
+  updateFilm(options: CreateFilmOptions): OpenFilmProject {
+    const previous = this.project;
+    let next =
+      options.projectContentLocale === undefined
+        ? structuredClone(previous)
+        : localizeProjectContent(previous, options.projectContentLocale, [
+            proposalTemplate,
+          ]);
+    if (options.filmSettings !== undefined)
+      next = {
+        ...next,
+        filmSettings: resolveFilmSettings(
+          { ...previous.filmSettings, ...options.filmSettings },
+          [proposalTemplate],
+        ),
+      };
+    validateProject(next);
+    try {
+      this.project = next;
+      this.saveSync();
+    } catch (error) {
+      this.project = previous;
+      throw error;
+    }
+    return structuredClone(this.project);
+  }
+
   generateStory(options: StoryOptions = {}): Story {
+    options = {
+      ...(this.project.filmSettings
+        ? {
+            template: this.project.filmSettings.templateId,
+            targetDuration: this.project.filmSettings.targetDuration,
+            maxDuration: this.project.filmSettings.maxDuration,
+          }
+        : {}),
+      ...Object.fromEntries(
+        Object.entries(options).filter(([, value]) => value !== undefined),
+      ),
+    };
     if (
       options.template &&
       !["proposal-film", "blank"].includes(options.template)
     )
-      throw new Error(`Unknown story template: ${options.template}`);
+      throw new ApplicationError(
+        "story.invalid",
+        `Unknown story template: ${options.template}`,
+      );
     const assets: MediaAsset[] = [];
     if (options.assetIds) {
       const ids = new Set(options.assetIds);
       for (const asset of this.catalog.iterateAssetSummaries())
         if (asset.state.locked) ids.add(asset.id);
       if (ids.size > 2000)
-        throw new Error(
+        throw new ApplicationError(
+          "story.scopeTooLarge",
           "A story can use at most 2000 candidates; reduce the scope or unlock assets",
         );
       for (const id of ids) {
@@ -569,7 +764,8 @@ export class OpenFilmApplication {
       }
     } else {
       if (this.catalog.countAssets() > 2000)
-        throw new Error(
+        throw new ApplicationError(
+          "story.scopeTooLarge",
           "Choose an explicit assetIds story scope for libraries above 2000 assets; locked assets will be included",
         );
       for (let offset = 0; ; offset += 500) {
@@ -578,19 +774,30 @@ export class OpenFilmApplication {
         if (page.length < 500) break;
       }
     }
-    if (!assets.length) throw new Error("Import media before creating a story");
+    if (!assets.length)
+      throw new ApplicationError(
+        "story.mediaRequired",
+        "Import media before creating a story",
+      );
     for (const asset of assets)
       if (
         previewIssue(asset) &&
         (asset.state.locked || options.assetIds?.includes(asset.id))
       )
-        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+        throw new ApplicationError(
+          "media.unsupported",
+          `${asset.name}: ${previewIssue(asset)}`,
+          422,
+          { name: asset.name },
+        );
     const usable = assets.filter((asset) => !previewIssue(asset));
     if (!usable.length)
-      throw new Error(
+      throw new ApplicationError(
+        "story.mediaRequired",
         "No renderable media is available. Import flat exported photos/videos before creating a story.",
       );
     const story = createStory(options.title ?? this.project.title, usable, {
+      contentLocale: this.project.projectContentLocale,
       ...(options.template === "proposal-film"
         ? { template: proposalTemplate }
         : {}),
@@ -604,6 +811,65 @@ export class OpenFilmApplication {
     this.project.stories.push(story);
     this.saveSync();
     return structuredClone(story);
+  }
+
+  refreshSuggestions(storyId: string, beatId: string): Story {
+    const previous = this.project;
+    const story = previous.stories.find((item) => item.id === storyId);
+    const beat = story?.beats.find((item) => item.id === beatId);
+    if (!story || !beat)
+      throw new ApplicationError(
+        "story.invalid",
+        "Story beat was not found.",
+        404,
+      );
+    const ids = [...new Set(beat.candidateAssetIds ?? [])];
+    if (ids.length > 2000)
+      throw new ApplicationError(
+        "story.scopeTooLarge",
+        "A beat can rank at most 2000 candidates.",
+      );
+    const assets = ids.flatMap((id) => {
+      const asset = this.catalog.getAsset(id);
+      return asset ? [asset] : [];
+    });
+    const protectedIds = new Set([
+      ...(beat.selectedAssetIds ?? []),
+      ...(beat.constraints ?? []).flatMap((constraint) =>
+        constraint.type === "must-include" || constraint.type === "asset-order"
+          ? constraint.assetIds
+          : [],
+      ),
+      ...assets.filter((asset) => asset.state.locked).map((asset) => asset.id),
+    ]);
+    const ranked = assets
+      .filter(
+        (asset) =>
+          protectedIds.has(asset.id) ||
+          (!asset.state.rejected && !previewIssue(asset)),
+      )
+      .map((asset) => ({
+        id: asset.id,
+        score: scoreAsset(asset, { assets }).score,
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.id.localeCompare(right.id),
+      )
+      .map((item) => item.id);
+    const next = structuredClone(previous);
+    const updated = next.stories.find((item) => item.id === storyId)!;
+    updated.beats.find((item) => item.id === beatId)!.candidateAssetIds =
+      ranked;
+    validateProject(next);
+    try {
+      this.project = next;
+      this.saveSync();
+    } catch (error) {
+      this.project = previous;
+      throw error;
+    }
+    return structuredClone(updated);
   }
 
   compose(storyId?: string): Composition {
@@ -641,7 +907,12 @@ export class OpenFilmApplication {
     );
     for (const asset of assets)
       if (previewIssue(asset) && (asset.state.locked || required.has(asset.id)))
-        throw new Error(`${asset.name}: ${previewIssue(asset)}`);
+        throw new ApplicationError(
+          "media.unsupported",
+          `${asset.name}: ${previewIssue(asset)}`,
+          422,
+          { name: asset.name },
+        );
     const composition = solve(
       story,
       assets.filter((asset) => !previewIssue(asset)),
@@ -655,20 +926,33 @@ export class OpenFilmApplication {
     const composition = id
       ? this.project.timelines.find((item) => item.id === id)
       : this.project.timelines.at(-1);
-    if (!composition) throw new Error("Compose a timeline first");
+    if (!composition)
+      throw new ApplicationError(
+        "timeline.notFound",
+        "Compose a timeline first",
+        404,
+      );
     return composition;
   }
 
-  private compositionAssets(composition: Composition): MediaAsset[] {
+  private compositionAssets(
+    composition: Composition,
+    includeTitleAssets = false,
+  ): MediaAsset[] {
     return [
       ...new Set(
         composition.tracks
-          .filter((track) => track.type !== "titles")
+          .filter((track) => includeTitleAssets || track.type !== "titles")
           .flatMap((track) => track.clips.map((clip) => clip.assetId)),
       ),
     ].map((id) => {
       const asset = this.catalog.getAsset(id);
-      if (!asset) throw new Error(`Timeline asset not found: ${id}`);
+      if (!asset)
+        throw new ApplicationError(
+          "media.notFound",
+          `Timeline asset not found: ${id}`,
+          404,
+        );
       return asset;
     });
   }
@@ -676,6 +960,22 @@ export class OpenFilmApplication {
   async render(
     compositionId?: string,
     options: { signal?: AbortSignal; jobId?: string } = {},
+  ): Promise<string> {
+    return this.renderFilm(compositionId, options, false);
+  }
+
+  async exportMp4(
+    compositionId?: string,
+    options: { signal?: AbortSignal; jobId?: string } = {},
+  ): Promise<{ path: string; report: ExportReport }> {
+    const path = await this.renderFilm(compositionId, options, true);
+    return { path, report: { format: "mp4", warnings: [] } };
+  }
+
+  private async renderFilm(
+    compositionId: string | undefined,
+    options: { signal?: AbortSignal; jobId?: string },
+    exportFile: boolean,
   ): Promise<string> {
     const composition = this.composition(compositionId);
     const story = this.project.stories.find(
@@ -685,10 +985,14 @@ export class OpenFilmApplication {
       story?.maxDuration !== undefined &&
       composition.duration > story.maxDuration + 0.00001
     )
-      throw new Error(
+      throw new ApplicationError(
+        "render.overMaximum",
         "Timeline exceeds the story maximum duration; use Fit to Duration or shorten clips before rendering",
       );
-    const output = await safeProjectCachePath(this.directory, "preview.mp4");
+    if (exportFile) safeDirectorySync(join(this.directory, "exports"));
+    const output = exportFile
+      ? join(this.directory, "exports", `film-${randomUUID()}.mp4`)
+      : await safeProjectCachePath(this.directory, "preview.mp4");
     const job: Job = {
       id: options.jobId ?? randomUUID(),
       type: "render",
@@ -704,8 +1008,19 @@ export class OpenFilmApplication {
         checkAbort(options.signal);
         const status = await sourceStatus(asset);
         if (status.status !== "available")
-          throw new Error(
+          throw new ApplicationError(
+            "media.missing",
             `${status.status === "missing" ? "Missing Media" : "Source inaccessible"}: ${asset.name}. Reconnect the disk or relink this source before rendering.`,
+            400,
+            { name: asset.name },
+          );
+        const unsupported = previewIssue(asset);
+        if (unsupported)
+          throw new ApplicationError(
+            "media.unsupported",
+            `${asset.name}: ${unsupported}`,
+            422,
+            { name: asset.name },
           );
         const recorded = asset.metadata["openfilm.filesystem"] as
           { size?: number; modifiedAt?: string } | undefined;
@@ -720,8 +1035,11 @@ export class OpenFilmApplication {
               (await hashFile(localPath(asset.uri), options.signal)) !==
               asset.contentHash
             )
-              throw new Error(
+              throw new ApplicationError(
+                "source.changed",
                 `Source changed after import: ${asset.name}. Import it again to refresh its duration before rendering; existing trims may exceed the new source.`,
+                400,
+                { name: asset.name },
               );
           }
         }
@@ -741,7 +1059,14 @@ export class OpenFilmApplication {
         options.signal?.aborted || (error as Error).name === "AbortError"
           ? "cancelled"
           : "failed";
-      job.errors = [{ uri: output, stage: "render", message: String(error) }];
+      job.errors = [
+        {
+          uri: output,
+          stage: "render",
+          message: String(error),
+          ...errorInfo(error, "render.failed"),
+        },
+      ];
       throw error;
     } finally {
       job.updatedAt = new Date().toISOString();
@@ -762,7 +1087,7 @@ export class OpenFilmApplication {
     compositionId?: string,
   ): Promise<{ path: string; report: ExportReport }> {
     const composition = this.composition(compositionId);
-    const assets = this.compositionAssets(composition);
+    const assets = this.compositionAssets(composition, true);
     const exported = exportTimeline(
       format,
       composition,

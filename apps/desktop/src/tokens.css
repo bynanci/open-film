@@ -1,0 +1,142 @@
+/* Local film-room surfaces, readable captions, and a single warm edit accent. */
+:root {
+  color-scheme: dark;
+  --of-bg: #101215;
+  --of-surface-1: #181b20;
+  --of-surface-2: #22262c;
+  --of-surface-3: #2b3037;
+  --of-text-primary: #f4f2ee;
+  --of-text-secondary: #b8bdc6;
+  --of-text-muted: #a1a8b3;
+  --of-border-subtle: #353b45;
+  --of-border-strong: #6b7585;
+  --of-accent: #ecac7c;
+  --of-accent-hover: #f6bf95;
+  --of-accent-ink: #23180f;
+  --of-accent-soft: #392c23;
+  --of-success: #a6c7a1;
+  --of-success-soft: #26362b;
+  --of-warning: #f0c281;
+  --of-warning-soft: #3b2d1f;
+  --of-danger: #f3aaa3;
+  --of-danger-soft: #3d2428;
+  --of-focus: #f6bf95;
+  --of-player: #090b0d;
+  --of-on-media: #f7f5f1;
+  --of-on-media-muted: #d6d9de;
+  --of-media-scrim: #101215eb;
+  --of-overlay: #090b0dba;
+  --of-shadow-dialog: 0 8px 24px #00000033;
+  --of-space-1: 4px;
+  --of-space-2: 8px;
+  --of-space-3: 12px;
+  --of-space-4: 16px;
+  --of-space-5: 20px;
+  --of-space-6: 24px;
+  --of-space-8: 32px;
+  --of-space-10: 40px;
+  --of-space-12: 48px;
+  --of-radius-sm: 4px;
+  --of-radius-md: 8px;
+  --of-radius-lg: 12px;
+  --of-radius-round: 999px;
+  --of-font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+    "Noto Sans CJK TC", "Noto Sans JP", "Noto Sans CJK JP",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Microsoft JhengHei", sans-serif;
+  --of-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --of-font-caption: 0.75rem;
+  --of-font-small: 0.8125rem;
+  --of-font-base: 0.875rem;
+  --of-font-subtitle: 1.125rem;
+  --of-font-title: 1.5rem;
+  --of-font-heading: 1.75rem;
+  --of-font-display: 2rem;
+  --of-line-body: 1.6;
+  --of-line-heading: 1.25;
+  --of-motion-fast: 140ms;
+  --of-motion-normal: 220ms;
+  --of-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --of-z-media: 1;
+  --of-z-sticky: 10;
+  --of-z-notice: 20;
+  --of-z-dialog: 100;
+
+  /* Compatibility names let existing focused components adopt the same theme. */
+  --paper: var(--of-bg);
+  --fresh-paper: var(--of-surface-1);
+  --ink: var(--of-text-primary);
+  --faded-ink: var(--of-text-secondary);
+  --pencil: var(--of-border-subtle);
+  --film-orange: var(--of-accent);
+  --film-orange-soft: var(--of-accent-soft);
+  --olive: var(--of-success);
+  --olive-soft: var(--of-success-soft);
+  --dark-room: var(--of-player);
+  --frame-line: var(--of-border-subtle);
+  --serif: var(--of-font-body);
+}
+
+:root:lang(ja) {
+  --of-font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP",
+    "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", "Yu Gothic",
+    "Noto Sans TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --of-bg: #f2f3f5;
+  --of-surface-1: #ffffff;
+  --of-surface-2: #e8ebee;
+  --of-surface-3: #dce1e6;
+  --of-text-primary: #1b2026;
+  --of-text-secondary: #4f5866;
+  --of-text-muted: #596371;
+  --of-border-subtle: #d5dbe1;
+  --of-border-strong: #788391;
+  --of-accent: #9d4620;
+  --of-accent-hover: #873817;
+  --of-accent-ink: #ffffff;
+  --of-accent-soft: #f3e6dd;
+  --of-success: #315f3e;
+  --of-success-soft: #e2eee4;
+  --of-warning: #805213;
+  --of-warning-soft: #f7ecd9;
+  --of-danger: #a13238;
+  --of-danger-soft: #f9e7e8;
+  --of-focus: #873817;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --of-bg: #f2f3f5;
+    --of-surface-1: #ffffff;
+    --of-surface-2: #e8ebee;
+    --of-surface-3: #dce1e6;
+    --of-text-primary: #1b2026;
+    --of-text-secondary: #4f5866;
+    --of-text-muted: #596371;
+    --of-border-subtle: #d5dbe1;
+    --of-border-strong: #788391;
+    --of-accent: #9d4620;
+    --of-accent-hover: #873817;
+    --of-accent-ink: #ffffff;
+    --of-accent-soft: #f3e6dd;
+    --of-success: #315f3e;
+    --of-success-soft: #e2eee4;
+    --of-warning: #805213;
+    --of-warning-soft: #f7ecd9;
+    --of-danger: #a13238;
+    --of-danger-soft: #f9e7e8;
+    --of-focus: #873817;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --of-motion-fast: 0ms;
+    --of-motion-normal: 0ms;
+  }
+}

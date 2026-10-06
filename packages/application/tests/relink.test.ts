@@ -24,6 +24,7 @@ import {
 import type { MediaAsset } from "@openfilm/core";
 import {
   hashFile,
+  inspectMedia,
   referenceFor,
   type PortableReference,
 } from "@openfilm/media";
@@ -319,6 +320,70 @@ describe("media relinking application", () => {
     expect(app.catalog.listAssets()).toEqual(before);
   });
 
+  it("refreshes content-derived fields after a confirmed legacy replacement", async () => {
+    const { original, moved, app, relinker } = await fixture(true);
+    const legacy = app.catalog.getAsset("photo")!;
+    legacy.dimensions = { width: 1, height: 1 };
+    legacy.codec = "stale-codec";
+    legacy.colorSpace = "stale-color";
+    legacy.hdr = true;
+    legacy.source = { device: "Old camera", manufacturer: "Old maker" };
+    legacy.perceptualHash = "stale-perceptual-hash";
+    legacy.thumbnailUri = "cache/thumbnails/stale.jpg";
+    legacy.proxyUri = "cache/proxies/stale.mp4";
+    legacy.metadata["openfilm.color"] = { stale: true };
+    legacy.metadata["openfilm.preview"] = { supported: false, reason: "old" };
+    legacy.metadata["openfilm.pixel"] = { device: "Old camera" };
+    legacy.metadata["openfilm.importPipeline"] = 2;
+    legacy.metadata["openfilm.test.note"] = "retained";
+    app.catalog.upsertAsset(legacy);
+    await rename(original, moved);
+    const replacement = join(moved, "01-photo.png");
+    await copyFile(join(sources, "03-evening.png"), replacement);
+    const uri = pathToFileURL(replacement).href;
+    const inspected = await inspectMedia({
+      path: replacement,
+      uri,
+      name: basename(replacement),
+    });
+    const plan = await relinker.plan({
+      assetIds: ["photo"],
+      file: replacement,
+    });
+    const candidate = plan.matches[0]!.candidates[0]!;
+    expect(candidate.automatic).toBe(false);
+    const { assets } = await relinker.apply({
+      planId: plan.id,
+      selections: [
+        { assetId: "photo", candidateId: candidate.id, confirm: true },
+      ],
+    });
+    const refreshed = assets[0]!;
+    expect(refreshed.contentHash).toBe(candidate.contentHash);
+    expect(refreshed.contentHash).not.toBe(legacy.contentHash);
+    expect(refreshed.dimensions).toEqual(inspected.dimensions);
+    expect(refreshed.codec).toBe(inspected.codec);
+    expect(refreshed.colorSpace).toBe(inspected.colorSpace);
+    expect(refreshed.hdr).toBe(inspected.hdr);
+    expect(refreshed.source).toEqual(inspected.source);
+    expect(refreshed.thumbnailUri).toBeUndefined();
+    expect(refreshed.proxyUri).toBeUndefined();
+    expect(refreshed.perceptualHash).toBeUndefined();
+    expect(refreshed.metadata["openfilm.color"]).toEqual(
+      inspected.metadata["openfilm.color"],
+    );
+    expect(refreshed.metadata["openfilm.preview"]).toBeUndefined();
+    expect(refreshed.metadata["openfilm.pixel"]).toBeUndefined();
+    expect(refreshed.metadata["openfilm.importPipeline"]).toBeUndefined();
+    expect(refreshed.metadata["openfilm.test.note"]).toBe("retained");
+    expect(refreshed.metadata["user.note"]).toEqual({ text: "retained" });
+    expect(refreshed.metadata["openfilm.reference"]).toMatchObject({
+      contentHash: candidate.contentHash,
+    });
+    expect(app.project.stories[0]!.beats[0]!.candidateAssetIds).toContain(
+      "photo",
+    );
+  });
   it("rejects legacy wrong-kind and short-source replacements despite explicit confirmation", async () => {
     const { relinker, app } = await fixture(true);
     const before = app.catalog.getAsset("video");

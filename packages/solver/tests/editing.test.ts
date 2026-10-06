@@ -94,6 +94,46 @@ const clip = (doc: EditorDocument, id: string): Clip =>
   clips(doc).find((clip) => clip.id === id)!;
 const edit = (doc: EditorDocument, command: TimelineCommand): EditorDocument =>
   applyTimelineCommand(doc, assets, command);
+
+describe("Fit skipped clips", () => {
+  it("recomputes a feasible sequential plan without editing skipped clips", () => {
+    const original = document();
+    const excluded = ["photo-clip"];
+    const plan = prepareShorteningPlan(original, assets, 8, excluded);
+    expect(plan.commands.length).toBeGreaterThan(0);
+    expect(plan.suggestions.every((item) => item.clipId !== "photo-clip")).toBe(
+      true,
+    );
+    const commands = shorteningCommands(original, assets, 8, plan, excluded);
+    const next = commands.reduce(
+      (current, item) => edit(current, item),
+      original,
+    );
+    expect(clip(next, "photo-clip")).toEqual(clip(original, "photo-clip"));
+    expect(
+      original.composition.duration - next.composition.duration,
+    ).toBeCloseTo(plan.secondsSaved);
+    expect(() => shorteningCommands(original, assets, 8, plan)).toThrow(
+      /stale/,
+    );
+    expect(() =>
+      shorteningCommands(original, assets, 8, plan, ["video-clip"]),
+    ).toThrow(/stale/);
+  });
+
+  it("offers no actions after every clip has been skipped", () => {
+    const original = document();
+    const plan = prepareShorteningPlan(
+      original,
+      assets,
+      1,
+      clips(original).map((item) => item.id),
+    );
+    expect(plan.commands).toEqual([]);
+    expect(plan.secondsSaved).toBe(0);
+    expect(plan.afterDuration).toBe(original.composition.duration);
+  });
+});
 function withoutStart(clip: Clip): Omit<Clip, "timelineStart"> {
   const { timelineStart: _, ...rest } = clip;
   return rest;
@@ -476,6 +516,41 @@ describe("scoped automatic editing", () => {
       timelineDuration: 4,
       transform: { scale: 1.7, x: 9 },
     });
+  });
+  it("preserves cross-media solver order when regenerating a beat", () => {
+    const before = document();
+    clip(before, "video-clip").assetId = "alternate";
+    const beat = before.story.beats[0]!;
+    beat.candidateAssetIds = ["audio", "video"];
+    beat.selectedAssetIds = ["audio", "video"];
+    beat.targetDuration = 10;
+    beat.constraints = [
+      { type: "must-include", assetIds: ["audio", "video"] },
+      { type: "asset-order", assetIds: ["audio", "video"] },
+    ];
+    const current = edit(before, {
+      type: "regenerate-beat",
+      beatId: "intro",
+      mode: "regenerate",
+    });
+    const regenerated = clips(current)
+      .filter((item) => item.beatId === "intro")
+      .sort((left, right) => left.timelineStart - right.timelineStart);
+    expect(regenerated.map((item) => item.assetId)).toEqual(["audio", "video"]);
+    expect(regenerated.map((item) => item.timelineStart)).toEqual([0, 5]);
+    expect(
+      current.composition.tracks
+        .find((track) => track.type === "audio")
+        ?.clips.filter((item) => item.beatId === "intro")
+        .map((item) => item.assetId),
+    ).toEqual(["audio"]);
+    expect(
+      current.composition.tracks
+        .find((track) => track.type === "video")
+        ?.clips.filter((item) => item.beatId === "intro")
+        .map((item) => item.assetId),
+    ).toEqual(["video"]);
+    expect(clip(current, "next-clip").timelineStart).toBe(10);
   });
   it("populates an empty beat at its story position with deterministic IDs", () => {
     const before = document();

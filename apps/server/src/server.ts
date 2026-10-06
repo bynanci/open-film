@@ -3,12 +3,33 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { createReadStream } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
-import { resolve, relative, isAbsolute, dirname, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { constants, createReadStream } from "node:fs";
+import {
+  copyFile,
+  realpath,
+  stat,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm,
+} from "node:fs/promises";
+import {
+  resolve,
+  relative,
+  isAbsolute,
+  dirname,
+  extname,
+  basename,
+  join,
+} from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import {
   OpenFilmApplication,
   TimelineEditor,
@@ -16,23 +37,48 @@ import {
   MediaRelinker,
   MediaRelinkError as RelinkError,
   type TimelineEditInput,
+  type CreateFilmOptions,
 } from "@openfilm/application";
 import {
   validateProject,
+  migrateProject,
   validateStory,
+  ApplicationError,
+  errorInfo,
+  PROJECT_CONTENT_LOCALES,
+  type ApplicationErrorCode,
   type Job,
   type MediaAsset,
   type Story,
 } from "@openfilm/core";
-import { previewIssue } from "@openfilm/media";
+import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
+import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
+import { proposalTemplate } from "@openfilm/template-proposal";
 
 type Body = Record<string, unknown>;
-class HttpError extends Error {
+const httpErrorCodes: Partial<Record<number, ApplicationErrorCode>> = {
+  400: "request.invalid",
+  403: "request.forbidden",
+  404: "request.notFound",
+  409: "jobs.busy",
+  413: "request.tooLarge",
+  415: "request.unsupported",
+  422: "media.unsupported",
+  503: "workspace.closing",
+};
+class HttpError extends ApplicationError {
   constructor(
-    readonly status: number,
+    status: number,
     message: string,
+    code?: ApplicationErrorCode,
+    params?: Record<string, string | number>,
   ) {
-    super(message);
+    super(
+      code ?? httpErrorCodes[status] ?? "operation.failed",
+      message,
+      status,
+      params,
+    );
   }
 }
 
@@ -41,6 +87,135 @@ function text(body: Body, key: string): string {
   if (typeof value !== "string" || !value.trim())
     throw new HttpError(400, `${key} is required.`);
   return value.trim();
+}
+function filePath(data: Body, key: string): string {
+  const value = data[key];
+  if (typeof value !== "string" || !value.trim() || value.includes("\0"))
+    throw new HttpError(400, `${key} is required.`);
+  return value;
+}
+function filmOptions(data: Body): CreateFilmOptions {
+  if (
+    data.projectContentLocale !== undefined &&
+    !PROJECT_CONTENT_LOCALES.includes(data.projectContentLocale as never)
+  )
+    throw new HttpError(400, "Choose a supported film language.");
+  if (
+    data.filmSettings !== undefined &&
+    (!data.filmSettings ||
+      typeof data.filmSettings !== "object" ||
+      Array.isArray(data.filmSettings))
+  )
+    throw new HttpError(400, "Film settings must be an object.");
+  return {
+    ...(data.projectContentLocale === undefined
+      ? {}
+      : {
+          projectContentLocale:
+            data.projectContentLocale as CreateFilmOptions["projectContentLocale"],
+        }),
+    ...(data.filmSettings === undefined
+      ? {}
+      : {
+          filmSettings: data.filmSettings as CreateFilmOptions["filmSettings"],
+        }),
+  };
+}
+function paths(data: Body, key: string, maximum = 10000): string[] {
+  const value = data[key];
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > maximum ||
+    value.some(
+      (path) => typeof path !== "string" || !path.trim() || path.includes("\0"),
+    )
+  )
+    throw new HttpError(
+      400,
+      `${key} must contain between 1 and ${maximum} paths.`,
+    );
+  return [...new Set(value)] as string[];
+}
+function safeFilename(name: string): boolean {
+  return (
+    !!name.trim() &&
+    ![...name].some((char) => char.charCodeAt(0) < 32) &&
+    !/[\\/]/u.test(name) &&
+    name !== "." &&
+    name !== ".."
+  );
+}
+function projectFolderTitle(title: string): string {
+  const clean = [...title]
+    .filter((char) => char.charCodeAt(0) >= 32)
+    .join("")
+    .replace(/[<>:"/\\|?*]/gu, "-");
+  let prefix = "";
+  for (const char of clean) {
+    if (Buffer.byteLength(prefix + char, "utf8") > 180) break;
+    prefix += char;
+  }
+  return prefix.replace(/[ .]+$/u, "") || "Film";
+}
+function systemLocale(): string {
+  const value =
+    process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG;
+  try {
+    if (value && value !== "C" && value !== "POSIX")
+      return Intl.getCanonicalLocales(
+        value.split(".")[0]!.replaceAll("_", "-").split("@")[0]!,
+      )[0]!;
+  } catch {
+    /* Intl uses the platform locale when its environment value is unusable. */
+  }
+  return new Intl.DateTimeFormat().resolvedOptions().locale;
+}
+
+async function inspectCatalog(path: string): Promise<void> {
+  // A normal read-only SQLite connection can create WAL sidecars. Recent
+  // projects must remain untouched, including projects on read-only volumes.
+  let temporary: string | undefined;
+  let database: DatabaseSync | undefined;
+  try {
+    const walPath = `${path}-wal`;
+    const wal = await lstat(walPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (wal && (!wal.isFile() || wal.isSymbolicLink()))
+      throw new Error("Catalog WAL must be a regular file");
+    if (wal?.size) {
+      // Immutable connections ignore committed WAL pages. Inspect a disposable
+      // copy when another instance or crash recovery has uncheckpointed data.
+      temporary = await mkdtemp(join(tmpdir(), "openfilm-recent-catalog-"));
+      const snapshot = join(temporary, "database.sqlite");
+      await copyFile(path, snapshot, constants.COPYFILE_FICLONE);
+      await copyFile(walPath, `${snapshot}-wal`, constants.COPYFILE_FICLONE);
+      database = new DatabaseSync(snapshot, { readOnly: true });
+    } else {
+      const uri = pathToFileURL(path);
+      uri.searchParams.set("mode", "ro");
+      uri.searchParams.set("immutable", "1");
+      database = new DatabaseSync(uri.href, { readOnly: true });
+    }
+    const version = Number(
+      database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+    );
+    if (version > 1) throw new Error("Unsupported future catalog schema");
+    const integrity = database.prepare("PRAGMA quick_check(1)").get();
+    if (integrity?.quick_check !== "ok")
+      throw new Error("The project catalog is corrupt");
+    database
+      .prepare(
+        "SELECT id, uri, name, media_type, captured_at, rating, favorite, rejected, locked, data FROM assets LIMIT 1",
+      )
+      .get();
+    database.prepare("SELECT id, created_at, data FROM jobs LIMIT 1").get();
+  } finally {
+    database?.close();
+    if (temporary) await rm(temporary, { recursive: true, force: true });
+  }
 }
 function number(value: unknown, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -134,8 +309,23 @@ async function streamFile(
 }
 
 export async function startServer(
-  options: { port?: number; project?: string } = {},
+  options: {
+    port?: number;
+    project?: string;
+    projectRoot?: string;
+    maxUploadBytes?: number;
+  } = {},
 ) {
+  const projectRoot = resolve(
+    options.projectRoot ??
+      process.env.OPENFILM_PROJECTS_DIR ??
+      join(homedir(), "Movies", "OpenFilm"),
+  );
+  const maxUploadBytes = options.maxUploadBytes ?? 8 * 1024 ** 3;
+  const uploads = new Map<
+    string,
+    { project: OpenFilmApplication; path: string; directory: string }
+  >();
   let app: OpenFilmApplication | undefined;
   if (options.project)
     app = await OpenFilmApplication.open(resolve(options.project));
@@ -162,8 +352,19 @@ export async function startServer(
   let mutationQueue = Promise.resolve();
   let closing = false;
   const current = () => {
-    if (!app) throw new HttpError(409, "Create or open a project first.");
+    if (!app)
+      throw new HttpError(
+        409,
+        "Create or open a project first.",
+        "project.required",
+      );
     return app;
+  };
+  const discardUploads = async () => {
+    for (const [id, upload] of uploads) {
+      await rm(upload.directory, { recursive: true, force: true });
+      uploads.delete(id);
+    }
   };
   const origins = new Set([
     "http://localhost:1420",
@@ -175,6 +376,7 @@ export async function startServer(
   const server = createServer((request, response) => {
     void (async () => {
       let releaseMutation: (() => void) | undefined;
+      let errorContext: ApplicationErrorCode = "operation.failed";
       try {
         if (closing) throw new HttpError(503, "The local service is closing.");
         const origin = request.headers.origin;
@@ -211,7 +413,11 @@ export async function startServer(
           method === "POST" && /^\/api\/jobs\/[^/]+\/cancel$/.test(route);
         // Serialize mutations across body reads and project replacement. Cancellation
         // remains available while a render is awaiting its child process.
-        if ((method === "POST" || method === "PATCH") && !cancellation) {
+        if (
+          (method === "POST" || method === "PATCH") &&
+          !cancellation &&
+          route !== "/api/projects/availability"
+        ) {
           if (
             active.size &&
             [
@@ -238,6 +444,74 @@ export async function startServer(
           json(response, 200, { ok: true });
           return;
         }
+        if (method === "GET" && route === "/api/workspace") {
+          const defaults = resolveFilmSettings(
+            { templateId: "proposal-film" },
+            [proposalTemplate],
+          );
+          json(response, 200, {
+            systemLocale: systemLocale(),
+            defaultProjectRoot: projectRoot,
+            defaults: { ...defaults, projectContentLocale: "en-US" },
+            templates: [
+              resolveFilmSettings({ templateId: "blank" }, [proposalTemplate]),
+              defaults,
+            ].map(({ templateId, ...settings }) => ({
+              id: templateId,
+              ...settings,
+            })),
+            maxUploadBytes,
+          });
+          return;
+        }
+        if (method === "POST" && route === "/api/projects/availability") {
+          const data = await body(request);
+          const requested =
+            data.paths === undefined ||
+            (Array.isArray(data.paths) && !data.paths.length)
+              ? []
+              : paths(data, "paths", 50);
+          const projects = [];
+          for (const path of requested) {
+            let status = "available";
+            try {
+              const directory = await lstat(path);
+              if (!directory.isDirectory() || directory.isSymbolicLink())
+                status = "invalid";
+              else {
+                for (const name of ["project.json", "database.sqlite"]) {
+                  const info = await lstat(join(path, name));
+                  if (!info.isFile() || info.isSymbolicLink())
+                    status = "invalid";
+                }
+                if (status === "available") {
+                  const info = await stat(join(path, "project.json"));
+                  if (info.size > 16 * 1024 * 1024) status = "invalid";
+                  else {
+                    migrateProject(
+                      JSON.parse(
+                        await readFile(join(path, "project.json"), "utf8"),
+                      ),
+                    );
+                    await inspectCatalog(join(path, "database.sqlite"));
+                  }
+                }
+              }
+            } catch (error) {
+              status =
+                (error as NodeJS.ErrnoException).code === "ENOENT"
+                  ? "missing"
+                  : ["EACCES", "EPERM"].includes(
+                        (error as NodeJS.ErrnoException).code ?? "",
+                      )
+                    ? "inaccessible"
+                    : "invalid";
+            }
+            projects.push({ path, status });
+          }
+          json(response, 200, { projects });
+          return;
+        }
         if (method === "GET" && route === "/api/project") {
           json(response, 200, {
             project: app?.project ?? null,
@@ -251,6 +525,7 @@ export async function startServer(
               409,
               "Wait for running jobs before closing this project.",
             );
+          await discardUploads();
           app?.close();
           app = undefined;
           json(response, 200, { ok: true });
@@ -266,14 +541,39 @@ export async function startServer(
               "Wait for running jobs before switching projects.",
             );
           const data = await body(request);
-          const directory = resolve(text(data, "path"));
+          const creating = route.endsWith("/create");
+          errorContext = creating
+            ? "project.destinationInvalid"
+            : "project.unavailable";
+          const title = creating ? text(data, "title") : undefined;
+          const settings = creating ? filmOptions(data) : undefined;
+          if (creating)
+            settings!.filmSettings = resolveFilmSettings(
+              settings!.filmSettings ?? { templateId: "proposal-film" },
+              [proposalTemplate],
+            );
+          if (creating && settings!.projectContentLocale === undefined)
+            settings!.projectContentLocale = "en-US";
+          const root =
+            data.root === undefined
+              ? projectRoot
+              : resolve(filePath(data, "root"));
+          const folderName = title && projectFolderTitle(title);
+          const directory =
+            creating && data.path === undefined
+              ? join(
+                  root,
+                  `${folderName || "Film"}-${randomUUID().slice(0, 8)}.openfilm`,
+                )
+              : resolve(filePath(data, "path"));
           const previousPath = app?.directory;
+          await discardUploads();
           app?.close();
           app = undefined;
           let next: OpenFilmApplication;
           try {
-            next = route.endsWith("/create")
-              ? await OpenFilmApplication.create(directory, text(data, "title"))
+            next = creating
+              ? await OpenFilmApplication.create(directory, title!, settings)
               : await OpenFilmApplication.open(directory);
           } catch (error) {
             if (previousPath)
@@ -285,6 +585,18 @@ export async function startServer(
           return;
         }
         const application = current();
+        if (method === "PATCH" && route === "/api/project") {
+          const data = await body(request);
+          if (
+            Object.keys(data).some(
+              (key) => !["projectContentLocale", "filmSettings"].includes(key),
+            )
+          )
+            throw new HttpError(400, "Unsupported project edit.");
+          const project = application.updateFilm(filmOptions(data));
+          json(response, 200, { project, path: application.directory });
+          return;
+        }
         if (method === "GET" && route === "/api/assets") {
           const offset = Number(url.searchParams.get("offset") ?? 0);
           const limit = Number(url.searchParams.get("limit") ?? 60);
@@ -332,6 +644,14 @@ export async function startServer(
           json(response, 200, {
             assets,
             total: application.catalog.countAssets(filter),
+            summary: {
+              total: application.catalog.countAssets(),
+              images: application.catalog.countAssets({ mediaType: "image" }),
+              videos:
+                application.catalog.countAssets({ mediaType: "video" }) +
+                application.catalog.countAssets({ mediaType: "360-video" }),
+              audio: application.catalog.countAssets({ mediaType: "audio" }),
+            },
           });
           return;
         }
@@ -340,7 +660,11 @@ export async function startServer(
           const id = decodeURIComponent(assetMatch[1]!);
           const data = await body(request);
           if (!application.catalog.getAsset(id))
-            throw new HttpError(404, "Media asset not found.");
+            throw new HttpError(
+              404,
+              "Media asset not found.",
+              "media.notFound",
+            );
           if (
             Object.keys(data).some(
               (key) => !["rating", "state", "tags"].includes(key),
@@ -415,9 +739,13 @@ export async function startServer(
             throw new HttpError(
               404,
               "Source asset was not found in this project.",
+              "media.notFound",
             );
           const issue = previewIssue(asset);
-          if (issue) throw new HttpError(422, issue);
+          if (issue)
+            throw new HttpError(422, issue, "media.unsupported", {
+              name: asset.name,
+            });
           if (!asset.uri.startsWith("file:"))
             throw new HttpError(
               422,
@@ -437,6 +765,8 @@ export async function startServer(
             throw new HttpError(
               422,
               "A compatible image preview is missing. Import this media again to rebuild its cached preview.",
+              "media.previewUnavailable",
+              { name: asset.name },
             );
           const derivedUri = needsImagePreview
             ? asset.thumbnailUri
@@ -453,6 +783,8 @@ export async function startServer(
             throw new HttpError(
               422,
               "A compatible preview proxy is required for this HDR/HEVC source. Import it again with proxies enabled.",
+              "media.previewUnavailable",
+              { name: asset.name },
             );
           const mime = (
             {
@@ -498,6 +830,8 @@ export async function startServer(
                 useProxy
                   ? "Preview proxy missing: import this media again to rebuild its cached preview."
                   : "Missing Media: reconnect the disk or relink this source.",
+                useProxy ? "media.previewUnavailable" : "media.missing",
+                { name: asset.name },
               );
             throw error;
           }
@@ -554,8 +888,146 @@ export async function startServer(
           json(response, 200, { jobs: application.catalog.listJobs() });
           return;
         }
+        if (method === "POST" && route === "/api/import/upload") {
+          errorContext = "import.failed";
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for running jobs before adding files.",
+            );
+          const name = url.searchParams.get("name") ?? "";
+          if (!safeFilename(name))
+            throw new HttpError(
+              400,
+              "Choose a file name without path components.",
+            );
+          if (!isSupportedMediaFile(name))
+            throw new HttpError(
+              415,
+              `Unsupported media file: ${name}`,
+              "media.unsupported",
+              { name },
+            );
+          if (
+            !request.headers["content-type"]?.startsWith(
+              "application/octet-stream",
+            )
+          )
+            throw new HttpError(
+              415,
+              "Upload media using application/octet-stream.",
+            );
+          const declared = Number(request.headers["content-length"]);
+          if (Number.isFinite(declared) && declared > maxUploadBytes)
+            throw new HttpError(
+              413,
+              `Media exceeds the ${maxUploadBytes} byte upload limit.`,
+            );
+          const uploadId = randomUUID();
+          const sources = join(application.directory, "sources");
+          await mkdir(sources, { recursive: true });
+          const rootInfo = await lstat(sources);
+          if (
+            !rootInfo.isDirectory() ||
+            rootInfo.isSymbolicLink() ||
+            (await realpath(sources)) !== resolve(sources)
+          )
+            throw new HttpError(
+              403,
+              "Managed sources must be inside this project.",
+            );
+          const directory = join(sources, uploadId);
+          await mkdir(directory);
+          const temporary = join(directory, ".upload-partial");
+          const destination = join(directory, name);
+          const controller = new AbortController();
+          active.set(uploadId, controller);
+          const abort = () => request.destroy();
+          controller.signal.addEventListener("abort", abort, { once: true });
+          let size = 0;
+          try {
+            const file = await open(temporary, "wx", 0o600);
+            try {
+              for await (const chunk of request.iterator({
+                destroyOnReturn: false,
+              })) {
+                const bytes = Buffer.isBuffer(chunk)
+                  ? chunk
+                  : Buffer.from(chunk);
+                size += bytes.length;
+                if (size > maxUploadBytes)
+                  throw new HttpError(
+                    413,
+                    `Media exceeds the ${maxUploadBytes} byte upload limit.`,
+                  );
+                await file.writeFile(bytes);
+              }
+              if (!size)
+                throw new HttpError(400, "The uploaded file is empty.");
+              await file.sync();
+            } finally {
+              await file.close();
+            }
+            await rename(temporary, destination);
+            uploads.set(uploadId, {
+              project: application,
+              path: destination,
+              directory,
+            });
+            json(response, 201, { uploadId });
+          } catch (error) {
+            await rm(directory, { recursive: true, force: true });
+            request.resume();
+            throw error;
+          } finally {
+            controller.signal.removeEventListener("abort", abort);
+            active.delete(uploadId);
+          }
+          return;
+        }
+        if (method === "POST" && route === "/api/import/uploads/discard") {
+          const data = await body(request);
+          const selected = paths(data, "uploads");
+          for (const id of selected) {
+            const upload = uploads.get(id);
+            if (upload?.project === application) {
+              await rm(upload.directory, { recursive: true, force: true });
+              uploads.delete(id);
+            }
+          }
+          json(response, 200, { ok: true });
+          return;
+        }
         if (method === "POST" && route === "/api/import") {
-          const folder = resolve(text(await body(request), "folder"));
+          errorContext = "import.failed";
+          const data = await body(request);
+          if (
+            ["folder", "files", "uploads"].filter(
+              (key) => data[key] !== undefined,
+            ).length !== 1
+          )
+            throw new HttpError(
+              400,
+              "Choose a folder, selected files, or completed uploads.",
+            );
+          const folder =
+            data.folder === undefined
+              ? undefined
+              : resolve(filePath(data, "folder"));
+          const files =
+            data.files === undefined ? undefined : paths(data, "files");
+          const uploaded =
+            data.uploads === undefined
+              ? undefined
+              : paths(data, "uploads").map((id) => {
+                  const upload = uploads.get(id);
+                  if (!upload || upload.project !== application)
+                    throw new HttpError(
+                      400,
+                      "This upload no longer belongs to the current project.",
+                    );
+                  return { id, ...upload };
+                });
           if (active.size)
             throw new HttpError(409, "An import is already running.");
           const controller = new AbortController();
@@ -568,11 +1040,32 @@ export async function startServer(
           };
           application.catalog.saveJob(initial);
           active.set(placeholderId, controller);
-          const task = application.importFolder(folder, {
+          const importOptions = {
             signal: controller.signal,
             jobId: placeholderId,
-          });
+          };
+          const task = uploaded
+            ? application.importManagedSources(
+                uploaded.map((upload) => upload.path),
+                importOptions,
+              )
+            : files
+              ? application.importFiles(files, importOptions)
+              : application.importFolder(folder!, importOptions);
+          for (const upload of uploaded ?? []) uploads.delete(upload.id);
           const handled = task
+            .finally(async () => {
+              // Receipts are consumed once, but their managed files remain this
+              // job's responsibility until all import workers have settled.
+              for (const upload of uploaded ?? []) {
+                if (
+                  !application.catalog.getAssetByUri(
+                    pathToFileURL(upload.path).href,
+                  )
+                )
+                  await rm(upload.directory, { recursive: true, force: true });
+              }
+            })
             .catch((error: unknown) => {
               application.catalog.saveJob({
                 id: placeholderId,
@@ -580,10 +1073,11 @@ export async function startServer(
                 status: controller.signal.aborted ? "cancelled" : "failed",
                 errors: [
                   {
-                    uri: folder,
+                    uri: folder ?? "Selected files",
                     stage: "discover",
                     message:
                       error instanceof Error ? error.message : String(error),
+                    ...errorInfo(error, "import.failed"),
                   },
                 ],
               });
@@ -600,7 +1094,11 @@ export async function startServer(
         if (method === "POST" && cancel) {
           const controller = active.get(decodeURIComponent(cancel[1]!));
           if (!controller)
-            throw new HttpError(409, "This job is no longer running.");
+            throw new HttpError(
+              409,
+              "This job is no longer running.",
+              "jobs.notRunning",
+            );
           controller.abort();
           json(response, 200, { ok: true });
           return;
@@ -610,6 +1108,7 @@ export async function startServer(
           return;
         }
         if (method === "POST" && route === "/api/stories") {
+          errorContext = "story.invalid";
           const data = await body(request);
           if (
             data.assetIds !== undefined &&
@@ -629,6 +1128,18 @@ export async function startServer(
           return;
         }
         const storyMatch = /^\/api\/stories\/([^/]+)$/.exec(route);
+        const suggestions =
+          /^\/api\/stories\/([^/]+)\/beats\/([^/]+)\/suggestions$/.exec(route);
+        if (method === "POST" && suggestions) {
+          await body(request);
+          json(response, 200, {
+            story: application.refreshSuggestions(
+              decodeURIComponent(suggestions[1]!),
+              decodeURIComponent(suggestions[2]!),
+            ),
+          });
+          return;
+        }
         if (method === "PATCH" && storyMatch) {
           const data = await body(request);
           const index = application.project.stories.findIndex(
@@ -645,7 +1156,32 @@ export async function startServer(
             )
           )
             throw new HttpError(400, "Unsupported story edit.");
-          const edited = validateStory({ ...existing, ...data }) as Story;
+          const normalized = {
+            ...data,
+            ...(Array.isArray(data.beats)
+              ? {
+                  beats: data.beats.map((value: unknown) => {
+                    if (
+                      !value ||
+                      typeof value !== "object" ||
+                      Array.isArray(value)
+                    )
+                      return value;
+                    const beat = { ...value } as Record<string, unknown>;
+                    if (typeof beat.intent === "string" && !beat.intent.trim())
+                      delete beat.intent;
+                    return beat;
+                  }),
+                }
+              : {}),
+          };
+          const edited = validateStory({ ...existing, ...normalized }) as Story;
+          edited.beats = edited.beats.map((beat) =>
+            preserveUserBeatText(
+              existing.beats.find((previous) => previous.id === beat.id),
+              beat,
+            ),
+          );
           for (const beat of edited.beats)
             for (const id of [
               ...(beat.candidateAssetIds ?? []),
@@ -679,8 +1215,33 @@ export async function startServer(
           json(response, 200, { composition });
           return;
         }
-        if (method === "POST" && route === "/api/render") {
+        if (
+          method === "POST" &&
+          (route === "/api/render" || route === "/api/export")
+        ) {
           const data = await body(request);
+          const exporting = route === "/api/export";
+          errorContext = exporting ? "export.failed" : "render.failed";
+          if (exporting && data.format !== "mp4") {
+            if (
+              !["json", "otio", "fcpxml", "edl"].includes(String(data.format))
+            )
+              throw new HttpError(
+                400,
+                "Choose MP4, JSON, OTIO, FCPXML, or EDL.",
+              );
+            const exported = await application.exportWithReport(
+              data.format as "json" | "otio" | "fcpxml" | "edl",
+              typeof data.compositionId === "string"
+                ? data.compositionId
+                : undefined,
+            );
+            json(response, 200, {
+              ...exported,
+              filename: basename(exported.path),
+            });
+            return;
+          }
           if (active.size)
             throw new HttpError(409, "Wait for running jobs before rendering.");
           const controller = new AbortController();
@@ -692,12 +1253,16 @@ export async function startServer(
             progress: 0,
           });
           active.set(jobId, controller);
-          const task = application.render(
+          const compositionId =
             typeof data.compositionId === "string"
               ? data.compositionId
-              : undefined,
-            { signal: controller.signal, jobId },
-          );
+              : undefined;
+          const renderOptions = { signal: controller.signal, jobId };
+          const task = exporting
+            ? application.exportMp4(compositionId, renderOptions)
+            : application
+                .render(compositionId, renderOptions)
+                .then((path) => ({ path }));
           const handled = task
             .catch((error: unknown) => {
               const job = application.catalog
@@ -714,6 +1279,7 @@ export async function startServer(
                       stage: "prepare-render",
                       message:
                         error instanceof Error ? error.message : String(error),
+                      ...errorInfo(error, errorContext),
                     },
                   ],
                 });
@@ -724,8 +1290,11 @@ export async function startServer(
               tasks.delete(handled);
             });
           tasks.add(handled);
-          const path = await handled;
-          json(response, 200, { path });
+          const result = await handled;
+          json(response, 200, {
+            ...result,
+            ...(exporting ? { filename: basename(result.path) } : {}),
+          });
           return;
         }
         if (method === "GET" && route === "/api/preview") {
@@ -738,30 +1307,52 @@ export async function startServer(
           );
           return;
         }
-        if (method === "POST" && route === "/api/export") {
-          const data = await body(request);
-          if (!["json", "otio", "fcpxml", "edl"].includes(String(data.format)))
-            throw new HttpError(400, "Choose JSON, OTIO, FCPXML, or EDL.");
-          const exported = await application.exportWithReport(
-            data.format as "json" | "otio" | "fcpxml" | "edl",
-            typeof data.compositionId === "string"
-              ? data.compositionId
-              : undefined,
+        if (method === "GET" && route === "/api/export/file") {
+          const name = url.searchParams.get("name") ?? "";
+          if (!safeFilename(name))
+            throw new HttpError(400, "Choose an exported file name.");
+          const root = join(application.directory, "exports");
+          response.setHeader(
+            "Content-Disposition",
+            `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
           );
-          json(response, 200, exported);
+          await streamFile(
+            request,
+            response,
+            join(root, name),
+            root,
+            extname(name).toLowerCase() === ".mp4"
+              ? "video/mp4"
+              : "application/octet-stream",
+          );
           return;
         }
         throw new HttpError(404, "Endpoint not found.");
       } catch (error) {
         if (response.headersSent || response.destroyed) return;
+        response.removeHeader("Content-Disposition");
         const status =
-          error instanceof HttpError ||
+          error instanceof ApplicationError ||
           error instanceof TimelineEditorError ||
           error instanceof RelinkError
             ? error.status
             : 400;
         json(response, status, {
           error: error instanceof Error ? error.message : "Operation failed.",
+          ...errorInfo(
+            error,
+            error instanceof TimelineEditorError
+              ? error.status === 409
+                ? "timeline.conflict"
+                : error.status === 404
+                  ? "timeline.notFound"
+                  : "timeline.invalidEdit"
+              : error instanceof RelinkError
+                ? error.status === 409
+                  ? "media.relinkConflict"
+                  : "media.relinkFailed"
+                : errorContext,
+          ),
         });
       } finally {
         releaseMutation?.();
@@ -781,6 +1372,7 @@ export async function startServer(
     await Promise.allSettled(tasks);
     await mutationQueue;
     await stopped;
+    await discardUploads();
     app?.close();
   };
   return { server, port, close };

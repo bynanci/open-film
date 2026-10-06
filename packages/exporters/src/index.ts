@@ -39,7 +39,9 @@ export function otioCompatibilityReport(
           ([key, value]) => value !== defaults[key as keyof typeof defaults],
         )
         .map(([key]) => key);
-      if (clip.title !== undefined) features.push("title");
+      if (clip.title !== undefined || track.type === "titles")
+        features.push("title");
+      if (track.type === "overlay") features.push("overlay");
       if (clip.transition) features.push(clip.transition.type);
       if (clip.locked) features.push("clip lock");
       if (!features.length) continue;
@@ -590,3 +592,10 @@ function edl(
   gap(end, composition.duration - end);
   return lines.join("\n");
 }
+
+export { resolveCompatibility } from "./compatibility.js";
+export type {
+  NleFeatureId,
+  NleFeatureCompatibility,
+  NleVerificationEvidence,
+} from "./compatibility.js";

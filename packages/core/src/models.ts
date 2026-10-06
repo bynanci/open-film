@@ -59,6 +59,18 @@ export interface ProjectSettings {
   frameRate: number;
 }
 
+/** Film content is independent of the desktop interface language. */
+export const PROJECT_CONTENT_LOCALES = ["en-US", "zh-TW", "ja-JP"] as const;
+export type ProjectContentLocale = (typeof PROJECT_CONTENT_LOCALES)[number];
+export type TextSource = "template" | "user";
+
+/** Persisted creation defaults; templates remain external to the core model. */
+export interface FilmSettings {
+  templateId: string;
+  targetDuration: number;
+  maxDuration: number;
+}
+
 export type StoryConstraint =
   | { type: "must-include" | "must-exclude"; assetIds: string[] }
   | { type: "chronological"; enabled?: boolean }
@@ -68,6 +80,11 @@ export interface StoryBeat {
   id: string;
   title: string;
   intent?: string;
+  /** Stable content identity; never derive this from the displayed title. */
+  templateBeatKey?: string;
+  /** Absent provenance is legacy/user content and must remain unchanged. */
+  titleSource?: TextSource;
+  intentSource?: TextSource;
   targetDuration?: number;
   minDuration?: number;
   maxDuration?: number;
@@ -134,6 +151,9 @@ export interface OpenFilmProject {
   stories: Story[];
   timelines: Composition[];
   settings: ProjectSettings;
+  /** Legacy projects without this field use en-US for newly generated text. */
+  projectContentLocale?: ProjectContentLocale;
+  filmSettings?: FilmSettings;
 }
 
 export interface Event {
@@ -161,7 +181,14 @@ export interface Job {
   type: string;
   status: JobStatus;
   progress?: number;
-  errors?: { uri: string; stage: string; message: string }[];
+  errors?: {
+    uri: string;
+    stage: string;
+    message: string;
+    code?: string;
+    params?: Record<string, string | number>;
+    detail?: string;
+  }[];
   createdAt?: string;
   updatedAt?: string;
 }

@@ -1,6 +1,84 @@
 # DaVinci Resolve application QA record
 
-**Status: NOT RUN — manual verification required.**
+**Status: BLOCKED — actual Resolve application QA has not run.**
+
+## Application preflight — 2026-10-06
+
+The requested real-application check inspected candidate
+`713a8e4bb10a4f4dd926496d9999fe59d3ee4481` on
+`codex/global-product-i18n` ([PR #2](https://github.com/bynanci/open-film/pull/2)).
+Remote `main` remained `10caced98a22b79116f2ec63a965ed9e25c9b272`.
+
+| Requirement                               | Observed environment                                                                                       | Result                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Operating system                          | Debian GNU/Linux 13.6, x86_64 container                                                                    | Recorded; no Resolve OS/version pairing tested             |
+| Resolve executable and scripting module   | No `resolve` on PATH, standard Resolve installation directories absent, no `DaVinciResolveScript.py` found | Blocked: application unavailable                           |
+| GPU device access                         | `/dev/dri`, `/dev/nvidia0`, `/dev/nvidiactl` and `/dev/kfd` absent                                         | Blocked: no GPU exposed to this environment                |
+| Graphical session                         | No DISPLAY/Wayland session, X11 socket directory or running desktop display server                         | Blocked: no application desktop available                  |
+| Actual import, playback and saved project | No Resolve process was launched                                                                            | Not run; no screenshots or `.drp`/`.dra` evidence produced |
+
+Installing a parser or rerunning an exporter cannot complete these application
+checks. A Resolve-capable workstation with a working GPU/desktop and access for
+testing is required. Keep every real-NLE feature unverified until observations
+are collected there. The candidate SHA above identifies the prepared source,
+not a successful Resolve import.
+
+## Portable workstation handoff — UI refinement follow-up
+
+The follow-up on `codex/global-product-i18n` adds a durable GitHub Actions
+`resolve-qa-reference-<checkout SHA>` artifact. Unlike the earlier local archive,
+it can be downloaded onto a Resolve workstation. Its `bundle.json` records exact
+checkout/candidate SHAs, dirty files, CI provenance and fixture/media hashes.
+See [the workstation guide](resolve-workstation-qa.md) and bundled
+`WORKSTATION.md` for GUI and optional installed-API paths.
+
+Standard-library Python preparation creates relocated OTIO copies while preserving
+originals. Offline regressions cover changed/missing sources, unsafe references,
+Unicode/space/`#`/`&` paths, stale preparation and independent observation statuses.
+Failure-only API doubles cover an active user project, unavailable Project Manager,
+failed save and failed/missing `.drp`; these are tests of the helper, not application
+evidence. The cloud's actual installed-API probe/run returns **blocked** because
+Resolve is absent. A manual record starts as **not run**.
+
+No real-Resolve capability is newly verified by this follow-up. Actual import,
+playback, relinking, fractional timing and save/reopen must still be observed on
+the workstation. The optional API runner separately records structural observations
+and leaves visual/audio/effect QA manual; it never automatically promotes the
+compatibility model. Advanced edits remain metadata-only/manual recreation.
+
+## Historical prepared workstation handoff
+
+The retained bundle for the implementation SHA above is
+`/tmp/openfilm-resolve-qa-713a8e4.tar.gz` (138,067 bytes). Its SHA-256 is
+`96cfa8f84a5b46058ffb258bc3d587a9aa1f8fab3fd201b7a65f96ac4c974d0d`.
+The archive contains generated CC0 media, three OTIO fixtures and compatibility
+reports, a source/timeline manifest, round-trip documents, the manual procedure,
+`run-context.json` and 19 verified file checksums. This path is a local retained
+artifact, not a durable repository download or a Resolve project.
+
+Official OpenTimelineIO 0.18.1 read/write/read and the four source files' hashes
+and source bounds passed; a temporarily missing source was rejected as expected.
+Each fixture has four tracks, six clips and a 12-second timeline. `cuts.otio` and
+`edited.otio` use 24 fps; `fractional.otio` uses 30000/1001. Advanced effects in
+`edited.otio` remain metadata only and require manual recreation.
+
+The implementation matches the recorded SHA. The handoff context separately
+records the five documentation-only working-tree changes made during preflight.
+The archive's absolute source URLs reference its original generated directory;
+moving it to a workstation requires relinking the `media files` folder. Actual
+Resolve relinking, timing, playback and save/reopen results are still unrecorded.
+
+To regenerate a retained bundle after installing the documented local dependencies:
+
+```sh
+OPENFILM_OTIO_PYTHON=/path/to/otio-venv/bin/python pnpm test:interchange --output /path/to/empty/resolve-reference
+```
+
+Obtain the Resolve workstation's OS, version/edition and test access before
+attempting the application procedure. Record observations and save the native
+project there; do not mark this handoff as completed application QA.
+
+## Existing parser evidence
 
 The Global Product Experience preflight examined PR #1 and accessible repository
 and workspace evidence at candidate
@@ -16,7 +94,7 @@ success or file existence for the following checks.
 | Operating system / version                      | Not recorded; Linux parser tests do not establish Resolve behavior                               |
 | OpenFilm exact SHA used for actual import       | Not recorded                                                                                     |
 | OTIO fixture and source manifest                | Generated `cuts.otio`, `edited.otio`, `fractional.otio` are available; not imported into Resolve |
-| Project frame rate                              | 30 and 30000/1001 parser fixtures; actual Resolve project not created                            |
+| Project frame rate                              | 24 and 30000/1001 parser fixtures; actual Resolve project not created                            |
 | Import method                                   | Not exercised                                                                                    |
 | Source references / media relinking             | Parser/source-file checks pass; Resolve relinking unverified                                     |
 | Video cuts / source trims                       | Parser-validated; real NLE unverified                                                            |

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { initialLocale, navigate, uiText } from "./ui-helpers.js";
 import { link, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,11 @@ import { OpenFilmApplication } from "@openfilm/application";
 import type { Clip, MediaAsset } from "@openfilm/core";
 import { createThumbnail } from "@openfilm/media";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
+
+test.use({ actionTimeout: 15_000, viewport: { width: 1280, height: 720 } });
+test.beforeEach(async ({ page }) => {
+  await initialLocale(page);
+});
 
 const base = "http://127.0.0.1:4310";
 const roots: string[] = [];
@@ -119,8 +125,44 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
         decodeURIComponent(path.slice("/api/source/".length)),
       );
   });
+  // Project data makes the navigation visible before the boot-time source check
+  // finishes. Keep that real request pending to exercise slower startup (as on
+  // CI): navigation must advertise its disabled state instead of dropping clicks.
+  let releaseStatus!: () => void;
+  const statusGate = new Promise<void>((resolve) => {
+    releaseStatus = resolve;
+  });
+  let signalStatus!: () => void;
+  const statusStarted = new Promise<void>((resolve) => {
+    signalStatus = resolve;
+  });
+  await page.route(
+    "**/api/media/status",
+    async (route) => {
+      signalStatus();
+      await statusGate;
+      await route.continue();
+    },
+    { times: 1 },
+  );
   await page.goto("/");
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await statusStarted;
+  const editTab = page
+    .getByRole("navigation", {
+      name: uiText("en-US", "app.navigation.label"),
+      exact: true,
+    })
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.edit"),
+      exact: true,
+    });
+  try {
+    await expect(editTab).toBeDisabled();
+  } finally {
+    releaseStatus();
+  }
+  await expect(editTab).toBeEnabled();
+  await navigate(page, "edit");
   const editor = page.getByRole("region", {
     name: "Composition timeline",
     exact: true,
@@ -160,12 +202,40 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
     .toBeGreaterThanOrEqual(1);
   expect([...requestedSources]).toEqual(["asset-000"]);
 
+  const monitor = editor.locator(".editor-player-region");
+  const storyRail = editor.locator(".editor-story-rail");
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  const initialMonitor = (await monitor.boundingBox())!;
+  const initialDocumentScroll = await page.evaluate(() => window.scrollY);
+  expect(
+    await storyRail.evaluate((rail) => rail.scrollHeight > rail.clientHeight),
+  ).toBe(true);
+  await storyRail.hover();
+  await page.mouse.wheel(0, 10_000);
+  await expect
+    .poll(() => storyRail.evaluate((rail) => rail.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
+  expect(
+    Math.abs((await monitor.boundingBox())!.y - initialMonitor.y),
+  ).toBeLessThanOrEqual(1);
+
   await page.locator("#clip-scale-499").click();
   await expect(page.locator("#clip-scale-499")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await expect(player).toHaveAttribute("src", /\/source\/asset-499(?:\?|$)/);
+  const finalLane = editor.getByRole("group", {
+    name: "Chapter 10 clips",
+    exact: true,
+  });
+  await expect
+    .poll(() => finalLane.evaluate((lane) => lane.scrollLeft))
+    .toBeGreaterThan(0);
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
   await expect
     .poll(() =>
       player.evaluate((video) => (video as HTMLVideoElement).readyState),
@@ -177,6 +247,12 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
     "true",
   );
   await expect(player).toHaveAttribute("src", /\/source\/asset-498(?:\?|$)/);
+  await expect(page.locator("#clip-scale-498")).toBeInViewport({ ratio: 1 });
+  await expect(monitor).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialDocumentScroll);
+  expect(
+    Math.abs((await monitor.boundingBox())!.y - initialMonitor.y),
+  ).toBeLessThanOrEqual(1);
   await expect
     .poll(() =>
       player.evaluate((video) => (video as HTMLVideoElement).readyState),

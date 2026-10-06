@@ -3,6 +3,7 @@ import type {
   Event,
   MediaAsset,
   MediaType,
+  ProjectContentLocale,
   ProjectSettings,
   ScoreResult,
   SimilarityGroup,
@@ -106,12 +107,23 @@ export interface StoryTemplateConfig {
   targetDuration?: number;
   maxDuration?: number;
   assetIds?: string[];
+  contentLocale?: ProjectContentLocale;
+}
+
+export interface TemplateBeatText {
+  title: string;
+  intent?: string;
 }
 
 export interface StoryTemplate {
   id: string;
   name: string;
   description: string;
+  defaults?: { targetDuration: number; maxDuration: number };
+  getBeatText?(
+    key: string,
+    locale: ProjectContentLocale,
+  ): TemplateBeatText | undefined;
   create(config: StoryTemplateConfig): Story;
 }
 

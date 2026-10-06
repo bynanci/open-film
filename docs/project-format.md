@@ -2,7 +2,9 @@
 
 An `.openfilm` project is a directory. **Project schema 1.0.0** is independent of
 the **OpenFilm application release 0.1.0**. A project refers to source media by
-local file URI; it does not copy originals into its directory.
+local file URI. Native file/folder import references originals in place; browser
+file selection copies the chosen bytes into project-managed `sources/` because a
+browser does not expose their original local paths. Neither route modifies originals.
 
 Published machine-readable contracts are in
 [`schemas/openfilm-project-1.0.0.schema.json`](../schemas/openfilm-project-1.0.0.schema.json),
@@ -18,6 +20,7 @@ film.openfilm/
   analysis/
     events.json
     duplicates.json
+  sources/               browser-selected managed source copies
   cache/
     thumbnails/
     proxies/
@@ -25,6 +28,7 @@ film.openfilm/
   exports/
     timeline.json | timeline.otio | timeline.fcpxml | timeline.edl
     timeline.<format>.report.json
+    film-<unique-id>.mp4  finished playable exports
 ```
 
 SQLite may also have active `database.sqlite-wal` and `database.sqlite-shm` files.
@@ -40,6 +44,14 @@ URI, and display name. Settings contain width, height, and frame rate; new proje
 default to 1920 × 1080 at 30 fps. Stories reference candidate/selected media IDs;
 compositions contain tracks and clips referencing catalog media IDs.
 
+Optional `projectContentLocale` (`en-US`, `zh-TW`, `ja-JP`) and `filmSettings`
+(`templateId`, `targetDuration`, `maxDuration`) describe new-film defaults without
+creating a story. Story overrides remain possible. Template beats optionally carry
+`templateBeatKey`, `titleSource` and `intentSource`; only explicit template-owned
+fields change when the film language changes. Existing text with no provenance
+remains verbatim. These additive fields retain schema 1.0.0 and require no catalog
+migration. UI language and theme are local preferences outside the project.
+
 The manifest is validated before atomic temporary-file replacement. The catalog
 uses SQLite schema `PRAGMA user_version=1`, WAL mode, indexed fields for listing,
 and JSON descriptors for extensible asset data. It stores media assets and jobs.
@@ -51,6 +63,9 @@ Close the application before copying the project directory as a filesystem
 backup; use SQLite-aware backup tooling for a live catalog. Include source media
 in a separate backup. A manifest alone does not preserve catalog preferences or
 grant access to missing original files.
+
+Jobs retain their legacy URI/stage/message diagnostics and may also store a stable
+error `code`, string/number `params`, and `detail` for localized recovery messages.
 
 ## Media descriptors and editing
 
@@ -105,6 +120,13 @@ and may still need relinking. Missing-source and library availability are checke
 at runtime, independently of stored editing revisions. Automatic physical-volume
 detection is not implemented. See [media portability](media-portability.md) and
 [relinking contracts](RELINK_CONTRACTS.md) for matching and remount limitations.
+
+Browser-managed copies record a validated source-relative path and their previous
+managed URI under `openfilm.managedSource`. On moving the project, opening it
+rebases only assets still pointing at their managed source; an explicitly relinked
+external file stays external. IDs and original provenance remain stable. Source
+paths must remain within `sources/`; project cache or arbitrary metadata paths are
+never imported as managed media.
 
 ## Validation and migration
 

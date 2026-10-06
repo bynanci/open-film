@@ -7,11 +7,23 @@ Resolve is not installed in the verification environment; actual Resolve import
 and playback have not been verified.** Parser success does not establish NLE
 compatibility.
 
+The Desktop Resolve card reads the browser-safe capability model in
+[`packages/exporters/src/compatibility.ts`](../packages/exporters/src/compatibility.ts).
+Each feature records implementation level, schema/parser validation, real NLE
+verification, manual recreation and unsupported state separately. Its real-NLE
+evidence list is empty. Export-specific reports additionally list the effects
+actually present in that cut; a plain-cut export does not falsely request speed
+or transform recreation. Updating real QA requires both evidence and the model,
+not a translated UI claim.
+
 The Global Product Experience preflight rechecked repository, PR #1 and accessible
 workspace artifacts at candidate `239436cf672be287dbaec4dd9771165609d1d061`.
 Only generated fixtures and official-parser results exist; no actual Resolve QA
 record, `.drp`/`.dra`, import screenshots or application test results were found.
-The manual gate therefore remains open. Use [the QA record](resolve-qa-record.md)
+The 2026-10-06 application preflight also confirmed that the current cloud
+environment has neither Resolve nor exposed GPU devices or a graphical session.
+The actual application check is blocked there, not passed. The manual gate
+therefore remains open. Use [the QA record](resolve-qa-record.md)
 to record each capability independently when application testing is performed.
 
 Advanced edits are **metadata only**, a known implementation limit. Speed,
@@ -101,11 +113,19 @@ or Resolve playback evidence.
 
 ## Manual Resolve import procedure
 
+For a cloud environment without Resolve, use the CI-downloadable bundle and
+[workstation QA guide](resolve-workstation-qa.md). Its preparation command verifies
+hashes and creates local-path copies without changing the original fixtures. An
+optional installed-API runner records individual observations; unsupported API
+imports fall back to this GUI procedure. Neither path automatically certifies
+unobserved playback, relinking or metadata-only edits.
+
 1. Generate the retained reference bundle above and record the Resolve version,
    operating system and project frame rate. Make a separate Resolve project;
    retain the OpenFilm files unchanged. Save the compatibility report with the QA
    record.
-2. Import `cuts.otio` through Resolve's timeline import UI if that installed
+2. Set the cut-reference project to **24 fps**, then import `cuts.otio` through
+   Resolve's timeline import UI if that installed
    version offers OTIO. If the version does not support it, record the limitation;
    do not infer OTIO support from another interchange format. Relink the `media
 files` folder if the bundle moved between machines.

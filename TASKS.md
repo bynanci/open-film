@@ -83,9 +83,49 @@ Hardware and real NLE verification are recorded separately.
 - [x] Review regressions: import-scoped Insta360 directory indexes, accepted image
       and audio previews, current-state Fit savings, and paged media status beyond
       2,000 assets. Covered by unit, media/HTTP integration and browser tests.
-- [ ] Manual: actual DaVinci Resolve import. The Global UX preflight found no real
-      application QA evidence; see [the QA record](docs/resolve-qa-record.md).
+- [ ] Manual: actual DaVinci Resolve import. The 2026-10-06 application preflight
+      is blocked: this cloud environment has no Resolve, exposed GPU or desktop.
+      A Resolve-capable workstation is required; see [the QA record](docs/resolve-qa-record.md).
 - [ ] Manual: representative Pixel HDR/Motion Photo and Insta360 raw camera files.
 
 Keep this file current when a pending capability gains working behavior and
 validation; keep host-dependent checks distinct from source implementation.
+
+## Global product experience and i18n round
+
+Evidence: [validation record](docs/validation-global-product.md).
+
+- [x] Previous correctness reviews fixed, tested and merged in PR #1; main CI green.
+- [x] Resolve QA truth recorded; actual application import remains the manual gate.
+- [x] Vue I18n en-US/zh-TW/ja-JP foundation, runtime locale preference, Intl formats,
+      development pseudo locale and semantic key/placeholder coverage gate.
+- [x] Separate persisted film locale/settings and template/user text ownership;
+      legacy preservation, undo/redo and real HTTP save/reopen regressions.
+- [x] Structured localized errors and complete Welcome/Create Film product flow.
+- [x] Guided navigation, Library, Story, Edit, Export and missing-media recovery.
+- [x] Keyboard/accessibility, CJK/pseudo screenshots and desktop layout QA.
+- [x] Localized full workflow and existing regression coverage, including real MP4,
+      pathless creation, Story save races and managed-thumbnail recovery.
+- [x] CI integrates i18n coverage, locale workflows, visual/axe checks and local CJK
+      fonts; the PR checks record the exact commit's execution result.
+- [x] PR #2 review regressions: generic orientation/capture time, still rotation,
+      managed-upload cleanup, read-only recent catalog/WAL validation, Missing
+      refresh/pagination and bounded Story/Compose hydration. Legacy locale
+      fallback confirmed; delayed asset reads preserve acknowledged edits.
+
+## Impeccable UI refinement and Resolve QA handoff
+
+Evidence: [validation record](docs/validation-impeccable-resolve.md).
+
+- [x] Apply pinned Impeccable Operate/Polish guidance to existing UI: compact
+      navigation, fixed-rem type, direct Welcome actions and media-first spacing.
+- [x] Bounded Edit workspace: independently scrolling story rail/inspector,
+      visible player and keyboard clip reveal without page scrolling.
+- [x] Download editable exports, localized Resolve handoff and progressive
+      capability disclosure in en-US, zh-TW and ja-JP.
+- [x] Portable Resolve QA preparation and evidence helper, non-destructive
+      project guards, 18 offline regressions and actual relocation/source checks.
+- [x] CI builds and uploads the generated CC0 reference for workstation testing;
+      includes source SHA/CI provenance and manual/API procedures.
+- [ ] Actual Resolve import/playback/relink/effect QA on a capable workstation.
+      The helper and official parser do not close this application gate.

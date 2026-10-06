@@ -5,6 +5,21 @@ All edit quantities use seconds; originals are referenced and never rewritten by
 import or composition. The engine produces decisions and operations that a preview
 renderer or timeline exporter can consume.
 
+The Desktop product layer uses stable Library/Story/Edit/Export workspace IDs,
+Vue I18n catalogs and local preferences. UI locale never enters a domain state
+discriminator or changes project content. Optional film locale/settings and
+template/user text provenance stay in portable models; template packages supply
+their own content catalogs. See [internationalization](i18n.md) and
+[product workflow](product-workflow.md).
+
+Application errors carry stable codes and parameters, with diagnostic detail
+preserved for CLI/debug use. The frontend localizes the code at display time.
+The same application import pipeline accepts native paths and validated browser
+upload receipts. Uploads stream only to local project-managed sources, while
+ordinary native imports continue referencing originals. MP4 export renders the
+current composition into an atomic finished output rather than reusing a stale
+preview. No new remote service or alternate composition engine is introduced.
+
 ```mermaid
 flowchart TD
   Desktop[Vue workspace / Tauri shell] --> API[Loopback HTTP API]

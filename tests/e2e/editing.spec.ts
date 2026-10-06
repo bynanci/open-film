@@ -9,6 +9,7 @@ import {
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Clip, Composition, Story } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
+import { initialLocale, navigate, openFilm } from "./ui-helpers.js";
 
 interface EditorState {
   composition: Composition;
@@ -27,7 +28,10 @@ test.afterAll(async ({ request }) => {
   await Promise.all(cleanup.map((action) => action()));
 });
 
-async function fixtureForEditing(request: APIRequestContext) {
+async function fixtureForEditing(
+  request: APIRequestContext,
+  withAudio = false,
+) {
   const fixture = await createDesktopFixture(1);
   cleanup.push(fixture.cleanup);
   const app = await OpenFilmApplication.create(
@@ -116,6 +120,22 @@ async function fixtureForEditing(request: APIRequestContext) {
       },
     ],
   });
+  if (withAudio)
+    app.project.timelines[0]!.tracks.push({
+      id: "sound",
+      type: "audio",
+      clips: [
+        {
+          id: "opening-audio",
+          assetId: assetId("05-tone.wav"),
+          beatId: "opening",
+          timelineStart: 0,
+          timelineDuration: 2,
+          sourceIn: 0,
+          sourceOut: 2,
+        },
+      ],
+    });
   app.close();
   expect(
     (
@@ -142,11 +162,7 @@ const clipById = (state: EditorState, id: string) =>
 const sourceEdits = ({ timelineStart: _timelineStart, ...clip }: Clip) => clip;
 
 async function saved(page: Page) {
-  await expect(
-    page
-      .getByRole("region", { name: "Composition timeline", exact: true })
-      .getByRole("status"),
-  ).toHaveText("Saved");
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
 }
 
 async function field(page: Page, label: string, value: string) {
@@ -155,8 +171,9 @@ async function field(page: Page, label: string, value: string) {
 }
 
 async function openTimeline(page: Page) {
+  await initialLocale(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await expect(
     page.getByRole("heading", { name: "Make every moment count." }),
   ).toBeVisible();
@@ -376,13 +393,8 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
   await page
     .getByRole("button", { name: "Switch project", exact: true })
     .click();
-  await page.getByRole("button", { name: "Open project", exact: true }).click();
-  await page.getByLabel("Existing .openfilm folder").fill(fixture.project);
-  await page
-    .getByRole("button", { name: "Open project", exact: true })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await openFilm(page, fixture.project);
+  await navigate(page, "edit");
   await saved(page);
   const reopened = await editorState(request);
   expect(clipById(reopened, "ending-photo").timelineDuration).toBe(6.5);
@@ -430,13 +442,34 @@ test("retains a real conflicting draft through reload and reapplies it explicitl
   ).toBe(4);
   page.on("dialog", (dialog) => dialog.accept());
   await page.reload();
-  await page.getByRole("button", { name: "Timeline", exact: true }).click();
+  await navigate(page, "edit");
   await expect(page.getByText("Save conflict", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Photo duration", { exact: true })).toHaveValue(
     "5",
   );
   await page
     .getByRole("button", { name: "Apply draft to latest", exact: true })
+    .click();
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Review draft action",
+  });
+  await expect(
+    confirmation.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(confirmation).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Apply draft to latest", exact: true }),
+  ).toBeFocused();
+  await page
+    .getByRole("button", { name: "Apply draft to latest", exact: true })
+    .click();
+  await page.keyboard.press("Delete");
+  await expect(page.getByLabel("Photo duration", { exact: true })).toHaveValue(
+    "5",
+  );
+  await confirmation
+    .getByRole("button", { name: "Confirm", exact: true })
     .click();
   await saved(page);
   const merged = await editorState(request);
@@ -446,5 +479,238 @@ test("retains a real conflicting draft through reload and reapplies it explicitl
     JSON.parse(await readFile(join(fixture.project, "project.json"), "utf8"))
       .timelines[0],
   ).toEqual(merged.composition);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("acknowledges a recovered batch before retrying queued edits", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request);
+  await openTimeline(page);
+  const initial = await editorState(request);
+  const firstCommand = { type: "delete", clipId: "opening-photo" } as const;
+  const queuedCommand = {
+    type: "volume",
+    clipId: "ending-motion",
+    volume: 0.25,
+  } as const;
+  const batch = {
+    baseRevision: initial.revision,
+    requestId: "44444444-4444-4444-8444-444444444444",
+    commands: [firstCommand],
+  };
+  const committed = await request.post(
+    base + "/api/compositions/editing-cut/edit",
+    { data: batch },
+  );
+  expect(committed.ok()).toBe(true);
+  const committedState = (await committed.json()) as EditorState;
+  const concurrentEdit = await request.post(
+    base + "/api/compositions/editing-cut/edit",
+    {
+      data: {
+        baseRevision: committedState.revision,
+        requestId: "55555555-5555-4555-8555-555555555555",
+        commands: [{ type: "volume", clipId: "ending-motion", volume: 0.15 }],
+      },
+    },
+  );
+  expect(concurrentEdit.ok()).toBe(true);
+  const concurrentState = (await concurrentEdit.json()) as EditorState;
+  const projectResponse = await request.get(base + "/api/project");
+  expect(projectResponse.ok()).toBe(true);
+  const projectId = (await projectResponse.json()).project.id as string;
+  const key = "openfilm:editor:" + projectId + ":editing-cut";
+  await page.evaluate(
+    ({ storageKey, draft }) =>
+      localStorage.setItem(storageKey, JSON.stringify(draft)),
+    {
+      storageKey: key,
+      draft: {
+        state: initial,
+        pending: [firstCommand, queuedCommand],
+        batch,
+      },
+    },
+  );
+  const retriedEdits: Record<string, unknown>[] = [];
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname === "/api/compositions/editing-cut/edit"
+    )
+      retriedEdits.push(entry.postDataJSON() as Record<string, unknown>);
+  });
+  await page.reload();
+  await navigate(page, "edit");
+  await expect(page.getByText("Save conflict", { exact: true })).toBeVisible();
+  expect(retriedEdits).toHaveLength(1);
+  expect(retriedEdits[0]).toMatchObject(batch);
+  await page
+    .getByRole("button", { name: "Apply draft to latest", exact: true })
+    .click();
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Review draft action",
+  });
+  await confirmation
+    .getByRole("button", { name: "Confirm", exact: true })
+    .click();
+  await saved(page);
+  expect(retriedEdits).toHaveLength(2);
+  expect(retriedEdits[1]?.commands).toEqual([queuedCommand]);
+  expect(retriedEdits[1]?.requestId).not.toBe(batch.requestId);
+  const recovered = await editorState(request);
+  expect(recovered.revision).not.toBe(concurrentState.revision);
+  expect(clips(recovered).some((clip) => clip.id === "opening-photo")).toBe(
+    false,
+  );
+  expect(clipById(recovered, "ending-motion").transform?.volume).toBe(0.25);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("previews and skips Fit without saving, protects skipped clips, and switches editor language in place", async ({
+  page,
+  request,
+}) => {
+  await fixtureForEditing(request);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openTimeline(page);
+  await expect(
+    page.getByLabel("Timeline inspector", { exact: true }),
+  ).not.toBeVisible();
+  await page.locator("#clip-opening-photo").click();
+  await expect(
+    page.getByLabel("Timeline inspector", { exact: true }),
+  ).toBeVisible();
+  const mountedEditor = await page.locator(".timeline-editor").elementHandle();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Done", exact: true }).focus();
+  await page.keyboard.press("Delete");
+  await settings.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.locator("#clip-opening-photo")).toBeVisible();
+  await field(page, "Photo duration", "0");
+  const error = page.locator(".editor-message[role='alert']");
+  await expect(error).toBeVisible();
+  const englishError = await error.innerText();
+  await page.locator(".ui-language select").selectOption("zh-TW");
+  await expect(
+    page.getByRole("heading", { name: "讓每個片刻都有意義。" }),
+  ).toBeVisible();
+  await expect(error).not.toHaveText(englishError);
+  await expect(page.getByLabel("照片時長", { exact: true })).toHaveValue("0");
+  await expect(
+    page.getByRole("button", {
+      name: "編輯「The beginning」段落",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.locator(".ui-language select").selectOption("ja-JP");
+  await expect(
+    page.getByRole("heading", { name: "一つひとつの瞬間を大切に。" }),
+  ).toBeVisible();
+  await expect(error).toContainText(
+    "この変更は素材やストーリーの制限を超えています。",
+  );
+  expect(await mountedEditor!.evaluate((element) => element.isConnected)).toBe(
+    true,
+  );
+  expect((await editorState(request)).story.beats[0]!.title).toBe(
+    "The beginning",
+  );
+  await page.locator(".ui-language select").selectOption("en-US");
+  await field(page, "Photo duration", "4");
+  await saved(page);
+  await page.locator("#clip-opening-motion").click();
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await saved(page);
+  const before = await editorState(request);
+  await page
+    .getByRole("button", { name: "Fit to target", exact: true })
+    .click();
+  const photoSuggestions = page.locator(
+    '.editor-suggestion[data-clip-id="opening-photo"]',
+  );
+  await photoSuggestions
+    .first()
+    .getByRole("button", { name: /^Preview suggestion/ })
+    .click();
+  await expect(page.locator(".editor-fit-preview")).toContainText(
+    "Preview only",
+  );
+  await expect(page.locator(".editor-fit-preview")).toContainText(
+    "Film: 00:14 → 00:11",
+  );
+  // Wait past autosave's debounce to prove Preview did not queue an edit.
+  await page.waitForTimeout(500);
+  expect(await editorState(request)).toEqual(before);
+  await photoSuggestions
+    .first()
+    .getByRole("button", { name: /^Skip suggestions/ })
+    .click();
+  await expect(photoSuggestions).toHaveCount(0);
+  await expect(page.locator(".editor-fit-preview")).not.toBeVisible();
+  await expect(page.locator(".editor-fit-panel")).toContainText(
+    "This plan leaves the film above the target",
+  );
+  await page
+    .getByRole("button", { name: "Apply all suggestions", exact: true })
+    .click();
+  await saved(page);
+  const after = await editorState(request);
+  expect(after.composition.duration).toBe(11);
+  for (const id of ["opening-photo", "opening-motion", "ending-photo"])
+    expect(sourceEdits(clipById(after, id))).toEqual(
+      sourceEdits(clipById(before, id)),
+    );
+  expect(clipById(after, "ending-motion")).toBeUndefined();
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await saved(page);
+  expect((await editorState(request)).composition).toEqual(before.composition);
+});
+
+test("saves photo rotation through reopening and keeps visual controls absent for audio", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request, true);
+  await openTimeline(page);
+  await page.locator("#clip-opening-photo").click();
+  await field(page, "Clip rotation", "90");
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  const persisted = JSON.parse(
+    await readFile(join(fixture.project, "project.json"), "utf8"),
+  );
+  expect(persisted.timelines[0].tracks[0].clips[0].transform.rotation).toBe(90);
+  await page
+    .getByRole("button", { name: "Switch project", exact: true })
+    .click();
+  await openFilm(page, fixture.project);
+  await navigate(page, "edit");
+  await saved(page);
+  await page.locator("#clip-opening-photo").click();
+  await expect(page.getByLabel("Clip rotation", { exact: true })).toHaveValue(
+    "90",
+  );
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  await page.locator("#clip-opening-audio").click();
+  await expect(page.getByLabel("Source in", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Clip volume", { exact: true })).toBeVisible();
+  for (const label of [
+    "Clip rotation",
+    "Clip scale",
+    "Clip position X",
+    "Clip position Y",
+    "Clip transition",
+    "Playback speed",
+  ])
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });

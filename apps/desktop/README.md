@@ -2,13 +2,34 @@
 
 The Vue workspace uses the local application service at `127.0.0.1:4310`.
 No remote fonts, media, models, or upload services are requested. Timeline strips use cached thumbnails of imported local media; only the
-selected clip opens its original source for inspection. No clip strip creates
+selected clip opens its local source or compatible preview for inspection. No clip strip creates
 individual video decoders.
 
 From the repository root, `pnpm dev` starts the API and Vite on ports 4310 and 1420. `pnpm --filter @openfilm/desktop build` builds the frontend. The browser
 workflow supports all project, library, story, preview, and export operations;
 folder paths can be entered directly. A Tauri window adds the native folder
-picker through the narrowly scoped `pick_folder` command.
+picker through the narrowly scoped `pick_folder` command. Selected-file pickers use
+`pick_file`/`pick_files`. Browser file selection and drops stream bytes to the
+loopback service into project-managed sources; no cloud receives those files.
+
+## First film and language
+
+Welcome offers Create Film, Open Project and recent films with availability state.
+Create Film asks for a name, story type, film language and target/maximum duration;
+storage details stay under Advanced. The default root is configurable with
+`OPENFILM_PROJECTS_DIR` or the user's local Settings preference.
+
+The main navigation is Library, Story, Edit and Export. Progress shows Add Media,
+Organize, Story, Edit and Export without locking navigation. Empty states explain
+the next action. Story separates selected memories from refreshed suggestions;
+Export starts with Watch / Share (MP4) and Continue editing, with interchange
+formats under Advanced.
+
+Settings supports English, Traditional Chinese and Japanese, plus a development
+pseudo locale for layout stress. Language switches immediately without remounting
+the editor. Film language controls generated template text independently; custom
+titles and legacy text remain intact. Theme and default film language/storage are
+local preferences. There is no remote provider toggle for an absent feature.
 
 ## Native shell
 
@@ -38,13 +59,15 @@ reopens the project. It does not substitute fixture screens or mock requests.
 
 ## Graphical editing
 
-The Timeline workspace groups clips by story beat. Select a clip for source
+The Edit workspace groups clips by story beat. Select a clip for source
 in/out, still duration, speed, volume/mute, Cut/Crossfade, and transform controls.
 Drag a clip inside its beat to reorder it, or use Earlier/Later in the inspector.
 Lock protects a clip from changes; unlock it before replacing or deleting it.
 Select a beat header to rename it, edit its intent and timing, or regenerate only
 that beat. Fit to target explains shortening suggestions and lets you apply each
-one or the complete plan. Over-limit cuts can be saved, but must be shortened
+one or the complete plan. Preview inspects a suggestion without saving; Skip
+excludes its clip from the recalculated plan. Independent suggestion savings are
+not added together: the combined total is computed separately. Over-limit cuts can be saved, but must be shortened
 before rendering.
 
 Edits appear immediately and save after a 400ms pause. The Saved/Saving/Save
@@ -61,6 +84,11 @@ Space plays the selected source (or available film preview for a still), arrow
 keys select adjacent clips, Delete removes an unlocked clip, and Cmd/Ctrl Z and
 Cmd/Ctrl Shift Z undo and redo. These shortcuts leave text and number fields to
 normal typing. Originals are never modified.
+
+The inspector is contextual: photos omit audio controls, audio omits transforms
+and visual transitions, and supported video controls retain trim/speed/volume.
+It can collapse at smaller desktop widths. Modal dialogs pause background editing
+shortcuts and return focus after closing.
 
 ## Moved or disconnected media
 
@@ -124,3 +152,10 @@ after the transient success message is dismissed. Changing a cut marks a prior
 export stale; changing projects or compositions clears the previous artifact's
 report. See [NLE compatibility](../../docs/nle-compatibility.md) for the verification
 boundary and manual finishing checks.
+
+Every saved export now has a download link, including an editable OTIO cut. The
+Resolve destination gives localized import/relink steps and keeps detailed
+capabilities in an expandable section. Transfer the original media along with the
+OTIO file; the interchange file does not embed source media. For a reproducible
+generated-media check on another computer, use the
+[portable workstation QA guide](../../docs/resolve-workstation-qa.md).

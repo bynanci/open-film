@@ -26,12 +26,21 @@ jobs:
       - name: Install native media tools and independent timeline parser
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libimage-exiftool-perl
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
           python -m pip install opentimelineio==0.18.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - run: pnpm test:i18n
       - run: pnpm verify
-      - run: pnpm test:interchange
+      - name: Validate interchange and prepare portable Resolve QA
+        run: pnpm test:interchange --output "${{ runner.temp }}/resolve-qa-reference"
+        env:
+          OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resolve-qa-reference-${{ github.sha }}
+          path: ${{ runner.temp }}/resolve-qa-reference/
+          if-no-files-found: error
       - run: node scripts/smoke-built-cli.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e

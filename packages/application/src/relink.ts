@@ -349,7 +349,11 @@ export class MediaRelinker {
           409,
         );
       const changes: CatalogRelinkChange[] = [];
-      const verified: { candidate: RelinkCandidate; info: Stats }[] = [];
+      const verified: {
+        candidate: RelinkCandidate;
+        info: Stats;
+        inspected?: MediaAsset;
+      }[] = [];
       for (const selection of parsed.selections) {
         const match = stored.plan.matches.find(
           (item) => item.assetId === selection.assetId,
@@ -385,9 +389,17 @@ export class MediaRelinker {
             `Asset ${current.id} changed since planning. Search again.`,
             409,
           );
+        const verification = await this.revalidate(
+          candidate,
+          current,
+          expected.hash,
+        );
         verified.push({
           candidate,
-          info: await this.revalidate(candidate, current, expected.hash),
+          info: verification.info,
+          ...(verification.inspected
+            ? { inspected: verification.inspected }
+            : {}),
         });
         const root = stored.folder ?? dirname(candidate.path);
         const relativePath = relative(root, candidate.path)
@@ -410,6 +422,9 @@ export class MediaRelinker {
             ? {}
             : { expectedContentHash: expected.hash }),
           newUri: candidate.uri,
+          ...(verification.inspected
+            ? { inspected: verification.inspected }
+            : {}),
           reference: {
             ...currentReference,
             originalUri: expected.reference.originalUri,
@@ -516,7 +531,7 @@ export class MediaRelinker {
     candidate: RelinkCandidate,
     asset: MediaAsset,
     knownHash?: string,
-  ): Promise<Stats> {
+  ): Promise<{ info: Stats; inspected?: MediaAsset }> {
     try {
       const before = await lstat(candidate.path);
       if (
@@ -539,12 +554,16 @@ export class MediaRelinker {
           "Candidate content changed or contradicts the known content hash. Search again.",
           409,
         );
+      let inspected: MediaAsset | undefined;
       if (!knownHash) {
-        const inspected = await inspectMedia({
-          path: candidate.path,
-          uri: candidate.uri,
-          name: basename(candidate.path),
-        });
+        inspected = {
+          ...(await inspectMedia({
+            path: candidate.path,
+            uri: candidate.uri,
+            name: basename(candidate.path),
+          })),
+          contentHash: hash,
+        };
         if (inspected.mediaType !== asset.mediaType)
           throw new MediaRelinkError(
             `Replacement media type ${inspected.mediaType} does not match ${asset.mediaType}`,
@@ -594,7 +613,7 @@ export class MediaRelinker {
           "Candidate changed during verification. Search again.",
           409,
         );
-      return after;
+      return { info: after, ...(inspected ? { inspected } : {}) };
     } catch (error) {
       if (error instanceof MediaRelinkError) throw error;
       throw new MediaRelinkError(

@@ -10,6 +10,8 @@ import type { OpenFilmApplication } from "./index.js";
 export interface TimelineEditorState extends EditorDocument {
   assets: MediaAsset[];
   revision: string;
+  /** Revision committed by the request ID being replayed, when this is a retry. */
+  acknowledgedRevision?: string;
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -257,7 +259,10 @@ function document(state: EditorDocument): EditorDocument {
 /** One service per open project; history and retry records deliberately stay in memory. */
 export class TimelineEditor {
   private readonly histories = new Map<string, History>();
-  private readonly requests = new Map<string, string>();
+  private readonly requests = new Map<
+    string,
+    { fingerprint: string; revision: string }
+  >();
   private pending: Promise<void> = Promise.resolve();
 
   constructor(private readonly application: OpenFilmApplication) {}
@@ -342,13 +347,19 @@ export class TimelineEditor {
     nonempty(compositionId, "compositionId");
     return this.serialize(async () => {
       const fingerprint = digest({ compositionId, input: parsed });
-      if (parsed.requestId && this.requests.has(parsed.requestId)) {
-        if (this.requests.get(parsed.requestId) !== fingerprint)
+      const receipt = parsed.requestId
+        ? this.requests.get(parsed.requestId)
+        : undefined;
+      if (receipt) {
+        if (receipt.fingerprint !== fingerprint)
           throw new TimelineEditorError(
             "requestId was already used for a different edit",
             409,
           );
-        return this.get(compositionId);
+        return {
+          ...this.get(compositionId),
+          acknowledgedRevision: receipt.revision,
+        };
       }
       const before = this.current(compositionId, parsed.baseRevision);
       let next = document(before);
@@ -381,7 +392,10 @@ export class TimelineEditor {
         redo: [],
       });
       if (parsed.requestId) {
-        this.requests.set(parsed.requestId, fingerprint);
+        this.requests.set(parsed.requestId, {
+          fingerprint,
+          revision: saved.revision,
+        });
         if (this.requests.size > REQUEST_LIMIT)
           this.requests.delete(this.requests.keys().next().value!);
       }

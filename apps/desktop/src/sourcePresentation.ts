@@ -1,6 +1,44 @@
 import type { MediaAsset } from "@openfilm/core";
+import english from "./i18n/modules/media/en-US";
 
-type Detail = { label: string; value: string };
+type Params = Record<string, string | number>;
+export interface SourcePresentationOptions {
+  translate?: (key: string, params?: Params) => string;
+  formatNumber?: (value: number, options?: Intl.NumberFormatOptions) => string;
+  formatDate?: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+}
+function defaultTranslate(key: string, params: Params = {}): string {
+  const value = key
+    .split(".")
+    .reduce<unknown>(
+      (item, part) =>
+        item && typeof item === "object"
+          ? (item as Record<string, unknown>)[part]
+          : undefined,
+      english,
+    );
+  if (typeof value !== "string")
+    throw new Error(`Missing source translation: ${key}`);
+  return value.replace(/\{(\w+)\}/g, (_, name: string) =>
+    String(params[name] ?? ""),
+  );
+}
+
+/** Keep actual filesystem values intact; shorten only their display. */
+export function compactPath(value: string): string {
+  let path = value;
+  if (path.startsWith("file:")) {
+    try {
+      path = decodeURIComponent(new URL(path).pathname);
+    } catch {
+      /* Preserve malformed legacy references. */
+    }
+  }
+  const segments = path.split(/[\\/]/).filter(Boolean);
+  return segments.length > 3 ? `…/${segments.slice(-3).join("/")}` : path;
+}
+
+type Detail = { key: string; label: string; value: string };
 type Metadata = Record<string, unknown>;
 
 export interface SourcePresentation {
@@ -11,6 +49,7 @@ export interface SourcePresentation {
   previewSupported: boolean;
   previewReason?: string;
   previewWarnings: string[];
+  technicalWarnings: string[];
   requiresReframedExport: boolean;
   motionPhoto: boolean;
   details: Detail[];
@@ -96,7 +135,15 @@ function extension(asset: MediaAsset): string {
 }
 
 /** Present recorded source evidence without promoting uncertain camera guesses. */
-export function sourcePresentation(asset: MediaAsset): SourcePresentation {
+export function sourcePresentation(
+  asset: MediaAsset,
+  options: SourcePresentationOptions = {},
+): SourcePresentation {
+  const t = options.translate ?? defaultTranslate;
+  const number =
+    options.formatNumber ??
+    ((value: number, settings?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat("en-US", settings).format(value));
   const metadata = record(asset.metadata);
   const pixel = record(metadata["openfilm.pixel"]);
   const pixelEvidence = record(pixel.evidence);
@@ -109,7 +156,10 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
   const probe = record(metadata["openfilm.ffprobe"]);
   const streams = Array.isArray(probe.streams) ? probe.streams.map(record) : [];
   const stream =
-    streams.find((item) => item.codec_type === "video") ??
+    streams.find(
+      (item) =>
+        item.codec_type === (asset.mediaType === "audio" ? "audio" : "video"),
+    ) ??
     streams.find((item) => item.codec_type === "audio") ??
     {};
   const streamTags = record(stream.tags);
@@ -140,18 +190,18 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
               ? `Google ${pixelDevice}`
               : `Google Pixel · ${pixelDevice}`
           : "Google Pixel"
-        : "Generic device";
+        : t("media.source.genericDevice");
   const kindLabel = requiresReframedExport
-    ? "360 source"
+    ? t("media.source.kind360")
     : insta.level === 1
-      ? "Exported flat media"
+      ? t("media.source.kindFlat")
       : asset.mediaType === "image"
         ? extension(asset) === "dng"
-          ? "DNG photo"
-          : "Photo"
+          ? t("media.source.kindDng")
+          : t("media.source.kindPhoto")
         : asset.mediaType === "audio"
-          ? "Audio"
-          : "Video";
+          ? t("media.source.kindAudio")
+          : t("media.source.kindVideo");
   const motionPhoto = recognizedPixel && motion.detected === true;
   const codec = first(
     asset.codec,
@@ -198,48 +248,44 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
     frameRate(stream.avg_frame_rate) ??
     frameRate(stream.r_frame_rate);
   const badges = [
-    ...(requiresReframedExport ? ["Requires reframed export"] : []),
-    ...(motionPhoto ? ["Motion Photo · Experimental"] : []),
+    ...(requiresReframedExport ? [t("media.source.reframe")] : []),
+    ...(motionPhoto ? [t("media.source.motionBadge")] : []),
     ...(hdr ? ["HDR"] : []),
     ...(hevc ? ["HEVC"] : []),
-    ...(bitDepth && bitDepth >= 10 ? [`${bitDepth}-bit`] : []),
+    ...(bitDepth && bitDepth >= 10
+      ? [t("media.source.bitDepthValue", { depth: number(bitDepth) })]
+      : []),
   ];
   const previewSupported =
     !requiresReframedExport && preview.supported !== false;
   const previewReason = requiresReframedExport
-    ? "Export a flat, reframed JPG or MP4 in Insta360 Studio or the source camera’s app, then import that export to preview or render it."
+    ? t("media.source.reframeHelp")
     : !previewSupported
-      ? (first(preview.reason) ??
-        (extension(asset) === "dng"
-          ? "This DNG cannot be previewed here. Create a JPEG export in a compatible photo app, then import it."
-          : "This source cannot be previewed here. Create a supported JPG or MP4 export in a compatible app, then import it."))
+      ? extension(asset) === "dng"
+        ? t("media.source.dngHelp")
+        : t("media.source.unsupportedHelp")
       : undefined;
   const previewWarnings = [
     ...new Set([
-      ...strings(preview.warnings, 8),
-      ...(hdr
-        ? [
-            "HDR source. Judge brightness and color with a color-managed or tone-mapped preview.",
-          ]
-        : []),
-      ...(hevc
-        ? [
-            "HEVC browser playback depends on available decoders. Use a compatible preview if direct playback fails.",
-          ]
-        : []),
+      ...(hdr ? [t("media.source.hdrHelp")] : []),
+      ...(hevc ? [t("media.source.hevcHelp")] : []),
       ...(bitDepth && bitDepth >= 10
-        ? [
-            `${bitDepth}-bit source. Preview support depends on the codec and color processing available.`,
-          ]
+        ? [t("media.source.depthHelp", { depth: number(bitDepth) })]
         : []),
     ]),
   ].slice(0, 10);
   const details: Detail[] = [];
   const evidence: Detail[] = [];
-  const add = (rows: Detail[], label: string, value: unknown) => {
-    const text = shortText(value, 500);
-    if (text && !rows.some((row) => row.label === label && row.value === text))
-      rows.push({ label, value: text });
+  const add = (
+    rows: Detail[],
+    key: string,
+    value: unknown,
+    preserve = false,
+  ) => {
+    const text =
+      preserve && typeof value === "string" ? value : shortText(value, 500);
+    if (text && !rows.some((row) => row.key === key && row.value === text))
+      rows.push({ key, label: t(`media.source.fields.${key}`), value: text });
   };
   const camera = first(
     asset.source?.device,
@@ -253,23 +299,32 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
   );
   add(
     details,
-    "Camera",
+    "camera",
     camera && make && !camera.toLowerCase().includes(make.toLowerCase())
       ? `${make} ${camera}`
       : (camera ?? make),
   );
   add(
     details,
-    "Capture time",
+    "captureTime",
     first(
-      asset.capturedAt,
+      asset.capturedAt && options.formatDate
+        ? options.formatDate(asset.capturedAt, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+          })
+        : asset.capturedAt,
       pixelEvidence.dateTimeOriginal,
       tag(exif, "DateTimeOriginal"),
     ),
   );
   add(
     details,
-    "Timezone",
+    "timezone",
     first(
       asset.timezone,
       pixelEvidence.offsetTimeOriginal,
@@ -278,7 +333,7 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
   );
   add(
     details,
-    "Orientation",
+    "orientation",
     first(
       pixelEvidence.orientation,
       tag(exif, "Orientation"),
@@ -295,18 +350,30 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
     Math.abs(latitude) <= 90 &&
     Math.abs(longitude) <= 180
   )
-    add(details, "GPS", `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+    add(details, "gps", `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
   const width = numeric(asset.dimensions?.width) ?? numeric(stream.width);
   const height = numeric(asset.dimensions?.height) ?? numeric(stream.height);
-  if (width && height) add(details, "Dimensions", `${width} × ${height}`);
-  add(details, "Codec", codec);
-  if (rate) add(details, "Frame rate", `${Number(rate.toFixed(3))} fps`);
-  add(details, "Color transfer", transfer);
-  add(details, "Pixel format", pixelFormat);
-  if (bitDepth) add(details, "Bit depth", `${bitDepth}-bit`);
+  if (width && height) add(details, "dimensions", `${width} × ${height}`);
+  add(details, "codec", codec);
+  if (rate)
+    add(
+      details,
+      "frameRate",
+      t("media.source.fps", {
+        rate: number(rate, { maximumFractionDigits: 3 }),
+      }),
+    );
+  add(details, "colorTransfer", transfer);
+  add(details, "pixelFormat", pixelFormat);
+  if (bitDepth)
+    add(
+      details,
+      "bitDepth",
+      t("media.source.bitDepthValue", { depth: number(bitDepth) }),
+    );
   add(
     details,
-    "Color space",
+    "colorSpace",
     first(
       color.matrix,
       asset.colorSpace,
@@ -317,7 +384,7 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
   );
   add(
     details,
-    "Color primaries",
+    "colorPrimaries",
     first(
       color.primaries,
       stream.color_primaries,
@@ -325,41 +392,52 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
       tag(exif, "ColorPrimaries"),
     ),
   );
-  add(details, "Color range", first(color.range, stream.color_range));
-  add(details, "Dynamic range", color.kind);
+  add(details, "colorRange", first(color.range, stream.color_range));
+  add(details, "dynamicRange", color.kind);
   add(
     details,
-    "Camera software",
+    "cameraSoftware",
     first(asset.source?.application, tag(exif, "Software"), formatTags.encoder),
   );
   if (motionPhoto) {
     const kinds: Record<string, string> = {
-      embedded: "Embedded",
-      sidecar: "Sidecar",
-      "metadata-reference": "Metadata reference",
+      embedded: t("media.source.embedded"),
+      sidecar: t("media.source.sidecar"),
+      "metadata-reference": t("media.source.metadataReference"),
     };
     const kind = kinds[shortText(motion.kind) ?? ""];
-    add(evidence, "Motion Photo detection", kind ?? "Recorded detection");
+    add(
+      evidence,
+      "motionDetection",
+      kind ?? t("media.source.recordedDetection"),
+    );
     for (const item of strings(motion.evidence, 6))
-      add(evidence, "Motion Photo evidence", item);
-    add(evidence, "Motion Photo sidecar", motion.sidecarUri);
-    add(evidence, "Motion Photo reference", motion.reference);
+      add(evidence, "motionEvidence", item);
+    add(evidence, "motionSidecar", motion.sidecarUri, true);
+    add(evidence, "motionReference", motion.reference, true);
     if (numeric(motion.offsetBytes) !== undefined)
-      add(evidence, "Embedded offset", `${numeric(motion.offsetBytes)} bytes`);
+      add(
+        evidence,
+        "embeddedOffset",
+        t("media.source.bytes", {
+          count: number(numeric(motion.offsetBytes)!),
+        }),
+      );
   }
   for (const item of strings(instaEvidence.recognition, 5))
-    add(evidence, "Camera recognition", item);
+    add(evidence, "cameraRecognition", item);
   if (Array.isArray(instaEvidence.association))
     for (const raw of instaEvidence.association.slice(0, 12)) {
       const association = record(raw);
       const kind =
         association.kind === "explicit-metadata"
-          ? "Metadata association"
+          ? "metadataAssociation"
           : association.kind === "named-sibling"
-            ? "Filename association"
-            : "Recorded association";
+            ? "filenameAssociation"
+            : "recordedAssociation";
       const description = first(association.evidence);
-      const uri = first(association.uri);
+      const uri =
+        typeof association.uri === "string" ? association.uri : undefined;
       if (description || uri)
         add(
           evidence,
@@ -368,22 +446,23 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
             description,
             uri,
             association.available === false
-              ? "Source currently unavailable"
+              ? t("media.source.unavailable")
               : undefined,
           ]
             .filter(Boolean)
             .join(" · "),
+          true,
         );
     }
   if (asset.capturedAtSource)
-    add(evidence, "Capture time source", asset.capturedAtSource);
+    add(evidence, "captureSource", asset.capturedAtSource);
   if (pixel.recognized === false)
-    add(
-      evidence,
-      "Device identification",
-      "The available evidence does not establish a Google Pixel source; shown as a generic device.",
-    );
-  const original360Sources = strings(insta.original360Sources, 20, 800);
+    add(evidence, "deviceIdentification", t("media.source.genericEvidence"));
+  const original360Sources = Array.isArray(insta.original360Sources)
+    ? insta.original360Sources
+        .filter((item): item is string => typeof item === "string")
+        .slice(0, 20)
+    : [];
   return {
     deviceLabel,
     adapter,
@@ -392,6 +471,12 @@ export function sourcePresentation(asset: MediaAsset): SourcePresentation {
     previewSupported,
     ...(previewReason ? { previewReason } : {}),
     previewWarnings,
+    technicalWarnings: [
+      ...strings(preview.warnings, 8),
+      ...(!previewSupported && typeof preview.reason === "string"
+        ? [preview.reason]
+        : []),
+    ],
     requiresReframedExport,
     motionPhoto,
     details,

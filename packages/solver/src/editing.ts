@@ -6,7 +6,7 @@ import type {
   StoryBeat,
   Track,
 } from "@openfilm/core";
-import { scoreAsset } from "@openfilm/story";
+import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
@@ -68,6 +68,7 @@ export interface ShorteningSuggestion {
 }
 
 interface PreparedShorteningEdit {
+  excludedClipIds: string[];
   commands: TimelineCommand[];
   secondsSaved: number;
   beforeDuration: number;
@@ -89,6 +90,7 @@ export interface PreparedShorteningPlan extends PreparedShorteningEdit {
 
 export class TimelineEditingError extends Error {
   override name = "TimelineEditingError";
+  readonly code = "timeline.invalidEdit";
 }
 const EPSILON = 1e-7;
 function fail(message: string): never {
@@ -293,6 +295,7 @@ export function applyTimelineCommand(
   const next = structuredClone(document);
   if (command.type === "beat") {
     const beat = findBeat(next, command.beatId);
+    const previousBeat = structuredClone(beat);
     for (const [key, value] of Object.entries(command.patch)) {
       if (key === "title" || key === "intent") {
         if (typeof value !== "string" || (key === "title" && !value.trim()))
@@ -308,6 +311,7 @@ export function applyTimelineCommand(
     Object.assign(beat, command.patch);
     if (command.patch.intent !== undefined && !command.patch.intent.trim())
       delete beat.intent;
+    Object.assign(beat, preserveUserBeatText(previousBeat, beat));
     if ((beat.minDuration ?? 0) > (beat.maxDuration ?? Infinity))
       fail("Beat minimum exceeds its maximum duration.");
     if (
@@ -510,6 +514,7 @@ function shorteningState(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  excludedClipIds: string[] = [],
 ): string {
   return JSON.stringify({
     composition: document.composition,
@@ -517,6 +522,7 @@ function shorteningState(
     revision: "revision" in document ? document.revision : undefined,
     assets,
     targetDuration,
+    excludedClipIds,
   });
 }
 
@@ -558,14 +564,24 @@ export function prepareShorteningPlan(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  excludedClipIds: string[] = [],
 ): PreparedShorteningPlan {
-  const steps = suggestShortening(document, assets, targetDuration);
-  const baseState = shorteningState(document, assets, targetDuration);
+  finite(targetDuration, "Target duration", 0, true);
+  const excluded = [...new Set(excludedClipIds)].sort();
+  const steps = shorteningPlan(
+    document,
+    assets,
+    targetDuration,
+    undefined,
+    excluded,
+  );
+  const baseState = shorteningState(document, assets, targetDuration, excluded);
   const beforeDuration = document.composition.duration;
   const prepare = (
     commands: TimelineCommand[],
     secondsSaved: number,
   ): PreparedShorteningEdit => ({
+    excludedClipIds: [...excluded],
     commands: structuredClone(commands),
     secondsSaved,
     beforeDuration,
@@ -618,10 +634,17 @@ export function shorteningCommands(
   assets: MediaAsset[],
   targetDuration: number,
   preview: PreparedShorteningPlan | ShorteningSuggestionPreview,
+  excludedClipIds: string[] = [],
 ): TimelineCommand[] {
+  const excluded = [...new Set(excludedClipIds)].sort();
   if (
-    preview.baseState !== shorteningState(document, assets, targetDuration) ||
-    preview.commandFingerprint !== JSON.stringify(preview.commands)
+    preview.baseState !==
+      shorteningState(document, assets, targetDuration, excluded) ||
+    JSON.stringify(preview.excludedClipIds) !== JSON.stringify(excluded) ||
+    preview.commandFingerprint !== JSON.stringify(preview.commands) ||
+    preview.commands.some(
+      (command) => "clipId" in command && excluded.includes(command.clipId),
+    )
   )
     fail(
       "This shortening suggestion is stale. Review the suggestions for the current cut and try again.",
@@ -645,6 +668,7 @@ function shorteningPlan(
   assets: MediaAsset[],
   targetDuration: number,
   onlyBeat?: string,
+  excludedClipIds: string[] = [],
 ): ShorteningSuggestion[] {
   let current = document;
   const suggestions: ShorteningSuggestion[] = [];
@@ -652,6 +676,7 @@ function shorteningPlan(
   const editable = allClips(document).filter(
     (clip) =>
       (!onlyBeat || clip.beatId === onlyBeat) &&
+      !excludedClipIds.includes(clip.id) &&
       !protectedClip(document, assets, clip),
   );
   editable.sort(
@@ -949,40 +974,55 @@ function regenerate(
     clip.id = id;
     existingIds.add(id);
   });
-  // Replace existing slots from the end, preserving every clip outside this beat.
-  const byType = new Map<boolean, Clip[]>([
-    [
-      false,
-      generated.filter(
-        (clip) => findAsset(assets, clip.assetId).mediaType !== "audio",
-      ),
-    ],
-    [
-      true,
-      generated.filter(
-        (clip) => findAsset(assets, clip.assetId).mediaType === "audio",
-      ),
-    ],
-  ]);
-  const assignments = editable.map((clip) => ({
+  // Keep the solver's combined media order; old slots cannot be matched by type.
+  const orderedSlots = [...editable].sort(
+    (left, right) => left.timelineStart - right.timelineStart,
+  );
+  const assignments = orderedSlots.map((clip, index) => ({
     oldId: clip.id,
-    next: byType
-      .get(findAsset(assets, clip.assetId).mediaType === "audio")!
-      .shift(),
+    next: generated[index],
     start: clip.timelineStart,
   }));
+  const trackForType = (type: "audio" | "video") => {
+    let track = document.composition.tracks.find((item) => item.type === type);
+    if (!track) {
+      let id = `${document.composition.id}:${type}`,
+        suffix = 1;
+      while (document.composition.tracks.some((item) => item.id === id))
+        id = `${document.composition.id}:${type}:${suffix++}`;
+      track = { id, type, clips: [] };
+      document.composition.tracks.push(track);
+    }
+    return track;
+  };
+  const insertSorted = (
+    track: (typeof document.composition.tracks)[number],
+    clip: Clip,
+  ) => {
+    const index = track.clips.findIndex(
+      (item) => item.timelineStart >= clip.timelineStart - EPSILON,
+    );
+    track.clips.splice(index < 0 ? track.clips.length : index, 0, clip);
+  };
   for (const assignment of assignments.sort((a, b) => b.start - a.start)) {
     const { clip, track } = findClip(document, assignment.oldId);
     if (!assignment.next) remove(document, clip);
     else {
       resize(document, clip, assignment.next.timelineDuration);
       assignment.next.timelineStart = clip.timelineStart;
-      track.clips[track.clips.indexOf(clip)] = assignment.next;
+      const index = track.clips.indexOf(clip);
+      const type =
+        findAsset(assets, assignment.next.assetId).mediaType === "audio"
+          ? "audio"
+          : "video";
+      if (track.type === type) track.clips[index] = assignment.next;
+      else {
+        track.clips.splice(index, 1);
+        insertSorted(trackForType(type), assignment.next);
+      }
     }
   }
-  const remaining = generated.filter((clip) =>
-    [...byType.values()].some((group) => group.includes(clip)),
-  );
+  const remaining = generated.slice(assignments.length);
   let insertion = Math.max(
     0,
     ...allClips(document)
@@ -1008,22 +1048,9 @@ function regenerate(
         other.timelineStart += clip.timelineDuration;
     const type =
       findAsset(assets, clip.assetId).mediaType === "audio" ? "audio" : "video";
-    let track = document.composition.tracks.find(
-      (track) => track.type === type,
-    );
-    if (!track) {
-      let id = `${document.composition.id}:${type}`,
-        suffix = 1;
-      while (document.composition.tracks.some((track) => track.id === id))
-        id = `${document.composition.id}:${type}:${suffix++}`;
-      track = { id, type, clips: [] };
-      document.composition.tracks.push(track);
-    }
+    const track = trackForType(type);
     clip.timelineStart = insertion;
-    const index = track.clips.findIndex(
-      (item) => item.timelineStart >= insertion - EPSILON,
-    );
-    track.clips.splice(index < 0 ? track.clips.length : index, 0, clip);
+    insertSorted(track, clip);
     insertion += clip.timelineDuration;
   }
   updateDuration(document);

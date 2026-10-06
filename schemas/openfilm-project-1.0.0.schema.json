@@ -48,6 +48,12 @@
     },
     "settings": {
       "$ref": "#/$defs/projectSettings"
+    },
+    "projectContentLocale": {
+      "enum": ["en-US", "zh-TW", "ja-JP"]
+    },
+    "filmSettings": {
+      "$ref": "#/$defs/filmSettings"
     }
   },
   "required": [
@@ -391,9 +397,48 @@
           "items": {
             "$ref": "#/$defs/storyConstraint"
           }
+        },
+        "templateBeatKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "titleSource": {
+          "enum": ["template", "user"]
+        },
+        "intentSource": {
+          "enum": ["template", "user"]
         }
       },
-      "required": ["id", "title"]
+      "required": ["id", "title"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "titleSource": {
+                "const": "template"
+              }
+            },
+            "required": ["titleSource"]
+          },
+          "then": {
+            "required": ["templateBeatKey"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "intentSource": {
+                "const": "template"
+              }
+            },
+            "required": ["intentSource"]
+          },
+          "then": {
+            "required": ["templateBeatKey"]
+          }
+        }
+      ]
     },
     "story": {
       "type": "object",
@@ -679,6 +724,22 @@
                 "type": "string",
                 "minLength": 1,
                 "pattern": "\\S"
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": ["string", "number"]
+                }
               }
             },
             "required": ["uri", "stage", "message"]
@@ -696,6 +757,25 @@
         }
       },
       "required": ["id", "type", "status"]
+    },
+    "filmSettings": {
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "targetDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxDuration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": ["templateId", "targetDuration", "maxDuration"]
     }
   }
 }
