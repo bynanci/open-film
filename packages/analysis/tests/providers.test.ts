@@ -67,6 +67,37 @@ describe("explicit remote provider opt-in", () => {
     expect(registry.list()[0]!.enabled).toBe(true);
   });
 
+  it("reports mutated local providers as disabled before any provider invocation", async () => {
+    const registry = new ProviderRegistry();
+    const provider = vision("local");
+    registry.register(provider);
+    expect(registry.list()[0]!.enabled).toBe(true);
+    provider.execution = "remote";
+    expect(registry.list()[0]!.enabled).toBe(false);
+    expect(provider.analyze).not.toHaveBeenCalled();
+    await expect(registry.analyzeVision(provider.id, asset)).rejects.toThrow(
+      "changed its destination",
+    );
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it("revokes consent and reports disabled readiness when a consented remote destination changes", async () => {
+    const registry = new ProviderRegistry();
+    const provider = vision();
+    registry.register(provider);
+    registry.grantConsent(consent);
+    expect(registry.list()[0]!.enabled).toBe(true);
+    expect(registry.getConsent(provider.id)).toEqual(consent);
+    provider.endpoint = "https://changed.example.invalid/analyze";
+    expect(registry.list()[0]!.enabled).toBe(false);
+    expect(registry.getConsent(provider.id)).toBeUndefined();
+    expect(provider.analyze).not.toHaveBeenCalled();
+    await expect(registry.analyzeVision(provider.id, asset)).rejects.toThrow(
+      "changed its destination",
+    );
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
   it("requires consent to identify the provider and cover every declared data kind", () => {
     const registry = new ProviderRegistry();
     registry.register(vision());

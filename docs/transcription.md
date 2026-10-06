@@ -41,6 +41,14 @@ interface language does not rerun or translate a saved transcript. P0 keeps
 provider text and word timing; it does not automatically convert Chinese script
 or apply a dictionary.
 
+Precision offers only the choices advertised by the active provider within
+OpenFilm's supported language options. A provider limited to English starts with
+English rather than automatic detection; a valid user choice survives an
+availability refresh. Providers without language capability metadata retain the
+default choices for compatibility. An explicit empty or unsupported language
+list disables transcription rather than submitting a request it cannot satisfy.
+The interface and film-content languages remain independent of this selection.
+
 | Requested device | Behavior                                                                                                                    |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | CPU              | Use CPU int8; do not attempt GPU.                                                                                           |

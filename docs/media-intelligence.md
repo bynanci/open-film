@@ -104,3 +104,14 @@ is read once, validated and copied before durable job and transcript writes.
 Malformed output or progress stages cannot replace an existing transcript with a
 completed result. Provider replacement validates a fresh registry first; failed
 registration preserves the working provider and its consent state.
+
+Provider progress callbacks are scoped to the running invocation. Once it
+settles or is cancelled, retained callbacks cannot change a terminal job or its
+persisted state. Readiness also respects registry consent: an injected remote
+provider is unavailable without explicit scoped authorization, even if it is
+otherwise valid. This P0 has no remote-provider consent flow and does not enable
+remote processing through the availability endpoint. Availability uses the same
+disclosure gate as invocation; changing a registered provider's execution,
+destination or disclosed data requires registration and fresh consent again.
+Malformed active stage notifications are captured as job failures without
+throwing into a provider's timer or event handler.

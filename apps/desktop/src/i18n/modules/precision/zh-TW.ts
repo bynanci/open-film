@@ -70,16 +70,20 @@ export default {
     languageZh: "中文",
     languageEn: "英文",
     languageJa: "日文",
+    languagesUnavailable:
+      "此辨識工具沒有可支援的語音辨識語言。請設定相容的辨識工具，再重新檢查可用狀態。",
     execution: "處理裝置",
     executionAuto: "自動",
     executionCpu: "CPU",
     executionGpu: "GPU",
-    transcribe: "本機語音辨識",
+    transcribe: "辨識語音",
     analyzeWaveform: "分析波形",
     detectScenes: "偵測畫面切點",
-    modelReady: "本機語音辨識已就緒",
+    modelReady: "語音辨識已就緒",
     projectJobBusy: "此專案中有其他工作正在執行。請等候完成後再開始分析。",
     modelMissing: "本機語音辨識需要設定",
+    remoteUnavailable:
+      "尚未啟用遠端語音辨識。請先設定此辨識工具並授權分享素材，再開始辨識。",
     modelSetup:
       "請在 OpenFilm 啟動設定中指定本機 Whisper 模型，再重新檢查可用狀態。素材會留在這台電腦上。",
     model: "設定的模型",

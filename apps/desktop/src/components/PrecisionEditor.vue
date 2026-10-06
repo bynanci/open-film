@@ -60,6 +60,25 @@ const viewStart = ref(0);
 const trimIn = ref(0);
 const trimOut = ref(0);
 const language = ref("auto");
+const languageChoices = [
+  { value: "auto", label: "precision.languageAuto" },
+  { value: "zh", label: "precision.languageZh" },
+  { value: "en", label: "precision.languageEn" },
+  { value: "ja", label: "precision.languageJa" },
+];
+const languageOptions = computed(() => {
+  if (!providers.value) return [];
+  const advertised = providers.value.transcription.capabilities?.languages;
+  if (advertised !== undefined && !Array.isArray(advertised)) return [];
+  return languageChoices.filter(
+    (choice) => advertised === undefined || advertised.includes(choice.value),
+  );
+});
+const transcriptionReady = computed(
+  () =>
+    !!providers.value?.transcription.available &&
+    languageOptions.value.some((choice) => choice.value === language.value),
+);
 const execution = ref("auto");
 const panel = ref<"transcript" | "analysis" | "markers">("transcript");
 const pageOffset = ref(0);
@@ -359,6 +378,7 @@ async function pollJobs(hydrate = false) {
 }
 async function analyze(operation: "transcribe" | "waveform" | "scenes") {
   if (!playable.value || !hasSourceDuration.value || analysisBusy.value) return;
+  if (operation === "transcribe" && !transcriptionReady.value) return;
   const stamp = generation;
   pending.value = true;
   error.value = null;
@@ -669,6 +689,13 @@ function keyboard(event: KeyboardEvent) {
 // Both editors stay mounted, so Story volume changes must update this player
 // even when no source range or lock changed and no loadedmetadata event fires.
 watch([player, () => props.clip?.transform?.volume], configurePlayback);
+watch(languageOptions, (options) => {
+  if (
+    providers.value &&
+    !options.some((choice) => choice.value === language.value)
+  )
+    language.value = options[0]?.value ?? "";
+});
 watch([sourceKey, viewStart, viewEnd], () => {
   markerPage.value = 0;
 });
@@ -950,26 +977,46 @@ onBeforeUnmount(() => {
                     ? "precision.loading"
                     : providers.transcription.available
                       ? "precision.modelReady"
-                      : "precision.modelMissing",
+                      : providers.transcription.execution === "remote"
+                        ? "precision.remoteUnavailable"
+                        : "precision.modelMissing",
                 )
               }}
             </p>
             <p
-              v-if="providers && !providers.transcription.available"
+              v-if="
+                providers &&
+                !providers.transcription.available &&
+                providers.transcription.execution !== 'remote'
+              "
               class="editor-note"
             >
               {{ t("precision.modelSetup") }}
+            </p>
+            <p
+              v-if="providers && !languageOptions.length"
+              class="editor-note"
+              role="status"
+            >
+              {{ t("precision.languagesUnavailable") }}
             </p>
             <p v-if="otherProjectJob" class="editor-note" role="status">
               {{ t("precision.projectJobBusy") }}
             </p>
             <label class="editor-field"
               >{{ t("precision.language")
-              }}<select v-model="language">
-                <option value="auto">{{ t("precision.languageAuto") }}</option>
-                <option value="zh">{{ t("precision.languageZh") }}</option>
-                <option value="en">{{ t("precision.languageEn") }}</option>
-                <option value="ja">{{ t("precision.languageJa") }}</option>
+              }}<select
+                v-model="language"
+                :aria-label="t('precision.language')"
+                :disabled="!languageOptions.length"
+              >
+                <option
+                  v-for="choice in languageOptions"
+                  :key="choice.value"
+                  :value="choice.value"
+                >
+                  {{ t(choice.label) }}
+                </option>
               </select></label
             ><label class="editor-field"
               >{{ t("precision.execution")
@@ -981,9 +1028,7 @@ onBeforeUnmount(() => {
             ><button
               class="editor-button primary"
               :disabled="
-                !providers?.transcription.available ||
-                !hasSourceDuration ||
-                analysisBusy
+                !transcriptionReady || !hasSourceDuration || analysisBusy
               "
               @click="analyze('transcribe')"
             >

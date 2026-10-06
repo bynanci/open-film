@@ -27,12 +27,12 @@ The existing regression gates also execute the new suites through CI:
 | Gate                               | Evidence                                                                                                                                                                                                   |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm format:check`                | **Passed.** Repository formatting check.                                                                                                                                                                   |
-| `pnpm test:i18n`                   | **Passed.** 865 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
+| `pnpm test:i18n`                   | **Passed.** 867 matching semantic keys and placeholders in en-US, zh-TW and ja-JP.                                                                                                                         |
 | `pnpm lint`, `pnpm typecheck`      | **Passed.** TypeScript, Vue and strict lint checks.                                                                                                                                                        |
-| `pnpm test`                        | **Passed: 523 tests in 56 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
+| `pnpm test`                        | **Passed: 532 tests in 56 files.** Domain, provider, migration, paging, source invalidation, cancellation and real FFmpeg integration suites; the provider suite also executes eight Python sidecar cases. |
 | `pnpm build`                       | **Passed.** CLI/server bundles, Python sidecar copies and Desktop production build.                                                                                                                        |
 | `node scripts/smoke-built-cli.mjs` | **Passed.** Built CLI import/Story/Compose, real waveform/scenes, missing-model failure, protocol-fixture transcription, paged words, markers, reopen, MP4 and exports.                                    |
-| `pnpm test:e2e`                    | **Passed: 32 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus nine Precision browser cases; the 500-clip regression remains green.                                 |
+| `pnpm test:e2e`                    | **Passed: 34 tests, zero failures, skips or retries.** Existing localized/pseudo/Story workflows plus eleven Precision browser cases; the 500-clip regression remains green.                               |
 | `pnpm test:interchange`            | **Passed.** Official OpenTimelineIO 0.18.1 serialization/source validation and 18 offline workstation-helper regressions. Actual Resolve is not run.                                                       |
 | `pnpm test:native`                 | **Passed.** Rust formatting, Clippy and compile/test harness; the harness contains zero native behavior tests.                                                                                             |
 
@@ -42,9 +42,18 @@ checks on-demand transcription jobs, cancellation, returning to a source while
 its job runs, word seeking, snapped and keyboard trims, very short positive
 ranges, split/undo/redo, durable reopen and a real MP4 render. It compares original
 source hashes and checks that analysis does not change Story or film duration.
-Dense-marker, render-status and missing-duration browser response fixtures are
-explicitly identified UI stress/error inputs; they do not certify 20,000 real
-scene detections or camera metadata extraction.
+Dense-marker, render-status, missing-duration and provider capability/readiness
+browser response fixtures are explicitly identified UI stress/error inputs;
+they do not certify 20,000 real scene detections, camera metadata extraction or
+remote transcription. The language cases run the real job and persistence
+pipeline with deterministic English/Japanese protocol results, including empty
+capabilities, supported subsets and selection preservation.
+
+One local full browser attempt passed 33 cases but failed the Proposal OTIO
+parser check because it used system `python3` without `opentimelineio`. The
+installed OTIO environment must be selected with `OPENFILM_OTIO_PYTHON`; the
+final complete rerun with that interpreter passed all 34 cases, with no skipped
+tests or retries. CI installs OTIO into its selected Python environment.
 
 Transcript protocol tests explicitly return predetermined words. The optional
 engine's CPU fallback is exercised with offline test doubles, including GPU
@@ -89,6 +98,13 @@ Independent reviews and browser execution identified and corrected:
   result metadata is validated and snapshotted, including before reopen.
 - Failed provider registration removing the prior working provider; replacement
   is atomic and retains consent protection.
+- Retained provider progress callbacks changing terminal jobs or throwing after
+  completion; invocation callbacks are retired on settlement and cancellation.
+- Language choices ignoring a provider's supported subset; Precision selects a
+  supported default, preserves valid choices and blocks empty capability lists.
+- Unconsented remote providers being advertised as available; readiness follows
+  registry authorization and the UI explains the disabled provider separately
+  from local model setup.
 
 Each correction has a protocol, integration, media or browser regression rather
 than only an interface declaration.

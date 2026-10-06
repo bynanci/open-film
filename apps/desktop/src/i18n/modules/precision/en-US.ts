@@ -74,17 +74,21 @@ export default {
     languageZh: "Chinese",
     languageEn: "English",
     languageJa: "Japanese",
+    languagesUnavailable:
+      "This provider has no supported transcription languages. Configure a compatible provider, then refresh availability.",
     execution: "Processing device",
     executionAuto: "Automatic",
     executionCpu: "CPU",
     executionGpu: "GPU",
-    transcribe: "Transcribe locally",
+    transcribe: "Transcribe",
     analyzeWaveform: "Analyze waveform",
     detectScenes: "Detect scene cuts",
-    modelReady: "Local transcription is ready",
+    modelReady: "Transcription is ready",
     projectJobBusy:
       "Another job is running in this project. Wait for it to finish before starting analysis.",
     modelMissing: "Local transcription needs setup",
+    remoteUnavailable:
+      "Remote transcription is not enabled. Configure this provider and authorize media sharing before transcribing.",
     modelSetup:
       "Configure a local Whisper model in OpenFilm’s startup settings, then refresh availability. Your media stays on this computer.",
     model: "Configured model",

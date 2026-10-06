@@ -99,8 +99,16 @@ export class MediaIntelligence {
 
   async providers() {
     const provider = this.provider;
-    const readiness =
-      provider instanceof LocalWhisperProvider
+    const enabled = this.registry
+      .list()
+      .some((entry) => entry.id === provider.id && entry.enabled);
+    const readiness = !enabled
+      ? {
+          available: false,
+          detail:
+            "Transcription requires a valid provider registration and any required explicit consent.",
+        }
+      : provider instanceof LocalWhisperProvider
         ? await provider.available()
         : { available: true };
     return {
@@ -292,32 +300,57 @@ export class MediaIntelligence {
           "post-processing",
           "indexing",
         ];
-        const result = await this.registry.transcribe(provider.id, asset, {
-          ...options,
-          onStage: (stage) => {
-            if (!stages.includes(stage))
-              throw new ApplicationError(
-                "media.transcriptionFailed",
-                "The transcription provider reported an invalid stage.",
-              );
-            job.stage = stage;
-            job.progress = Math.max(
-              job.progress ?? 0,
-              0.1 + stages.indexOf(stage) * 0.15,
-            );
-            notify();
-          },
-          onProgress: (progress) => {
-            if (Number.isFinite(progress)) {
+        let acceptingProviderProgress = true;
+        let providerStageError: ApplicationError | undefined;
+        let result: TranscriptionResult;
+        try {
+          result = await this.registry.transcribe(provider.id, asset, {
+            ...options,
+            onStage: (stage) => {
+              if (
+                !acceptingProviderProgress ||
+                providerStageError ||
+                options.signal?.aborted ||
+                job.status !== "running"
+              )
+                return;
+              if (!stages.includes(stage)) {
+                providerStageError = new ApplicationError(
+                  "media.transcriptionFailed",
+                  "The transcription provider reported an invalid stage.",
+                );
+                return;
+              }
+              job.stage = stage;
               job.progress = Math.max(
                 job.progress ?? 0,
-                Math.min(0.85, progress * 0.85),
+                0.1 + stages.indexOf(stage) * 0.15,
               );
-              notify(false);
-            }
-          },
-        });
+              notify();
+            },
+            onProgress: (progress) => {
+              if (
+                !acceptingProviderProgress ||
+                providerStageError ||
+                options.signal?.aborted ||
+                job.status !== "running"
+              )
+                return;
+              if (Number.isFinite(progress)) {
+                job.progress = Math.max(
+                  job.progress ?? 0,
+                  Math.min(0.85, progress * 0.85),
+                );
+                notify(false);
+              }
+            },
+          });
+        } finally {
+          // A plugin may retain callbacks; they must not outlive its invocation.
+          acceptingProviderProgress = false;
+        }
         checkAbort(options.signal);
+        if (providerStageError) throw providerStageError;
         const metadata = transcriptionMetadata(result);
         if (
           provider.capabilities?.wordTimestamps &&

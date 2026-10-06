@@ -7,6 +7,7 @@ import type { Job, MediaAsset } from "@openfilm/core";
 import { hashFile } from "@openfilm/media";
 import type {
   TranscriptionProvider,
+  TranscriptionOptions,
   TranscriptionResult,
   TranscriptionStage,
 } from "@openfilm/plugin-sdk";
@@ -311,6 +312,11 @@ describe("atomic transcription provider replacement", () => {
         transcribe,
       }),
     );
+    expect((await app.intelligence.providers()).transcription).toMatchObject({
+      providerId: "remote-test-provider",
+      execution: "remote",
+      available: false,
+    });
     const job = await app.analyzeIntelligence(asset.id, {
       operation: "transcribe",
     });
@@ -318,5 +324,200 @@ describe("atomic transcription provider replacement", () => {
     expect(job.errors?.[0]?.message).toContain("Explicit opt-in");
     expect(transcribe).not.toHaveBeenCalled();
     expect((await app.intelligence.read(asset.id)).transcript).toBeUndefined();
+  });
+
+  it.each(["execution", "dataKinds"] as const)(
+    "reports unavailable readiness when a registered local provider mutates its %s descriptor",
+    async (field) => {
+      const { app, asset } = await fixture();
+      const transcribe = vi.fn(async () => validResult());
+      const active = provider({
+        endpoint: "https://example.test/transcription",
+        transcribe,
+      });
+      app.intelligence.registerTranscriptionProvider(active);
+      expect((await app.intelligence.providers()).transcription.available).toBe(
+        true,
+      );
+      if (field === "execution") active.execution = "remote";
+      else active.dataKinds = ["audio"];
+      const readiness = (await app.intelligence.providers()).transcription;
+      expect(readiness.available).toBe(false);
+      expect(readiness.detail).toContain("valid provider registration");
+      expect(readiness.detail).not.toContain("Remote transcription");
+      const job = await app.analyzeIntelligence(asset.id, {
+        operation: "transcribe",
+      });
+      expect(job.status).toBe("failed");
+      expect(job.errors?.[0]?.message).toContain("changed its destination");
+      expect(transcribe).not.toHaveBeenCalled();
+      expect(
+        (await app.intelligence.read(asset.id)).transcript,
+      ).toBeUndefined();
+    },
+  );
+});
+
+describe("transcription provider callback lifetime", () => {
+  it("captures invalid stages from an active asynchronous callback as a durable job failure without throwing into the provider timer", async () => {
+    const context = await fixture();
+    const { app, asset } = context;
+    await app.analyzeIntelligence(asset.id, { operation: "transcribe" });
+    const prior = (await app.intelligence.read(asset.id)).transcript;
+    const callbackErrors: unknown[] = [];
+    app.intelligence.registerTranscriptionProvider(
+      provider({
+        async transcribe(_asset, options) {
+          options?.onStage?.("loading-model");
+          return await new Promise<TranscriptionResult>((resolve) => {
+            setTimeout(() => {
+              // The harness catches the old thrown callback to avoid an unhandled test error.
+              try {
+                options?.onStage?.([
+                  "invalid-active-stage",
+                ] as unknown as TranscriptionStage);
+              } catch (error) {
+                callbackErrors.push(error);
+              }
+              options?.onStage?.("transcribing");
+              options?.onProgress?.(0.9);
+              resolve(validResult());
+            }, 0);
+          });
+        },
+      }),
+    );
+    const observed: Job[] = [];
+    const job = await app.analyzeIntelligence(asset.id, {
+      operation: "transcribe",
+      onJob: (progress) => observed.push(progress),
+    });
+    expect(callbackErrors).toEqual([]);
+    expect(job.status).toBe("failed");
+    expect(job.errors?.[0]?.code).toBe("media.transcriptionFailed");
+    expect(job.stage).toBe("loading-model");
+    expect(observed.map((progress) => progress.stage)).toEqual([
+      undefined,
+      "checking-source",
+      "loading-model",
+      "loading-model",
+    ]);
+    const reopened = await context.reopen();
+    expect(
+      reopened.catalog.listJobs().find((saved) => saved.id === job.id),
+    ).toEqual(job);
+    expect((await reopened.intelligence.read(asset.id)).transcript).toEqual(
+      prior,
+    );
+  });
+
+  it.each(["completed", "failed", "cancelled"] as const)(
+    "ignores retained valid and invalid callbacks after a %s provider settles, including after project close",
+    async (status) => {
+      const context = await fixture();
+      const { app, asset } = context;
+      await app.analyzeIntelligence(asset.id, { operation: "transcribe" });
+      const prior = (await app.intelligence.read(asset.id)).transcript;
+      const abort = new AbortController();
+      let retained: TranscriptionOptions | undefined;
+      app.intelligence.registerTranscriptionProvider(
+        provider({
+          async transcribe(_asset, options) {
+            retained = options;
+            options?.onStage?.("loading-model");
+            if (status === "failed") throw new Error("Provider failed");
+            if (status === "cancelled") abort.abort();
+            return validResult();
+          },
+        }),
+      );
+      const observations: Job[] = [];
+      const job = await app.analyzeIntelligence(asset.id, {
+        operation: "transcribe",
+        signal: abort.signal,
+        onJob: (job) => observations.push(job),
+      });
+      expect(job.status).toBe(status);
+      const observationCount = observations.length;
+      const transcript = (await app.intelligence.read(asset.id)).transcript;
+      if (status !== "completed") expect(transcript).toEqual(prior);
+      expect(() => retained?.onStage?.("transcribing")).not.toThrow();
+      expect(
+        app.catalog.listJobs().find((saved) => saved.id === job.id),
+      ).toEqual(job);
+      expect(() =>
+        retained?.onStage?.([
+          "invalid-late-stage",
+        ] as unknown as TranscriptionStage),
+      ).not.toThrow();
+      expect(() => retained?.onProgress?.(0.3)).not.toThrow();
+      expect(observations).toHaveLength(observationCount);
+      const reopened = await context.reopen();
+      // These closures still reference the original application, whose catalog is closed.
+      expect(() => retained?.onStage?.("post-processing")).not.toThrow();
+      expect(() =>
+        retained?.onStage?.(null as unknown as TranscriptionStage),
+      ).not.toThrow();
+      expect(() => retained?.onProgress?.(0.4)).not.toThrow();
+      expect(
+        reopened.catalog.listJobs().find((saved) => saved.id === job.id),
+      ).toEqual(job);
+      expect((await reopened.intelligence.read(asset.id)).transcript).toEqual(
+        transcript,
+      );
+      expect(observations).toHaveLength(observationCount);
+    },
+  );
+
+  it("ignores retained callbacks as soon as cancellation occurs while the provider is still pending", async () => {
+    const { app, asset } = await fixture();
+    const abort = new AbortController();
+    let retained: TranscriptionOptions | undefined;
+    let start!: () => void;
+    let finish!: () => void;
+    const started = new Promise<void>((resolve) => {
+      start = resolve;
+    });
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    app.intelligence.registerTranscriptionProvider(
+      provider({
+        async transcribe(_asset, options) {
+          retained = options;
+          options?.onStage?.("loading-model");
+          start();
+          await finished;
+          return validResult();
+        },
+      }),
+    );
+    const observed: Job[] = [];
+    const pending = app.analyzeIntelligence(asset.id, {
+      operation: "transcribe",
+      signal: abort.signal,
+      onJob: (job) => observed.push(job),
+    });
+    await started;
+    const before = app.catalog.listJobs()[0];
+    const count = observed.length;
+    abort.abort();
+    const lateErrors: unknown[] = [];
+    for (const stage of ["transcribing", ["invalid-after-cancel"]]) {
+      try {
+        retained?.onStage?.(stage as TranscriptionStage);
+      } catch (error) {
+        lateErrors.push(error);
+      }
+    }
+    retained?.onProgress?.(0.7);
+    const after = app.catalog.listJobs()[0];
+    const afterCount = observed.length;
+    finish();
+    const cancelled = await pending;
+    expect(cancelled.status).toBe("cancelled");
+    expect(lateErrors).toEqual([]);
+    expect(after).toEqual(before);
+    expect(afterCount).toBe(count);
   });
 });

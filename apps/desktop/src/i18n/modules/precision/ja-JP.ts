@@ -75,17 +75,21 @@ export default {
     languageZh: "中国語",
     languageEn: "英語",
     languageJa: "日本語",
+    languagesUnavailable:
+      "このプロバイダーには対応する文字起こし言語がありません。対応するプロバイダーを設定してから、利用可否を再確認してください。",
     execution: "処理デバイス",
     executionAuto: "自動",
     executionCpu: "CPU",
     executionGpu: "GPU",
-    transcribe: "ローカルで文字起こし",
+    transcribe: "文字起こし",
     analyzeWaveform: "波形を解析",
     detectScenes: "シーンの切り替わりを検出",
-    modelReady: "ローカル文字起こしを利用できます",
+    modelReady: "文字起こしを利用できます",
     projectJobBusy:
       "このプロジェクトで別の処理が実行中です。完了してから解析を開始してください。",
     modelMissing: "ローカル文字起こしの設定が必要です",
+    remoteUnavailable:
+      "リモート文字起こしは有効になっていません。プロバイダーを設定し、素材の共有を許可してから文字起こしを開始してください。",
     modelSetup:
       "OpenFilm の起動設定でローカル Whisper モデルを指定し、利用状況を更新してください。素材はこのコンピューター内に保持されます。",
     model: "設定されたモデル",

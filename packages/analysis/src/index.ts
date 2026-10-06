@@ -103,17 +103,28 @@ export class ProviderRegistry {
     dataKinds: ProviderDataKind[];
     enabled: boolean;
   }[] {
-    return [...this.providers.values()].map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      kind: provider.kind,
-      execution: provider.execution,
-      ...(provider.endpoint === undefined
-        ? {}
-        : { endpoint: provider.endpoint }),
-      dataKinds: [...provider.dataKinds],
-      enabled: provider.execution === "local" || this.consents.has(provider.id),
-    }));
+    return [...this.providers.values()].map((provider) => {
+      let enabled = false;
+      try {
+        // Readiness shares the invocation gate, including descriptor integrity
+        // and consent invalidation, without invoking the provider or sending data.
+        this.authorized(provider.id, provider.kind, []);
+        enabled = true;
+      } catch {
+        /* An ineligible registration remains visible but cannot be invoked. */
+      }
+      return {
+        id: provider.id,
+        name: provider.name,
+        kind: provider.kind,
+        execution: provider.execution,
+        ...(provider.endpoint === undefined
+          ? {}
+          : { endpoint: provider.endpoint }),
+        dataKinds: [...provider.dataKinds],
+        enabled,
+      };
+    });
   }
 
   grantConsent(value: RemoteProviderConsent): void {

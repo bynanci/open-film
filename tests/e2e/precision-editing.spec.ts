@@ -510,6 +510,270 @@ async function seekSource(
     .toBeCloseTo(sourceTime, 4);
 }
 
+test("transcription languages follow provider capabilities while valid user choices survive refresh and source reload", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  let advertised: string[] | undefined = ["en"];
+  await page.route(
+    (url) => url.pathname === "/api/intelligence/providers",
+    async (route) => {
+      const response = await route.fetch();
+      const result = await response.json();
+      if (advertised === undefined) delete result.transcription.capabilities;
+      else result.transcription.capabilities.languages = advertised;
+      await route.fulfill({ response, json: result });
+    },
+  );
+  test.info().annotations.push({
+    type: "fixture",
+    description:
+      "Provider language metadata is narrowed by an HTTP fixture; transcription uses the disclosed deterministic protocol runner with real jobs and storage.",
+  });
+  const submitted: string[] = [];
+  page.on("request", (event) => {
+    if (
+      event.method() === "POST" &&
+      new URL(event.url()).pathname.endsWith("/intelligence") &&
+      event.postDataJSON()?.operation === "transcribe"
+    )
+      submitted.push(event.postDataJSON().language);
+  });
+  const { video, clip, audioClip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-provider-languages",
+  );
+  await analysisPanel(page, locale);
+  const language = page.getByLabel(text(locale, "precision.language"), {
+    exact: true,
+  });
+  const transcribe = page.getByRole("button", {
+    name: text(locale, "precision.transcribe"),
+    exact: true,
+  });
+  const options = () =>
+    language
+      .locator("option")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => (node as HTMLOptionElement).value),
+      );
+  const reloadAvailability = async () => {
+    const refreshed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/intelligence/providers",
+    );
+    await page
+      .locator(".precision-analysis .editor-technical-details summary")
+      .click();
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.refreshProvider"),
+        exact: true,
+      })
+      .click();
+    await refreshed;
+    await page
+      .locator(".precision-analysis .editor-technical-details summary")
+      .click();
+  };
+  await expect.poll(options).toEqual(["en"]);
+  await expect(language).toHaveValue("en");
+  await analyze(
+    page,
+    request,
+    locale,
+    video.id,
+    "transcribe",
+    async (jobId) => {
+      await expect(
+        page.locator(`.precision-job[data-job-id="${jobId}"] progress`),
+      ).toBeVisible();
+    },
+  );
+  expect(submitted).toEqual(["en"]);
+  expect((await intelligence(request, video.id)).transcript?.language).toBe(
+    "en",
+  );
+  await page
+    .locator(".precision-panel-tabs")
+    .getByRole("button", {
+      name: text(locale, "precision.transcript"),
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".precision-words button").first()).toBeVisible();
+  await analysisPanel(page, locale);
+
+  advertised = ["en", "ja"];
+  await reloadAvailability();
+  await expect.poll(options).toEqual(["en", "ja"]);
+  await expect(language).toHaveValue("en");
+  await language.selectOption("ja");
+  await reloadAvailability();
+  await expect(language).toHaveValue("ja");
+  const picker = page
+    .locator(".precision-source-picker")
+    .getByLabel(text(locale, "precision.selectedClip"));
+  await picker.selectOption(audioClip.id);
+  await expect.poll(options).toEqual(["en", "ja"]);
+  await expect(language).toHaveValue("ja");
+  await picker.selectOption(clip.id);
+  await expect.poll(options).toEqual(["en", "ja"]);
+  await expect(language).toHaveValue("ja");
+  await analyze(page, request, locale, video.id, "transcribe");
+  expect(submitted).toEqual(["en", "ja"]);
+  expect((await intelligence(request, video.id)).transcript?.language).toBe(
+    "ja",
+  );
+  expect((await project(request)).projectContentLocale).toBe(locale);
+  await expect(language.locator('option[value="ja"]')).toHaveText(
+    text(locale, "precision.languageJa"),
+  );
+
+  advertised = ["en"];
+  await reloadAvailability();
+  await expect.poll(options).toEqual(["en"]);
+  await expect(language).toHaveValue("en");
+  advertised = undefined;
+  await reloadAvailability();
+  await expect.poll(options).toEqual(["auto", "zh", "en", "ja"]);
+  await expect(language).toHaveValue("en");
+  const noLanguages = page.getByText(
+    text(locale, "precision.languagesUnavailable"),
+    { exact: true },
+  );
+  for (const unsupported of [[], ["fr", "en-US", "EN"]]) {
+    advertised = unsupported;
+    await reloadAvailability();
+    await expect.poll(options).toEqual([]);
+    await expect(language).toBeDisabled();
+    await expect(transcribe).toBeDisabled();
+    await expect(noLanguages).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: text(locale, "precision.analyzeWaveform"),
+        exact: true,
+      }),
+    ).toBeEnabled();
+  }
+  advertised = ["fr", "en", "en"];
+  await reloadAvailability();
+  await expect.poll(options).toEqual(["en"]);
+  await expect(language).toHaveValue("en");
+  await expect(transcribe).toBeEnabled();
+  await expect(noLanguages).toHaveCount(0);
+  expect(submitted).toEqual(["en", "ja"]);
+});
+
+test("unavailable remote transcription is disabled without local Whisper setup guidance", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  let available = false;
+  await page.route(
+    (url) => url.pathname === "/api/intelligence/providers",
+    async (route) => {
+      const response = await route.fetch();
+      const result = await response.json();
+      result.transcription = {
+        ...result.transcription,
+        providerId: "fixture-remote-unavailable",
+        execution: "remote",
+        available,
+        capabilities: {
+          ...result.transcription.capabilities,
+          languages: ["en"],
+        },
+      };
+      await route.fulfill({ response, json: result });
+    },
+  );
+  test.info().annotations.push({
+    type: "fixture",
+    description:
+      "An unavailable remote-provider descriptor is an HTTP UI fixture; no remote provider or consent flow is invoked.",
+  });
+  let transcriptionRequests = 0;
+  page.on("request", (event) => {
+    if (
+      event.method() === "POST" &&
+      new URL(event.url()).pathname.endsWith("/intelligence") &&
+      event.postDataJSON()?.operation === "transcribe"
+    )
+      transcriptionRequests++;
+  });
+  const { video } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-remote-unavailable",
+  );
+  await page
+    .locator(".precision-panel-tabs")
+    .getByRole("button", {
+      name: text(locale, "precision.analysis"),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText(text(locale, "precision.remoteUnavailable"), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(text(locale, "precision.modelMissing"), { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(text(locale, "precision.modelSetup"), { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: text(locale, "precision.transcribe"),
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByLabel(text(locale, "precision.language"), { exact: true }),
+  ).toHaveValue("en");
+  await analyze(page, request, locale, video.id, "waveform");
+  expect((await intelligence(request, video.id)).waveform).toBeDefined();
+  expect(transcriptionRequests).toBe(0);
+  available = true;
+  const refreshed = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/intelligence/providers",
+  );
+  await page
+    .locator(".precision-analysis .editor-technical-details summary")
+    .click();
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.refreshProvider"),
+      exact: true,
+    })
+    .click();
+  await refreshed;
+  await expect(
+    page.getByText(text(locale, "precision.modelReady"), { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(text(locale, "precision.remoteUnavailable"), {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: text(locale, "precision.transcribe"),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  expect(transcriptionRequests).toBe(0);
+});
+
 test("precision split respects a retimed incoming crossfade and permits its exact boundary", async ({
   page,
   request,

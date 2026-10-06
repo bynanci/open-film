@@ -146,8 +146,9 @@ from model, camera and hardware certification.
 - [x] English, Traditional Chinese and Japanese UX; desktop layout and keyboard regressions.
 - [x] CLI/API/plugin reuse, reference/adaptation record and capability/setup documentation.
 - [x] Full local regression gates and new CI regression coverage; candidate checks record the exact SHA.
-- [x] Final exact-head review regressions: retimed crossfade split, project job readiness,
-      dense marker paging, missing duration and generic provider boundaries.
+- [x] Correctness review regressions: retimed crossfade split, project job readiness,
+      dense marker paging, missing duration, provider callback lifecycle,
+      language capabilities and consent/descriptor-aware availability.
 - [ ] Manual: real model CPU transcription quality; model download currently proxy HTTP 403.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
