@@ -17,10 +17,7 @@ export const WORKSTATION_QA_GATES = [
 
 export type WorkstationQaGateId = (typeof WORKSTATION_QA_GATES)[number];
 export type WorkstationQaGateStatus =
-  | "not-run"
-  | "passed"
-  | "failed"
-  | "blocked";
+  "not-run" | "passed" | "failed" | "blocked";
 
 export interface WorkstationQaObservation {
   check: string;
@@ -141,9 +138,7 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
         typeof observation !== "object" ||
         !["pass", "fail", "unavailable", "info"].includes(observation.status)
       )
-        errors.push(
-          `gates.${id}.observations[${index}].status is invalid`,
-        );
+        errors.push(`gates.${id}.observations[${index}].status is invalid`);
     }
     if (gate.status === "passed") {
       if (!observations.length)
@@ -166,9 +161,7 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
       (typeof gate.completedAt !== "string" ||
         !Number.isFinite(Date.parse(gate.completedAt)))
     )
-      errors.push(
-        `gates.${id}.completedAt is required for a terminal status`,
-      );
+      errors.push(`gates.${id}.completedAt is required for a terminal status`);
   }
   return errors;
 }
