@@ -4,6 +4,7 @@
 media, story, composition, event, duplicate-group, and job definitions.
 `media-asset-1.0.0.schema.json` references its media definition.
 `plugin-manifest-1.schema.json` defines plugin API version `1`.
+`workstation-qa-1.0.0.schema.json` defines candidate-bound manual/hardware QA evidence.
 Schema `$id` values are stable identifiers; validators should resolve the
 accompanying files locally and do not need network access.
 
