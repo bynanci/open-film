@@ -2185,10 +2185,11 @@ test("retrying a cancelled review saves the manual draft first and rejects the o
       await expect.poll(() => held.responses.length).toBe(1);
       expect(held.responses[0]?.status, held.responses[0]?.body).toBe(200);
       await expect.poll(() => retryResponses.length).toBe(1);
-      expect(retryResponses[0]?.status, retryResponses[0]?.body).toBe(409);
-      expect(JSON.parse(retryResponses[0]!.body).code).toBe(
-        "review.suggestionStale",
-      );
+      expect(retryResponses[0]?.status, retryResponses[0]?.body).toBe(202);
+      expect(JSON.parse(retryResponses[0]!.body).job).toMatchObject({
+        id: job.id,
+        status: "queued",
+      });
     });
   } finally {
     await page.unroute(retryPattern, retryHandler);
@@ -2200,17 +2201,25 @@ test("retrying a cancelled review saves the manual draft first and rejects the o
   expect((await transcript(request, asset.id)).revision).not.toBe(
     before.revision,
   );
+  // The HTTP acknowledgment starts a real asynchronous retry. Its worker must
+  // reject the changed revision before touching the retained batch/provider.
+  await expect
+    .poll(async () => {
+      const retryJob = (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
+        (item) => item.id === job.id,
+      );
+      return {
+        status: retryJob?.status,
+        codes: retryJob?.errors?.map((error) => error.code),
+      };
+    })
+    .toEqual({ status: "failed", codes: ["review.suggestionStale"] });
   expect(
     await get<{ batches: ReviewBatch[] }>(
       request,
       `/review/jobs/${job.id}/batches`,
     ),
   ).toEqual(retained);
-  expect(
-    (await get<{ jobs: Job[] }>(request, "/jobs")).jobs.find(
-      (item) => item.id === job.id,
-    )?.status,
-  ).toBe("cancelled");
   expect((await suggestions(request, asset.id)).total).toBe(0);
   await expect(recovery).toHaveAttribute("data-batch-status", "cancelled");
   expect(await immutableCut(request, asset.id, compositionId)).toEqual(
