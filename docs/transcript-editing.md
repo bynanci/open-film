@@ -13,13 +13,21 @@ transcript segment. Deletion removes text only. Search provides matching segment
 and occurrences, next/previous navigation and source seeking. Replace changes one
 occurrence; Replace All is one command and one undo step.
 
+Filter Matches applies the literal query and chosen case option to the current
+transcript page, up to 100 rows. It does not move the separate search occurrence
+cursor or limit Next/Previous to that page. Clearing the query or turning off the
+filter shows the loaded page again.
+
 Text replacements and merged text are limited to 20,000 UTF-16 units. Merge checks
 its combined text; Replace All checks the projected result before allocating expanded text.
 Oversized commands leave the saved transcript revision unchanged. Existing
 provider evidence is preserved rather than truncated to this editing limit.
 Failed commands remain in the recovery draft. Discarding that draft requires
-confirmation and reloads the saved revision; earlier unsaved edits are never
-silently removed.
+confirmation. Confirming Discard immediately reserves the operation: competing
+edits and history actions are blocked, and review actions and navigation wait
+until an in-flight save settles and the saved revision reloads. An edit already
+acknowledged by that save remains saved; Discard removes the unsaved draft.
+Earlier unsaved edits are never silently removed.
 
 Transcript has its own Undo/Redo history. Keyboard actions follow the focused
 workspace; typing spaces in a text field does not start playback. The editor saves

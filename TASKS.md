@@ -200,5 +200,10 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Preserve accepted suggestion audit state when another process concurrently skips it.
 - [x] Preserve valid opaque language provider identities throughout review evidence and reopen.
 - [x] Recognize confirmed preview/export cancellation through overlapping Job reads and keep late replies owned by their original project and Job.
+- [x] Reserve confirmed transcript draft Discard through an in-flight save and saved-page reload, blocking competing edits and waiting navigation.
+- [x] Filter the current transcript page literally without changing the global search occurrence cursor.
+- [x] Bind remote review consent to the configured provider identity, displayed destination and all declared data kinds while sending only bounded text and terminology.
+- [x] Claim a retry batch and its job owner atomically before preparation, with exact rollback and protection from obsolete attempts.
+- [x] Recover review work only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.

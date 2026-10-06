@@ -15,14 +15,19 @@ Claude CLI or vendor endpoint is required by the basic editing workflow.
 
 A trusted application/server runtime can inject a provider. The default service
 has none and honestly reports unavailable language review. Local providers do not
-need remote consent. Remote providers must disclose both `text` and `transcripts`
-and obtain explicit consent covering their destination/data kinds. Registry
-authorization is checked on every batch and revoked when the descriptor changes.
-An unavailable or unconsented provider is never called.
+need remote consent. Remote providers must declare both `text` and `transcripts`.
+Before opt-in, the panel displays the registered provider name, destination
+endpoint and every declared data kind. The consent request binds that disclosure
+to the exact stable provider ID, destination and complete set; a changed
+disclosure requires fresh consent.
+Registry authorization is checked on every batch and revoked when the descriptor
+changes. An unavailable or unconsented provider is never called.
 
 The provider receives bounded JSON context containing segment IDs and text,
 transcription language and effective terminology. It receives no media binary,
-source path, GPS, faces, timeline or filesystem access. The application expects:
+source path, GPS, faces, timeline or filesystem access. Consenting to the full
+declared scope does not add those fields to this minimal review payload.
+The application expects:
 
 ```json
 {
@@ -95,15 +100,27 @@ pretend an interrupted provider call completed.
 Both failed and cancelled batches expose Retry and Skip. Glossary retry remains
 offline and uses the current term definitions against the job's bound transcript
 revision; it requires no LanguageProvider. A failed batch is terminalized even
-when a valid glossary replacement exceeds the suggestion-size limit. Restart
-recovery marks abandoned queued/running review jobs failed and their unfinished
-batches cancelled, retaining completed suggestions. Retry never rebases evidence
-onto a newer transcript revision.
+when a valid glossary replacement exceeds the suggestion-size limit. Retry never
+rebases evidence onto a newer transcript revision.
+
+Opening a project recovers an unfinished review only when its execution owner is
+proven dead. The job becomes failed and its unfinished batches become cancelled;
+completed suggestions remain available. Linux verifies the same kernel boot and
+PID namespace before probing the owner process. Live owners and unverified,
+foreign or legacy ownership are preserved. Unknown-owner jobs may need manual
+support; automatic recovery across processes is not claimed on Windows or macOS.
 
 Batch Retry first saves any manual draft. If that changes the revision, the old
 batch is rejected before provider invocation; create a new review for the edited
 text. Retrying an uncertain Accept instead confirms its original request before
 flushing a possibly conflicting draft.
+
+Retry reserves the exact batch attempt and its job owner together before any
+asynchronous preparation. A competing retry or skip cannot take that attempt.
+If source, revision or provider checks fail before provider invocation, the exact
+previous batch and job are restored together only while that reservation still
+belongs to the retry. Later work cannot overwrite a newer owner's checkpoint or
+publish suggestions from an obsolete attempt.
 
 Starting a newer review does not hide an older review's Retry/Skip actions.
 Unfinished reviews are paged independently of suggestion cards, with at most five
