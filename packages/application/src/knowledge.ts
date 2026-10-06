@@ -1007,6 +1007,100 @@ export class KnowledgeService {
       return "cancelled";
     return "completed";
   }
+  reviewRecoveryStatus(jobId: string) {
+    const job = this.catalog.listJobs().find((item) => item.id === jobId);
+    if (!job || !["language-review", "glossary-review"].includes(job.type))
+      throw new ApplicationError(
+        "request.notFound",
+        "Review job not found.",
+        404,
+      );
+    const ownerState = reviewOwnerState(job.reviewOwner);
+    const unfinished = this.catalog.knowledge
+      .batches(job.id)
+      .some((batch) => ["pending", "running"].includes(batch.status));
+    return {
+      jobId: job.id,
+      ownerState,
+      manualRecoveryAllowed:
+        ownerState === "unknown" &&
+        (["queued", "running"].includes(job.status) || unfinished),
+      ownerToken: job.reviewOwner?.token,
+      updatedAt: job.updatedAt,
+    };
+  }
+
+  manualRecoverReview(
+    jobId: string,
+    input: {
+      confirmStopped: boolean;
+      ownerToken?: string;
+      updatedAt?: string;
+    },
+  ): Job {
+    if (input.confirmStopped !== true)
+      throw new ApplicationError(
+        "request.invalid",
+        "Confirm that the previous review process has stopped before recovering it.",
+      );
+    const job = this.catalog.listJobs().find((item) => item.id === jobId);
+    if (!job || !["language-review", "glossary-review"].includes(job.type))
+      throw new ApplicationError(
+        "request.notFound",
+        "Review job not found.",
+        404,
+      );
+    if (
+      input.ownerToken !== job.reviewOwner?.token ||
+      input.updatedAt !== job.updatedAt
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "The review execution changed after it was inspected. Refresh before recovering it.",
+        409,
+      );
+    const state = reviewOwnerState(job.reviewOwner);
+    if (state === "alive")
+      throw new ApplicationError(
+        "jobs.busy",
+        "The review owner is still alive. Stop it before manual recovery.",
+        409,
+      );
+    const unfinished = this.catalog.knowledge
+      .batches(job.id)
+      .some((batch) => ["pending", "running"].includes(batch.status));
+    if (!["queued", "running"].includes(job.status) && !unfinished)
+      throw new ApplicationError(
+        "request.invalid",
+        "This review has no unfinished execution to recover.",
+        409,
+      );
+    const interrupted: Job = {
+      ...job,
+      status: "failed",
+      stage: "interrupted",
+      updatedAt: new Date().toISOString(),
+      errors: [
+        ...(job.errors ?? []),
+        {
+          uri: "",
+          stage: "interrupted",
+          message:
+            "The user confirmed the previous review process stopped. Retry unfinished review batches; completed suggestions remain available.",
+        },
+      ],
+    };
+    if (!this.catalog.knowledge.recoverReviewJob(job, interrupted))
+      throw new ApplicationError(
+        "request.invalid",
+        "The review execution changed while recovery was being applied. Refresh before trying again.",
+        409,
+      );
+    return (
+      this.catalog.listJobs().find((item) => item.id === jobId) ?? interrupted
+    );
+  }
+
   recoverInterruptedReviews() {
     for (const job of this.catalog.listJobs()) {
       if (!["language-review", "glossary-review"].includes(job.type)) continue;
