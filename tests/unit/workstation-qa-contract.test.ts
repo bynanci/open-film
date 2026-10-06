@@ -57,8 +57,6 @@ describe("workstation QA evidence contract", () => {
     expect(errors).toContain(
       "gates.windows-installer.blocker is required when blocked",
     );
-    expect(errors).toContain(
-      "gates.camera must include a failed observation",
-    );
+    expect(errors).toContain("gates.camera must include a failed observation");
   });
 });
