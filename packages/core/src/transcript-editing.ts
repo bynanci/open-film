@@ -242,12 +242,39 @@ export function applyTranscriptCommand(
     );
     document.segments = document.segments.flatMap((segment) => {
       const ranges = matches(segment.text);
-      let text = segment.text;
-      for (const match of ranges.reverse())
-        text =
-          text.slice(0, match.start) +
-          command.replacement +
-          text.slice(match.end);
+      // Provider/legacy evidence may exceed editing limits. Preserve it when
+      // there are no changes, without rebuilding or revalidating its text.
+      if (
+        !ranges.length ||
+        ranges.every(
+          (match) =>
+            match.end - match.start === command.replacement.length &&
+            segment.text.startsWith(command.replacement, match.start),
+        )
+      )
+        return [segment];
+      // Measure actual UTF-16 match spans before constructing any expanded text.
+      // An individually valid replacement can otherwise expand a short segment enormously.
+      const length = ranges.reduce(
+        (size, match) =>
+          size + command.replacement.length - (match.end - match.start),
+        segment.text.length,
+      );
+      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_TEXT)
+        invalid(
+          `text must be valid Unicode text of at most ${MAX_TEXT} characters.`,
+        );
+      const parts: string[] = [];
+      let cursor = 0;
+      for (const match of ranges) {
+        parts.push(
+          segment.text.slice(cursor, match.start),
+          command.replacement,
+        );
+        cursor = match.end;
+      }
+      parts.push(segment.text.slice(cursor));
+      const text = parts.join("");
       return text.trim() ? [changed(segment, text)] : [];
     });
     return validateTranscriptDocument(document);
@@ -300,7 +327,7 @@ export function applyTranscriptCommand(
         ...first,
         start: Math.min(first.start, second.start),
         end: Math.max(first.end, second.end),
-        text: joinTranscriptText(first.text, second.text),
+        text: unicode(joinTranscriptText(first.text, second.text), "text"),
         alignmentState: "text-edited",
       };
       const words = [...(first.words ?? []), ...(second.words ?? [])].sort(

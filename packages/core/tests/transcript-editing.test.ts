@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyTranscriptCommand,
   joinTranscriptText,
@@ -276,6 +276,169 @@ describe("portable transcript commands", () => {
     ]);
     expect(transcriptTextMatches("abc", "[a]")).toEqual([]);
   });
+  it("rejects replace-all expansion before slicing or allocating the oversized output", () => {
+    const original = transcript();
+    const source = "a".repeat(20_000);
+    original.segments[0]!.text = source;
+    const slice = String.prototype.slice;
+    const construction = vi
+      .spyOn(String.prototype, "slice")
+      .mockImplementation(function (this: string, start, end) {
+        // The unsafe implementation starts constructing a 400-million-unit result.
+        // Stop it at its first source slice so this regression never allocates that result.
+        if (String(this) === source)
+          throw new Error("Oversized output construction was attempted.");
+        return slice.call(this, start, end);
+      });
+    let failure: unknown;
+    try {
+      applyTranscriptCommand(original, {
+        type: "replace-all",
+        query: "a",
+        replacement: "b".repeat(20_000),
+      });
+    } catch (error) {
+      failure = error;
+    } finally {
+      construction.mockRestore();
+    }
+    expect(failure).toMatchObject({ code: "transcript.invalidCommand" });
+    expect(original.segments[0]!.text).toBe(source);
+  });
+  it.each([
+    ["湖".repeat(10_000), "湖", "湖泊", true],
+    ["😀" + "Kk".repeat(4_999) + "K", "k", "湖泊", false],
+    ["😀".repeat(10_000), "😀", "青森", true],
+  ] as const)(
+    "allows exactly 20,000 UTF-16 units after literal replacement and rejects the next larger result",
+    (source, query, replacement, caseSensitive) => {
+      const original = transcript();
+      original.segments[0]!.text = source;
+      const edited = applyTranscriptCommand(original, {
+        type: "replace-all",
+        query,
+        replacement,
+        caseSensitive,
+      });
+      const ranges = transcriptTextMatches(source, query, caseSensitive);
+      const expected = source.replace(
+        new RegExp(query, caseSensitive ? "gu" : "giu"),
+        replacement,
+      );
+      expect(edited.segments[0]!.text).toBe(expected);
+      expect(expected.length).toBe(20_000);
+      expect(ranges[0]).toEqual({
+        start: source.startsWith("😀") && query === "k" ? 2 : 0,
+        end: query === "😀" || query === "k" ? 2 + (query === "k" ? 1 : 0) : 1,
+      });
+      const nextUnit = structuredClone(original);
+      nextUnit.segments[0]!.text += "!";
+      expect(() =>
+        applyTranscriptCommand(nextUnit, {
+          type: "replace-all",
+          query,
+          replacement,
+          caseSensitive,
+        }),
+      ).toThrow(expect.objectContaining({ code: "transcript.invalidCommand" }));
+      expect(() =>
+        applyTranscriptCommand(original, {
+          type: "replace-all",
+          query,
+          replacement: replacement + "x",
+          caseSensitive,
+        }),
+      ).toThrow(expect.objectContaining({ code: "transcript.invalidCommand" }));
+      expect(original.segments[0]!.text).toBe(source);
+    },
+  );
+  it("permits replace-all to shorten a legacy oversized segment into the editable limit", () => {
+    const original = transcript();
+    original.segments[0]!.text = "湖".repeat(20_001);
+    const edited = applyTranscriptCommand(original, {
+      type: "replace-all",
+      query: "湖湖",
+      replacement: "湖",
+    });
+    expect(edited.segments[0]!.text).toBe("湖".repeat(10_001));
+    expect(edited.segments[0]!.alignmentState).toBe("text-edited");
+    expect(original.segments[0]!.text.length).toBe(20_001);
+  });
+  it.each([
+    ["hello", "Hello"],
+    ["湖", "湖"],
+  ])(
+    "preserves oversized provider evidence when replace-all leaves it unchanged (%s → %s)",
+    (query, replacement) => {
+      const original = transcript();
+      const source = "湖".repeat(20_001);
+      original.segments[0]!.text = source;
+      original.segments[0]!.alignmentState = "original";
+      const slice = String.prototype.slice;
+      const construction = vi
+        .spyOn(String.prototype, "slice")
+        .mockImplementation(function (this: string, start, end) {
+          if (String(this) === source)
+            throw new Error(
+              "Unchanged provider evidence must not be reconstructed.",
+            );
+          return slice.call(this, start, end);
+        });
+      let edited: TranscriptDocument;
+      try {
+        edited = applyTranscriptCommand(original, {
+          type: "replace-all",
+          query,
+          replacement,
+        });
+      } finally {
+        construction.mockRestore();
+      }
+      expect(edited.segments[0]).toEqual(original.segments[0]);
+      expect(edited.segments[1]!.text).toBe(
+        query === "hello" ? "Hello" : "hello",
+      );
+      expect(original.segments[0]!.text).toBe(source);
+    },
+  );
+  it.each(["previous", "next"] as const)(
+    "rejects a merge beyond the editable limit in the %s direction without mutating provider evidence",
+    (direction) => {
+      const original = transcript();
+      original.segments[0]!.text = "a".repeat(10_000);
+      original.segments[1]!.text = "b".repeat(10_000);
+      expect(() =>
+        applyTranscriptCommand(original, {
+          type: "merge-segment",
+          segmentId: direction === "previous" ? "b" : "a",
+          direction,
+        }),
+      ).toThrow(expect.objectContaining({ code: "transcript.invalidCommand" }));
+      expect(original.segments).toHaveLength(3);
+      expect(original.segments[0]!.words).toEqual(
+        transcript().segments[0]!.words,
+      );
+    },
+  );
+  it.each([
+    ["青".repeat(10_000), "森".repeat(10_000)],
+    ["a".repeat(10_000), "b".repeat(9_999)],
+    ["a".repeat(10_000) + " ", " " + "b".repeat(9_999)],
+  ])(
+    "allows a merged result exactly at the limit including CJK spacing and trimmed input",
+    (left, right) => {
+      const original = transcript();
+      original.segments[0]!.text = left;
+      original.segments[1]!.text = right;
+      const edited = applyTranscriptCommand(original, {
+        type: "merge-segment",
+        segmentId: "a",
+        direction: "next",
+      });
+      expect(edited.segments[0]!.text).toBe(joinTranscriptText(left, right));
+      expect(edited.segments[0]!.text.length).toBe(20_000);
+    },
+  );
   it("rejects stale single-match offsets instead of applying replacement to different content", () => {
     expect(
       applyTranscriptCommand(transcript(), {
