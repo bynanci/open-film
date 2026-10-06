@@ -176,6 +176,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     wordTimestamps: true,
     languages: ["auto", "zh", "en", "ja"],
     cpuFallback: true,
+    supportsPromptHints: true,
   };
   private readonly settings: LocalWhisperOptions;
   constructor(settings: LocalWhisperOptions = {}) {
@@ -397,6 +398,28 @@ export class LocalWhisperProvider implements TranscriptionProvider {
     options: TranscriptionOptions = {},
   ): Promise<TranscriptionResult> {
     checkAbort(options.signal);
+    const hints = options.promptHints ?? [];
+    if (
+      !Array.isArray(hints) ||
+      hints.length > 50 ||
+      hints.some(
+        (hint) =>
+          typeof hint !== "string" ||
+          !hint.trim() ||
+          Array.from(hint).length > 200 ||
+          Array.from(hint).some(
+            (character) =>
+              character.codePointAt(0)! < 32 ||
+              character.codePointAt(0) === 127,
+          ),
+      ) ||
+      hints.reduce((size, hint) => size + Array.from(hint).length, 0) > 2000
+    )
+      throw failure(
+        "request.invalid",
+        "Terminology context must contain at most 50 nonempty hints, 200 characters each and 2000 characters total.",
+        400,
+      );
     if (asset.mediaType !== "video" && asset.mediaType !== "audio")
       throw failure(
         "transcription.noAudio",
@@ -504,6 +527,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           options.language ?? "auto",
           "--execution",
           options.execution ?? "auto",
+          ...(hints.length ? ["--prompt-hints", JSON.stringify(hints)] : []),
         ],
         {
           ...options,

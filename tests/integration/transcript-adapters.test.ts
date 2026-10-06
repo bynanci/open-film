@@ -1,0 +1,546 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OpenFilmApplication } from "@openfilm/application";
+import { hashFile, runProcess } from "@openfilm/media";
+import type { Job } from "@openfilm/core";
+import type {
+  LanguageProvider,
+  TranscriptionOptions,
+  TranscriptionProvider,
+} from "@openfilm/plugin-sdk";
+import {
+  startServer,
+  type ServerOptions,
+} from "../../apps/server/src/server.js";
+
+const cleanups: (() => unknown | Promise<unknown>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+});
+const result = {
+  text: "Visit youtube",
+  language: "en",
+  execution: "cpu" as const,
+  model: "protocol-fixture-not-asr",
+  version: "1",
+  segments: [
+    {
+      id: "segment-0",
+      start: 0,
+      end: 1,
+      text: "Visit youtube",
+      words: [{ start: 0, end: 1, text: "Visit youtube" }],
+    },
+  ],
+};
+function transcription(
+  transcribe: TranscriptionProvider["transcribe"],
+  supportsPromptHints = true,
+): TranscriptionProvider {
+  return {
+    id: "adapter-fixture",
+    name: "Adapter protocol fixture, not ASR",
+    kind: "transcription",
+    execution: "local",
+    dataKinds: ["audio", "metadata"],
+    capabilities: {
+      wordTimestamps: true,
+      languages: ["en"],
+      cpuFallback: false,
+      supportsPromptHints,
+    },
+    transcribe,
+  };
+}
+async function fixture() {
+  const directory = await mkdtemp(
+    join(tmpdir(), "openfilm-transcript-adapters-"),
+  );
+  cleanups.push(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "訪問 # & literal.wav");
+  await writeFile(
+    path,
+    "Identity-only fixture. No speech recognition is performed.",
+  );
+  const sourceHash = await hashFile(path),
+    userDataDirectory = join(directory, "settings");
+  const app = await OpenFilmApplication.create(
+    join(directory, "film.openfilm"),
+    "Transcript adapters",
+    {},
+    { userDataDirectory },
+  );
+  let closed = false;
+  const close = () => {
+    if (!closed) {
+      app.close();
+      closed = true;
+    }
+  };
+  cleanups.push(close);
+  const assetId = "audio";
+  app.catalog.upsertAsset({
+    id: assetId,
+    uri: pathToFileURL(path).href,
+    name: "訪問 # & literal.wav",
+    mediaType: "audio",
+    duration: 10,
+    contentHash: sourceHash,
+    tags: [],
+    state: {},
+    metadata: {},
+  });
+  app.catalog.intelligence.replaceTranscript({
+    id: "initial",
+    assetId,
+    language: "en",
+    provenance: {
+      providerId: "fixture",
+      model: "identity-not-asr",
+      version: "1",
+      sourceHash,
+      createdAt: new Date().toISOString(),
+    },
+    segments: result.segments,
+  });
+  return { directory, path, app, close, assetId, userDataDirectory };
+}
+async function server(options: Partial<ServerOptions> = {}) {
+  const setup = await fixture();
+  setup.close();
+  const runtime = await startServer({
+    port: 0,
+    project: setup.app.directory,
+    userDataDirectory: setup.userDataDirectory,
+    ...options,
+  });
+  cleanups.push(() => runtime.close());
+  const base = `http://127.0.0.1:${runtime.port}/api`;
+  const get = async (path: string) => (await fetch(base + path)).json();
+  const post = (path: string, data: unknown) =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  const job = async (id: string) => {
+    await expect
+      .poll(
+        async () =>
+          ((await get("/jobs")).jobs as Job[]).find((item) => item.id === id)
+            ?.status,
+      )
+      .not.toMatch(/^(queued|running)$/);
+    return ((await get("/jobs")).jobs as Job[]).find((item) => item.id === id)!;
+  };
+  return { ...setup, base, get, post, job };
+}
+
+describe("transcript REST and CLI adapters", () => {
+  it("edits, searches, locates, undoes/redoes and selects durable revisions with strict mutation receipts", async () => {
+    const { get, post, base } = await server();
+    const original = await get("/assets/audio/transcript");
+    const input = {
+      baseRevision: original.revision,
+      requestId: "edit-1",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "segment-0",
+          text: "台積電 # & memory",
+        },
+      ],
+    };
+    const edited = await (
+      await post("/assets/audio/transcript/edit", input)
+    ).json();
+    expect(edited.document.segments[0].text).toBe("台積電 # & memory");
+    expect(
+      (await (await post("/assets/audio/transcript/edit", input)).json())
+        .revision,
+    ).toBe(edited.revision);
+    expect(
+      (
+        await post("/assets/audio/transcript/edit", {
+          ...input,
+          requestId: "stale",
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post("/assets/audio/transcript/edit", {
+          ...input,
+          commandFile: "/tmp/no",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await fetch(base + "/assets/audio/transcript?limit=201")).status,
+    ).toBe(400);
+    expect(
+      (
+        await fetch(
+          base + "/assets/audio/transcript/search?query=x&caseSensitive=1",
+        )
+      ).status,
+    ).toBe(400);
+    const found = await get(
+      "/assets/audio/transcript/search?query=" + encodeURIComponent("# &"),
+    );
+    expect(found.totalMatches).toBe(1);
+    expect(
+      (await get("/assets/audio/transcript/segments/segment-0")).position,
+    ).toBe(0);
+    const undone = await (
+      await post("/assets/audio/transcript/undo", {
+        baseRevision: edited.revision,
+        requestId: "undo",
+      })
+    ).json();
+    expect(undone.document.segments[0].text).toBe("Visit youtube");
+    const redone = await (
+      await post("/assets/audio/transcript/redo", {
+        baseRevision: undone.revision,
+        requestId: "redo",
+      })
+    ).json();
+    expect(redone.document.segments[0].text).toBe("台積電 # & memory");
+    expect(
+      (await get("/assets/audio/transcript/revisions")).total,
+    ).toBeGreaterThan(1);
+    const selected = await (
+      await post("/assets/audio/transcript/select", {
+        baseRevision: redone.revision,
+        requestId: "select",
+        revisionId: original.revision,
+      })
+    ).json();
+    expect(selected.document.segments[0].text).toBe("Visit youtube");
+    expect((await post("/project/close", {})).status).toBe(200);
+  });
+  it("reviews local terminology as suggestions, accepts only explicitly, and rejects untrusted paths/config", async () => {
+    const { get, post, job, base } = await server();
+    expect(await get("/review/provider")).toEqual({
+      configured: false,
+      available: false,
+    });
+    expect(
+      (
+        await post("/review/consent", {
+          allow: true,
+          endpoint: "https://example.invalid",
+        })
+      ).status,
+    ).toBe(400);
+    expect((await post("/review/consent", { allow: true })).status).toBe(400);
+    expect(
+      (
+        await post("/glossary", {
+          scope: ["project"],
+          source: "youtube",
+          replacement: "YouTube",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await post("/glossary", {
+          scope: "global",
+          source: "youtube",
+          replacement: "YouTube",
+          userDataDirectory: "/tmp/forbidden",
+        })
+      ).status,
+    ).toBe(400);
+    const { entry } = await (
+      await post("/glossary", {
+        scope: "project",
+        source: "youtube",
+        replacement: "YouTube",
+      })
+    ).json();
+    const before = await get("/assets/audio/transcript");
+    const started = await post("/assets/audio/review", {
+      source: "glossary",
+      batchSize: 1,
+    });
+    expect(started.status).toBe(202);
+    const completed = await job((await started.json()).job.id);
+    expect(completed.status, JSON.stringify(completed)).toBe("completed");
+    expect((await get("/assets/audio/transcript")).revision).toBe(
+      before.revision,
+    );
+    const { suggestions } = await get(
+      "/assets/audio/review/suggestions?status=pending",
+    );
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].after).toBe("Visit YouTube");
+    const accepted = await (
+      await post(`/review/suggestions/${suggestions[0].id}/accept`, {
+        baseRevision: before.revision,
+        requestId: "accept",
+      })
+    ).json();
+    expect(accepted.document.segments[0].text).toBe("Visit YouTube");
+    expect(
+      (await get("/assets/audio/review/suggestions?status=accepted")).total,
+    ).toBe(1);
+    expect(
+      (
+        await fetch(base + `/glossary/${entry.id}?scope=project`, {
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(200);
+    const failed = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(failed.job.id)).errors?.[0]?.code).toBe(
+      "review.providerUnavailable",
+    );
+  });
+  it("requires consent for only the configured remote provider and persists batch failures for retry/skip", async () => {
+    let fail = true;
+    const generate = vi.fn(async (prompt: string) => {
+      if (fail) throw new Error("fixture temporary provider failure");
+      const data = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1));
+      return JSON.stringify({
+        suggestions: [
+          {
+            segmentId: data.segments[0].segmentId,
+            after: "Corrected by explicit fixture",
+            reason: "Test evidence only",
+          },
+        ],
+      });
+    });
+    const provider: LanguageProvider = {
+      id: "configured-review",
+      name: "Remote contract fixture",
+      kind: "language",
+      execution: "remote",
+      endpoint: "https://review.invalid",
+      dataKinds: ["text", "transcripts"],
+      generate,
+    };
+    const { get, post, job } = await server({ languageProvider: provider });
+    expect((await get("/review/provider")).available).toBe(false);
+    const denied = await (
+      await post("/assets/audio/review", { source: "language" })
+    ).json();
+    expect((await job(denied.job.id)).status).toBe("failed");
+    expect(generate).not.toHaveBeenCalled();
+    expect((await post("/review/consent", { allow: true })).status).toBe(200);
+    const run = await (
+      await post("/assets/audio/review", { source: "language", batchSize: 1 })
+    ).json();
+    const failed = await job(run.job.id);
+    expect(failed.status).toBe("failed");
+    expect(
+      (await get(`/review/jobs/${run.job.id}/batches`)).batches.length,
+      JSON.stringify(failed),
+    ).toBeGreaterThan(0);
+    expect(
+      (await get(`/review/jobs/${run.job.id}/batches`)).batches[0].status,
+    ).toBe("failed");
+    fail = false;
+    expect(
+      (await post(`/review/jobs/${run.job.id}/batches/0/retry`, {})).status,
+    ).toBe(202);
+    expect((await job(run.job.id)).status).toBe("completed");
+    const beforeInvalidRetry = await job(run.job.id);
+    expect(
+      (await post(`/review/jobs/${run.job.id}/batches/99/retry`, {})).status,
+    ).toBe(400);
+    expect(
+      (await post(`/review/jobs/${run.job.id}/batches/0/retry`, {})).status,
+    ).toBe(400);
+    expect(await job(run.job.id)).toEqual(beforeInvalidRetry);
+    expect((await get("/assets/audio/review/suggestions")).total).toBe(1);
+    await post("/review/consent", { allow: false });
+    expect((await get("/review/provider")).available).toBe(false);
+  });
+  it("keeps cancellation available and blocks project switching while a review owns the project", async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const provider: LanguageProvider = {
+      id: "cancellable-review",
+      name: "Cancellation fixture",
+      kind: "language",
+      execution: "local",
+      dataKinds: ["text", "transcripts"],
+      async generate(_prompt, options) {
+        entered();
+        await new Promise<void>((_resolve, reject) => {
+          const abort = () =>
+            reject(new DOMException("Cancelled", "AbortError"));
+          if (options?.signal?.aborted) abort();
+          else
+            options?.signal?.addEventListener("abort", abort, { once: true });
+        });
+        return '{"suggestions":[]}';
+      },
+    };
+    const { post, job } = await server({ languageProvider: provider });
+    const response = await post("/assets/audio/review", { source: "language" });
+    expect(response.status).toBe(202);
+    const id = (await response.json()).job.id;
+    await started;
+    expect((await post("/project/close", {})).status).toBe(409);
+    expect(
+      (await post("/assets/audio/review", { source: "glossary" })).status,
+    ).toBe(409);
+    expect((await post(`/jobs/${id}/cancel`, {})).status).toBe(200);
+    expect((await job(id)).status).toBe("cancelled");
+    expect((await post(`/review/jobs/${id}/batches/0/skip`, {})).status).toBe(
+      200,
+    );
+    expect((await post("/project/close", {})).status).toBe(200);
+  });
+  it("CLI keeps machine-readable output and edits/searches/reviews using bounded JSON commands", async () => {
+    const setup = await fixture();
+    const original = await setup.app.transcriptEditor.get("audio");
+    setup.close();
+    const cli = async (args: string[]) =>
+      JSON.parse(
+        (
+          await runProcess(process.execPath, [
+            "--import",
+            "tsx",
+            resolve("apps/cli/src/index.ts"),
+            ...args,
+            "--project",
+            setup.app.directory,
+            "--user-data-dir",
+            setup.userDataDirectory,
+          ])
+        ).stdout.toString(),
+      );
+    const commandPath = join(setup.directory, "編輯 # &.json");
+    await writeFile(
+      commandPath,
+      JSON.stringify({
+        baseRevision: original.revision,
+        requestId: "cli-edit",
+        commands: [
+          {
+            type: "replace-text",
+            segmentId: "segment-0",
+            text: "Visit youtube today",
+          },
+        ],
+      }),
+    );
+    expect(
+      (await cli(["transcript", "edit", "audio", "--commands", commandPath]))
+        .document.segments[0].text,
+    ).toBe("Visit youtube today");
+    expect(
+      (await cli(["transcript", "search", "audio", "--query", "youtube"]))
+        .totalMatches,
+    ).toBe(1);
+    expect(
+      (await cli(["transcript", "audio"])).transcript.segments[0].text,
+    ).toBe("Visit youtube today");
+    const { entry } = await cli([
+      "glossary",
+      "add",
+      "--source",
+      "youtube",
+      "--replacement",
+      "YouTube",
+    ]);
+    expect(entry.scope).toBe("project");
+    expect((await cli(["review", "run", "audio"])).job.status).toBe(
+      "completed",
+    );
+    const { suggestions } = await cli(["review", "list", "audio"]);
+    expect(suggestions).toHaveLength(1);
+    expect(
+      (await cli(["review", "skip", suggestions[0].id])).suggestion.status,
+    ).toBe("skipped");
+    await writeFile(commandPath, " ".repeat(1024 * 1024 + 1));
+    await expect(
+      cli(["transcript", "edit", "audio", "--commands", commandPath]),
+    ).rejects.toThrow("1 MiB");
+  });
+});
+
+describe("transcription terminology and revision concurrency", () => {
+  it.each([true, false])(
+    "forwards glossary context only to supporting providers (%s), never rewrites output",
+    async (supports) => {
+      const { app } = await fixture();
+      app.knowledge.glossaryUpsert({
+        scope: "project",
+        source: "youtube",
+        replacement: "YouTube",
+      });
+      let received: TranscriptionOptions | undefined;
+      app.intelligence.registerTranscriptionProvider(
+        transcription(async (_asset, options) => {
+          received = options;
+          return result;
+        }, supports),
+      );
+      expect(
+        (await app.analyzeIntelligence("audio", { operation: "transcribe" }))
+          .status,
+      ).toBe("completed");
+      expect(received?.promptHints).toEqual(supports ? ["YouTube"] : undefined);
+      expect(
+        (await app.transcriptEditor.get("audio")).document?.segments[0]?.text,
+      ).toBe("Visit youtube");
+    },
+  );
+  it("does not let an in-flight provider overwrite a concurrent user edit or append a failed revision", async () => {
+    const { app } = await fixture();
+    let release!: () => void, started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    app.intelligence.registerTranscriptionProvider(
+      transcription(async () => {
+        started();
+        await gate;
+        return result;
+      }),
+    );
+    const pending = app.analyzeIntelligence("audio", {
+      operation: "transcribe",
+    });
+    await entered;
+    const before = await app.transcriptEditor.get("audio");
+    const edited = await app.transcriptEditor.edit("audio", {
+      baseRevision: before.revision!,
+      requestId: "during-asr",
+      commands: [
+        {
+          type: "replace-text",
+          segmentId: "segment-0",
+          text: "User text wins",
+        },
+      ],
+    });
+    const revisions = await app.transcriptEditor.revisions("audio");
+    release();
+    const job = await pending;
+    expect(job.status).toBe("failed");
+    expect(job.errors?.[0]?.code).toBe("transcript.revisionConflict");
+    expect((await app.transcriptEditor.get("audio")).revision).toBe(
+      edited.revision,
+    );
+    expect((await app.transcriptEditor.revisions("audio")).total).toBe(
+      revisions.total,
+    );
+  });
+});

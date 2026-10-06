@@ -38,6 +38,8 @@ import {
   MediaRelinkError as RelinkError,
   type TimelineEditInput,
   type CreateFilmOptions,
+  resolveUserDataDirectory,
+  type ReviewOptions,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -50,12 +52,21 @@ import {
   type Job,
   type MediaAsset,
   type Story,
+  type GlossaryInput,
+  type ReviewSuggestion,
 } from "@openfilm/core";
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
 import { proposalTemplate } from "@openfilm/template-proposal";
-import { CATALOG_SCHEMA_VERSION } from "@openfilm/catalog";
-import type { TranscriptionProvider } from "@openfilm/plugin-sdk";
+import {
+  type TranscriptHistoryInput,
+  type TranscriptMutationInput,
+  CATALOG_SCHEMA_VERSION,
+} from "@openfilm/catalog";
+import type {
+  LanguageProvider,
+  TranscriptionProvider,
+} from "@openfilm/plugin-sdk";
 
 type Body = Record<string, unknown>;
 const httpErrorCodes: Partial<Record<number, ApplicationErrorCode>> = {
@@ -89,6 +100,53 @@ function text(body: Body, key: string): string {
   if (typeof value !== "string" || !value.trim())
     throw new HttpError(400, `${key} is required.`);
   return value.trim();
+}
+function keys(data: Body, allowed: string[]): void {
+  if (Object.keys(data).some((key) => !allowed.includes(key)))
+    throw new HttpError(400, "Unsupported request field.");
+}
+function pageOptions(url: URL, maximum = 200) {
+  const offset = Number(url.searchParams.get("offset") ?? 0);
+  const limit = Number(url.searchParams.get("limit") ?? 100);
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > maximum
+  )
+    throw new HttpError(
+      400,
+      `Use a nonnegative offset and a limit between 1 and ${maximum}.`,
+    );
+  return { offset, limit };
+}
+function reviewOptions(
+  data: Body,
+): Pick<ReviewOptions, "batchSize" | "segmentIds"> {
+  if (
+    data.batchSize !== undefined &&
+    (typeof data.batchSize !== "number" ||
+      !Number.isInteger(data.batchSize) ||
+      data.batchSize < 1 ||
+      data.batchSize > 100)
+  )
+    throw new HttpError(400, "Review batch size must be between 1 and 100.");
+  if (
+    data.segmentIds !== undefined &&
+    (!Array.isArray(data.segmentIds) ||
+      data.segmentIds.length > 10000 ||
+      !data.segmentIds.length ||
+      data.segmentIds.some(
+        (id) => typeof id !== "string" || !id.trim() || id.length > 256,
+      ) ||
+      new Set(data.segmentIds).size !== data.segmentIds.length)
+  )
+    throw new HttpError(400, "Choose unique transcript segment identifiers.");
+  return {
+    batchSize: data.batchSize as number | undefined,
+    segmentIds: data.segmentIds as string[] | undefined,
+  };
 }
 function filePath(data: Body, key: string): string {
   const value = data[key];
@@ -237,6 +295,17 @@ async function inspectCatalog(path: string): Promise<void> {
         )
         .get();
     }
+    if (version >= 3) {
+      for (const query of [
+        "SELECT sequence,revision_id,asset_id,source_hash,data FROM transcript_revision_metadata LIMIT 1",
+        "SELECT asset_id,source_hash,revision_id,undo,redo FROM transcript_editor_history LIMIT 1",
+        "SELECT request_id,asset_id,source_hash,fingerprint,revision_id FROM transcript_edit_requests LIMIT 1",
+        "SELECT id,source,data FROM project_glossary LIMIT 1",
+        "SELECT id,asset_id,segment_id,source_revision_id,status,dedupe_key,created_at,data FROM review_suggestions LIMIT 1",
+        "SELECT job_id,batch_index,asset_id,source_revision_id,data FROM review_batches LIMIT 1",
+      ])
+        database.prepare(query).get();
+    }
   } finally {
     database?.close();
     if (temporary) await rm(temporary, { recursive: true, force: true });
@@ -333,16 +402,28 @@ async function streamFile(
   await pipeline(createReadStream(actualFile, { start, end }), response);
 }
 
-export async function startServer(
-  options: {
-    port?: number;
-    project?: string;
-    projectRoot?: string;
-    maxUploadBytes?: number;
-    /** Explicit dependency injection for local extensions and integration tests. */
-    transcriptionProvider?: TranscriptionProvider;
-  } = {},
-) {
+export interface ServerOptions {
+  port?: number;
+  project?: string;
+  projectRoot?: string;
+  maxUploadBytes?: number;
+  /** Trusted runtime dependency injection; never accepted from HTTP requests. */
+  transcriptionProvider?: TranscriptionProvider;
+  userDataDirectory?: string;
+  languageProvider?: LanguageProvider;
+}
+export async function startServer(options: ServerOptions = {}) {
+  const runtimeOptions = {
+    userDataDirectory: resolveUserDataDirectory(options.userDataDirectory),
+    languageProvider: options.languageProvider,
+  };
+  const configure = (application: OpenFilmApplication) => {
+    if (options.transcriptionProvider)
+      application.intelligence.registerTranscriptionProvider(
+        options.transcriptionProvider,
+      );
+    return application;
+  };
   const projectRoot = resolve(
     options.projectRoot ??
       process.env.OPENFILM_PROJECTS_DIR ??
@@ -355,10 +436,8 @@ export async function startServer(
   >();
   let app: OpenFilmApplication | undefined;
   if (options.project)
-    app = await OpenFilmApplication.open(resolve(options.project));
-  if (app && options.transcriptionProvider)
-    app.intelligence.registerTranscriptionProvider(
-      options.transcriptionProvider,
+    app = configure(
+      await OpenFilmApplication.open(resolve(options.project), runtimeOptions),
     );
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
@@ -604,22 +683,360 @@ export async function startServer(
           let next: OpenFilmApplication;
           try {
             next = creating
-              ? await OpenFilmApplication.create(directory, title!, settings)
-              : await OpenFilmApplication.open(directory);
+              ? await OpenFilmApplication.create(
+                  directory,
+                  title!,
+                  settings,
+                  runtimeOptions,
+                )
+              : await OpenFilmApplication.open(directory, runtimeOptions);
           } catch (error) {
             if (previousPath)
-              app = await OpenFilmApplication.open(previousPath);
+              app = configure(
+                await OpenFilmApplication.open(previousPath, runtimeOptions),
+              );
             throw error;
           }
-          app = next;
-          if (options.transcriptionProvider)
-            next.intelligence.registerTranscriptionProvider(
-              options.transcriptionProvider,
-            );
+          app = configure(next);
           json(response, 200, { project: next.project, path: next.directory });
           return;
         }
         const application = current();
+        const startReview = (
+          job: Job,
+          work: (options: ReviewOptions) => Promise<Job>,
+        ) => {
+          if (active.size || application.hasActiveJobs)
+            throw new HttpError(
+              409,
+              "Wait for the current job before starting another review.",
+            );
+          const controller = new AbortController();
+          application.catalog.saveJob(job);
+          active.set(job.id, controller);
+          const handled = Promise.resolve()
+            .then(() => work({ jobId: job.id, signal: controller.signal }))
+            .catch((error) => {
+              const prior =
+                application.catalog
+                  .listJobs()
+                  .find((item) => item.id === job.id) ?? job;
+              application.catalog.saveJob({
+                ...prior,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                updatedAt: new Date().toISOString(),
+                errors: [
+                  {
+                    uri: "",
+                    stage: "reviewing",
+                    message: String(error),
+                    ...errorInfo(error, "review.invalidOutput"),
+                  },
+                ],
+              });
+            })
+            .finally(() => {
+              active.delete(job.id);
+              tasks.delete(handled);
+            });
+          tasks.add(handled);
+          json(response, 202, { job });
+        };
+        const transcriptSegment =
+          /^\/api\/assets\/([^/]+)\/transcript\/segments\/([^/]+)$/.exec(route);
+        if (transcriptSegment && method === "GET") {
+          json(
+            response,
+            200,
+            await application.transcriptEditor.getSegment(
+              decodeURIComponent(transcriptSegment[1]!),
+              decodeURIComponent(transcriptSegment[2]!),
+            ),
+          );
+          return;
+        }
+        const transcript =
+          /^\/api\/assets\/([^/]+)\/transcript(?:\/(edit|undo|redo|search|revisions|select))?$/.exec(
+            route,
+          );
+        if (transcript) {
+          const assetId = decodeURIComponent(transcript[1]!);
+          const action = transcript[2];
+          if (method === "GET" && !action) {
+            const revisionId = url.searchParams.get("revisionId") ?? undefined;
+            json(
+              response,
+              200,
+              await application.transcriptEditor.get(assetId, {
+                ...pageOptions(url),
+                revisionId,
+              }),
+            );
+            return;
+          }
+          if (method === "GET" && action === "search") {
+            const sensitive = url.searchParams.get("caseSensitive");
+            if (
+              sensitive !== null &&
+              sensitive !== "true" &&
+              sensitive !== "false"
+            )
+              throw new HttpError(400, "caseSensitive must be true or false.");
+            json(
+              response,
+              200,
+              await application.transcriptEditor.search(assetId, {
+                ...pageOptions(url),
+                query: url.searchParams.get("query") ?? "",
+                caseSensitive: sensitive === "true",
+              }),
+            );
+            return;
+          }
+          if (method === "GET" && action === "revisions") {
+            json(
+              response,
+              200,
+              await application.transcriptEditor.revisions(
+                assetId,
+                pageOptions(url),
+              ),
+            );
+            return;
+          }
+          if (
+            method === "POST" &&
+            action &&
+            ["edit", "undo", "redo", "select"].includes(action)
+          ) {
+            const data = await body(request);
+            const result =
+              action === "edit"
+                ? await application.transcriptEditor.edit(
+                    assetId,
+                    data as unknown as TranscriptMutationInput,
+                  )
+                : action === "select"
+                  ? await application.transcriptEditor.selectRevision(
+                      assetId,
+                      data as unknown as TranscriptHistoryInput & {
+                        revisionId: string;
+                      },
+                    )
+                  : await application.transcriptEditor[
+                      action as "undo" | "redo"
+                    ](assetId, data as unknown as TranscriptHistoryInput);
+            json(response, 200, result);
+            return;
+          }
+        }
+        if (route === "/api/glossary" && method === "GET") {
+          const scope = url.searchParams.get("scope") ?? "effective";
+          if (!["global", "project", "effective"].includes(scope))
+            throw new HttpError(
+              400,
+              "Choose global, project or effective glossary scope.",
+            );
+          json(response, 200, {
+            entries: application.knowledge.glossaryList(
+              scope as "global" | "project" | "effective",
+            ),
+          });
+          return;
+        }
+        if (route === "/api/glossary" && method === "POST") {
+          const data = await body(request);
+          keys(data, [
+            "id",
+            "scope",
+            "source",
+            "replacement",
+            "enabled",
+            "caseSensitive",
+          ]);
+          json(response, 200, {
+            entry: application.knowledge.glossaryUpsert(
+              data as unknown as GlossaryInput,
+            ),
+          });
+          return;
+        }
+        const glossary = /^\/api\/glossary\/([^/]+)$/.exec(route);
+        if (glossary && method === "DELETE") {
+          const scope = url.searchParams.get("scope");
+          if (scope !== "global" && scope !== "project")
+            throw new HttpError(
+              400,
+              "Choose global or project glossary scope.",
+            );
+          json(response, 200, {
+            ok: application.knowledge.glossaryDelete(
+              decodeURIComponent(glossary[1]!),
+              scope,
+            ),
+          });
+          return;
+        }
+        if (
+          method === "GET" &&
+          ["/api/review/provider", "/api/review/providers"].includes(route)
+        ) {
+          json(response, 200, application.knowledge.languageProvider());
+          return;
+        }
+        if (method === "POST" && route === "/api/review/consent") {
+          const data = await body(request);
+          keys(data, ["allow"]);
+          if (typeof data.allow !== "boolean")
+            throw new HttpError(400, "allow must be a boolean.");
+          const provider = application.knowledge.languageProvider().provider;
+          if (!provider || provider.execution !== "remote")
+            throw new HttpError(
+              400,
+              "No remote language provider is configured.",
+              "review.providerUnavailable",
+            );
+          if (data.allow)
+            application.knowledge.grantConsent({
+              providerId: provider.id,
+              dataKinds: ["text", "transcripts"],
+              grantedAt: new Date().toISOString(),
+            });
+          else application.knowledge.revokeConsent(provider.id);
+          json(response, 200, application.knowledge.languageProvider());
+          return;
+        }
+        const review =
+          /^\/api\/assets\/([^/]+)\/review(?:\/(suggestions))?$/.exec(route);
+        if (review && method === "GET") {
+          const status = url.searchParams.get("status") ?? undefined;
+          if (
+            status !== undefined &&
+            !["pending", "accepted", "skipped", "stale"].includes(status)
+          )
+            throw new HttpError(400, "Choose a valid suggestion status.");
+          json(
+            response,
+            200,
+            await application.knowledge.suggestionsList(
+              decodeURIComponent(review[1]!),
+              {
+                ...pageOptions(url, 100),
+                status: status as ReviewSuggestion["status"] | undefined,
+              },
+            ),
+          );
+          return;
+        }
+        if (review && method === "POST" && !review[2]) {
+          const data = await body(request);
+          keys(data, ["source", "segmentIds", "batchSize"]);
+          if (data.source !== "glossary" && data.source !== "language")
+            throw new HttpError(400, "Choose glossary or language review.");
+          const settings = reviewOptions(data),
+            assetId = decodeURIComponent(review[1]!);
+          if (!application.catalog.getAsset(assetId))
+            throw new HttpError(404, "Media not found.", "media.notFound");
+          const source = data.source;
+          startReview(
+            {
+              id: randomUUID(),
+              type:
+                source === "glossary" ? "glossary-review" : "language-review",
+              assetId,
+              status: "queued",
+              progress: 0,
+              createdAt: new Date().toISOString(),
+            },
+            (options) =>
+              application.runKnowledgeReview(assetId, {
+                ...options,
+                ...settings,
+                source,
+              }),
+          );
+          return;
+        }
+        const suggestion =
+          /^\/api\/review\/suggestions\/([^/]+)\/(accept|skip)$/.exec(route);
+        if (suggestion && method === "POST") {
+          const data = await body(request),
+            id = decodeURIComponent(suggestion[1]!);
+          if (suggestion[2] === "accept") {
+            keys(data, ["baseRevision", "requestId"]);
+            json(
+              response,
+              200,
+              await application.knowledge.acceptSuggestion(
+                id,
+                data as unknown as TranscriptHistoryInput,
+              ),
+            );
+          } else {
+            keys(data, []);
+            json(response, 200, {
+              suggestion: application.knowledge.skipSuggestion(id),
+            });
+          }
+          return;
+        }
+        const batch =
+          /^\/api\/review\/jobs\/([^/]+)\/batches(?:\/(\d+)\/(retry|skip))?$/.exec(
+            route,
+          );
+        if (batch && method === "GET" && !batch[2]) {
+          json(response, 200, {
+            batches: application.knowledge.batches(
+              decodeURIComponent(batch[1]!),
+            ),
+          });
+          return;
+        }
+        if (batch && method === "POST" && batch[2]) {
+          const data = await body(request);
+          keys(data, []);
+          const jobId = decodeURIComponent(batch[1]!),
+            index = Number(batch[2]);
+          if (!Number.isSafeInteger(index))
+            throw new HttpError(400, "Invalid review batch index.");
+          if (active.size || application.hasActiveJobs)
+            throw new HttpError(
+              409,
+              "Wait for the current job before changing review batches.",
+            );
+          const job = application.catalog
+            .listJobs()
+            .find((item) => item.id === jobId);
+          if (
+            !job ||
+            !["language-review", "glossary-review"].includes(job.type)
+          )
+            throw new HttpError(404, "Review job not found.");
+          const targetBatch = application.knowledge
+            .batches(jobId)
+            .find((item) => item.index === index);
+          if (
+            !targetBatch ||
+            !["failed", "cancelled"].includes(targetBatch.status)
+          )
+            throw new HttpError(
+              400,
+              "Only failed or cancelled review batches can be retried or skipped.",
+            );
+          if (batch[3] === "skip") {
+            const skipped = application.knowledge.skipBatch(jobId, index);
+            json(response, 200, {
+              batch: skipped,
+              job: application.catalog
+                .listJobs()
+                .find((item) => item.id === jobId),
+            });
+          } else
+            startReview({ ...job, status: "queued" }, (options) =>
+              application.retryKnowledgeReview(jobId, index, options),
+            );
+          return;
+        }
         if (method === "GET" && route === "/api/intelligence/providers") {
           json(response, 200, await application.intelligence.providers());
           return;
