@@ -1,0 +1,43 @@
+name: PR 6 CLI recovery verification
+on:
+  push:
+    branches: [codex/pr56-remediation-20261007]
+    paths:
+      - .github/workflows/pr6-cli-correction.yml
+      - scripts/pr6-cli-correction.py
+permissions:
+  contents: read
+jobs:
+  verified-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
+      - name: Reproduce and fix the actual CLI recovery invocation
+        run: |
+          cp scripts/pr6-cli-correction.py "$RUNNER_TEMP/pr6-cli-correction.py"
+          python "$RUNNER_TEMP/pr6-cli-correction.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-6-cli-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/openfilm-pr6-cli/
+          if-no-files-found: error
