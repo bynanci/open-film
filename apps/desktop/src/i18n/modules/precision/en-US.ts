@@ -85,7 +85,7 @@ export default {
     detectScenes: "Detect scene cuts",
     modelReady: "Transcription is ready",
     projectJobBusy:
-      "Another job is running in this project. Wait for it to finish before starting analysis.",
+      "Another task is using this project. Check its status or available recovery actions in Activity before starting analysis.",
     modelMissing: "Local transcription needs setup",
     remoteUnavailable:
       "Remote transcription is not enabled. Configure this provider and authorize media sharing before transcribing.",

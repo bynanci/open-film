@@ -80,7 +80,8 @@ export default {
     analyzeWaveform: "分析波形",
     detectScenes: "偵測畫面切點",
     modelReady: "語音辨識已就緒",
-    projectJobBusy: "此專案中有其他工作正在執行。請等候完成後再開始分析。",
+    projectJobBusy:
+      "此專案有其他工作正在執行。開始分析前，請在「活動」查看狀態及可用的復原操作。",
     modelMissing: "本機語音辨識需要設定",
     remoteUnavailable:
       "尚未啟用遠端語音辨識。請先設定此辨識工具並授權分享素材，再開始辨識。",

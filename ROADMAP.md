@@ -7,13 +7,19 @@ improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.
-The current P0 cancellation slice is **Automated Verified** locally: the project
-releases before a non-cooperating provider settles. Final published-head checks
-are tracked in PR #8. Ownership-aware recovery of
-non-review media analysis is **In Progress** in a separate stacked slice, with
-actual-child regressions against merged main before implementation. Future creative milestones remain
+The P0 cancellation slice is **Automated Verified**: the project releases before
+a non-cooperating provider settles; final published-head checks are tracked in
+PR #8. Ownership-aware recovery of transcription, waveform and scene analysis
+is **Automated Verified** in the isolated PR #9 stacked on #8. Actual-child,
+SQLite/HTTP/CLI and three-language browser regressions preserve live work,
+manual corrections and successor results across confirmed recovery. Future creative milestones remain
 deferred; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
+
+The next bounded pain point is capability-aware transcription language defaults:
+an English-only provider should not leave Transcript on unsupported Auto with a
+disabled action. Precision already adjusts to supported choices; Transcript
+needs the same predictable behavior, independently of UI and film languages.
 
 ## 0.1 — Local story and rough cut
 

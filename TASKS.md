@@ -12,8 +12,12 @@ system or downstream NLE. Commands and test responsibilities are in
       change the cancelled Job or successor transcript. Held-provider application,
       HTTP and three-language browser regressions pass; full candidate gates and
       review are recorded in [the validation record](docs/validation-transcription-cancellation.md).
-- [ ] Preserve active non-review media analysis when another process opens the
-      project; require owner evidence or explicit recovery before interruption.
+- [x] Preserve active transcription/waveform/scene analysis when another process
+      opens the project; atomically reserve/consume work and fence obsolete
+      progress/results. Exact-checkpoint recovery preserves manual recognition
+      and edits; Activity/API/CLI share ownership-aware actions. Actual-child,
+      transaction/HTTP/CLI and three-language browser regressions pass; see
+      [the validation record](docs/validation-media-analysis-recovery.md).
 
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.
