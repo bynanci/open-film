@@ -591,7 +591,7 @@ for (const locale of locales) {
       // This explicit boundary provider supports English, not automatic
       // detection. Choose its actual capability through the product control.
       await details
-        .getByLabel(text(locale, "transcript.language"), { exact: true })
+        .getByLabel(text(locale, "transcript.language"))
         .selectOption("en");
       const retry = details.getByRole("button", {
         name: text(locale, "transcript.retranscribe"),
