@@ -791,7 +791,8 @@ onMounted(() => {
     if (editorElement.value.parentElement)
       layoutObserver.observe(editorElement.value.parentElement);
   }
-  if (sourceScreenElement.value) layoutObserver.observe(sourceScreenElement.value);
+  if (sourceScreenElement.value)
+    layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
 });
 onBeforeUnmount(() => {
