@@ -4,6 +4,15 @@ OpenFilm's north star is ownership of media, story decisions, and the final edit
 The current release establishes a useful offline workflow; later milestones should
 improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 
+Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
+Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
+and **Automated Verified**; actual workstation behavior remains a separate gate.
+The current **In Progress** P0 slice makes transcription cancellation release the
+project before a non-cooperating provider settles. Ownership-aware recovery of
+non-review media analysis is **Planned** next. Future creative milestones remain
+deferred; merging development source is not a **Released** installer or
+**Hardware Verified** recognition/NLE claim.
+
 ## 0.1 — Local story and rough cut
 
 Implemented: projects, SQLite catalogs, local folder import, metadata provenance,
@@ -127,4 +136,5 @@ Preserve the Story-first editor and its existing trim, history and autosave.
 See [geometry validation](docs/validation-geometry-parity.md). This milestone does
 not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
-are the next separate readiness slice; later creative features remain deferred.
+are merged in PR #6; actual workstation observations remain manual gates.
+Later creative features remain deferred.
