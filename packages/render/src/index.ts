@@ -160,8 +160,12 @@ export class FFmpegRenderer {
             );
             // Geometry contract: source is contain-fit to the composition frame,
             // then user scale and clockwise rotation are applied around its center.
+            // Fit display pixels, not coded dimensions: setsar=1 alone would
+            // distort anamorphic sources. Auto-orientation precedes this filter.
+            const aspect = "if(gt(dar,0),dar,iw/ih)";
+            const wide = `gte(${aspect},${settings.width}/${settings.height})`;
             transform.push(
-              `scale=${settings.width}:${settings.height}:force_original_aspect_ratio=decrease`,
+              `scale=w='max(1,round(if(${wide},${settings.width},${settings.height}*${aspect})))':h='max(1,round(if(${wide},${settings.width}/${aspect},${settings.height})))'`,
             );
             if (geometry.scale !== 1)
               transform.push(

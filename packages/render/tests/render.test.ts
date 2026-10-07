@@ -492,4 +492,77 @@ describe("real FFmpeg preview renderer", () => {
     expect(rotatedCorner[2]).toBeGreaterThan(120);
     expect(rotatedCorner[0]).toBeLessThan(100);
   });
+  it("preserves display aspect when square-pixelizing anamorphic media", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-sar-"));
+    directories.push(directory);
+    const source = join(directory, "anamorphic.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=80x40:r=10,setsar=2",
+      "-t",
+      "0.4",
+      "-c:v",
+      "libx264",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "anamorphic.mp4",
+    });
+    const hash = await hashFile(source);
+    const composition: Composition = {
+      id: "sar",
+      storyId: "story",
+      duration: 0.4,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "clip",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 0.4,
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "preview.mp4");
+    await new FFmpegRenderer().render(composition, [asset], output, {
+      width: 160,
+      height: 90,
+      frameRate: 10,
+    });
+    const decoded = await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      output,
+      "-frames:v",
+      "1",
+      "-vf",
+      "format=rgb24",
+      "-f",
+      "rawvideo",
+      "-",
+    ]);
+    expect(decoded.stdout.length).toBe(160 * 90 * 3);
+    // 80x40 coded pixels at SAR 2:1 display as 4:1: fit must be 160x40,
+    // with black above y=25. Fitting coded pixels would incorrectly be 160x80.
+    expect(decoded.stdout[(10 * 160 + 80) * 3]).toBeLessThan(25);
+    expect(decoded.stdout[(45 * 160 + 80) * 3]).toBeGreaterThan(180);
+    expect(await hashFile(source)).toBe(hash);
+  });
 });

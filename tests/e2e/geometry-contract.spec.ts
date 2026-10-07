@@ -143,4 +143,30 @@ test("preview refits when only the inspector changes its grid column", async ({
       .toBeLessThan(1);
     if (iteration === 0) await toggle.click();
   }
+  // Exercise a direct source-box resize in addition to the inspector toggle.
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => done())),
+      ),
+  );
+  await viewport.evaluate((element) => {
+    const node = element as HTMLElement;
+    node.style.width = `${node.clientWidth - 100}px`;
+    node.style.alignSelf = "center";
+  });
+  await expect
+    .poll(async () => {
+      const bounds = await viewport.evaluate((el) => ({
+        width: el.clientWidth,
+        height: el.clientHeight,
+      }));
+      const actual = await frame.boundingBox();
+      const scale = Math.min(bounds.width / 1920, bounds.height / 1080);
+      return Math.max(
+        Math.abs(actual!.width - 1920 * scale),
+        Math.abs(actual!.height - 1080 * scale),
+      );
+    })
+    .toBeLessThan(1);
 });
