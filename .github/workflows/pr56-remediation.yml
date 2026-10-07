@@ -1,0 +1,49 @@
+name: PR 5 and 6 correctness remediation
+on:
+  push:
+    branches: [codex/pr56-remediation-20261007]
+    paths:
+      - .github/workflows/pr56-remediation.yml
+      - scripts/pr56-remediation.py
+permissions:
+  contents: read
+jobs:
+  verified-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: [5, 6]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
+      - name: Reproduce, repair and validate exact candidate
+        run: |
+          cp scripts/pr56-remediation.py "$RUNNER_TEMP/pr56-remediation.py"
+          python "$RUNNER_TEMP/pr56-remediation.py" '${{ matrix.pr }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-${{ matrix.pr }}-correctness-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/openfilm-pr${{ matrix.pr }}/
+            test-results/
+          if-no-files-found: error
