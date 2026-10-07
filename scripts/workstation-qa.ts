@@ -66,6 +66,10 @@ export function createWorkstationQaRecord(
 ): WorkstationQaRecord {
   if (!/^[0-9a-f]{40}$/iu.test(candidateSha))
     throw new Error("candidateSha must be a full 40-character Git SHA");
+  const gate = (): WorkstationQaGate => ({
+    status: "not-run",
+    observations: [],
+  });
   return {
     schemaVersion: WORKSTATION_QA_SCHEMA_VERSION,
     candidateSha,
@@ -78,90 +82,232 @@ export function createWorkstationQaRecord(
       cpu: cpus()[0]?.model,
       memoryBytes: totalmem(),
     },
-    gates: Object.fromEntries(
-      WORKSTATION_QA_GATES.map((id) => [
-        id,
-        { status: "not-run", observations: [] },
-      ]),
-    ) as Record<WorkstationQaGateId, WorkstationQaGate>,
+    gates: {
+      resolve: gate(),
+      asr: gate(),
+      llm: gate(),
+      gpu: gate(),
+      camera: gate(),
+      "4k": gate(),
+      "windows-installer": gate(),
+      "cross-process-recovery": gate(),
+    },
   };
 }
 
+function object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function nonblank(value: unknown): value is string {
+  return typeof value === "string" && Boolean(value.trim());
+}
+
+/** Reject local timestamps and calendar rollovers that Date.parse normalizes. */
+function timestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u.exec(
+      value,
+    );
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second, offsetH, offsetM] = match;
+  const end = new Date(0);
+  end.setUTCFullYear(Number(year), Number(month), 0);
+  return (
+    Number(month) >= 1 &&
+    Number(month) <= 12 &&
+    Number(day) >= 1 &&
+    Number(day) <= end.getUTCDate() &&
+    Number(hour) < 24 &&
+    Number(minute) < 60 &&
+    Number(second) < 60 &&
+    Number(offsetH ?? 0) < 24 &&
+    Number(offsetM ?? 0) < 60 &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+/** Validate record structure and consistency, not the truth of linked evidence. */
 export function validateWorkstationQaRecord(value: unknown): string[] {
   const errors: string[] = [];
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return ["record must be an object"];
-  const record = value as Partial<WorkstationQaRecord>;
-  if (record.schemaVersion !== WORKSTATION_QA_SCHEMA_VERSION)
+  if (!object(value)) return ["record must be an object"];
+  const keys = (
+    data: Record<string, unknown>,
+    allowed: readonly string[],
+    path: string,
+  ) => {
+    for (const key of Object.keys(data))
+      if (!allowed.includes(key))
+        errors.push(`${path}.${key} is not supported`);
+  };
+  const optionalStrings = (
+    data: Record<string, unknown>,
+    fields: readonly string[],
+    path: string,
+  ) => {
+    for (const key of fields)
+      if (data[key] !== undefined && typeof data[key] !== "string")
+        errors.push(`${path}.${key} must be a string`);
+  };
+  const strings = (data: unknown, path: string) => {
+    if (!Array.isArray(data) || data.some((item) => !nonblank(item)))
+      errors.push(`${path} must contain nonblank strings`);
+  };
+  keys(
+    value,
+    ["schemaVersion", "candidateSha", "createdAt", "environment", "gates"],
+    "record",
+  );
+  if (value.schemaVersion !== WORKSTATION_QA_SCHEMA_VERSION)
     errors.push(`schemaVersion must be ${WORKSTATION_QA_SCHEMA_VERSION}`);
   if (
-    typeof record.candidateSha !== "string" ||
-    !/^[0-9a-f]{40}$/iu.test(record.candidateSha)
+    typeof value.candidateSha !== "string" ||
+    !/^[0-9a-f]{40}$/iu.test(value.candidateSha)
   )
     errors.push("candidateSha must be a full 40-character Git SHA");
-  if (
-    typeof record.createdAt !== "string" ||
-    !Number.isFinite(Date.parse(record.createdAt))
-  )
+  if (!timestamp(value.createdAt))
     errors.push("createdAt must be an ISO timestamp");
-  if (!record.environment || typeof record.environment !== "object")
-    errors.push("environment is required");
-  if (!record.gates || typeof record.gates !== "object") {
-    errors.push("gates are required");
-    return errors;
+  const environment = value.environment;
+  if (!object(environment)) errors.push("environment is required");
+  else {
+    const required = ["platform", "release", "arch", "node"];
+    const optional = [
+      "cpu",
+      "gpu",
+      "openfilmVersion",
+      "ffmpegVersion",
+      "resolveVersion",
+      "resolveEdition",
+    ];
+    keys(environment, [...required, ...optional, "memoryBytes"], "environment");
+    for (const field of required)
+      if (!nonblank(environment[field]))
+        errors.push(`environment.${field} must be nonblank`);
+    optionalStrings(environment, optional, "environment");
+    if (
+      !Number.isSafeInteger(environment.memoryBytes) ||
+      Number(environment.memoryBytes) <= 0
+    )
+      errors.push("environment.memoryBytes must be a positive safe integer");
   }
+  if (!object(value.gates)) return [...errors, "gates are required"];
+  keys(value.gates, WORKSTATION_QA_GATES, "gates");
   for (const id of WORKSTATION_QA_GATES) {
-    const gate = record.gates[id];
-    if (!gate || typeof gate !== "object") {
-      errors.push(`gates.${id} is required`);
+    const gate = value.gates[id];
+    const path = `gates.${id}`;
+    if (!object(gate)) {
+      errors.push(`${path} is required`);
       continue;
     }
-    if (!["not-run", "passed", "failed", "blocked"].includes(gate.status))
-      errors.push(`gates.${id}.status is invalid`);
+    keys(
+      gate,
+      [
+        "status",
+        "startedAt",
+        "completedAt",
+        "blocker",
+        "notes",
+        "inputs",
+        "observations",
+      ],
+      path,
+    );
+    if (
+      typeof gate.status !== "string" ||
+      !["not-run", "passed", "failed", "blocked"].includes(gate.status)
+    )
+      errors.push(`${path}.status is invalid`);
+    optionalStrings(gate, ["blocker"], path);
+    if (gate.notes !== undefined) strings(gate.notes, `${path}.notes`);
+    for (const field of ["startedAt", "completedAt"])
+      if (gate[field] !== undefined && !timestamp(gate[field]))
+        errors.push(`${path}.${field} must be an ISO timestamp`);
+    if (
+      timestamp(gate.startedAt) &&
+      timestamp(gate.completedAt) &&
+      Date.parse(gate.completedAt) < Date.parse(gate.startedAt)
+    )
+      errors.push(`${path}.completedAt precedes startedAt`);
+    if (gate.inputs !== undefined) {
+      if (!Array.isArray(gate.inputs))
+        errors.push(`${path}.inputs must be an array`);
+      else
+        gate.inputs.forEach((input, index) => {
+          const inputPath = `${path}.inputs[${index}]`;
+          if (!object(input)) {
+            errors.push(`${inputPath} must be an object`);
+            return;
+          }
+          keys(input, ["label", "kind", "sha256"], inputPath);
+          for (const field of ["label", "kind"])
+            if (!nonblank(input[field]))
+              errors.push(`${inputPath}.${field} must be nonblank`);
+          if (
+            input.sha256 !== undefined &&
+            (typeof input.sha256 !== "string" ||
+              !/^[0-9a-f]{64}$/iu.test(input.sha256))
+          )
+            errors.push(`${inputPath}.sha256 must be a SHA-256 hash`);
+        });
+    }
     if (!Array.isArray(gate.observations))
-      errors.push(`gates.${id}.observations must be an array`);
-    const observations = Array.isArray(gate.observations)
+      errors.push(`${path}.observations must be an array`);
+    const observations: unknown[] = Array.isArray(gate.observations)
       ? gate.observations
       : [];
-    for (const [index, observation] of observations.entries()) {
+    let passes = 0;
+    let failures = 0;
+    let unavailable = 0;
+    observations.forEach((observation, index) => {
+      const itemPath = `${path}.observations[${index}]`;
+      if (!object(observation)) {
+        errors.push(`${itemPath} must be an object`);
+        return;
+      }
+      keys(
+        observation,
+        ["check", "status", "expected", "actual", "evidence"],
+        itemPath,
+      );
+      if (!nonblank(observation.check))
+        errors.push(`${itemPath}.check must be nonblank`);
       if (
-        !observation ||
-        typeof observation !== "object" ||
-        typeof observation.check !== "string" ||
-        !observation.check.trim()
-      )
-        errors.push(
-          `gates.${id}.observations[${index}].check must be nonblank`,
-        );
-      if (
-        !observation ||
-        typeof observation !== "object" ||
+        typeof observation.status !== "string" ||
         !["pass", "fail", "unavailable", "info"].includes(observation.status)
       )
-        errors.push(`gates.${id}.observations[${index}].status is invalid`);
-    }
+        errors.push(`${itemPath}.status is invalid`);
+      optionalStrings(observation, ["expected", "actual"], itemPath);
+      if (observation.evidence !== undefined)
+        strings(observation.evidence, `${itemPath}.evidence`);
+      if (observation.status === "pass") {
+        passes++;
+        if (!nonblank(observation.actual))
+          errors.push(`${itemPath}.actual is required for pass`);
+        if (
+          !Array.isArray(observation.evidence) ||
+          !observation.evidence.length
+        )
+          errors.push(`${itemPath}.evidence is required for pass`);
+      }
+      if (observation.status === "fail") failures++;
+      if (observation.status === "unavailable") unavailable++;
+    });
     if (gate.status === "passed") {
       if (!observations.length)
-        errors.push(`gates.${id} cannot pass without observations`);
-      if (observations.some((item) => item.status === "fail"))
-        errors.push(`gates.${id} cannot pass with a failed observation`);
+        errors.push(`${path} cannot pass without observations`);
+      if (!passes) errors.push(`${path} must include a positive observation`);
+      if (failures)
+        errors.push(`${path} cannot pass with a failed observation`);
+      if (unavailable)
+        errors.push(`${path} cannot pass with an unavailable observation`);
     }
-    if (
-      gate.status === "failed" &&
-      !observations.some((item) => item.status === "fail")
-    )
-      errors.push(`gates.${id} must include a failed observation`);
-    if (
-      gate.status === "blocked" &&
-      (typeof gate.blocker !== "string" || !gate.blocker.trim())
-    )
-      errors.push(`gates.${id}.blocker is required when blocked`);
-    if (
-      gate.status !== "not-run" &&
-      (typeof gate.completedAt !== "string" ||
-        !Number.isFinite(Date.parse(gate.completedAt)))
-    )
-      errors.push(`gates.${id}.completedAt is required for a terminal status`);
+    if (gate.status === "failed" && !failures)
+      errors.push(`${path} must include a failed observation`);
+    if (gate.status === "blocked" && !nonblank(gate.blocker))
+      errors.push(`${path}.blocker is required when blocked`);
+    if (gate.status !== "not-run" && !timestamp(gate.completedAt))
+      errors.push(`${path}.completedAt is required for a terminal status`);
   }
   return errors;
 }
@@ -169,30 +315,30 @@ export function validateWorkstationQaRecord(value: unknown): string[] {
 async function main(argv: string[]) {
   const [command, path, ...rest] = argv;
   if (command === "init") {
-    if (!path)
+    if (!path || rest.length !== 2 || rest[0] !== "--candidate" || !rest[1])
       throw new Error(
         "Usage: workstation-qa init <output.json> --candidate <sha>",
       );
-    const candidateIndex = rest.indexOf("--candidate");
-    const candidate =
-      candidateIndex >= 0 ? rest[candidateIndex + 1] : undefined;
-    if (!candidate) throw new Error("--candidate <full-sha> is required");
     const output = resolve(path);
     await writeFile(
       output,
-      JSON.stringify(createWorkstationQaRecord(candidate), null, 2) + "\n",
-      "utf8",
+      JSON.stringify(createWorkstationQaRecord(rest[1]), null, 2) + "\n",
+      { encoding: "utf8", flag: "wx" },
     );
     process.stdout.write(JSON.stringify({ output }) + "\n");
     return;
   }
   if (command === "validate") {
-    if (!path)
+    if (!path || rest.length)
       throw new Error("Usage: workstation-qa validate <evidence.json>");
     const input = JSON.parse(await readFile(resolve(path), "utf8")) as unknown;
     const errors = validateWorkstationQaRecord(input);
     process.stdout.write(
-      JSON.stringify({ valid: errors.length === 0, errors }, null, 2) + "\n",
+      JSON.stringify(
+        { valid: errors.length === 0, errors, verification: "record-only" },
+        null,
+        2,
+      ) + "\n",
     );
     if (errors.length) process.exitCode = 1;
     return;
