@@ -67,6 +67,7 @@ function parse(args: string[]) {
     "case-insensitive",
     "enable",
     "disable",
+    "confirm-stopped",
   ]);
   const values = new Set([
     "project",

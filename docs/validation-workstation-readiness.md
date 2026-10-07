@@ -42,3 +42,11 @@ the existing mutation/disposal barrier and respects uncertain acceptance.
 Schema conditionals mirror positive-evidence and terminal-status rules. Runtime
 validation additionally checks calendar timestamps and interval ordering. Record
 validation is never a certificate of real hardware/model/NLE success.
+
+## CLI confirmation flag
+
+An independent review found that the documented `--confirm-stopped` option was
+not registered in the CLI parser. A real CLI subprocess regression first fails
+with the unknown-option error, then passes after registering the boolean flag.
+The same test rejects omitted confirmation and checks durable batch recovery,
+unchanged transcript revision and unchanged source bytes after reopening.

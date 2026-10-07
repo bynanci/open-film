@@ -144,6 +144,73 @@ async function server(
 }
 
 describe("transcript REST and CLI adapters", () => {
+  it("CLI recovery requires and accepts the registered confirmation flag", async () => {
+    const setup = await fixture();
+    const state = await setup.app.transcriptEditor.get(setup.assetId);
+    const owner = createReviewOwner();
+    const job: Job = {
+      id: "cli-recovery",
+      type: "language-review",
+      assetId: setup.assetId,
+      status: "running",
+      reviewOwner: { ...owner, host: owner.host + ":foreign" },
+      updatedAt: "2026-10-07T00:00:00Z",
+    };
+    setup.app.catalog.saveJob(job);
+    setup.app.catalog.knowledge.saveBatch({
+      jobId: job.id,
+      index: 0,
+      assetId: setup.assetId,
+      sourceRevisionId: state.revision!,
+      providerId: "adapter-fixture",
+      segmentIds: ["segment-0"],
+      status: "running",
+      attempts: 1,
+    });
+    const originalHash = await hashFile(setup.path);
+    setup.close();
+    const args = [
+      "--import",
+      "tsx",
+      resolve("apps/cli/src/index.ts"),
+      "review",
+      "recover",
+      job.id,
+      "--project",
+      setup.app.directory,
+      "--user-data-dir",
+      setup.userDataDirectory,
+    ];
+    await expect(runProcess(process.execPath, args)).rejects.toThrow(
+      /confirm-stopped/,
+    );
+    const output = await runProcess(process.execPath, [
+      ...args,
+      "--confirm-stopped",
+    ]);
+    const recovered = JSON.parse(output.stdout.toString()).job as Job;
+    expect(recovered).toMatchObject({
+      id: job.id,
+      status: "failed",
+      stage: "interrupted",
+    });
+    expect(recovered.reviewOwner?.token).not.toBe(owner.token);
+    const reopened = await OpenFilmApplication.open(setup.app.directory, {
+      userDataDirectory: setup.userDataDirectory,
+    });
+    try {
+      expect(
+        reopened.catalog.listJobs().find((item) => item.id === job.id),
+      ).toEqual(recovered);
+      expect(reopened.knowledge.batches(job.id)[0]!.status).toBe("cancelled");
+      expect(
+        (await reopened.transcriptEditor.get(setup.assetId)).revision,
+      ).toBe(state.revision);
+      expect(await hashFile(setup.path)).toBe(originalHash);
+    } finally {
+      reopened.close();
+    }
+  });
   it("exposes explicit HTTP recovery for a confirmed unknown review owner", async () => {
     const setup = await fixture();
     const transcript = await setup.app.transcriptEditor.get(setup.assetId);
