@@ -1815,6 +1815,7 @@ onUnmounted(() => {
                     :asset="asset"
                     :source-status="sourceStatuses[asset.id]"
                     :selected="selectedAssetId === asset.id"
+                    :mutation-disabled="!!busy"
                     @select="inspectAsset"
                     @toggle="toggleAsset"
                   />
@@ -1957,6 +1958,7 @@ onUnmounted(() => {
                         v-if="selectedAsset.rating"
                         class="text-button clear-rating"
                         :aria-label="t('app.inspector.clearRating')"
+                        :disabled="!!busy"
                         @click="rateAsset(selectedAsset, 0)"
                       >
                         {{ t("app.actions.clear") }}
@@ -1967,6 +1969,7 @@ onUnmounted(() => {
                     <button
                       :aria-pressed="!!selectedAsset.state.favorite"
                       :class="{ active: selectedAsset.state.favorite }"
+                      :disabled="!!busy"
                       @click="toggleAsset(selectedAsset, 'favorite')"
                     >
                       <Icon name="heart" :size="16" />{{
@@ -1975,6 +1978,7 @@ onUnmounted(() => {
                     ><button
                       :aria-pressed="!!selectedAsset.state.locked"
                       :class="{ active: selectedAsset.state.locked }"
+                      :disabled="!!busy"
                       @click="toggleAsset(selectedAsset, 'locked')"
                     >
                       <Icon name="lock" :size="16" />{{
@@ -1983,6 +1987,7 @@ onUnmounted(() => {
                     ><button
                       :aria-pressed="!!selectedAsset.state.rejected"
                       :class="{ active: selectedAsset.state.rejected }"
+                      :disabled="!!busy"
                       @click="toggleAsset(selectedAsset, 'rejected')"
                     >
                       <Icon name="reject" :size="16" />
