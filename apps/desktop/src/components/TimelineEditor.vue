@@ -329,21 +329,33 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
-const previewGeometry = computed(() =>
-  resolvePreviewClipGeometry(
+function previewNumber(
+  value: unknown,
+  fallback: number,
+  positive = false,
+): number {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    (!positive || value > 0)
+    ? value
+    : fallback;
+}
+const previewGeometry = computed(() => {
+  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  return resolvePreviewClipGeometry(
     {
-      scale: clipFields.value.scale,
-      rotation: clipFields.value.rotation,
-      x: clipFields.value.x,
-      y: clipFields.value.y,
+      scale: previewNumber(clipFields.value.scale, committed.scale, true),
+      rotation: previewNumber(clipFields.value.rotation, committed.rotation),
+      x: previewNumber(clipFields.value.x, committed.x),
+      y: previewNumber(clipFields.value.y, committed.y),
     },
     sourcePreviewSize.value ??
       selectedAsset.value?.dimensions ??
       props.projectSettings,
     props.projectSettings,
     sourceViewport.value,
-  ),
-);
+  );
+});
 const previewFrameStyle = computed(() => ({
   width: `${previewGeometry.value.frame.width}px`,
   height: `${previewGeometry.value.frame.height}px`,
@@ -779,6 +791,7 @@ onMounted(() => {
     if (editorElement.value.parentElement)
       layoutObserver.observe(editorElement.value.parentElement);
   }
+  if (sourceScreenElement.value) layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
 });
 onBeforeUnmount(() => {
