@@ -50,3 +50,40 @@ not registered in the CLI parser. A real CLI subprocess regression first fails
 with the unknown-option error, then passes after registering the boolean flag.
 The same test rejects omitted confirmation and checks durable batch recovery,
 unchanged transcript revision and unchanged source bytes after reopening.
+
+## Initial batch publication after recovery
+
+Review of candidate `6fdd3b5422e9b6afdc0f0ade1912e90088f8147c` reproduced a
+second ownership race on both the glossary and language review paths. An actual
+Linux child process paused after publishing its queued job. After confirmed
+recovery revoked that owner, the resumed child could still insert initial pending
+batches. The job remained interrupted, leaving work that could not be retried or
+skipped. Both regressions failed before the fix.
+
+Initial batch publication now checks the exact queued job checkpoint and inserts
+all batches in one SQLite transaction. A recovered owner cannot publish new
+work. Invalid later batches roll back earlier inserts, and repeated initialization
+cannot replace completed batch evidence. This uses the existing catalog and
+ownership contract without a schema change.
+
+The focused remediation run passed 87 tests across six files, including two
+actual-child recovery tests and four portable catalog transaction regressions.
+The child tests inject an unavailable process probe and use Linux SIGSTOP/SIGCONT;
+they are skipped on other operating systems. This does not verify real Windows
+or macOS process identity, liveness or recovery behavior.
+
+The new Desktop browser scenario passed with one worker and zero retries:
+confirmation and cancellation, Retry/Skip, close/reopen, and preservation of
+completed evidence, transcript revisions, source bytes and film edits. Full
+current-candidate regression gates remain pending. The browser uses generated
+media, explicit transcript text and an unknown-owner fixture; it cannot certify
+workstation hardware, ASR quality or actual owner liveness.
+
+Initial browser runs exposed two incorrect assumptions in the new fixture: a
+generic `review` job was never a supported producer or batch-mutation type, and
+an ownerless `language-review` job still has a valid owner-status API. The fixture
+now uses the historical supported type and verifies successful status responses,
+unknown ownership and unavailable manual recovery for its terminal cancelled
+batch. Retry, skip, confirmation, evidence preservation and reopen assertions
+remain. Failed traces are retained; no production behavior was broadened to
+accommodate unsupported fixture input.

@@ -208,6 +208,8 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Claim a retry batch and its job owner atomically before preparation, with exact rollback and protection from obsolete attempts.
 - [x] Recover review work automatically only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
 - [x] Provide exact-checkpoint, user-confirmed manual recovery for unknown review owners without claiming Windows/macOS automatic liveness proof.
+- [x] Prevent recovered glossary/language owners from publishing initial pending work; initialize complete batches atomically and retain existing evidence.
+- [x] Verify Desktop recovery confirmation, cancellation, retry, skip and reopen preserve completed evidence and isolated film edits in a real browser.
 - [ ] Automatic Windows/macOS cross-process dead-owner recovery with verified OS-specific process identity/liveness evidence.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.

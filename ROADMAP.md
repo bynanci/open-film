@@ -61,6 +61,8 @@ remains the next external gate; it is not replaced by helper tests.
   evidence with the candidate-bound workstation QA contract. Unknown review owners
   now have a confirmed manual escape hatch; automatic Windows/macOS dead-owner
   proof still requires an OS-specific verified implementation.
+  Initial review batches use the same exact execution checkpoint in a single
+  transaction, preventing a recovered old process from publishing stranded work.
 - Improve metadata corrections, timezone handling, sidecar ingestion, and event
   editing without hiding uncertainty.
 - Validate real camera orientation/color behavior and future 360 reframing;
