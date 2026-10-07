@@ -193,6 +193,25 @@ const activeJobs = computed(() =>
     (job) => job.status === "running" || job.status === "queued",
   ),
 );
+function jobBlocksProjectSwitch(job: Job, recovery?: AnalysisJobRecoveryState) {
+  if (job.status !== "running" && job.status !== "queued") return false;
+  // Only the three owned analysis operations have a runtime controller
+  // capability. Missing or mismatched evidence retains the existing barrier.
+  return (
+    !["transcribe", "waveform", "scenes"].includes(job.type) ||
+    recovery?.jobId !== job.id ||
+    recovery.canCancel !== false
+  );
+}
+const projectSwitchBlocked = computed(
+  () =>
+    !!busy.value ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value ||
+    jobs.value.some((job) =>
+      jobBlocksProjectSwitch(job, analysisRecovery.value[job.id]),
+    ),
+);
 const recentJob = computed(() => jobs.value[0]);
 const cancellingJobs = ref<Record<string, boolean>>({});
 const renderCancellationRequested = ref<string | null>(null);
@@ -1224,15 +1243,28 @@ function progress(job: Job) {
   return Math.round(Math.max(0, Math.min(1, job.progress ?? 0)) * 100);
 }
 async function changeWorkspace() {
-  if (
-    busy.value ||
-    activeJobs.value.length ||
-    relinkBusy.value ||
-    analysisRecoveryPending.value
-  )
+  if (projectSwitchBlocked.value) return;
+  const closingProject = project.value?.id;
+  const closingGeneration = analysisRecoveryGeneration;
+  const current = () =>
+    project.value?.id === closingProject &&
+    analysisRecoveryGeneration === closingGeneration;
+  if (!(await flushPending()) || !current() || projectSwitchBlocked.value)
     return;
-  if (!(await flushPending())) return;
   await run("closingProject", async () => {
+    // A transcription submission can finish while its draft is being flushed,
+    // before Activity polling publishes the new local job. Check this response
+    // itself; a concurrent poll may have superseded its UI publication.
+    const latest = await api.jobs();
+    if (
+      !current() ||
+      relinkBusy.value ||
+      analysisRecoveryPending.value ||
+      latest.jobs.some((job) =>
+        jobBlocksProjectSwitch(job, latest.analysisRecovery?.[job.id]),
+      )
+    )
+      return;
     await post("/project/close");
     statusGeneration += 1;
     jobsGeneration += 1;
@@ -1397,12 +1429,7 @@ onUnmounted(() => {
         <div class="project-heading-actions">
           <button
             class="text-button project-switch"
-            :disabled="
-              !!busy ||
-              activeJobs.length > 0 ||
-              relinkBusy ||
-              analysisRecoveryPending
-            "
+            :disabled="projectSwitchBlocked"
             @click="changeWorkspace"
           >
             <Icon name="folder" :size="15" />{{

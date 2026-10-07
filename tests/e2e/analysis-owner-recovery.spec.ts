@@ -760,7 +760,7 @@ async function liveWorker(context: Awaited<ReturnType<typeof fixture>>) {
   };
 }
 
-test("a real live foreign analysis process has no local Cancel or manual recovery on Activity, Precision or Transcript", async ({
+test("a real live foreign analysis process has no local Cancel or manual recovery and its observer can switch films safely", async ({
   page,
   request,
 }, info) => {
@@ -769,6 +769,20 @@ test("a real live foreign analysis process has no local Cancel or manual recover
     "Verified process scope requires Linux boot/PID-namespace evidence; other platforms remain a manual liveness gate.",
   );
   const context = await fixture("Actual foreign analysis owner");
+  const otherPath = join(context.root, "Observer second film.openfilm");
+  const otherApp = await OpenFilmApplication.create(
+    otherPath,
+    "Observer second film",
+    {
+      filmSettings: { templateId: "blank", targetDuration: 3, maxDuration: 4 },
+    },
+    { userDataDirectory: context.userDataDirectory },
+  );
+  try {
+    await otherApp.save();
+  } finally {
+    otherApp.close();
+  }
   const worker = await liveWorker(context);
   let runtime: Awaited<ReturnType<typeof startServer>> | undefined;
   try {
@@ -853,6 +867,57 @@ test("a real live foreign analysis process has no local Cancel or manual recover
       },
     );
     expect(response.status()).toBe(409);
+    expect(
+      (await get<{ jobs: Job[] }>(request, api, "/jobs")).jobs.find(
+        (item) => item.id === worker.jobId,
+      ),
+    ).toEqual(ready.job);
+
+    // An observer owns no execution to cancel: leaving and opening another film
+    // must not recover, interrupt or rewrite the real child owner's work.
+    const closeResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/project/close" &&
+        response.request().method() === "POST",
+    );
+    const switchProject = page.getByRole("button", {
+      name: text("en-US", "app.navigation.switchProject"),
+      exact: true,
+    });
+    await expect(switchProject).toBeEnabled();
+    await switchProject.click();
+    expect((await closeResponse).status()).toBe(200);
+    await expect(page.locator(".launcher-actions")).toBeVisible();
+    expect(() => process.kill(worker.child.pid!, 0)).not.toThrow();
+    const observedCatalog = new ProjectCatalog(context.path);
+    try {
+      expect(
+        observedCatalog.listJobs().find((item) => item.id === worker.jobId),
+      ).toEqual(ready.job);
+    } finally {
+      observedCatalog.close();
+    }
+    await openFilm(page, otherPath, "en-US");
+    expect(
+      (await get<{ project: OpenFilmProject }>(request, api, "/project"))
+        .project.title,
+    ).toBe("Observer second film");
+    expect(
+      (await get<{ jobs: Job[] }>(request, api, "/jobs")).jobs.some(
+        (item) => item.id === worker.jobId,
+      ),
+    ).toBe(false);
+    await reopen(page, context.path, "en-US");
+    await foreign(await transcriptMode(page, "en-US"));
+    expect(
+      await get<TranscriptState>(
+        request,
+        api,
+        `/assets/${context.asset.id}/transcript`,
+      ),
+    ).toEqual(before);
+    expect(await filmState(request, api, context.asset.id)).toEqual(film);
+    expect(await hashFile(source)).toBe(context.sourceHash);
     expect(
       (await get<{ jobs: Job[] }>(request, api, "/jobs")).jobs.find(
         (item) => item.id === worker.jobId,

@@ -87,12 +87,18 @@ const {
 const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
+const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
 const hasPending = computed(
-  () => compositionHasPending.value || !!transcriptEditor.value?.hasPending,
+  () =>
+    compositionHasPending.value ||
+    !!transcriptEditor.value?.hasPending ||
+    !!precisionEditor.value?.hasPending,
 );
 async function flush() {
   if (!(await flushComposition())) return false;
-  return (await transcriptEditor.value?.flush()) ?? true;
+  if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
+    return false;
+  return (await precisionEditor.value?.flush()) ?? true;
 }
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
@@ -290,6 +296,7 @@ function beatDuration(clips: Clip[]) {
     : 0;
 }
 function chooseClip(clip: Clip, openInspector = true) {
+  if (precisionEditor.value?.hasPending) return;
   if (editMode.value === "transcript" && transcriptEditor.value) {
     void transcriptEditor.value.flush().then((saved) => {
       if (saved) applyClipSelection(clip, openInspector);
@@ -1152,6 +1159,7 @@ onBeforeUnmount(() => {
       </section>
       <div v-show="editMode === 'precision'" ref="precisionElement">
         <PrecisionEditor
+          ref="precisionEditor"
           :project-id="projectId"
           :asset="selectedAsset"
           :clip="selectedClip"

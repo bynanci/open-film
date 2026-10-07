@@ -57,6 +57,14 @@ const loading = ref(false);
 const sourceVerified = ref(false);
 const discoveringJobs = ref(false);
 const pending = ref(false);
+// Source changes reset the visible generation, but an outstanding mutation
+// must still prevent navigation until its request has actually settled.
+const pendingMutations = ref(0);
+const hasPending = computed(() => pendingMutations.value > 0);
+async function flush() {
+  return !hasPending.value;
+}
+defineExpose({ flush, hasPending });
 const playing = ref(false);
 const playhead = ref(0);
 const hoverTime = ref<number>();
@@ -400,6 +408,7 @@ async function analyze(operation: "transcribe" | "waveform" | "scenes") {
   if (operation === "transcribe" && !transcriptionReady.value) return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   error.value = null;
   try {
     const result = await request<{ job: Job }>(endpoint("/intelligence"), {
@@ -429,6 +438,7 @@ async function analyze(operation: "transcribe" | "waveform" | "scenes") {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
@@ -458,6 +468,7 @@ async function addMarker(at = playhead.value) {
     return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   try {
     await request(endpoint("/markers"), {
       method: "POST",
@@ -471,6 +482,7 @@ async function addMarker(at = playhead.value) {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
@@ -479,6 +491,7 @@ async function removeMarker(marker: TimelineMarker) {
     return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   try {
     await request(endpoint(`/markers/${encodeURIComponent(marker.id)}`), {
       method: "DELETE",
@@ -491,6 +504,7 @@ async function removeMarker(marker: TimelineMarker) {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
