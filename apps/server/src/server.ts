@@ -1186,6 +1186,57 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, await application.intelligence.providers());
           return;
         }
+        const analysisRecovery =
+          /^\/api\/intelligence\/jobs\/([^/]+)\/(recovery|recover)$/.exec(
+            route,
+          );
+        if (
+          analysisRecovery &&
+          method === "GET" &&
+          analysisRecovery[2] === "recovery"
+        ) {
+          const jobId = decodeURIComponent(analysisRecovery[1]!);
+          json(response, 200, {
+            ...application.intelligence.analysisRecoveryStatus(jobId),
+            canCancel: active.has(jobId),
+          });
+          return;
+        }
+        if (
+          analysisRecovery &&
+          method === "POST" &&
+          analysisRecovery[2] === "recover"
+        ) {
+          const data = await body(request);
+          keys(data, ["confirmStopped", "checkpoint", "ownerToken"]);
+          if (typeof data.confirmStopped !== "boolean")
+            throw new HttpError(400, "confirmStopped must be a boolean.");
+          if (typeof data.checkpoint !== "string" || !data.checkpoint)
+            throw new HttpError(
+              400,
+              "Include the observed analysis checkpoint.",
+            );
+          if (
+            data.ownerToken !== undefined &&
+            typeof data.ownerToken !== "string"
+          )
+            throw new HttpError(400, "ownerToken must be a string.");
+          const jobId = decodeURIComponent(analysisRecovery[1]!);
+          if (active.has(jobId))
+            throw new HttpError(
+              409,
+              "This analysis is still active in this process.",
+              "jobs.busy",
+            );
+          json(response, 200, {
+            job: application.intelligence.manualRecoverAnalysis(jobId, {
+              confirmStopped: data.confirmStopped,
+              checkpoint: data.checkpoint,
+              ownerToken: data.ownerToken,
+            }),
+          });
+          return;
+        }
         const intelligence = /^\/api\/assets\/([^/]+)\/intelligence$/.exec(
           route,
         );
@@ -1252,26 +1303,22 @@ export async function startServer(options: ServerOptions = {}) {
               "Wait for the current job before analyzing another source.",
             );
           const controller = new AbortController();
-          const job: Job = {
-            id: randomUUID(),
-            assetId,
-            type: operation,
-            status: "queued",
-            progress: 0,
-            createdAt: new Date().toISOString(),
-          };
-          application.catalog.saveJob(job);
+          // Reserve before returning 202. Other catalog connections see this
+          // owner immediately, and only this exact queued reservation can run.
+          const job = application.reserveIntelligenceJob(assetId, operation);
           active.set(job.id, controller);
           const task = application.analyzeIntelligence(assetId, {
             operation,
-            jobId: job.id,
+            reservation: job,
             signal: controller.signal,
             language: data.language as "auto" | "zh" | "en" | "ja" | undefined,
             execution: data.execution as "auto" | "cpu" | "gpu" | undefined,
           });
           const handled = task
             .catch((error) => {
-              application.catalog.saveJob({
+              // Preparation can fail before run consumes the reservation. A
+              // recovered or terminal job must never be resurrected here.
+              application.catalog.intelligence.saveOwnedAnalysisJob({
                 ...job,
                 status: controller.signal.aborted ? "cancelled" : "failed",
                 updatedAt: new Date().toISOString(),
@@ -1624,7 +1671,20 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (method === "GET" && route === "/api/jobs") {
-          json(response, 200, { jobs: application.catalog.listJobs() });
+          const jobs = application.catalog.listJobs();
+          const analysisRecovery = Object.fromEntries(
+            Object.entries(
+              application.intelligence.analysisRecoveryStatuses(jobs),
+            ).map(([jobId, recovery]) => [
+              jobId,
+              {
+                ...recovery,
+                // Liveness never implies this server owns the cancellation signal.
+                canCancel: active.has(jobId),
+              },
+            ]),
+          );
+          json(response, 200, { jobs, analysisRecovery });
           return;
         }
         if (method === "POST" && route === "/api/import/upload") {

@@ -99,6 +99,23 @@ export default {
     refresh: "Refresh analysis",
     cancelJob: "Cancel analysis",
     cancel: "Cancel analysis",
+    recovery: {
+      checking: "Checking where this analysis is running…",
+      runningElsewhere: "This analysis is running in another OpenFilm process.",
+      unknown:
+        "OpenFilm cannot verify whether the previous analysis process is still running. Your saved analysis and edits are safe.",
+      stopped:
+        "The previous analysis process has stopped. Your saved analysis and edits are safe.",
+      recover: "Recover interrupted analysis",
+      confirmTitle: "Confirm the previous process has stopped",
+      confirmMessage:
+        "First make sure the previous OpenFilm process has stopped. Recovery releases this job so you can choose to analyze again.",
+      confirmStopped: "Confirm stopped & recover",
+      keepCurrent: "Keep current state",
+      pending: "Updating analysis…",
+      recovered:
+        "Interrupted analysis recovered. Your saved analysis and edits are unchanged. Run analysis again when you are ready.",
+    },
     playbackError:
       "This source cannot play here. Check its source in Story mode.",
     shortcuts:

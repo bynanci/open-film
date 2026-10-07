@@ -10,7 +10,8 @@ and **Automated Verified**; actual workstation behavior remains a separate gate.
 The current P0 cancellation slice is **Automated Verified** locally: the project
 releases before a non-cooperating provider settles. Final published-head checks
 are tracked in PR #8. Ownership-aware recovery of
-non-review media analysis is **Planned** next. Future creative milestones remain
+non-review media analysis is **In Progress** in a separate stacked slice, with
+actual-child regressions against merged main before implementation. Future creative milestones remain
 deferred; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 

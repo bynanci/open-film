@@ -18,9 +18,12 @@ import {
   sourceUrl,
   type IntelligenceState,
   type IntelligenceProviders,
+  type AnalysisJobRecoveryState,
+  type AnalysisRecoveryInput,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
+import AnalysisJobActions from "./AnalysisJobActions.vue";
 
 const props = defineProps<{
   projectId: string;
@@ -28,13 +31,19 @@ const props = defineProps<{
   clip?: Clip;
   active: boolean;
   busy: boolean;
+  analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+  recoveringAnalysisJobs?: Record<string, boolean>;
   unavailable?: boolean;
   sourceVersion?: number;
   height?: number;
   clips: { id: string; label: string }[];
   submit: (command: TimelineCommand) => boolean;
 }>();
-const emit = defineEmits<{ select: [clipId: string]; activity: [] }>();
+const emit = defineEmits<{
+  select: [clipId: string];
+  activity: [];
+  recoverAnalysis: [job: Job, input: AnalysisRecoveryInput];
+}>();
 const { t, te } = useI18n();
 const player = ref<HTMLMediaElement | null>(null);
 const surface = ref<HTMLElement | null>(null);
@@ -1196,14 +1205,15 @@ onBeforeUnmount(() => {
                 style: "percent",
                 maximumFractionDigits: 0,
               })
-            }}</span
-            ><button
-              v-if="job.status === 'queued' || job.status === 'running'"
-              class="editor-button"
-              @click="cancelJob(job)"
-            >
-              {{ t("precision.cancelJob") }}
-            </button>
+            }}</span>
+            <AnalysisJobActions
+              :project-id="projectId"
+              :job="job"
+              :recovery="analysisRecovery?.[job.id]"
+              :pending="recoveringAnalysisJobs?.[job.id]"
+              @cancel="cancelJob(job)"
+              @recover="emit('recoverAnalysis', job, $event)"
+            />
             <details
               v-if="job.execution || job.model || job.fallbackReason"
               class="editor-technical-details"

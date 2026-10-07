@@ -50,6 +50,8 @@ import AssetCard from "./components/AssetCard.vue";
 import TimelineEditor from "./components/TimelineEditor.vue";
 import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
+import AnalysisJobActions from "./components/AnalysisJobActions.vue";
+import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
 
 const { t } = useI18n();
 const interfaceLocales = [
@@ -171,6 +173,21 @@ const groupHeading = computed(() =>
     : (groupSelection.value?.title ?? ""),
 );
 const jobs = ref<Job[]>([]);
+const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
+const recoveringAnalysisJobs = ref<Record<string, boolean>>({});
+const analysisRecoveryPending = computed(() =>
+  Object.values(recoveringAnalysisJobs.value).some(Boolean),
+);
+let analysisRecoveryGeneration = 0;
+watch(
+  [() => project.value?.id, () => projectPath.value],
+  () => {
+    analysisRecoveryGeneration++;
+    analysisRecovery.value = {};
+    recoveringAnalysisJobs.value = {};
+  },
+  { flush: "sync" },
+);
 const activeJobs = computed(() =>
   jobs.value.filter(
     (job) => job.status === "running" || job.status === "queued",
@@ -613,7 +630,7 @@ async function resetProjectView() {
   rememberProject();
 }
 async function createFilm(value: FilmCreation) {
-  if (!(await flushPending())) return;
+  if (analysisRecoveryPending.value || !(await flushPending())) return;
   await run("creatingProject", async () => {
     await api.createProject(value);
     await resetProjectView();
@@ -621,7 +638,7 @@ async function createFilm(value: FilmCreation) {
   });
 }
 async function openProject(path: string) {
-  if (!(await flushPending())) return;
+  if (analysisRecoveryPending.value || !(await flushPending())) return;
   await run("openingProject", async () => {
     await post("/project/open", { path });
     await resetProjectView();
@@ -740,8 +757,10 @@ async function refreshJobs() {
   const generation = ++jobsGeneration;
   const projectId = project.value?.id;
   const result = await api.jobs();
-  if (generation === jobsGeneration && project.value?.id === projectId)
+  if (generation === jobsGeneration && project.value?.id === projectId) {
     jobs.value = result.jobs;
+    analysisRecovery.value = result.analysisRecovery ?? {};
+  }
   return project.value?.id === projectId ? result.jobs : undefined;
 }
 async function pollJobs() {
@@ -771,6 +790,7 @@ async function pollJobs() {
         ),
     );
     jobs.value = result.jobs;
+    analysisRecovery.value = result.analysisRecovery ?? {};
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
       .join("|");
@@ -1159,11 +1179,58 @@ async function cancelJob(job: Job) {
     cancellingJobs.value = { ...cancellingJobs.value, [job.id]: false };
   }
 }
+async function recoverAnalysis(job: Job, input: AnalysisRecoveryInput) {
+  const projectId = project.value?.id;
+  const generation = analysisRecoveryGeneration;
+  const current = () =>
+    project.value?.id === projectId &&
+    analysisRecoveryGeneration === generation;
+  const inspected = analysisRecovery.value[job.id];
+  if (
+    !projectId ||
+    busy.value ||
+    analysisRecoveryPending.value ||
+    input.confirmStopped !== true ||
+    !inspected?.manualRecoveryAllowed ||
+    inspected.jobId !== job.id ||
+    inspected.ownerState === "alive" ||
+    inspected.canCancel ||
+    inspected.checkpoint !== input.checkpoint ||
+    inspected.ownerToken !== input.ownerToken
+  )
+    return;
+  recoveringAnalysisJobs.value = {
+    ...recoveringAnalysisJobs.value,
+    [job.id]: true,
+  };
+  try {
+    await api.recoverAnalysis(job.id, input);
+    if (!current()) return;
+    // Recovery changes job ownership only. A manual transcript draft remains
+    // in its existing queue; explicit re-transcription still flushes it first.
+    await refreshJobs();
+    if (current()) notice.value = { uiKey: "precision.recovery.recovered" };
+  } catch (cause) {
+    if (current()) error.value = cause;
+  } finally {
+    if (current())
+      recoveringAnalysisJobs.value = {
+        ...recoveringAnalysisJobs.value,
+        [job.id]: false,
+      };
+  }
+}
 function progress(job: Job) {
   return Math.round(Math.max(0, Math.min(1, job.progress ?? 0)) * 100);
 }
 async function changeWorkspace() {
-  if (busy.value || activeJobs.value.length || relinkBusy.value) return;
+  if (
+    busy.value ||
+    activeJobs.value.length ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value
+  )
+    return;
   if (!(await flushPending())) return;
   await run("closingProject", async () => {
     await post("/project/close");
@@ -1330,7 +1397,12 @@ onUnmounted(() => {
         <div class="project-heading-actions">
           <button
             class="text-button project-switch"
-            :disabled="!!busy || activeJobs.length > 0 || relinkBusy"
+            :disabled="
+              !!busy ||
+              activeJobs.length > 0 ||
+              relinkBusy ||
+              analysisRecoveryPending
+            "
             @click="changeWorkspace"
           >
             <Icon name="folder" :size="15" />{{
@@ -1448,8 +1520,19 @@ onUnmounted(() => {
                     : t('app.activity.importProgress')
             "
           />
+          <AnalysisJobActions
+            v-if="['transcribe', 'waveform', 'scenes'].includes(job.type)"
+            :project-id="project.id"
+            :job="job"
+            :recovery="analysisRecovery[job.id]"
+            :pending="cancellingJobs[job.id] || recoveringAnalysisJobs[job.id]"
+            :disabled="!!busy"
+            :cancel-label="t('precision.cancel')"
+            @cancel="cancelJob(job)"
+            @recover="recoverAnalysis(job, $event)"
+          />
           <button
-            v-if="job.status === 'running' || job.status === 'queued'"
+            v-else-if="job.status === 'running' || job.status === 'queued'"
             class="text-button"
             :disabled="cancellingJobs[job.id]"
             @click="cancelJob(job)"
@@ -2546,11 +2629,14 @@ onUnmounted(() => {
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
             :jobs="jobs"
+            :analysis-recovery="analysisRecovery"
+            :recovering-analysis-jobs="recoveringAnalysisJobs"
             @relink="openRelink($event)"
             @change="editorChanged"
             @edited="editorEdited"
             @playback="toggleRenderedPlayback"
             @activity="refreshJobs"
+            @recover-analysis="recoverAnalysis"
           />
         </template>
       </section>

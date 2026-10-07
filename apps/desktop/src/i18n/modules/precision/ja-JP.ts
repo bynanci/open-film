@@ -100,6 +100,23 @@ export default {
     refresh: "解析を更新",
     cancelJob: "解析をキャンセル",
     cancel: "解析をキャンセル",
+    recovery: {
+      checking: "この解析の実行場所を確認中…",
+      runningElsewhere: "この解析は別の OpenFilm プロセスで実行中です。",
+      unknown:
+        "以前の解析プロセスがまだ動いているか確認できません。保存済みの解析結果と編集内容は保持されています。",
+      stopped:
+        "以前の解析プロセスは停止しています。保存済みの解析結果と編集内容は保持されています。",
+      recover: "中断された解析を復旧",
+      confirmTitle: "以前のプロセスの停止を確認",
+      confirmMessage:
+        "以前の OpenFilm プロセスが停止したことを先に確認してください。復旧後、必要に応じて解析をやり直せます。",
+      confirmStopped: "停止を確認して復旧",
+      keepCurrent: "現在の状態を維持",
+      pending: "解析を更新中…",
+      recovered:
+        "中断された解析を復旧しました。保存済みの解析結果と編集内容は保持されています。準備ができたら再解析できます。",
+    },
     playbackError:
       "この素材はここで再生できません。ストーリーモードで元のファイルを確認してください。",
     shortcuts:

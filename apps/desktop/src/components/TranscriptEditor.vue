@@ -25,11 +25,14 @@ import {
   sourceUrl,
   type IntelligenceProviders,
   type TranscriptSearchState,
+  type AnalysisJobRecoveryState,
+  type AnalysisRecoveryInput,
 } from "../api";
 import { errorDetail, formatNumber, formatDate, localizeError } from "../i18n";
 import { useTranscriptEditor } from "../composables/useTranscriptEditor";
 import GlossaryPanel from "./GlossaryPanel.vue";
 import ReviewPanel from "./ReviewPanel.vue";
+import AnalysisJobActions from "./AnalysisJobActions.vue";
 const props = defineProps<{
   projectId: string;
   asset: MediaAsset;
@@ -38,6 +41,8 @@ const props = defineProps<{
   unavailable?: boolean;
   sourceVersion?: number;
   jobs?: readonly Job[];
+  analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+  recoveringAnalysisJobs?: Record<string, boolean>;
   height?: number;
   clips: { id: string; label: string }[];
 }>();
@@ -45,6 +50,7 @@ const emit = defineEmits<{
   select: [clipId: string];
   activity: [];
   changed: [];
+  recoverAnalysis: [job: Job, input: AnalysisRecoveryInput];
 }>();
 const { t } = useI18n();
 const {
@@ -1423,14 +1429,15 @@ onBeforeUnmount(() => {
                 style: "percent",
                 maximumFractionDigits: 0,
               })
-            }}</span
-            ><button
-              v-if="job.status === 'queued' || job.status === 'running'"
-              class="editor-button"
-              @click="cancel(job)"
-            >
-              {{ t("precision.cancelJob") }}
-            </button>
+            }}</span>
+            <AnalysisJobActions
+              :project-id="projectId"
+              :job="job"
+              :recovery="analysisRecovery?.[job.id]"
+              :pending="recoveringAnalysisJobs?.[job.id]"
+              @cancel="cancel(job)"
+              @recover="emit('recoverAnalysis', job, $event)"
+            />
           </div>
         </details>
       </main>

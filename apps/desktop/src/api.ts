@@ -22,6 +22,20 @@ import type {
   ReviewBatch,
 } from "@openfilm/core";
 import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
+import type {
+  AnalysisRecoveryState,
+  AnalysisRecoveryInput,
+} from "@openfilm/application";
+export type { AnalysisRecoveryInput } from "@openfilm/application";
+
+/** Runtime controls belong to the connected server, not the portable job record. */
+export interface AnalysisJobRecoveryState extends AnalysisRecoveryState {
+  canCancel: boolean;
+}
+export interface JobsState {
+  jobs: Job[];
+  analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+}
 
 export interface EditorState extends EditorDocument {
   assets: MediaAsset[];
@@ -564,7 +578,16 @@ export const api = {
       total: number;
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
-  jobs: () => request<{ jobs: Job[] }>("/jobs"),
+  jobs: () => request<JobsState>("/jobs"),
+  analysisRecovery: (jobId: string) =>
+    request<AnalysisJobRecoveryState>(
+      `/intelligence/jobs/${encodeURIComponent(jobId)}/recovery`,
+    ),
+  recoverAnalysis: (jobId: string, body: AnalysisRecoveryInput) =>
+    post<{ job: Job }>(
+      `/intelligence/jobs/${encodeURIComponent(jobId)}/recover`,
+      body,
+    ),
   analyze: () =>
     post<{ events: Event[]; duplicates: SimilarityGroup[] }>("/analyze"),
   createStory: (body: unknown) => post<{ story: Story }>("/stories", body),

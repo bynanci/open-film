@@ -200,6 +200,8 @@ export interface Job {
   language?: string;
   fallbackReason?: string;
   reviewOwner?: ReviewExecutionOwner;
+  /** Local execution identity for transcription, waveform and scene analysis. */
+  analysisOwner?: ReviewExecutionOwner;
   errors?: {
     uri: string;
     stage: string;

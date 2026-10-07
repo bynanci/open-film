@@ -86,6 +86,11 @@ separate facts: changing the original afterwards invalidates the old result.
 
 ## Verification boundaries
 
+Opening the same project in another process uses conservative owner evidence
+for transcription, waveform and scene jobs. Unknown interrupted work has an
+explicit stopped-process confirmation; recovery and obsolete result fencing are
+shared with headless callers. See [media-analysis recovery](media-analysis-recovery.md).
+
 Core/catalog tests cover data validation, migration, paging and persistence.
 Media tests use generated local sources to check real FFmpeg waveform/scene
 processing. HTTP integration checks cover job lifecycle, cancellation,

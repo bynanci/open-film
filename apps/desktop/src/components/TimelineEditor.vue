@@ -50,6 +50,8 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   jobs?: readonly Job[];
+  analysisRecovery?: Record<string, import("../api").AnalysisJobRecoveryState>;
+  recoveringAnalysisJobs?: Record<string, boolean>;
   projectSettings: ProjectSettings;
 }>();
 const emit = defineEmits<{
@@ -58,6 +60,7 @@ const emit = defineEmits<{
   playback: [];
   relink: [assetId: string];
   activity: [];
+  recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
 }>();
 const {
   state,
@@ -1154,6 +1157,8 @@ onBeforeUnmount(() => {
           :clip="selectedClip"
           :active="active && editMode === 'precision' && !draftAction"
           :busy="historyBusy"
+          :analysis-recovery="analysisRecovery"
+          :recovering-analysis-jobs="recoveringAnalysisJobs"
           :unavailable="
             !!sourceUnavailable ||
             selectedSourceInfo?.previewSupported === false
@@ -1169,6 +1174,9 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+          @recover-analysis="
+            (job, input) => emit('recoverAnalysis', job, input)
+          "
         />
       </div>
       <div v-show="editMode === 'transcript'" ref="transcriptElement">
@@ -1186,6 +1194,8 @@ onBeforeUnmount(() => {
           "
           :source-version="sourceVersion"
           :jobs="jobs"
+          :analysis-recovery="analysisRecovery"
+          :recovering-analysis-jobs="recoveringAnalysisJobs"
           :height="workspaceHeight"
           :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
           @select="
@@ -1195,6 +1205,9 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+          @recover-analysis="
+            (job, input) => emit('recoverAnalysis', job, input)
+          "
           @changed="emit('activity')"
         />
       </div>
