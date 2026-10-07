@@ -24,6 +24,10 @@ edits and rechecks a fresh job snapshot before the server's final local-work
 guard. Pending Precision analysis/marker requests also prevent leaving or changing
 sources until they settle. Switching does not cancel or recover the foreign Job.
 
+Undo/Redo also waits for pending Precision submissions. Conversely, marker and
+analysis controls cannot submit during a composition history change. Ordinary
+unsaved composition edits retain their existing one-step Undo behavior.
+
 The confirmation is bound to the exact observed Job digest and owner token. If
 another process changes that checkpoint, refresh the status and inspect it again.
 Recovery never signals a foreign PID or forcibly terminates an arbitrary provider.

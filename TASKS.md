@@ -23,6 +23,14 @@ system or downstream NLE. Commands and test responsibilities are in
       missing runtime evidence and in-flight Precision/Transcript mutations retain
       navigation barriers; 39 component regressions and the actual-child browser
       flow pass. Corrected-candidate gates remain separate from earlier CI.
+- [x] Keep Undo/Redo from resetting a source while Precision requests are pending,
+      and keep marker/analysis requests from starting during history changes.
+      Fourteen additional actual-SFC regressions preserve normal one-step Undo;
+      the corrected published candidate still requires complete gates and CI.
+- [x] Keep selection decisions from disappearing while an earlier rating save
+      awaits acknowledgement. Card/inspector controls show their pending state;
+      six actual-template regressions and a real delayed-response Proposal
+      workflow pass without weakening rejected/unsupported-media checks.
 
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.

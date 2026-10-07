@@ -14,8 +14,10 @@ is **Automated Verified** in the isolated PR #9 stacked on #8. Actual-child,
 SQLite/HTTP/CLI and three-language browser regressions preserve live work,
 manual corrections and successor results across confirmed recovery. Observers can
 switch films while foreign analysis continues; local jobs and pending mutations
-retain navigation barriers. The corrected candidate has separate verification
-from the earlier CI head. Future creative milestones remain
+retain navigation barriers. Precision mutations and composition history also
+block each other without changing normal Undo grouping. The corrected candidate has separate verification
+from the earlier CI head. Selection controls also wait for saved acknowledgements
+instead of silently dropping a second action. Future creative milestones remain
 deferred; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 

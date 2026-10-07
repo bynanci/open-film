@@ -102,6 +102,58 @@ Full gates and CI for the corrected published candidate remain distinct from
 `eab34a4` evidence and must be verified before merging PR #9. Real workstation
 gates are unchanged.
 
+## Subsequent history correction
+
+Exact-head Codex review of `da55af0223db8c011a3a60f1546912ed598c1fc5`
+found P2 [history during pending Precision mutations](https://github.com/bynanci/open-film/pull/9#discussion_r4212953205).
+The combined pending state had accidentally enabled the existing Undo exception,
+and button/keyboard history could reset a source before its request settled.
+The correction guards the shared history entry and both button states. The
+inverse interleave also guards marker/analysis methods and controls while history
+is busy. Existing unsaved-composition Undo still delegates once without an extra
+flush or a new undo unit.
+
+The actual-SFC Precision/Timeline suite has 23 passing cases, including 14 new
+regressions. Before the production fix, 12 cases failed and 11 passed. Independent
+review found no further actionable P1/P2 in that correction. A separate isolated
+six-case draft-dialog probe did not reproduce releasing an unsettled mutation
+barrier and was not promoted to a correctness claim.
+
+The first full local browser attempt at `da55af0` passed 68 cases and failed the
+Proposal official-parser step because its runner omitted the installed OTIO
+Python environment. That failure and trace are retained. The environment-corrected
+rerun was explicitly cancelled before source changes after the history finding;
+its unchanged-source manifest is retained, and it is not a passed full gate.
+Complete local gates, exact-head CI and review of the corrected candidate remain
+required in PR #9; earlier success does not substitute for them.
+
+## Selection acknowledgement correction
+
+The historical push run [37699608932](https://github.com/bynanci/open-film/actions/runs/37699608932)
+at `da55af0` failed the Proposal assertion that composition excludes unsupported
+or rejected assets (68 passed, one failed). The parallel PR run
+[37699651007](https://github.com/bynanci/open-film/actions/runs/37699651007) passed
+69 cases. This is distinct from the local OTIO environment failure. The failed
+run's artifact archive returned Forbidden, so its exact offending asset is not
+known from a downloaded trace.
+
+An isolated actual-App probe proves a real path to that assertion: holding a
+successful lock PATCH acknowledgement leaves `run()` busy, while still-enabled
+Reject controls submit a second action that is silently ignored. The relevant
+functions are identical at main `34b6ff0`, base `8b466ae` and `da55af0`; this
+preexisting race was exposed during verification. Card and inspector mutation
+controls now use the same busy state, while inspecting media remains available.
+
+Six actual compiled-template/App regressions pass; five failed before the fix
+and the idle case passed. The focused real Proposal browser test passes with a
+held successful lock response, disabled controls, an acknowledged Reject request
+and the unchanged final composition assertion. It also validates the official
+OTIO parser using the installed Python environment. Restore is shown as an
+affordance; this test does not execute a Restore mutation. Independent review
+found no further actionable P1/P2. The original remote failure remains retained;
+its trace absence does not establish this as the sole historical cause. Complete
+corrected-head gates and CI are still required before merge.
+
 ## Manual limits
 
 Actual Linux child probes establish behavior in this environment, not automatic
