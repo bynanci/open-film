@@ -216,5 +216,5 @@ Evidence: [validation record](docs/validation-geometry-parity.md).
 - [x] Keep source and composition-frame boxes separate, clip transformed media at the frame, and preserve alpha above lower visual tracks.
 - [x] Normalize non-square-pixel display aspect before rendering without distorting source media.
 - [x] Observe asynchronously loaded source viewports through inspector changes and mode replacement; retain valid preview during numeric edits.
-- [ ] Pass complete exact-candidate gates and review with actual FFmpeg and browser regressions.
+- [x] Pass complete local regression gates and scoped review with actual FFmpeg and browser regressions.
 - [ ] Manual: real camera/proxy/color behavior and actual NLE import remain workstation checks.

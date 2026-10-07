@@ -44,9 +44,31 @@ assertions, inspector restoration, transient numeric edits, playback, keyboard,
 cache and autosave behavior. Original failed CI and focused/diagnostic runs are
 retained rather than relabeled as success.
 
-Complete exact-candidate gate results remain pending. Core/FFmpeg geometric
-samples and browser fit checks are not a comprehensive cross-adapter per-pixel
-color/decoder comparison or continuous multi-track playback certification.
+## Complete local candidate validation
+
+Production/test head: `7b8aa9d1e8a18fe46f3dcd24a13b40500da09621`.
+All nine required local gates passed: format, i18n (1,023 keys), lint, TypeScript
+and Vue typecheck, **994 unit/integration tests in 84 files**, build, **60 browser
+cases**, official OTIO interchange and native format/Clippy/test-harness checks.
+Built CLI import/render/reopen/export smoke also passed. Native harnesses ran
+zero behavioral tests; native-window behavior is not established.
+
+The complete browser run used one worker and zero retries: **60 passed, zero
+failed/skipped, 727 shell seconds / 12.1 runner minutes**. Before/after Git heads,
+clean status and all captured source/test hashes match. Its 500-clip case passed
+in 8.9 seconds with current viewport fit, inspector restoration and mode changes.
+The run retains 174 named non-attachment PNGs; the Transcript/Glossary/Suggestions
+matrix contains exactly 36 across en-US/zh-TW/ja-JP/pseudo and 1280×720,
+1440×900, 1920×1080. These automated captures/assertions are scoped layout evidence.
+
+An independent immutable-source review found no new correctness findings; its
+fresh isolated core suite passed 5 cases. Final documentation is recorded after
+the complete source run. Fresh published-head CI and Codex review are separate
+readiness checks on [PR #5](https://github.com/bynanci/open-film/pull/5).
+
+Core/FFmpeg geometric samples and browser fit checks are not a comprehensive
+cross-adapter per-pixel color/decoder comparison or continuous multi-track
+playback certification.
 
 ## Manual gates
 
