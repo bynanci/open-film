@@ -118,6 +118,8 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   ).toBe(true);
 
   const requestedSources = new Set<string>();
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("request", (entry) => {
     const path = new URL(entry.url()).pathname;
     if (path.startsWith("/api/source/"))
@@ -200,6 +202,41 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
       player.evaluate((video) => (video as HTMLVideoElement).readyState),
     )
     .toBeGreaterThanOrEqual(1);
+
+  const compositionFrame = editor.locator(".editor-composition-frame");
+  await expect(compositionFrame).toBeVisible();
+  const scaleInput = editor.getByLabel("Clip scale", { exact: true });
+  await scaleInput.fill("");
+  await expect(compositionFrame).toBeVisible();
+  expect(pageErrors).toEqual([]);
+  await scaleInput.fill("1.2");
+  await scaleInput.press("Tab");
+  await expect(
+    editor.getByRole("status").filter({ hasText: /^Saved$/ }),
+  ).toBeVisible();
+
+  const sourceScreen = editor.locator(".editor-source-screen");
+  const beforeSourceWidth = await sourceScreen.evaluate(
+    (element) => element.clientWidth,
+  );
+  const beforeFrameWidth = (await compositionFrame.boundingBox())!.width;
+  await editor
+    .getByRole("button", { name: "Hide inspector", exact: true })
+    .click();
+  await expect
+    .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
+    .toBeGreaterThan(beforeSourceWidth);
+  await expect
+    .poll(async () => (await compositionFrame.boundingBox())!.width)
+    .toBeGreaterThan(beforeFrameWidth);
+  await editor
+    .getByRole("button", { name: "Show inspector", exact: true })
+    .click();
+  await expect
+    .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
+    .toBeLessThanOrEqual(beforeSourceWidth + 1);
+  expect(pageErrors).toEqual([]);
+
   expect([...requestedSources]).toEqual(["asset-000"]);
 
   const monitor = editor.locator(".editor-player-region");
