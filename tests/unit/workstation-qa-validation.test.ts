@@ -132,7 +132,9 @@ describe("workstation evidence validation boundaries", () => {
         [
           "--import",
           "tsx",
-          fileURLToPath(new URL("../../scripts/workstation-qa.ts", import.meta.url)),
+          fileURLToPath(
+            new URL("../../scripts/workstation-qa.ts", import.meta.url),
+          ),
           "init",
           path,
           "--candidate",

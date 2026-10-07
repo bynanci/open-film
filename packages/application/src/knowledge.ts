@@ -1077,6 +1077,9 @@ export class KnowledgeService {
       );
     const interrupted: Job = {
       ...job,
+      // Revoke the old execution before terminalizing its batches. A late writer
+      // must fail the existing owner-token CAS even before any retry starts.
+      reviewOwner: createReviewOwner(),
       status: "failed",
       stage: "interrupted",
       updatedAt: new Date().toISOString(),

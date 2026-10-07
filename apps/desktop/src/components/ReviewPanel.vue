@@ -57,7 +57,7 @@ const jobs = computed(() =>
 );
 const batches = ref<ReviewBatch[]>([]);
 const recoveryStates = shallowRef<Record<string, ReviewRecoveryState>>({});
-const recoveryConfirmJobId = ref("");
+const recoveryConfirmation = shallowRef<ReviewRecoveryState>();
 const recoveryJobsPerPage = 5;
 const recoveryPage = ref(0);
 const recoveryLoading = ref(false);
@@ -248,11 +248,15 @@ async function refresh(offset = requestedOffset.value) {
         return batches.value.filter((batch) => batch.jobId === job.id);
       });
       recoveryStates.value = nextRecoveryStates;
+      const confirmed = recoveryConfirmation.value;
+      const latest = confirmed && nextRecoveryStates[confirmed.jobId];
       if (
-        recoveryConfirmJobId.value &&
-        !nextRecoveryStates[recoveryConfirmJobId.value]?.manualRecoveryAllowed
+        confirmed &&
+        (!latest?.manualRecoveryAllowed ||
+          latest.ownerToken !== confirmed.ownerToken ||
+          latest.updatedAt !== confirmed.updatedAt)
       )
-        recoveryConfirmJobId.value = "";
+        recoveryConfirmation.value = undefined;
     }
   } catch (cause) {
     if (current()) {
@@ -377,26 +381,39 @@ async function cancel() {
     error.value = cause;
   }
 }
+function beginRecovery(job: Job) {
+  const checkpoint = recoveryStates.value[job.id];
+  if (
+    busy.value ||
+    uncertainAcceptance.value ||
+    !checkpoint?.manualRecoveryAllowed
+  )
+    return;
+  recoveryConfirmation.value = { ...checkpoint };
+}
 async function recoverInterrupted(job: Job) {
-  const state = recoveryStates.value[job.id];
-  if (!state?.manualRecoveryAllowed || busy.value) return;
-  busy.value = true;
-  error.value = null;
-  try {
+  const checkpoint = recoveryConfirmation.value;
+  if (
+    !checkpoint?.manualRecoveryAllowed ||
+    checkpoint.jobId !== job.id ||
+    uncertainAcceptance.value
+  )
+    return;
+  await reserve(async ({ current }) => {
+    if (!current() || uncertainAcceptance.value) return false;
     await api.recoverReview(job.id, {
       confirmStopped: true,
-      ownerToken: state.ownerToken,
-      updatedAt: state.updatedAt,
+      ownerToken: checkpoint.ownerToken,
+      updatedAt: checkpoint.updatedAt,
     });
-    recoveryConfirmJobId.value = "";
+    if (!current()) return false;
+    recoveryConfirmation.value = undefined;
     emit("activity");
     await refresh();
-  } catch (cause) {
-    error.value = cause;
-  } finally {
-    busy.value = false;
-  }
+    return current();
+  });
 }
+
 async function batchAction(batch: ReviewBatch, action: "retry" | "skip") {
   if (uncertainAcceptance.value) return;
   await reserve(async ({ current }) => {
@@ -655,7 +672,7 @@ onBeforeUnmount(() => {
       :data-job-id="job.id"
     >
       <p>{{ t("transcript.interruptedReview") }}</p>
-      <template v-if="recoveryConfirmJobId === job.id">
+      <template v-if="recoveryConfirmation?.jobId === job.id">
         <p>{{ t("transcript.recoverReviewConfirm") }}</p>
         <div class="editor-actions">
           <button
@@ -668,7 +685,7 @@ onBeforeUnmount(() => {
           <button
             class="editor-button"
             :disabled="busy"
-            @click="recoveryConfirmJobId = ''"
+            @click="recoveryConfirmation = undefined"
           >
             {{ t("transcript.cancelRecovery") }}
           </button>
@@ -678,7 +695,7 @@ onBeforeUnmount(() => {
         v-else
         class="editor-button"
         :disabled="busy"
-        @click="recoveryConfirmJobId = job.id"
+        @click="beginRecovery(job)"
       >
         {{ t("transcript.recoverReview") }}
       </button>

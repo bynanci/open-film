@@ -531,16 +531,47 @@ describe("review recovery respects durable execution ownership", () => {
       id: job.id,
       status: "failed",
       stage: "interrupted",
-      reviewOwner: job.reviewOwner,
     });
+    expect(recovered.reviewOwner?.token).not.toBe(job.reviewOwner?.token);
+    expect(ownsReviewOwner(recovered.reviewOwner)).toBe(true);
     expect(
       context.app.knowledge.batches(job.id).map((batch) => batch.status),
     ).toEqual(["completed", "cancelled", "cancelled"]);
     expect(context.app.knowledge.batches(job.id)[0]).toEqual(completed);
     expect(context.app.knowledge.reviewRecoveryStatus(job.id)).toMatchObject({
       manualRecoveryAllowed: false,
-      ownerState: "unknown",
+      ownerState: "alive",
     });
+  });
+
+  it("manual recovery fences late writes from the previous unknown owner", async () => {
+    const context = await fixture();
+    const owner = createReviewOwner();
+    const job: Job = {
+      id: "late-owner",
+      type: "language-review",
+      assetId: "source",
+      status: "running",
+      reviewOwner: { ...owner, host: owner.host + ":foreign" },
+      updatedAt: "2026-10-07T00:00:00Z",
+    };
+    context.app.catalog.saveJob(job);
+    const observed = context.app.knowledge.reviewRecoveryStatus(job.id);
+    const recovered = context.app.knowledge.manualRecoverReview(job.id, {
+      confirmStopped: true,
+      ownerToken: observed.ownerToken,
+      updatedAt: observed.updatedAt,
+    });
+    expect(
+      context.app.catalog.knowledge.saveOwnedReviewJob({
+        ...job,
+        progress: 1,
+        status: "completed",
+      }),
+    ).toBe(false);
+    expect(
+      context.app.catalog.listJobs().find((item) => item.id === job.id),
+    ).toEqual(recovered);
   });
 
   it("rejects invalid requested job IDs before creating owned review jobs or invoking a provider", async () => {

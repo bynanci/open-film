@@ -30,3 +30,15 @@ check the candidate, required coverage, source identities and attached evidence.
 Real Resolve, real ASR/LLM quality, GPU, camera material, sustained 4K and Windows
 installer validation remain unverified. This change does not implement automatic
 Windows/macOS execution-owner recovery.
+
+## Manual recovery fencing
+
+Confirmed recovery rotates execution ownership in the same catalog transaction
+that cancels unfinished batches. An obsolete writer cannot revive the job before
+a retry. Desktop confirmation retains the inspected owner token and timestamp;
+it cannot silently switch to a newer execution during polling. The action shares
+the existing mutation/disposal barrier and respects uncertain acceptance.
+
+Schema conditionals mirror positive-evidence and terminal-status rules. Runtime
+validation additionally checks calendar timestamps and interval ordering. Record
+validation is never a certificate of real hardware/model/NLE success.
