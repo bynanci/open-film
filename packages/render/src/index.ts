@@ -158,10 +158,12 @@ export class FFmpegRenderer {
               asset,
               options.signal,
             );
-            // Geometry contract: source is contain-fit to the composition frame,
-            // then user scale and clockwise rotation are applied around its center.
+            // Contain-fit the decoded display aspect, including non-square pixels.
+            // Missing SAR means square pixels. Explicit dimensions + setsar=1
+            // avoid version-specific scale reset_sar and an intermediate resize.
+            const displayAspect = "iw/ih*if(gt(sar,0),sar,1)";
             transform.push(
-              `scale=${settings.width}:${settings.height}:force_original_aspect_ratio=decrease`,
+              `scale=w='min(${settings.width},${settings.height}*(${displayAspect}))':h='min(${settings.height},${settings.width}/(${displayAspect}))'`,
             );
             if (geometry.scale !== 1)
               transform.push(

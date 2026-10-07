@@ -108,7 +108,17 @@ The Story-first composition engine and main Library/Story/Edit/Export navigation
 remain the same. See [transcript editing](docs/transcript-editing.md),
 [glossary](docs/glossary.md) and [review suggestions](docs/review-suggestions.md).
 
-The next implementation priority is a shared composition geometry contract with
-preview/render parity tests. Safe frames, local vision, smart reframing,
-highlights/derived films and captions remain subsequent milestones. They are not
-implemented in this round.
+Shared composition geometry follows in 0.3.2 below. Safe frames, local vision,
+smart reframing, highlights/derived films and captions remain subsequent
+milestones. They are not implemented in this round.
+
+## 0.3.2 — Shared Geometry Contract & Preview/Renderer Parity
+
+Use one composition-frame coordinate contract for source contain-fit, scale,
+clockwise rotation and translation. Validate real FFmpeg pixels, transparent
+rotation above lower tracks, sample aspect ratio, and browser layout lifecycle.
+Preserve the Story-first editor and its existing trim, history and autosave.
+See [geometry validation](docs/validation-geometry-parity.md). This milestone does
+not certify actual Resolve/camera/color/installer behavior or build a live GPU
+multitrack compositor. Workstation evidence and explicit safe review recovery
+are the next separate readiness slice; later creative features remain deferred.

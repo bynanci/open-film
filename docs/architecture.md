@@ -229,7 +229,11 @@ the renderer instead of leaking into spare UI space. Browser intrinsic dimension
 replace catalog dimensions after decode, keeping generated proxies and orientation
 effects aligned with what the user is actually previewing.
 
-The FFmpeg renderer follows the same ordering at output resolution. It converts
+The FFmpeg renderer follows the same ordering at output resolution. Its contain
+fit uses decoded width/height and sample aspect ratio; positive SAR is preserved
+as display aspect and unspecified SAR uses square pixels. It computes the output
+size in one scale operation before normalizing SAR, without relying on a newer
+FFmpeg `reset_sar` option or adding an intermediate resample. It converts
 the transformed source to an alpha-capable format before rotation so transparent
 rotated corners reveal lower visual tracks rather than becoming black. Final
 encoding quantization remains pixel-based, while UI mapping may use fractional CSS

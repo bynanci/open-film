@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Composition } from "@openfilm/core";
+import { resolvePreviewClipGeometry, type Composition } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "../src/index";
 
@@ -492,4 +492,138 @@ describe("real FFmpeg preview renderer", () => {
     expect(rotatedCorner[2]).toBeGreaterThan(120);
     expect(rotatedCorner[0]).toBeLessThan(100);
   });
+
+  it.each([2, 0.5, 0])(
+    "contain-fits source display aspect for SAR %s before user transforms",
+    async (sampleAspectRatio) => {
+      const directory = await mkdtemp(join(tmpdir(), "openfilm-geometry-sar-"));
+      directories.push(directory);
+      const source = join(directory, "anamorphic.mp4");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=red:s=160x90:r=10",
+        "-vf",
+        `setsar=${sampleAspectRatio}`,
+        "-t",
+        "0.4",
+        "-c:v",
+        "libx264",
+        "-threads",
+        "1",
+        "-pix_fmt",
+        "yuv420p",
+        "-y",
+        source,
+      ]);
+      const asset = await inspectMedia({
+        path: source,
+        uri: pathToFileURL(source).href,
+        name: "anamorphic.mp4",
+      });
+      expect(asset.dimensions).toEqual({ width: 160, height: 90 });
+      const probe = asset.metadata["openfilm.ffprobe"] as {
+        streams: { sample_aspect_ratio?: string }[];
+      };
+      expect(probe.streams[0]?.sample_aspect_ratio).toBe(
+        sampleAspectRatio === 2
+          ? "2:1"
+          : sampleAspectRatio === 0.5
+            ? "1:2"
+            : undefined,
+      );
+      const settings = { width: 160, height: 90, frameRate: 10 };
+      for (const transform of [
+        { scale: 1, rotation: 0, x: 0, y: 0 },
+        { scale: 0.75, rotation: 90, x: 12, y: -4 },
+      ]) {
+        const composition: Composition = {
+          id: "anamorphic",
+          storyId: "story",
+          duration: 0.4,
+          tracks: [
+            {
+              id: "video",
+              type: "video",
+              clips: [
+                {
+                  id: "anamorphic-clip",
+                  assetId: asset.id,
+                  timelineStart: 0,
+                  timelineDuration: 0.4,
+                  transform,
+                },
+              ],
+            },
+          ],
+        };
+        const output = join(directory, `preview-${transform.rotation}.mp4`);
+        await new FFmpegRenderer().render(
+          composition,
+          [asset],
+          output,
+          settings,
+        );
+        const decoded = await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "rgb24",
+          "-f",
+          "rawvideo",
+          "-",
+        ]);
+        // Browser intrinsic video dimensions account for sample aspect ratio.
+        // Compare encoded pixels with that same display-space source contract,
+        // including a quarter turn, user scale, translation and frame clipping.
+        const preview = resolvePreviewClipGeometry(
+          transform,
+          { width: 160 * (sampleAspectRatio || 1), height: 90 },
+          settings,
+          settings,
+        );
+        const width =
+          (transform.rotation ? preview.media.height : preview.media.width) *
+          preview.scale;
+        const height =
+          (transform.rotation ? preview.media.width : preview.media.height) *
+          preview.scale;
+        const center = { x: 80 + preview.x, y: 45 + preview.y };
+        const points = [
+          center,
+          { x: center.x - width / 2 - 6, y: center.y },
+          { x: center.x - width / 2 + 6, y: center.y },
+          { x: center.x + width / 2 - 6, y: center.y },
+          { x: center.x + width / 2 + 6, y: center.y },
+          { x: center.x, y: center.y - height / 2 - 6 },
+          { x: center.x, y: center.y - height / 2 + 6 },
+          { x: center.x, y: center.y + height / 2 - 6 },
+          { x: center.x, y: center.y + height / 2 + 6 },
+        ];
+        for (const point of points) {
+          const x = Math.round(point.x);
+          const y = Math.round(point.y);
+          if (x < 0 || x >= settings.width || y < 0 || y >= settings.height)
+            continue;
+          const inside =
+            Math.abs(x - center.x) < width / 2 &&
+            Math.abs(y - center.y) < height / 2;
+          const red = decoded.stdout[(y * settings.width + x) * 3]!;
+          if (inside)
+            expect(red, `${x},${y} should contain source`).toBeGreaterThan(180);
+          else expect(red, `${x},${y} should reveal frame`).toBeLessThan(30);
+        }
+      }
+    },
+  );
 });

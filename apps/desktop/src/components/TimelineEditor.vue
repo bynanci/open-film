@@ -782,6 +782,17 @@ watch(editMode, () => {
   fitPreview.value = null;
   void nextTick(measureWorkspace);
 });
+watch(
+  [sourceScreenElement, () => props.active, editMode],
+  ([screen, active, mode], [previousScreen]) => {
+    if (previousScreen) layoutObserver?.unobserve(previousScreen);
+    if (screen && active && mode === "story") {
+      layoutObserver?.observe(screen);
+      measureWorkspace();
+    }
+  },
+  { flush: "post" },
+);
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
@@ -792,7 +803,7 @@ onMounted(() => {
     if (editorElement.value.parentElement)
       layoutObserver.observe(editorElement.value.parentElement);
   }
-  if (sourceScreenElement.value)
+  if (sourceScreenElement.value && props.active && editMode.value === "story")
     layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
 });

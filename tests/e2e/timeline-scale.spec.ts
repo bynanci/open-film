@@ -216,7 +216,28 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   ).toBeVisible();
 
   const sourceScreen = editor.locator(".editor-source-screen");
-  await page.setViewportSize({ width: 1280, height: 1400 });
+  const frameAspect = app.project.settings.width / app.project.settings.height;
+  async function expectCurrentViewportFit() {
+    await expect
+      .poll(async () => {
+        const viewport = await sourceScreen.evaluate((element) => ({
+          width: element.clientWidth,
+          height: element.clientHeight,
+        }));
+        const frame = (await compositionFrame.boundingBox())!;
+        const width = Math.min(viewport.width, viewport.height * frameAspect);
+        return Math.max(
+          Math.abs(frame.width - width),
+          Math.abs(frame.height - width / frameAspect),
+        );
+      })
+      .toBeLessThan(1);
+  }
+  // Height-limited frames correctly stay the same size when an inspector closes.
+  // Use enough vertical space to make both inspector layouts width-limited, so a
+  // missed subscription to the asynchronously mounted source viewport is visible.
+  await page.setViewportSize({ width: 1280, height: 1800 });
+  await expectCurrentViewportFit();
   const beforeSourceWidth = await sourceScreen.evaluate(
     (element) => element.clientWidth,
   );
@@ -230,13 +251,31 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   await expect
     .poll(async () => (await compositionFrame.boundingBox())!.width)
     .toBeGreaterThan(beforeFrameWidth);
+  await expect
+    .poll(() =>
+      sourceScreen.evaluate(
+        (element, aspect) =>
+          element.clientHeight - element.clientWidth / aspect,
+        frameAspect,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expectCurrentViewportFit();
   await editor
     .getByRole("button", { name: "Show inspector", exact: true })
     .click();
   await expect
     .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
     .toBeLessThanOrEqual(beforeSourceWidth + 1);
+  await expectCurrentViewportFit();
+  await editor.getByRole("button", { name: "Precision", exact: true }).click();
+  await expect(sourceScreen).toBeHidden();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await editor.getByRole("button", { name: "Story", exact: true }).click();
+  await expect(sourceScreen).toBeVisible();
+  await expectCurrentViewportFit();
   await page.setViewportSize({ width: 1280, height: 720 });
+  await expectCurrentViewportFit();
   expect(pageErrors).toEqual([]);
 
   expect([...requestedSources]).toEqual(["asset-000"]);
