@@ -12,7 +12,10 @@ a non-cooperating provider settles; final published-head checks are tracked in
 PR #8. Ownership-aware recovery of transcription, waveform and scene analysis
 is **Automated Verified** in the isolated PR #9 stacked on #8. Actual-child,
 SQLite/HTTP/CLI and three-language browser regressions preserve live work,
-manual corrections and successor results across confirmed recovery. Future creative milestones remain
+manual corrections and successor results across confirmed recovery. Observers can
+switch films while foreign analysis continues; local jobs and pending mutations
+retain navigation barriers. The corrected candidate has separate verification
+from the earlier CI head. Future creative milestones remain
 deferred; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 

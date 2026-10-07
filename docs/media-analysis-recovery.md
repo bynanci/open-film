@@ -17,6 +17,13 @@ markers, Story, composition and original media. It does not automatically retry
 or replace text. Use the existing Analyze/Transcribe controls to retry explicitly;
 the normal edited-transcript warning and draft flush still apply.
 
+An observer can use Switch Project while a foreign analysis continues. Only a
+matching runtime status with `canCancel: false` allows this exception; local work,
+other job types and missing runtime status remain blocked. Closing flushes
+edits and rechecks a fresh job snapshot before the server's final local-work
+guard. Pending Precision analysis/marker requests also prevent leaving or changing
+sources until they settle. Switching does not cancel or recover the foreign Job.
+
 The confirmation is bound to the exact observed Job digest and owner token. If
 another process changes that checkpoint, refresh the status and inspect it again.
 Recovery never signals a foreign PID or forcibly terminates an arbitrary provider.

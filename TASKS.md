@@ -18,6 +18,11 @@ system or downstream NLE. Commands and test responsibilities are in
       and edits; Activity/API/CLI share ownership-aware actions. Actual-child,
       transaction/HTTP/CLI and three-language browser regressions pass; see
       [the validation record](docs/validation-media-analysis-recovery.md).
+- [x] Let an observer leave and reopen a film while another process continues
+      analysis, without cancelling that work or losing edits. Local work,
+      missing runtime evidence and in-flight Precision/Transcript mutations retain
+      navigation barriers; 39 component regressions and the actual-child browser
+      flow pass. Corrected-candidate gates remain separate from earlier CI.
 
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.

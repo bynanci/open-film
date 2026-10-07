@@ -74,6 +74,34 @@ manifest and required exact-head CI are recorded in
 success do not substitute for those checks before merge. The final evidence and
 copy update retains the verified application/catalog/command boundaries.
 
+## Post-Ready navigation correction
+
+The Ready-triggered Codex review of `eab34a4b0229bfc29e43ddc5de3e5d2c810d6be4`
+found P2 [observer navigation](https://github.com/bynanci/open-film/pull/9#discussion_r4212695135).
+Both preceding exact-head CI workflows passed on attempt 2 and their official
+Playwright annotations report 69 passed; attempt 1 exceeded the 20-minute job
+limit and remains retained. Those successful checks do not clear the later finding.
+
+The correction exempts only matching, explicitly non-local transcription,
+waveform and scene jobs from the navigation guard. Missing evidence and local or
+other jobs remain blocked. Draft flush is followed by a fresh job snapshot and
+project-session check. Precision mutation submissions use a generation-independent
+pending barrier through Timeline; source changes cannot discard an unresolved
+request. The server's local-execution and serialized-mutation checks still apply.
+
+Thirty actual App SFC regressions and nine Precision/Timeline regressions pass.
+Their initial RED runs failed eight and seven cases respectively. Independent
+review of the corrected code found no additional actionable P1/P2.
+At clean source head `c1218b905c96c1ed127a4d26ed5c394941f8aa1a`, the focused
+browser suite passed 5/5 in 31 seconds with all tracked source hashes unchanged.
+An actual held child continues while its observer closes the project, opens a
+second film and returns; the owner Job, manual transcript, Story, composition,
+trim, lock and original source hash are preserved before the child completes.
+
+Full gates and CI for the corrected published candidate remain distinct from
+`eab34a4` evidence and must be verified before merging PR #9. Real workstation
+gates are unchanged.
+
 ## Manual limits
 
 Actual Linux child probes establish behavior in this environment, not automatic
