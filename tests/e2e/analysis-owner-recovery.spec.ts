@@ -588,6 +588,11 @@ for (const locale of locales) {
 
       // Recovery never retries automatically. The existing explicit action must
       // warn about the saved human revision and retain it after provider success.
+      // This explicit boundary provider supports English, not automatic
+      // detection. Choose its actual capability through the product control.
+      await details
+        .getByLabel(text(locale, "transcript.language"), { exact: true })
+        .selectOption("en");
       const retry = details.getByRole("button", {
         name: text(locale, "transcript.retranscribe"),
         exact: true,
@@ -823,7 +828,7 @@ test("a real live foreign analysis process has no local Cancel or manual recover
       .click();
     await foreign(
       page.getByRole("region", {
-        name: text("en-US", "precision.analysis"),
+        name: text("en-US", "precision.title"),
         exact: true,
       }),
     );
