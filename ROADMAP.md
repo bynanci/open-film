@@ -7,8 +7,9 @@ improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.
-The current **In Progress** P0 slice makes transcription cancellation release the
-project before a non-cooperating provider settles. Ownership-aware recovery of
+The current P0 cancellation slice is **Automated Verified** locally: the project
+releases before a non-cooperating provider settles. Final published-head checks
+are tracked in PR #8. Ownership-aware recovery of
 non-review media analysis is **Planned** next. Future creative milestones remain
 deferred; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.

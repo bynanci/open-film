@@ -43,10 +43,34 @@ the prior transcript actually exists. No production validation was weakened.
 
 ## Complete candidate gate
 
-Full format, i18n, lint, typecheck, unit/integration, build, browser, official OTIO
-interchange and native gates are pending on the frozen candidate. Exact source
-SHA, counts and CI/review results will be recorded after execution; earlier PR
-checks do not establish this candidate's success.
+Source/test head: `eeb81abc17763dc16f8cf903cc7bb25c65e86b03`.
+All nine required local gates passed: format, i18n, lint, TypeScript/Vue typecheck,
+unit/integration, build, browser, official OTIO interchange and native checks.
+The unit/integration run passed **1,029 tests in 92 files**. I18n validated
+**1,028 semantic keys** across en-US, zh-TW and ja-JP. Built CLI import, intelligence,
+render, export and reopen smoke also passed. The official OTIO 0.18.1 parser,
+read/write/read, source bounds/hashes and 18 workstation-helper regressions pass;
+advanced interchange edits still require manual recreation.
+
+The complete real-browser suite passed **64 cases**, zero failures/skips/retries,
+one worker, in 12.4 minutes. Both before/after heads were exactly the source SHA
+above, both checkouts were clean, and all 11 captured source/test hashes matched.
+The three new cancellation cases passed inside this full run. Existing layout,
+accessibility and keyboard tests covered 1280×720, 1440×900 and 1920×1080;
+en-US, zh-TW, ja-JP and pseudo-localized screens produced 174 screenshots.
+Native format/Clippy/test harnesses pass but execute zero behavioral Rust tests;
+actual native-window behavior remains unverified.
+
+Independent scoped review found no actionable P1/P2 defect; eight private helper
+race/listener probes passed. GitHub Codex completed the source-head review at
+2026-10-07T16:19:07Z without findings or review threads. The final evidence update
+changes documentation only. Latest published-head CI and review are tracked in
+[PR #8](https://github.com/bynanci/open-film/pull/8); source-head checks must not be
+substituted for the final published head.
+
+Merged base main `34b6ff093294f97061dfb0ecb270413a52b6b7ee` passed
+[Verify 37648282755](https://github.com/bynanci/open-film/actions/runs/37648282755),
+including both jobs and 61 browser cases after PR #5/#6 convergence.
 
 ## Limits
 
