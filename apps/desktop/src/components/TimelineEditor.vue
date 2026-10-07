@@ -8,6 +8,7 @@ import {
   watch,
 } from "vue";
 import {
+  resolveClipGeometry,
   resolvePreviewClipGeometry,
   type Clip,
   type FrameSize,
