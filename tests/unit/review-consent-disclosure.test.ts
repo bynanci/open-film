@@ -4,6 +4,7 @@ import { transform } from "esbuild";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { PROVIDER_DATA_KINDS } from "@openfilm/plugin-sdk";
 import { ApiError, type ReviewProviderState } from "../../apps/desktop/src/api";
+import { loadReviewRecovery } from "../../apps/desktop/src/reviewRecovery";
 import en from "../../apps/desktop/src/i18n/modules/transcript/en-US";
 import zh from "../../apps/desktop/src/i18n/modules/transcript/zh-TW";
 import ja from "../../apps/desktop/src/i18n/modules/transcript/ja-JP";
@@ -154,6 +155,7 @@ describe("remote review consent disclosure", () => {
           useI18n: () => ({ t: i18n.global.t }),
           api,
           ApiError,
+          loadReviewRecovery,
           post: vi.fn(),
           errorDetail: String,
           localizeError: String,
