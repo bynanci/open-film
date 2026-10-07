@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Composition } from "@openfilm/core";
+import { resolvePreviewClipGeometry, type Composition } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "../src/index";
 
@@ -300,4 +300,330 @@ describe("real FFmpeg preview renderer", () => {
       ),
     ).toBeCloseTo(0.3, 2);
   });
+
+  it("applies contain-fit geometry before scale, rotation and frame-pixel translation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-geometry-"));
+    directories.push(directory);
+    const source = join(directory, "geometry.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=80x40",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = {
+      id: "geometry",
+      uri: pathToFileURL(source).href,
+      mediaType: "image" as const,
+      name: "geometry.png",
+      tags: [],
+      state: {},
+      metadata: {},
+      dimensions: { width: 80, height: 40 },
+    };
+    const composition: Composition = {
+      id: "geometry-cut",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "geometry-clip",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+              transform: { scale: 0.5, rotation: 0, x: 20, y: 0 },
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "geometry-preview.mp4");
+    await new FFmpegRenderer().render(composition, [asset], output, {
+      width: 160,
+      height: 90,
+      frameRate: 10,
+    });
+    const sample = async (x: number, y: number) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-vf",
+          `crop=1:1:${x}:${y},format=rgb24`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ])
+      ).stdout;
+    // Contain-fit is 160x80; scale .5 becomes 80x40 and +20 frame px moves
+    // the red rectangle from x=40..119 to x=60..139.
+    expect((await sample(50, 45))[0]).toBeLessThan(30);
+    expect((await sample(70, 45))[0]).toBeGreaterThan(180);
+    expect((await sample(130, 45))[0]).toBeGreaterThan(180);
+    expect((await sample(145, 45))[0]).toBeLessThan(30);
+  });
+
+  it("keeps rotated bounds transparent so lower visual tracks remain visible", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-geometry-alpha-"));
+    directories.push(directory);
+    const paths = {
+      background: join(directory, "background.png"),
+      foreground: join(directory, "foreground.png"),
+    };
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=blue:s=160x90",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      paths.background,
+    ]);
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-nostdin",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=80x40",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      paths.foreground,
+    ]);
+    const assets = await Promise.all(
+      Object.entries(paths).map(([name, path]) =>
+        inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${name}.png`,
+        }),
+      ),
+    );
+    const [background, foreground] = assets;
+    const composition: Composition = {
+      id: "geometry-alpha",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        {
+          id: "background",
+          type: "video",
+          clips: [
+            {
+              id: "background",
+              assetId: background!.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+            },
+          ],
+        },
+        {
+          id: "foreground",
+          type: "overlay",
+          clips: [
+            {
+              id: "foreground",
+              assetId: foreground!.id,
+              timelineStart: 0,
+              timelineDuration: 1,
+              transform: { scale: 0.5, rotation: 45, x: 0, y: 0 },
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "geometry-alpha-preview.mp4");
+    await new FFmpegRenderer().render(composition, assets, output, {
+      width: 160,
+      height: 90,
+      frameRate: 10,
+    });
+    const sample = async (x: number, y: number) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-vf",
+          `crop=1:1:${x}:${y},format=rgb24`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ])
+      ).stdout;
+    const center = await sample(80, 45);
+    expect(center[0]).toBeGreaterThan(170);
+    expect(center[2]).toBeLessThan(80);
+    const rotatedCorner = await sample(40, 5);
+    expect(rotatedCorner[2]).toBeGreaterThan(120);
+    expect(rotatedCorner[0]).toBeLessThan(100);
+  });
+
+  it.each([2, 0.5, 0])(
+    "contain-fits source display aspect for SAR %s before user transforms",
+    async (sampleAspectRatio) => {
+      const directory = await mkdtemp(join(tmpdir(), "openfilm-geometry-sar-"));
+      directories.push(directory);
+      const source = join(directory, "anamorphic.mp4");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=red:s=160x90:r=10",
+        "-vf",
+        `setsar=${sampleAspectRatio}`,
+        "-t",
+        "0.4",
+        "-c:v",
+        "libx264",
+        "-threads",
+        "1",
+        "-pix_fmt",
+        "yuv420p",
+        "-y",
+        source,
+      ]);
+      const asset = await inspectMedia({
+        path: source,
+        uri: pathToFileURL(source).href,
+        name: "anamorphic.mp4",
+      });
+      expect(asset.dimensions).toEqual({ width: 160, height: 90 });
+      const probe = asset.metadata["openfilm.ffprobe"] as {
+        streams: { sample_aspect_ratio?: string }[];
+      };
+      expect(probe.streams[0]?.sample_aspect_ratio).toBe(
+        sampleAspectRatio === 2
+          ? "2:1"
+          : sampleAspectRatio === 0.5
+            ? "1:2"
+            : undefined,
+      );
+      const settings = { width: 160, height: 90, frameRate: 10 };
+      for (const transform of [
+        { scale: 1, rotation: 0, x: 0, y: 0 },
+        { scale: 0.75, rotation: 90, x: 12, y: -4 },
+      ]) {
+        const composition: Composition = {
+          id: "anamorphic",
+          storyId: "story",
+          duration: 0.4,
+          tracks: [
+            {
+              id: "video",
+              type: "video",
+              clips: [
+                {
+                  id: "anamorphic-clip",
+                  assetId: asset.id,
+                  timelineStart: 0,
+                  timelineDuration: 0.4,
+                  transform,
+                },
+              ],
+            },
+          ],
+        };
+        const output = join(directory, `preview-${transform.rotation}.mp4`);
+        await new FFmpegRenderer().render(
+          composition,
+          [asset],
+          output,
+          settings,
+        );
+        const decoded = await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-ss",
+          "0.2",
+          "-i",
+          output,
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "rgb24",
+          "-f",
+          "rawvideo",
+          "-",
+        ]);
+        // Browser intrinsic video dimensions account for sample aspect ratio.
+        // Compare encoded pixels with that same display-space source contract,
+        // including a quarter turn, user scale, translation and frame clipping.
+        const preview = resolvePreviewClipGeometry(
+          transform,
+          { width: 160 * (sampleAspectRatio || 1), height: 90 },
+          settings,
+          settings,
+        );
+        const width =
+          (transform.rotation ? preview.media.height : preview.media.width) *
+          preview.scale;
+        const height =
+          (transform.rotation ? preview.media.width : preview.media.height) *
+          preview.scale;
+        const center = { x: 80 + preview.x, y: 45 + preview.y };
+        const points = [
+          center,
+          { x: center.x - width / 2 - 6, y: center.y },
+          { x: center.x - width / 2 + 6, y: center.y },
+          { x: center.x + width / 2 - 6, y: center.y },
+          { x: center.x + width / 2 + 6, y: center.y },
+          { x: center.x, y: center.y - height / 2 - 6 },
+          { x: center.x, y: center.y - height / 2 + 6 },
+          { x: center.x, y: center.y + height / 2 - 6 },
+          { x: center.x, y: center.y + height / 2 + 6 },
+        ];
+        for (const point of points) {
+          const x = Math.round(point.x);
+          const y = Math.round(point.y);
+          if (x < 0 || x >= settings.width || y < 0 || y >= settings.height)
+            continue;
+          const inside =
+            Math.abs(x - center.x) < width / 2 &&
+            Math.abs(y - center.y) < height / 2;
+          const red = decoded.stdout[(y * settings.width + x) * 3]!;
+          if (inside)
+            expect(red, `${x},${y} should contain source`).toBeGreaterThan(180);
+          else expect(red, `${x},${y} should reveal frame`).toBeLessThan(30);
+        }
+      }
+    },
+  );
 });

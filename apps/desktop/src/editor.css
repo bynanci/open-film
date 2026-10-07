@@ -297,9 +297,28 @@
   background: var(--of-bg);
 }
 
-.editor-source-screen :is(img, video) {
+.editor-composition-frame {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--of-player);
+}
+
+.editor-composition-frame > :is(img, video) {
   display: block;
-  width: 100%;
+  flex: 0 0 auto;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  transform-origin: center center;
+}
+
+.editor-missing-source img,
+.editor-unsupported-source img {
+  display: block;
+  max-width: 100%;
   max-height: 230px;
   object-fit: contain;
 }
@@ -1346,10 +1365,14 @@ button.editor-beat-heading:hover {
     border-radius: var(--of-radius-sm);
   }
 
-  .timeline-editor-contained .editor-source-screen :is(img, video) {
-    height: 100%;
+  .timeline-editor-contained .editor-composition-frame {
+    max-width: 100%;
     max-height: 100%;
-    object-fit: contain;
+  }
+
+  .timeline-editor-contained .editor-missing-source img,
+  .timeline-editor-contained .editor-unsupported-source img {
+    max-height: 100%;
   }
 
   .timeline-editor-contained

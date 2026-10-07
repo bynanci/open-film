@@ -7,7 +7,15 @@ import {
   ref,
   watch,
 } from "vue";
-import type { Clip, Job, StoryBeat } from "@openfilm/core";
+import {
+  resolveClipGeometry,
+  resolvePreviewClipGeometry,
+  type Clip,
+  type FrameSize,
+  type Job,
+  type ProjectSettings,
+  type StoryBeat,
+} from "@openfilm/core";
 import {
   applyTimelineCommand,
   prepareShorteningPlan,
@@ -42,6 +50,7 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   jobs?: readonly Job[];
+  projectSettings: ProjectSettings;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -91,6 +100,9 @@ const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
+const sourceScreenElement = ref<HTMLElement | null>(null);
+const sourceViewport = ref<FrameSize>({ width: 1, height: 1 });
+const sourcePreviewSize = ref<FrameSize>();
 const precisionElement = ref<HTMLElement | null>(null);
 const transcriptElement = ref<HTMLElement | null>(null);
 async function setEditMode(mode: "story" | "precision" | "transcript") {
@@ -318,6 +330,58 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
+function previewNumber(
+  value: unknown,
+  fallback: number,
+  positive = false,
+): number {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    (!positive || value > 0)
+    ? value
+    : fallback;
+}
+const previewGeometry = computed(() => {
+  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  return resolvePreviewClipGeometry(
+    {
+      scale: previewNumber(clipFields.value.scale, committed.scale, true),
+      rotation: previewNumber(clipFields.value.rotation, committed.rotation),
+      x: previewNumber(clipFields.value.x, committed.x),
+      y: previewNumber(clipFields.value.y, committed.y),
+    },
+    sourcePreviewSize.value ??
+      selectedAsset.value?.dimensions ??
+      props.projectSettings,
+    props.projectSettings,
+    sourceViewport.value,
+  );
+});
+const previewFrameStyle = computed(() => ({
+  width: `${previewGeometry.value.frame.width}px`,
+  height: `${previewGeometry.value.frame.height}px`,
+}));
+const previewMediaStyle = computed(() => ({
+  width: `${previewGeometry.value.media.width}px`,
+  height: `${previewGeometry.value.media.height}px`,
+  transform: `translate(${previewGeometry.value.x}px, ${previewGeometry.value.y}px) rotate(${previewGeometry.value.rotation}deg) scale(${previewGeometry.value.scale})`,
+}));
+function capturePreviewSize(event: Event) {
+  const media = event.currentTarget;
+  const width =
+    media instanceof HTMLImageElement
+      ? media.naturalWidth
+      : media instanceof HTMLVideoElement
+        ? media.videoWidth
+        : 0;
+  const height =
+    media instanceof HTMLImageElement
+      ? media.naturalHeight
+      : media instanceof HTMLVideoElement
+        ? media.videoHeight
+        : 0;
+  if (width > 0 && height > 0) sourcePreviewSize.value = { width, height };
+}
 function transition(event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   editClip({
@@ -480,6 +544,11 @@ function revealClip(id: string) {
 function measureWorkspace() {
   cancelAnimationFrame(layoutFrame);
   layoutFrame = requestAnimationFrame(() => {
+    if (sourceScreenElement.value) {
+      const width = sourceScreenElement.value.clientWidth;
+      const height = sourceScreenElement.value.clientHeight;
+      if (width > 0 && height > 0) sourceViewport.value = { width, height };
+    }
     const workspace =
       editMode.value === "precision"
         ? precisionElement.value
@@ -699,6 +768,7 @@ watch(selectedBeat, (beat, previous) => {
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
   playing.value = false;
+  sourcePreviewSize.value = undefined;
 });
 watch(
   () => props.active,
@@ -712,6 +782,17 @@ watch(editMode, () => {
   fitPreview.value = null;
   void nextTick(measureWorkspace);
 });
+watch(
+  [sourceScreenElement, () => props.active, editMode],
+  ([screen, active, mode], [previousScreen]) => {
+    if (previousScreen) layoutObserver?.unobserve(previousScreen);
+    if (screen && active && mode === "story") {
+      layoutObserver?.observe(screen);
+      measureWorkspace();
+    }
+  },
+  { flush: "post" },
+);
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
@@ -722,6 +803,8 @@ onMounted(() => {
     if (editorElement.value.parentElement)
       layoutObserver.observe(editorElement.value.parentElement);
   }
+  if (sourceScreenElement.value && props.active && editMode.value === "story")
+    layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
 });
 onBeforeUnmount(() => {
@@ -1128,7 +1211,7 @@ onBeforeUnmount(() => {
       >
         <div class="editor-stage editor-main">
           <div class="editor-player-region">
-            <div class="editor-source-screen">
+            <div ref="sourceScreenElement" class="editor-source-screen">
               <template v-if="selectedAsset">
                 <div v-if="sourceUnavailable" class="editor-missing-source">
                   <img
@@ -1176,16 +1259,20 @@ onBeforeUnmount(() => {
                     </p>
                   </div>
                 </div>
-                <img
+                <div
                   v-else-if="selectedAsset.mediaType === 'image'"
-                  :key="sourcePlaybackKey"
-                  :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
-                  :alt="selectedAsset.name"
-                  :style="{
-                    transform: `translate(${clipFields.x}px, ${clipFields.y}px) rotate(${clipFields.rotation}deg) scale(${clipFields.scale})`,
-                  }"
-                  @error="sourceError = 'photo'"
-                />
+                  class="editor-composition-frame"
+                  :style="previewFrameStyle"
+                >
+                  <img
+                    :key="sourcePlaybackKey"
+                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :alt="selectedAsset.name"
+                    :style="previewMediaStyle"
+                    @load="capturePreviewSize"
+                    @error="sourceError = 'photo'"
+                  />
+                </div>
                 <div
                   v-else-if="selectedAsset.mediaType === 'audio'"
                   class="editor-audio-preview"
@@ -1205,28 +1292,34 @@ onBeforeUnmount(() => {
                     @error="sourceError = 'playback'"
                   />
                 </div>
-                <video
+                <div
                   v-else-if="active && editMode === 'story'"
-                  ref="sourcePlayer"
-                  :key="sourcePlaybackKey"
-                  :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
-                  :poster="
-                    selectedAsset.thumbnailUri
-                      ? thumbnailUrl(selectedAsset.id)
-                      : undefined
-                  "
-                  controls
-                  preload="metadata"
-                  :aria-label="t('editor.source.preview')"
-                  :style="{
-                    transform: `translate(${clipFields.x}px, ${clipFields.y}px) rotate(${clipFields.rotation}deg) scale(${clipFields.scale})`,
-                  }"
-                  @loadedmetadata="configurePlayer"
-                  @timeupdate="stopAtOut"
-                  @play="playing = true"
-                  @pause="playing = false"
-                  @error="sourceError = 'playback'"
-                />
+                  class="editor-composition-frame"
+                  :style="previewFrameStyle"
+                >
+                  <video
+                    ref="sourcePlayer"
+                    :key="sourcePlaybackKey"
+                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :poster="
+                      selectedAsset.thumbnailUri
+                        ? thumbnailUrl(selectedAsset.id)
+                        : undefined
+                    "
+                    controls
+                    preload="metadata"
+                    :aria-label="t('editor.source.preview')"
+                    :style="previewMediaStyle"
+                    @loadedmetadata="
+                      capturePreviewSize($event);
+                      configurePlayer();
+                    "
+                    @timeupdate="stopAtOut"
+                    @play="playing = true"
+                    @pause="playing = false"
+                    @error="sourceError = 'playback'"
+                  />
+                </div>
               </template>
               <div v-else class="editor-source-empty">
                 <Icon name="film" :size="30" /><span>{{

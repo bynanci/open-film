@@ -477,18 +477,23 @@
     },
     "clipTransform": {
       "type": "object",
+      "description": "Visual transforms use the OpenFilm geometry contract: contain-fit source pixels into the composition frame, then scale, clockwise rotation around media center, and x/y translation in composition-frame pixels from frame center. Speed and volume are independent temporal/audio transforms.",
       "properties": {
         "scale": {
+          "description": "Multiplier applied after contain-fit.",
           "type": "number",
           "exclusiveMinimum": 0
         },
         "rotation": {
+          "description": "Clockwise rotation in degrees around the fitted media center.",
           "type": "number"
         },
         "x": {
+          "description": "Horizontal translation in composition-frame pixels; positive moves right.",
           "type": "number"
         },
         "y": {
+          "description": "Vertical translation in composition-frame pixels; positive moves down.",
           "type": "number"
         },
         "speed": {

@@ -4,7 +4,7 @@ An open-source, local-first, story-first media composer. OpenFilm turns a local
 collection of photos, video and audio into organized memories, a story and an
 editable film. Original files are never modified.
 
-**The current development tree includes OpenFilm 0.3.1 Transcript Productivity.** It builds on the localized product workflow and combines a Vue desktop workspace,
+**The current development tree includes OpenFilm 0.3.2 Shared Visual Geometry.** It builds on the localized product workflow and combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
@@ -65,6 +65,14 @@ accept or skip; optional language review uses the existing provider consent
 boundary. See [transcript editing](docs/transcript-editing.md),
 [glossary](docs/glossary.md), [review suggestions](docs/review-suggestions.md) and
 the [validation record](docs/validation-transcript-productivity.md).
+
+**0.3.2 Shared Visual Geometry** defines contain-fit, scale, clockwise rotation
+and position in composition-frame pixels for the source preview and FFmpeg
+renderer. The preview clips at the composition frame and follows inspector/layout
+changes; rendering preserves transparent rotated corners above lower tracks.
+See the [geometry contract](docs/architecture.md#shared-visual-geometry-contract)
+and [validation record](docs/validation-geometry-parity.md). This is per-clip
+geometry validation, not a claim of a full live multitrack compositor or real NLE QA.
 
 ## Requirements
 

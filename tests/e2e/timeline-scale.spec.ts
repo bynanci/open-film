@@ -118,6 +118,8 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   ).toBe(true);
 
   const requestedSources = new Set<string>();
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("request", (entry) => {
     const path = new URL(entry.url()).pathname;
     if (path.startsWith("/api/source/"))
@@ -200,6 +202,82 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
       player.evaluate((video) => (video as HTMLVideoElement).readyState),
     )
     .toBeGreaterThanOrEqual(1);
+
+  const compositionFrame = editor.locator(".editor-composition-frame");
+  await expect(compositionFrame).toBeVisible();
+  const scaleInput = editor.getByLabel("Clip scale", { exact: true });
+  await scaleInput.fill("");
+  await expect(compositionFrame).toBeVisible();
+  expect(pageErrors).toEqual([]);
+  await scaleInput.fill("1.2");
+  await scaleInput.press("Tab");
+  await expect(
+    editor.getByRole("status").filter({ hasText: /^Saved$/ }),
+  ).toBeVisible();
+
+  const sourceScreen = editor.locator(".editor-source-screen");
+  const frameAspect = app.project.settings.width / app.project.settings.height;
+  async function expectCurrentViewportFit() {
+    await expect
+      .poll(async () => {
+        const viewport = await sourceScreen.evaluate((element) => ({
+          width: element.clientWidth,
+          height: element.clientHeight,
+        }));
+        const frame = (await compositionFrame.boundingBox())!;
+        const width = Math.min(viewport.width, viewport.height * frameAspect);
+        return Math.max(
+          Math.abs(frame.width - width),
+          Math.abs(frame.height - width / frameAspect),
+        );
+      })
+      .toBeLessThan(1);
+  }
+  // Height-limited frames correctly stay the same size when an inspector closes.
+  // Use enough vertical space to make both inspector layouts width-limited, so a
+  // missed subscription to the asynchronously mounted source viewport is visible.
+  await page.setViewportSize({ width: 1280, height: 1800 });
+  await expectCurrentViewportFit();
+  const beforeSourceWidth = await sourceScreen.evaluate(
+    (element) => element.clientWidth,
+  );
+  const beforeFrameWidth = (await compositionFrame.boundingBox())!.width;
+  await editor
+    .getByRole("button", { name: "Hide inspector", exact: true })
+    .click();
+  await expect
+    .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
+    .toBeGreaterThan(beforeSourceWidth);
+  await expect
+    .poll(async () => (await compositionFrame.boundingBox())!.width)
+    .toBeGreaterThan(beforeFrameWidth);
+  await expect
+    .poll(() =>
+      sourceScreen.evaluate(
+        (element, aspect) =>
+          element.clientHeight - element.clientWidth / aspect,
+        frameAspect,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expectCurrentViewportFit();
+  await editor
+    .getByRole("button", { name: "Show inspector", exact: true })
+    .click();
+  await expect
+    .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
+    .toBeLessThanOrEqual(beforeSourceWidth + 1);
+  await expectCurrentViewportFit();
+  await editor.getByRole("button", { name: "Precision", exact: true }).click();
+  await expect(sourceScreen).toBeHidden();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await editor.getByRole("button", { name: "Story", exact: true }).click();
+  await expect(sourceScreen).toBeVisible();
+  await expectCurrentViewportFit();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expectCurrentViewportFit();
+  expect(pageErrors).toEqual([]);
+
   expect([...requestedSources]).toEqual(["asset-000"]);
 
   const monitor = editor.locator(".editor-player-region");

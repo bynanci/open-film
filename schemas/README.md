@@ -8,8 +8,10 @@ Schema `$id` values are stable identifiers; validators should resolve the
 accompanying files locally and do not need network access.
 
 All durations, source trim positions, and timeline positions use seconds.
-Frame rates are frames per second. Coordinates use WGS84 degrees, and event
-region radii use kilometers. Confidence and job progress are fractions from
+Frame rates are frames per second. Clip visual x/y coordinates are composition-
+frame pixels from frame center (+x right, +y down); source pixels are contain-fit
+before scale and clockwise rotation. Geographic coordinates use WGS84 degrees,
+and event region radii use kilometers. Confidence and job progress are fractions from
 zero to one; user ratings range from zero to five. Timestamps include an explicit
 timezone. Namespace plugin metadata keys to avoid collisions.
 

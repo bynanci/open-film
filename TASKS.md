@@ -153,7 +153,7 @@ from model, camera and hardware certification.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
-Geometry/Vision, Highlights and Captions remain deferred. Transcript productivity
+Vision, Highlights and Captions remain deferred. Geometry and transcript productivity
 is tracked separately below; interface-only work is not completion.
 
 ## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
@@ -207,3 +207,14 @@ Evidence: [validation record](docs/validation-transcript-productivity.md).
 - [x] Recover review work only for proven-dead owners; preserve live, unknown, foreign and legacy ownership with conservative platform handling.
 - [ ] Manual: real speech/model quality, GPU/camera/large-source performance and Windows installation.
 - [ ] Manual: actual Resolve QA remains a separate workstation gate.
+
+## OpenFilm 0.3.2 — Shared Geometry Contract & Preview/Renderer Parity
+
+Evidence: [validation record](docs/validation-geometry-parity.md).
+
+- [x] Share validated frame-space contain-fit, scale, clockwise rotation and position across preview and renderer.
+- [x] Keep source and composition-frame boxes separate, clip transformed media at the frame, and preserve alpha above lower visual tracks.
+- [x] Normalize non-square-pixel display aspect before rendering without distorting source media.
+- [x] Observe asynchronously loaded source viewports through inspector changes and mode replacement; retain valid preview during numeric edits.
+- [x] Pass complete local regression gates and scoped review with actual FFmpeg and browser regressions.
+- [ ] Manual: real camera/proxy/color behavior and actual NLE import remain workstation checks.
