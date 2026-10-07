@@ -228,11 +228,21 @@ async function refresh(offset = requestedOffset.value) {
     recoveryLoading.value = true;
     const found = await Promise.allSettled(
       capturedRecoveryWindow.map(async (job) => {
-        const [batchState, recovery] = await Promise.all([
-          api.reviewBatches(job.id),
-          api.reviewRecovery(job.id),
-        ]);
-        return { batches: batchState.batches, recovery };
+        const batchState = await api.reviewBatches(job.id);
+        if (job.type === "review")
+          return { batches: batchState.batches, recovery: undefined };
+        try {
+          return {
+            batches: batchState.batches,
+            recovery: await api.reviewRecovery(job.id),
+          };
+        } catch (recoveryError) {
+          return {
+            batches: batchState.batches,
+            recovery: undefined,
+            recoveryError,
+          };
+        }
       }),
     );
     if (current() && capturedRecoveryPage === recoveryPage.value) {
@@ -240,11 +250,14 @@ async function refresh(offset = requestedOffset.value) {
       batches.value = found.flatMap((result, index) => {
         const job = capturedRecoveryWindow[index]!;
         if (result.status === "fulfilled") {
-          nextRecoveryStates[job.id] = result.value.recovery;
+          if (result.value.recovery)
+            nextRecoveryStates[job.id] = result.value.recovery;
+          if ("recoveryError" in result.value && result.value.recoveryError)
+            error.value = result.value.recoveryError;
           return result.value.batches;
         }
         error.value = result.reason;
-        // A failed refresh must not hide recovery evidence already loaded.
+        // A failed batch read must not hide recovery evidence already loaded.
         return batches.value.filter((batch) => batch.jobId === job.id);
       });
       recoveryStates.value = nextRecoveryStates;
