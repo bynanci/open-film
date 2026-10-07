@@ -216,6 +216,7 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   ).toBeVisible();
 
   const sourceScreen = editor.locator(".editor-source-screen");
+  await page.setViewportSize({ width: 1280, height: 1400 });
   const beforeSourceWidth = await sourceScreen.evaluate(
     (element) => element.clientWidth,
   );
@@ -235,6 +236,7 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   await expect
     .poll(() => sourceScreen.evaluate((element) => element.clientWidth))
     .toBeLessThanOrEqual(beforeSourceWidth + 1);
+  await page.setViewportSize({ width: 1280, height: 720 });
   expect(pageErrors).toEqual([]);
 
   expect([...requestedSources]).toEqual(["asset-000"]);
