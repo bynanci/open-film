@@ -26,6 +26,7 @@ import type {
 import { GlobalGlossaryStore } from "./global-glossary.js";
 import type { TranscriptEditor } from "./transcript-editor.js";
 import { resolveUserDataDirectory } from "./user-data.js";
+import { cancellableProviderResult } from "./cancellable-provider-result.js";
 import {
   createReviewOwner,
   ownsReviewOwner,
@@ -55,33 +56,6 @@ interface ReviewPromptContext {
 function abort(signal?: AbortSignal) {
   if (signal?.aborted)
     throw new DOMException("Review cancelled.", "AbortError");
-}
-
-/** Providers may ignore cooperative signals. Cancellation releases application ownership;
- * a late text result is observed and discarded without touching the closed catalog. */
-function cancellableProviderResult<T>(
-  work: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  if (!signal) return work;
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const finish = (action: () => void) => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener("abort", cancel);
-      action();
-    };
-    const cancel = () =>
-      finish(() => reject(new DOMException("Review cancelled.", "AbortError")));
-    signal.addEventListener("abort", cancel, { once: true });
-    if (signal.aborted) cancel();
-    // Install both handlers even if cancellation already won, preventing unhandled late rejections.
-    work.then(
-      (value) => finish(() => resolve(value)),
-      (error) => finish(() => reject(error)),
-    );
-  });
 }
 
 /** Text knowledge is offline by default. Providers can only return reviewable evidence. */
