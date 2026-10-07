@@ -404,7 +404,13 @@ async function pollJobs(hydrate = false) {
     polling = setTimeout(() => void pollJobs(), 1000);
 }
 async function analyze(operation: "transcribe" | "waveform" | "scenes") {
-  if (!playable.value || !hasSourceDuration.value || analysisBusy.value) return;
+  if (
+    !playable.value ||
+    !hasSourceDuration.value ||
+    analysisBusy.value ||
+    props.busy
+  )
+    return;
   if (operation === "transcribe" && !transcriptionReady.value) return;
   const stamp = generation;
   pending.value = true;
@@ -463,6 +469,7 @@ async function addMarker(at = playhead.value) {
     !playable.value ||
     !hasSourceDuration.value ||
     !sourceVerified.value ||
+    props.busy ||
     pending.value
   )
     return;
@@ -487,7 +494,12 @@ async function addMarker(at = playhead.value) {
   }
 }
 async function removeMarker(marker: TimelineMarker) {
-  if (!sourceVerified.value || marker.type !== "manual" || pending.value)
+  if (
+    !sourceVerified.value ||
+    marker.type !== "manual" ||
+    props.busy ||
+    pending.value
+  )
     return;
   const stamp = generation;
   pending.value = true;
@@ -1080,7 +1092,10 @@ onBeforeUnmount(() => {
             ><button
               class="editor-button primary"
               :disabled="
-                !transcriptionReady || !hasSourceDuration || analysisBusy
+                !transcriptionReady ||
+                !hasSourceDuration ||
+                analysisBusy ||
+                busy
               "
               @click="analyze('transcribe')"
             >
@@ -1089,14 +1104,14 @@ onBeforeUnmount(() => {
             <div class="editor-actions">
               <button
                 class="editor-button"
-                :disabled="!hasSourceDuration || analysisBusy"
+                :disabled="!hasSourceDuration || analysisBusy || busy"
                 @click="analyze('waveform')"
               >
                 {{ t("precision.analyzeWaveform") }}</button
               ><button
                 v-if="asset!.mediaType === 'video'"
                 class="editor-button"
-                :disabled="!hasSourceDuration || analysisBusy"
+                :disabled="!hasSourceDuration || analysisBusy || busy"
                 @click="analyze('scenes')"
               >
                 {{ t("precision.detectScenes") }}
@@ -1156,7 +1171,7 @@ onBeforeUnmount(() => {
                 :aria-label="
                   t('precision.removeMarker', { time: time(marker.time) })
                 "
-                :disabled="!sourceVerified || pending"
+                :disabled="!sourceVerified || pending || busy"
                 @click="removeMarker(marker)"
               >
                 ×
@@ -1442,7 +1457,9 @@ onBeforeUnmount(() => {
               {{ t("precision.split") }}</button
             ><button
               class="editor-button"
-              :disabled="!hasSourceDuration || !sourceVerified || pending"
+              :disabled="
+                !hasSourceDuration || !sourceVerified || pending || busy
+              "
               @click="addMarker()"
             >
               {{ t("precision.addMarker") }}

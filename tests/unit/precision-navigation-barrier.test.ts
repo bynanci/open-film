@@ -42,12 +42,18 @@ const precisionFactory = component<{
   analyze: (operation: "transcribe" | "waveform" | "scenes") => Promise<void>;
   sourceVerified: Ref<boolean>;
   pending: Ref<boolean>;
+  transcriptionReady: Ref<boolean>;
+  hasSourceDuration: Ref<boolean>;
+  analysisBusy: Ref<boolean>;
 }>("PrecisionEditor", [
   "addMarker",
   "removeMarker",
   "analyze",
   "sourceVerified",
   "pending",
+  "transcriptionReady",
+  "hasSourceDuration",
+  "analysisBusy",
 ]);
 const timelineFactory = component<{
   precisionEditor?: Ref<unknown>;
@@ -56,6 +62,8 @@ const timelineFactory = component<{
   selectedClipId: Ref<string>;
   chooseClip: (clip: Clip) => void;
   setEditMode: (mode: "story" | "precision" | "transcript") => Promise<void>;
+  history: (direction: "undo" | "redo") => Promise<boolean>;
+  keyboard: (event: KeyboardEvent) => void;
 }>("TimelineEditor", [
   "precisionEditor",
   "transcriptEditor",
@@ -63,6 +71,8 @@ const timelineFactory = component<{
   "selectedClipId",
   "chooseClip",
   "setEditMode",
+  "history",
+  "keyboard",
 ]);
 function deferred<T>() {
   let release!: (value: T) => void;
@@ -150,6 +160,9 @@ function timeline(child: Partial<Barrier>) {
   let transcriptResult = true;
   let exposed!: Barrier;
   const compositionPending = vue.ref(false);
+  const historyBusy = vue.ref(false);
+  const state = vue.ref({ canUndo: false, canRedo: true });
+  const compositionHistory = vi.fn(async (_direction: "undo" | "redo") => true);
   const compositionFlush = vi.fn(async () => {
     calls.push("composition");
     return compositionResult;
@@ -160,7 +173,11 @@ function timeline(child: Partial<Barrier>) {
   });
   const instance = timelineFactory({
     ...reactivity,
-    defineProps: () => ({ projectId: "project", compositionId: "film" }),
+    defineProps: () => ({
+      projectId: "project",
+      compositionId: "film",
+      active: true,
+    }),
     defineEmits: () => vi.fn(),
     defineExpose: (value: Barrier) => {
       exposed = value;
@@ -169,11 +186,13 @@ function timeline(child: Partial<Barrier>) {
     onMounted: () => {},
     onBeforeUnmount: () => {},
     watch: () => {},
+    document: { querySelector: () => null },
     useTimelineEditor: () => ({
-      state: vue.ref(null),
+      state,
       status: vue.ref("saved"),
       hasPending: compositionPending,
-      historyBusy: vue.ref(false),
+      historyBusy,
+      history: compositionHistory,
       flush: compositionFlush,
     }),
   });
@@ -188,6 +207,9 @@ function timeline(child: Partial<Barrier>) {
     exposed,
     calls,
     compositionPending,
+    historyBusy,
+    state,
+    compositionHistory,
     compositionFlush,
     transcriptFlush,
     compositionFails: () => {
@@ -197,6 +219,70 @@ function timeline(child: Partial<Barrier>) {
       transcriptResult = false;
     },
   };
+}
+
+function buttonDisabled(
+  name: string,
+  action: string,
+  bindings: Record<string, unknown>,
+) {
+  const source = readFileSync(
+    resolve(`apps/desktop/src/components/${name}.vue`),
+    "utf8",
+  );
+  const button = source
+    .match(/<button\b[\s\S]*?<\/button\s*>/gu)
+    ?.find((tag) => tag.includes(`@click="${action}"`));
+  const expression = button?.match(/:disabled="([\s\S]*?)"/u)?.[1];
+  if (!expression)
+    throw new Error(`Missing ${name} disabled state for ${action}`);
+  const values = vue.proxyRefs(bindings);
+  return new Function(
+    "values",
+    `const {${Object.keys(values).join(",")}}=values;return !!(${expression});`,
+  )(values) as boolean;
+}
+
+function historyButtonDisabled(
+  h: ReturnType<typeof timeline>,
+  direction: "undo" | "redo",
+) {
+  return buttonDisabled("TimelineEditor", `history('${direction}')`, {
+    state: h.state,
+    historyBusy: h.historyBusy,
+    compositionHasPending: h.compositionPending,
+    hasPending: h.exposed.hasPending,
+    precisionEditor: h.instance.precisionEditor,
+  });
+}
+
+function shortcut(h: ReturnType<typeof timeline>, direction: "undo" | "redo") {
+  const preventDefault = vi.fn();
+  h.instance.keyboard({
+    key: "z",
+    ctrlKey: true,
+    shiftKey: direction === "redo",
+    defaultPrevented: false,
+    target: { closest: () => null },
+    preventDefault,
+  } as unknown as KeyboardEvent);
+  return preventDefault;
+}
+
+function mutate(
+  h: Awaited<ReturnType<typeof precision>>,
+  operation: "add" | "remove" | "analyze",
+) {
+  return operation === "add"
+    ? h.instance.addMarker(3)
+    : operation === "remove"
+      ? h.instance.removeMarker({
+          id: "marker",
+          assetId: asset.id,
+          time: 3,
+          type: "manual",
+        })
+      : h.instance.analyze("waveform");
 }
 
 describe("Precision navigation retains in-flight mutation submissions", () => {
@@ -314,4 +400,115 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
       expect(precisionFlush).not.toHaveBeenCalled();
     },
   );
+  it.each(["add", "remove", "analyze"] as const)(
+    "blocks Undo/Redo buttons, direct history and shortcuts while %s is pending",
+    async (operation) => {
+      const child = await precision();
+      const h = timeline(child.exposed);
+      h.instance.editMode.value = "precision";
+      h.instance.selectedClipId.value = clip.id;
+      // Existing history is available, so the test cannot pass merely because
+      // this fixture happens to have nothing to Undo or Redo.
+      h.state.value.canUndo = true;
+      const mutation = mutate(child, operation);
+      for (const direction of ["undo", "redo"] as const) {
+        expect.soft(historyButtonDisabled(h, direction)).toBe(true);
+        expect.soft(await h.instance.history(direction)).toBe(false);
+        expect(shortcut(h, direction)).toHaveBeenCalledOnce();
+      }
+      expect.soft(h.compositionHistory).not.toHaveBeenCalled();
+      expect(h.compositionFlush).not.toHaveBeenCalled();
+      expect(h.instance.selectedClipId.value).toBe(clip.id);
+      child.response.release({
+        job: {
+          id: "new-job",
+          assetId: asset.id,
+          type: "waveform",
+          status: "queued",
+        },
+      });
+      await mutation;
+      expect(historyButtonDisabled(h, "undo")).toBe(false);
+      expect(await h.instance.history("undo")).toBe(true);
+      expect(h.compositionHistory).toHaveBeenCalledExactlyOnceWith("undo");
+    },
+  );
+  it("a Precision submission alone never enables composition Undo without history", async () => {
+    const child = await precision();
+    const h = timeline(child.exposed);
+    expect(historyButtonDisabled(h, "undo")).toBe(true);
+    const mutation = child.instance.addMarker(3);
+    expect(h.exposed.hasPending.value).toBe(true);
+    expect(historyButtonDisabled(h, "undo")).toBe(true);
+    child.response.release({});
+    await mutation;
+  });
+  it.each(["button", "shortcut"] as const)(
+    "preserves one-step Undo delegation for an unsaved composition via %s",
+    async (action) => {
+      const h = timeline({
+        hasPending: vue.ref(false),
+        flush: vi.fn(async () => true),
+      });
+      h.compositionPending.value = true;
+      expect(h.state.value.canUndo).toBe(false);
+      expect(historyButtonDisabled(h, "undo")).toBe(false);
+      if (action === "button")
+        expect(await h.instance.history("undo")).toBe(true);
+      else expect(shortcut(h, "undo")).toHaveBeenCalledOnce();
+      expect(h.compositionHistory).toHaveBeenCalledExactlyOnceWith("undo");
+      expect(h.compositionFlush).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["add", "remove", "analyze"] as const)(
+    "does not start %s when composition history was already dispatched",
+    async (operation) => {
+      const child = await precision();
+      const h = timeline(child.exposed);
+      h.state.value.canUndo = true;
+      const response = deferred<boolean>();
+      h.compositionHistory.mockImplementation(async () => {
+        h.historyBusy.value = true;
+        try {
+          return await response.promise;
+        } finally {
+          h.historyBusy.value = false;
+        }
+      });
+      cleanup.push(
+        vue.watch(
+          h.historyBusy,
+          (busy: boolean) => {
+            child.props.busy = busy;
+          },
+          { flush: "sync" },
+        ),
+      );
+      const history = h.instance.history("undo");
+      expect(child.props.busy).toBe(true);
+      const mutation = mutate(child, operation);
+      const callsWhileHistoryBusy = child.request.mock.calls.filter(
+        ([, options]) => options?.method,
+      );
+      expect(callsWhileHistoryBusy).toHaveLength(0);
+      expect(child.exposed.hasPending?.value).toBe(false);
+      await mutation;
+      response.release(true);
+      expect(await history).toBe(true);
+      expect(child.props.busy).toBe(false);
+    },
+  );
+  it.each([
+    "analyze('transcribe')",
+    "analyze('waveform')",
+    "analyze('scenes')",
+    "addMarker()",
+    "removeMarker(marker)",
+  ])("disables the %s control during composition history", async (action) => {
+    const child = await precision();
+    const bindings = { ...child.instance, busy: false };
+    expect(buttonDisabled("PrecisionEditor", action, bindings)).toBe(false);
+    bindings.busy = true;
+    expect(buttonDisabled("PrecisionEditor", action, bindings)).toBe(true);
+  });
 });

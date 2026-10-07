@@ -73,7 +73,7 @@ const {
   historyBusy,
   command,
   flush: flushComposition,
-  history,
+  history: compositionHistory,
   reapplyDraft,
   discardDraft,
   downloadDraft,
@@ -94,6 +94,10 @@ const hasPending = computed(
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending,
 );
+async function history(direction: "undo" | "redo") {
+  if (precisionEditor.value?.hasPending) return false;
+  return compositionHistory(direction);
+}
 async function flush() {
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
@@ -876,7 +880,11 @@ onBeforeUnmount(() => {
           v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.undoLabel')"
-          :disabled="historyBusy || (!state?.canUndo && !hasPending)"
+          :disabled="
+            historyBusy ||
+            precisionEditor?.hasPending ||
+            (!state?.canUndo && !compositionHasPending)
+          "
           @click="history('undo')"
         >
           {{ t("editor.undo") }}
@@ -885,7 +893,12 @@ onBeforeUnmount(() => {
           v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.redoLabel')"
-          :disabled="historyBusy || !state?.canRedo || hasPending"
+          :disabled="
+            historyBusy ||
+            precisionEditor?.hasPending ||
+            !state?.canRedo ||
+            hasPending
+          "
           @click="history('redo')"
         >
           {{ t("editor.redo") }}
