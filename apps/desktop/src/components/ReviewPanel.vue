@@ -22,6 +22,7 @@ import {
   type ReviewSuggestionsState,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
+import { loadReviewRecovery } from "../reviewRecovery";
 const props = defineProps<{
   projectId: string;
   assetId: string;
@@ -227,23 +228,9 @@ async function refresh(offset = requestedOffset.value) {
     const capturedRecoveryWindow = recoveryWindow.value;
     recoveryLoading.value = true;
     const found = await Promise.allSettled(
-      capturedRecoveryWindow.map(async (job) => {
-        const batchState = await api.reviewBatches(job.id);
-        if (job.type === "review")
-          return { batches: batchState.batches, recovery: undefined };
-        try {
-          return {
-            batches: batchState.batches,
-            recovery: await api.reviewRecovery(job.id),
-          };
-        } catch (recoveryError) {
-          return {
-            batches: batchState.batches,
-            recovery: undefined,
-            recoveryError,
-          };
-        }
-      }),
+      capturedRecoveryWindow.map((job) =>
+        loadReviewRecovery(job, api.reviewBatches, api.reviewRecovery),
+      ),
     );
     if (current() && capturedRecoveryPage === recoveryPage.value) {
       const nextRecoveryStates = { ...recoveryStates.value };
