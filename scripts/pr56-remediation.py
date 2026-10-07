@@ -18,7 +18,7 @@ run(['pnpm','install','--frozen-lockfile'],'install')
 e2e='tests/e2e/geometry-contract.spec.ts'
 replace(e2e,'    if (iteration === 0) await toggle.click();\n  }\n});',r'''    if (iteration === 0) await toggle.click();
   }
-  // Isolate the observed box from outer layout changes and initial callbacks.
+  // Exercise a direct source-box resize in addition to the inspector toggle.
   await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   await viewport.evaluate(element => {
     const node = element as HTMLElement;
@@ -35,7 +35,9 @@ replace(e2e,'    if (iteration === 0) await toggle.click();\n  }\n});',r'''    i
 component='apps/desktop/src/components/TimelineEditor.vue'
 pathlib.Path(component).write_bytes(subprocess.check_output(['git','show',original+':'+component]))
 run(['pnpm','exec','playwright','install','--with-deps','chromium'],'browser-install')
-run(['pnpm','exec','playwright','test',e2e,'--grep','preview refits','--retries=0'],'viewport-red',True)
+# The reported ResizeObserver fault did not reproduce in this layout. Preserve
+# that fact; these interactions are positive coverage, not a red/green claim.
+run(['pnpm','exec','playwright','test',e2e,'--grep','preview refits','--retries=0'],'viewport-baseline')
 run(['git','restore',component],'restore-reviewed-fix')
 render_test='packages/render/tests/render.test.ts'
 p=pathlib.Path(render_test);s=p.read_text();idx=s.rindex('\n});')
@@ -74,15 +76,16 @@ doc='docs/validation-geometry-parity.md'
 pathlib.Path(doc).write_text('''# Geometry correctness validation
 
 The original candidate `a4244f446c86ae0a32f41979f2bb2d515fa58730` had green CI
-but failed the added real-browser transient-input regression. A simple inspector
-toggle initially passed even before the fix, so it was not counted as proof of
-that defect. The refined test also changes only the source viewport after initial
-layout callbacks settle, keeping outer containers independent.
+but failed the added real-browser transient-input regression. Inspector toggle
+and direct source-box resize cases passed even before direct observation was
+added. These are positive interaction coverage, not a reproduced observer fault.
+The unsuccessful attempt to demand a red result is retained in Actions run
+37569327733 rather than reported as a product failure.
 
 Preview-only input resolution retains committed valid geometry while numeric
 fields are temporarily empty or invalid. Domain and command validation remain
-strict. The source viewport is observed directly, including asynchronously mounted
-and replaced elements, and old observations are removed.
+strict. Direct viewport observation additionally removes reliance on outer layout
+callbacks, handles replaced elements and unregisters old observations.
 
 An independent real-FFmpeg regression uses generated 80x40 coded pixels with
 SAR 2:1. Their display aspect is 4:1. The old contain/setsar pipeline produced a
@@ -90,10 +93,10 @@ SAR 2:1. Their display aspect is 4:1. The old contain/setsar pipeline produced a
 hashes remain unchanged. This fixture is not real-camera/HDR/4K certification.
 
 The preceding candidate passed format, i18n, lint, typecheck, 998 unit/integration
-tests and two focused browser cases. The new viewport/SAR before-and-after logs,
-complete verify output and focused browser output are retained as Actions
-artifacts. Full release browser/native/interchange CI and an exact-head review
-remain separate gates; no workstation QA is implied.
+tests and two focused browser cases. New SAR before-and-after logs, viewport
+baseline, complete verify output and focused browser output are retained as
+Actions artifacts. Full release browser/native/interchange CI and an exact-head
+review remain separate gates; no workstation QA is implied.
 ''')
 changed=[e2e,render_test,renderer,doc]
 run(['pnpm','exec','prettier','--write',*changed],'format')
@@ -101,7 +104,7 @@ run(['pnpm','exec','vitest','run',render_test],'render-green')
 run(['pnpm','exec','playwright','test',e2e,'--retries=0'],'geometry-green')
 run(['pnpm','format:check'],'format-check');run(['pnpm','test:i18n'],'i18n');run(['pnpm','verify'],'verify')
 run(['git','diff','--check'],'diff-check');run(['git','add','--',*changed],'stage')
-run(['git','-c','user.name=github-actions[bot]','-c','user.email=41898282+github-actions[bot]@users.noreply.github.com','commit','-m','fix(render): preserve display aspect and verify isolated viewport resizing'],'commit')
+run(['git','-c','user.name=github-actions[bot]','-c','user.email=41898282+github-actions[bot]@users.noreply.github.com','commit','-m','fix(render): preserve display aspect and verify viewport resizing'],'commit')
 sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();branch='codex/pr5-sar-verified-'+os.environ['GITHUB_RUN_ID']
 run(['git','push','origin','HEAD:refs/heads/'+branch],'publish-candidate')
 result={'parent':parent,'candidate':sha,'branch':branch,'verify':'passed','focusedBrowser':'passed','workstationQA':'not-run'}
