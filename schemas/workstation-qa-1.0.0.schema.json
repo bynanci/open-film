@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openfilm:workstation-qa:1.0.0",
+  "title": "OpenFilm Workstation QA Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "candidateSha",
+    "createdAt",
+    "environment",
+    "gates"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "candidateSha": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "release", "arch", "node", "memoryBytes"],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "release": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "arch": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "node": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "cpu": {
+          "type": "string"
+        },
+        "memoryBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "gpu": {
+          "type": "string"
+        },
+        "openfilmVersion": {
+          "type": "string"
+        },
+        "ffmpegVersion": {
+          "type": "string"
+        },
+        "resolveVersion": {
+          "type": "string"
+        },
+        "resolveEdition": {
+          "type": "string"
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolve",
+        "asr",
+        "llm",
+        "gpu",
+        "camera",
+        "4k",
+        "windows-installer",
+        "cross-process-recovery"
+      ],
+      "properties": {
+        "resolve": {
+          "$ref": "#/$defs/gate"
+        },
+        "asr": {
+          "$ref": "#/$defs/gate"
+        },
+        "llm": {
+          "$ref": "#/$defs/gate"
+        },
+        "gpu": {
+          "$ref": "#/$defs/gate"
+        },
+        "camera": {
+          "$ref": "#/$defs/gate"
+        },
+        "4k": {
+          "$ref": "#/$defs/gate"
+        },
+        "windows-installer": {
+          "$ref": "#/$defs/gate"
+        },
+        "cross-process-recovery": {
+          "$ref": "#/$defs/gate"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observations"],
+      "properties": {
+        "status": {
+          "enum": ["not-run", "passed", "failed", "blocked"]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "blocker": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "kind"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$"
+              }
+            }
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check", "status"],
+            "properties": {
+              "check": {
+                "type": "string",
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": ["pass", "fail", "unavailable", "info"]
+              },
+              "expected": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "pass"
+                    }
+                  },
+                  "required": ["status"]
+                },
+                "then": {
+                  "required": ["actual", "evidence"],
+                  "properties": {
+                    "actual": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    },
+                    "evidence": {
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "passed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "observations": {
+                "minItems": 1,
+                "contains": {
+                  "properties": {
+                    "status": {
+                      "const": "pass"
+                    }
+                  },
+                  "required": ["status"]
+                },
+                "items": {
+                  "not": {
+                    "properties": {
+                      "status": {
+                        "enum": ["fail", "unavailable"]
+                      }
+                    },
+                    "required": ["status"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "observations": {
+                "contains": {
+                  "properties": {
+                    "status": {
+                      "const": "fail"
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "blocked"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["blocker"],
+            "properties": {
+              "blocker": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["passed", "failed", "blocked"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["completedAt"]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -29,6 +29,7 @@ Usage:
   openfilm review accept <suggestion-id> --project <film.openfilm> --base-revision <id> --request-id <id>
   openfilm review skip <suggestion-id> --project <film.openfilm>
   openfilm review batches|retry-batch|skip-batch <job-id> --project <film.openfilm> [--index 0]
+  openfilm review recover <job-id> --project <film.openfilm> --confirm-stopped
   openfilm marker <asset-id> --project <film.openfilm> --time <source-seconds>
   openfilm rate <asset-id> --project <film.openfilm> --rating 5 [--favorite --lock]
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
@@ -66,6 +67,7 @@ function parse(args: string[]) {
     "case-insensitive",
     "enable",
     "disable",
+    "confirm-stopped",
   ]);
   const values = new Set([
     "project",
@@ -434,7 +436,20 @@ async function main() {
         print({ suggestion: app.knowledge.skipSuggestion(id) });
       else if (action === "batches")
         print({ batches: app.knowledge.batches(id) });
-      else if (action === "skip-batch") {
+      else if (action === "recover") {
+        if (options["confirm-stopped"] !== true)
+          throw new Error(
+            "Use --confirm-stopped only after confirming the previous review process is no longer running.",
+          );
+        const recovery = app.knowledge.reviewRecoveryStatus(id);
+        print({
+          job: app.knowledge.manualRecoverReview(id, {
+            confirmStopped: true,
+            ownerToken: recovery.ownerToken,
+            updatedAt: recovery.updatedAt,
+          }),
+        });
+      } else if (action === "skip-batch") {
         const index = Number(value(options, "index"));
         if (
           value(options, "index") === undefined ||
@@ -475,7 +490,7 @@ async function main() {
         else if (job.status === "failed") process.exitCode = 1;
       } else
         throw new Error(
-          "Choose review run, list, accept, skip, batches, retry-batch or skip-batch.",
+          "Choose review run, list, accept, skip, batches, recover, retry-batch or skip-batch.",
         );
     } else if (command === "marker") {
       const id = positional[1];

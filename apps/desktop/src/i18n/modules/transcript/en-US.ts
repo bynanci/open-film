@@ -171,6 +171,13 @@ export default {
       "A review batch failed. Completed suggestions are preserved. Retry or skip this batch.",
     cancelledBatch:
       "This review batch was cancelled. Completed suggestions are preserved. Retry or skip the unfinished work.",
+    interruptedReview:
+      "This review is still marked active, but OpenFilm cannot verify its execution owner. It may belong to another process or a process that stopped.",
+    recoverReview: "Recover interrupted review",
+    recoverReviewConfirm:
+      "Continue only if you know the previous OpenFilm process has stopped. Completed suggestions stay intact; unfinished batches become retryable.",
+    confirmStopped: "Confirm stopped & recover",
+    cancelRecovery: "Keep current state",
     unfinishedReviews: "Unfinished reviews",
     noRecoveryBatches:
       "These reviews have no unfinished batches. Check another page for earlier reviews.",

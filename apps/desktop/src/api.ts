@@ -161,6 +161,14 @@ export interface ReviewProviderState {
     dataKinds: string[];
   };
 }
+export interface ReviewRecoveryState {
+  jobId: string;
+  ownerState: "alive" | "dead" | "unknown";
+  manualRecoveryAllowed: boolean;
+  ownerToken?: string;
+  updatedAt?: string;
+}
+
 export interface ReviewSuggestionsState {
   suggestions: ReviewSuggestion[];
   total: number;
@@ -508,6 +516,22 @@ export const api = {
   reviewBatches: (jobId: string) =>
     request<{ batches: ReviewBatch[] }>(
       `/review/jobs/${encodeURIComponent(jobId)}/batches`,
+    ),
+  reviewRecovery: (jobId: string) =>
+    request<ReviewRecoveryState>(
+      `/review/jobs/${encodeURIComponent(jobId)}/recovery`,
+    ),
+  recoverReview: (
+    jobId: string,
+    body: {
+      confirmStopped: true;
+      ownerToken?: string;
+      updatedAt?: string;
+    },
+  ) =>
+    post<{ job: Job }>(
+      `/review/jobs/${encodeURIComponent(jobId)}/recovery`,
+      body,
     ),
   reviewBatchAction: (jobId: string, index: number, action: "retry" | "skip") =>
     post<{ job: Job }>(

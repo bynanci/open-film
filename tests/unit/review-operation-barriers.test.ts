@@ -221,6 +221,9 @@ async function fixture() {
       ) => app.knowledge.suggestionsList(assetId, { status, offset, limit }),
     ),
     reviewProvider: vi.fn(async () => app.knowledge.languageProvider()),
+    reviewRecovery: vi.fn(async (jobId: string) =>
+      app.knowledge.reviewRecoveryStatus(jobId),
+    ),
     jobs: vi.fn(async () => ({ jobs: app.catalog.listJobs() })),
     reviewBatches: vi.fn(async (jobId: string) => ({
       batches: app.knowledge.batches(jobId),

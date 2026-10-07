@@ -18,9 +18,11 @@ import {
   ApiError,
   post,
   type ReviewProviderState,
+  type ReviewRecoveryState,
   type ReviewSuggestionsState,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
+import { loadReviewRecovery } from "../reviewRecovery";
 const props = defineProps<{
   projectId: string;
   assetId: string;
@@ -55,6 +57,8 @@ const jobs = computed(() =>
     .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")),
 );
 const batches = ref<ReviewBatch[]>([]);
+const recoveryStates = shallowRef<Record<string, ReviewRecoveryState>>({});
+const recoveryConfirmation = shallowRef<ReviewRecoveryState>();
 const recoveryJobsPerPage = 5;
 const recoveryPage = ref(0);
 const recoveryLoading = ref(false);
@@ -159,6 +163,20 @@ const recoveryJobs = computed(() =>
 const recoveryPages = computed(() =>
   Math.max(1, Math.ceil(recoveryJobs.value.length / recoveryJobsPerPage)),
 );
+const recoveryWindow = computed(() =>
+  recoveryJobs.value.slice(
+    recoveryPage.value * recoveryJobsPerPage,
+    (recoveryPage.value + 1) * recoveryJobsPerPage,
+  ),
+);
+const manualRecoveryJobs = computed(() =>
+  recoveryWindow.value.filter(
+    (job) => recoveryStates.value[job.id]?.manualRecoveryAllowed,
+  ),
+);
+const activeRecovery = computed(() =>
+  active.value ? recoveryStates.value[active.value.id] : undefined,
+);
 const recoverableBatches = computed(() =>
   batches.value.filter(
     (batch) => batch.status === "failed" || batch.status === "cancelled",
@@ -207,23 +225,38 @@ async function refresh(offset = requestedOffset.value) {
     provider.value = status;
     recoveryPage.value = Math.min(recoveryPage.value, recoveryPages.value - 1);
     const capturedRecoveryPage = recoveryPage.value;
-    const recoveryWindow = recoveryJobs.value.slice(
-      capturedRecoveryPage * recoveryJobsPerPage,
-      (capturedRecoveryPage + 1) * recoveryJobsPerPage,
-    );
+    const capturedRecoveryWindow = recoveryWindow.value;
     recoveryLoading.value = true;
     const found = await Promise.allSettled(
-      recoveryWindow.map((job) => api.reviewBatches(job.id)),
+      capturedRecoveryWindow.map((job) =>
+        loadReviewRecovery(job, api.reviewBatches, api.reviewRecovery),
+      ),
     );
     if (current() && capturedRecoveryPage === recoveryPage.value) {
+      const nextRecoveryStates = { ...recoveryStates.value };
       batches.value = found.flatMap((result, index) => {
-        if (result.status === "fulfilled") return result.value.batches;
+        const job = capturedRecoveryWindow[index]!;
+        if (result.status === "fulfilled") {
+          if (result.value.recovery)
+            nextRecoveryStates[job.id] = result.value.recovery;
+          if ("recoveryError" in result.value && result.value.recoveryError)
+            error.value = result.value.recoveryError;
+          return result.value.batches;
+        }
         error.value = result.reason;
-        // A failed refresh must not hide recovery evidence already loaded.
-        return batches.value.filter(
-          (batch) => batch.jobId === recoveryWindow[index]!.id,
-        );
+        // A failed batch read must not hide recovery evidence already loaded.
+        return batches.value.filter((batch) => batch.jobId === job.id);
       });
+      recoveryStates.value = nextRecoveryStates;
+      const confirmed = recoveryConfirmation.value;
+      const latest = confirmed && nextRecoveryStates[confirmed.jobId];
+      if (
+        confirmed &&
+        (!latest?.manualRecoveryAllowed ||
+          latest.ownerToken !== confirmed.ownerToken ||
+          latest.updatedAt !== confirmed.updatedAt)
+      )
+        recoveryConfirmation.value = undefined;
     }
   } catch (cause) {
     if (current()) {
@@ -348,6 +381,39 @@ async function cancel() {
     error.value = cause;
   }
 }
+function beginRecovery(job: Job) {
+  const checkpoint = recoveryStates.value[job.id];
+  if (
+    busy.value ||
+    uncertainAcceptance.value ||
+    !checkpoint?.manualRecoveryAllowed
+  )
+    return;
+  recoveryConfirmation.value = { ...checkpoint };
+}
+async function recoverInterrupted(job: Job) {
+  const checkpoint = recoveryConfirmation.value;
+  if (
+    !checkpoint?.manualRecoveryAllowed ||
+    checkpoint.jobId !== job.id ||
+    uncertainAcceptance.value
+  )
+    return;
+  await reserve(async ({ current }) => {
+    if (!current() || uncertainAcceptance.value) return false;
+    await api.recoverReview(job.id, {
+      confirmStopped: true,
+      ownerToken: checkpoint.ownerToken,
+      updatedAt: checkpoint.updatedAt,
+    });
+    if (!current()) return false;
+    recoveryConfirmation.value = undefined;
+    emit("activity");
+    await refresh();
+    return current();
+  });
+}
+
 async function batchAction(batch: ReviewBatch, action: "retry" | "skip") {
   if (uncertainAcceptance.value) return;
   await reserve(async ({ current }) => {
@@ -575,19 +641,65 @@ onBeforeUnmount(() => {
         {{ t("transcript.revokeConsent") }}
       </button>
     </template>
-    <p v-if="active" role="status">
+    <p v-if="active && !activeRecovery?.manualRecoveryAllowed" role="status">
       {{ t("transcript.reviewRunning") }}
       {{ formatNumber(Math.round((active.progress ?? 0) * 100)) }}%
     </p>
-    <button v-if="active" class="editor-button" @click="cancel">
+    <button
+      v-if="active && !activeRecovery?.manualRecoveryAllowed"
+      class="editor-button"
+      @click="cancel"
+    >
       {{ t("transcript.cancelReview") }}
     </button>
     <p v-if="lastJob?.status === 'cancelled'" class="editor-note">
       {{ t("transcript.reviewPartial") }}
     </p>
-    <h3 v-if="recoverableBatches.length || recoveryPages > 1">
+    <h3
+      v-if="
+        manualRecoveryJobs.length ||
+        recoverableBatches.length ||
+        recoveryPages > 1
+      "
+    >
       {{ t("transcript.unfinishedReviews") }}
     </h3>
+    <div
+      v-for="job in manualRecoveryJobs"
+      :key="`manual-recovery:${job.id}`"
+      class="editor-error"
+      data-testid="review-owner-recovery"
+      :data-job-id="job.id"
+    >
+      <p>{{ t("transcript.interruptedReview") }}</p>
+      <template v-if="recoveryConfirmation?.jobId === job.id">
+        <p>{{ t("transcript.recoverReviewConfirm") }}</p>
+        <div class="editor-actions">
+          <button
+            class="editor-button primary"
+            :disabled="busy"
+            @click="recoverInterrupted(job)"
+          >
+            {{ t("transcript.confirmStopped") }}
+          </button>
+          <button
+            class="editor-button"
+            :disabled="busy"
+            @click="recoveryConfirmation = undefined"
+          >
+            {{ t("transcript.cancelRecovery") }}
+          </button>
+        </div>
+      </template>
+      <button
+        v-else
+        class="editor-button"
+        :disabled="busy"
+        @click="beginRecovery(job)"
+      >
+        {{ t("transcript.recoverReview") }}
+      </button>
+    </div>
     <p
       v-if="recoveryPages > 1 && !recoverableBatches.length && !recoveryLoading"
       class="editor-note"

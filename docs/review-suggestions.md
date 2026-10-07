@@ -156,3 +156,28 @@ shared Job. Paged suggestions use GET suffix `/review/suggestions`. Accept/Skip
 use `/api/review/suggestions/:id/accept|skip`; batch status/retry/skip use
 `/api/review/jobs/:jobId/batches`. Invalid retry requests leave completed jobs
 unchanged. Project switching waits for active jobs and in-flight text mutations.
+
+## Interrupted review ownership and recovery
+
+Review jobs persist an execution owner so reopening a project cannot assume every
+queued/running job belongs to a crashed process. Automatic recovery remains
+conservative: Linux can mark an owner dead only when boot/PID-namespace scope
+matches and the PID probe proves ESRCH. Live, foreign, legacy and unverifiable
+owners are preserved.
+
+For an unknown owner, Desktop/API/CLI now provide an explicit recovery path. The
+user must confirm that the previous OpenFilm process has stopped. Recovery is
+bound to the exact observed owner token and `updatedAt` checkpoint; if another
+process or retry changes the job first, the request fails instead of cancelling
+new work. The catalog CAS then terminalizes only unfinished batches while keeping
+completed suggestions and evidence.
+
+CLI example:
+
+```sh
+openfilm review recover <job-id> --project <film.openfilm> --confirm-stopped
+```
+
+This manual escape hatch does **not** claim Windows/macOS automatic dead-owner
+detection. It prevents an unverifiable stale job from becoming permanently
+unrecoverable without weakening the automatic safety rule.
