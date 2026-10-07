@@ -296,6 +296,40 @@ export class CatalogKnowledgeStore {
       );
   }
 
+  /** Initial batches belong to the same queued execution, atomically. */
+  initializeReviewBatches(observed: Job, batches: ReviewBatch[]): void {
+    if (
+      observed.status !== "queued" ||
+      !observed.reviewOwner ||
+      batches.some((batch) => batch.jobId !== observed.id)
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid review initialization.",
+      );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      // Recovery can revoke an execution after its initial notification. Check
+      // the exact queued checkpoint before inserting any of its pending work.
+      this.compareAndSetReviewJob(observed, observed);
+      if (
+        this.database
+          .prepare("SELECT 1 FROM review_batches WHERE job_id=? LIMIT 1")
+          .get(observed.id)
+      )
+        throw new ApplicationError(
+          "request.invalid",
+          "Review batches already exist for this execution.",
+          409,
+        );
+      for (const batch of batches) this.saveBatch(batch);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   /** Claim or finish only the exact durable attempt that the caller observed. */
   compareAndSetBatch(
     observed: ReviewBatch,

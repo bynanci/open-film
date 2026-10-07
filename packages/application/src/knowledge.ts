@@ -391,7 +391,7 @@ export class KnowledgeService {
       status: "pending",
       attempts: 0,
     }));
-    for (const batch of batches) this.catalog.knowledge.saveBatch(batch);
+    this.catalog.knowledge.initializeReviewBatches(job, batches);
     job.status = "running";
     this.notify(job, options);
     try {
@@ -825,7 +825,7 @@ export class KnowledgeService {
       status: "pending",
       attempts: 0,
     }));
-    for (const batch of batches) this.catalog.knowledge.saveBatch(batch);
+    this.catalog.knowledge.initializeReviewBatches(job, batches);
     job.status = "running";
     this.notify(job, options);
     for (const batch of batches) {
