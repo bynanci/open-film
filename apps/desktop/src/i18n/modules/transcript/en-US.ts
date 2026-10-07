@@ -161,7 +161,8 @@ export default {
     reload: "Reload saved transcript",
     cancel: "Cancel",
     keepCurrent: "Keep current transcript",
-    jobsBusy: "Another task is using this film. Wait or cancel it in Activity.",
+    jobsBusy:
+      "Another task is using this film. Check its status or available recovery actions in Activity.",
     editHint:
       "Text changes affect the transcript only. Your story, clips and source audio remain unchanged.",
     searchNoMatches: "No matching text on this page.",

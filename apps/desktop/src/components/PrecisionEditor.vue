@@ -18,9 +18,12 @@ import {
   sourceUrl,
   type IntelligenceState,
   type IntelligenceProviders,
+  type AnalysisJobRecoveryState,
+  type AnalysisRecoveryInput,
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
+import AnalysisJobActions from "./AnalysisJobActions.vue";
 
 const props = defineProps<{
   projectId: string;
@@ -28,13 +31,19 @@ const props = defineProps<{
   clip?: Clip;
   active: boolean;
   busy: boolean;
+  analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+  recoveringAnalysisJobs?: Record<string, boolean>;
   unavailable?: boolean;
   sourceVersion?: number;
   height?: number;
   clips: { id: string; label: string }[];
   submit: (command: TimelineCommand) => boolean;
 }>();
-const emit = defineEmits<{ select: [clipId: string]; activity: [] }>();
+const emit = defineEmits<{
+  select: [clipId: string];
+  activity: [];
+  recoverAnalysis: [job: Job, input: AnalysisRecoveryInput];
+}>();
 const { t, te } = useI18n();
 const player = ref<HTMLMediaElement | null>(null);
 const surface = ref<HTMLElement | null>(null);
@@ -48,6 +57,14 @@ const loading = ref(false);
 const sourceVerified = ref(false);
 const discoveringJobs = ref(false);
 const pending = ref(false);
+// Source changes reset the visible generation, but an outstanding mutation
+// must still prevent navigation until its request has actually settled.
+const pendingMutations = ref(0);
+const hasPending = computed(() => pendingMutations.value > 0);
+async function flush() {
+  return !hasPending.value;
+}
+defineExpose({ flush, hasPending });
 const playing = ref(false);
 const playhead = ref(0);
 const hoverTime = ref<number>();
@@ -387,10 +404,17 @@ async function pollJobs(hydrate = false) {
     polling = setTimeout(() => void pollJobs(), 1000);
 }
 async function analyze(operation: "transcribe" | "waveform" | "scenes") {
-  if (!playable.value || !hasSourceDuration.value || analysisBusy.value) return;
+  if (
+    !playable.value ||
+    !hasSourceDuration.value ||
+    analysisBusy.value ||
+    props.busy
+  )
+    return;
   if (operation === "transcribe" && !transcriptionReady.value) return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   error.value = null;
   try {
     const result = await request<{ job: Job }>(endpoint("/intelligence"), {
@@ -420,6 +444,7 @@ async function analyze(operation: "transcribe" | "waveform" | "scenes") {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
@@ -444,11 +469,13 @@ async function addMarker(at = playhead.value) {
     !playable.value ||
     !hasSourceDuration.value ||
     !sourceVerified.value ||
+    props.busy ||
     pending.value
   )
     return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   try {
     await request(endpoint("/markers"), {
       method: "POST",
@@ -462,14 +489,21 @@ async function addMarker(at = playhead.value) {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
 async function removeMarker(marker: TimelineMarker) {
-  if (!sourceVerified.value || marker.type !== "manual" || pending.value)
+  if (
+    !sourceVerified.value ||
+    marker.type !== "manual" ||
+    props.busy ||
+    pending.value
+  )
     return;
   const stamp = generation;
   pending.value = true;
+  pendingMutations.value++;
   try {
     await request(endpoint(`/markers/${encodeURIComponent(marker.id)}`), {
       method: "DELETE",
@@ -482,6 +516,7 @@ async function removeMarker(marker: TimelineMarker) {
   } catch (cause) {
     if (current(stamp)) handleError(cause);
   } finally {
+    pendingMutations.value--;
     if (current(stamp)) pending.value = false;
   }
 }
@@ -1057,7 +1092,10 @@ onBeforeUnmount(() => {
             ><button
               class="editor-button primary"
               :disabled="
-                !transcriptionReady || !hasSourceDuration || analysisBusy
+                !transcriptionReady ||
+                !hasSourceDuration ||
+                analysisBusy ||
+                busy
               "
               @click="analyze('transcribe')"
             >
@@ -1066,14 +1104,14 @@ onBeforeUnmount(() => {
             <div class="editor-actions">
               <button
                 class="editor-button"
-                :disabled="!hasSourceDuration || analysisBusy"
+                :disabled="!hasSourceDuration || analysisBusy || busy"
                 @click="analyze('waveform')"
               >
                 {{ t("precision.analyzeWaveform") }}</button
               ><button
                 v-if="asset!.mediaType === 'video'"
                 class="editor-button"
-                :disabled="!hasSourceDuration || analysisBusy"
+                :disabled="!hasSourceDuration || analysisBusy || busy"
                 @click="analyze('scenes')"
               >
                 {{ t("precision.detectScenes") }}
@@ -1133,7 +1171,7 @@ onBeforeUnmount(() => {
                 :aria-label="
                   t('precision.removeMarker', { time: time(marker.time) })
                 "
-                :disabled="!sourceVerified || pending"
+                :disabled="!sourceVerified || pending || busy"
                 @click="removeMarker(marker)"
               >
                 ×
@@ -1196,14 +1234,15 @@ onBeforeUnmount(() => {
                 style: "percent",
                 maximumFractionDigits: 0,
               })
-            }}</span
-            ><button
-              v-if="job.status === 'queued' || job.status === 'running'"
-              class="editor-button"
-              @click="cancelJob(job)"
-            >
-              {{ t("precision.cancelJob") }}
-            </button>
+            }}</span>
+            <AnalysisJobActions
+              :project-id="projectId"
+              :job="job"
+              :recovery="analysisRecovery?.[job.id]"
+              :pending="recoveringAnalysisJobs?.[job.id]"
+              @cancel="cancelJob(job)"
+              @recover="emit('recoverAnalysis', job, $event)"
+            />
             <details
               v-if="job.execution || job.model || job.fallbackReason"
               class="editor-technical-details"
@@ -1418,7 +1457,9 @@ onBeforeUnmount(() => {
               {{ t("precision.split") }}</button
             ><button
               class="editor-button"
-              :disabled="!hasSourceDuration || !sourceVerified || pending"
+              :disabled="
+                !hasSourceDuration || !sourceVerified || pending || busy
+              "
               @click="addMarker()"
             >
               {{ t("precision.addMarker") }}

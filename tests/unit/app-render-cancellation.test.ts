@@ -81,6 +81,7 @@ function host() {
     },
     project,
     jobs,
+    analysisRecovery: ref({}),
     busy,
     error,
     notice,

@@ -1,5 +1,5 @@
 import { lstat } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   ApplicationError,
   errorInfo,
@@ -18,6 +18,11 @@ import type {
 import { LocalWhisperProvider } from "@openfilm/provider-whisper";
 import { cancellableProviderResult } from "./cancellable-provider-result.js";
 import {
+  createReviewOwner as createAnalysisOwner,
+  ownsReviewOwner as ownsAnalysisOwner,
+  reviewOwnerState as analysisOwnerState,
+} from "./review-owner.js";
+import {
   checkAbort,
   hashFile,
   localPath,
@@ -30,7 +35,48 @@ import {
 export interface IntelligenceOptions extends TranscriptionOptions {
   operation: "transcribe" | "waveform" | "scenes";
   jobId?: string;
+  /** Only a locally owned, exact queued reservation can be consumed. */
+  reservation?: Job;
   onJob?: (job: Job) => void;
+}
+
+export interface AnalysisRecoveryState {
+  jobId: string;
+  ownerState: "alive" | "dead" | "unknown";
+  manualRecoveryAllowed: boolean;
+  ownerToken?: string;
+  checkpoint: string;
+  updatedAt?: string;
+}
+export interface AnalysisRecoveryInput {
+  confirmStopped: boolean;
+  checkpoint: string;
+  ownerToken?: string;
+}
+
+const ANALYSIS_OPERATIONS = ["transcribe", "waveform", "scenes"] as const;
+function activeAnalysis(job: Job): boolean {
+  return (
+    ANALYSIS_OPERATIONS.some((operation) => operation === job.type) &&
+    (job.status === "queued" || job.status === "running")
+  );
+}
+function analysisCheckpoint(job: Job): string {
+  return createHash("sha256").update(JSON.stringify(job)).digest("hex");
+}
+function analysisOwnerToken(job: Job): string | undefined {
+  // Historical JSON can contain a malformed owner. Its complete evidence stays
+  // in the checkpoint; API token fields must remain string-or-absent.
+  return typeof job.analysisOwner?.token === "string"
+    ? job.analysisOwner.token
+    : undefined;
+}
+function executionChanged(): ApplicationError {
+  return new ApplicationError(
+    "request.invalid",
+    "The analysis execution changed. Refresh its current status before retrying.",
+    409,
+  );
 }
 
 type TranscriptionMetadata = Pick<
@@ -260,31 +306,208 @@ export class MediaIntelligence {
     this.catalog.intelligence.removeMarker(assetId, markerId, hash);
   }
 
-  async run(assetId: string, options: IntelligenceOptions): Promise<Job> {
-    const asset = this.asset(assetId);
+  /** A durable project-wide slot is reserved before a server response or provider work. */
+  reserve(
+    assetId: string,
+    operation: IntelligenceOptions["operation"],
+    jobId: string = randomUUID(),
+  ): Job {
+    this.asset(assetId);
+    if (!ANALYSIS_OPERATIONS.includes(operation))
+      throw new ApplicationError(
+        "request.invalid",
+        "Unknown analysis operation.",
+      );
+    if (
+      typeof jobId !== "string" ||
+      !jobId.trim() ||
+      jobId.length > 256 ||
+      [...jobId].some(
+        (character) =>
+          character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      )
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Analysis job IDs must be nonblank strings of at most 256 characters without control characters.",
+      );
+    const jobs = this.catalog.listJobs();
+    // An explicitly reused ID is never a recovery or retry command. Reject it
+    // before automatic dead-owner recovery can change its existing checkpoint.
+    if (jobs.some((job) => job.id === jobId)) throw executionChanged();
+    this.recoverInterruptedJobs(jobs);
     const now = new Date().toISOString();
     const job: Job = {
-      id: options.jobId ?? randomUUID(),
+      id: jobId,
       assetId,
-      type: options.operation,
+      type: operation,
       status: "queued",
       progress: 0,
+      analysisOwner: createAnalysisOwner(),
       createdAt: now,
       updatedAt: now,
     };
-    let lastProgressWrite = 0;
-    const notify = (force = true) => {
-      if (!force && Date.now() - lastProgressWrite < 150) return;
-      lastProgressWrite = Date.now();
-      job.updatedAt = new Date().toISOString();
-      this.catalog.saveJob(job);
+    this.catalog.intelligence.reserveAnalysisJob(job);
+    return structuredClone(job);
+  }
+
+  analysisRecoveryStatus(jobId: string): AnalysisRecoveryState {
+    return this.recoveryState(this.analysisJob(jobId));
+  }
+
+  /** Activity can inspect one jobs snapshot without a catalog query per row. */
+  analysisRecoveryStatuses(
+    jobs: readonly Job[] = this.catalog.listJobs(),
+  ): Record<string, AnalysisRecoveryState> {
+    return Object.fromEntries(
+      jobs
+        .filter(activeAnalysis)
+        .map((job) => [job.id, this.recoveryState(job)]),
+    );
+  }
+
+  private recoveryState(job: Job): AnalysisRecoveryState {
+    const ownerState = analysisOwnerState(job.analysisOwner);
+    return {
+      jobId: job.id,
+      ownerState,
+      manualRecoveryAllowed: ownerState !== "alive" && activeAnalysis(job),
+      ownerToken: analysisOwnerToken(job),
+      checkpoint: analysisCheckpoint(job),
+      updatedAt: job.updatedAt,
+    };
+  }
+
+  manualRecoverAnalysis(jobId: string, input: AnalysisRecoveryInput): Job {
+    if (input.confirmStopped !== true)
+      throw new ApplicationError(
+        "request.invalid",
+        "Confirm that the previous analysis process has stopped before recovering it.",
+      );
+    const job = this.analysisJob(jobId);
+    if (
+      input.checkpoint !== analysisCheckpoint(job) ||
+      input.ownerToken !== analysisOwnerToken(job)
+    )
+      throw executionChanged();
+    if (analysisOwnerState(job.analysisOwner) === "alive")
+      throw new ApplicationError(
+        "jobs.busy",
+        "The analysis owner is still alive. Stop it before manual recovery.",
+        409,
+      );
+    if (!activeAnalysis(job)) throw executionChanged();
+    const recovered = this.interrupted(job, true);
+    if (!this.catalog.intelligence.recoverAnalysisJob(job, recovered))
+      throw executionChanged();
+    return structuredClone(recovered);
+  }
+
+  recoverInterruptedJobs(jobs: readonly Job[] = this.catalog.listJobs()): void {
+    for (const job of jobs) {
+      if (
+        !activeAnalysis(job) ||
+        analysisOwnerState(job.analysisOwner) !== "dead"
+      )
+        continue;
+      // An owner may publish or a retry may win after the liveness probe.
+      // Recover only this exact durable checkpoint; never rewrite that winner.
+      this.catalog.intelligence.recoverAnalysisJob(job, this.interrupted(job));
+    }
+  }
+
+  private analysisJob(jobId: string): Job {
+    const job = this.catalog.listJobs().find((item) => item.id === jobId);
+    if (
+      !job ||
+      !ANALYSIS_OPERATIONS.some((operation) => operation === job.type)
+    )
+      throw new ApplicationError(
+        "request.notFound",
+        "Analysis job not found.",
+        404,
+      );
+    return job;
+  }
+
+  private interrupted(job: Job, manual = false): Job {
+    return {
+      ...job,
+      analysisOwner: createAnalysisOwner(),
+      status: "failed",
+      stage: "interrupted",
+      updatedAt: new Date().toISOString(),
+      errors: [
+        ...(job.errors ?? []),
+        {
+          uri: "",
+          stage: "interrupted",
+          message: manual
+            ? "The user confirmed the previous analysis process stopped. Retry this task; previously saved analysis remains available."
+            : "The previous analysis process stopped. Retry this task; previously saved analysis remains available.",
+        },
+      ],
+    };
+  }
+
+  async run(assetId: string, options: IntelligenceOptions): Promise<Job> {
+    const asset = this.asset(assetId);
+    const reserved = options.reservation
+      ? structuredClone(options.reservation)
+      : this.reserve(assetId, options.operation, options.jobId);
+    if (
+      reserved.assetId !== assetId ||
+      reserved.type !== options.operation ||
+      reserved.status !== "queued" ||
+      (options.jobId !== undefined && options.jobId !== reserved.id) ||
+      !ownsAnalysisOwner(reserved.analysisOwner)
+    )
+      throw executionChanged();
+    const job: Job = {
+      ...reserved,
+      status: "running",
+      stage: "checking-source",
+      updatedAt: new Date().toISOString(),
+    };
+    const observe = (observed = job) => {
       try {
-        options.onJob?.(structuredClone(job));
+        options.onJob?.(structuredClone(observed));
       } catch {
         /* A progress observer cannot cancel or corrupt durable work. */
       }
     };
-    notify();
+    // Keep the existing queued Activity notification without rewriting its
+    // durable reservation. The following exact CAS remains authoritative.
+    observe(reserved);
+    // Consuming once fences both a recovered queued reservation and two callers
+    // attempting to run the same server reservation in the same process.
+    if (!this.catalog.intelligence.claimAnalysisReservation(reserved, job))
+      throw executionChanged();
+    let ownershipLost = false;
+    let completed = false;
+    let lastProgressWrite = 0;
+    const notify = (force = true): boolean => {
+      if (ownershipLost) return false;
+      if (!force && Date.now() - lastProgressWrite < 150) return true;
+      lastProgressWrite = Date.now();
+      job.updatedAt = new Date().toISOString();
+      if (!this.catalog.intelligence.saveOwnedAnalysisJob(job)) {
+        ownershipLost = true;
+        return false;
+      }
+      observe();
+      return true;
+    };
+    const requireOwnership = () => {
+      if (!notify()) throw executionChanged();
+    };
+    const completion = (): Job => ({
+      ...job,
+      status: "completed",
+      stage: "completed",
+      progress: 1,
+      updatedAt: new Date().toISOString(),
+    });
     try {
       checkAbort(options.signal);
       if (asset.mediaType !== "audio" && asset.mediaType !== "video")
@@ -299,7 +522,7 @@ export class MediaIntelligence {
         );
       job.status = "running";
       job.stage = "checking-source";
-      notify();
+      requireOwnership();
       const sourceHash = await this.identity(asset, options.signal, true);
       if (options.operation === "transcribe") {
         const expectedRevision =
@@ -318,7 +541,11 @@ export class MediaIntelligence {
         try {
           result = await cancellableProviderResult(
             this.registry.transcribe(provider.id, asset, {
-              ...options,
+              // Execution ownership and application callbacks are not provider data.
+              signal: options.signal,
+              language: options.language,
+              modelPath: options.modelPath,
+              execution: options.execution,
               promptHints: provider.capabilities?.supportsPromptHints
                 ? options.promptHints
                 : undefined,
@@ -368,6 +595,7 @@ export class MediaIntelligence {
           acceptingProviderProgress = false;
         }
         checkAbort(options.signal);
+        if (ownershipLost) throw executionChanged();
         if (providerStageError) throw providerStageError;
         const metadata = transcriptionMetadata(result);
         if (
@@ -409,14 +637,18 @@ export class MediaIntelligence {
         job.model = metadata.model;
         job.language = metadata.language;
         job.fallbackReason = metadata.fallbackReason;
-        notify();
+        requireOwnership();
         checkAbort(options.signal);
+        const terminal = completion();
         this.catalog.intelligence.replaceTranscript(document, {
           expectedRevision,
+          ownedCompletion: terminal,
         });
+        Object.assign(job, terminal);
+        completed = true;
       } else if (options.operation === "waveform") {
         job.stage = "generating-waveform";
-        notify();
+        requireOwnership();
         const cached = this.catalog.intelligence.getWaveform(
           assetId,
           sourceHash,
@@ -432,7 +664,12 @@ export class MediaIntelligence {
             },
           }));
         await this.checkUnchanged(asset, sourceHash, options.signal);
-        this.catalog.intelligence.saveWaveform(waveform);
+        const terminal = completion();
+        this.catalog.intelligence.saveWaveform(waveform, {
+          ownedCompletion: terminal,
+        });
+        Object.assign(job, terminal);
+        completed = true;
       } else if (options.operation === "scenes") {
         if (asset.mediaType !== "video")
           throw new ApplicationError(
@@ -440,7 +677,7 @@ export class MediaIntelligence {
             "Scene detection requires a video source.",
           );
         job.stage = "detecting-scenes";
-        notify();
+        requireOwnership();
         const cached = this.catalog.intelligence.getScenes(
           assetId,
           sourceHash,
@@ -456,15 +693,17 @@ export class MediaIntelligence {
             },
           }));
         await this.checkUnchanged(asset, sourceHash, options.signal);
-        this.catalog.intelligence.saveScenes(scenes);
+        const terminal = completion();
+        this.catalog.intelligence.saveScenes(scenes, {
+          ownedCompletion: terminal,
+        });
+        Object.assign(job, terminal);
+        completed = true;
       } else
         throw new ApplicationError(
           "request.invalid",
           "Unknown analysis operation.",
         );
-      job.status = "completed";
-      job.stage = "completed";
-      job.progress = 1;
     } catch (error) {
       job.status =
         options.signal?.aborted || (error as Error)?.name === "AbortError"
@@ -485,9 +724,12 @@ export class MediaIntelligence {
         },
       ];
     } finally {
-      notify();
+      if (completed) observe();
+      else notify();
     }
-    return structuredClone(job);
+    // A recovered/successor checkpoint wins even when the old provider returns
+    // after its token was revoked. Never describe a discarded local result as saved.
+    return structuredClone(ownershipLost ? this.analysisJob(job.id) : job);
   }
 
   private async checkUnchanged(

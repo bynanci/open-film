@@ -26,6 +26,7 @@ export {
   INTELLIGENCE_CACHE_VERSION,
   TRANSCRIPT_PAGE_LIMIT,
   type AnalysisCacheOptions,
+  type OwnedAnalysisCompletionOptions,
   type TranscriptPage,
   type TranscriptPageOptions,
 } from "./intelligence-store.js";

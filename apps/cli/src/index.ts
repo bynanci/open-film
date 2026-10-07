@@ -18,6 +18,9 @@ Usage:
   openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
   openfilm waveform <asset-id> --project <film.openfilm>
   openfilm scenes <asset-id> --project <film.openfilm>
+  openfilm intelligence jobs --project <film.openfilm>
+  openfilm intelligence recovery <job-id> --project <film.openfilm>
+  openfilm intelligence recover <job-id> --project <film.openfilm> --confirm-stopped
   openfilm transcript get <asset-id> --project <film.openfilm> [--offset 0 --limit 100]
   openfilm transcript edit <asset-id> --project <film.openfilm> --commands <request.json>
   openfilm transcript search <asset-id> --project <film.openfilm> --query "literal text" [--case-sensitive|--case-insensitive]
@@ -292,6 +295,37 @@ async function main() {
       print({ job });
       if (job.status === "cancelled") process.exitCode = 130;
       else if (job.status === "failed") process.exitCode = 1;
+    } else if (command === "intelligence") {
+      const action = positional[1],
+        id = positional[2];
+      if (action === "jobs") {
+        print({
+          jobs: app.catalog
+            .listJobs()
+            .filter((job) =>
+              ["transcribe", "waveform", "scenes"].includes(job.type),
+            ),
+        });
+      } else if (action === "recovery" && id) {
+        print(app.intelligence.analysisRecoveryStatus(id));
+      } else if (action === "recover" && id) {
+        if (options["confirm-stopped"] !== true)
+          throw new Error(
+            "Use --confirm-stopped only after confirming the previous analysis process has stopped.",
+          );
+        const recovery = app.intelligence.analysisRecoveryStatus(id);
+        print({
+          job: app.intelligence.manualRecoverAnalysis(id, {
+            confirmStopped: true,
+            checkpoint: recovery.checkpoint,
+            ownerToken: recovery.ownerToken,
+          }),
+        });
+      } else {
+        throw new Error(
+          "Choose intelligence jobs, recovery <job-id>, or recover <job-id> --confirm-stopped.",
+        );
+      }
     } else if (command === "transcript") {
       const action = positional[1];
       const actions = [

@@ -12,8 +12,25 @@ system or downstream NLE. Commands and test responsibilities are in
       change the cancelled Job or successor transcript. Held-provider application,
       HTTP and three-language browser regressions pass; full candidate gates and
       review are recorded in [the validation record](docs/validation-transcription-cancellation.md).
-- [ ] Preserve active non-review media analysis when another process opens the
-      project; require owner evidence or explicit recovery before interruption.
+- [x] Preserve active transcription/waveform/scene analysis when another process
+      opens the project; atomically reserve/consume work and fence obsolete
+      progress/results. Exact-checkpoint recovery preserves manual recognition
+      and edits; Activity/API/CLI share ownership-aware actions. Actual-child,
+      transaction/HTTP/CLI and three-language browser regressions pass; see
+      [the validation record](docs/validation-media-analysis-recovery.md).
+- [x] Let an observer leave and reopen a film while another process continues
+      analysis, without cancelling that work or losing edits. Local work,
+      missing runtime evidence and in-flight Precision/Transcript mutations retain
+      navigation barriers; 39 component regressions and the actual-child browser
+      flow pass. Corrected-candidate gates remain separate from earlier CI.
+- [x] Keep Undo/Redo from resetting a source while Precision requests are pending,
+      and keep marker/analysis requests from starting during history changes.
+      Fourteen additional actual-SFC regressions preserve normal one-step Undo;
+      the corrected published candidate still requires complete gates and CI.
+- [x] Keep selection decisions from disappearing while an earlier rating save
+      awaits acknowledgement. Card/inspector controls show their pending state;
+      six actual-template regressions and a real delayed-response Proposal
+      workflow pass without weakening rejected/unsupported-media checks.
 
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.
