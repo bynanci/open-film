@@ -31,6 +31,7 @@ import {
   type SourceStatus,
 } from "../api";
 import { useTimelineEditor } from "../composables/useTimelineEditor";
+import { previewDraftGeometry } from "../previewGeometry";
 import Icon from "./Icon.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
@@ -331,12 +332,7 @@ function transform() {
 }
 const previewGeometry = computed(() =>
   resolvePreviewClipGeometry(
-    {
-      scale: clipFields.value.scale,
-      rotation: clipFields.value.rotation,
-      x: clipFields.value.x,
-      y: clipFields.value.y,
-    },
+    previewDraftGeometry(clipFields.value, selectedClip.value?.transform),
     sourcePreviewSize.value ??
       selectedAsset.value?.dimensions ??
       props.projectSettings,
@@ -769,11 +765,22 @@ watch(editMode, () => {
   fitPreview.value = null;
   void nextTick(measureWorkspace);
 });
+watch(
+  sourceScreenElement,
+  (element, previous) => {
+    if (previous) layoutObserver?.unobserve(previous);
+    if (element) layoutObserver?.observe(element);
+    measureWorkspace();
+  },
+  { flush: "post" },
+);
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
   window.addEventListener("resize", measureWorkspace);
   layoutObserver = new ResizeObserver(measureWorkspace);
+  if (sourceScreenElement.value)
+    layoutObserver.observe(sourceScreenElement.value);
   if (editorElement.value) {
     layoutObserver.observe(editorElement.value);
     if (editorElement.value.parentElement)
