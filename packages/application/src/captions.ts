@@ -54,6 +54,8 @@ export interface CaptionSnapshotSource {
   assetState: CaptionAssetState;
   sourceHash: string | null;
   transcriptRevisionId: string | null;
+  /** Unused transcript: bind latest stored revision metadata, not consumed text. */
+  transcriptSkipped?: true;
   transcriptId?: string;
   provenance?: AnalysisProvenance;
   available: boolean;
@@ -272,8 +274,24 @@ export class CaptionService {
     }
   }
 
-  private transcriptRevision(source: CaptionSnapshotSource): string | null {
+  private transcriptRevision(
+    source: Pick<
+      CaptionSnapshotSource,
+      "assetId" | "sourceHash" | "transcriptSkipped"
+    >,
+  ): string | null {
     if (!source.sourceHash) return null;
+    // Skipped sources bind metadata across stored versions without loading or
+    // validating segment contents. Audible sources retain the reader's version
+    // contract; older snapshots without this marker continue using that path.
+    if (source.transcriptSkipped)
+      return (
+        this.application.catalog.transcripts.revisions(
+          source.assetId,
+          source.sourceHash,
+          { limit: 1 },
+        ).revisions[0]?.id ?? null
+      );
     return (
       this.application.catalog.transcripts.get(
         source.assetId,
@@ -488,6 +506,11 @@ export class CaptionService {
     );
     if (!track) invalid("Select an existing caption source track.");
     const sourceIds = [...new Set(track.clips.map((clip) => clip.assetId))];
+    const audibleSourceIds = new Set(
+      track.clips
+        .filter((clip) => (clip.transform?.volume ?? 1) !== 0)
+        .map((clip) => clip.assetId),
+    );
     const sources: CaptionSource[] = [],
       bindings: CaptionSnapshotSource[] = [];
     const checks = new Map<string, SourceCheck>();
@@ -505,11 +528,19 @@ export class CaptionService {
       const check = await this.sourceCheck(asset, options.signal);
       checks.set(assetId, check);
       const sourceHash = asset.contentHash ?? check.hash;
-      const first = sourceHash
-        ? this.application.catalog.transcripts.get(assetId, sourceHash, {
-            limit: PAGE_LIMIT,
-          })
-        : undefined;
+      const assetState = captionAssetState(asset);
+      const transcriptSkipped =
+        !audibleSourceIds.has(assetId) ||
+        !check.available ||
+        !["video", "audio"].includes(assetState.mediaType) ||
+        assetState.previewBlocked ||
+        !assetState.hasAudio;
+      const first =
+        sourceHash && !transcriptSkipped
+          ? this.application.catalog.transcripts.get(assetId, sourceHash, {
+              limit: PAGE_LIMIT,
+            })
+          : undefined;
       let transcript: TranscriptDocument | undefined;
       if (first?.document && first.revision) {
         segmentCount += first.total;
@@ -576,9 +607,16 @@ export class CaptionService {
       });
       bindings.push({
         assetId,
-        assetState: captionAssetState(asset),
+        assetState,
         sourceHash,
-        transcriptRevisionId: first?.revision ?? null,
+        transcriptRevisionId: transcriptSkipped
+          ? this.transcriptRevision({
+              assetId,
+              sourceHash,
+              transcriptSkipped: true,
+            })
+          : (first?.revision ?? null),
+        ...(transcriptSkipped ? { transcriptSkipped: true as const } : {}),
         ...(transcript
           ? {
               transcriptId: transcript.id,

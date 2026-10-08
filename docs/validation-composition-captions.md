@@ -122,3 +122,15 @@ the application binds frame rate/output duration and omits unverifiable caption
 tails. Actual FFmpeg regression checks cover 1.01 seconds at 30 fps producing
 1.000 seconds and 1.02 seconds at 30000/1001 fps producing 1.001 seconds. These
 checks establish the generated fixture's output clock, not NLE playback quality.
+
+The review of `bc21c505599a9292f660b5660a1bd388e70b5a32` then identified
+two additional gaps: transcript content for sources that could not contribute
+cues still consumed preparation limits, and omitted source-out ranges did not
+match the renderer's source-duration clamp. The follow-up skips unused transcript
+content while keeping source/revision freshness checks, and stops captions before
+the renderer's padded silent tail. Explicit invalid trims remain rejected.
+Regressions cover mixed muted/audible instances, skipped-source budgets and
+reopen, source eligibility changes, speed/source-in mapping, and actual FFmpeg
+audio padding. The prior local gate passed its first six commands and 51 browser
+cases before being interrupted for these fixes; it is not a complete candidate
+gate. Final results must be matched to the subsequent commit and its PR checks.

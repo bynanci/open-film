@@ -823,6 +823,222 @@ describe("composition-bound caption application", () => {
 });
 
 describe("caption preparation resource and output contracts", () => {
+  const exclusions = [
+    "muted",
+    "offline",
+    "image",
+    "previewBlocked",
+    "noAudio",
+  ] as const;
+
+  async function excludedSourceFixture(kind: (typeof exclusions)[number]) {
+    const test = await fixture(1);
+    const source = join(test.root, "unused.mp4");
+    if (kind !== "offline") await fs.copyFile(test.source, source);
+    const asset = {
+      ...test.app.catalog.getAsset("spoken")!,
+      id: "unused",
+      uri: pathToFileURL(source).href,
+    };
+    if (kind === "image") asset.mediaType = "image";
+    if (kind === "previewBlocked")
+      asset.metadata["openfilm.preview"] = { supported: false };
+    if (kind === "noAudio")
+      asset.metadata["openfilm.ffprobe"] = {
+        streams: [{ codec_type: "video" }],
+      };
+    test.app.catalog.upsertAsset(asset);
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      assetId: asset.id,
+    });
+    const track = test.app.project.timelines[0]!.tracks[0]!;
+    track.clips.unshift({
+      ...track.clips[0]!,
+      id: "excluded-instance",
+      assetId: asset.id,
+      ...(kind === "muted" ? { transform: { volume: 0 } } : {}),
+    });
+    await test.app.save();
+    return { ...test, asset };
+  }
+
+  it.each(
+    exclusions.flatMap((kind) =>
+      (["segments", "text"] as const).map((quota) => ({ kind, quota })),
+    ),
+  )(
+    "does not load a $kind source's cached transcript exceeding the $quota quota, and retains its freshness bindings",
+    async ({ kind, quota }) => {
+      const test = await excludedSourceFixture(kind);
+      const get = test.app.catalog.transcripts.get.bind(
+        test.app.catalog.transcripts,
+      );
+      const cached = get("unused", test.sourceHash, { limit: 1 });
+      const text = "青".repeat(20_000);
+      const read = vi
+        .spyOn(test.app.catalog.transcripts, "get")
+        .mockImplementation((assetId, sourceHash, options = {}) => {
+          if (assetId !== "unused") return get(assetId, sourceHash, options);
+          const offset = options.offset ?? 0;
+          return {
+            ...cached,
+            total: quota === "segments" ? 100_001 : 800,
+            document: {
+              ...cached.document!,
+              segments:
+                quota === "segments"
+                  ? cached.document!.segments
+                  : Array.from(
+                      { length: options.limit ?? 200 },
+                      (_, index) => ({
+                        id: `large-${offset + index}`,
+                        start: 0,
+                        end: 0.8,
+                        text,
+                      }),
+                    ),
+            },
+          };
+        });
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({
+        cueCount: 1,
+        sourceCount: 2,
+        clipCount: 2,
+        stale: false,
+        exportable: true,
+      });
+      expect(snapshot.cues[0]!.assetId).toBe("spoken");
+      expect(snapshot.issues).toContainEqual(
+        expect.objectContaining({
+          assetId: "unused",
+          code:
+            kind === "muted"
+              ? "MUTED_CLIP"
+              : kind === "offline"
+                ? "SOURCE_UNAVAILABLE"
+                : "MEDIA_UNSUPPORTED",
+        }),
+      );
+      expect(snapshot.sources[0]).toMatchObject({
+        assetId: "unused",
+        assetState: core.captionAssetState(test.asset),
+        sourceHash: test.sourceHash,
+        transcriptRevisionId: cached.revision,
+        transcriptSkipped: true,
+        available: kind !== "offline",
+      });
+      expect(snapshot.sources[0]!.transcriptId).toBeUndefined();
+      expect(snapshot.sources[0]!.provenance).toBeUndefined();
+      expect(
+        await test.app.captions.get(snapshot.id, {
+          projectId: test.app.project.id,
+        }),
+      ).toMatchObject({ stale: false, exportable: true });
+      expect(
+        await test.app.captions.export(snapshot.id, "vtt", {
+          projectId: test.app.project.id,
+        }),
+      ).toMatchObject({ cueCount: 1 });
+      expect(read.mock.calls.some(([assetId]) => assetId === "unused")).toBe(
+        false,
+      );
+      const reopened = await OpenFilmApplication.openForExport(
+        test.directory,
+        test.runtime,
+      );
+      applications.add(reopened);
+      const reopenedRead = vi.spyOn(reopened.catalog.transcripts, "get");
+      expect(
+        await reopened.captions.get(snapshot.id, {
+          projectId: reopened.project.id,
+        }),
+      ).toMatchObject({ stale: false, sources: snapshot.sources });
+      expect(
+        reopenedRead.mock.calls.some(([assetId]) => assetId === "unused"),
+      ).toBe(false);
+
+      if (kind === "muted") {
+        test.app.project.timelines[0]!.tracks[0]!.clips[0]!.transform = {
+          volume: 1,
+        };
+        await test.app.save();
+      } else if (kind === "offline") {
+        await fs.writeFile(join(test.root, "unused.mp4"), test.bytes);
+      } else {
+        test.app.catalog.upsertAsset({
+          ...test.app.catalog.getAsset("spoken")!,
+          id: "unused",
+          uri: test.asset.uri,
+        });
+      }
+      const changed = await test.app.captions.get(snapshot.id, {
+        projectId: test.app.project.id,
+      });
+      expect(changed.staleReasons).toContain(
+        kind === "muted" ? "composition" : "source",
+      );
+      expect(changed.exportable).toBe(false);
+    },
+  );
+
+  it("binds metadata revisions for skipped transcripts without reading their content", async () => {
+    const test = await excludedSourceFixture("muted");
+    const read = vi.spyOn(test.app.catalog.transcripts, "get");
+    const snapshot = await test.app.captions.prepare(test.input());
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      assetId: "unused",
+      provenance: { ...test.document.provenance, version: "2" },
+    });
+    const changed = await test.app.captions.get(snapshot.id, {
+      projectId: test.app.project.id,
+    });
+    expect(changed.staleReasons).toContain("transcript");
+    expect(read.mock.calls.some(([assetId]) => assetId === "unused")).toBe(
+      false,
+    );
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      provenance: { ...test.document.provenance, version: "2" },
+    });
+    const refreshed = await test.app.captions.prepare(test.input());
+    expect(refreshed.stale).toBe(false);
+    expect(refreshed.sources[0]!.transcriptRevisionId).not.toBe(
+      snapshot.sources[0]!.transcriptRevisionId,
+    );
+    expect(refreshed.sources[1]!.transcriptRevisionId).toBe(
+      snapshot.sources[1]!.transcriptRevisionId,
+    );
+    expect(refreshed.sources[1]!.transcriptSkipped).toBeUndefined();
+  });
+
+  it("loads a shared source when its first selected clip is muted and another is audible", async () => {
+    const test = await fixture(1);
+    const track = test.app.project.timelines[0]!.tracks[0]!;
+    track.clips.unshift({
+      ...track.clips[0]!,
+      id: "muted-instance",
+      transform: { volume: 0 },
+    });
+    await test.app.save();
+    const read = vi.spyOn(test.app.catalog.transcripts, "get");
+    const snapshot = await test.app.captions.prepare(test.input());
+    expect(snapshot).toMatchObject({
+      cueCount: 1,
+      sourceCount: 1,
+      clipCount: 2,
+      exportable: true,
+      stale: false,
+    });
+    expect(snapshot.cues[0]!.clipId).toBe("instance");
+    expect(snapshot.sources[0]!.provenance).toEqual(test.document.provenance);
+    expect(
+      read.mock.calls.filter(([, , page]) => page?.limit === 200),
+    ).toHaveLength(1);
+  });
+
   it.each([
     "audibility",
     "mediaType",

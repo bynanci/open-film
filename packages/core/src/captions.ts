@@ -273,8 +273,7 @@ export function generateCompositionCaptions(
     const sourceIn = clip.sourceIn ?? 0;
     const speed = clip.transform?.speed ?? 1;
     const volume = clip.transform?.volume ?? 1;
-    const sourceOut =
-      clip.sourceOut ?? sourceIn + clip.timelineDuration * speed;
+    let sourceOut = clip.sourceOut ?? sourceIn + clip.timelineDuration * speed;
     const clipEnd = clip.timelineStart + clip.timelineDuration;
     if (
       !clip.id ||
@@ -348,10 +347,21 @@ export function generateCompositionCaptions(
       });
       continue;
     }
+    // An omitted sourceOut follows the renderer's source-end clamp. The
+    // remaining timeline hold is padded silence, not additional source speech.
+    // Explicit trim bounds retain their existing strict validation.
     if (
-      assetState.duration !== "absent" &&
-      (assetState.duration === "invalid" ||
-        sourceOut > assetState.duration + EPSILON)
+      clip.sourceOut === undefined &&
+      typeof assetState.duration === "number" &&
+      assetState.duration > 0
+    ) {
+      sourceOut = Math.min(assetState.duration, sourceOut);
+    }
+    if (
+      sourceOut <= sourceIn ||
+      (assetState.duration !== "absent" &&
+        (assetState.duration === "invalid" ||
+          sourceOut > assetState.duration + EPSILON))
     ) {
       issue({
         ...context,

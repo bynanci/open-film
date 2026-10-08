@@ -154,6 +154,89 @@ describe("composition-aware caption mapping", () => {
     expect(new Set(result.cues.map((cue) => cue.id)).size).toBe(2);
   });
 
+  it.each([0.5, 1, 2])(
+    "clamps an omitted source out to available media and leaves padded silence uncaptioned at %sx",
+    (speed) => {
+      const value = fixture([
+        { id: "kept", start: 12, end: 14, text: "Heard words" },
+        { id: "partial", start: 14, end: 16, text: "Partly beyond source" },
+        { id: "outside", start: 16, end: 17, text: "Not in source audio" },
+      ]);
+      const clip = value.composition.tracks[0]!.clips[0]!;
+      clip.timelineDuration = 8 / speed;
+      clip.transform!.speed = speed;
+      delete clip.sourceOut;
+      value.sources[0]!.asset.duration = 15;
+      const before = structuredClone(value);
+      const mapped = generate(value);
+      expect(mapped.cues).toEqual([
+        expect.objectContaining({
+          segmentId: "kept",
+          startMs: (2 + 2 / speed) * 1000,
+          endMs: (2 + 4 / speed) * 1000,
+        }),
+      ]);
+      expect(mapped.issues).toEqual([
+        expect.objectContaining({
+          code: "PARTIAL_SEGMENT",
+          segmentId: "partial",
+          startMs: (2 + 4 / speed) * 1000,
+          endMs: (2 + 5 / speed) * 1000,
+          params: { sourceIn: 14, sourceOut: 15 },
+        }),
+      ]);
+      expect(
+        mapped.cues.every((cue) => cue.endMs <= (2 + 5 / speed) * 1000),
+      ).toBe(true);
+      expect(value).toEqual(before);
+    },
+  );
+
+  it("keeps omitted source out nominal when it already fits or source duration is absent", () => {
+    const value = fixture();
+    delete value.composition.tracks[0]!.clips[0]!.sourceOut;
+    const within = generate(value);
+    expect(within).toMatchObject({
+      cues: [expect.objectContaining({ startMs: 3000, endMs: 5000 })],
+      issues: [],
+    });
+    delete value.sources[0]!.asset.duration;
+    expect(generate(value)).toEqual(within);
+  });
+
+  it.each([0, -1, NaN, Infinity, 9, 10])(
+    "does not invent an inferred source range for invalid/empty available duration %s",
+    (duration) => {
+      const value = fixture();
+      delete value.composition.tracks[0]!.clips[0]!.sourceOut;
+      value.sources[0]!.asset.duration = duration;
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "TIMING_UNSUPPORTED",
+            severity: "error",
+          }),
+        ],
+      });
+    },
+  );
+
+  it("keeps explicit out-of-range source bounds blocked instead of silently clamping the user's trim", () => {
+    const value = fixture();
+    value.sources[0]!.asset.duration = 15;
+    expect(generate(value)).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          params: { reason: "source-duration" },
+        }),
+      ],
+    });
+    expect(value.composition.tracks[0]!.clips[0]!.sourceOut).toBe(18);
+  });
+
   it("omits every partial segment without guessing retained words, even with original word timings", () => {
     const value = fixture([
       {
