@@ -13,6 +13,7 @@ import {
   ApplicationError,
   CAPTION_LIMITS,
   captionAssetState,
+  captionClipHasOutput,
   frameAlignedDuration,
   generateCompositionCaptions,
   migrateProject,
@@ -505,18 +506,22 @@ export class CaptionService {
       (item) => item.id === input.trackId,
     );
     if (!track) invalid("Select an existing caption source track.");
-    const sourceIds = [...new Set(track.clips.map((clip) => clip.assetId))];
-    const audibleSourceIds = new Set(
-      track.clips
-        .filter((clip) => (clip.transform?.volume ?? 1) !== 0)
-        .map((clip) => clip.assetId),
-    );
+    const outputDuration =
+      state.composition.duration > 0
+        ? frameAlignedDuration(state.composition.duration, frameRate)
+        : 0;
+    const clipsByAsset = new Map<string, Clip[]>();
+    for (const clip of track.clips) {
+      const clips = clipsByAsset.get(clip.assetId);
+      if (clips) clips.push(clip);
+      else clipsByAsset.set(clip.assetId, [clip]);
+    }
     const sources: CaptionSource[] = [],
       bindings: CaptionSnapshotSource[] = [];
     const checks = new Map<string, SourceCheck>();
     let segmentCount = 0,
       textSize = 0;
-    for (const assetId of sourceIds) {
+    for (const [assetId, clips] of clipsByAsset) {
       checkAbort(options.signal);
       const asset = this.application.catalog.getAsset(assetId);
       if (!asset)
@@ -530,11 +535,21 @@ export class CaptionService {
       const sourceHash = asset.contentHash ?? check.hash;
       const assetState = captionAssetState(asset);
       const transcriptSkipped =
-        !audibleSourceIds.has(assetId) ||
         !check.available ||
         !["video", "audio"].includes(assetState.mediaType) ||
         assetState.previewBlocked ||
-        !assetState.hasAudio;
+        !assetState.hasAudio ||
+        !clips.some(
+          (clip) =>
+            (clip.transform?.volume ?? 1) !== 0 &&
+            captionClipHasOutput(
+              clip,
+              Math.min(state.composition.duration, outputDuration),
+              typeof assetState.duration === "number"
+                ? assetState.duration
+                : undefined,
+            ),
+        );
       const first =
         sourceHash && !transcriptSkipped
           ? this.application.catalog.transcripts.get(assetId, sourceHash, {
@@ -637,10 +652,7 @@ export class CaptionService {
       optionsVersion: 1,
       ...binding,
       compositionDuration: state.composition.duration,
-      outputDuration:
-        state.composition.duration > 0
-          ? frameAlignedDuration(state.composition.duration, frameRate)
-          : 0,
+      outputDuration,
       clipBindings: track.clips.map(
         ({
           id,

@@ -134,3 +134,12 @@ reopen, source eligibility changes, speed/source-in mapping, and actual FFmpeg
 audio padding. The prior local gate passed its first six commands and 51 browser
 cases before being interrupted for these fixes; it is not a complete candidate
 gate. Final results must be matched to the subsequent commit and its PR checks.
+
+A subsequent review extended skipped-source eligibility to clips wholly outside
+the renderer's output clock. Application and Core now share the inward-rounded
+captionable-range check; unused tail/sub-millisecond clips do not consume text
+budgets or appear as missing transcripts. Boundary-crossing clips and another
+audible instance of the same source still contribute eligible segments.
+The same check caps the audible interval by resolved source-out and speed, so
+source-end padding and accepted floating-point trim tolerances cannot make an
+otherwise uncaptionable source consume the transcript budget.

@@ -149,10 +149,13 @@ The application checks clip count before source I/O and limits retained source
 text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
 catalog and are not retained in caption working documents. A current catalog
 page is still materialized; this is not a claim of a fixed process memory limit.
-Sources used only by muted clips, offline sources and renderer-ineligible media
-retain source/revision bindings and explanatory warnings without loading their
-transcript segments into that budget. A source used by an audible clip is still
-loaded even when another instance of the same source is muted.
+Sources used only by muted clips or clips without a millisecond of captionable
+output, offline sources and renderer-ineligible media retain source/revision
+bindings and explanatory warnings without loading their transcript segments into
+that budget. The shared output-range check accounts for trim, speed and source-end
+padding as well as the discarded sub-frame tail.
+A source used by an audible, retained clip is still loaded even when another
+instance is muted or outside the output range.
 
 Whole-segment omission can leave gaps when a trim cuts through a sentence. Refine
 the transcript segment boundaries or the clip trim, then regenerate. This version

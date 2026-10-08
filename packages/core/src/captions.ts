@@ -1,4 +1,4 @@
-import type { Composition, MediaAsset } from "./models.js";
+import type { Clip, Composition, MediaAsset } from "./models.js";
 import type { TranscriptDocument } from "./intelligence.js";
 import { frameAlignedDuration } from "./timing.js";
 
@@ -159,6 +159,61 @@ function issueRange(
   const begin = startMs(start);
   const finish = endMs(end);
   return finish >= begin ? { startMs: begin, endMs: finish } : {};
+}
+
+/** Whether this clip can contain a positive cue on the output's millisecond clock.
+ * Application preparation shares this test before reading transcript evidence;
+ * the mapper still validates the complete clip before using the result. */
+export function captionClipHasOutput(
+  clip: Pick<
+    Clip,
+    | "timelineStart"
+    | "timelineDuration"
+    | "sourceIn"
+    | "sourceOut"
+    | "transform"
+  >,
+  outputDuration: number,
+  sourceDuration?: number,
+): boolean {
+  const end = clip.timelineStart + clip.timelineDuration;
+  const sourceIn = clip.sourceIn ?? 0;
+  const speed = clip.transform?.speed ?? 1;
+  if (
+    sourceDuration !== undefined &&
+    (!Number.isFinite(sourceDuration) || sourceDuration <= 0)
+  )
+    return false;
+  const inferredOut = sourceIn + clip.timelineDuration * speed;
+  const sourceOut =
+    clip.sourceOut ??
+    (sourceDuration === undefined
+      ? inferredOut
+      : Math.min(sourceDuration, inferredOut));
+  const audibleEnd = clip.timelineStart + (sourceOut - sourceIn) / speed;
+  if (
+    ![
+      clip.timelineStart,
+      clip.timelineDuration,
+      end,
+      outputDuration,
+      sourceIn,
+      sourceOut,
+      speed,
+      audibleEnd,
+    ].every(Number.isFinite) ||
+    clip.timelineStart < 0 ||
+    clip.timelineDuration <= 0 ||
+    outputDuration <= 0 ||
+    sourceIn < 0 ||
+    speed <= 0 ||
+    sourceOut <= sourceIn
+  )
+    return false;
+  return (
+    endMs(Math.min(end, outputDuration, audibleEnd)) >
+    startMs(clip.timelineStart)
+  );
 }
 
 /**
@@ -371,6 +426,29 @@ export function generateCompositionCaptions(
       });
       continue;
     }
+    const audibleEnd = clip.timelineStart + (sourceOut - sourceIn) / speed;
+    if (
+      !captionClipHasOutput(
+        clip,
+        outputDuration,
+        typeof assetState.duration === "number"
+          ? assetState.duration
+          : undefined,
+      )
+    ) {
+      issue({
+        ...clipContext,
+        code: "ZERO_DURATION",
+        severity: "warning",
+        params: {
+          reason:
+            clip.timelineStart >= outputDuration - EPSILON
+              ? "output-tail"
+              : "rounding",
+        },
+      });
+      continue;
+    }
     const transcript = source.transcript;
     if (!transcript) {
       issue({
@@ -444,7 +522,7 @@ export function generateCompositionCaptions(
             severity: "warning",
             ...issueRange(
               Math.max(clip.timelineStart, mappedStart),
-              Math.min(clipEnd, outputDuration),
+              Math.min(clipEnd, outputDuration, audibleEnd),
             ),
             params: {
               reason: "output-tail",
@@ -504,6 +582,7 @@ export function generateCompositionCaptions(
         Math.min(
           outputDuration,
           clipEnd,
+          audibleEnd,
           clip.timelineStart + (segment.end - sourceIn) / speed,
         ),
       );

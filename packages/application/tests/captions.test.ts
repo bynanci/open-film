@@ -829,6 +829,10 @@ describe("caption preparation resource and output contracts", () => {
     "image",
     "previewBlocked",
     "noAudio",
+    "outputTail",
+    "subMillisecond",
+    "sourcePadding",
+    "shortExplicitRange",
   ] as const;
 
   async function excludedSourceFixture(kind: (typeof exclusions)[number]) {
@@ -841,6 +845,7 @@ describe("caption preparation resource and output contracts", () => {
       uri: pathToFileURL(source).href,
     };
     if (kind === "image") asset.mediaType = "image";
+    if (kind === "sourcePadding") asset.duration = 2;
     if (kind === "previewBlocked")
       asset.metadata["openfilm.preview"] = { supported: false };
     if (kind === "noAudio")
@@ -852,12 +857,37 @@ describe("caption preparation resource and output contracts", () => {
       ...test.document,
       assetId: asset.id,
     });
-    const track = test.app.project.timelines[0]!.tracks[0]!;
+    const composition = test.app.project.timelines[0]!;
+    const track = composition.tracks[0]!;
+    if (kind === "outputTail" || kind === "subMillisecond") {
+      composition.duration = 1.01;
+      track.clips[0]!.sourceOut = 1;
+      track.clips[0]!.timelineDuration = 1;
+    }
     track.clips.unshift({
       ...track.clips[0]!,
       id: "excluded-instance",
       assetId: asset.id,
       ...(kind === "muted" ? { transform: { volume: 0 } } : {}),
+      ...(kind === "outputTail"
+        ? { timelineStart: 1, timelineDuration: 0.01, sourceOut: 0.01 }
+        : kind === "subMillisecond"
+          ? {
+              timelineStart: 0.9001,
+              timelineDuration: 0.0008,
+              sourceOut: 0.0008,
+            }
+          : {}),
+      ...(kind === "sourcePadding"
+        ? {
+            sourceIn: 1.9995,
+            sourceOut: undefined,
+            timelineDuration: 1,
+            transform: { speed: 2 },
+          }
+        : kind === "shortExplicitRange"
+          ? { sourceOut: 0.0009995, timelineDuration: 0.001 }
+          : {}),
     });
     await test.app.save();
     return { ...test, asset };
@@ -918,9 +948,19 @@ describe("caption preparation resource and output contracts", () => {
               ? "MUTED_CLIP"
               : kind === "offline"
                 ? "SOURCE_UNAVAILABLE"
-                : "MEDIA_UNSUPPORTED",
+                : [
+                      "outputTail",
+                      "subMillisecond",
+                      "sourcePadding",
+                      "shortExplicitRange",
+                    ].includes(kind)
+                  ? "ZERO_DURATION"
+                  : "MEDIA_UNSUPPORTED",
         }),
       );
+      expect(
+        snapshot.issues.some((issue) => issue.code === "TRANSCRIPT_MISSING"),
+      ).toBe(false);
       expect(snapshot.sources[0]).toMatchObject({
         assetId: "unused",
         assetState: core.captionAssetState(test.asset),
@@ -959,10 +999,20 @@ describe("caption preparation resource and output contracts", () => {
         reopenedRead.mock.calls.some(([assetId]) => assetId === "unused"),
       ).toBe(false);
 
-      if (kind === "muted") {
-        test.app.project.timelines[0]!.tracks[0]!.clips[0]!.transform = {
-          volume: 1,
-        };
+      const compositionChanged = [
+        "muted",
+        "outputTail",
+        "subMillisecond",
+        "sourcePadding",
+        "shortExplicitRange",
+      ].includes(kind);
+      if (compositionChanged) {
+        const clip = test.app.project.timelines[0]!.tracks[0]!.clips[0]!;
+        clip.transform = { volume: 1 };
+        clip.timelineStart = 0;
+        clip.timelineDuration = 0.5;
+        clip.sourceIn = 0;
+        clip.sourceOut = 0.5;
         await test.app.save();
       } else if (kind === "offline") {
         await fs.writeFile(join(test.root, "unused.mp4"), test.bytes);
@@ -977,7 +1027,7 @@ describe("caption preparation resource and output contracts", () => {
         projectId: test.app.project.id,
       });
       expect(changed.staleReasons).toContain(
-        kind === "muted" ? "composition" : "source",
+        compositionChanged ? "composition" : "source",
       );
       expect(changed.exportable).toBe(false);
     },
@@ -1014,26 +1064,87 @@ describe("caption preparation resource and output contracts", () => {
     expect(refreshed.sources[1]!.transcriptSkipped).toBeUndefined();
   });
 
-  it("loads a shared source when its first selected clip is muted and another is audible", async () => {
+  it.each(["muted", "outputTail", "sourcePadding"] as const)(
+    "loads a shared source when its first selected clip is %s and another is audible",
+    async (kind) => {
+      const test = await fixture(1);
+      const composition = test.app.project.timelines[0]!;
+      const track = composition.tracks[0]!;
+      if (kind === "outputTail") {
+        composition.duration = 1.01;
+        track.clips[0]!.sourceOut = 1;
+        track.clips[0]!.timelineDuration = 1;
+      } else if (kind === "sourcePadding") {
+        test.app.catalog.upsertAsset({
+          ...test.app.catalog.getAsset("spoken")!,
+          duration: 2,
+        });
+        track.clips[0]!.sourceOut = 2;
+        track.clips[0]!.timelineDuration = 2;
+      }
+      track.clips.unshift({
+        ...track.clips[0]!,
+        id: "excluded-instance",
+        ...(kind === "muted"
+          ? { transform: { volume: 0 } }
+          : kind === "outputTail"
+            ? { timelineStart: 1, timelineDuration: 0.01, sourceOut: 0.01 }
+            : {
+                sourceIn: 1.9995,
+                sourceOut: undefined,
+                timelineDuration: 1,
+                transform: { speed: 2 },
+              }),
+      });
+      await test.app.save();
+      const read = vi.spyOn(test.app.catalog.transcripts, "get");
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({
+        cueCount: 1,
+        sourceCount: 1,
+        clipCount: 2,
+        exportable: true,
+        stale: false,
+      });
+      expect(snapshot.cues[0]!.clipId).toBe("instance");
+      expect(snapshot.sources[0]!.provenance).toEqual(test.document.provenance);
+      expect(snapshot.sources[0]!.transcriptSkipped).toBeUndefined();
+      expect(
+        read.mock.calls.filter(([, , page]) => page?.limit === 200),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("loads a source whose only clip straddles the discarded output tail", async () => {
     const test = await fixture(1);
-    const track = test.app.project.timelines[0]!.tracks[0]!;
-    track.clips.unshift({
-      ...track.clips[0]!,
-      id: "muted-instance",
-      transform: { volume: 0 },
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      segments: [
+        { id: "audible", start: 0, end: 0.005, text: "Retained speech" },
+        { id: "tail", start: 0.01, end: 0.02, text: "Discarded speech" },
+      ],
     });
+    const composition = test.app.project.timelines[0]!;
+    composition.duration = 1.01;
+    const clip = composition.tracks[0]!.clips[0]!;
+    clip.sourceOut = 0.02;
+    clip.timelineStart = 0.99;
+    clip.timelineDuration = 0.02;
     await test.app.save();
     const read = vi.spyOn(test.app.catalog.transcripts, "get");
     const snapshot = await test.app.captions.prepare(test.input());
     expect(snapshot).toMatchObject({
+      outputDuration: 1,
       cueCount: 1,
-      sourceCount: 1,
-      clipCount: 2,
-      exportable: true,
       stale: false,
+      exportable: true,
     });
-    expect(snapshot.cues[0]!.clipId).toBe("instance");
-    expect(snapshot.sources[0]!.provenance).toEqual(test.document.provenance);
+    expect(snapshot.cues[0]).toMatchObject({
+      startMs: 990,
+      endMs: 995,
+      text: "Retained speech",
+    });
+    expect(snapshot.sources[0]!.transcriptSkipped).toBeUndefined();
     expect(
       read.mock.calls.filter(([, , page]) => page?.limit === 200),
     ).toHaveLength(1);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   generateCompositionCaptions,
   captionAssetState,
+  captionClipHasOutput,
   validateComposition,
   CAPTION_LIMITS,
   type CaptionSource,
@@ -78,6 +79,257 @@ function generate(value = fixture()) {
 }
 
 describe("composition-aware caption mapping", () => {
+  it.each([
+    {
+      sourceIn: 1.9995,
+      sourceOut: undefined,
+      speed: 2,
+      duration: 1,
+      sourceDuration: 2,
+    },
+    {
+      sourceIn: 0,
+      sourceOut: 0.0009995,
+      speed: 1,
+      duration: 0.001,
+      sourceDuration: 2,
+    },
+    {
+      sourceIn: 0,
+      sourceOut: 0.0009999995,
+      speed: 1,
+      duration: 0.001,
+      sourceDuration: 2,
+    },
+  ])(
+    "excludes a clip whose audible source range has no positive rounded output: $sourceIn/$sourceOut",
+    ({ sourceIn, sourceOut, speed, duration, sourceDuration }) => {
+      const value = fixture();
+      const clip = value.composition.tracks[0]!.clips[0]!;
+      Object.assign(clip, {
+        sourceIn,
+        sourceOut,
+        timelineStart: 0,
+        timelineDuration: duration,
+        transform: { speed },
+      });
+      value.sources[0]!.asset.duration = sourceDuration;
+      delete value.sources[0]!.transcript;
+      expect(
+        captionClipHasOutput(clip, value.composition.duration, sourceDuration),
+      ).toBe(false);
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "ZERO_DURATION",
+            params: { reason: "rounding" },
+          }),
+        ],
+      });
+    },
+  );
+
+  it("clamps epsilon-tolerated segment ends to the audible source window before rounding", () => {
+    const value = fixture([{ id: "edge", start: 0, end: 0.002, text: "Edge" }]);
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      sourceIn: 0,
+      sourceOut: 0.0019999995,
+      timelineStart: 0,
+      timelineDuration: 0.002,
+      transform: { speed: 1 },
+    });
+    expect(generate(value)).toMatchObject({
+      cues: [expect.objectContaining({ startMs: 0, endMs: 1 })],
+      issues: [],
+    });
+  });
+
+  it.each([
+    {
+      start: 0,
+      sourceIn: 1.995,
+      sourceOut: undefined,
+      speed: 2,
+      duration: 1,
+      sourceDuration: 2,
+    },
+    {
+      start: 4.0002,
+      sourceIn: 1.995,
+      sourceOut: undefined,
+      speed: 2,
+      duration: 1,
+      sourceDuration: 2,
+    },
+    {
+      start: 2.0002,
+      sourceIn: 0,
+      sourceOut: 0.002,
+      speed: 1,
+      duration: 0.002,
+      sourceDuration: 2,
+    },
+  ])(
+    "retains positive fractional audible ranges with timeline offset $start",
+    ({ start, sourceIn, sourceOut, speed, duration, sourceDuration }) => {
+      const value = fixture([
+        {
+          id: "heard",
+          start: sourceIn,
+          end: sourceOut ?? sourceDuration,
+          text: "Heard",
+        },
+      ]);
+      const clip = value.composition.tracks[0]!.clips[0]!;
+      Object.assign(clip, {
+        sourceIn,
+        sourceOut,
+        timelineStart: start,
+        timelineDuration: duration,
+        transform: { speed },
+      });
+      value.sources[0]!.asset.duration = sourceDuration;
+      expect(
+        captionClipHasOutput(clip, value.composition.duration, sourceDuration),
+      ).toBe(true);
+      const result = generate(value);
+      expect(result.cues).toHaveLength(1);
+      expect(result.cues[0]!.endMs).toBeGreaterThan(result.cues[0]!.startMs);
+      expect(result.issues).toEqual([]);
+    },
+  );
+  it.each([
+    { start: 0, duration: 1, output: 1, audible: true },
+    { start: 1, duration: 0.01, output: 1, audible: false },
+    { start: 0.9, duration: 0.11, output: 1, audible: true },
+    { start: 0.0002, duration: 0.0006, output: 1, audible: false },
+    { start: 0.0002, duration: 0.001, output: 1, audible: false },
+    { start: 0.0002, duration: 0.0018, output: 1, audible: true },
+  ])(
+    "shares a bounded inward-rounded clip output predicate: $start/$duration/$output",
+    ({ start, duration, output, audible }) => {
+      expect(
+        captionClipHasOutput(
+          { timelineStart: start, timelineDuration: duration },
+          output,
+        ),
+      ).toBe(audible);
+    },
+  );
+
+  it("does not require a transcript for a clip entirely outside encoded output", () => {
+    const value = fixture();
+    value.composition.duration = 1.01;
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      timelineStart: 1,
+      timelineDuration: 0.01,
+      sourceIn: 0,
+      sourceOut: 0.01,
+      transform: { speed: 1 },
+    });
+    delete value.sources[0]!.transcript;
+    delete value.sources[0]!.transcriptRevisionId;
+    const result = generateCompositionCaptions(
+      value.composition,
+      value.sources,
+      { trackId: "dialogue", frameRate: 30 },
+    );
+    expect(result).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "ZERO_DURATION",
+          clipId: "clip",
+          params: { reason: "output-tail" },
+        }),
+      ],
+    });
+    expect(
+      result.issues.some((issue) => issue.code === "TRANSCRIPT_MISSING"),
+    ).toBe(false);
+    value.composition.tracks[0]!.clips[0]!.transform!.speed = 2;
+    expect(
+      generateCompositionCaptions(value.composition, value.sources, {
+        trackId: "dialogue",
+        frameRate: 30,
+      }),
+    ).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          severity: "error",
+        }),
+      ],
+    });
+  });
+
+  it("explains a clip with no rounded millisecond range without requiring its transcript", () => {
+    const value = fixture();
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      timelineStart: 0.0002,
+      timelineDuration: 0.0006,
+      sourceIn: 0,
+      sourceOut: 0.0006,
+      transform: { speed: 1 },
+    });
+    delete value.sources[0]!.transcript;
+    expect(generate(value)).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "ZERO_DURATION",
+          params: { reason: "rounding" },
+        }),
+      ],
+    });
+  });
+
+  it("retains the same asset's earlier usable instance while omitting its tail-only instance", () => {
+    const value = fixture([
+      { id: "words", start: 0, end: 0.2, text: "Heard words" },
+    ]);
+    value.composition.duration = 1.01;
+    value.composition.tracks[0]!.clips = [
+      {
+        id: "heard",
+        assetId: "source",
+        timelineStart: 0,
+        timelineDuration: 0.5,
+        sourceIn: 0,
+        sourceOut: 0.5,
+      },
+      {
+        id: "tail",
+        assetId: "source",
+        timelineStart: 1,
+        timelineDuration: 0.01,
+        sourceIn: 0,
+        sourceOut: 0.01,
+      },
+    ];
+    const result = generateCompositionCaptions(
+      value.composition,
+      value.sources,
+      { trackId: "dialogue", frameRate: 30 },
+    );
+    expect(result.cues).toEqual([
+      expect.objectContaining({
+        clipId: "heard",
+        text: "Heard words",
+        startMs: 0,
+        endMs: 200,
+      }),
+    ]);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "ZERO_DURATION",
+        clipId: "tail",
+        params: { reason: "output-tail" },
+      }),
+    ]);
+  });
   it("captures mapper-relevant source metadata in a JSON-stable canonical state", () => {
     const asset = fixture().sources[0]!.asset;
     expect(captionAssetState(asset)).toEqual({
