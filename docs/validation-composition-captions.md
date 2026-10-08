@@ -91,3 +91,11 @@ independently parses the actual WebVTT output. No retry, delay, content assertio
 relaxation or production change was used; the CI annotation does not establish
 the exact origin of the intervening navigation. This failed attempt is retained
 separately from the next candidate's checks.
+
+The Ready-triggered review also identified missing CLI warning pagination and
+caption-request shutdown cancellation. Follow-up regressions exercise warning
+pages beyond 200 and shutdown during preparation, snapshot validation and export.
+The suggestion to admit raw `360-video` was checked against the full renderer:
+`previewIssue` rejects these sources before `hasAudio` is reached, requiring a
+reframed flat export. The caption boundary is retained and tested explicitly;
+this does not claim raw-360 rendering support.

@@ -716,6 +716,25 @@ export async function startServer(options: ServerOptions = {}) {
         if (route.startsWith("/api/captions/")) {
           errorContext = "captions.failed";
           const controller = new AbortController();
+          // These are request-scoped cancellation records, not catalog jobs.
+          // Shutdown must cancel hashing and wait for staged-output cleanup
+          // before closing the owning project's catalog.
+          const requestId = `captions:${randomUUID()}`;
+          let completeRequest!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            completeRequest = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const abortRequest = () => {
+            // Also interrupt an incomplete POST body. Its async iterator would
+            // otherwise keep shutdown waiting even after the signal aborts.
+            request.destroy();
+            response.destroy();
+          };
+          controller.signal.addEventListener("abort", abortRequest, {
+            once: true,
+          });
           const disconnected = () => {
             if (!response.writableEnded) controller.abort();
           };
@@ -847,6 +866,10 @@ export async function startServer(options: ServerOptions = {}) {
             }
           } finally {
             response.removeListener("close", disconnected);
+            controller.signal.removeEventListener("abort", abortRequest);
+            active.delete(requestId);
+            tasks.delete(completed);
+            completeRequest();
           }
           throw new HttpError(404, "Caption endpoint not found.");
         }

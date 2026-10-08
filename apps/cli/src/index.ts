@@ -38,7 +38,7 @@ Usage:
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
-  openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100]
+  openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200]
   openfilm captions export <snapshot-id> --project <film.openfilm> --format srt|vtt
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
@@ -78,6 +78,8 @@ function parse(args: string[]) {
     "title",
     "offset",
     "limit",
+    "issue-offset",
+    "issue-limit",
     "rating",
     "template",
     "target",
@@ -528,6 +530,8 @@ async function main() {
               projectId,
               offset: Number(value(options, "offset") ?? 0),
               limit: Number(value(options, "limit") ?? 100),
+              issueOffset: Number(value(options, "issue-offset") ?? 0),
+              issueLimit: Number(value(options, "issue-limit") ?? 200),
             },
             { signal: controller.signal },
           ),

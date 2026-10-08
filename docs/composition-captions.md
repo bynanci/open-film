@@ -85,11 +85,18 @@ at exact millisecond boundaries; no positive minimum duration is invented.
 ```sh
 pnpm cli captions prepare --project /path/film.openfilm --composition <id> --track <id>
 pnpm cli captions get <snapshot-id> --project /path/film.openfilm --offset 0 --limit 100
+pnpm cli captions get <snapshot-id> --project /path/film.openfilm --issue-offset 200 --issue-limit 100
 pnpm cli captions export <snapshot-id> --project /path/film.openfilm --format srt
 pnpm cli captions export <snapshot-id> --project /path/film.openfilm --format vtt
 ```
 
 Commands return JSON; publication `relativePath` is under the chosen project.
+Cue and warning pagination are independent; use `--issue-offset` and
+`--issue-limit` to inspect later warning pages. Both page sizes are capped at 200
+by the shared application contract. Raw `360-video` sources remain unsupported,
+matching the renderer's requirement for a reframed flat export, even when a
+stored transcript and audio stream are present. A playable flat export is a
+normal video source.
 Each export creates its own `exports/captions-<id>/` directory containing the
 subtitle and `manifest.json`. Re-running never replaces an existing output.
 Snapshots remain in `cache/captions/` and can be read after reopening. Cancellation

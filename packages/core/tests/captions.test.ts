@@ -452,6 +452,61 @@ describe("composition-aware caption mapping", () => {
     expect(generate(value).cues).toHaveLength(1);
   });
 
+  it.each(["video", "audio", "music"] as const)(
+    "does not treat an audible 360 source as renderable on a %s track",
+    (trackType) => {
+      const value = fixture();
+      value.composition.tracks[0]!.type = trackType;
+      const asset = value.sources[0]!.asset;
+      asset.mediaType = "360-video";
+      // Neither audio evidence nor an existing transcript bypasses the
+      // renderer's unconditional requirement to import a reframed flat export.
+      asset.metadata["openfilm.preview"] = { supported: true };
+      const before = structuredClone(value);
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "MEDIA_UNSUPPORTED",
+            clipId: "clip",
+            assetId: "source",
+            startMs: 2000,
+            endMs: 6000,
+          }),
+        ]),
+      });
+      expect(value).toEqual(before);
+    },
+  );
+
+  it.each(["video", "audio", "music"] as const)(
+    "maps an audible reframed flat export from an Insta360 source on a %s track",
+    (trackType) => {
+      const value = fixture();
+      value.composition.tracks[0]!.type = trackType;
+      Object.assign(value.sources[0]!.asset.metadata, {
+        "openfilm.preview": { supported: true },
+        "openfilm.insta360": {
+          level: 1,
+          requiresReframedExport: false,
+          original360Sources: ["file:///original.insv"],
+        },
+      });
+      const result = generate(value);
+      expect(result.cues).toEqual([
+        expect.objectContaining({
+          startMs: 3000,
+          endMs: 5000,
+          transcriptRevisionId: "revision-2",
+          text: "十和田湖 — Our trip",
+        }),
+      ]);
+      expect(
+        result.issues.some((issue) => issue.code === "MEDIA_UNSUPPORTED"),
+      ).toBe(false);
+    },
+  );
+
   it.each([null, { streams: {} }, { streams: [null, "invalid"] }])(
     "reports malformed audio metadata without crashing the preview: %j",
     (probe) => {
