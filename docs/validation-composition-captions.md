@@ -78,3 +78,16 @@ independent CI additionally runs the complete repository gates. Native checks
 exercise formatting/Clippy and the harness (zero Rust behavioral tests); they do
 not validate a Windows installer. Interchange uses official OTIO 0.18.1 and the
 existing Resolve preparation helper tests, not the Resolve application.
+
+The subsequent candidate `b50b866ea629688a69caa301d2489bf14b29c39a`
+passed its local parser/browser rerun, but PR CI
+[37706405529](https://github.com/bynanci/open-film/actions/runs/37706405529)
+reported 68 browser passes and one failure: the standalone native WebVTT probe's
+`page.evaluate` lost its execution context to a navigation. That format-only
+test unnecessarily opened the application before using Chromium's parser.
+It now uses a blank browser document and asserts that no application document
+navigation occurs. The separate real application workflow still downloads and
+independently parses the actual WebVTT output. No retry, delay, content assertion
+relaxation or production change was used; the CI annotation does not establish
+the exact origin of the intervening navigation. This failed attempt is retained
+separately from the next candidate's checks.

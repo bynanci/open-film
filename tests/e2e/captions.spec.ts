@@ -281,7 +281,16 @@ async function nativeVtt(page: Page, text: string) {
 test("Chromium decodes literal Unicode, blank lines and timestamp-looking text without creating false cues", async ({
   page,
 }) => {
-  await page.goto("/");
+  const documentRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && /^https?:/u.test(request.url()))
+      documentRequests.push(request.url());
+  });
+  // This format-only check needs Chromium, not the app's startup lifecycle.
+  // Keep asynchronous TextTrack parsing outside documents a dev server can
+  // navigate. The real download workflow below still parses in the actual UI.
+  await page.goto("about:blank");
+  expect(documentRequests).toEqual([]);
   const literal =
     "十和田湖 & memories <literal>\r\n次の行\n\n00:00:05.000 --> 00:00:06.000\n🎬";
   const cue: CaptionCue = {
@@ -305,6 +314,8 @@ test("Chromium decodes literal Unicode, blank lines and timestamp-looking text w
       text: literal.replace(/\r\n/gu, "\n").replace(/\n\n/gu, "\n\u00a0\n"),
     },
   ]);
+  expect(page.url()).toBe("about:blank");
+  expect(documentRequests).toEqual([]);
 });
 
 test("corrected transcript exports mapped captions with warnings, independent parsers and immutable source evidence", async ({
