@@ -155,8 +155,9 @@ from model, camera and hardware certification.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
-Vision, Highlights and Captions remain deferred. Geometry and transcript productivity
-is tracked separately below; interface-only work is not completion.
+Vision, Highlights and caption tracks/burn-in remain deferred. Geometry, transcript
+productivity and the scoped subtitle-export workflow are tracked separately below;
+interface-only work is not completion.
 
 ## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
 
@@ -224,3 +225,15 @@ Evidence: [validation record](docs/validation-geometry-parity.md).
 - [x] Observe asynchronously loaded source viewports through inspector changes and mode replacement; retain valid preview during numeric edits.
 - [x] Pass complete local regression gates and scoped review with actual FFmpeg and browser regressions.
 - [ ] Manual: real camera/proxy/color behavior and actual NLE import remain workstation checks.
+
+## Composition-aware subtitle handoff
+
+Scope and acceptance: [workflow contract](docs/composition-captions.md).
+Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-reference.md).
+
+- [x] Let people hand off corrected speech as film-timed SRT/WebVTT without re-transcription or timeline mutation.
+- [x] Explain omitted boundary text, stale alignment, missing speech and overlaps before export.
+- [x] Bind previews and output receipts to source/transcript/composition revisions; reject stale publication.
+- [x] Share the validated flow across Export, HTTP and CLI with atomic output and project-scoped recovery.
+- [x] Validate actual downloaded files with independent parsers and localized, bounded browser screens.
+- [ ] Manual: subtitle playback in a real NLE/player remains separate from format-parser validation.

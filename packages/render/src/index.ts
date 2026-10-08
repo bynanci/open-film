@@ -3,6 +3,7 @@ import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   resolveClipGeometry,
+  frameAlignedDuration,
   type Clip,
   type Composition,
   type MediaAsset,
@@ -73,9 +74,10 @@ export class FFmpegRenderer {
       settings.height % 2
     )
       throw new Error("Render dimensions must be even integers");
-    const outputDuration =
-      Math.floor((composition.duration + 1e-9) * settings.frameRate) /
-      settings.frameRate;
+    const outputDuration = frameAlignedDuration(
+      composition.duration,
+      settings.frameRate,
+    );
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));

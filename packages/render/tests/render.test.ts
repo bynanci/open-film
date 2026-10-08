@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolvePreviewClipGeometry, type Composition } from "@openfilm/core";
+import {
+  resolvePreviewClipGeometry,
+  type Composition,
+  type MediaAsset,
+} from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "../src/index";
 
@@ -36,6 +40,60 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
+  it.each(["video", "audio", "music"] as const)(
+    "requires a reframed export before decoding an audible 360 source on a %s track",
+    async (trackType) => {
+      const directory = await mkdtemp(join(tmpdir(), "openfilm-360-gate-"));
+      directories.push(directory);
+      const asset: MediaAsset = {
+        id: "spherical",
+        name: "spherical.insv",
+        // No source file exists: the supported-media guard must reject before
+        // FFmpeg can attempt to open or decode it.
+        uri: pathToFileURL(join(directory, "spherical.insv")).href,
+        mediaType: "360-video",
+        duration: 1,
+        tags: [],
+        state: {},
+        metadata: {
+          "openfilm.preview": { supported: true },
+          "openfilm.ffprobe": {
+            streams: [{ codec_type: "video" }, { codec_type: "audio" }],
+          },
+        },
+      };
+      const composition: Composition = {
+        id: "film",
+        storyId: "story",
+        duration: 1,
+        tracks: [
+          {
+            id: "selected",
+            type: trackType,
+            clips: [
+              {
+                id: "clip",
+                assetId: asset.id,
+                timelineStart: 0,
+                timelineDuration: 1,
+              },
+            ],
+          },
+        ],
+      };
+      const before = structuredClone({ composition, asset });
+      await expect(
+        new FFmpegRenderer().render(
+          composition,
+          [asset],
+          join(directory, "preview.mp4"),
+        ),
+      ).rejects.toThrow("360 source: Requires reframed export");
+      expect(await readdir(directory)).toEqual([]);
+      expect({ composition, asset }).toEqual(before);
+    },
+  );
+
   it("honors trim, speed, audio volume, title and crossfade while preserving source bytes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openfilm-render-"));
     directories.push(directory);

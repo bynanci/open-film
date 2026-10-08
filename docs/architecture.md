@@ -180,6 +180,16 @@ remounting, with physical-volume auto-detection deferred. See
 
 ## Interchange boundaries
 
+Composition subtitle export is a read-only derived use case alongside timeline
+interchange. `core/captions.ts` maps saved source segments to the selected track's
+clip instances. `exporters/captions.ts` serializes plain subtitles;
+`application/captions.ts` owns source/revision checks, bounded snapshot reads and
+atomic publication of file plus provenance. Desktop, HTTP and CLI reuse that
+service. No caption-track model, history engine or catalog migration is added.
+The CLI export session skips workspace recovery/repair and does not save project
+JSON on close; it cannot overwrite another process's edit after a stale failure.
+See [subtitle contracts](composition-captions.md).
+
 OTIO carries native cut layout, source references, still holds, audio and gaps.
 Advanced edits are preserved in OpenFilm metadata with explicit compatibility
 warnings and an adjacent report. Speed edits use unretimed native excerpts and

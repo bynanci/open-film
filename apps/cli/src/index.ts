@@ -4,6 +4,7 @@ import { errorInfo, type GlossaryInput } from "@openfilm/core";
 import type { TranscriptMutationInput } from "@openfilm/catalog";
 import {
   OpenFilmApplication,
+  TimelineEditor,
   resolveUserDataDirectory,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
@@ -36,6 +37,9 @@ Usage:
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
+  openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
+  openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
+  openfilm captions export <snapshot-id> --project <film.openfilm> --format srt|vtt
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
 Original media stays unchanged. No network service or AI account is required.
@@ -74,12 +78,19 @@ function parse(args: string[]) {
     "title",
     "offset",
     "limit",
+    "issue-offset",
+    "issue-limit",
+    "source-offset",
+    "source-limit",
+    "clip-offset",
+    "clip-limit",
     "rating",
     "template",
     "target",
     "max",
     "story",
     "composition",
+    "track",
     "format",
     "port",
     "assets",
@@ -204,7 +215,13 @@ async function main() {
   const project = value(options, "project") ?? process.env.OPENFILM_PROJECT;
   if (!project)
     throw new Error("Use --project <film.openfilm> to select a project.");
-  const app = await OpenFilmApplication.open(resolve(project), runtimeOptions);
+  const app =
+    command === "captions"
+      ? await OpenFilmApplication.openForExport(
+          resolve(project),
+          runtimeOptions,
+        )
+      : await OpenFilmApplication.open(resolve(project), runtimeOptions);
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
@@ -491,6 +508,55 @@ async function main() {
       } else
         throw new Error(
           "Choose review run, list, accept, skip, batches, recover, retry-batch or skip-batch.",
+        );
+    } else if (command === "captions") {
+      const action = positional[1];
+      const projectId = app.project.id;
+      if (action === "prepare") {
+        const compositionId = value(options, "composition") ?? "";
+        const state = new TimelineEditor(app).get(compositionId);
+        print(
+          await app.captions.prepare(
+            {
+              projectId,
+              compositionId,
+              trackId: value(options, "track") ?? "",
+              baseRevision: state.revision,
+            },
+            { signal: controller.signal },
+          ),
+        );
+      } else if (action === "get") {
+        print(
+          await app.captions.get(
+            positional[2] ?? "",
+            {
+              projectId,
+              offset: Number(value(options, "offset") ?? 0),
+              limit: Number(value(options, "limit") ?? 100),
+              issueOffset: Number(value(options, "issue-offset") ?? 0),
+              issueLimit: Number(value(options, "issue-limit") ?? 200),
+              sourceOffset: Number(value(options, "source-offset") ?? 0),
+              sourceLimit: Number(value(options, "source-limit") ?? 200),
+              clipOffset: Number(value(options, "clip-offset") ?? 0),
+              clipLimit: Number(value(options, "clip-limit") ?? 200),
+            },
+            { signal: controller.signal },
+          ),
+        );
+      } else if (action === "export") {
+        const format = value(options, "format");
+        if (format !== "srt" && format !== "vtt")
+          throw new Error("Choose --format srt or vtt.");
+        print(
+          await app.captions.export(positional[2] ?? "", format, {
+            projectId,
+            signal: controller.signal,
+          }),
+        );
+      } else
+        throw new Error(
+          "Choose captions prepare, get, or export. Run openfilm --help.",
         );
     } else if (command === "marker") {
       const id = positional[1];
