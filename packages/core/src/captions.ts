@@ -143,6 +143,7 @@ export function isSrtCaptionTextSupported(text: string): boolean {
 }
 
 const EPSILON = 1e-9;
+const SOURCE_SPAN_TOLERANCE = 1e-6;
 // Match validateComposition's accepted clip-end tolerance; output still clamps
 // to the exact film boundary before the separate inward millisecond rounding.
 const COMPOSITION_END_TOLERANCE = 1e-7;
@@ -179,12 +180,27 @@ export function captionClipHasOutput(
   const end = clip.timelineStart + clip.timelineDuration;
   const sourceIn = clip.sourceIn ?? 0;
   const speed = clip.transform?.speed ?? 1;
+  const volume = clip.transform?.volume ?? 1;
   if (
     sourceDuration !== undefined &&
     (!Number.isFinite(sourceDuration) || sourceDuration <= 0)
   )
     return false;
   const inferredOut = sourceIn + clip.timelineDuration * speed;
+  const nominalOut = clip.sourceOut ?? inferredOut;
+  // Validate the same nominal range as the mapper before an omitted end is
+  // clamped. A legitimate padded clip must not fail the span check afterward.
+  if (
+    !Number.isFinite(nominalOut) ||
+    !Number.isFinite(volume) ||
+    volume < 0 ||
+    Math.abs((nominalOut - sourceIn) / speed - clip.timelineDuration) >
+      SOURCE_SPAN_TOLERANCE ||
+    (clip.sourceOut !== undefined &&
+      sourceDuration !== undefined &&
+      nominalOut > sourceDuration + EPSILON)
+  )
+    return false;
   const sourceOut =
     clip.sourceOut ??
     (sourceDuration === undefined
@@ -349,7 +365,8 @@ export function generateCompositionCaptions(
       clip.timelineStart < 0 ||
       clip.timelineDuration <= 0 ||
       clipEnd > composition.duration + COMPOSITION_END_TOLERANCE ||
-      Math.abs((sourceOut - sourceIn) / speed - clip.timelineDuration) > 1e-6
+      Math.abs((sourceOut - sourceIn) / speed - clip.timelineDuration) >
+        SOURCE_SPAN_TOLERANCE
     ) {
       issue({
         ...context,

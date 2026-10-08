@@ -150,3 +150,13 @@ without depending on the snapshot cache. Tamper regressions cover cue text,
 bindings, revisions, provenance, warnings and output hashes across readers.
 Cancellation regressions hold snapshot, manifest and subtitle reads, verifying
 that request/shutdown signals reach them and that cleanup preserves prior files.
+
+The final preflight review moved unsupported-track rejection before source I/O
+and clip-count limits. Invalid explicit source bounds, nominal span/speed pairs
+and source durations no longer load irrelevant transcript content first. Tests
+verify the specific timing error survives both transcript budgets, while valid
+padded clips and another valid instance of the same asset remain captionable.
+The final candidate's local gate runs formatting, i18n, lint, typecheck, unit and
+integration tests, build, interchange, native checks and the built CLI smoke test.
+Its complete browser gate is verified separately by the exact-head CI step; an
+interrupted earlier local browser run is not reported as that final gate.

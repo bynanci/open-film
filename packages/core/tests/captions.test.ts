@@ -79,6 +79,87 @@ function generate(value = fixture()) {
 }
 
 describe("composition-aware caption mapping", () => {
+  it.each(["source-overrun", "span-mismatch"])(
+    "excludes a source range rejected by the mapper before transcript reads: %s",
+    (reason) => {
+      const value = fixture();
+      const clip = value.composition.tracks[0]!.clips[0]!;
+      if (reason === "source-overrun") value.sources[0]!.asset.duration = 15;
+      else clip.sourceOut = 17;
+      delete value.sources[0]!.transcript;
+      expect(
+        captionClipHasOutput(
+          clip,
+          value.composition.duration,
+          value.sources[0]!.asset.duration,
+        ),
+      ).toBe(false);
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "TIMING_UNSUPPORTED",
+            severity: "error",
+          }),
+        ],
+      });
+    },
+  );
+
+  it.each([
+    "source-end-tolerance",
+    "source-span-tolerance",
+    "omitted-source-padding",
+  ])("preserves accepted source range behavior: %s", (kind) => {
+    const value = fixture([{ id: "heard", start: 12, end: 14, text: "Heard" }]);
+    const clip = value.composition.tracks[0]!.clips[0]!;
+    if (kind === "source-end-tolerance") {
+      clip.sourceOut = 18.0000000005;
+      clip.timelineDuration = (clip.sourceOut - 10) / 2;
+      value.sources[0]!.asset.duration = 18;
+    } else if (kind === "source-span-tolerance") clip.sourceOut = 17.999999;
+    else {
+      delete clip.sourceOut;
+      value.sources[0]!.asset.duration = 15;
+    }
+    expect(
+      captionClipHasOutput(
+        clip,
+        value.composition.duration,
+        value.sources[0]!.asset.duration,
+      ),
+    ).toBe(true);
+    expect(generate(value)).toMatchObject({
+      cues: [expect.objectContaining({ text: "Heard" })],
+      issues: [],
+    });
+  });
+
+  it.each([-1, NaN, Infinity])(
+    "skips evidence for invalid volume while retaining the mapper's error: %s",
+    (volume) => {
+      const value = fixture();
+      const clip = value.composition.tracks[0]!.clips[0]!;
+      clip.transform!.volume = volume;
+      delete value.sources[0]!.transcript;
+      expect(
+        captionClipHasOutput(
+          clip,
+          value.composition.duration,
+          value.sources[0]!.asset.duration,
+        ),
+      ).toBe(false);
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "TIMING_UNSUPPORTED",
+            severity: "error",
+          }),
+        ],
+      });
+    },
+  );
   it.each([
     {
       sourceIn: 1.9995,

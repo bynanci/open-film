@@ -155,15 +155,17 @@ segments/cues, one million clip/segment visits, 8 million output text characters
 only an initial batch. Cached/receipt files are size-bounded and integrity checked.
 Availability checks hash source files; large media may therefore take time, and
 Cancel is available. No throughput or real-camera performance claim is made.
-The application checks clip count before source I/O and limits retained source
-text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
+The application rejects unsupported track types before clip limits or source I/O,
+checks clip count before source I/O, and limits retained source text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
 catalog and are not retained in caption working documents. A current catalog
 page is still materialized; this is not a claim of a fixed process memory limit.
 Sources used only by muted clips or clips without a millisecond of captionable
 output, offline sources and renderer-ineligible media retain source/revision
 bindings and explanatory warnings without loading their transcript segments into
 that budget. The shared output-range check accounts for trim, speed and source-end
-padding as well as the discarded sub-frame tail.
+padding as well as the discarded sub-frame tail. Invalid source bounds, span/speed
+combinations and source durations do not load transcript content; they retain the
+mapper's `TIMING_UNSUPPORTED` error instead of consuming the transcript budget.
 A source used by an audible, retained clip is still loaded even when another
 instance is muted or outside the output range.
 

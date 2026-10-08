@@ -1120,6 +1120,136 @@ describe("caption preparation resource and output contracts", () => {
     },
   );
 
+  it.each(
+    (["beyondSource", "durationMismatch", "invalidDuration"] as const).flatMap(
+      (kind) =>
+        (["segments", "text"] as const).map((quota) => ({ kind, quota })),
+    ),
+  )(
+    "reports $kind timing errors before reading its oversized $quota transcript",
+    async ({ kind, quota }) => {
+      const test = await excludedSourceFixture("muted");
+      const clip = test.app.project.timelines[0]!.tracks[0]!.clips[0]!;
+      clip.transform = { volume: 1 };
+      clip.sourceOut = kind === "durationMismatch" ? 2 : 3;
+      clip.timelineDuration = 3;
+      if (kind === "beyondSource")
+        test.app.catalog.upsertAsset({ ...test.asset, duration: 2 });
+      if (kind === "invalidDuration") {
+        const getAsset = test.app.catalog.getAsset.bind(test.app.catalog);
+        vi.spyOn(test.app.catalog, "getAsset").mockImplementation((assetId) => {
+          const asset = getAsset(assetId);
+          return assetId === "unused" ? { ...asset!, duration: NaN } : asset;
+        });
+      }
+      await test.app.save();
+      const get = test.app.catalog.transcripts.get.bind(
+        test.app.catalog.transcripts,
+      );
+      const cached = get("unused", test.sourceHash, { limit: 1 });
+      const read = vi
+        .spyOn(test.app.catalog.transcripts, "get")
+        .mockImplementation((assetId, sourceHash, options = {}) => {
+          if (assetId !== "unused") return get(assetId, sourceHash, options);
+          return {
+            ...cached,
+            total: quota === "segments" ? 100_001 : 800,
+            document: {
+              ...cached.document!,
+              segments:
+                quota === "segments"
+                  ? cached.document!.segments
+                  : Array.from(
+                      { length: options.limit ?? 200 },
+                      (_, index) => ({
+                        id: `large-${(options.offset ?? 0) + index}`,
+                        start: 0,
+                        end: 0.8,
+                        text: "青".repeat(20_000),
+                      }),
+                    ),
+            },
+          };
+        });
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({
+        cueCount: 1,
+        errorCount: 1,
+        stale: false,
+        exportable: false,
+      });
+      expect(snapshot.issues).toEqual([
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          severity: "error",
+          assetId: "unused",
+          params: {
+            reason:
+              kind === "durationMismatch" ? "clip-range" : "source-duration",
+          },
+        }),
+      ]);
+      expect(snapshot.sources[0]).toMatchObject({
+        transcriptRevisionId: cached.revision,
+        transcriptSkipped: true,
+      });
+      expect(
+        await test.app.captions.get(snapshot.id, {
+          projectId: test.app.project.id,
+        }),
+      ).toMatchObject({ stale: false, exportable: false });
+      await expect(
+        test.app.captions.export(snapshot.id, "vtt", {
+          projectId: test.app.project.id,
+        }),
+      ).rejects.toMatchObject({ code: "captions.unavailable" });
+      expect(read.mock.calls.some(([assetId]) => assetId === "unused")).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each(["beyondSource", "durationMismatch"] as const)(
+    "loads a shared source with an invalid %s clip and another valid clip",
+    async (kind) => {
+      const test = await fixture(1);
+      test.app.catalog.upsertAsset({
+        ...test.app.catalog.getAsset("spoken")!,
+        duration: 2,
+      });
+      const track = test.app.project.timelines[0]!.tracks[0]!;
+      track.clips[0]!.sourceOut = 2;
+      track.clips[0]!.timelineDuration = 2;
+      track.clips.unshift({
+        ...track.clips[0]!,
+        id: "invalid-instance",
+        sourceOut: kind === "beyondSource" ? 3 : 2,
+        timelineDuration: 3,
+      });
+      await test.app.save();
+      const read = vi.spyOn(test.app.catalog.transcripts, "get");
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({
+        cueCount: 1,
+        errorCount: 1,
+        sourceCount: 1,
+        exportable: false,
+        stale: false,
+      });
+      expect(snapshot.cues[0]!.clipId).toBe("instance");
+      expect(snapshot.issues).toEqual([
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          clipId: "invalid-instance",
+        }),
+      ]);
+      expect(snapshot.sources[0]!.transcriptSkipped).toBeUndefined();
+      expect(
+        read.mock.calls.filter(([, , page]) => page?.limit === 200),
+      ).toHaveLength(1);
+    },
+  );
+
   it("loads a source whose only clip straddles the discarded output tail", async () => {
     const test = await fixture(1);
     test.app.catalog.intelligence.replaceTranscript({
@@ -1233,6 +1363,44 @@ describe("caption preparation resource and output contracts", () => {
           projectId: test.app.project.id,
         }),
       ).rejects.toMatchObject({ code: "captions.stale" });
+    },
+  );
+
+  it.each(
+    (["titles", "overlay"] as const).flatMap((type) =>
+      [false, true].map((oversized) => ({ type, oversized })),
+    ),
+  )(
+    "rejects a $type track before source work or size checks (oversized: $oversized)",
+    async ({ type, oversized }) => {
+      const test = await fixture(1);
+      const track = test.app.project.timelines[0]!.tracks[0]!;
+      track.type = type;
+      if (oversized)
+        track.clips = Array.from(
+          { length: core.CAPTION_LIMITS.clips + 1 },
+          (_, index) => ({ ...track.clips[0]!, id: `instance-${index}` }),
+        );
+      await test.app.save();
+      const cached = test.app.catalog.transcripts.get(
+        "spoken",
+        test.sourceHash,
+      );
+      const hash = vi.spyOn(media, "hashFile");
+      const read = vi
+        .spyOn(test.app.catalog.transcripts, "get")
+        .mockReturnValue({ ...cached, total: 100_001 });
+      const revisions = vi.spyOn(test.app.catalog.transcripts, "revisions");
+      await expect(
+        test.app.captions.prepare(test.input()),
+      ).rejects.toMatchObject({
+        code: "captions.invalid",
+        message: expect.stringMatching(/video.*audio.*music/),
+      });
+      expect(hash).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      expect(revisions).not.toHaveBeenCalled();
+      expect(await entries(test.directory, "cache/captions")).toEqual([]);
     },
   );
 

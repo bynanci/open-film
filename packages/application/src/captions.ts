@@ -481,6 +481,11 @@ export class CaptionService {
     const selectedTrack = this.application.project.timelines
       .find((composition) => composition.id === input.compositionId)
       ?.tracks.find((track) => track.id === input.trackId);
+    if (
+      selectedTrack &&
+      !["video", "audio", "music"].includes(selectedTrack.type)
+    )
+      invalid("Choose a video, audio, or music track for captions.");
     if (selectedTrack && selectedTrack.clips.length > CAPTION_LIMITS.clips)
       throw new ApplicationError(
         "request.tooLarge",
@@ -540,6 +545,7 @@ export class CaptionService {
         !["video", "audio"].includes(assetState.mediaType) ||
         assetState.previewBlocked ||
         !assetState.hasAudio ||
+        assetState.duration === "invalid" ||
         !clips.some(
           (clip) =>
             (clip.transform?.volume ?? 1) !== 0 &&
