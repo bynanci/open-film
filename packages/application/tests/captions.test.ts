@@ -651,39 +651,81 @@ describe("composition-bound caption application", () => {
     expect(await entries(test.directory, "exports")).toEqual([]);
   }, 20_000);
 
-  it.each(["sourceOffset", "sourceLimit", "clipOffset", "clipLimit"] as const)(
-    "strictly validates independent provenance page bounds: %s",
-    async (field) => {
-      const test = await fixture();
-      const snapshot = await test.app.captions.prepare(test.input());
-      const invalidValues: unknown[] = [
-        null,
-        -1,
-        0.5,
-        NaN,
-        Infinity,
-        "1",
-        true,
-        {},
-        Number.MAX_SAFE_INTEGER + 1,
-      ];
-      if (field.endsWith("Limit")) invalidValues.push(0, 201);
-      for (const value of invalidValues) {
-        await expect(
-          test.app.captions.get(snapshot.id, {
-            projectId: test.app.project.id,
-            [field]: value,
-          } as never),
-        ).rejects.toMatchObject({ code: "captions.invalid" });
+  it.each([
+    "offset",
+    "limit",
+    "issueOffset",
+    "issueLimit",
+    "sourceOffset",
+    "sourceLimit",
+    "clipOffset",
+    "clipLimit",
+  ] as const)("validates %s before reading caption sources", async (field) => {
+    const test = await fixture();
+    const snapshot = await test.app.captions.prepare(test.input());
+    const hash = vi.spyOn(media, "hashFile");
+    const asset = vi.spyOn(test.app.catalog, "getAsset");
+    const transcript = vi.spyOn(test.app.catalog.transcripts, "get");
+    const revisions = vi.spyOn(test.app.catalog.transcripts, "revisions");
+    const invalidValues: unknown[] = [
+      null,
+      -1,
+      0.5,
+      NaN,
+      Infinity,
+      "1",
+      true,
+      {},
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
+    const isLimit = field.toLowerCase().endsWith("limit");
+    if (isLimit) invalidValues.push(0, 201);
+    for (const value of invalidValues) {
+      await expect(
+        test.app.captions.get(snapshot.id, {
+          projectId: test.app.project.id,
+          [field]: value,
+        } as never),
+      ).rejects.toMatchObject({ code: "captions.invalid" });
+    }
+    expect(hash).not.toHaveBeenCalled();
+    expect(asset).not.toHaveBeenCalled();
+    expect(transcript).not.toHaveBeenCalled();
+    expect(revisions).not.toHaveBeenCalled();
+    const boundary = await test.app.captions.get(snapshot.id, {
+      projectId: test.app.project.id,
+      [field]: isLimit ? 200 : 0,
+    });
+    expect(boundary.sources).toHaveLength(1);
+    expect(boundary.clipBindings).toHaveLength(1);
+    expect(boundary.stale).toBe(false);
+    expect(hash).toHaveBeenCalled();
+    expect(transcript).toHaveBeenCalled();
+  });
+
+  it("keeps validated page options when the caller changes them during the snapshot read", async () => {
+    const test = await fixture();
+    const snapshot = await test.app.captions.prepare(test.input());
+    const options = { projectId: test.app.project.id, offset: 1, limit: 1 };
+    vi.mocked(fs.readFile).mockImplementation(async (...args) => {
+      const content = await actualFs.readFile(...args);
+      if (String(args[0]).endsWith(`${snapshot.id}.json`)) {
+        options.projectId = "changed-project";
+        options.offset = -1;
+        options.limit = 0;
       }
-      const boundary = await test.app.captions.get(snapshot.id, {
-        projectId: test.app.project.id,
-        [field]: field.endsWith("Limit") ? 200 : 0,
-      });
-      expect(boundary.sources).toHaveLength(1);
-      expect(boundary.clipBindings).toHaveLength(1);
-    },
-  );
+      return content;
+    });
+    const page = await test.app.captions.get(snapshot.id, options);
+    expect(page).toMatchObject({
+      projectId: test.app.project.id,
+      offset: 1,
+      limit: 1,
+      stale: false,
+    });
+    expect(page.cues).toHaveLength(1);
+    expect(page.cues[0]!.segmentId).toBe("segment-1");
+  });
 
   it("cancels preparation and publication without successful-looking partial files, then permits retry", async () => {
     const test = await fixture();
@@ -1421,6 +1463,115 @@ describe("caption preparation resource and output contracts", () => {
     expect(hash).not.toHaveBeenCalled();
     expect(readTranscript).not.toHaveBeenCalled();
     expect(await entries(test.directory, "cache/captions")).toEqual([]);
+  });
+
+  it("rejects a missing track before reading editor assets or transcript data", async () => {
+    const test = await fixture(1);
+    const input = { ...test.input(), trackId: "missing-track" };
+    const hash = vi.spyOn(media, "hashFile");
+    const asset = vi.spyOn(test.app.catalog, "getAsset");
+    const transcript = vi.spyOn(test.app.catalog.transcripts, "get");
+    const revisions = vi.spyOn(test.app.catalog.transcripts, "revisions");
+    await expect(test.app.captions.prepare(input)).rejects.toMatchObject({
+      code: "captions.invalid",
+      message: "Select an existing caption source track.",
+    });
+    expect(hash).not.toHaveBeenCalled();
+    expect(asset).not.toHaveBeenCalled();
+    expect(transcript).not.toHaveBeenCalled();
+    expect(revisions).not.toHaveBeenCalled();
+  });
+
+  it.each(["tooLong", "subframe", "empty"] as const)(
+    "rejects a valid %s composition before any source or transcript reads",
+    async (kind) => {
+      const test = await fixture(1);
+      const composition = test.app.project.timelines[0]!;
+      composition.duration =
+        kind === "tooLong"
+          ? core.CAPTION_LIMITS.timeMs / 1000 + 1
+          : kind === "subframe"
+            ? 1 / test.app.project.settings.frameRate - 0.001
+            : 0;
+      if (kind === "empty") composition.tracks[0]!.clips = [];
+      else if (kind === "subframe") {
+        composition.tracks[0]!.clips[0]!.sourceOut = composition.duration;
+        composition.tracks[0]!.clips[0]!.timelineDuration =
+          composition.duration;
+      }
+      await test.app.save();
+      const input = test.input();
+      const hash = vi.spyOn(media, "hashFile");
+      const asset = vi.spyOn(test.app.catalog, "getAsset");
+      const transcript = vi.spyOn(test.app.catalog.transcripts, "get");
+      const revisions = vi.spyOn(test.app.catalog.transcripts, "revisions");
+      await expect(test.app.captions.prepare(input)).rejects.toMatchObject({
+        code: "captions.invalid",
+        message: expect.stringMatching(
+          kind === "subframe" ? /frame/i : /duration/i,
+        ),
+      });
+      expect(hash).not.toHaveBeenCalled();
+      expect(asset).not.toHaveBeenCalled();
+      expect(transcript).not.toHaveBeenCalled();
+      expect(revisions).not.toHaveBeenCalled();
+      expect(await entries(test.directory, "cache/captions")).toEqual([]);
+    },
+  );
+
+  it.each([1 / 30, core.CAPTION_LIMITS.timeMs / 1000])(
+    "accepts the supported duration boundary %s",
+    async (duration) => {
+      const test = await fixture(1);
+      const composition = test.app.project.timelines[0]!;
+      composition.duration = duration;
+      const clip = composition.tracks[0]!.clips[0]!;
+      clip.timelineDuration = Math.min(clip.timelineDuration, duration);
+      clip.sourceOut = clip.timelineDuration;
+      test.app.catalog.intelligence.replaceTranscript({
+        ...test.document,
+        segments: [{ id: "short", start: 0, end: 0.02, text: "Audible" }],
+      });
+      await test.app.save();
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({
+        compositionDuration: duration,
+        outputDuration: core.frameAlignedDuration(duration, 30),
+        cueCount: 1,
+        errorCount: 0,
+        stale: false,
+        exportable: true,
+      });
+    },
+  );
+
+  it("rejects unsupported SRT text before source checks while retaining VTT export", async () => {
+    const test = await fixture(1);
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      segments: [{ id: "literal", start: 0, end: 1, text: "<literal>" }],
+    });
+    const snapshot = await test.app.captions.prepare(test.input());
+    const hash = vi.spyOn(media, "hashFile");
+    const asset = vi.spyOn(test.app.catalog, "getAsset");
+    const transcript = vi.spyOn(test.app.catalog.transcripts, "get");
+    const revisions = vi.spyOn(test.app.catalog.transcripts, "revisions");
+    await expect(
+      test.app.captions.export(snapshot.id, "srt", {
+        projectId: test.app.project.id,
+      }),
+    ).rejects.toThrow(/SRT|SubRip/);
+    expect(hash).not.toHaveBeenCalled();
+    expect(asset).not.toHaveBeenCalled();
+    expect(transcript).not.toHaveBeenCalled();
+    expect(revisions).not.toHaveBeenCalled();
+    expect(await entries(test.directory, "exports")).toEqual([]);
+    expect(
+      await test.app.captions.export(snapshot.id, "vtt", {
+        projectId: test.app.project.id,
+      }),
+    ).toMatchObject({ format: "vtt", cueCount: 1 });
+    expect(hash).toHaveBeenCalled();
   });
 
   it("counts UTF-8 bytes while loading each page and stops before fetching any page beyond 32 MiB", async () => {

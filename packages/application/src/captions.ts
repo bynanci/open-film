@@ -401,11 +401,9 @@ export class CaptionService {
     return { checks, reasons: this.immediateReasons(snapshot, checks) };
   }
 
-  private page(
-    snapshot: CaptionSnapshot,
+  private pageOptions(
     options: CaptionPageOptions,
-    reasons: CaptionSnapshotPage["staleReasons"],
-  ): CaptionSnapshotPage {
+  ): Required<CaptionPageOptions> {
     object(options, [
       "projectId",
       "offset",
@@ -418,20 +416,41 @@ export class CaptionService {
       "clipLimit",
     ]);
     this.project(options.projectId);
+    return {
+      projectId: options.projectId,
+      offset: checkedBounds(options.offset, 0),
+      limit: checkedBounds(options.limit, PAGE_LIMIT, PAGE_LIMIT),
+      issueOffset: checkedBounds(options.issueOffset, 0),
+      issueLimit: checkedBounds(options.issueLimit, PAGE_LIMIT, PAGE_LIMIT),
+      sourceOffset: checkedBounds(options.sourceOffset, 0),
+      sourceLimit: checkedBounds(options.sourceLimit, PAGE_LIMIT, PAGE_LIMIT),
+      clipOffset: checkedBounds(options.clipOffset, 0),
+      clipLimit: checkedBounds(options.clipLimit, PAGE_LIMIT, PAGE_LIMIT),
+    };
+  }
+
+  private page(
+    snapshot: CaptionSnapshot,
+    options: Required<CaptionPageOptions>,
+    reasons: CaptionSnapshotPage["staleReasons"],
+  ): CaptionSnapshotPage {
+    this.project(options.projectId);
     if (snapshot.projectId !== options.projectId)
       throw new ApplicationError(
         "captions.stale",
         "The caption snapshot belongs to another project.",
         409,
       );
-    const offset = checkedBounds(options.offset, 0),
-      limit = checkedBounds(options.limit, PAGE_LIMIT, PAGE_LIMIT),
-      issueOffset = checkedBounds(options.issueOffset, 0),
-      issueLimit = checkedBounds(options.issueLimit, PAGE_LIMIT, PAGE_LIMIT),
-      sourceOffset = checkedBounds(options.sourceOffset, 0),
-      sourceLimit = checkedBounds(options.sourceLimit, PAGE_LIMIT, PAGE_LIMIT),
-      clipOffset = checkedBounds(options.clipOffset, 0),
-      clipLimit = checkedBounds(options.clipLimit, PAGE_LIMIT, PAGE_LIMIT);
+    const {
+      offset,
+      limit,
+      issueOffset,
+      issueLimit,
+      sourceOffset,
+      sourceLimit,
+      clipOffset,
+      clipLimit,
+    } = options;
     const errorCount = snapshot.issues.filter(
       (issue) => issue.severity === "error",
     ).length;
@@ -478,9 +497,14 @@ export class CaptionService {
       identifier(input[field], field);
     this.project(input.projectId);
     checkAbort(options.signal);
-    const selectedTrack = this.application.project.timelines
-      .find((composition) => composition.id === input.compositionId)
-      ?.tracks.find((track) => track.id === input.trackId);
+    const selectedComposition = this.application.project.timelines.find(
+      (composition) => composition.id === input.compositionId,
+    );
+    const selectedTrack = selectedComposition?.tracks.find(
+      (track) => track.id === input.trackId,
+    );
+    if (selectedComposition && !selectedTrack)
+      invalid("Select an existing caption source track.");
     if (
       selectedTrack &&
       !["video", "audio", "music"].includes(selectedTrack.type)
@@ -495,6 +519,23 @@ export class CaptionService {
     const frameRate = this.application.project.settings.frameRate;
     if (!Number.isFinite(frameRate) || frameRate <= 0)
       invalid("Caption output requires a positive, finite project frame rate.");
+    let outputDuration = 0;
+    if (selectedComposition) {
+      const duration = selectedComposition.duration;
+      if (
+        !Number.isFinite(duration) ||
+        duration <= 0 ||
+        duration * 1000 > CAPTION_LIMITS.timeMs
+      )
+        invalid(
+          `Caption duration must be positive, finite, and no greater than ${CAPTION_LIMITS.timeMs / 1000} seconds.`,
+        );
+      outputDuration = frameAlignedDuration(duration, frameRate);
+      if (!Number.isFinite(outputDuration) || outputDuration <= 0)
+        invalid(
+          "Caption output requires a finite duration of at least one complete frame.",
+        );
+    }
     const state = new TimelineEditor(this.application).get(input.compositionId);
     const binding = {
       projectId: input.projectId,
@@ -512,10 +553,6 @@ export class CaptionService {
       (item) => item.id === input.trackId,
     );
     if (!track) invalid("Select an existing caption source track.");
-    const outputDuration =
-      state.composition.duration > 0
-        ? frameAlignedDuration(state.composition.duration, frameRate)
-        : 0;
     const clipsByAsset = new Map<string, Clip[]>();
     for (const clip of track.clips) {
       const clips = clipsByAsset.get(clip.assetId);
@@ -726,7 +763,11 @@ export class CaptionService {
       renameSync(temporary, target);
       return this.page(
         snapshot,
-        { projectId: input.projectId, limit: 100, issueLimit: 20 },
+        this.pageOptions({
+          projectId: input.projectId,
+          limit: 100,
+          issueLimit: 20,
+        }),
         [],
       );
     } finally {
@@ -787,9 +828,10 @@ export class CaptionService {
     options: CaptionPageOptions,
     runtime: { signal?: AbortSignal } = {},
   ): Promise<CaptionSnapshotPage> {
-    const snapshot = await this.snapshot(id, options.projectId, runtime.signal);
+    const page = this.pageOptions(options);
+    const snapshot = await this.snapshot(id, page.projectId, runtime.signal);
     const status = await this.status(snapshot, runtime.signal);
-    return this.page(snapshot, options, status.reasons);
+    return this.page(snapshot, page, status.reasons);
   }
 
   async export(
@@ -809,6 +851,7 @@ export class CaptionService {
         "Resolve caption errors and provide at least one usable cue before exporting.",
         409,
       );
+    const serialized = serializeCaptions(format, snapshot.cues);
     const status = await this.status(snapshot, options.signal);
     if (status.reasons.length)
       throw new ApplicationError(
@@ -816,7 +859,6 @@ export class CaptionService {
         "The caption preview is outdated. Generate it again before exporting.",
         409,
       );
-    const serialized = serializeCaptions(format, snapshot.cues);
     const publicationId = randomUUID(),
       fileName = `captions.${serialized.extension}`;
     const publication: CaptionPublication = {

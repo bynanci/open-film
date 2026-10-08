@@ -156,8 +156,9 @@ segments/cues, one million clip/segment visits, 8 million output text characters
 only an initial batch. Cached/receipt files are size-bounded and integrity checked.
 Availability checks hash source files; large media may therefore take time, and
 Cancel is available. No throughput or real-camera performance claim is made.
-The application rejects unsupported track types before clip limits or source I/O,
-checks clip count before source I/O, and limits retained source text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
+The application rejects unsupported track types and film durations before source
+I/O, validates pagination before refreshing source status, checks clip count
+before source I/O, and limits retained source text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
 catalog and are not retained in caption working documents. A current catalog
 page is still materialized; this is not a claim of a fixed process memory limit.
 Sources used only by muted clips or clips without a millisecond of captionable
