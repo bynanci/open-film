@@ -352,7 +352,7 @@ export class CaptionService {
       reasons.add("project");
     if (!this.compositionCurrent(snapshot)) reasons.add("composition");
     for (const source of snapshot.sources) {
-      const asset = this.application.catalog.getAsset(source.assetId);
+      const asset = this.application.getSourceAsset(source.assetId);
       if (!asset) {
         reasons.add("source");
         continue;
@@ -393,7 +393,7 @@ export class CaptionService {
     const checks = new Map<string, SourceCheck>();
     for (const source of snapshot.sources) {
       checkAbort(signal);
-      const asset = this.application.catalog.getAsset(source.assetId);
+      const asset = this.application.getSourceAsset(source.assetId);
       if (asset)
         checks.set(source.assetId, await this.sourceCheck(asset, signal));
     }
@@ -566,7 +566,7 @@ export class CaptionService {
       textSize = 0;
     for (const [assetId, clips] of clipsByAsset) {
       checkAbort(options.signal);
-      const asset = this.application.catalog.getAsset(assetId);
+      const asset = this.application.getSourceAsset(assetId);
       if (!asset)
         throw new ApplicationError(
           "media.notFound",

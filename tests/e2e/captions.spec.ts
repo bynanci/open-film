@@ -426,6 +426,72 @@ test("corrected transcript exports mapped captions with warnings, independent pa
   expect(await Promise.all(sources.map(hash))).toEqual(hashes);
 });
 
+test("completed caption and manifest downloads survive pagination and status checks", async ({
+  page,
+}, info) => {
+  const fixture = await seed("Published captions remain downloadable", true);
+  const panel = await enter(page, fixture.path);
+  let publications = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/captions/export")
+      publications++;
+  });
+  await generate(page);
+  await page.getByTestId("caption-export-vtt").click();
+  const captions = page.getByTestId("caption-download");
+  const manifest = page.getByTestId("caption-manifest");
+  await expect(captions).toBeVisible();
+  await expect(manifest).toBeVisible();
+  const captionUrl = await captions.getAttribute("href");
+  const manifestUrl = await manifest.getAttribute("href");
+  expect(captionUrl).toBeTruthy();
+  expect(manifestUrl).toBeTruthy();
+  const cuePages = panel.locator("nav.caption-pages").first();
+  await cuePages.locator("button").last().click();
+  await expect(page.getByTestId("caption-cue")).toHaveCount(19);
+  await expect(captions).toHaveAttribute("href", captionUrl!);
+  await expect(manifest).toHaveAttribute("href", manifestUrl!);
+  await cuePages.locator("button").first().click();
+  await expect(page.getByTestId("caption-cue")).toHaveCount(100);
+  const issuePages = panel.locator("nav.caption-pages").last();
+  await issuePages.locator("button").last().click();
+  await expect(issuePages.locator("button").first()).toBeEnabled();
+  await expect(captions).toHaveAttribute("href", captionUrl!);
+  await expect(manifest).toHaveAttribute("href", manifestUrl!);
+  const checked = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/captions/snapshot",
+  );
+  await panel
+    .getByRole("button", {
+      name: uiText("en-US", "captions.checkStatus"),
+      exact: true,
+    })
+    .click();
+  expect((await checked).ok()).toBe(true);
+  await expect(page.getByTestId("caption-status")).toHaveAttribute(
+    "data-status",
+    "attention",
+  );
+  await expect(captions).toHaveAttribute("href", captionUrl!);
+  await expect(manifest).toHaveAttribute("href", manifestUrl!);
+  expect(publications).toBe(1);
+  const captionDownload = page.waitForEvent("download");
+  await captions.click();
+  const captionPath = info.outputPath("retained.vtt");
+  await (await captionDownload).saveAs(captionPath);
+  const parsed = await nativeVtt(page, await readFile(captionPath, "utf8"));
+  expect(parsed).toHaveLength(119);
+  expect(parsed[0]).toEqual({ start: 0.5, end: 1.5, text: correctedText });
+  const manifestDownload = page.waitForEvent("download");
+  await manifest.click();
+  const manifestPath = info.outputPath("retained-manifest.json");
+  await (await manifestDownload).saveAs(manifestPath);
+  const record = JSON.parse(await readFile(manifestPath, "utf8"));
+  expect(record.publication.projectId).toBe(fixture.projectId);
+  expect(record.snapshot.cues).toHaveLength(119);
+  expect(publications).toBe(1);
+});
+
 test("a delayed caption snapshot never appears in a different film", async ({
   page,
   request,

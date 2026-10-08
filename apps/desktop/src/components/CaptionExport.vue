@@ -56,17 +56,17 @@ const status = computed(() =>
             : "idle",
 );
 
-function invalidate() {
+function invalidate(clearPublication = true) {
   generation++;
   controller.abort();
   controller = new AbortController();
   loading.value = false;
-  publication.value = null;
+  if (clearPublication) publication.value = null;
   error.value = null;
   cancelled.value = false;
 }
 function cancel() {
-  invalidate();
+  invalidate(false);
   cancelled.value = true;
 }
 watch(
@@ -101,8 +101,8 @@ onBeforeUnmount(() => {
   invalidate();
 });
 
-function begin() {
-  invalidate();
+function begin(clearPublication = false) {
+  invalidate(clearPublication);
   loading.value = true;
   const epoch = generation;
   const projectId = props.projectId;
@@ -135,6 +135,7 @@ function acceptSnapshot(
       409,
       { code: "workspace.invalidResponse" },
     );
+  if (value.id !== snapshot.value?.id || value.stale) publication.value = null;
   snapshot.value = value;
   localStale.value = false;
 }
@@ -146,7 +147,7 @@ async function generate() {
     !tracks.value.some((track) => track.id === trackId.value)
   )
     return;
-  const task = begin();
+  const task = begin(true);
   const selectedTrack = trackId.value;
   try {
     const context = await api.captionContext(
@@ -245,8 +246,10 @@ async function publish(format: CaptionFormat) {
   } catch (cause) {
     if (task.current()) {
       error.value = cause;
-      if (cause instanceof ApiError && cause.code === "captions.stale")
+      if (cause instanceof ApiError && cause.code === "captions.stale") {
         localStale.value = true;
+        publication.value = null;
+      }
     }
   } finally {
     if (task.current()) loading.value = false;
@@ -254,7 +257,7 @@ async function publish(format: CaptionFormat) {
 }
 function time(milliseconds: number) {
   const seconds = Math.floor(milliseconds / 1000);
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}.${String(milliseconds % 1000).padStart(3, "0")}`;
+  return `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}.${String(milliseconds % 1000).padStart(3, "0")}`;
 }
 function issueText(issue: CaptionIssue) {
   const key = `captions.issues.${issue.code}`;

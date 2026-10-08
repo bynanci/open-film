@@ -173,6 +173,26 @@ function atomicJsonSync(path: string, value: unknown): void {
   renameSync(temporary, path);
 }
 
+function managedSourceUri(
+  directory: string,
+  asset: MediaAsset,
+): string | undefined {
+  const managed = asset.metadata["openfilm.managedSource"] as
+    { relativePath?: unknown; uri?: unknown } | undefined;
+  if (
+    typeof managed?.relativePath !== "string" ||
+    managed.uri !== asset.uri ||
+    !managed.relativePath.startsWith("sources/") ||
+    managed.relativePath.includes("\\")
+  )
+    return undefined;
+  const root = join(directory, "sources");
+  const path = resolve(directory, managed.relativePath);
+  return isInside(root, path) && path !== root
+    ? pathToFileURL(path).href
+    : undefined;
+}
+
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
   readonly catalog: ProjectCatalog;
@@ -181,12 +201,12 @@ export class OpenFilmApplication {
   readonly captions: CaptionService;
   readonly knowledge: KnowledgeService;
   private activeJobs = 0;
-  private saveOnClose = true;
 
   private constructor(
     readonly directory: string,
     public project: OpenFilmProject,
     runtime: OpenFilmRuntimeOptions = {},
+    private readonly intent: "workspace" | "export" = "workspace",
   ) {
     this.catalog = new ProjectCatalog(directory);
     try {
@@ -262,11 +282,15 @@ export class OpenFilmApplication {
         mkdirSync(join(canonical, name));
       }
     }
-    const application = new OpenFilmApplication(canonical, project, runtime);
+    const application = new OpenFilmApplication(
+      canonical,
+      project,
+      runtime,
+      options.intent,
+    );
     if (options.intent === "export") {
       // Deriving text must not recover other processes' jobs, rewrite media
       // references, or save this possibly obsolete project on CLI shutdown.
-      application.saveOnClose = false;
       return application;
     }
     // Cache references are relative to the project, so its complete directory can move.
@@ -274,40 +298,30 @@ export class OpenFilmApplication {
       let asset = application.catalog.getAsset(summary.id)!;
       const managed = asset.metadata["openfilm.managedSource"] as
         { relativePath?: unknown; uri?: unknown } | undefined;
-      if (
-        typeof managed?.relativePath === "string" &&
-        managed.uri === asset.uri &&
-        managed.relativePath.startsWith("sources/") &&
-        !managed.relativePath.includes("\\")
-      ) {
+      const uri = managedSourceUri(canonical, asset);
+      if (uri && asset.uri !== uri) {
         const managedRoot = join(canonical, "sources");
-        const path = resolve(canonical, managed.relativePath);
-        if (isInside(managedRoot, path) && path !== managedRoot) {
-          const uri = pathToFileURL(path).href;
-          const reference = referenceFor(asset, project.mediaLibraries);
-          if (asset.uri !== uri) {
-            asset = {
-              ...asset,
-              uri,
-              metadata: {
-                ...asset.metadata,
-                "openfilm.managedSource": { ...managed, uri },
-                "openfilm.reference": {
-                  ...reference,
-                  rootUri: pathToFileURL(managedRoot).href,
-                  relativePath: relative(managedRoot, path)
-                    .split(sep)
-                    .join("/"),
-                },
-              },
-            };
-            application.catalog.upsertAsset(asset);
-            const library = project.mediaLibraries.find(
-              (item) => item.id === reference.mediaLibraryId,
-            );
-            if (library) library.uri = pathToFileURL(managedRoot).href;
-          }
-        }
+        const reference = referenceFor(asset, project.mediaLibraries);
+        asset = {
+          ...asset,
+          uri,
+          metadata: {
+            ...asset.metadata,
+            "openfilm.managedSource": { ...managed, uri },
+            "openfilm.reference": {
+              ...reference,
+              rootUri: pathToFileURL(managedRoot).href,
+              relativePath: relative(managedRoot, localPath(uri))
+                .split(sep)
+                .join("/"),
+            },
+          },
+        };
+        application.catalog.upsertAsset(asset);
+        const library = project.mediaLibraries.find(
+          (item) => item.id === reference.mediaLibraryId,
+        );
+        if (library) library.uri = pathToFileURL(managedRoot).href;
       }
       const thumbnailUri =
         asset.thumbnailUri &&
@@ -350,6 +364,14 @@ export class OpenFilmApplication {
     runtime: OpenFilmRuntimeOptions = {},
   ): Promise<OpenFilmApplication> {
     return this.open(directory, runtime, { intent: "export" });
+  }
+
+  /** Resolve moved managed media for passive reads without changing durable identity. */
+  getSourceAsset(assetId: string): MediaAsset | undefined {
+    const asset = this.catalog.getAsset(assetId);
+    if (!asset || this.intent !== "export") return asset;
+    const uri = managedSourceUri(this.directory, asset);
+    return uri && uri !== asset.uri ? { ...asset, uri } : asset;
   }
 
   private saveSync(): void {
@@ -466,7 +488,7 @@ export class OpenFilmApplication {
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
-    if (this.saveOnClose) this.saveSync();
+    if (this.intent !== "export") this.saveSync();
     this.catalog.close();
   }
 

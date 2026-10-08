@@ -30,6 +30,7 @@ interface CaptionPanel {
   loadPage: (offset: number, issueOffset: number) => Promise<void>;
   publish: (format: "srt" | "vtt") => Promise<void>;
   cancel: () => void;
+  time: (milliseconds: number) => string;
 }
 let factory: (dependencies: Record<string, unknown>) => CaptionPanel;
 let render: unknown;
@@ -157,7 +158,10 @@ function fixture() {
     prepareCaptions: vi.fn(async (_body: unknown, _signal?: AbortSignal) =>
       snapshot(),
     ),
-    captionSnapshot: vi.fn(async () => snapshot()),
+    captionSnapshot: vi.fn(
+      async (_id: string, _options: unknown, _signal?: AbortSignal) =>
+        snapshot(),
+    ),
     exportCaptions: vi.fn(async () => ({
       id: "publication",
       snapshotId: "snapshot",
@@ -213,6 +217,39 @@ function fixture() {
 }
 
 describe("composition caption export lifecycle", () => {
+  it.each([
+    [59_999, "00:00:59.999"],
+    [3_599_999, "00:59:59.999"],
+    [3_600_000, "01:00:00.000"],
+    [3_600_123, "01:00:00.123"],
+    [359_999_999, "99:59:59.999"],
+  ])("formats %i ms with the export's hour-based timecode", (value, text) => {
+    expect(fixture().state.time(value)).toBe(text);
+  });
+  it("renders cue and warning times across an hour without cumulative minutes", async () => {
+    const { state, api, html } = fixture();
+    api.prepareCaptions.mockResolvedValueOnce(
+      snapshot({
+        cues: [{ ...snapshot().cues[0], startMs: 3_599_999, endMs: 3_600_001 }],
+        issueCount: 1,
+        warningCount: 1,
+        issues: [
+          {
+            code: "OVERLAP",
+            severity: "warning",
+            startMs: 3_600_000,
+            endMs: 3_601_000,
+          },
+        ],
+      }),
+    );
+    state.trackId.value = "video";
+    await state.generate();
+    const rendered = (await html()).replace(/<!--.*?-->/gu, "");
+    expect(rendered).toContain("00:59:59.999 → 01:00:00.001");
+    expect(rendered).toContain("01:00:00.000 → 01:00:01.000");
+    expect(rendered).not.toContain("60:00.");
+  });
   it("requires an explicit supported track and uses the fresh project-scoped revision", async () => {
     const { state, api } = fixture();
     await state.generate();
@@ -270,6 +307,8 @@ describe("composition caption export lifecycle", () => {
     props.composition.duration = 9;
     expect(state.stale.value).toBe(true);
     expect(state.publication.value).toBeNull();
+    expect(state.status.value).toBe("stale");
+    expect(state.canExport.value).toBe(false);
     await state.publish("srt");
     expect(api.exportCaptions).toHaveBeenCalledTimes(1);
   });
@@ -334,11 +373,124 @@ describe("composition caption export lifecycle", () => {
     await state.publish("srt");
     const rendered = await html();
     expect(rendered).toContain("十和田湖 &lt;tag&gt; &amp; memory");
-    expect(rendered).toContain("00:01.250");
+    expect(rendered).toContain("00:00:01.250");
     expect(rendered).toContain("asset");
     expect(rendered).toContain("transcript-revision");
     expect(rendered).toContain("projectId=project&amp;kind=captions");
     expect(rendered).toContain("projectId=project&amp;kind=manifest");
+  });
+  it.each([
+    [100, 0, "cue pagination"],
+    [0, 20, "warning pagination"],
+    [0, 0, "status refresh"],
+  ])(
+    "retains both download links during and after %s / %s (%s)",
+    async (offset, issueOffset) => {
+      const { state, api, html } = fixture();
+      state.trackId.value = "video";
+      await state.generate();
+      await state.publish("srt");
+      const published = state.publication.value;
+      const held = deferred<ReturnType<typeof snapshot>>();
+      api.captionSnapshot.mockImplementationOnce(() => held.promise);
+      const paging = state.loadPage(Number(offset), Number(issueOffset));
+      expect(state.loading.value).toBe(true);
+      expect(state.publication.value).toBe(published);
+      expect(await html()).toContain('data-testid="caption-download"');
+      expect(await html()).toContain('data-testid="caption-manifest"');
+      held.resolve(snapshot({ offset, issueOffset }));
+      await paging;
+      expect(state.publication.value).toBe(published);
+      expect(api.exportCaptions).toHaveBeenCalledTimes(1);
+      expect(api.prepareCaptions).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("clears publication when a server refresh marks its snapshot stale", async () => {
+    const { state, api, html } = fixture();
+    state.trackId.value = "video";
+    await state.generate();
+    await state.publish("srt");
+    api.captionSnapshot.mockResolvedValueOnce(
+      snapshot({ stale: true, exportable: false }),
+    );
+    await state.loadPage(0, 0);
+    expect(state.publication.value).toBeNull();
+    expect(state.status.value).toBe("stale");
+    expect(state.canExport.value).toBe(false);
+    expect(await html()).not.toContain('data-testid="caption-download"');
+    expect(await html()).not.toContain('data-testid="caption-manifest"');
+    await state.publish("srt");
+    expect(api.exportCaptions).toHaveBeenCalledTimes(1);
+  });
+  it("retains a completed publication after a failed or cancelled refresh", async () => {
+    const { state, api } = fixture();
+    state.trackId.value = "video";
+    await state.generate();
+    await state.publish("srt");
+    api.captionSnapshot.mockRejectedValueOnce(new Error("Disconnected"));
+    await state.loadPage(100, 0);
+    expect(state.status.value).toBe("failed");
+    expect(state.publication.value!.id).toBe("publication");
+    const held = deferred<ReturnType<typeof snapshot>>();
+    api.captionSnapshot.mockImplementationOnce(() => held.promise);
+    const paging = state.loadPage(100, 0);
+    const signal = api.captionSnapshot.mock.calls.at(-1)![2]!;
+    state.cancel();
+    expect(signal.aborted).toBe(true);
+    expect(state.status.value).toBe("cancelled");
+    held.resolve(snapshot({ id: "cancelled-snapshot" }));
+    await paging;
+    expect(state.snapshot.value!.id).toBe("snapshot");
+    expect(state.publication.value!.id).toBe("publication");
+  });
+  it.each(["project", "composition", "track", "unmount"])(
+    "clears publication on %s change and ignores the old pending page",
+    async (change) => {
+      const { state, props, api, unmount } = fixture();
+      state.trackId.value = "video";
+      await state.generate();
+      await state.publish("srt");
+      const held = deferred<ReturnType<typeof snapshot>>();
+      api.captionSnapshot.mockImplementationOnce(() => held.promise);
+      const paging = state.loadPage(100, 0);
+      const signal = api.captionSnapshot.mock.calls.at(-1)![2]!;
+      if (change === "project") props.projectId = "other-project";
+      else if (change === "composition")
+        props.composition.id = "other-composition";
+      else if (change === "track") state.trackId.value = "music";
+      else unmount();
+      expect(signal.aborted).toBe(true);
+      expect(state.publication.value).toBeNull();
+      held.resolve(snapshot());
+      await paging;
+      expect(state.publication.value).toBeNull();
+    },
+  );
+  it("clears publication immediately when beginning a new preparation", async () => {
+    const { state, api } = fixture();
+    state.trackId.value = "video";
+    await state.generate();
+    await state.publish("srt");
+    const held = deferred<ReturnType<typeof snapshot>>();
+    api.prepareCaptions.mockImplementationOnce(() => held.promise);
+    const preparing = state.generate();
+    expect(state.publication.value).toBeNull();
+    await vi.waitFor(() =>
+      expect(api.prepareCaptions).toHaveBeenCalledTimes(2),
+    );
+    held.resolve(snapshot());
+    await preparing;
+    expect(state.publication.value).toBeNull();
+  });
+  it("clears publication if a refresh returns a different snapshot identity", async () => {
+    const { state, api } = fixture();
+    state.trackId.value = "video";
+    await state.generate();
+    await state.publish("srt");
+    api.captionSnapshot.mockResolvedValueOnce(snapshot({ id: "new-snapshot" }));
+    await state.loadPage(0, 0);
+    expect(state.snapshot.value!.id).toBe("new-snapshot");
+    expect(state.publication.value).toBeNull();
   });
   it("ignores a publication delivered after project switching", async () => {
     const { state, props, api } = fixture();

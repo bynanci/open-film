@@ -48,7 +48,11 @@ OpenFilm already has headless CLI operations; this adds one shared use case.
   receipt and are never silently relabeled as the newest cut.
 - Desktop, HTTP and CLI call the same application service. Desktop responses and
   downloads are project-bound, with disposed/delayed requests ignored. The UI
-  presents text/time preview, not a burn-in or final-player claim.
+  presents text/time preview, not a burn-in or final-player claim. Cue and warning
+  timestamps use `HH:MM:SS.mmm`, including hour-long films. Download links remain
+  available during unchanged pagination/status refreshes; a new selection,
+  preparation or stale revision clears them to avoid presenting an old export
+  as the current cut.
 
 ## Required verification
 
@@ -130,9 +134,11 @@ acknowledgement was lost is still a complete immutable publication, not a partia
 file. A retry creates another copy. No timeline Undo step is added.
 
 The CLI uses `OpenFilmApplication.openForExport`: no automatic job recovery,
-media-reference rewrite or project save on close. Normal workspace open/close
-keeps its existing behavior. Relocated managed media should first be opened and
-relinked in the workspace. Catalog opening retains its existing migration path;
+persisted media-reference rewrite or project save on close. Managed uploads are
+resolved against the current project location in memory, so a moved project can
+prepare captions directly through the CLI. External media still uses the existing
+relink workflow. Normal workspace open/close keeps its existing behavior. Catalog
+opening retains its existing migration path;
 this feature adds no project fields, tables or schema version change.
 
 HTTP exposes project-bound `GET /api/captions/context`,
