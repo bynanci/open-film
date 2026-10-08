@@ -82,6 +82,14 @@ separate [workstation gates](workstation-qa.md), tracked in issue #7.
    provider provenance, frame rate and actual output duration, warnings, and
    output SHA-256.
 
+Published manifest version 2 also carries a SHA-256 digest over its complete
+payload. Readers verify it before returning publication metadata, a source record
+or subtitles; changed text, bindings, provenance or output hashes are rejected.
+Verification does not depend on the preview cache, so an intact export remains
+readable after cache cleanup. Older unchecked manifests require a new export.
+This detects altered contents; it is not a signature against a writer who can
+replace both payload and digest.
+
 No cloud provider is contacted. Both formats keep overlaps rather than silently
 moving or dropping dialogue; a player's display of overlaps is its own behavior.
 SRT has no universally shared literal-markup escaping. Ordinary ampersands remain
@@ -133,7 +141,9 @@ existing editor `baseRevision`. Export accepts only a stored snapshot ID and
 `srt`/`vtt`, never caller-supplied cue text or filesystem paths. Downloads require
 publication ID, owning project ID and `kind=captions|manifest`. Snapshot query
 parameters expose the same four independent pagination pairs as the CLI.
-Disconnect or server shutdown aborts preparation/publication and waits for cleanup.
+Disconnect or server shutdown aborts preparation, publication and downloads, and
+waits for cleanup. Snapshot, manifest and subtitle reads receive the same abort
+signal, including checks before parsing or hashing their contents.
 A project switch cannot close a catalog still in use by a caption request. A stale
 response cannot update another Desktop project.
 

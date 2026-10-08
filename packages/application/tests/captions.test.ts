@@ -16,7 +16,11 @@ vi.mock("node:fs/promises", async () => {
     await vi.importActual<typeof import("node:fs/promises")>(
       "node:fs/promises",
     );
-  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+  return {
+    ...actual,
+    writeFile: vi.fn(actual.writeFile),
+    readFile: vi.fn(actual.readFile),
+  };
 });
 const actualFs =
   await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -26,6 +30,7 @@ const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.mocked(fs.writeFile).mockImplementation(actualFs.writeFile);
+  vi.mocked(fs.readFile).mockImplementation(actualFs.readFile);
   for (const app of applications) app.close();
   applications.clear();
   for (const root of roots.splice(0))
@@ -1385,4 +1390,327 @@ describe("caption preparation resource and output contracts", () => {
     expect(JSON.stringify(test.app.project)).toBe(before);
     expect(await hashFile(test.source)).toBe(test.sourceHash);
   });
+});
+
+describe("caption receipt integrity and read cancellation", () => {
+  async function publishedFixture() {
+    const test = await fixture();
+    const snapshot = await test.app.captions.prepare(test.input());
+    const publication = await test.app.captions.export(snapshot.id, "srt", {
+      projectId: test.app.project.id,
+    });
+    return { ...test, snapshot, publication };
+  }
+
+  async function rejectPublicationReads(
+    test: Awaited<ReturnType<typeof publishedFixture>>,
+  ) {
+    const options = { projectId: test.app.project.id };
+    for (const read of [
+      () => test.app.captions.readPublication(test.publication.id, options),
+      () => test.app.captions.readManifest(test.publication.id, options),
+      () => test.app.captions.readOutput(test.publication.id, options),
+      () =>
+        test.app.captions.readOutput(test.publication.id, {
+          ...options,
+          kind: "manifest",
+        }),
+    ])
+      await expect(read()).rejects.toMatchObject({
+        code: "captions.unavailable",
+        message:
+          "The caption export is unavailable or incomplete. Export a new copy.",
+      });
+  }
+
+  it.each([
+    ["snapshot.cues.0.text", "Changed caption text"],
+    ["snapshot.clipBindings.0.sourceIn", 4],
+    ["snapshot.sources.0.transcriptId", "changed-transcript"],
+    ["snapshot.sources.0.transcriptRevisionId", "changed-revision"],
+    ["snapshot.sources.0.provenance.providerId", "changed-provider"],
+    ["snapshot.sources.0.assetState.name", "Changed asset name"],
+    ["snapshot.issues", [{ severity: "warning", code: "CHANGED" }]],
+    ["snapshot.createdAt", "2026-10-09T00:00:00Z"],
+    ["publication.createdAt", "2026-10-09T00:00:00Z"],
+    ["publication.cueCount", 99],
+    ["publication.mediaType", "text/html"],
+    ["output.sha256", "0".repeat(64)],
+    ["output.bytes", 1],
+    ["unexpected", "Unbound manifest field"],
+  ] as const)(
+    "rejects changed %s through every publication reader",
+    async (field, value) => {
+      const test = await publishedFixture();
+      const path = join(
+        test.directory,
+        "exports",
+        `captions-${test.publication.id}`,
+        "manifest.json",
+      );
+      const manifest = JSON.parse(await fs.readFile(path, "utf8"));
+      const segments = field.split(".");
+      let target: Record<string, unknown> = manifest;
+      for (const segment of segments.slice(0, -1))
+        target = target[segment] as Record<string, unknown>;
+      target[segments.at(-1)!] = value;
+      await fs.writeFile(path, JSON.stringify(manifest));
+      await rejectPublicationReads(test);
+    },
+  );
+
+  it.each(["legacy", "missing", "changed"] as const)(
+    "rejects a %s manifest checksum through every publication reader",
+    async (kind) => {
+      const test = await publishedFixture();
+      const path = join(
+        test.directory,
+        "exports",
+        `captions-${test.publication.id}`,
+        "manifest.json",
+      );
+      const manifest = JSON.parse(await fs.readFile(path, "utf8"));
+      if (kind === "legacy") manifest.version = 1;
+      if (kind !== "changed") delete manifest.digest;
+      else manifest.digest = "0".repeat(64);
+      await fs.writeFile(path, JSON.stringify(manifest));
+      await rejectPublicationReads(test);
+    },
+  );
+
+  it("rejects replacement output bytes even when its unchecked output checksum is also replaced", async () => {
+    const test = await publishedFixture();
+    const path = join(
+      test.directory,
+      "exports",
+      `captions-${test.publication.id}`,
+      "manifest.json",
+    );
+    const manifest = JSON.parse(await fs.readFile(path, "utf8"));
+    const changed = "1\n00:00:00,000 --> 00:00:00,800\nReplacement text\n";
+    manifest.output = {
+      sha256: createHash("sha256").update(changed).digest("hex"),
+      bytes: Buffer.byteLength(changed),
+    };
+    await fs.writeFile(
+      join(test.directory, test.publication.relativePath),
+      changed,
+    );
+    await fs.writeFile(path, JSON.stringify(manifest));
+    await rejectPublicationReads(test);
+  });
+
+  it("reads intact portable publications after reopen with their snapshot cache deleted", async () => {
+    const test = await publishedFixture();
+    const options = { projectId: test.app.project.id };
+    const manifest = await test.app.captions.readManifest(
+      test.publication.id,
+      options,
+    );
+    const output = await test.app.captions.readOutput(
+      test.publication.id,
+      options,
+    );
+    test.app.close();
+    applications.delete(test.app);
+    await fs.rm(join(test.directory, "cache", "captions"), { recursive: true });
+    const reopened = await OpenFilmApplication.openForExport(
+      test.directory,
+      test.runtime,
+    );
+    applications.add(reopened);
+    expect(
+      await reopened.captions.readPublication(test.publication.id, options),
+    ).toEqual(test.publication);
+    expect(
+      await reopened.captions.readManifest(test.publication.id, options),
+    ).toBe(manifest);
+    expect(
+      await reopened.captions.readOutput(test.publication.id, options),
+    ).toEqual(output);
+    expect(
+      await reopened.captions.readOutput(test.publication.id, {
+        ...options,
+        kind: "manifest",
+      }),
+    ).toEqual({ publication: test.publication, content: manifest });
+  });
+
+  const reads = [
+    "get",
+    "export",
+    "publication",
+    "manifest",
+    "downloadManifest",
+    "download",
+    "subtitle",
+  ] as const;
+  type Read = (typeof reads)[number];
+  function read(
+    test: Awaited<ReturnType<typeof publishedFixture>>,
+    method: Read,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const options = { projectId: test.app.project.id, signal };
+    switch (method) {
+      case "get":
+        return test.app.captions.get(
+          test.snapshot.id,
+          { projectId: options.projectId },
+          { signal },
+        );
+      case "export":
+        return test.app.captions.export(test.snapshot.id, "vtt", options);
+      case "publication":
+        return test.app.captions.readPublication(test.publication.id, options);
+      case "manifest":
+        return test.app.captions.readManifest(test.publication.id, options);
+      case "downloadManifest":
+        return test.app.captions.readOutput(test.publication.id, {
+          ...options,
+          kind: "manifest",
+        });
+      default:
+        return test.app.captions.readOutput(test.publication.id, options);
+    }
+  }
+
+  function holdRead(path: string) {
+    let announce!: () => void;
+    const started = new Promise<void>((resolve) => {
+      announce = resolve;
+    });
+    let release = () => {};
+    let receivedSignal: AbortSignal | undefined;
+    let intercepted = false;
+    vi.mocked(fs.readFile).mockImplementation((...args) => {
+      if (String(args[0]) !== path || intercepted)
+        return actualFs.readFile(...args);
+      intercepted = true;
+      const options = args[1];
+      receivedSignal =
+        options && typeof options === "object" ? options.signal : undefined;
+      const result = new Promise<Awaited<ReturnType<typeof actualFs.readFile>>>(
+        (resolve, reject) => {
+          const onAbort = () =>
+            reject(
+              Object.assign(new Error("Read cancelled"), {
+                name: "AbortError",
+              }),
+            );
+          receivedSignal?.addEventListener("abort", onAbort, { once: true });
+          release = () => {
+            receivedSignal?.removeEventListener("abort", onAbort);
+            void actualFs.readFile(...args).then(resolve, reject);
+          };
+        },
+      );
+      announce();
+      return result;
+    });
+    return { started, release: () => release(), signal: () => receivedSignal };
+  }
+
+  it.each(reads)(
+    "cancels only the held %s read without changing cache or publications",
+    async (method) => {
+      const test = await publishedFixture();
+      const snapshotPath = join(
+        test.directory,
+        "cache",
+        "captions",
+        `${test.snapshot.id}.json`,
+      );
+      const path =
+        method === "get" || method === "export"
+          ? snapshotPath
+          : method === "subtitle"
+            ? join(test.directory, test.publication.relativePath)
+            : join(
+                test.directory,
+                "exports",
+                `captions-${test.publication.id}`,
+                "manifest.json",
+              );
+      const before = await actualFs.readFile(snapshotPath, "utf8");
+      const held = holdRead(path);
+      const controller = new AbortController();
+      const outcome = read(test, method, controller.signal).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      try {
+        await held.started;
+        expect(held.signal()).toBe(controller.signal);
+        expect(
+          (
+            await test.app.captions.get(test.snapshot.id, {
+              projectId: test.app.project.id,
+            })
+          ).exportable,
+        ).toBe(true);
+        controller.abort();
+        expect(await outcome).toMatchObject({ error: { name: "AbortError" } });
+      } finally {
+        controller.abort();
+        held.release();
+        await outcome;
+      }
+      expect(await actualFs.readFile(snapshotPath, "utf8")).toBe(before);
+      expect(await entries(test.directory, "cache/captions")).toEqual([
+        `${test.snapshot.id}.json`,
+      ]);
+      expect(await entries(test.directory, "exports")).toEqual([
+        `captions-${test.publication.id}`,
+      ]);
+    },
+  );
+
+  it.each(reads)(
+    "rejects an already cancelled %s request before reading",
+    async (method) => {
+      const test = await publishedFixture();
+      const controller = new AbortController();
+      controller.abort();
+      vi.mocked(fs.readFile).mockClear();
+      vi.mocked(fs.writeFile).mockClear();
+      const cachePath = vi.spyOn(media, "safeProjectCachePath");
+      await expect(read(test, method, controller.signal)).rejects.toMatchObject(
+        { name: "AbortError" },
+      );
+      expect(fs.readFile).not.toHaveBeenCalled();
+      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(cachePath).not.toHaveBeenCalled();
+      expect(await entries(test.directory, "exports")).toEqual([
+        `captions-${test.publication.id}`,
+      ]);
+    },
+  );
+
+  it.each([
+    "get",
+    "export",
+    "publication",
+    "manifest",
+    "downloadManifest",
+    "download",
+  ] as const)(
+    "observes %s cancellation after a completed read before parsing JSON",
+    async (method) => {
+      const test = await publishedFixture();
+      const controller = new AbortController();
+      const invalidJson = "cancelled bytes must not be parsed";
+      vi.mocked(fs.readFile).mockImplementation(async (...args) => {
+        controller.abort();
+        return String(args[0]).endsWith(".json")
+          ? invalidJson
+          : actualFs.readFile(...args);
+      });
+      const parse = vi.spyOn(JSON, "parse");
+      await expect(read(test, method, controller.signal)).rejects.toMatchObject(
+        { name: "AbortError" },
+      );
+      expect(parse).not.toHaveBeenCalledWith(invalidJson);
+    },
+  );
 });

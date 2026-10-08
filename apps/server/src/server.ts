@@ -855,7 +855,7 @@ export async function startServer(options: ServerOptions = {}) {
                 );
               const result = await application.captions.readOutput(
                 url.searchParams.get("id") ?? "",
-                { projectId, kind },
+                { projectId, kind, signal: controller.signal },
               );
               response.setHeader(
                 "Content-Disposition",

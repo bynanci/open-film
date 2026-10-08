@@ -137,10 +137,11 @@ export interface CaptionPublication {
 }
 
 interface PublicationManifest {
-  version: 1;
+  version: 2;
   publication: CaptionPublication;
   snapshot: CaptionSnapshot;
   output: { sha256: string; bytes: number };
+  digest: string;
 }
 
 interface SourceCheck {
@@ -730,17 +731,22 @@ export class CaptionService {
   private async snapshot(
     id: string,
     projectId: string,
+    signal?: AbortSignal,
   ): Promise<CaptionSnapshot> {
     uuid(id);
     this.project(projectId);
+    checkAbort(signal);
     const path = await safeProjectCachePath(
       this.application.directory,
       "captions",
       `${id}.json`,
     );
     try {
+      checkAbort(signal);
       regular(path);
-      const stored = JSON.parse(await readFile(path, "utf8")) as {
+      const content = await readFile(path, { encoding: "utf8", signal });
+      checkAbort(signal);
+      const stored = JSON.parse(content) as {
         snapshot?: CaptionSnapshot;
         digest?: string;
       };
@@ -759,6 +765,8 @@ export class CaptionService {
         throw new Error("Invalid caption snapshot integrity or identity.");
       return snapshot;
     } catch (error) {
+      checkAbort(signal);
+      if (error instanceof Error && error.name === "AbortError") throw error;
       if (error instanceof ApplicationError) throw error;
       throw new ApplicationError(
         "captions.unavailable",
@@ -773,7 +781,7 @@ export class CaptionService {
     options: CaptionPageOptions,
     runtime: { signal?: AbortSignal } = {},
   ): Promise<CaptionSnapshotPage> {
-    const snapshot = await this.snapshot(id, options.projectId);
+    const snapshot = await this.snapshot(id, options.projectId, runtime.signal);
     const status = await this.status(snapshot, runtime.signal);
     return this.page(snapshot, options, status.reasons);
   }
@@ -785,7 +793,7 @@ export class CaptionService {
   ): Promise<CaptionPublication> {
     if (format !== "srt" && format !== "vtt")
       invalid("Select SRT or WebVTT captions.");
-    const snapshot = await this.snapshot(id, options.projectId);
+    const snapshot = await this.snapshot(id, options.projectId, options.signal);
     if (
       !snapshot.cues.length ||
       snapshot.issues.some((issue) => issue.severity === "error")
@@ -816,14 +824,20 @@ export class CaptionService {
       cueCount: snapshot.cues.length,
       createdAt: new Date().toISOString(),
     };
-    const manifest: PublicationManifest = {
-      version: 1,
+    const receipt: Omit<PublicationManifest, "digest"> = {
+      version: 2,
       publication,
       snapshot,
       output: {
         sha256: hash(serialized.content),
         bytes: Buffer.byteLength(serialized.content),
       },
+    };
+    // Bind every receipt field without depending on the disposable preview cache.
+    // This checksum detects changed content; it is not a publisher signature.
+    const manifest: PublicationManifest = {
+      ...receipt,
+      digest: hash(JSON.stringify(receipt)),
     };
     const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
     if (
@@ -876,9 +890,11 @@ export class CaptionService {
   private async publication(
     id: string,
     projectId: string,
+    signal?: AbortSignal,
   ): Promise<PublicationManifest> {
     uuid(id);
     this.project(projectId);
+    checkAbort(signal);
     const root = join(this.application.directory, "exports"),
       directory = join(root, `captions-${id}`),
       path = join(directory, "manifest.json");
@@ -886,12 +902,14 @@ export class CaptionService {
       regular(root, true);
       regular(directory, true);
       regular(path);
-      const manifest = JSON.parse(
-        await readFile(path, "utf8"),
-      ) as PublicationManifest;
+      const content = await readFile(path, { encoding: "utf8", signal });
+      checkAbort(signal);
+      const manifest = JSON.parse(content) as PublicationManifest;
+      const { digest, ...receipt } = manifest;
       const publication = manifest.publication;
       if (
-        manifest.version !== 1 ||
+        manifest.version !== 2 ||
+        hash(JSON.stringify(receipt)) !== digest ||
         publication?.id !== id ||
         publication.projectId !== projectId ||
         !["srt", "vtt"].includes(publication.format) ||
@@ -901,12 +919,15 @@ export class CaptionService {
         manifest.snapshot?.id !== publication.snapshotId ||
         manifest.snapshot.projectId !== projectId ||
         !Number.isSafeInteger(manifest.output?.bytes) ||
+        manifest.output.bytes < 0 ||
         manifest.output.bytes > MAX_FILE_BYTES ||
         !/^[a-f0-9]{64}$/.test(manifest.output.sha256)
       )
         throw new Error("Invalid caption publication.");
       return manifest;
     } catch (error) {
+      checkAbort(signal);
+      if (error instanceof Error && error.name === "AbortError") throw error;
       if (error instanceof ApplicationError) throw error;
       throw new ApplicationError(
         "captions.unavailable",
@@ -918,14 +939,19 @@ export class CaptionService {
 
   async readPublication(
     id: string,
-    options: { projectId: string },
+    options: { projectId: string; signal?: AbortSignal },
   ): Promise<CaptionPublication> {
-    return (await this.publication(id, options.projectId)).publication;
+    return (await this.publication(id, options.projectId, options.signal))
+      .publication;
   }
 
   async readOutput(
     id: string,
-    options: { projectId: string; kind?: "captions" | "manifest" },
+    options: {
+      projectId: string;
+      kind?: "captions" | "manifest";
+      signal?: AbortSignal;
+    },
   ): Promise<{ publication: CaptionPublication; content: string }> {
     if (
       options.kind !== undefined &&
@@ -933,7 +959,12 @@ export class CaptionService {
       options.kind !== "manifest"
     )
       invalid("Unknown caption publication file.");
-    const manifest = await this.publication(id, options.projectId);
+    const manifest = await this.publication(
+      id,
+      options.projectId,
+      options.signal,
+    );
+    checkAbort(options.signal);
     if (options.kind === "manifest")
       return {
         publication: manifest.publication,
@@ -946,7 +977,11 @@ export class CaptionService {
       manifest.publication.fileName,
     );
     regular(path);
-    const content = await readFile(path, "utf8");
+    const content = await readFile(path, {
+      encoding: "utf8",
+      signal: options.signal,
+    });
+    checkAbort(options.signal);
     if (
       Buffer.byteLength(content) !== manifest.output.bytes ||
       hash(content) !== manifest.output.sha256
@@ -961,8 +996,8 @@ export class CaptionService {
 
   async readManifest(
     id: string,
-    options: { projectId: string },
+    options: { projectId: string; signal?: AbortSignal },
   ): Promise<string> {
-    return `${JSON.stringify(await this.publication(id, options.projectId), null, 2)}\n`;
+    return `${JSON.stringify(await this.publication(id, options.projectId, options.signal), null, 2)}\n`;
   }
 }

@@ -143,3 +143,10 @@ audible instance of the same source still contribute eligible segments.
 The same check caps the audible interval by resolved source-out and speed, so
 source-end padding and accepted floating-point trim tolerances cannot make an
 otherwise uncaptionable source consume the transcript budget.
+
+Publication-read review found that identity fields alone did not protect the
+embedded provenance record. Manifest v2 verifies a digest of the complete payload
+without depending on the snapshot cache. Tamper regressions cover cue text,
+bindings, revisions, provenance, warnings and output hashes across readers.
+Cancellation regressions hold snapshot, manifest and subtitle reads, verifying
+that request/shutdown signals reach them and that cleanup preserves prior files.

@@ -17,7 +17,7 @@ const actualMedia =
   await vi.importActual<typeof import("@openfilm/media")>("@openfilm/media");
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, rm: vi.fn(actual.rm) };
+  return { ...actual, rm: vi.fn(actual.rm), readFile: vi.fn(actual.readFile) };
 });
 const actualFs =
   await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -26,6 +26,7 @@ const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   vi.mocked(hashFile).mockImplementation(actualMedia.hashFile);
   vi.mocked(rm).mockImplementation(actualFs.rm);
+  vi.mocked(readFile).mockImplementation(actualFs.readFile);
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
@@ -126,7 +127,9 @@ async function captionServer() {
     project: f.directory,
     ...f.runtime,
   });
-  cleanup.push(() => server.close());
+  let closed: Promise<void> | undefined;
+  const close = () => (closed ??= server.close());
+  cleanup.push(close);
   const base = `http://127.0.0.1:${server.port}/api`;
   const post = (route: string, data: unknown = {}) =>
     fetch(`${base}${route}`, {
@@ -134,7 +137,7 @@ async function captionServer() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-  return { ...f, snapshot, server, base, post };
+  return { ...f, snapshot, server, base, post, close };
 }
 
 function holdSourceHash(source: string) {
@@ -712,3 +715,175 @@ it("HTTP pages clip provenance independently past its first 200 records", async 
     expect((await fetch(`${url}?${invalid}`)).status).toBe(400);
   }
 });
+
+it.each(
+  (["snapshot", "export", "manifest", "subtitle"] as const).flatMap((stage) =>
+    (["disconnect", "shutdown"] as const).map((action) => ({ stage, action })),
+  ),
+)(
+  "$action aborts a held caption $stage file read without manually releasing it or damaging prior exports",
+  async ({ stage, action }) => {
+    const f = await captionServer();
+    const publishedResponse = await f.post("/captions/export", {
+      projectId: f.projectId,
+      snapshotId: f.snapshot.id,
+      format: "vtt",
+    });
+    expect(publishedResponse.status).toBe(200);
+    const publication = (await publishedResponse.json()) as {
+      id: string;
+      relativePath: string;
+    };
+    const publicationRoot = join(
+      f.directory,
+      "exports",
+      `captions-${publication.id}`,
+    );
+    const manifestPath = join(publicationRoot, "manifest.json");
+    const subtitlePath = join(f.directory, publication.relativePath);
+    const manifestBefore = await actualFs.readFile(manifestPath);
+    const subtitleBefore = await actualFs.readFile(subtitlePath);
+    const snapshotPath = join(
+      f.directory,
+      "cache",
+      "captions",
+      `${f.snapshot.id}.json`,
+    );
+    const snapshotBefore = await actualFs.readFile(snapshotPath);
+    const cacheBefore = await readdir(join(f.directory, "cache", "captions"));
+    const exportsBefore = await readdir(join(f.directory, "exports"));
+    const heldPath =
+      stage === "manifest"
+        ? manifestPath
+        : stage === "subtitle"
+          ? subtitlePath
+          : snapshotPath;
+    let entered = false;
+    let readPending = false;
+    let readAborted = false;
+    let manuallyReleased = false;
+    let capturedSignal: AbortSignal | undefined;
+    let release = () => {};
+    vi.mocked(readFile).mockImplementation(async (...args) => {
+      if (String(args[0]) !== heldPath) return actualFs.readFile(...args);
+      const options = args[1];
+      const signal =
+        options && typeof options === "object" ? options.signal : undefined;
+      capturedSignal = signal ?? undefined;
+      let abort = () => {};
+      try {
+        await new Promise<void>((resolve, reject) => {
+          readPending = true;
+          release = () => {
+            if (!readPending) return;
+            manuallyReleased = true;
+            resolve();
+          };
+          abort = () => {
+            readAborted = true;
+            reject(new DOMException("Held caption read aborted", "AbortError"));
+          };
+          signal?.addEventListener("abort", abort, { once: true });
+          entered = true;
+          if (signal?.aborted) abort();
+        });
+      } finally {
+        readPending = false;
+        signal?.removeEventListener("abort", abort);
+      }
+      return actualFs.readFile(...args);
+    });
+    const requestUrl =
+      stage === "export"
+        ? `${f.base}/captions/export`
+        : stage === "snapshot"
+          ? `${f.base}/captions/snapshot?${new URLSearchParams({ projectId: f.projectId, id: f.snapshot.id })}`
+          : `${f.base}/captions/file?${new URLSearchParams({ projectId: f.projectId, id: publication.id, kind: stage === "manifest" ? "manifest" : "captions" })}`;
+    let client!: ReturnType<typeof httpRequest>;
+    // A dedicated socket avoids an HTTP client's replacement keep-alive socket
+    // obscuring whether shutdown is waiting on the held application read.
+    const settledRequest = new Promise<void>((resolve) => {
+      client = httpRequest(
+        requestUrl,
+        {
+          method: stage === "export" ? "POST" : "GET",
+          agent: false,
+          headers: { "Content-Type": "application/json" },
+        },
+        (response) => {
+          response.on("end", resolve);
+          response.on("error", () => resolve());
+          response.resume();
+        },
+      );
+      client.on("error", () => resolve());
+      client.end(
+        stage === "export"
+          ? JSON.stringify({
+              projectId: f.projectId,
+              snapshotId: f.snapshot.id,
+              format: "srt",
+            })
+          : undefined,
+      );
+    });
+    let closing: Promise<void> | undefined;
+    let closed = false;
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      // Assert the real read received the request controller before any cleanup
+      // release can make an unabortable implementation appear responsive.
+      expect(capturedSignal).toBeInstanceOf(AbortSignal);
+      const jobs = await fetch(`${f.base}/jobs`);
+      expect((await jobs.json()).jobs).toEqual([]);
+      if (action === "disconnect") client.destroy();
+      else
+        closing = f.close().then(() => {
+          closed = true;
+        });
+      await vi.waitFor(() => expect(readAborted).toBe(true));
+      expect(capturedSignal!.aborted).toBe(true);
+      expect(readPending).toBe(false);
+      expect(manuallyReleased).toBe(false);
+      if (!closing)
+        closing = f.close().then(() => {
+          closed = true;
+        });
+      await vi.waitFor(() => expect(closed).toBe(true));
+      await closing;
+      await settledRequest;
+      expect(manuallyReleased).toBe(false);
+    } finally {
+      // Only rescue the deliberately broken pre-fix implementation. In the
+      // passing path abort already settled the read, so release is a no-op.
+      release();
+      client.destroy();
+      await (closing ?? f.close());
+      await settledRequest;
+    }
+    vi.mocked(readFile).mockImplementation(actualFs.readFile);
+    expect(await readdir(join(f.directory, "cache", "captions"))).toEqual(
+      cacheBefore,
+    );
+    expect(await readdir(join(f.directory, "exports"))).toEqual(exportsBefore);
+    expect(await actualFs.readFile(snapshotPath)).toEqual(snapshotBefore);
+    expect(await actualFs.readFile(manifestPath)).toEqual(manifestBefore);
+    expect(await actualFs.readFile(subtitlePath)).toEqual(subtitleBefore);
+    const reopened = await OpenFilmApplication.openForExport(
+      f.directory,
+      f.runtime,
+    );
+    try {
+      expect(reopened.catalog.listJobs()).toEqual([]);
+      expect(
+        (
+          await reopened.captions.readOutput(publication.id, {
+            projectId: f.projectId,
+          })
+        ).content,
+      ).toBe(subtitleBefore.toString("utf8"));
+    } finally {
+      reopened.close();
+    }
+  },
+);
