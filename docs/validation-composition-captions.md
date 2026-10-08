@@ -99,3 +99,11 @@ The suggestion to admit raw `360-video` was checked against the full renderer:
 `previewIssue` rejects these sources before `hasAudio` is reached, requiring a
 reframed flat export. The caption boundary is retained and tested explicitly;
 this does not claim raw-360 rendering support.
+
+A further review identified inaccessible source/clip bindings beyond the first
+200 entries and a slow project-switch request racing with caption status reads.
+Source and clip-binding pages now have independent offsets and limits through
+Application, HTTP and CLI, including snapshots blocked from publication. Project
+switch guards cover asynchronous body reads and cleanup before closing the old
+catalog. Regression coverage exercises the large binding collections and the
+controlled interleaving, rather than relying on a successful small-file run.

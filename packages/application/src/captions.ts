@@ -88,6 +88,10 @@ export interface CaptionPageOptions {
   limit?: number;
   issueOffset?: number;
   issueLimit?: number;
+  sourceOffset?: number;
+  sourceLimit?: number;
+  clipOffset?: number;
+  clipLimit?: number;
 }
 
 export interface CaptionSnapshotPage extends CaptionSnapshot {
@@ -101,6 +105,10 @@ export interface CaptionSnapshotPage extends CaptionSnapshot {
   limit: number;
   issueOffset: number;
   issueLimit: number;
+  sourceOffset: number;
+  sourceLimit: number;
+  clipOffset: number;
+  clipLimit: number;
   stale: boolean;
   staleReasons: Array<"composition" | "transcript" | "source" | "project">;
   exportable: boolean;
@@ -199,7 +207,7 @@ function checkedBounds(
   fallback: number,
   maximum = Number.MAX_SAFE_INTEGER,
 ): number {
-  const result = value ?? fallback;
+  const result = value === undefined ? fallback : value;
   if (
     typeof result !== "number" ||
     !Number.isSafeInteger(result) ||
@@ -368,6 +376,10 @@ export class CaptionService {
       "limit",
       "issueOffset",
       "issueLimit",
+      "sourceOffset",
+      "sourceLimit",
+      "clipOffset",
+      "clipLimit",
     ]);
     this.project(options.projectId);
     if (snapshot.projectId !== options.projectId)
@@ -379,7 +391,11 @@ export class CaptionService {
     const offset = checkedBounds(options.offset, 0),
       limit = checkedBounds(options.limit, PAGE_LIMIT, PAGE_LIMIT),
       issueOffset = checkedBounds(options.issueOffset, 0),
-      issueLimit = checkedBounds(options.issueLimit, PAGE_LIMIT, PAGE_LIMIT);
+      issueLimit = checkedBounds(options.issueLimit, PAGE_LIMIT, PAGE_LIMIT),
+      sourceOffset = checkedBounds(options.sourceOffset, 0),
+      sourceLimit = checkedBounds(options.sourceLimit, PAGE_LIMIT, PAGE_LIMIT),
+      clipOffset = checkedBounds(options.clipOffset, 0),
+      clipLimit = checkedBounds(options.clipLimit, PAGE_LIMIT, PAGE_LIMIT);
     const errorCount = snapshot.issues.filter(
       (issue) => issue.severity === "error",
     ).length;
@@ -387,8 +403,11 @@ export class CaptionService {
       ...snapshot,
       cues: snapshot.cues.slice(offset, offset + limit),
       issues: snapshot.issues.slice(issueOffset, issueOffset + issueLimit),
-      sources: snapshot.sources.slice(0, PAGE_LIMIT),
-      clipBindings: snapshot.clipBindings.slice(0, PAGE_LIMIT),
+      sources: snapshot.sources.slice(sourceOffset, sourceOffset + sourceLimit),
+      clipBindings: snapshot.clipBindings.slice(
+        clipOffset,
+        clipOffset + clipLimit,
+      ),
       sourceCount: snapshot.sources.length,
       clipCount: snapshot.clipBindings.length,
       cueCount: snapshot.cues.length,
@@ -399,6 +418,10 @@ export class CaptionService {
       limit,
       issueOffset,
       issueLimit,
+      sourceOffset,
+      sourceLimit,
+      clipOffset,
+      clipLimit,
       stale: reasons.length > 0,
       staleReasons: reasons,
       exportable: !reasons.length && !errorCount && snapshot.cues.length > 0,

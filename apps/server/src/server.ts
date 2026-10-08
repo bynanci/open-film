@@ -452,6 +452,13 @@ export async function startServer(options: ServerOptions = {}) {
     );
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
+  const requireIdleProject = () => {
+    if (active.size)
+      throw new HttpError(
+        409,
+        "Wait for running jobs before switching or closing this project.",
+      );
+  };
   const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
   const relinkers = new WeakMap<OpenFilmApplication, MediaRelinker>();
   const relinkerFor = (application: OpenFilmApplication) => {
@@ -641,12 +648,11 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (method === "POST" && route === "/api/project/close") {
-          if (active.size)
-            throw new HttpError(
-              409,
-              "Wait for running jobs before closing this project.",
-            );
+          requireIdleProject();
           await discardUploads();
+          // A caption GET can capture this project during upload cleanup.
+          // Recheck immediately before close; do not await after this guard.
+          requireIdleProject();
           app?.close();
           app = undefined;
           json(response, 200, { ok: true });
@@ -656,12 +662,9 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           (route === "/api/project/create" || route === "/api/project/open")
         ) {
-          if (active.size)
-            throw new HttpError(
-              409,
-              "Wait for running jobs before switching projects.",
-            );
+          requireIdleProject();
           const data = await body(request);
+          requireIdleProject();
           const creating = route.endsWith("/create");
           errorContext = creating
             ? "project.destinationInvalid"
@@ -689,6 +692,7 @@ export async function startServer(options: ServerOptions = {}) {
               : resolve(filePath(data, "path"));
           const previousPath = app?.directory;
           await discardUploads();
+          requireIdleProject();
           app?.close();
           app = undefined;
           let next: OpenFilmApplication;
@@ -793,6 +797,10 @@ export async function startServer(options: ServerOptions = {}) {
                 "limit",
                 "issueOffset",
                 "issueLimit",
+                "sourceOffset",
+                "sourceLimit",
+                "clipOffset",
+                "clipLimit",
               ])
                 if (url.searchParams.has(key))
                   bounds[key] = Number(url.searchParams.get(key));

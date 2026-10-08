@@ -523,6 +523,160 @@ describe("composition-bound caption application", () => {
     expect(JSON.stringify(later).length).toBeLessThan(200_000);
   }, 20_000);
 
+  it("pages every source and clip binding independently even when export is blocked, including after reopen", async () => {
+    const test = await fixture();
+    const firstAsset = test.app.catalog.getAsset("spoken")!;
+    const sourceIds = [
+      "spoken",
+      ...Array.from({ length: 204 }, (_, index) => `source-${index + 1}`),
+    ];
+    for (const assetId of sourceIds.slice(1)) {
+      const path = join(test.root, `${assetId}.mp4`);
+      await fs.copyFile(test.source, path);
+      test.app.catalog.upsertAsset({
+        ...firstAsset,
+        id: assetId,
+        uri: pathToFileURL(path).href,
+        name: `${assetId}.mp4`,
+      });
+    }
+    const clipAssetIds = [...sourceIds, "spoken", "spoken"];
+    const composition = test.app.project.timelines[0]!;
+    composition.duration = clipAssetIds.length * 3;
+    composition.tracks[0]!.clips = clipAssetIds.map((assetId, index) => ({
+      id: `instance-${index}`,
+      assetId,
+      sourceIn: 0,
+      sourceOut: 3,
+      timelineStart: index * 3,
+      timelineDuration: 3,
+      ...(index === 204 ? { transform: { speed: 2 } } : {}),
+    }));
+    await test.app.save();
+    const snapshot = await test.app.captions.prepare(test.input());
+    expect(snapshot).toMatchObject({
+      sourceCount: 205,
+      clipCount: 207,
+      cueCount: 9,
+      errorCount: 1,
+      exportable: false,
+      sourceOffset: 0,
+      sourceLimit: 200,
+      clipOffset: 0,
+      clipLimit: 200,
+    });
+    expect(snapshot.sources).toHaveLength(200);
+    expect(snapshot.clipBindings).toHaveLength(200);
+    await expect(
+      test.app.captions.export(snapshot.id, "vtt", {
+        projectId: test.app.project.id,
+      }),
+    ).rejects.toMatchObject({ code: "captions.unavailable" });
+    const options = {
+      projectId: test.app.project.id,
+      sourceOffset: 200,
+      sourceLimit: 200,
+      clipOffset: 200,
+      clipLimit: 200,
+      offset: 1,
+      limit: 1,
+      issueOffset: 1,
+      issueLimit: 2,
+    };
+    const tail = await test.app.captions.get(snapshot.id, options);
+    expect(tail).toMatchObject({
+      ...options,
+      sourceCount: 205,
+      clipCount: 207,
+      exportable: false,
+    });
+    expect(tail.sources.map((source) => source.assetId)).toEqual(
+      sourceIds.slice(200),
+    );
+    expect(tail.clipBindings.map((clip) => clip.id)).toEqual(
+      composition.tracks[0]!.clips.slice(200).map((clip) => clip.id),
+    );
+    expect(
+      [...snapshot.sources, ...tail.sources].map((source) => source.assetId),
+    ).toEqual(sourceIds);
+    expect([...snapshot.clipBindings, ...tail.clipBindings]).toEqual(
+      composition.tracks[0]!.clips,
+    );
+    expect(tail.cues).toEqual(snapshot.cues.slice(1, 2));
+    expect(tail.issues).toEqual(snapshot.issues.slice(1, 3));
+    const independent = await test.app.captions.get(snapshot.id, {
+      ...options,
+      sourceOffset: 201,
+      sourceLimit: 1,
+      clipOffset: 206,
+      clipLimit: 1,
+    });
+    expect(independent.sources.map((source) => source.assetId)).toEqual([
+      sourceIds[201],
+    ]);
+    expect(independent.clipBindings.map((clip) => clip.id)).toEqual([
+      "instance-206",
+    ]);
+    expect(independent.cues).toEqual(tail.cues);
+    expect(independent.issues).toEqual(tail.issues);
+    test.app.close();
+    applications.delete(test.app);
+    const reopened = await OpenFilmApplication.openForExport(
+      test.directory,
+      test.runtime,
+    );
+    applications.add(reopened);
+    expect(await reopened.captions.get(snapshot.id, options)).toEqual(tail);
+    const pastEnd = await reopened.captions.get(snapshot.id, {
+      ...options,
+      sourceOffset: 205,
+      clipOffset: 207,
+    });
+    expect(pastEnd.sources).toEqual([]);
+    expect(pastEnd.clipBindings).toEqual([]);
+    expect(pastEnd).toMatchObject({
+      sourceCount: 205,
+      clipCount: 207,
+      sourceOffset: 205,
+      clipOffset: 207,
+    });
+    expect(await entries(test.directory, "exports")).toEqual([]);
+  }, 20_000);
+
+  it.each(["sourceOffset", "sourceLimit", "clipOffset", "clipLimit"] as const)(
+    "strictly validates independent provenance page bounds: %s",
+    async (field) => {
+      const test = await fixture();
+      const snapshot = await test.app.captions.prepare(test.input());
+      const invalidValues: unknown[] = [
+        null,
+        -1,
+        0.5,
+        NaN,
+        Infinity,
+        "1",
+        true,
+        {},
+        Number.MAX_SAFE_INTEGER + 1,
+      ];
+      if (field.endsWith("Limit")) invalidValues.push(0, 201);
+      for (const value of invalidValues) {
+        await expect(
+          test.app.captions.get(snapshot.id, {
+            projectId: test.app.project.id,
+            [field]: value,
+          } as never),
+        ).rejects.toMatchObject({ code: "captions.invalid" });
+      }
+      const boundary = await test.app.captions.get(snapshot.id, {
+        projectId: test.app.project.id,
+        [field]: field.endsWith("Limit") ? 200 : 0,
+      });
+      expect(boundary.sources).toHaveLength(1);
+      expect(boundary.clipBindings).toHaveLength(1);
+    },
+  );
+
   it("cancels preparation and publication without successful-looking partial files, then permits retry", async () => {
     const test = await fixture();
     const aborted = new AbortController();

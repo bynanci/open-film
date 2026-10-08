@@ -86,14 +86,18 @@ at exact millisecond boundaries; no positive minimum duration is invented.
 pnpm cli captions prepare --project /path/film.openfilm --composition <id> --track <id>
 pnpm cli captions get <snapshot-id> --project /path/film.openfilm --offset 0 --limit 100
 pnpm cli captions get <snapshot-id> --project /path/film.openfilm --issue-offset 200 --issue-limit 100
+pnpm cli captions get <snapshot-id> --project /path/film.openfilm --source-offset 200 --source-limit 100 --clip-offset 200 --clip-limit 100
 pnpm cli captions export <snapshot-id> --project /path/film.openfilm --format srt
 pnpm cli captions export <snapshot-id> --project /path/film.openfilm --format vtt
 ```
 
 Commands return JSON; publication `relativePath` is under the chosen project.
-Cue and warning pagination are independent; use `--issue-offset` and
-`--issue-limit` to inspect later warning pages. Both page sizes are capped at 200
-by the shared application contract. Raw `360-video` sources remain unsupported,
+Cue, warning, source and clip-binding pagination are independent. Use
+`--issue-offset` / `--issue-limit`, `--source-offset` / `--source-limit` and
+`--clip-offset` / `--clip-limit` to inspect later pages. Every collection has its
+own total count and bounded page; page sizes are capped at 200 by the shared
+application contract. Full source provenance and clip timing remain retrievable
+even when an error prevents export. Raw `360-video` sources remain unsupported,
 matching the renderer's requirement for a reframed flat export, even when a
 stored transcript and audio stream are present. A playable flat export is a
 normal video source.
@@ -115,8 +119,11 @@ HTTP exposes project-bound `GET /api/captions/context`,
 `POST /api/captions/export`, and `GET /api/captions/file`. Prepare requires the
 existing editor `baseRevision`. Export accepts only a stored snapshot ID and
 `srt`/`vtt`, never caller-supplied cue text or filesystem paths. Downloads require
-publication ID, owning project ID and `kind=captions|manifest`. Disconnect aborts
-preparation/publication. A stale response cannot update another Desktop project.
+publication ID, owning project ID and `kind=captions|manifest`. Snapshot query
+parameters expose the same four independent pagination pairs as the CLI.
+Disconnect or server shutdown aborts preparation/publication and waits for cleanup.
+A project switch cannot close a catalog still in use by a caption request. A stale
+response cannot update another Desktop project.
 
 ## Bounds and remaining limits
 

@@ -1,5 +1,6 @@
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setImmediate as yieldEventLoop } from "node:timers/promises";
@@ -14,10 +15,17 @@ vi.mock("@openfilm/media", async (importOriginal) => {
 });
 const actualMedia =
   await vi.importActual<typeof import("@openfilm/media")>("@openfilm/media");
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
+const actualFs =
+  await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   vi.mocked(hashFile).mockImplementation(actualMedia.hashFile);
+  vi.mocked(rm).mockImplementation(actualFs.rm);
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
@@ -101,6 +109,108 @@ async function fixture(clipCount = 1) {
     revision,
     transcriptRevision: edited.revision,
   };
+}
+
+async function captionServer() {
+  const f = await fixture();
+  const app = await OpenFilmApplication.openForExport(f.directory, f.runtime);
+  const snapshot = await app.captions.prepare({
+    projectId: f.projectId,
+    compositionId: "film",
+    trackId: "voice",
+    baseRevision: f.revision,
+  });
+  app.close();
+  const server = await startServer({
+    port: 0,
+    project: f.directory,
+    ...f.runtime,
+  });
+  cleanup.push(() => server.close());
+  const base = `http://127.0.0.1:${server.port}/api`;
+  const post = (route: string, data: unknown = {}) =>
+    fetch(`${base}${route}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  return { ...f, snapshot, server, base, post };
+}
+
+function holdSourceHash(source: string) {
+  let release = () => {};
+  let notify = () => {};
+  const entered = new Promise<void>((resolve) => {
+    notify = resolve;
+  });
+  vi.mocked(hashFile).mockImplementation(async (path, signal) => {
+    if (path === source) {
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      notify();
+      await held;
+    }
+    return actualMedia.hashFile(path, signal);
+  });
+  return { entered, release: () => release() };
+}
+
+async function slowPost(
+  server: Awaited<ReturnType<typeof startServer>>,
+  path: string,
+  data: unknown,
+) {
+  const bytes = JSON.stringify(data);
+  let notify = () => {};
+  const received = new Promise<void>((resolve) => {
+    notify = resolve;
+  });
+  const observe = (request: import("node:http").IncomingMessage) => {
+    if (request.url === path && request.method === "POST") {
+      server.server.removeListener("request", observe);
+      notify();
+    }
+  };
+  server.server.on("request", observe);
+  let resolveResponse!: (value: { status: number; body: unknown }) => void;
+  let rejectResponse!: (error: Error) => void;
+  const response = new Promise<{ status: number; body: unknown }>(
+    (resolve, reject) => {
+      resolveResponse = resolve;
+      rejectResponse = reject;
+    },
+  );
+  const request = httpRequest(
+    {
+      hostname: "127.0.0.1",
+      port: server.port,
+      path,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(bytes),
+      },
+    },
+    async (incoming) => {
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+        resolveResponse({
+          status: incoming.statusCode!,
+          body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+        });
+      } catch (error) {
+        rejectResponse(error as Error);
+      }
+    },
+  );
+  request.on("error", rejectResponse);
+  request.write(bytes.slice(0, 1));
+  await received;
+  // Let the route reach its body await without ever completing that body.
+  await yieldEventLoop();
+  return { finish: () => request.end(bytes.slice(1)), response };
 }
 
 it("HTTP previews corrected composition timing, exports a receipt and rejects foreign project requests", async () => {
@@ -395,3 +505,210 @@ it.each(["prepare", "export", "snapshot"] as const)(
     reopened.close();
   },
 );
+
+it.each(["open", "create"] as const)(
+  "a slow project %s body cannot close the catalog captured by a later caption read",
+  async (operation) => {
+    const f = await captionServer();
+    const destination = join(f.root, "next.openfilm");
+    if (operation === "open") {
+      const next = await OpenFilmApplication.create(
+        destination,
+        "Next",
+        {},
+        f.runtime,
+      );
+      next.close();
+    }
+    const data = {
+      path: destination,
+      ...(operation === "create" ? { title: "Next" } : {}),
+    };
+    const pending = await slowPost(f.server, `/api/project/${operation}`, data);
+    const held = holdSourceHash(f.source);
+    const caption = fetch(
+      `${f.base}/captions/snapshot?${new URLSearchParams({ projectId: f.projectId, id: f.snapshot.id })}`,
+    );
+    await held.entered;
+    try {
+      pending.finish();
+      expect((await pending.response).status).toBe(409);
+      expect((await (await fetch(`${f.base}/project`)).json()).project.id).toBe(
+        f.projectId,
+      );
+    } finally {
+      held.release();
+      await caption.catch(() => undefined);
+    }
+    const response = await caption;
+    expect(response.status).toBe(200);
+    expect((await response.json()).stale).toBe(false);
+    expect((await f.post(`/project/${operation}`, data)).status).toBe(200);
+  },
+);
+
+it.each(["open", "create", "close"] as const)(
+  "an earlier caption read keeps its catalog open when project %s is requested",
+  async (operation) => {
+    const f = await captionServer();
+    const destination = join(f.root, "next.openfilm");
+    if (operation === "open") {
+      const next = await OpenFilmApplication.create(
+        destination,
+        "Next",
+        {},
+        f.runtime,
+      );
+      next.close();
+    }
+    const data =
+      operation === "close"
+        ? {}
+        : {
+            path: destination,
+            ...(operation === "create" ? { title: "Next" } : {}),
+          };
+    const held = holdSourceHash(f.source);
+    const caption = fetch(
+      `${f.base}/captions/snapshot?${new URLSearchParams({ projectId: f.projectId, id: f.snapshot.id })}`,
+    );
+    await held.entered;
+    try {
+      expect((await f.post(`/project/${operation}`, data)).status).toBe(409);
+    } finally {
+      held.release();
+      await caption.catch(() => undefined);
+    }
+    const response = await caption;
+    expect(response.status).toBe(200);
+    expect((await response.json()).stale).toBe(false);
+    expect((await f.post(`/project/${operation}`, data)).status).toBe(200);
+  },
+);
+
+it.each(["close", "open", "create"] as const)(
+  "project %s rechecks caption ownership after asynchronous upload cleanup",
+  async (operation) => {
+    const f = await captionServer();
+    const destination = join(f.root, "next.openfilm");
+    if (operation === "open") {
+      const next = await OpenFilmApplication.create(
+        destination,
+        "Next",
+        {},
+        f.runtime,
+      );
+      next.close();
+    }
+    const data =
+      operation === "close"
+        ? {}
+        : {
+            path: destination,
+            ...(operation === "create" ? { title: "Next" } : {}),
+          };
+    const uploaded = await fetch(`${f.base}/import/upload?name=pending.wav`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: "unindexed upload",
+    });
+    expect(uploaded.status).toBe(201);
+    const { uploadId } = await uploaded.json();
+    const uploadDirectory = join(f.directory, "sources", uploadId);
+    let releaseCleanup = () => {};
+    let notifyCleanup = () => {};
+    const cleanupStarted = new Promise<void>((resolve) => {
+      notifyCleanup = resolve;
+    });
+    vi.mocked(rm).mockImplementation(async (...args) => {
+      if (String(args[0]) === uploadDirectory) {
+        const held = new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        });
+        notifyCleanup();
+        await held;
+      }
+      return actualFs.rm(...args);
+    });
+    const closing = f.post(`/project/${operation}`, data);
+    await cleanupStarted;
+    const held = holdSourceHash(f.source);
+    const caption = fetch(
+      `${f.base}/captions/snapshot?${new URLSearchParams({ projectId: f.projectId, id: f.snapshot.id })}`,
+    );
+    await held.entered;
+    releaseCleanup();
+    try {
+      expect((await closing).status).toBe(409);
+    } finally {
+      held.release();
+      await caption.catch(() => undefined);
+    }
+    const response = await caption;
+    expect(response.status).toBe(200);
+    expect((await response.json()).stale).toBe(false);
+    expect((await f.post(`/project/${operation}`, data)).status).toBe(200);
+  },
+);
+
+it("HTTP pages clip provenance independently past its first 200 records", async () => {
+  const f = await fixture(250);
+  const app = await OpenFilmApplication.openForExport(f.directory, f.runtime);
+  const snapshot = await app.captions.prepare({
+    projectId: f.projectId,
+    compositionId: "film",
+    trackId: "voice",
+    baseRevision: f.revision,
+  });
+  app.close();
+  const server = await startServer({
+    port: 0,
+    project: f.directory,
+    ...f.runtime,
+  });
+  cleanup.push(() => server.close());
+  const params = new URLSearchParams({
+    projectId: f.projectId,
+    id: snapshot.id,
+    offset: "3",
+    limit: "2",
+    clipOffset: "205",
+    clipLimit: "3",
+    sourceOffset: "0",
+    sourceLimit: "1",
+  });
+  const url = `http://127.0.0.1:${server.port}/api/captions/snapshot`;
+  const response = await fetch(`${url}?${params}`);
+  expect(response.status).toBe(200);
+  const page = await response.json();
+  expect(page.clipBindings.map((clip: { id: string }) => clip.id)).toEqual([
+    "clip-205",
+    "clip-206",
+    "clip-207",
+  ]);
+  expect(page.cues.map((cue: { clipId: string }) => cue.clipId)).toEqual([
+    "clip-3",
+    "clip-4",
+  ]);
+  expect(page.sources).toHaveLength(1);
+  expect(page).toMatchObject({
+    clipCount: 250,
+    clipOffset: 205,
+    clipLimit: 3,
+    sourceOffset: 0,
+    sourceLimit: 1,
+  });
+  for (const [field, value] of [
+    ["clipOffset", "-1"],
+    ["clipLimit", "201"],
+    ["sourceOffset", "0.5"],
+    ["sourceLimit", "0"],
+  ]) {
+    const invalid = new URLSearchParams({
+      projectId: f.projectId,
+      id: snapshot.id,
+      [field!]: value!,
+    });
+    expect((await fetch(`${url}?${invalid}`)).status).toBe(400);
+  }
+});
