@@ -11,12 +11,16 @@ import { join } from "node:path";
 import { setImmediate as yieldEventLoop } from "node:timers/promises";
 import {
   ApplicationError,
+  CAPTION_LIMITS,
+  captionAssetState,
+  frameAlignedDuration,
   generateCompositionCaptions,
   migrateProject,
   type CaptionCue,
   type CaptionFormat,
   type CaptionIssue,
   type CaptionSource,
+  type CaptionAssetState,
   type AnalysisProvenance,
   type Clip,
   type MediaAsset,
@@ -47,6 +51,7 @@ export interface CaptionPrepareInput {
 
 export interface CaptionSnapshotSource {
   assetId: string;
+  assetState: CaptionAssetState;
   sourceHash: string | null;
   transcriptRevisionId: string | null;
   transcriptId?: string;
@@ -62,6 +67,8 @@ interface CaptionSnapshot {
   compositionId: string;
   compositionRevision: string;
   compositionDuration: number;
+  frameRate: number;
+  outputDuration: number;
   clipBindings: Array<
     Pick<
       Clip,
@@ -236,7 +243,7 @@ export class CaptionService {
   private compositionCurrent(
     snapshot: Pick<
       CaptionSnapshot,
-      "projectId" | "compositionId" | "compositionRevision"
+      "projectId" | "compositionId" | "compositionRevision" | "frameRate"
     >,
   ): boolean {
     try {
@@ -245,7 +252,9 @@ export class CaptionService {
       const project = migrateProject(JSON.parse(readFileSync(path, "utf8")));
       if (
         project.id !== snapshot.projectId ||
-        this.application.project.id !== snapshot.projectId
+        this.application.project.id !== snapshot.projectId ||
+        project.settings.frameRate !== snapshot.frameRate ||
+        this.application.project.settings.frameRate !== snapshot.frameRate
       )
         return false;
       const durable = new TimelineEditor({
@@ -328,6 +337,13 @@ export class CaptionService {
         reasons.add("source");
         continue;
       }
+      // Metadata can change eligibility or timing without changing file bytes.
+      // Older derived snapshots without this binding require regeneration.
+      if (
+        JSON.stringify(source.assetState) !==
+        JSON.stringify(captionAssetState(asset))
+      )
+        reasons.add("source");
       try {
         if (this.transcriptRevision(source) !== source.transcriptRevisionId)
           reasons.add("transcript");
@@ -442,11 +458,24 @@ export class CaptionService {
       identifier(input[field], field);
     this.project(input.projectId);
     checkAbort(options.signal);
+    const selectedTrack = this.application.project.timelines
+      .find((composition) => composition.id === input.compositionId)
+      ?.tracks.find((track) => track.id === input.trackId);
+    if (selectedTrack && selectedTrack.clips.length > CAPTION_LIMITS.clips)
+      throw new ApplicationError(
+        "request.tooLarge",
+        "Caption generation supports up to 10,000 selected clips.",
+        413,
+      );
+    const frameRate = this.application.project.settings.frameRate;
+    if (!Number.isFinite(frameRate) || frameRate <= 0)
+      invalid("Caption output requires a positive, finite project frame rate.");
     const state = new TimelineEditor(this.application).get(input.compositionId);
     const binding = {
       projectId: input.projectId,
       compositionId: input.compositionId,
       compositionRevision: input.baseRevision,
+      frameRate,
     };
     if (!this.compositionCurrent(binding))
       throw new ApplicationError(
@@ -490,7 +519,34 @@ export class CaptionService {
             "Caption generation supports up to 100,000 transcript segments per snapshot.",
             413,
           );
-        transcript = structuredClone(first.document);
+        transcript = { ...first.document, segments: [] };
+        const appendPage = (document: TranscriptDocument) => {
+          for (const segment of document.segments) {
+            checkAbort(options.signal);
+            textSize += Buffer.byteLength(segment.text, "utf8");
+            if (textSize > MAX_TEXT)
+              throw new ApplicationError(
+                "request.tooLarge",
+                "Caption text exceeds the 32 MiB supported snapshot size.",
+                413,
+              );
+            // Caption mapping uses segment timing, never historical word
+            // alignment. Retain only its inputs; the catalog stays untouched.
+            transcript!.segments.push({
+              id: segment.id,
+              start: segment.start,
+              end: segment.end,
+              text: segment.text,
+              ...(segment.alignmentState !== undefined
+                ? { alignmentState: segment.alignmentState }
+                : {}),
+              ...(segment.timingSource !== undefined
+                ? { timingSource: segment.timingSource }
+                : {}),
+            });
+          }
+        };
+        appendPage(first.document);
         for (
           let offset = PAGE_LIMIT;
           offset < first.total;
@@ -502,16 +558,14 @@ export class CaptionService {
             sourceHash!,
             { revisionId: first.revision, offset, limit: PAGE_LIMIT },
           );
-          transcript.segments.push(...page.document!.segments);
+          if (!page.document || page.revision !== first.revision)
+            throw new ApplicationError(
+              "captions.stale",
+              "The transcript revision changed while reading caption text.",
+              409,
+            );
+          appendPage(page.document);
         }
-        for (const segment of transcript.segments)
-          textSize += segment.text.length;
-        if (textSize > MAX_TEXT)
-          throw new ApplicationError(
-            "request.tooLarge",
-            "Caption text exceeds the supported snapshot size.",
-            413,
-          );
       }
       sources.push({
         asset,
@@ -522,6 +576,7 @@ export class CaptionService {
       });
       bindings.push({
         assetId,
+        assetState: captionAssetState(asset),
         sourceHash,
         transcriptRevisionId: first?.revision ?? null,
         ...(transcript
@@ -536,6 +591,7 @@ export class CaptionService {
     checkAbort(options.signal);
     const mapping = generateCompositionCaptions(state.composition, sources, {
       trackId: input.trackId,
+      frameRate,
     });
     const snapshot: CaptionSnapshot = {
       id: randomUUID(),
@@ -543,6 +599,10 @@ export class CaptionService {
       optionsVersion: 1,
       ...binding,
       compositionDuration: state.composition.duration,
+      outputDuration:
+        state.composition.duration > 0
+          ? frameAlignedDuration(state.composition.duration, frameRate)
+          : 0,
       clipBindings: track.clips.map(
         ({
           id,

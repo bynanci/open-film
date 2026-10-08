@@ -1,10 +1,13 @@
 import * as fs from "node:fs/promises";
 import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as core from "@openfilm/core";
 import type { TranscriptDocument } from "@openfilm/core";
+import * as media from "@openfilm/media";
 import { hashFile } from "@openfilm/media";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 
@@ -816,5 +819,243 @@ describe("composition-bound caption application", () => {
       }),
     ).rejects.toMatchObject({ code: "captions.failed" });
     expect(await fs.readFile(test.source, "utf8")).toBe(test.bytes);
+  });
+});
+
+describe("caption preparation resource and output contracts", () => {
+  it.each([
+    "audibility",
+    "mediaType",
+    "duration",
+    "previewBlocked",
+    "name",
+  ] as const)(
+    "invalidates changed source %s even when media bytes and transcript revision are unchanged",
+    async (kind) => {
+      const test = await fixture();
+      const snapshot = await test.app.captions.prepare(test.input());
+      const projectBefore = await fs.readFile(
+        join(test.directory, "project.json"),
+        "utf8",
+      );
+      const asset = test.app.catalog.getAsset("spoken")!;
+      if (kind === "audibility")
+        asset.metadata["openfilm.ffprobe"] = {
+          streams: [{ codec_type: "video" }],
+        };
+      if (kind === "mediaType") asset.mediaType = "audio";
+      if (kind === "duration") asset.duration = 19;
+      if (kind === "previewBlocked")
+        asset.metadata["openfilm.preview"] = { supported: false };
+      if (kind === "name") asset.name = "Renamed source.mp4";
+      test.app.catalog.upsertAsset(asset);
+      expect(await hashFile(test.source)).toBe(test.sourceHash);
+      expect(
+        test.app.catalog.transcripts.get("spoken", test.sourceHash).revision,
+      ).toBe(snapshot.sources[0]!.transcriptRevisionId);
+      const current = await test.app.captions.get(snapshot.id, {
+        projectId: test.app.project.id,
+      });
+      expect(current.staleReasons).toContain("source");
+      expect(current.exportable).toBe(false);
+      await expect(
+        test.app.captions.export(snapshot.id, "vtt", {
+          projectId: test.app.project.id,
+        }),
+      ).rejects.toMatchObject({ code: "captions.stale" });
+      expect(await entries(test.directory, "exports")).toEqual([]);
+      expect(
+        await fs.readFile(join(test.directory, "project.json"), "utf8"),
+      ).toBe(projectBefore);
+    },
+  );
+
+  it.each(["assetState", "frameRate"] as const)(
+    "treats an intact legacy snapshot without %s binding as stale instead of assuming parity",
+    async (binding) => {
+      const test = await fixture();
+      const snapshot = await test.app.captions.prepare(test.input());
+      const path = join(
+        test.directory,
+        "cache",
+        "captions",
+        `${snapshot.id}.json`,
+      );
+      const stored = JSON.parse(await fs.readFile(path, "utf8"));
+      if (binding === "assetState")
+        delete stored.snapshot.sources[0].assetState;
+      else delete stored.snapshot.frameRate;
+      stored.digest = createHash("sha256")
+        .update(JSON.stringify(stored.snapshot))
+        .digest("hex");
+      await fs.writeFile(path, JSON.stringify(stored));
+      const current = await test.app.captions.get(snapshot.id, {
+        projectId: test.app.project.id,
+      });
+      expect(current.staleReasons).toContain(
+        binding === "assetState" ? "source" : "composition",
+      );
+      expect(current.exportable).toBe(false);
+      await expect(
+        test.app.captions.export(snapshot.id, "srt", {
+          projectId: test.app.project.id,
+        }),
+      ).rejects.toMatchObject({ code: "captions.stale" });
+    },
+  );
+
+  it("rejects an oversized track before hashing any source or reading transcript pages", async () => {
+    const test = await fixture(1);
+    const composition = test.app.project.timelines[0]!;
+    const template = composition.tracks[0]!.clips[0]!;
+    composition.tracks[0]!.clips = Array.from(
+      { length: core.CAPTION_LIMITS.clips + 1 },
+      (_, index) => ({ ...template, id: `instance-${index}` }),
+    );
+    await test.app.save();
+    const hash = vi.spyOn(media, "hashFile");
+    const readTranscript = vi.spyOn(test.app.catalog.transcripts, "get");
+    await expect(test.app.captions.prepare(test.input())).rejects.toMatchObject(
+      { code: "request.tooLarge" },
+    );
+    expect(hash).not.toHaveBeenCalled();
+    expect(readTranscript).not.toHaveBeenCalled();
+    expect(await entries(test.directory, "cache/captions")).toEqual([]);
+  });
+
+  it("counts UTF-8 bytes while loading each page and stops before fetching any page beyond 32 MiB", async () => {
+    const test = await fixture(1);
+    const get = test.app.catalog.transcripts.get.bind(
+      test.app.catalog.transcripts,
+    );
+    const text = "青".repeat(20_000);
+    expect(Buffer.byteLength(text, "utf8")).toBe(60_000);
+    const read = vi
+      .spyOn(test.app.catalog.transcripts, "get")
+      .mockImplementation((assetId, sourceHash, options = {}) => {
+        const actual = get(assetId, sourceHash, options);
+        if (options.limit !== 200) return actual;
+        const document = get(assetId, sourceHash, { limit: 1 }).document!;
+        const offset = options.offset ?? 0;
+        return {
+          ...actual,
+          total: 800,
+          document: {
+            ...document,
+            segments: Array.from({ length: 200 }, (_, index) => ({
+              id: `large-${offset + index}`,
+              start: offset + index,
+              end: offset + index + 0.5,
+              text,
+            })),
+          },
+        };
+      });
+    await expect(test.app.captions.prepare(test.input())).rejects.toMatchObject(
+      { code: "request.tooLarge" },
+    );
+    // 200 * 60,000 bytes = 12 MB per page; the third exceeds 32 MiB.
+    // UTF-16/code-point counting would incorrectly consume the fourth page.
+    expect(
+      read.mock.calls
+        .filter((call) => call[2]?.limit === 200)
+        .map((call) => call[2]?.offset ?? 0),
+    ).toEqual([0, 200, 400]);
+    expect(await entries(test.directory, "cache/captions")).toEqual([]);
+  });
+
+  it("retains only segment timing/text for the mapper while preserving provider word evidence in the catalog", async () => {
+    const test = await fixture(205);
+    const before = test.app.catalog.transcripts.get("spoken", test.sourceHash, {
+      offset: 200,
+      limit: 5,
+    });
+    expect(
+      before.document!.segments.every((segment) => !!segment.words?.length),
+    ).toBe(true);
+    const mapper = vi.spyOn(core, "generateCompositionCaptions");
+    const snapshot = await test.app.captions.prepare(test.input());
+    expect(snapshot.cueCount).toBe(205);
+    expect(mapper).toHaveBeenCalledOnce();
+    const retained = mapper.mock.calls[0]![1][0]!.transcript!.segments;
+    expect(retained).toHaveLength(205);
+    expect(retained.every((segment) => segment.words === undefined)).toBe(true);
+    expect(
+      test.app.catalog.transcripts.get("spoken", test.sourceHash, {
+        offset: 200,
+        limit: 5,
+      }),
+    ).toEqual(before);
+    expect(await hashFile(test.source)).toBe(test.sourceHash);
+  });
+
+  it.each(["memory", "durable"] as const)(
+    "invalidates a changed %s project frame rate without changing the composition revision",
+    async (location) => {
+      const test = await fixture();
+      const snapshot = await test.app.captions.prepare(test.input());
+      expect(snapshot).toMatchObject({ frameRate: 30, outputDuration: 20 });
+      const projectPath = join(test.directory, "project.json");
+      const durableBefore = await fs.readFile(projectPath, "utf8");
+      if (location === "memory") test.app.project.settings.frameRate = 24;
+      else {
+        const durable = JSON.parse(durableBefore);
+        durable.settings.frameRate = 24;
+        await fs.writeFile(projectPath, JSON.stringify(durable));
+      }
+      expect(test.input().baseRevision).toBe(snapshot.compositionRevision);
+      const current = await test.app.captions.get(snapshot.id, {
+        projectId: test.app.project.id,
+      });
+      expect(current.staleReasons).toContain("composition");
+      expect(current.exportable).toBe(false);
+      await expect(
+        test.app.captions.export(snapshot.id, "vtt", {
+          projectId: test.app.project.id,
+        }),
+      ).rejects.toMatchObject({ code: "captions.stale" });
+      if (location === "memory")
+        expect(await fs.readFile(projectPath, "utf8")).toBe(durableBefore);
+      else expect(test.app.project.settings.frameRate).toBe(30);
+    },
+  );
+
+  it("omits a spoken tail beyond the rendered frame boundary and binds the frame rate in the saved source record", async () => {
+    const test = await fixture(1);
+    test.app.catalog.intelligence.replaceTranscript({
+      ...test.document,
+      segments: [
+        { id: "audible", start: 0, end: 0.5, text: "Heard in the film" },
+        { id: "tail", start: 1, end: 1.01, text: "Beyond the rendered film" },
+      ],
+    });
+    const composition = test.app.project.timelines[0]!;
+    composition.duration = 1.01;
+    composition.tracks[0]!.clips[0]!.sourceOut = 1.01;
+    composition.tracks[0]!.clips[0]!.timelineDuration = 1.01;
+    await test.app.save();
+    const before = JSON.stringify(test.app.project);
+    const snapshot = await test.app.captions.prepare(test.input());
+    expect(snapshot).toMatchObject({ frameRate: 30, outputDuration: 1 });
+    expect(snapshot.cues.map((cue) => cue.segmentId)).toEqual(["audible"]);
+    expect(snapshot.cues.every((cue) => cue.endMs <= 1000)).toBe(true);
+    const published = await test.app.captions.export(snapshot.id, "vtt", {
+      projectId: test.app.project.id,
+    });
+    const output = await test.app.captions.readOutput(published.id, {
+      projectId: test.app.project.id,
+    });
+    expect(output.content).not.toContain("Beyond the rendered film");
+    const manifest = JSON.parse(
+      await test.app.captions.readManifest(published.id, {
+        projectId: test.app.project.id,
+      }),
+    );
+    expect(manifest.snapshot).toMatchObject({
+      frameRate: 30,
+      outputDuration: 1,
+    });
+    expect(JSON.stringify(test.app.project)).toBe(before);
+    expect(await hashFile(test.source)).toBe(test.sourceHash);
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   generateCompositionCaptions,
+  captionAssetState,
+  validateComposition,
   CAPTION_LIMITS,
   type CaptionSource,
   type Composition,
@@ -76,6 +78,39 @@ function generate(value = fixture()) {
 }
 
 describe("composition-aware caption mapping", () => {
+  it("captures mapper-relevant source metadata in a JSON-stable canonical state", () => {
+    const asset = fixture().sources[0]!.asset;
+    expect(captionAssetState(asset)).toEqual({
+      name: "memory.mp4",
+      mediaType: "video",
+      duration: 30,
+      previewBlocked: false,
+      hasAudio: true,
+    });
+    delete asset.duration;
+    const absent = captionAssetState(asset);
+    expect(absent.duration).toBe("absent");
+    for (const duration of [null, NaN, Infinity, "30"]) {
+      asset.duration = duration as never;
+      const state = captionAssetState(asset);
+      expect(state.duration).toBe("invalid");
+      expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+      expect(state).not.toEqual(absent);
+    }
+    asset.duration = -0;
+    expect(Object.is(captionAssetState(asset).duration, -0)).toBe(false);
+    asset.metadata["openfilm.preview"] = { supported: false };
+    asset.metadata["openfilm.ffprobe"] = { streams: [{ codec_type: "video" }] };
+    expect(captionAssetState(asset)).toMatchObject({
+      previewBlocked: true,
+      hasAudio: false,
+    });
+    asset.mediaType = "audio";
+    expect(captionAssetState(asset)).toMatchObject({
+      previewBlocked: true,
+      hasAudio: true,
+    });
+  });
   it("maps source trims and positive speed into film time, preserving provenance and input evidence", () => {
     const value = fixture();
     const before = structuredClone(value);
@@ -450,6 +485,204 @@ describe("composition-aware caption mapping", () => {
     });
     value.sources[0]!.asset.mediaType = "audio";
     expect(generate(value).cues).toHaveLength(1);
+  });
+
+  it.each(["video", "audio"] as const)(
+    "respects an explicit preview block on an otherwise audible %s source",
+    (mediaType) => {
+      const value = fixture();
+      const asset = value.sources[0]!.asset;
+      asset.mediaType = mediaType;
+      asset.metadata["openfilm.preview"] = {
+        supported: false,
+        reason: "Requires a supported source export",
+      };
+      const before = structuredClone(value);
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "MEDIA_UNSUPPORTED",
+            params: { reason: "preview-disabled" },
+            startMs: 2000,
+            endMs: 6000,
+          }),
+        ],
+      });
+      expect(value).toEqual(before);
+      asset.metadata["openfilm.preview"] = { supported: true };
+      expect(generate(value).cues).toHaveLength(1);
+    },
+  );
+
+  it.each([1.25, 2, 100])(
+    "accepts project-valid non-muted volume gain %s",
+    (volume) => {
+      const value = fixture();
+      value.composition.tracks[0]!.clips[0]!.transform!.volume = volume;
+      expect(validateComposition(value.composition)).toEqual(value.composition);
+      expect(generate(value)).toMatchObject({
+        cues: [expect.objectContaining({ startMs: 3000, endMs: 5000 })],
+        issues: [],
+      });
+    },
+  );
+
+  it.each([-1, NaN, Infinity])(
+    "continues rejecting invalid volume %s",
+    (volume) => {
+      const value = fixture();
+      value.composition.tracks[0]!.clips[0]!.transform!.volume = volume;
+      expect(generate(value)).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "TIMING_UNSUPPORTED",
+            severity: "error",
+          }),
+        ],
+      });
+    },
+  );
+
+  it("accepts the project validator's clip-end tolerance while clamping final cues to the film", () => {
+    const value = fixture([
+      { id: "last", start: 12, end: 18.0000001, text: "Final words" },
+    ]);
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      timelineStart: 16,
+      timelineDuration: 4.00000005,
+      sourceOut: 18.0000001,
+    });
+    expect(validateComposition(value.composition)).toEqual(value.composition);
+    expect(generate(value)).toMatchObject({
+      cues: [expect.objectContaining({ startMs: 17000, endMs: 20000 })],
+      issues: [],
+    });
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      timelineDuration: 4.0000002,
+      sourceOut: 18.0000004,
+    });
+    value.sources[0]!.transcript!.segments[0]!.end = 18.0000004;
+    expect(() => validateComposition(value.composition)).toThrow(
+      "clip extends beyond",
+    );
+    expect(generate(value)).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          severity: "error",
+        }),
+      ],
+    });
+  });
+
+  it.each([
+    { duration: 1.01, frameRate: 30, end: 1 },
+    { duration: 1.02, frameRate: 30000 / 1001, end: 1.001 },
+  ])(
+    "omits whole and partial segments cut by the encoded frame boundary at $frameRate fps",
+    ({ duration, frameRate, end }) => {
+      const value = fixture([
+        { id: "kept", start: 0, end, text: "Complete sentence" },
+        {
+          id: "partial",
+          start: end - 0.05,
+          end: duration,
+          text: "Partially cut sentence",
+        },
+        { id: "tail", start: end, end: duration, text: "Outside output" },
+      ]);
+      value.composition.duration = duration;
+      Object.assign(value.composition.tracks[0]!.clips[0]!, {
+        timelineStart: 0,
+        timelineDuration: duration,
+        sourceIn: 0,
+        sourceOut: duration,
+        transform: { speed: 1 },
+      });
+      const before = structuredClone(value);
+      const mapped = generateCompositionCaptions(
+        value.composition,
+        value.sources,
+        { trackId: "dialogue", frameRate },
+      );
+      expect(mapped.cues).toEqual([
+        expect.objectContaining({
+          segmentId: "kept",
+          startMs: 0,
+          endMs: Math.round(end * 1000),
+        }),
+      ]);
+      expect(mapped.issues).toContainEqual(
+        expect.objectContaining({
+          code: "PARTIAL_SEGMENT",
+          segmentId: "partial",
+          params: expect.objectContaining({ reason: "output-tail" }),
+        }),
+      );
+      expect(mapped.issues).toContainEqual(
+        expect.objectContaining({
+          code: "ZERO_DURATION",
+          segmentId: "tail",
+          params: { reason: "output-tail" },
+        }),
+      );
+      expect(mapped.issues.some((issue) => issue.severity === "error")).toBe(
+        false,
+      );
+      expect(value).toEqual(before);
+      expect(generate(value).cues).toHaveLength(3);
+    },
+  );
+
+  it.each([0, -1, NaN, Infinity])(
+    "reports an invalid caption frame rate: %s",
+    (frameRate) => {
+      const value = fixture();
+      expect(
+        generateCompositionCaptions(value.composition, value.sources, {
+          trackId: "dialogue",
+          frameRate,
+        }),
+      ).toMatchObject({
+        cues: [],
+        issues: [
+          expect.objectContaining({
+            code: "TIMING_UNSUPPORTED",
+            severity: "error",
+          }),
+        ],
+      });
+    },
+  );
+
+  it("rejects an output shorter than one frame without changing the nominal composition", () => {
+    const value = fixture();
+    value.composition.duration = 0.01;
+    Object.assign(value.composition.tracks[0]!.clips[0]!, {
+      timelineStart: 0,
+      timelineDuration: 0.01,
+      sourceIn: 0,
+      sourceOut: 0.01,
+      transform: { speed: 1 },
+    });
+    expect(
+      generateCompositionCaptions(value.composition, value.sources, {
+        trackId: "dialogue",
+        frameRate: 30,
+      }),
+    ).toMatchObject({
+      cues: [],
+      issues: [
+        expect.objectContaining({
+          code: "TIMING_UNSUPPORTED",
+          params: { reason: "frame-duration" },
+        }),
+      ],
+    });
+    expect(value.composition.duration).toBe(0.01);
   });
 
   it.each(["video", "audio", "music"] as const)(

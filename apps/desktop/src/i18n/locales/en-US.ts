@@ -94,7 +94,7 @@ export default {
       TEXT_ESCAPED:
         "Special text needs format-safe handling. Choose WebVTT if SRT cannot preserve it.",
       ZERO_DURATION:
-        "This segment is too short after millisecond rounding and is omitted.",
+        "This segment has no remaining duration after output timing is rounded and is omitted.",
       OVERLAP:
         "These captions overlap. Both are retained; playback depends on the subtitle player.",
       MUSIC_SOURCE:

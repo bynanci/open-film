@@ -80,7 +80,7 @@ export default {
       EMPTY_TEXT: "已略過空白逐字稿片段。",
       TEXT_ESCAPED:
         "特殊文字需要依格式安全處理。若 SRT 無法保留文字，請改用 WebVTT。",
-      ZERO_DURATION: "此片段換算為毫秒後過短，已略過。",
+      ZERO_DURATION: "此片段在輸出時間取整後沒有剩餘長度，已略過。",
       OVERLAP: "字幕時間重疊，已保留全部字幕；實際顯示取決於播放器。",
       MUSIC_SOURCE: "目前選擇音樂軌道，請確認其中包含需要的對白。",
       LIMIT_EXCEEDED: "選取內容超過字幕支援上限，請選擇較短的剪輯或軌道。",

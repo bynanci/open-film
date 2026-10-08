@@ -1,5 +1,6 @@
 import type { Composition, MediaAsset } from "./models.js";
 import type { TranscriptDocument } from "./intelligence.js";
+import { frameAlignedDuration } from "./timing.js";
 
 export type CaptionFormat = "srt" | "vtt";
 
@@ -22,6 +23,39 @@ export interface CaptionSource {
   available: boolean;
   transcript?: TranscriptDocument;
   transcriptRevisionId?: string;
+}
+
+/** Canonical metadata used by the mapper, also bound by application snapshots. */
+export interface CaptionAssetState {
+  name: string;
+  mediaType: MediaAsset["mediaType"];
+  duration: number | "absent" | "invalid";
+  previewBlocked: boolean;
+  hasAudio: boolean;
+}
+
+export function captionAssetState(asset: MediaAsset): CaptionAssetState {
+  const preview = asset.metadata["openfilm.preview"] as
+    { supported?: boolean } | undefined;
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    { streams?: { codec_type?: string }[] } | undefined;
+  return {
+    name: asset.name,
+    mediaType: asset.mediaType,
+    duration:
+      asset.duration === undefined
+        ? "absent"
+        : typeof asset.duration === "number" && Number.isFinite(asset.duration)
+          ? asset.duration === 0
+            ? 0
+            : asset.duration
+          : "invalid",
+    previewBlocked: preview?.supported === false,
+    hasAudio:
+      asset.mediaType === "audio" ||
+      (Array.isArray(probe?.streams) &&
+        probe.streams.some((stream) => stream?.codec_type === "audio")),
+  };
 }
 
 export interface CaptionCue {
@@ -109,6 +143,9 @@ export function isSrtCaptionTextSupported(text: string): boolean {
 }
 
 const EPSILON = 1e-9;
+// Match validateComposition's accepted clip-end tolerance; output still clamps
+// to the exact film boundary before the separate inward millisecond rounding.
+const COMPOSITION_END_TOLERANCE = 1e-7;
 // A tiny tolerance corrects binary representation at exact millisecond boundaries.
 const startMs = (seconds: number): number =>
   Math.max(0, Math.ceil(seconds * 1000 - 1e-7));
@@ -130,11 +167,13 @@ function issueRange(
  * Crossfades extend a frozen visual frame in the renderer, never the audio clock.
  * Starts round up and ends down; no rounded cue extends outside its retained range.
  * An error issue blocks publication; warnings describe intentional partial output.
+ * Supplying frameRate matches the renderer's complete-frame output boundary.
+ * Without it, callers explicitly receive nominal-composition timing instead.
  */
 export function generateCompositionCaptions(
   composition: Composition,
   sources: CaptionSource[],
-  options: { trackId: string },
+  options: { trackId: string; frameRate?: number },
 ): CaptionMapping {
   const result: CaptionMapping = {
     version: 1,
@@ -188,6 +227,32 @@ export function generateCompositionCaptions(
     });
     return result;
   }
+  let outputDuration = composition.duration;
+  if (options.frameRate !== undefined) {
+    try {
+      const aligned = frameAlignedDuration(
+        composition.duration,
+        options.frameRate,
+      );
+      if (!Number.isFinite(aligned) || aligned <= 0) {
+        issue({
+          code: "TIMING_UNSUPPORTED",
+          severity: "error",
+          params: { reason: "frame-duration" },
+        });
+        return result;
+      }
+      outputDuration = Math.min(composition.duration, aligned);
+    } catch {
+      issue({
+        code: "TIMING_UNSUPPORTED",
+        severity: "error",
+        params: { reason: "frame-rate" },
+      });
+      return result;
+    }
+  }
+  const hasOutputTail = outputDuration < composition.duration - EPSILON;
   if (track.type === "music")
     issue({ code: "MUSIC_SOURCE", severity: "warning" });
   const byAsset = new Map(sources.map((source) => [source.asset.id, source]));
@@ -227,10 +292,9 @@ export function generateCompositionCaptions(
       sourceOut <= sourceIn ||
       speed <= 0 ||
       volume < 0 ||
-      volume > 1 ||
       clip.timelineStart < 0 ||
       clip.timelineDuration <= 0 ||
-      clipEnd > composition.duration + EPSILON ||
+      clipEnd > composition.duration + COMPOSITION_END_TOLERANCE ||
       Math.abs((sourceOut - sourceIn) / speed - clip.timelineDuration) > 1e-6
     ) {
       issue({
@@ -244,10 +308,7 @@ export function generateCompositionCaptions(
     clipIds.add(clip.id);
     const clipContext = {
       ...context,
-      ...issueRange(
-        clip.timelineStart,
-        Math.min(composition.duration, clipEnd),
-      ),
+      ...issueRange(clip.timelineStart, Math.min(outputDuration, clipEnd)),
     };
     if (volume === 0) {
       issue({ ...clipContext, code: "MUTED_CLIP", severity: "warning" });
@@ -262,21 +323,23 @@ export function generateCompositionCaptions(
       });
       continue;
     }
-    if (!["video", "audio"].includes(source.asset.mediaType)) {
+    const assetState = captionAssetState(source.asset);
+    if (!["video", "audio"].includes(assetState.mediaType)) {
       issue({ ...clipContext, code: "MEDIA_UNSUPPORTED", severity: "warning" });
+      continue;
+    }
+    if (assetState.previewBlocked) {
+      issue({
+        ...clipContext,
+        code: "MEDIA_UNSUPPORTED",
+        severity: "warning",
+        params: { reason: "preview-disabled" },
+      });
       continue;
     }
     // Match FFmpegRenderer.hasAudio. A transcript does not prove that this
     // composition actually renders an audio stream from its video source.
-    const probe = source.asset.metadata["openfilm.ffprobe"] as
-      { streams?: { codec_type?: string }[] } | undefined;
-    if (
-      source.asset.mediaType === "video" &&
-      !(
-        Array.isArray(probe?.streams) &&
-        probe.streams.some((stream) => stream?.codec_type === "audio")
-      )
-    ) {
+    if (!assetState.hasAudio) {
       issue({
         ...clipContext,
         code: "MEDIA_UNSUPPORTED",
@@ -286,9 +349,9 @@ export function generateCompositionCaptions(
       continue;
     }
     if (
-      source.asset.duration !== undefined &&
-      (!Number.isFinite(source.asset.duration) ||
-        sourceOut > source.asset.duration + EPSILON)
+      assetState.duration !== "absent" &&
+      (assetState.duration === "invalid" ||
+        sourceOut > assetState.duration + EPSILON)
     ) {
       issue({
         ...context,
@@ -351,6 +414,40 @@ export function generateCompositionCaptions(
       }
       segmentIds.add(segment.id);
       if (segment.end <= sourceIn || segment.start >= sourceOut) continue;
+      if (hasOutputTail) {
+        const mappedStart =
+          clip.timelineStart + (segment.start - sourceIn) / speed;
+        const mappedEnd = clip.timelineStart + (segment.end - sourceIn) / speed;
+        if (mappedStart >= outputDuration - EPSILON) {
+          issue({
+            ...detail,
+            code: "ZERO_DURATION",
+            severity: "warning",
+            params: { reason: "output-tail" },
+          });
+          continue;
+        }
+        if (mappedEnd > outputDuration + EPSILON) {
+          issue({
+            ...detail,
+            code: "PARTIAL_SEGMENT",
+            severity: "warning",
+            ...issueRange(
+              Math.max(clip.timelineStart, mappedStart),
+              Math.min(clipEnd, outputDuration),
+            ),
+            params: {
+              reason: "output-tail",
+              sourceIn: Math.max(sourceIn, segment.start),
+              sourceOut: Math.min(
+                sourceOut,
+                sourceIn + (outputDuration - clip.timelineStart) * speed,
+              ),
+            },
+          });
+          continue;
+        }
+      }
       if (
         segment.start < sourceIn - EPSILON ||
         segment.end > sourceOut + EPSILON
@@ -366,7 +463,7 @@ export function generateCompositionCaptions(
                 (Math.max(sourceIn, segment.start) - sourceIn) / speed,
             ),
             Math.min(
-              composition.duration,
+              outputDuration,
               clipEnd,
               clip.timelineStart +
                 (Math.min(sourceOut, segment.end) - sourceIn) / speed,
@@ -395,7 +492,7 @@ export function generateCompositionCaptions(
       );
       const end = endMs(
         Math.min(
-          composition.duration,
+          outputDuration,
           clipEnd,
           clip.timelineStart + (segment.end - sourceIn) / speed,
         ),
@@ -423,7 +520,7 @@ export function generateCompositionCaptions(
         endMs: end,
         text: segment.text,
         ...detail,
-        assetName: source.asset.name,
+        assetName: assetState.name,
         transcriptId: transcript.id,
         transcriptRevisionId: source.transcriptRevisionId,
         sourceIn: segment.start,

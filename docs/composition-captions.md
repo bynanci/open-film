@@ -27,10 +27,18 @@ OpenFilm already has headless CLI operations; this adds one shared use case.
 - Round starts upward and ends downward to milliseconds so output never extends
   into removed audio. Warn/omit cues that round to zero duration. Crossfades use
   existing renderer semantics; frozen visual tails add no speech or cue offset.
+- Application export uses the project's frame rate and the same complete-frame
+  output duration helper as the renderer. A sentence cut by that final frame
+  boundary is omitted with a warning, just like a sentence cut by a source trim.
+  The pure mapper's optional `frameRate` can be omitted by consumers explicitly
+  working in nominal composition time; Desktop, HTTP and CLI always provide it.
 - Application snapshots bind project, composition/editor revision, selected track,
   clip/source ranges, transcript revisions/source hashes and format options.
   Bounded preview pages include cue provenance and structured warnings. Changed
   composition/transcript/source makes the snapshot stale; regenerate before export.
+  Source bindings include the mapper's metadata inputs (name, media type,
+  duration, preview eligibility and audio presence), so catalog-only changes also
+  invalidate the snapshot. Frame-rate changes are checked in memory and on disk.
 - Unique project-owned export directories publish subtitle and manifest together
   through staging then rename. Cancellation/failure cleans staging; no arbitrary
   output path can replace media. Existing immutable outputs retain their original
@@ -68,7 +76,8 @@ separate [workstation gates](workstation-qa.md), tracked in issue #7.
    changed, regenerate the preview; an old snapshot cannot publish as current.
 5. Keep the adjacent `manifest.json` with the subtitle. It records the project,
    composition revision, clip timing/speed/ranges, transcript revisions and
-   provider provenance, warnings, and output SHA-256.
+   provider provenance, frame rate and actual output duration, warnings, and
+   output SHA-256.
 
 No cloud provider is contacted. Both formats keep overlaps rather than silently
 moving or dropping dialogue; a player's display of overlaps is its own behavior.
@@ -133,6 +142,10 @@ segments/cues, one million clip/segment visits, 8 million output text characters
 only an initial batch. Cached/receipt files are size-bounded and integrity checked.
 Availability checks hash source files; large media may therefore take time, and
 Cancel is available. No throughput or real-camera performance claim is made.
+The application checks clip count before source I/O and limits retained source
+text to 32 MiB of UTF-8 while reading pages. Historical word arrays remain in the
+catalog and are not retained in caption working documents. A current catalog
+page is still materialized; this is not a claim of a fixed process memory limit.
 
 Whole-segment omission can leave gaps when a trim cuts through a sentence. Refine
 the transcript segment boundaries or the clip trim, then regenerate. This version

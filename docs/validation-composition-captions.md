@@ -107,3 +107,18 @@ Application, HTTP and CLI, including snapshots blocked from publication. Project
 switch guards cover asynchronous body reads and cleanup before closing the old
 catalog. Regression coverage exercises the large binding collections and the
 controlled interleaving, rather than relying on a successful small-file run.
+
+The next review found six further contract gaps: explicit preview-blocked media,
+metadata-only changes to source eligibility, amplified volume accepted by existing
+projects, mismatched composition-end tolerance, and late clip/text resource guards.
+Regression fixes align those decisions with the existing renderer/validator,
+bind canonical source metadata, reject oversized tracks before source I/O, and
+count UTF-8 text incrementally while discarding unused historical word arrays from
+caption working data. Historical transcript evidence itself remains unchanged.
+
+An independent audit also found that the renderer rounds the film's end down to
+complete output frames. Core and renderer now share that existing calculation;
+the application binds frame rate/output duration and omits unverifiable caption
+tails. Actual FFmpeg regression checks cover 1.01 seconds at 30 fps producing
+1.000 seconds and 1.02 seconds at 30000/1001 fps producing 1.001 seconds. These
+checks establish the generated fixture's output clock, not NLE playback quality.

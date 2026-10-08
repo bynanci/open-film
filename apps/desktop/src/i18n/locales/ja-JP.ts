@@ -92,7 +92,7 @@ export default {
       EMPTY_TEXT: "空の文字起こし区間を省略しました。",
       TEXT_ESCAPED:
         "特殊な文字には形式に応じた処理が必要です。SRT で保持できない場合は WebVTT を選んでください。",
-      ZERO_DURATION: "ミリ秒への変換後に短すぎる区間を省略しました。",
+      ZERO_DURATION: "出力時刻の丸め処理後に長さが残らない区間を省略しました。",
       OVERLAP:
         "字幕の時間が重複しています。両方を保持しますが、表示はプレーヤーによって異なります。",
       MUSIC_SOURCE:
