@@ -6,3 +6,4 @@ export * from "./errors.js";
 export * from "./intelligence.js";
 export * from "./transcript-editing.js";
 export * from "./knowledge.js";
+export * from "./captions.js";

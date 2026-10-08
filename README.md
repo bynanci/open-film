@@ -33,6 +33,8 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
 - Compose a timeline that respects duration maxima, beat minima, locks, required
   selections, exclusions, explicit order, source bounds, and no repeated assets.
 - Render a local MP4 and export JSON, OpenTimelineIO, FCPXML, or applicable EDL.
+- Preview subtitles from corrected transcripts against the current cut, then
+  export SRT/WebVTT with a source-revision receipt in **Export → Subtitles**.
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
@@ -73,6 +75,13 @@ changes; rendering preserves transparent rotated corners above lower tracks.
 See the [geometry contract](docs/architecture.md#shared-visual-geometry-contract)
 and [validation record](docs/validation-geometry-parity.md). This is per-clip
 geometry validation, not a claim of a full live multitrack compositor or real NLE QA.
+
+**Composition-aware subtitles** reuse saved transcript revisions and one selected
+dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
+instances use film time. Partial boundary segments are omitted with warnings;
+edited word alignment is never presented as precise. No model, remote service,
+caption track or burn-in is required. See [the workflow and limits](docs/composition-captions.md)
+and [the pinned OpenCut reference](docs/opencut-reference.md).
 
 ## Requirements
 

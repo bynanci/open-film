@@ -21,6 +21,10 @@ import type {
   TranscriptReviewSuggestion as ReviewSuggestion,
   ReviewBatch,
 } from "@openfilm/core";
+import type {
+  CaptionPublication,
+  CaptionSnapshotPage,
+} from "@openfilm/application";
 import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
 
 export interface EditorState extends EditorDocument {
@@ -258,6 +262,12 @@ export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
 export const sourceUrl = (id: string, version?: string | number): string =>
   `${prefix}/source/${encodeURIComponent(id)}${version === undefined ? "" : `?v=${encodeURIComponent(version)}`}`;
+export const captionDownloadUrl = (
+  id: string,
+  projectId: string,
+  kind: "captions" | "manifest",
+): string =>
+  `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
 
@@ -366,6 +376,53 @@ async function uploadFiles(
   }
 }
 export const api = {
+  captionContext: (
+    projectId: string,
+    compositionId: string,
+    signal?: AbortSignal,
+  ) =>
+    request<{ projectId: string; compositionId: string; revision: string }>(
+      `/captions/context?${new URLSearchParams({ projectId, compositionId })}`,
+      { signal },
+    ),
+  prepareCaptions: (
+    body: {
+      projectId: string;
+      compositionId: string;
+      trackId: string;
+      baseRevision: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<CaptionSnapshotPage>("/captions/prepare", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    }),
+  captionSnapshot: (
+    id: string,
+    params: {
+      projectId: string;
+      offset: number;
+      limit: number;
+      issueOffset: number;
+      issueLimit: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<CaptionSnapshotPage>(
+      `/captions/snapshot?${new URLSearchParams({ id, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])) })}`,
+      { signal },
+    ),
+  exportCaptions: (
+    body: { projectId: string; snapshotId: string; format: "srt" | "vtt" },
+    signal?: AbortSignal,
+  ) =>
+    request<CaptionPublication>("/captions/export", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    }),
   intelligence: (
     assetId: string,
     offset = 0,

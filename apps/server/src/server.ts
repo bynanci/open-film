@@ -713,6 +713,143 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route.startsWith("/api/captions/")) {
+          errorContext = "captions.failed";
+          const controller = new AbortController();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const projectId = url.searchParams.get("projectId") ?? "";
+            if (method === "GET" && route === "/api/captions/context") {
+              if (projectId !== application.project.id)
+                throw new ApplicationError(
+                  "captions.stale",
+                  "The active project changed. Reopen caption export.",
+                  409,
+                );
+              const compositionId = url.searchParams.get("compositionId") ?? "";
+              json(response, 200, {
+                projectId,
+                compositionId,
+                revision: editorFor(application).get(compositionId).revision,
+              });
+              return;
+            }
+            if (method === "POST" && route === "/api/captions/prepare") {
+              const data = await body(request);
+              for (const key of Object.keys(data))
+                if (
+                  ![
+                    "projectId",
+                    "compositionId",
+                    "trackId",
+                    "baseRevision",
+                  ].includes(key)
+                )
+                  throw new ApplicationError(
+                    "captions.invalid",
+                    `Unknown caption option: ${key}.`,
+                  );
+              json(
+                response,
+                200,
+                await application.captions.prepare(
+                  {
+                    projectId: text(data, "projectId"),
+                    compositionId: text(data, "compositionId"),
+                    trackId: text(data, "trackId"),
+                    baseRevision: text(data, "baseRevision"),
+                  },
+                  { signal: controller.signal },
+                ),
+              );
+              return;
+            }
+            if (method === "GET" && route === "/api/captions/snapshot") {
+              const bounds: Record<string, number> = {};
+              for (const key of [
+                "offset",
+                "limit",
+                "issueOffset",
+                "issueLimit",
+              ])
+                if (url.searchParams.has(key))
+                  bounds[key] = Number(url.searchParams.get(key));
+              json(
+                response,
+                200,
+                await application.captions.get(
+                  url.searchParams.get("id") ?? "",
+                  {
+                    projectId,
+                    ...bounds,
+                  },
+                  { signal: controller.signal },
+                ),
+              );
+              return;
+            }
+            if (method === "POST" && route === "/api/captions/export") {
+              const data = await body(request);
+              for (const key of Object.keys(data))
+                if (!["projectId", "snapshotId", "format"].includes(key))
+                  throw new ApplicationError(
+                    "captions.invalid",
+                    `Unknown caption option: ${key}.`,
+                  );
+              const format = text(data, "format");
+              if (format !== "srt" && format !== "vtt")
+                throw new ApplicationError(
+                  "captions.invalid",
+                  "Choose SRT or WebVTT.",
+                );
+              json(
+                response,
+                200,
+                await application.captions.export(
+                  text(data, "snapshotId"),
+                  format,
+                  {
+                    projectId: text(data, "projectId"),
+                    signal: controller.signal,
+                  },
+                ),
+              );
+              return;
+            }
+            if (method === "GET" && route === "/api/captions/file") {
+              const kind = url.searchParams.get("kind") ?? "captions";
+              if (kind !== "captions" && kind !== "manifest")
+                throw new ApplicationError(
+                  "captions.invalid",
+                  "Choose the subtitle file or its receipt.",
+                );
+              const result = await application.captions.readOutput(
+                url.searchParams.get("id") ?? "",
+                { projectId, kind },
+              );
+              response.setHeader(
+                "Content-Disposition",
+                `attachment; filename*=UTF-8''${encodeURIComponent(kind === "manifest" ? "captions.manifest.json" : result.publication.fileName)}`,
+              );
+              response.writeHead(200, {
+                "Content-Type":
+                  kind === "manifest"
+                    ? "application/json; charset=utf-8"
+                    : result.publication.mediaType,
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+              });
+              response.end(result.content);
+              return;
+            }
+          } finally {
+            response.removeListener("close", disconnected);
+          }
+          throw new HttpError(404, "Caption endpoint not found.");
+        }
         const startReview = async (
           job: Job,
           work: (options: ReviewOptions) => Promise<Job>,

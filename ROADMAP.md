@@ -128,3 +128,21 @@ See [geometry validation](docs/validation-geometry-parity.md). This milestone do
 not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
 are the next separate readiness slice; later creative features remain deferred.
+
+## Composition-aware subtitle handoff
+
+The first caption slice reuses corrected transcripts to preview and export
+composition-bound SRT/WebVTT with immutable source/revision receipts. One selected
+track, conservative segment boundaries, explicit warnings and stale checks keep
+the workflow local and non-destructive. This does not add a caption track,
+burn-in, karaoke or styling. See [the contract](docs/composition-captions.md) and
+[the OpenCut gap matrix](docs/opencut-reference.md).
+
+The next product flow is an explicit **derived composition / story variant**,
+preserving the original and comparing selections, constraints and duration.
+Recipes build on the existing headless CLI only when a repeatable workflow needs
+them. A real extension must justify plugin lifecycle/permissions; MCP begins with
+queries and revision-bound proposals. Keyframes and compositor work require a
+specific editing limitation and shared preview/render semantics. None of these
+broader platforms is implemented by subtitle export. Existing workstation gates
+remain open independently of file-parser or browser success.

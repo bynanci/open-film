@@ -84,6 +84,7 @@ import { portableCacheUri } from "./portable-cache.js";
 import { isInside } from "./path-safety.js";
 import { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
 import { TranscriptEditor } from "./transcript-editor.js";
+import { CaptionService } from "./captions.js";
 import {
   KnowledgeService,
   type KnowledgeOptions,
@@ -91,6 +92,14 @@ import {
 } from "./knowledge.js";
 export { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
 export { TranscriptEditor } from "./transcript-editor.js";
+export { CaptionService } from "./captions.js";
+export type {
+  CaptionPrepareInput,
+  CaptionSnapshotSource,
+  CaptionPageOptions,
+  CaptionSnapshotPage,
+  CaptionPublication,
+} from "./captions.js";
 export {
   KnowledgeService,
   type KnowledgeOptions,
@@ -169,8 +178,10 @@ export class OpenFilmApplication {
   readonly catalog: ProjectCatalog;
   readonly intelligence: MediaIntelligence;
   readonly transcriptEditor: TranscriptEditor;
+  readonly captions: CaptionService;
   readonly knowledge: KnowledgeService;
   private activeJobs = 0;
+  private saveOnClose = true;
 
   private constructor(
     readonly directory: string,
@@ -181,6 +192,7 @@ export class OpenFilmApplication {
     try {
       this.intelligence = new MediaIntelligence(this.catalog);
       this.transcriptEditor = new TranscriptEditor(this);
+      this.captions = new CaptionService(this);
       this.knowledge = new KnowledgeService(
         this.catalog,
         this.transcriptEditor,
@@ -229,6 +241,7 @@ export class OpenFilmApplication {
   static async open(
     directory: string,
     runtime: OpenFilmRuntimeOptions = {},
+    options: { intent?: "workspace" | "export" } = {},
   ): Promise<OpenFilmApplication> {
     const path = resolve(directory);
     safeDirectorySync(path);
@@ -250,6 +263,12 @@ export class OpenFilmApplication {
       }
     }
     const application = new OpenFilmApplication(canonical, project, runtime);
+    if (options.intent === "export") {
+      // Deriving text must not recover other processes' jobs, rewrite media
+      // references, or save this possibly obsolete project on CLI shutdown.
+      application.saveOnClose = false;
+      return application;
+    }
     // Cache references are relative to the project, so its complete directory can move.
     for (const summary of application.catalog.iterateAssetSummaries()) {
       let asset = application.catalog.getAsset(summary.id)!;
@@ -324,6 +343,13 @@ export class OpenFilmApplication {
     }
     application.knowledge.recoverInterruptedReviews();
     return application;
+  }
+
+  static async openForExport(
+    directory: string,
+    runtime: OpenFilmRuntimeOptions = {},
+  ): Promise<OpenFilmApplication> {
+    return this.open(directory, runtime, { intent: "export" });
   }
 
   private saveSync(): void {
@@ -440,7 +466,7 @@ export class OpenFilmApplication {
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
-    this.saveSync();
+    if (this.saveOnClose) this.saveSync();
     this.catalog.close();
   }
 
