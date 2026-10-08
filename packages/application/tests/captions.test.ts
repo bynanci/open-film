@@ -1704,6 +1704,96 @@ describe("caption receipt integrity and read cancellation", () => {
     ).toEqual({ publication: test.publication, content: manifest });
   });
 
+  it.each(["missing", "removedAfterInspection", "unreadable"] as const)(
+    "reports an unavailable export when its subtitle is %s but its manifest is intact",
+    async (kind) => {
+      const test = await publishedFixture();
+      const options = { projectId: test.app.project.id };
+      const output = join(test.directory, test.publication.relativePath);
+      const original = await test.app.captions.readOutput(
+        test.publication.id,
+        options,
+      );
+      const manifest = await test.app.captions.readManifest(
+        test.publication.id,
+        options,
+      );
+      if (kind === "missing") await fs.rm(output);
+      else
+        vi.mocked(fs.readFile).mockImplementation((...args) => {
+          if (String(args[0]) === output)
+            return Promise.reject(
+              Object.assign(new Error("Subtitle file is unavailable"), {
+                code: kind === "unreadable" ? "EACCES" : "ENOENT",
+              }),
+            );
+          return actualFs.readFile(...args);
+        });
+      await expect(
+        test.app.captions.readOutput(test.publication.id, options),
+      ).rejects.toMatchObject({
+        code: "captions.unavailable",
+        status: 404,
+        message:
+          "The caption export is unavailable or incomplete. Export a new copy.",
+      });
+      expect(
+        await test.app.captions.readManifest(test.publication.id, options),
+      ).toBe(manifest);
+      expect(
+        await test.app.captions.readPublication(test.publication.id, options),
+      ).toEqual(test.publication);
+      expect(await entries(test.directory, "exports")).toEqual([
+        `captions-${test.publication.id}`,
+      ]);
+      vi.mocked(fs.readFile).mockImplementation(actualFs.readFile);
+      if (kind === "missing") await fs.writeFile(output, original.content);
+      expect(
+        await test.app.captions.readOutput(test.publication.id, options),
+      ).toEqual(original);
+    },
+  );
+
+  it.each(["directory", "symlink"] as const)(
+    "preserves the storage guard for a subtitle replaced by a %s",
+    async (kind) => {
+      const test = await publishedFixture();
+      const output = join(test.directory, test.publication.relativePath);
+      await fs.rm(output);
+      if (kind === "directory") await fs.mkdir(output);
+      else await fs.symlink(test.source, output);
+      await expect(
+        test.app.captions.readOutput(test.publication.id, {
+          projectId: test.app.project.id,
+        }),
+      ).rejects.toMatchObject({ code: "captions.failed", status: 409 });
+      expect(await fs.readFile(test.source, "utf8")).toBe(test.bytes);
+    },
+  );
+
+  it.each(["AbortError", "failureAfterAbort"] as const)(
+    "preserves cancellation when a subtitle read rejects with %s",
+    async (kind) => {
+      const test = await publishedFixture();
+      const controller = new AbortController();
+      const output = join(test.directory, test.publication.relativePath);
+      const error = Object.assign(new Error("Subtitle read stopped"), {
+        ...(kind === "AbortError" ? { name: "AbortError" } : { code: "EIO" }),
+      });
+      vi.mocked(fs.readFile).mockImplementation((...args) => {
+        if (String(args[0]) !== output) return actualFs.readFile(...args);
+        if (kind === "failureAfterAbort") controller.abort();
+        return Promise.reject(error);
+      });
+      const result = test.app.captions.readOutput(test.publication.id, {
+        projectId: test.app.project.id,
+        signal: controller.signal,
+      });
+      await expect(result).rejects.toMatchObject({ name: "AbortError" });
+      if (kind === "AbortError") await expect(result).rejects.toBe(error);
+    },
+  );
+
   const reads = [
     "get",
     "export",

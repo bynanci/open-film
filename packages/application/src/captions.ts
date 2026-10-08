@@ -982,12 +982,24 @@ export class CaptionService {
       `captions-${id}`,
       manifest.publication.fileName,
     );
-    regular(path);
-    const content = await readFile(path, {
-      encoding: "utf8",
-      signal: options.signal,
-    });
-    checkAbort(options.signal);
+    let content: string;
+    try {
+      regular(path);
+      content = await readFile(path, {
+        encoding: "utf8",
+        signal: options.signal,
+      });
+      checkAbort(options.signal);
+    } catch (error) {
+      checkAbort(options.signal);
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      if (error instanceof ApplicationError) throw error;
+      throw new ApplicationError(
+        "captions.unavailable",
+        "The caption export is unavailable or incomplete. Export a new copy.",
+        404,
+      );
+    }
     if (
       Buffer.byteLength(content) !== manifest.output.bytes ||
       hash(content) !== manifest.output.sha256

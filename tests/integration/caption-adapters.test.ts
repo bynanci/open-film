@@ -887,3 +887,54 @@ it.each(
     }
   },
 );
+
+it.each(["missing", "unreadable"] as const)(
+  "HTTP reports an unavailable published subtitle as captions.unavailable when %s while its manifest remains readable",
+  async (failure) => {
+    const f = await captionServer();
+    const exported = await f.post("/captions/export", {
+      projectId: f.projectId,
+      snapshotId: f.snapshot.id,
+      format: "vtt",
+    });
+    expect(exported.status).toBe(200);
+    const publication = (await exported.json()) as {
+      id: string;
+      relativePath: string;
+    };
+    const subtitlePath = join(f.directory, publication.relativePath);
+    const manifestPath = join(
+      f.directory,
+      "exports",
+      `captions-${publication.id}`,
+      "manifest.json",
+    );
+    const originalManifest = await actualFs.readFile(manifestPath);
+    const originalSubtitle = await actualFs.readFile(subtitlePath);
+    if (failure === "missing") await actualFs.rm(subtitlePath);
+    else
+      vi.mocked(readFile).mockImplementation(async (...args) => {
+        if (String(args[0]) === subtitlePath)
+          throw Object.assign(new Error("Fixture permission denial"), {
+            code: "EACCES",
+          });
+        return actualFs.readFile(...args);
+      });
+    const subtitle = await fetch(
+      `${f.base}/captions/file?${new URLSearchParams({ projectId: f.projectId, id: publication.id, kind: "captions" })}`,
+    );
+    const error = await subtitle.json();
+    const receipt = await fetch(
+      `${f.base}/captions/file?${new URLSearchParams({ projectId: f.projectId, id: publication.id, kind: "manifest" })}`,
+    );
+    expect(receipt.status).toBe(200);
+    expect(await receipt.json()).toMatchObject({
+      publication: { id: publication.id, snapshotId: f.snapshot.id },
+    });
+    expect(await actualFs.readFile(manifestPath)).toEqual(originalManifest);
+    if (failure === "unreadable")
+      expect(await actualFs.readFile(subtitlePath)).toEqual(originalSubtitle);
+    expect(subtitle.status).toBe(404);
+    expect(error.code).toBe("captions.unavailable");
+  },
+);

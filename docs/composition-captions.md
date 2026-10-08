@@ -75,7 +75,8 @@ separate [workstation gates](workstation-qa.md), tracked in issue #7.
    edited alignment, and overlaps. Preview lists are paged (100 cues / 20 issues
    initially, at most 200 per request); this is not a burn-in player.
 4. Export **SRT** or **WebVTT**, then download the file and its source record.
-   The publication is an immutable copy. If the film, source or transcript has
+   The publication is an immutable copy. A deleted or unreadable subtitle is
+   reported as unavailable with guidance to export a new copy. If the film, source or transcript has
    changed, regenerate the preview; an old snapshot cannot publish as current.
 5. Keep the adjacent `manifest.json` with the subtitle. It records the project,
    composition revision, clip timing/speed/ranges, transcript revisions and
