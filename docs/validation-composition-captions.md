@@ -40,7 +40,7 @@ The application behavior and manual/headless steps are in [the workflow](composi
   checked. The tests reuse persisted synthetic transcripts, without model calls.
 
 These targeted results establish the implemented workflow, not a final SHA gate.
-Complete gate results and candidate identity are recorded below after execution.
+The full check logs for the published candidate are available from [PR #10](https://github.com/bynanci/open-film/pull/10/checks); match each run to its head SHA rather than treating an earlier run as current.
 
 ## Manual gates remain open
 
@@ -50,3 +50,31 @@ OS-specific process ownership remains its separate workstation contract. Subtitl
 format/parser success does not verify a particular NLE's playback or overlap
 presentation. No OpenCut runtime was built or executed, no code was copied, and
 no speed or productivity percentage is claimed.
+
+## Candidate and cross-version evidence
+
+Implementation commit: `edc400bcacf8405106499bd6a8aad7e3546a0dde`.
+The local gate at that commit passed format, i18n (1,091 keys), lint, typecheck,
+1,119 unit/integration tests in 96 files, and build. Its focused caption tests
+were 98 passed in six files. The final implementation also passed all eight
+caption browser cases during the complete suite, including four locales at all
+three desktop sizes after the full-width layout refinement and warning times.
+
+Initial CI runs [37705917104](https://github.com/bynanci/open-film/actions/runs/37705917104)
+and [37705945103](https://github.com/bynanci/open-film/actions/runs/37705945103)
+failed the independent decoded-ASS text assertion: Ubuntu's FFmpeg emitted CRLF
+record delimiters, while the test split only LF and compared the trailing CR as
+cue text. This was a test-adapter defect, not a reason to weaken the content
+assertion. Both integration and browser probes now split ASS records on CRLF or
+LF; Unicode, spaces, escaped line breaks, ampersands and cue timing remain exact.
+The subtitle serializer and application output are unchanged by this correction.
+The failed runs remain historical evidence, not successful gates.
+
+The complete local gate begins at the implementation commit; the subsequent
+commit changes only these two test adapters and this validation record. The
+local manifest records both file sets rather than claiming an unchanged tree.
+Affected parser/browser checks are repeated on the published candidate, whose
+independent CI additionally runs the complete repository gates. Native checks
+exercise formatting/Clippy and the harness (zero Rust behavioral tests); they do
+not validate a Windows installer. Interchange uses official OTIO 0.18.1 and the
+existing Resolve preparation helper tests, not the Resolve application.

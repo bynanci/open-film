@@ -387,7 +387,8 @@ test("corrected transcript exports mapped captions with warnings, independent pa
       expect(
         decoded.stdout
           .toString("utf8")
-          .split("\n")
+          // FFmpeg versions differ in ASS record delimiters, not cue content.
+          .split(/\r?\n/u)
           .filter((line) => line.startsWith("Dialogue: "))
           .map((line) => line.split(",").slice(9).join(",")),
       ).toEqual(expected.map((item) => item.text));

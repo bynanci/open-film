@@ -100,7 +100,9 @@ describe("caption exports accepted by the independent FFmpeg subtitle demuxers",
           ]);
           const dialogue = decoded.stdout
             .toString("utf8")
-            .split("\n")
+            // ASS records use CRLF on older FFmpeg and LF on newer releases.
+            // Remove the record delimiter, never trim or normalize cue content.
+            .split(/\r?\n/u)
             .filter((line) => line.startsWith("Dialogue: "))
             .map((line) => line.split(",").slice(9).join(","));
           expect(dialogue).toEqual(
