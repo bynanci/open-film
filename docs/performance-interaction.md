@@ -82,7 +82,6 @@ can include cold transforms.
 | ----------------------------------------------------- | -------------- | -------------- | --------------------------------------------------------------- |
 | Library startup DOM                                   | 4,934 elements | 1,174 elements | Same count in all three samples                                 |
 | Library startup hidden clips / premature editor reads | 500 / 1        | 0 / 0          | Enforced by browser work bounds; 60 cards remain visible        |
-| Library next page hidden Timeline renders             | 3              | 0              | Same count in all samples; editor has not been visited          |
 | Ten Story beat selections hidden Timeline renders     | 11             | 0              | Same count in all samples                                       |
 | Three idle jobs polls: Precision renders              | 3              | 0              | Shared jobs polling retained; stable props remove child updates |
 | Sixty paused hover steps: Precision renders           | 68             | 60             | Final word pane is instrumented and performs zero extra renders |
@@ -103,7 +102,6 @@ input latency. Work-count evidence is stronger than elapsed-time comparisons.
 | Scenario / metric                           | Before                 | After                  |
 | ------------------------------------------- | ---------------------- | ---------------------- |
 | Library startup automation elapsed          | 1473.0 [1440.2–1641.3] | 1519.2 [1062.2–1544.2] |
-| Library next page automation elapsed        | 477.6 [470.9–608.5]    | 310.5 [306.5–313.3]    |
 | Ten Story selections automation elapsed     | 2451.3 [2415.4–2542.9] | 1564.8 [1514.5–1565.9] |
 | First Edit automation elapsed               | 615.9 [594.8–635.4]    | 638.7 [619.0–693.2]    |
 | Twenty Timeline selections: render elapsed  | 465.3 [421.3–480.9]    | 517.0 [494.8–520.1]    |
@@ -156,8 +154,65 @@ viewport, render counts/times, API URLs, long tasks, DOM, and CDP metrics.
 
 ### Validation status
 
-The final candidate warm-up and all three comparable browser repetitions passed.
-The complete regression gate and multilingual visual/accessibility matrix are
-**pending** at this measurement checkpoint; their results must be recorded
-before declaring the PR complete. The next measured optimization target is the
-500-clip Timeline rail's repeated parent updates, not a new feature milestone.
+All ten local gates passed on the frozen commit
+`ef1de6e85057682f82ee1428797f9bbdb9d98693` on 2026-10-11. Tracked-file hashes
+were identical before and after the complete run. Production sources match the
+measured `5511145f021e39854d908cca811eca42c1f05d85` candidate.
+
+| Command                            | Result                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `pnpm format:check`                | Passed                                                                                      |
+| `pnpm test:i18n`                   | Passed                                                                                      |
+| `pnpm lint`                        | Passed                                                                                      |
+| `pnpm typecheck`                   | Passed                                                                                      |
+| `pnpm test`                        | 1,030 tests / 92 files passed                                                               |
+| `pnpm build`                       | Passed                                                                                      |
+| `pnpm test:e2e`                    | 76 tests passed (12.4 minutes)                                                              |
+| `pnpm test:interchange`            | 18 official OTIO parser tests, source references and relocation checks passed               |
+| `pnpm test:native`                 | Rust formatting, Clippy and test harness passed; the harness contains zero behavioral tests |
+| `node scripts/smoke-built-cli.mjs` | Passed                                                                                      |
+
+The final candidate warm-up and all three comparable browser repetitions also
+passed. Independent review found that the original Library next-page measurement
+only waited for 60 cards, a count shared by both pages. Those raw pagination
+samples are retained for audit but are **not evidence of completed-page latency**;
+their elapsed values and render comparison are intentionally omitted above.
+The immediately following `story-open` sample is likewise diagnostic only.
+The benchmark now verifies the expected first and last new-page assets and
+records the first visible asset. It also requires an active hover label and
+positive Precision render count before accepting zero transcript-pane updates.
+The strengthened benchmark passed separately after review (one test, 26.5 seconds); it does not change
+production sources or replace the original three-run comparison.
+
+Browser coverage includes delayed recovery, disposal, navigation/receipt guards,
+undo/reopen, full Proposal Film and transcript workflows, and shared job polling.
+Core Welcome/Library/Story/Edit/Export, Precision, and Transcript visual checks
+cover `en-US`, `zh-TW`, `ja-JP`, `en-XA` at 1280×720, 1440×900, 1920×1080 and
+1024×768. Settings, error/relink dialogs and automated axe checks run at 1280×720.
+Six real-Tab focus cases cover selected/locked clip states in light/dark themes
+at the three primary sizes. Existing theme and reduced-motion checks pass.
+
+Representative screenshots were also inspected visually. No horizontal overflow
+was observed. Small-window density remains:
+Japanese Story button text and pseudo-locale toolbars wrap; Precision/Transcript
+lower controls require panel scrolling, and the source preview becomes compact.
+Some scrolled pseudo-locale Transcript captures partially obscure Search/Replace
+under the sticky player, and one Japanese native-video capture still shows a
+spinner despite the readiness checks. These are retained as browser presentation
+limitations, not hidden behind a blanket no-clipping claim. Full-page PNGs and
+automated axe checks are not a complete screen-reader or WCAG
+certification. Long-session memory behavior and native-window/media performance
+are not established by these synthetic scenarios.
+
+Full logs, the immutable gate manifest and the visual inspection record are in
+`.cloud-onboarding/artifacts/openfilm-interaction-ef1de6e85057/`. Screenshots remain
+under `open-film/test-results/`. The strengthened benchmark uses
+`.cloud-onboarding/artifacts/openfilm-interaction-readiness/`; CI also attaches
+its one-run work-budget report with browser results. CI repeats all applicable
+gates for the published PR head.
+
+Independent correctness review identified the disposed-loader draft overwrite
+and the measurement readiness issue; both have targeted regression coverage.
+Real Resolve import and actual model/GPU/camera/4K/Windows installation remain
+manual gates. The next measured optimization target is the 500-clip Timeline
+rail's repeated parent updates, not a new feature milestone.

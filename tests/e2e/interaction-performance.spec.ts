@@ -208,6 +208,8 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     const dom = await page.evaluate(() => ({
       elements: document.querySelectorAll("*").length,
       libraryCards: document.querySelectorAll(".asset-card").length,
+      firstLibraryAsset: document.querySelector(".asset-card .asset-name")
+        ?.textContent,
       timelineClips: document.querySelectorAll(".editor-clip").length,
       transcriptRows: document.querySelectorAll(
         '[data-testid="transcript-row"]',
@@ -365,6 +367,9 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     await measure("startup-library", async () => {
       await page.goto("/");
       await expect(page.locator(".asset-card")).toHaveCount(60);
+      await expect(page.locator(".asset-card .asset-name").first()).toHaveText(
+        "Memory 0000.mp4",
+      );
       await expect(
         page
           .getByRole("navigation", {
@@ -380,6 +385,14 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
         .getByRole("button", { name: "Next", exact: true })
         .click();
       await expect(page.locator(".asset-card")).toHaveCount(60);
+      // Both pages contain 60 cards. Wait for the requested page's identity,
+      // otherwise a slow catalog read could finish after this measurement.
+      await expect(page.locator(".asset-card .asset-name").first()).toHaveText(
+        "Memory 0060.mp4",
+      );
+      await expect(page.locator(".asset-card .asset-name").last()).toHaveText(
+        "Memory 0119.mp4",
+      );
     });
     await measure("story-open", async () => {
       await navigate(page, "story");
@@ -424,6 +437,7 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
         );
         await settle(page);
       }
+      await expect(page.locator(".precision-hover-time")).toBeVisible();
     });
     await measure("precision-three-idle-polls", async () => {
       const initial = requests.filter(
@@ -477,6 +491,11 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       (sample) => sample.name === "precision-hover-sixty-frames",
     )!;
     expect(hover.instrumentedComponents).toContain("PrecisionTranscript");
+    // Prove pointer events reached the active waveform before accepting the
+    // zero-child-render budget; an inert surface must not count as a speedup.
+    expect(
+      (hover.renders as RenderCounts).PrecisionEditor?.calls ?? 0,
+    ).toBeGreaterThan(0);
     expect(
       (hover.renders as RenderCounts).PrecisionTranscript?.calls ?? 0,
     ).toBe(0);
