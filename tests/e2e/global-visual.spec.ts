@@ -12,6 +12,7 @@ const sizes = [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
+  { width: 1024, height: 768 },
 ];
 const authoredTitle = "我們一起走過那些平凡又重要的日子 / ふたりの日々";
 let root: string;

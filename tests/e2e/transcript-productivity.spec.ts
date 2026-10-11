@@ -57,6 +57,7 @@ const sizes = [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
+  { width: 1024, height: 768 },
 ];
 let root: string;
 let media: string;
@@ -4472,7 +4473,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
 }
 
 for (const locale of locales) {
-  test(`${locale} transcript, glossary and suggestion screens remain accessible at three desktop sizes`, async ({
+  test(`${locale} transcript, glossary and suggestion screens remain accessible at four desktop sizes`, async ({
     page,
     request,
   }, info) => {

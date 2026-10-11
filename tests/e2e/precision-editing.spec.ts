@@ -36,6 +36,7 @@ const sizes = [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
+  { width: 1024, height: 768 },
 ];
 let root: string;
 let mediaDirectory: string;
@@ -419,7 +420,10 @@ async function analysisPanel(page: Page, locale: ProjectContentLocale) {
     .getByLabel(text(locale, "precision.execution"))
     .selectOption("cpu");
 }
-async function screenChecks(page: Page, locale: ProjectContentLocale) {
+async function screenChecks(
+  page: Page,
+  locale: ProjectContentLocale | "en-XA",
+) {
   for (const size of sizes) {
     await page.setViewportSize(size);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -1947,6 +1951,21 @@ for (const locale of ["zh-TW", "ja-JP"] as const) {
       evidence.transcript!.segments[0]!.words![1]!.start,
     );
     await screenChecks(page, locale);
+    if (locale === "zh-TW") {
+      // Exercise the actual runtime locale resolver without rebuilding media or
+      // adding a production test hook. The pseudo locale is development-only.
+      const beforeLocaleSwitch = await composition(request);
+      const switchedLocale = await page.evaluate(async () => {
+        const modulePath = "/src/i18n/index.ts";
+        const { setUiLocale, uiLocale } = await import(modulePath);
+        setUiLocale("en-XA");
+        return uiLocale.value;
+      });
+      expect(switchedLocale).toBe("en-XA");
+      await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+      await screenChecks(page, "en-XA");
+      expect(await composition(request)).toEqual(beforeLocaleSwitch);
+    }
     expect(missingKeys).toEqual([]);
   });
 }
