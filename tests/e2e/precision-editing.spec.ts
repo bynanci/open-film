@@ -150,7 +150,10 @@ test.beforeAll(async () => {
 test.beforeEach(async ({ request }) => {
   await closeProject(request);
 });
-test.afterEach(async ({ request }) => {
+test.afterEach(async ({ page, request }) => {
+  // Settle fixture reads and stop polling before closing their backing project.
+  await page.unrouteAll({ behavior: "wait" });
+  await page.close();
   await closeProject(request);
 });
 test.afterAll(async ({ request }) => {

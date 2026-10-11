@@ -205,11 +205,27 @@ certification. Long-session memory behavior and native-window/media performance
 are not established by these synthetic scenarios.
 
 Full logs, the immutable gate manifest and the visual inspection record are in
-`.cloud-onboarding/artifacts/openfilm-interaction-ef1de6e85057/`. Screenshots remain
-under `open-film/test-results/`. The strengthened benchmark uses
+`.cloud-onboarding/artifacts/openfilm-interaction-ef1de6e85057/`. That directory's
+`browser-results.tar.gz` preserves the frozen run's 217 primary screenshots and
+attachments; subsequent targeted runs can replace `open-film/test-results/`.
+The strengthened benchmark uses
 `.cloud-onboarding/artifacts/openfilm-interaction-readiness/`; CI also attaches
 its one-run work-budget report with browser results. CI repeats all applicable
 gates for the published PR head.
+
+The first published head (`6b26cae5c4642211cef0e767530529b0115dece7`) passed its
+PR CI run, but its concurrent push run exposed an existing Precision fixture
+teardown race (75 browser cases passed, one failed). The hook closed the backend
+project while the page and its `/api/jobs` interception were still polling.
+The next legitimate `409 project.required` response had no `jobs` array, so the
+fixture threw while appending its synthetic render job. A diagnostic 1.5-second
+post-close delay reproduced the same error and captured that response in a trace.
+Draining route handlers, closing the page, then closing the backend passed the
+same diagnostic. The delay was removed from the final change; functional
+assertions and production job behavior remain unchanged. The final affected case
+passed three consecutive repetitions (48.6 seconds); the complete Precision
+file and published-head CI also exercise the cleanup. Reproduction and
+verification logs are in `.cloud-onboarding/artifacts/openfilm-interaction-ci-teardown/`.
 
 Independent correctness review identified the disposed-loader draft overwrite
 and the measurement readiness issue; both have targeted regression coverage.
