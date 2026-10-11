@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import type { Composition } from "@openfilm/core";
+import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
 import { exportDownloadUrl, type ExportCompatibilityReport } from "../api";
@@ -7,6 +9,8 @@ import ExportReport from "./ExportReport.vue";
 import Icon from "./Icon.vue";
 const props = defineProps<{
   busy: boolean;
+  projectId: string;
+  composition: Composition;
   path: string;
   filename?: string;
   format: string;
@@ -143,6 +147,11 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
         </details>
       </section>
     </section>
+    <CaptionExport
+      :project-id="projectId"
+      :composition="composition"
+      :busy="busy"
+    />
     <details class="export-advanced">
       <summary>{{ t("app.export.advanced") }}</summary>
       <div class="export-format-list">

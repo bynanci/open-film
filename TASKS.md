@@ -7,6 +7,31 @@ system or downstream NLE. Commands and test responsibilities are in
 
 ## P0 — Foundation and media workflow
 
+- [x] Let users cancel an unresponsive transcription provider, close/reopen and
+      retry without losing saved recognition or allowing obsolete callbacks to
+      change the cancelled Job or successor transcript. Held-provider application,
+      HTTP and three-language browser regressions pass; full candidate gates and
+      review are recorded in [the validation record](docs/validation-transcription-cancellation.md).
+- [x] Preserve active transcription/waveform/scene analysis when another process
+      opens the project; atomically reserve/consume work and fence obsolete
+      progress/results. Exact-checkpoint recovery preserves manual recognition
+      and edits; Activity/API/CLI share ownership-aware actions. Actual-child,
+      transaction/HTTP/CLI and three-language browser regressions pass; see
+      [the validation record](docs/validation-media-analysis-recovery.md).
+- [x] Let an observer leave and reopen a film while another process continues
+      analysis, without cancelling that work or losing edits. Local work,
+      missing runtime evidence and in-flight Precision/Transcript mutations retain
+      navigation barriers; 39 component regressions and the actual-child browser
+      flow pass. Corrected-candidate gates remain separate from earlier CI.
+- [x] Keep Undo/Redo from resetting a source while Precision requests are pending,
+      and keep marker/analysis requests from starting during history changes.
+      Fourteen additional actual-SFC regressions preserve normal one-step Undo;
+      the corrected published candidate still requires complete gates and CI.
+- [x] Keep selection decisions from disappearing while an earlier rating save
+      awaits acknowledgement. Card/inspector controls show their pending state;
+      six actual-template regressions and a real delayed-response Proposal
+      workflow pass without weakening rejected/unsupported-media checks.
+
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.
 - [x] CI workflow configured for TypeScript, media, interchange, browser, and
@@ -155,8 +180,9 @@ from model, camera and hardware certification.
 - [ ] Manual: GPU performance, real microphone/camera audio, large 4K and Windows installer.
 - [ ] Manual: real DaVinci Resolve import on a workstation (existing gate remains open).
 
-Vision, Highlights and Captions remain deferred. Geometry and transcript productivity
-is tracked separately below; interface-only work is not completion.
+Vision, Highlights and caption tracks/burn-in remain deferred. Geometry, transcript
+productivity and the scoped subtitle-export workflow are tracked separately below;
+interface-only work is not completion.
 
 ## OpenFilm 0.3.1 — Transcript Productivity & Reviewable Intelligence
 
@@ -237,3 +263,15 @@ Evidence: [measurement and validation record](docs/performance-interaction.md).
 - [x] Verify delayed recovery cannot bypass navigation, discard original recovery bytes, or overwrite a replacement editor's draft after disposal.
 - [x] Complete final candidate regression, multi-language visual/a11y checks and comparable measurements; record remaining narrow-window density and workstation limitations.
 - [ ] Manual: real-media/4K/GPU/native-window performance remains a workstation check.
+
+## Composition-aware subtitle handoff
+
+Scope and acceptance: [workflow contract](docs/composition-captions.md).
+Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-reference.md).
+
+- [x] Let people hand off corrected speech as film-timed SRT/WebVTT without re-transcription or timeline mutation.
+- [x] Explain omitted boundary text, stale alignment, missing speech and overlaps before export.
+- [x] Bind previews and output receipts to source/transcript/composition revisions; reject stale publication.
+- [x] Share the validated flow across Export, HTTP and CLI with atomic output and project-scoped recovery.
+- [x] Validate actual downloaded files with independent parsers and localized, bounded browser screens.
+- [ ] Manual: subtitle playback in a real NLE/player remains separate from format-parser validation.

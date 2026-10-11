@@ -143,7 +143,8 @@ export default {
     reload: "重新載入已儲存逐字稿",
     cancel: "取消",
     keepCurrent: "保留目前逐字稿",
-    jobsBusy: "另一項工作正在使用此影片，請等待或在活動中取消。",
+    jobsBusy:
+      "另一項工作正在使用此影片。請在「活動」查看狀態及可用的復原操作。",
     editHint: "修改只影響逐字稿，不會改動故事、片段或原始音訊。",
     searchNoMatches: "此頁沒有符合的文字。",
     reviewContext:

@@ -50,6 +50,8 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   jobs?: readonly Job[];
+  analysisRecovery?: Record<string, import("../api").AnalysisJobRecoveryState>;
+  recoveringAnalysisJobs?: Record<string, boolean>;
   projectSettings: ProjectSettings;
 }>();
 const emit = defineEmits<{
@@ -58,6 +60,7 @@ const emit = defineEmits<{
   playback: [];
   relink: [assetId: string];
   activity: [];
+  recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
 }>();
 const {
   state,
@@ -70,7 +73,7 @@ const {
   historyBusy,
   command,
   flush: flushComposition,
-  history,
+  history: compositionHistory,
   reapplyDraft,
   discardDraft,
   downloadDraft,
@@ -84,12 +87,22 @@ const {
 const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
+const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
 const hasPending = computed(
-  () => compositionHasPending.value || !!transcriptEditor.value?.hasPending,
+  () =>
+    compositionHasPending.value ||
+    !!transcriptEditor.value?.hasPending ||
+    !!precisionEditor.value?.hasPending,
 );
+async function history(direction: "undo" | "redo") {
+  if (precisionEditor.value?.hasPending) return false;
+  return compositionHistory(direction);
+}
 async function flush() {
   if (!(await flushComposition())) return false;
-  return (await transcriptEditor.value?.flush()) ?? true;
+  if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
+    return false;
+  return (await precisionEditor.value?.flush()) ?? true;
 }
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
@@ -292,6 +305,7 @@ function beatDuration(clips: Clip[]) {
     : 0;
 }
 function chooseClip(clip: Clip, openInspector = true) {
+  if (precisionEditor.value?.hasPending) return;
   if (editMode.value === "transcript" && transcriptEditor.value) {
     void transcriptEditor.value.flush().then((saved) => {
       if (saved) applyClipSelection(clip, openInspector);
@@ -871,7 +885,11 @@ onBeforeUnmount(() => {
           v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.undoLabel')"
-          :disabled="historyBusy || (!state?.canUndo && !hasPending)"
+          :disabled="
+            historyBusy ||
+            precisionEditor?.hasPending ||
+            (!state?.canUndo && !compositionHasPending)
+          "
           @click="history('undo')"
         >
           {{ t("editor.undo") }}
@@ -880,7 +898,12 @@ onBeforeUnmount(() => {
           v-show="editMode !== 'transcript'"
           class="editor-button"
           :aria-label="t('editor.redoLabel')"
-          :disabled="historyBusy || !state?.canRedo || hasPending"
+          :disabled="
+            historyBusy ||
+            precisionEditor?.hasPending ||
+            !state?.canRedo ||
+            hasPending
+          "
           @click="history('redo')"
         >
           {{ t("editor.redo") }}
@@ -1154,11 +1177,14 @@ onBeforeUnmount(() => {
       </section>
       <div v-show="editMode === 'precision'" ref="precisionElement">
         <PrecisionEditor
+          ref="precisionEditor"
           :project-id="projectId"
           :asset="selectedAsset"
           :clip="selectedClip"
           :active="active && editMode === 'precision' && !draftAction"
           :busy="historyBusy"
+          :analysis-recovery="analysisRecovery"
+          :recovering-analysis-jobs="recoveringAnalysisJobs"
           :unavailable="
             !!sourceUnavailable ||
             selectedSourceInfo?.previewSupported === false
@@ -1174,6 +1200,9 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+          @recover-analysis="
+            (job, input) => emit('recoverAnalysis', job, input)
+          "
         />
       </div>
       <div v-show="editMode === 'transcript'" ref="transcriptElement">
@@ -1191,6 +1220,8 @@ onBeforeUnmount(() => {
           "
           :source-version="sourceVersion"
           :jobs="jobs"
+          :analysis-recovery="analysisRecovery"
+          :recovering-analysis-jobs="recoveringAnalysisJobs"
           :height="workspaceHeight"
           :clips="clipOptions"
           @select="
@@ -1200,6 +1231,9 @@ onBeforeUnmount(() => {
             }
           "
           @activity="emit('activity')"
+          @recover-analysis="
+            (job, input) => emit('recoverAnalysis', job, input)
+          "
           @changed="emit('activity')"
         />
       </div>

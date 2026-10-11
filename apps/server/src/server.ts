@@ -452,6 +452,13 @@ export async function startServer(options: ServerOptions = {}) {
     );
   const active = new Map<string, AbortController>();
   const tasks = new Set<Promise<unknown>>();
+  const requireIdleProject = () => {
+    if (active.size)
+      throw new HttpError(
+        409,
+        "Wait for running jobs before switching or closing this project.",
+      );
+  };
   const editors = new WeakMap<OpenFilmApplication, TimelineEditor>();
   const relinkers = new WeakMap<OpenFilmApplication, MediaRelinker>();
   const relinkerFor = (application: OpenFilmApplication) => {
@@ -641,12 +648,11 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (method === "POST" && route === "/api/project/close") {
-          if (active.size)
-            throw new HttpError(
-              409,
-              "Wait for running jobs before closing this project.",
-            );
+          requireIdleProject();
           await discardUploads();
+          // A caption GET can capture this project during upload cleanup.
+          // Recheck immediately before close; do not await after this guard.
+          requireIdleProject();
           app?.close();
           app = undefined;
           json(response, 200, { ok: true });
@@ -656,12 +662,9 @@ export async function startServer(options: ServerOptions = {}) {
           method === "POST" &&
           (route === "/api/project/create" || route === "/api/project/open")
         ) {
-          if (active.size)
-            throw new HttpError(
-              409,
-              "Wait for running jobs before switching projects.",
-            );
+          requireIdleProject();
           const data = await body(request);
+          requireIdleProject();
           const creating = route.endsWith("/create");
           errorContext = creating
             ? "project.destinationInvalid"
@@ -689,6 +692,7 @@ export async function startServer(options: ServerOptions = {}) {
               : resolve(filePath(data, "path"));
           const previousPath = app?.directory;
           await discardUploads();
+          requireIdleProject();
           app?.close();
           app = undefined;
           let next: OpenFilmApplication;
@@ -713,6 +717,170 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route.startsWith("/api/captions/")) {
+          errorContext = "captions.failed";
+          const controller = new AbortController();
+          // These are request-scoped cancellation records, not catalog jobs.
+          // Shutdown must cancel hashing and wait for staged-output cleanup
+          // before closing the owning project's catalog.
+          const requestId = `captions:${randomUUID()}`;
+          let completeRequest!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            completeRequest = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const abortRequest = () => {
+            // Also interrupt an incomplete POST body. Its async iterator would
+            // otherwise keep shutdown waiting even after the signal aborts.
+            request.destroy();
+            response.destroy();
+          };
+          controller.signal.addEventListener("abort", abortRequest, {
+            once: true,
+          });
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const projectId = url.searchParams.get("projectId") ?? "";
+            if (method === "GET" && route === "/api/captions/context") {
+              if (projectId !== application.project.id)
+                throw new ApplicationError(
+                  "captions.stale",
+                  "The active project changed. Reopen caption export.",
+                  409,
+                );
+              const compositionId = url.searchParams.get("compositionId") ?? "";
+              json(response, 200, {
+                projectId,
+                compositionId,
+                revision: editorFor(application).get(compositionId).revision,
+              });
+              return;
+            }
+            if (method === "POST" && route === "/api/captions/prepare") {
+              const data = await body(request);
+              for (const key of Object.keys(data))
+                if (
+                  ![
+                    "projectId",
+                    "compositionId",
+                    "trackId",
+                    "baseRevision",
+                  ].includes(key)
+                )
+                  throw new ApplicationError(
+                    "captions.invalid",
+                    `Unknown caption option: ${key}.`,
+                  );
+              json(
+                response,
+                200,
+                await application.captions.prepare(
+                  {
+                    projectId: text(data, "projectId"),
+                    compositionId: text(data, "compositionId"),
+                    trackId: text(data, "trackId"),
+                    baseRevision: text(data, "baseRevision"),
+                  },
+                  { signal: controller.signal },
+                ),
+              );
+              return;
+            }
+            if (method === "GET" && route === "/api/captions/snapshot") {
+              const bounds: Record<string, number> = {};
+              for (const key of [
+                "offset",
+                "limit",
+                "issueOffset",
+                "issueLimit",
+                "sourceOffset",
+                "sourceLimit",
+                "clipOffset",
+                "clipLimit",
+              ])
+                if (url.searchParams.has(key))
+                  bounds[key] = Number(url.searchParams.get(key));
+              json(
+                response,
+                200,
+                await application.captions.get(
+                  url.searchParams.get("id") ?? "",
+                  {
+                    projectId,
+                    ...bounds,
+                  },
+                  { signal: controller.signal },
+                ),
+              );
+              return;
+            }
+            if (method === "POST" && route === "/api/captions/export") {
+              const data = await body(request);
+              for (const key of Object.keys(data))
+                if (!["projectId", "snapshotId", "format"].includes(key))
+                  throw new ApplicationError(
+                    "captions.invalid",
+                    `Unknown caption option: ${key}.`,
+                  );
+              const format = text(data, "format");
+              if (format !== "srt" && format !== "vtt")
+                throw new ApplicationError(
+                  "captions.invalid",
+                  "Choose SRT or WebVTT.",
+                );
+              json(
+                response,
+                200,
+                await application.captions.export(
+                  text(data, "snapshotId"),
+                  format,
+                  {
+                    projectId: text(data, "projectId"),
+                    signal: controller.signal,
+                  },
+                ),
+              );
+              return;
+            }
+            if (method === "GET" && route === "/api/captions/file") {
+              const kind = url.searchParams.get("kind") ?? "captions";
+              if (kind !== "captions" && kind !== "manifest")
+                throw new ApplicationError(
+                  "captions.invalid",
+                  "Choose the subtitle file or its receipt.",
+                );
+              const result = await application.captions.readOutput(
+                url.searchParams.get("id") ?? "",
+                { projectId, kind, signal: controller.signal },
+              );
+              response.setHeader(
+                "Content-Disposition",
+                `attachment; filename*=UTF-8''${encodeURIComponent(kind === "manifest" ? "captions.manifest.json" : result.publication.fileName)}`,
+              );
+              response.writeHead(200, {
+                "Content-Type":
+                  kind === "manifest"
+                    ? "application/json; charset=utf-8"
+                    : result.publication.mediaType,
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+              });
+              response.end(result.content);
+              return;
+            }
+          } finally {
+            response.removeListener("close", disconnected);
+            controller.signal.removeEventListener("abort", abortRequest);
+            active.delete(requestId);
+            tasks.delete(completed);
+            completeRequest();
+          }
+          throw new HttpError(404, "Caption endpoint not found.");
+        }
         const startReview = async (
           job: Job,
           work: (options: ReviewOptions) => Promise<Job>,
@@ -1186,6 +1354,57 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, await application.intelligence.providers());
           return;
         }
+        const analysisRecovery =
+          /^\/api\/intelligence\/jobs\/([^/]+)\/(recovery|recover)$/.exec(
+            route,
+          );
+        if (
+          analysisRecovery &&
+          method === "GET" &&
+          analysisRecovery[2] === "recovery"
+        ) {
+          const jobId = decodeURIComponent(analysisRecovery[1]!);
+          json(response, 200, {
+            ...application.intelligence.analysisRecoveryStatus(jobId),
+            canCancel: active.has(jobId),
+          });
+          return;
+        }
+        if (
+          analysisRecovery &&
+          method === "POST" &&
+          analysisRecovery[2] === "recover"
+        ) {
+          const data = await body(request);
+          keys(data, ["confirmStopped", "checkpoint", "ownerToken"]);
+          if (typeof data.confirmStopped !== "boolean")
+            throw new HttpError(400, "confirmStopped must be a boolean.");
+          if (typeof data.checkpoint !== "string" || !data.checkpoint)
+            throw new HttpError(
+              400,
+              "Include the observed analysis checkpoint.",
+            );
+          if (
+            data.ownerToken !== undefined &&
+            typeof data.ownerToken !== "string"
+          )
+            throw new HttpError(400, "ownerToken must be a string.");
+          const jobId = decodeURIComponent(analysisRecovery[1]!);
+          if (active.has(jobId))
+            throw new HttpError(
+              409,
+              "This analysis is still active in this process.",
+              "jobs.busy",
+            );
+          json(response, 200, {
+            job: application.intelligence.manualRecoverAnalysis(jobId, {
+              confirmStopped: data.confirmStopped,
+              checkpoint: data.checkpoint,
+              ownerToken: data.ownerToken,
+            }),
+          });
+          return;
+        }
         const intelligence = /^\/api\/assets\/([^/]+)\/intelligence$/.exec(
           route,
         );
@@ -1252,26 +1471,22 @@ export async function startServer(options: ServerOptions = {}) {
               "Wait for the current job before analyzing another source.",
             );
           const controller = new AbortController();
-          const job: Job = {
-            id: randomUUID(),
-            assetId,
-            type: operation,
-            status: "queued",
-            progress: 0,
-            createdAt: new Date().toISOString(),
-          };
-          application.catalog.saveJob(job);
+          // Reserve before returning 202. Other catalog connections see this
+          // owner immediately, and only this exact queued reservation can run.
+          const job = application.reserveIntelligenceJob(assetId, operation);
           active.set(job.id, controller);
           const task = application.analyzeIntelligence(assetId, {
             operation,
-            jobId: job.id,
+            reservation: job,
             signal: controller.signal,
             language: data.language as "auto" | "zh" | "en" | "ja" | undefined,
             execution: data.execution as "auto" | "cpu" | "gpu" | undefined,
           });
           const handled = task
             .catch((error) => {
-              application.catalog.saveJob({
+              // Preparation can fail before run consumes the reservation. A
+              // recovered or terminal job must never be resurrected here.
+              application.catalog.intelligence.saveOwnedAnalysisJob({
                 ...job,
                 status: controller.signal.aborted ? "cancelled" : "failed",
                 updatedAt: new Date().toISOString(),
@@ -1624,7 +1839,20 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (method === "GET" && route === "/api/jobs") {
-          json(response, 200, { jobs: application.catalog.listJobs() });
+          const jobs = application.catalog.listJobs();
+          const analysisRecovery = Object.fromEntries(
+            Object.entries(
+              application.intelligence.analysisRecoveryStatuses(jobs),
+            ).map(([jobId, recovery]) => [
+              jobId,
+              {
+                ...recovery,
+                // Liveness never implies this server owns the cancellation signal.
+                canCancel: active.has(jobId),
+              },
+            ]),
+          );
+          json(response, 200, { jobs, analysisRecovery });
           return;
         }
         if (method === "POST" && route === "/api/import/upload") {

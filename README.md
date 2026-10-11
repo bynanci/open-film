@@ -33,6 +33,8 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
 - Compose a timeline that respects duration maxima, beat minima, locks, required
   selections, exclusions, explicit order, source bounds, and no repeated assets.
 - Render a local MP4 and export JSON, OpenTimelineIO, FCPXML, or applicable EDL.
+- Preview subtitles from corrected transcripts against the current cut, then
+  export SRT/WebVTT with a source-revision receipt in **Export → Subtitles**.
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
@@ -53,9 +55,19 @@ The **0.3 Media Intelligence foundation** adds Precision mode inside Edit:
 waveform, scene cuts, markers, snapping and transcript/word seeking. Trim and
 split use existing composition history and autosave. FFmpeg powers waveform and
 scene analysis; optional local Whisper requires an explicitly supplied model.
+Cancelling transcription releases the project even if a provider ignores its
+abort signal. Saved recognition and film edits remain intact; obsolete callbacks
+and results cannot replace a successful retry. See [transcription](docs/transcription.md)
+and the [product pain points](docs/product-pain-points.md).
 No model is bundled or downloaded during recognition. See [media intelligence](docs/media-intelligence.md),
 [transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
 This development milestone does not certify camera/GPU or real ASR quality.
+
+Opening the film in another process preserves running media analysis. Activity
+offers only actions this instance can perform; interrupted work has confirmed,
+checkpoint-bound recovery that keeps saved recognition and manual edits. The
+same [ownership and recovery contract](docs/media-analysis-recovery.md) is available
+through the application, local API and CLI.
 
 **0.3.1 Transcript Productivity** adds **Edit → Transcript**: correct text,
 split/merge segments, search/replace and undo independently of the film timeline.
@@ -79,6 +91,13 @@ keeps Library startup independent of an unopened timeline, preserves recovered
 drafts, and isolates waveform hover from read-only transcript rendering. Synthetic
 browser fixtures measure work for 2,000 library assets, 500 clips and 10,000
 transcript segments; these are UI measurements, not real-media throughput claims.
+
+**Composition-aware subtitles** reuse saved transcript revisions and one selected
+dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
+instances use film time. Partial boundary segments are omitted with warnings;
+edited word alignment is never presented as precise. No model, remote service,
+caption track or burn-in is required. See [the workflow and limits](docs/composition-captions.md)
+and [the pinned OpenCut reference](docs/opencut-reference.md).
 
 ## Requirements
 

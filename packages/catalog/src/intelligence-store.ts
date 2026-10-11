@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import {
+  ApplicationError,
   validateSceneAnalysis,
   validateTimelineMarker,
   validateTranscriptDocument,
@@ -8,6 +9,7 @@ import {
   type TimelineMarker,
   type TranscriptDocument,
   type WaveformData,
+  type Job,
 } from "@openfilm/core";
 import { recordTranscriptRevision } from "./transcript-editor-store.js";
 import { transcriptSegmentKey } from "./transcript-segment-identity.js";
@@ -32,6 +34,72 @@ export interface TranscriptPage {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface OwnedAnalysisCompletionOptions {
+  ownedCompletion?: Job;
+}
+
+const ANALYSIS_OPERATIONS = ["transcribe", "waveform", "scenes"];
+
+function validIdentifier(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    Boolean(value.trim()) &&
+    value.length <= 256 &&
+    ![...value].some((character) => character.charCodeAt(0) < 32)
+  );
+}
+
+function validateAnalysisJob(
+  job: Job,
+  statuses: Job["status"][],
+  requireOwner = true,
+): void {
+  const owner = job?.analysisOwner;
+  if (
+    !job ||
+    typeof job !== "object" ||
+    !validIdentifier(job.id) ||
+    !validIdentifier(job.assetId) ||
+    !ANALYSIS_OPERATIONS.includes(job.type) ||
+    !statuses.includes(job.status) ||
+    (job.progress !== undefined &&
+      (!Number.isFinite(job.progress) ||
+        job.progress < 0 ||
+        job.progress > 1)) ||
+    (requireOwner &&
+      (!owner ||
+        typeof owner !== "object" ||
+        Array.isArray(owner) ||
+        typeof owner.host !== "string" ||
+        !owner.host.trim() ||
+        !Number.isSafeInteger(owner.pid) ||
+        owner.pid <= 0 ||
+        owner.pid > 2147483647 ||
+        typeof owner.token !== "string" ||
+        !owner.token.trim()))
+  )
+    throw new ApplicationError(
+      "request.invalid",
+      "Invalid media analysis job.",
+    );
+}
+
+function sameAnalysis(job: Job, next: Job): boolean {
+  return (
+    job.id === next.id && job.type === next.type && job.assetId === next.assetId
+  );
+}
+
+function sameAnalysisOwner(job: Job, next: Job): boolean {
+  return Boolean(
+    job.analysisOwner &&
+    next.analysisOwner &&
+    job.analysisOwner.host === next.analysisOwner.host &&
+    job.analysisOwner.pid === next.analysisOwner.pid &&
+    job.analysisOwner.token === next.analysisOwner.token,
+  );
 }
 
 /** Called inside the catalog's migration transaction. */
@@ -175,6 +243,139 @@ export class CatalogIntelligenceStore {
     }
   }
 
+  /** Reserve one project analysis before any provider or decoder is invoked. */
+  reserveAnalysisJob(job: Job): void {
+    validateAnalysisJob(job, ["queued"]);
+    this.transaction(() => {
+      if (this.database.prepare("SELECT 1 FROM jobs WHERE id=?").get(job.id))
+        throw new ApplicationError(
+          "request.invalid",
+          "Media analysis job ID already exists.",
+          409,
+        );
+      if (
+        this.database
+          .prepare(
+            `SELECT 1 FROM jobs WHERE json_extract(data,'$.type') IN ('transcribe','waveform','scenes')
+           AND json_extract(data,'$.status') IN ('queued','running') LIMIT 1`,
+          )
+          .get()
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Wait for the active media analysis before starting another task.",
+          409,
+        );
+      this.database
+        .prepare("INSERT INTO jobs(id,created_at,data) VALUES(?,?,?)")
+        .run(
+          job.id,
+          job.createdAt ?? new Date().toISOString(),
+          JSON.stringify(job),
+        );
+    });
+  }
+
+  /** Consume the exact queued reservation once, without claiming foreign work. */
+  claimAnalysisReservation(observed: Job, running: Job): boolean {
+    validateAnalysisJob(observed, ["queued"]);
+    validateAnalysisJob(running, ["running"]);
+    if (
+      !sameAnalysis(observed, running) ||
+      !sameAnalysisOwner(observed, running)
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid media analysis claim.",
+      );
+    const result = this.database
+      .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+      .run(JSON.stringify(running), observed.id, JSON.stringify(observed));
+    return Number(result.changes) === 1;
+  }
+
+  /** Terminal attempts and changed owners can never publish progress again. */
+  saveOwnedAnalysisJob(job: Job): boolean {
+    validateAnalysisJob(job, [
+      "queued",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+    ]);
+    const owner = job.analysisOwner!;
+    // A running attempt cannot return to queued; running and completion must
+    // follow the exact queued claim, rather than bypassing reservation CAS.
+    const statuses =
+      job.status === "queued"
+        ? ["queued"]
+        : ["running", "completed"].includes(job.status)
+          ? ["running"]
+          : ["queued", "running"];
+    const result = this.database
+      .prepare(
+        `UPDATE jobs SET data=? WHERE id=? AND json_extract(data,'$.type')=?
+       AND json_extract(data,'$.assetId')=? AND json_extract(data,'$.analysisOwner.host')=?
+       AND json_extract(data,'$.analysisOwner.pid')=? AND json_extract(data,'$.analysisOwner.token')=?
+       AND json_extract(data,'$.status') IN (?,?)`,
+      )
+      .run(
+        JSON.stringify(job),
+        job.id,
+        job.type,
+        job.assetId!,
+        owner.host,
+        owner.pid,
+        owner.token,
+        statuses[0]!,
+        statuses[1] ?? statuses[0]!,
+      );
+    return Number(result.changes) === 1;
+  }
+
+  /** Explicit recovery rotates ownership only against the inspected checkpoint. */
+  recoverAnalysisJob(observed: Job, recovered: Job): boolean {
+    // Ownerless or malformed historical owners can be repaired after the
+    // application's explicit stopped-process confirmation, never auto-claimed.
+    validateAnalysisJob(observed, ["queued", "running"], false);
+    validateAnalysisJob(recovered, ["failed", "cancelled"]);
+    if (
+      !sameAnalysis(observed, recovered) ||
+      observed.analysisOwner?.token === recovered.analysisOwner!.token
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid media analysis recovery.",
+      );
+    const result = this.database
+      .prepare("UPDATE jobs SET data=? WHERE id=? AND data=?")
+      .run(JSON.stringify(recovered), observed.id, JSON.stringify(observed));
+    return Number(result.changes) === 1;
+  }
+
+  private validateCompletion(
+    job: Job | undefined,
+    operation: string,
+    assetId: string,
+  ): void {
+    if (job === undefined) return;
+    validateAnalysisJob(job, ["completed"]);
+    if (job.type !== operation || job.assetId !== assetId)
+      throw new ApplicationError(
+        "request.invalid",
+        "Analysis completion belongs to another operation or media asset.",
+      );
+  }
+
+  private completeOwnedAnalysis(job: Job | undefined): void {
+    if (job !== undefined && !this.saveOwnedAnalysisJob(job))
+      throw new ApplicationError(
+        "request.invalid",
+        "This media analysis execution changed ownership or is no longer running.",
+        409,
+      );
+  }
+
   private transcript(
     assetId: string,
     sourceHash: string,
@@ -245,9 +446,16 @@ export class CatalogIntelligenceStore {
 
   replaceTranscript(
     value: TranscriptDocument,
-    options: { expectedRevision?: string | null } = {},
+    options: {
+      expectedRevision?: string | null;
+    } & OwnedAnalysisCompletionOptions = {},
   ): void {
     const document = validateTranscriptDocument(value);
+    this.validateCompletion(
+      options.ownedCompletion,
+      "transcribe",
+      document.assetId,
+    );
     const { segments, ...header } = document;
     this.transaction(() => {
       validateTranscriptDocument(
@@ -290,6 +498,7 @@ export class CatalogIntelligenceStore {
         document,
         options,
       );
+      this.completeOwnedAnalysis(options.ownedCompletion);
     });
   }
 
@@ -313,7 +522,9 @@ export class CatalogIntelligenceStore {
   private saveCache(
     kind: "waveform" | "scenes",
     value: WaveformData | SceneAnalysis,
+    options: OwnedAnalysisCompletionOptions,
   ): void {
+    this.validateCompletion(options.ownedCompletion, kind, value.assetId);
     this.transaction(() => {
       const source = this.source(
         value.assetId,
@@ -337,6 +548,7 @@ export class CatalogIntelligenceStore {
           provenance.model ?? "",
           JSON.stringify(value),
         );
+      this.completeOwnedAnalysis(options.ownedCompletion);
     });
   }
 
@@ -349,8 +561,11 @@ export class CatalogIntelligenceStore {
     return value === undefined ? undefined : validateWaveformData(value);
   }
 
-  saveWaveform(value: WaveformData): void {
-    this.saveCache("waveform", validateWaveformData(value));
+  saveWaveform(
+    value: WaveformData,
+    options: OwnedAnalysisCompletionOptions = {},
+  ): void {
+    this.saveCache("waveform", validateWaveformData(value), options);
   }
 
   getScenes(
@@ -364,8 +579,11 @@ export class CatalogIntelligenceStore {
       : validateSceneAnalysis(value, this.source(assetId, sourceHash));
   }
 
-  saveScenes(value: SceneAnalysis): void {
-    this.saveCache("scenes", validateSceneAnalysis(value));
+  saveScenes(
+    value: SceneAnalysis,
+    options: OwnedAnalysisCompletionOptions = {},
+  ): void {
+    this.saveCache("scenes", validateSceneAnalysis(value), options);
   }
 
   listMarkers(

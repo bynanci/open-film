@@ -69,6 +69,19 @@ from translated user guidance.
 
 ## Persistence and navigation
 
+Cancellation ends the application Job without waiting for an unresponsive
+provider to finish. Its later progress, result, or failure is ignored, so the
+project can close, reopen, and retry while keeping the prior saved transcript.
+A successful retry replaces the transcript only after the existing output and
+source checks pass. Story, composition, source files, and word timing from saved
+revisions remain unchanged by cancellation.
+
+Providers still receive the same AbortSignal and should stop their own work.
+The bundled Whisper adapter cancels its owned child process; releasing the
+application's wait does not forcibly terminate arbitrary third-party execution.
+This contract is shared by Desktop, HTTP, and headless application callers,
+without a second Job system or a catalog migration.
+
 Transcripts are stored in indexed catalog rows with source/model/provider
 provenance. The UI loads 100 segments at a time, with explicit previous/next page
 controls. Speech snapping uses the loaded page only; source markers and clip

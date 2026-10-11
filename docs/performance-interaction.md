@@ -242,6 +242,26 @@ pending-mutation controls remain owned by PR #9, rather than being duplicated
 here. Evidence is in `.cloud-onboarding/artifacts/openfilm-interaction-proposal-fixture/`
 and `.cloud-onboarding/artifacts/openfilm-interaction-ci-proposal/`.
 
+### Integration with analysis ownership and captions
+
+PR convergence retains the three-sample measurements above as historical evidence
+for their stated source hashes. The combined source is validated separately;
+those times do not establish performance for the added ownership and caption code.
+Merging ownership-aware jobs introduced a new empty recovery map on every poll,
+which reintroduced three idle Precision updates. The unchanged browser budget
+failed, then passed after normalizing only empty maps to a shared frozen value.
+Nonempty checkpoint/token evidence remains freshly published and project/read
+generation guards remain intact. Actual App-function regressions cover unchanged
+empty props, changed ownership, removal and delayed cross-project responses.
+
+An added real-browser integration case begins with the editor unmounted in
+Library, then holds a successful Precision marker acknowledgement. It proves
+history and navigation cannot cross the pending barrier, and verifies persisted
+markers and retained Undo/Redo after workspace changes. Proposal keeps the
+held-lock disabled-control checks together with the response and catalog rejection
+assertions. The combined-source work-budget report and RED/GREEN traces are in
+`.cloud-onboarding/artifacts/openfilm-pr-convergence/`; workstation gates remain open.
+
 Independent correctness review identified the disposed-loader draft overwrite
 and the measurement readiness issue; both have targeted regression coverage.
 Real Resolve import and actual model/GPU/camera/4K/Windows installation remain
