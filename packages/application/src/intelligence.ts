@@ -16,6 +16,7 @@ import type {
   TranscriptionResult,
 } from "@openfilm/plugin-sdk";
 import { LocalWhisperProvider } from "@openfilm/provider-whisper";
+import { cancellableProviderResult } from "./cancellable-provider-result.js";
 import {
   checkAbort,
   hashFile,
@@ -315,50 +316,53 @@ export class MediaIntelligence {
         let providerStageError: ApplicationError | undefined;
         let result: TranscriptionResult;
         try {
-          result = await this.registry.transcribe(provider.id, asset, {
-            ...options,
-            promptHints: provider.capabilities?.supportsPromptHints
-              ? options.promptHints
-              : undefined,
-            onStage: (stage) => {
-              if (
-                !acceptingProviderProgress ||
-                providerStageError ||
-                options.signal?.aborted ||
-                job.status !== "running"
-              )
-                return;
-              if (!stages.includes(stage)) {
-                providerStageError = new ApplicationError(
-                  "media.transcriptionFailed",
-                  "The transcription provider reported an invalid stage.",
-                );
-                return;
-              }
-              job.stage = stage;
-              job.progress = Math.max(
-                job.progress ?? 0,
-                0.1 + stages.indexOf(stage) * 0.15,
-              );
-              notify();
-            },
-            onProgress: (progress) => {
-              if (
-                !acceptingProviderProgress ||
-                providerStageError ||
-                options.signal?.aborted ||
-                job.status !== "running"
-              )
-                return;
-              if (Number.isFinite(progress)) {
+          result = await cancellableProviderResult(
+            this.registry.transcribe(provider.id, asset, {
+              ...options,
+              promptHints: provider.capabilities?.supportsPromptHints
+                ? options.promptHints
+                : undefined,
+              onStage: (stage) => {
+                if (
+                  !acceptingProviderProgress ||
+                  providerStageError ||
+                  options.signal?.aborted ||
+                  job.status !== "running"
+                )
+                  return;
+                if (!stages.includes(stage)) {
+                  providerStageError = new ApplicationError(
+                    "media.transcriptionFailed",
+                    "The transcription provider reported an invalid stage.",
+                  );
+                  return;
+                }
+                job.stage = stage;
                 job.progress = Math.max(
                   job.progress ?? 0,
-                  Math.min(0.85, progress * 0.85),
+                  0.1 + stages.indexOf(stage) * 0.15,
                 );
-                notify(false);
-              }
-            },
-          });
+                notify();
+              },
+              onProgress: (progress) => {
+                if (
+                  !acceptingProviderProgress ||
+                  providerStageError ||
+                  options.signal?.aborted ||
+                  job.status !== "running"
+                )
+                  return;
+                if (Number.isFinite(progress)) {
+                  job.progress = Math.max(
+                    job.progress ?? 0,
+                    Math.min(0.85, progress * 0.85),
+                  );
+                  notify(false);
+                }
+              },
+            }),
+            options.signal,
+          );
         } finally {
           // A plugin may retain callbacks; they must not outlive its invocation.
           acceptingProviderProgress = false;

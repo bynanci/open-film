@@ -7,6 +7,14 @@ system or downstream NLE. Commands and test responsibilities are in
 
 ## P0 — Foundation and media workflow
 
+- [x] Let users cancel an unresponsive transcription provider, close/reopen and
+      retry without losing saved recognition or allowing obsolete callbacks to
+      change the cancelled Job or successor transcript. Held-provider application,
+      HTTP and three-language browser regressions pass; full candidate gates and
+      review are recorded in [the validation record](docs/validation-transcription-cancellation.md).
+- [ ] Preserve active non-review media analysis when another process opens the
+      project; require owner evidence or explicit recovery before interruption.
+
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
 - [x] Apache-2.0 LICENSE/NOTICE and license decision record.
 - [x] CI workflow configured for TypeScript, media, interchange, browser, and
