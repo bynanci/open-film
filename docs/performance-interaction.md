@@ -40,6 +40,21 @@ leaving Edit must retain its current mounted history and pending-save barrier.
 Real Resolve import, real speech/model quality, GPU, camera media, large 4K
 sources, native installation and OS owner recovery remain workstation gates.
 
+The delayed-read regression exposed an existing recovery defect: pending commands
+were loaded before the editor snapshot, but `flush()` could skip its empty-state
+loop and report success. Unload could then remove the original recovery bytes.
+The composable now reports pending recovery immediately, refuses a flush before
+its snapshot is ready, and preserves those bytes. A disposed loader also ignores
+late successful/failed reads and receipt acknowledgements, so it cannot overwrite
+a replacement editor's newer draft or start another project read. Receipt IDs,
+command application, persistence schema and application job ownership are unchanged.
+
+Actual-composable tests first failed for the delayed-read and late-disposal cases,
+then passed with the guards. Browser cases cover pending Export/project navigation,
+composition switching, malformed/unavailable storage, and retained selection/Undo
+across repeated workspace visits. These regressions supplement, rather than
+replace, the existing complete editing and transcript journeys.
+
 ## Evidence
 
 Baseline and candidate results, commands, visual/a11y coverage and exact SHA will

@@ -58,7 +58,7 @@ test.afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function prepareProject(name: string) {
+async function prepareProject(name: string, withOtherComposition = false) {
   const path = join(root, `${name}.openfilm`);
   const app = await OpenFilmApplication.create(path, name);
   const id = app.project.id;
@@ -110,6 +110,14 @@ async function prepareProject(name: string) {
         },
       ],
     });
+    if (withOtherComposition) {
+      const other = structuredClone(app.project.timelines[0]!);
+      other.id = "other-cut";
+      for (const track of other.tracks)
+        for (const clip of track.clips) clip.id = `other-${clip.id}`;
+      // The initial active composition remains the final entry.
+      app.project.timelines.unshift(other);
+    }
     await app.save();
   } finally {
     app.close();
@@ -121,10 +129,11 @@ async function open(request: APIRequestContext, path: string) {
     (await request.post(`${base}/project/open`, { data: { path } })).ok(),
   ).toBe(true);
 }
-async function readEditor(request: APIRequestContext): Promise<EditorState> {
-  const response = await request.get(
-    `${base}/compositions/${compositionId}/editor`,
-  );
+async function readEditor(
+  request: APIRequestContext,
+  id = compositionId,
+): Promise<EditorState> {
+  const response = await request.get(`${base}/compositions/${id}/editor`);
   expect(response.ok()).toBe(true);
   return response.json();
 }
@@ -286,6 +295,147 @@ test("eagerly recovers a pending local draft before allowing a Story navigation 
   expect(
     await page.evaluate((key) => localStorage.getItem(key), project.storageKey),
   ).toBeNull();
+});
+
+test("blocks Export and project switching while an eager recovery read is pending", async ({
+  page,
+  request,
+}) => {
+  const project = await prepareProject("Delayed recovery");
+  await open(request, project.path);
+  const state = await readEditor(request);
+  await page.addInitScript(
+    ({ key, value }) => localStorage.setItem(key, value),
+    {
+      key: project.storageKey,
+      value: JSON.stringify({
+        state,
+        pending: [{ type: "duration", clipId: "clip-0", duration: 5 }],
+        batch: null,
+      }),
+    },
+  );
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  let signalRead!: () => void;
+  const readStarted = new Promise<void>((resolve) => {
+    signalRead = resolve;
+  });
+  await page.route(
+    `**/api/compositions/${compositionId}/editor`,
+    async (route) => {
+      signalRead();
+      await readGate;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  const writes: string[] = [];
+  page.on("request", (entry) => {
+    if (entry.method() === "POST") writes.push(new URL(entry.url()).pathname);
+  });
+  try {
+    await page.goto("/");
+    await readStarted;
+    await libraryReady(page);
+    await expect(page.locator(".editor-save-state")).toHaveText("Opening cut…");
+    await navigate(page, "export");
+    await expect(page.locator(".workspace-library")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Switch project", exact: true })
+      .click();
+    await expect(page.locator(".workspace-library")).toBeVisible();
+    expect(writes).toEqual([]);
+    expect(
+      await page.evaluate(
+        (key) => localStorage.getItem(key),
+        project.storageKey,
+      ),
+    ).not.toBeNull();
+  } finally {
+    releaseRead();
+  }
+  await expect(page.locator(".editor-save-state")).toHaveText("Save failed");
+  await navigate(page, "export");
+  await expect(page.locator(".workspace-export")).toBeVisible();
+  expect(
+    (await readEditor(request)).composition.tracks[0]!.clips[0]!
+      .timelineDuration,
+  ).toBe(5);
+  expect(writes).toEqual([`/api/compositions/${compositionId}/edit`]);
+});
+
+test("switching compositions in Edit activates the new editor and preserves its recovery flush gate", async ({
+  page,
+  request,
+}) => {
+  const project = await prepareProject("Two compositions", true);
+  await open(request, project.path);
+  const otherState = await readEditor(request, "other-cut");
+  const otherStorageKey = `openfilm:editor:${project.id}:other-cut`;
+  await page.addInitScript(
+    ({ key, value }) => localStorage.setItem(key, value),
+    {
+      key: otherStorageKey,
+      value: JSON.stringify({
+        state: otherState,
+        pending: [{ type: "duration", clipId: "other-clip-0", duration: 6 }],
+        batch: null,
+      }),
+    },
+  );
+  await page.route("**/api/compositions/other-cut/edit", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "Save unavailable",
+        code: "operation.failed",
+      }),
+    }),
+  );
+  await page.goto("/");
+  await libraryReady(page);
+  await expect(page.locator(".timeline-editor")).toHaveCount(0);
+  await navigate(page, "edit");
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  const selector = page.getByLabel("Active composition", { exact: true });
+  await selector.selectOption("other-cut");
+  await expect(page.locator("#clip-other-clip-0")).toBeVisible();
+  await expect(page.locator(".editor-save-state")).toHaveText("Save failed");
+  await selector.selectOption(compositionId);
+  await expect(selector).toHaveValue("other-cut");
+  await expect(page.locator("#clip-other-clip-0")).toBeVisible();
+  expect(
+    (await readEditor(request)).composition.tracks[0]!.clips[0]!
+      .timelineDuration,
+  ).toBe(4);
+  expect(
+    (await readEditor(request, "other-cut")).composition.tracks[0]!.clips[0]!
+      .timelineDuration,
+  ).toBe(4);
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), otherStorageKey),
+  ).not.toBeNull();
+  await page.unroute("**/api/compositions/other-cut/edit");
+  await selector.selectOption(compositionId);
+  await expect(page.locator("#clip-clip-0")).toBeVisible();
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  expect(
+    (await readEditor(request, "other-cut")).composition.tracks[0]!.clips[0]!
+      .timelineDuration,
+  ).toBe(6);
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), otherStorageKey),
+  ).toBeNull();
+  await selector.selectOption("other-cut");
+  await expect(page.locator("#clip-other-clip-0")).toBeVisible();
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  await expect(page.getByLabel("Photo duration", { exact: true })).toHaveValue(
+    "6",
+  );
 });
 
 for (const storage of ["malformed", "empty", "unavailable"] as const) {
