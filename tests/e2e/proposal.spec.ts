@@ -15,6 +15,7 @@ import {
   expect,
   type APIRequestContext,
   type Page,
+  type Route,
 } from "@playwright/test";
 import type {
   Clip,
@@ -138,15 +139,81 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   await page
     .getByRole("button", { name: "Inspect 07-pixel-motion.mp4", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Always include", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Close media details", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Reject 03-exact-copy.jpg", exact: true })
-    .click();
+  // Hold a real, successful locked-asset PATCH acknowledgement. The user may
+  // close the inspector immediately, but another mutation must remain visibly
+  // unavailable until this request finishes instead of silently losing Reject.
+  let releaseLock!: () => void;
+  let lockHeld = false;
+  const lockedAcknowledgement = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  const holdLock = async (route: Route) => {
+    if (
+      route.request().method() === "PATCH" &&
+      route.request().postDataJSON()?.state?.locked === true
+    ) {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      lockHeld = true;
+      await lockedAcknowledgement;
+      await route.fulfill({ response });
+    } else await route.continue();
+  };
+  await page.route("**/api/assets/*", holdLock);
+  try {
+    const alwaysInclude = page.getByRole("button", {
+      name: "Always include",
+      exact: true,
+    });
+    await alwaysInclude.click();
+    await expect.poll(() => lockHeld).toBe(true);
+    await expect(alwaysInclude).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Favorite", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Leave out", exact: true }),
+    ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Close media details", exact: true })
+      .click();
+    const rejectCopy = page.getByRole("button", {
+      name: "Reject 03-exact-copy.jpg",
+      exact: true,
+    });
+    await expect(rejectCopy).toBeDisabled();
+    await expect(
+      page.getByRole("button", {
+        name: "Favorite 03-exact-copy.jpg",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", {
+        name: "Lock 03-exact-copy.jpg",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    releaseLock();
+    await expect(rejectCopy).toBeEnabled();
+    const rejectedAcknowledgement = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/assets/") &&
+        response.request().method() === "PATCH" &&
+        response.request().postDataJSON()?.state?.rejected === true,
+    );
+    await rejectCopy.click();
+    expect((await rejectedAcknowledgement).ok()).toBe(true);
+    await expect(
+      page.getByRole("button", {
+        name: "Restore 03-exact-copy.jpg",
+        exact: true,
+      }),
+    ).toBeVisible();
+  } finally {
+    releaseLock();
+    await page.unroute("**/api/assets/*", holdLock);
+  }
   await importFolder(page, fixture.rawDirectory);
   await page
     .getByRole("button", {

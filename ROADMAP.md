@@ -4,6 +4,28 @@ OpenFilm's north star is ownership of media, story decisions, and the final edit
 The current release establishes a useful offline workflow; later milestones should
 improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 
+Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
+Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
+and **Automated Verified**; actual workstation behavior remains a separate gate.
+The P0 cancellation slice is **Automated Verified**: the project releases before
+a non-cooperating provider settles; final published-head checks are tracked in
+PR #8. Ownership-aware recovery of transcription, waveform and scene analysis
+is **Automated Verified** in the isolated PR #9 stacked on #8. Actual-child,
+SQLite/HTTP/CLI and three-language browser regressions preserve live work,
+manual corrections and successor results across confirmed recovery. Observers can
+switch films while foreign analysis continues; local jobs and pending mutations
+retain navigation barriers. Precision mutations and composition history also
+block each other without changing normal Undo grouping. The corrected candidate has separate verification
+from the earlier CI head. Selection controls also wait for saved acknowledgements
+instead of silently dropping a second action. Future creative milestones remain
+deferred; merging development source is not a **Released** installer or
+**Hardware Verified** recognition/NLE claim.
+
+The next bounded pain point is capability-aware transcription language defaults:
+an English-only provider should not leave Transcript on unsupported Auto with a
+disabled action. Precision already adjusts to supported choices; Transcript
+needs the same predictable behavior, independently of UI and film languages.
+
 ## 0.1 — Local story and rough cut
 
 Implemented: projects, SQLite catalogs, local folder import, metadata provenance,
@@ -127,7 +149,8 @@ Preserve the Story-first editor and its existing trim, history and autosave.
 See [geometry validation](docs/validation-geometry-parity.md). This milestone does
 not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
-are the next separate readiness slice; later creative features remain deferred.
+are merged in PR #6; actual workstation observations remain manual gates.
+Later creative features remain deferred.
 
 ## Composition-aware subtitle handoff
 
@@ -138,7 +161,7 @@ the workflow local and non-destructive. This does not add a caption track,
 burn-in, karaoke or styling. See [the contract](docs/composition-captions.md) and
 [the OpenCut gap matrix](docs/opencut-reference.md).
 
-The next product flow is an explicit **derived composition / story variant**,
+A future product flow is an explicit **derived composition / story variant**,
 preserving the original and comparing selections, constraints and duration.
 Recipes build on the existing headless CLI only when a repeatable workflow needs
 them. A real extension must justify plugin lifecycle/permissions; MCP begins with

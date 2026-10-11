@@ -76,6 +76,24 @@ failed/cancelled replacement preserves earlier results. Application operations
 check source identity before reuse and successful commit and use existing durable
 Jobs. Waveform decoding streams bounded peaks; scene detection downsizes frames.
 
+Transcribe/waveform/scenes jobs carry optional execution ownership in existing
+Job JSON. SQLite atomically reserves the project analysis slot, consumes the
+exact queued checkpoint once and fences progress by owner/active state. Result
+publication and completed Job status share the existing transcript/cache
+transaction, including source and transcript revision guards. Only proven-dead
+owners auto-recover; unknown or subsequently stopped owners have exact-checkpoint
+confirmed recovery. Runtime cancellation capabilities belong to the server's
+AbortController map. See [media-analysis recovery](media-analysis-recovery.md).
+
+Application-layer provider waits share an abort boundary for transcription and
+language review. Aborting settles the application wait even when the provider
+ignores its signal; attached result/failure handlers still consume late settlement.
+Transcription progress callbacks close with that wait, and existing abort checks
+prevent validation/indexing of an obsolete result. The application and HTTP task
+guards then release normally, preserving prior recognition until a validated
+retry succeeds. ProviderRegistry still enforces disclosure and consent at invocation;
+the SDK and SQLite schemas remain unchanged.
+
 CLI, API and Desktop share these operations. Precision mode separates source and
 composition seconds and applies snapping, trim and split through the existing
 TimelineCommand history. Analysis does not rewrite Story or composition. See

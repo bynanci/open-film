@@ -55,9 +55,19 @@ The **0.3 Media Intelligence foundation** adds Precision mode inside Edit:
 waveform, scene cuts, markers, snapping and transcript/word seeking. Trim and
 split use existing composition history and autosave. FFmpeg powers waveform and
 scene analysis; optional local Whisper requires an explicitly supplied model.
+Cancelling transcription releases the project even if a provider ignores its
+abort signal. Saved recognition and film edits remain intact; obsolete callbacks
+and results cannot replace a successful retry. See [transcription](docs/transcription.md)
+and the [product pain points](docs/product-pain-points.md).
 No model is bundled or downloaded during recognition. See [media intelligence](docs/media-intelligence.md),
 [transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
 This development milestone does not certify camera/GPU or real ASR quality.
+
+Opening the film in another process preserves running media analysis. Activity
+offers only actions this instance can perform; interrupted work has confirmed,
+checkpoint-bound recovery that keeps saved recognition and manual edits. The
+same [ownership and recovery contract](docs/media-analysis-recovery.md) is available
+through the application, local API and CLI.
 
 **0.3.1 Transcript Productivity** adds **Edit → Transcript**: correct text,
 split/merge segments, search/replace and undo independently of the film timeline.

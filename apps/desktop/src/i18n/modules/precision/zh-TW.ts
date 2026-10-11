@@ -80,7 +80,8 @@ export default {
     analyzeWaveform: "分析波形",
     detectScenes: "偵測畫面切點",
     modelReady: "語音辨識已就緒",
-    projectJobBusy: "此專案中有其他工作正在執行。請等候完成後再開始分析。",
+    projectJobBusy:
+      "此專案有其他工作正在執行。開始分析前，請在「活動」查看狀態及可用的復原操作。",
     modelMissing: "本機語音辨識需要設定",
     remoteUnavailable:
       "尚未啟用遠端語音辨識。請先設定此辨識工具並授權分享素材，再開始辨識。",
@@ -94,6 +95,22 @@ export default {
     refresh: "重新整理分析",
     cancelJob: "取消分析",
     cancel: "取消分析",
+    recovery: {
+      checking: "正在確認這項分析在哪裡執行…",
+      runningElsewhere: "這項分析正在另一個 OpenFilm 程序中執行。",
+      unknown:
+        "OpenFilm 無法確認先前的分析程序是否仍在執行。已儲存的分析結果與編輯都安全保留。",
+      stopped: "先前的分析程序已停止。已儲存的分析結果與編輯都安全保留。",
+      recover: "復原中斷的分析",
+      confirmTitle: "確認先前的程序已停止",
+      confirmMessage:
+        "請先確認先前的 OpenFilm 程序已停止。復原會解除這項工作的占用，之後可自行選擇重新分析。",
+      confirmStopped: "確認已停止並復原",
+      keepCurrent: "保留目前狀態",
+      pending: "正在更新分析…",
+      recovered:
+        "已復原中斷的分析，原有分析結果與編輯均保留。準備好時可重新分析。",
+    },
     playbackError: "無法在此播放來源。請在故事模式中檢查來源檔案。",
     shortcuts: "空白鍵 播放 · ← → 影格 · Shift + ← → 秒 · B 分割 · M 標記",
     snapTypes: {
