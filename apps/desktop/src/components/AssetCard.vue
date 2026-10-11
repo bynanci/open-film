@@ -13,6 +13,7 @@ const props = defineProps<{
   choice?: boolean;
   chosen?: boolean;
   sourceStatus?: SourceStatus;
+  mutationDisabled?: boolean;
 }>();
 defineEmits<{
   select: [asset: MediaAsset];
@@ -131,6 +132,7 @@ watch(
           })
         "
         :aria-pressed="!!asset.state.favorite"
+        :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'favorite')"
       >
         <Icon name="heart" :size="15" />
@@ -143,6 +145,7 @@ watch(
           })
         "
         :aria-pressed="!!asset.state.locked"
+        :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'locked')"
       >
         <Icon name="lock" :size="15" />
@@ -155,6 +158,7 @@ watch(
           })
         "
         :aria-pressed="!!asset.state.rejected"
+        :disabled="mutationDisabled"
         @click="$emit('toggle', asset, 'rejected')"
       >
         <Icon name="reject" :size="15" />

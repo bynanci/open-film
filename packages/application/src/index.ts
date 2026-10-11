@@ -82,14 +82,23 @@ import {
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
 import { isInside } from "./path-safety.js";
-import { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
+import {
+  MediaIntelligence,
+  type IntelligenceOptions,
+  type AnalysisRecoveryInput,
+} from "./intelligence.js";
 import { TranscriptEditor } from "./transcript-editor.js";
 import {
   KnowledgeService,
   type KnowledgeOptions,
   type ReviewOptions,
 } from "./knowledge.js";
-export { MediaIntelligence, type IntelligenceOptions } from "./intelligence.js";
+export {
+  MediaIntelligence,
+  type IntelligenceOptions,
+  type AnalysisRecoveryState,
+  type AnalysisRecoveryInput,
+} from "./intelligence.js";
 export { TranscriptEditor } from "./transcript-editor.js";
 export {
   KnowledgeService,
@@ -303,7 +312,16 @@ export class OpenFilmApplication {
         });
     }
     for (const job of application.catalog.listJobs()) {
-      if (["language-review", "glossary-review"].includes(job.type)) continue;
+      if (
+        [
+          "language-review",
+          "glossary-review",
+          "transcribe",
+          "waveform",
+          "scenes",
+        ].includes(job.type)
+      )
+        continue;
       if (job.status === "running" || job.status === "queued")
         application.catalog.saveJob({
           ...job,
@@ -323,6 +341,7 @@ export class OpenFilmApplication {
         });
     }
     application.knowledge.recoverInterruptedReviews();
+    application.intelligence.recoverInterruptedJobs();
     return application;
   }
 
@@ -341,6 +360,32 @@ export class OpenFilmApplication {
 
   get hasActiveJobs(): boolean {
     return this.activeJobs > 0;
+  }
+
+  reserveIntelligenceJob(
+    assetId: string,
+    operation: IntelligenceOptions["operation"],
+    jobId?: string,
+  ): Job {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before starting another analysis.",
+        409,
+      );
+    return this.intelligence.reserve(assetId, operation, jobId);
+  }
+
+  analysisRecoveryStatus(jobId: string) {
+    return this.intelligence.analysisRecoveryStatus(jobId);
+  }
+
+  analysisRecoveryStatuses(jobs?: readonly Job[]) {
+    return this.intelligence.analysisRecoveryStatuses(jobs);
+  }
+
+  manualRecoverAnalysis(jobId: string, input: AnalysisRecoveryInput): Job {
+    return this.intelligence.manualRecoverAnalysis(jobId, input);
   }
 
   async analyzeIntelligence(

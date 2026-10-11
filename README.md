@@ -61,6 +61,12 @@ No model is bundled or downloaded during recognition. See [media intelligence](d
 [transcription setup](docs/transcription.md) and [precision editing](docs/precision-editing.md).
 This development milestone does not certify camera/GPU or real ASR quality.
 
+Opening the film in another process preserves running media analysis. Activity
+offers only actions this instance can perform; interrupted work has confirmed,
+checkpoint-bound recovery that keeps saved recognition and manual edits. The
+same [ownership and recovery contract](docs/media-analysis-recovery.md) is available
+through the application, local API and CLI.
+
 **0.3.1 Transcript Productivity** adds **Edit → Transcript**: correct text,
 split/merge segments, search/replace and undo independently of the film timeline.
 Immutable revisions preserve recognition evidence and mark edited word timing
