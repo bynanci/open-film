@@ -522,6 +522,11 @@ button.editor-beat-heading:hover {
   border-color: var(--editor-accent);
 }
 
+.timeline-editor .editor-clip:focus-visible {
+  outline: 2px solid var(--of-focus);
+  outline-offset: 3px;
+}
+
 .editor-clip > img {
   position: absolute;
   inset: 0;

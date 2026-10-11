@@ -21,6 +21,7 @@ import {
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
+import PrecisionTranscript from "./PrecisionTranscript.vue";
 
 const props = defineProps<{
   projectId: string;
@@ -908,65 +909,12 @@ onBeforeUnmount(() => {
                   )
                 }}
               </p>
-              <div
-                v-for="segment in transcript"
-                :key="segment.id"
-                class="precision-segment"
-                :class="{
-                  current: playhead >= segment.start && playhead < segment.end,
-                }"
-              >
-                <button
-                  class="precision-segment-seek"
-                  :aria-label="
-                    t('precision.segment', {
-                      time: time(segment.start),
-                      text: segment.text,
-                    })
-                  "
-                  @click="seek(segment.start)"
-                >
-                  <time>{{ time(segment.start) }}</time
-                  ><span
-                    v-if="
-                      !segment.words?.length ||
-                      segment.alignmentState === 'text-edited'
-                    "
-                    >{{ segment.text }}</span
-                  >
-                </button>
-                <p
-                  v-if="segment.alignmentState === 'text-edited'"
-                  class="editor-note"
-                  data-testid="stale-alignment"
-                >
-                  {{ t("transcript.alignmentNotice") }}
-                </p>
-                <div
-                  v-if="
-                    segment.words?.length &&
-                    segment.alignmentState !== 'text-edited'
-                  "
-                  class="precision-words"
-                >
-                  <button
-                    v-for="(word, index) in segment.words"
-                    :key="index"
-                    :aria-label="
-                      t('precision.word', {
-                        time: time(word.start),
-                        text: word.text,
-                      })
-                    "
-                    :class="{
-                      current: playhead >= word.start && playhead < word.end,
-                    }"
-                    @click="seek(word.start)"
-                  >
-                    {{ word.text }}
-                  </button>
-                </div>
-              </div>
+              <PrecisionTranscript
+                :segments="transcript"
+                :playhead="playhead"
+                :format-time="time"
+                @seek="seek"
+              />
               <p v-if="!transcript.length" class="editor-note">
                 {{ t("precision.transcriptEmpty") }}
               </p>

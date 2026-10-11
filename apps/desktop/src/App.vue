@@ -269,6 +269,30 @@ const previewStale = ref(false);
 const showRenderedPreview = ref(false);
 const renderedPlayer = ref<HTMLVideoElement | null>(null);
 const timelineEditor = ref<InstanceType<typeof TimelineEditor> | null>(null);
+const editorMountRequested = ref(false);
+const editorStorageKey = computed(() =>
+  project.value && activeComposition.value
+    ? `openfilm:editor:${project.value.id}:${activeComposition.value.id}`
+    : null,
+);
+watch(
+  editorStorageKey,
+  (key) => {
+    // An untouched Library does not need the editor's catalog read or hidden
+    // clip tree. Recovery still mounts eagerly, so the existing flush gate can
+    // protect local edits before Story, Export or a project switch proceeds.
+    // Any stored bytes (even malformed/empty), or an unreadable store, keep the
+    // previous eager behavior; only the editor interprets recovery contents.
+    editorMountRequested.value = false;
+    if (!key) return;
+    try {
+      editorMountRequested.value = localStorage.getItem(key) !== null;
+    } catch {
+      editorMountRequested.value = true;
+    }
+  },
+  { immediate: true, flush: "sync" },
+);
 let editSerial = 0;
 
 function editorChanged(state: EditorState) {
@@ -299,6 +323,7 @@ async function changeTab(next: Tab) {
   if (next === tab.value || relinkBusy.value || busy.value) return;
   if (beatDirty.value && !(await saveBeat())) return;
   if (next === "edit") {
+    editorMountRequested.value = true;
     tab.value = next;
     if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
     return;
@@ -315,6 +340,7 @@ async function changeComposition(event: globalThis.Event) {
   if (busy.value || relinkBusy.value) return;
   if (!(await flushEditor())) return;
   activeCompositionId.value = next;
+  if (tab.value === "edit") editorMountRequested.value = true;
   previewVersion.value = 0;
   previewStale.value = false;
   clearExport();
@@ -1004,6 +1030,7 @@ async function compose() {
     clearExport();
     await refreshProject();
     previewVersion.value = 0;
+    editorMountRequested.value = true;
     tab.value = "edit";
     const ids = [
       ...new Set(
@@ -2536,6 +2563,7 @@ onUnmounted(() => {
             }}</span>
           </div>
           <TimelineEditor
+            v-if="editorMountRequested"
             v-show="tab === 'edit'"
             :key="`${project.id}:${activeComposition.id}`"
             ref="timelineEditor"
