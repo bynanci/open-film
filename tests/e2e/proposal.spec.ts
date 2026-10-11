@@ -138,15 +138,42 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   await page
     .getByRole("button", { name: "Inspect 07-pixel-motion.mp4", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Always include", exact: true })
-    .click();
+  // Finish each selection write before the next mutation: the story fixture
+  // relies on the locked video and rejected duplicate being persisted.
+  const lockedAcknowledgement = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/assets/") &&
+      response.request().method() === "PATCH" &&
+      response.request().postDataJSON()?.state?.locked === true,
+  );
+  const alwaysInclude = page.getByRole("button", {
+    name: "Always include",
+    exact: true,
+  });
+  await alwaysInclude.click();
+  expect((await lockedAcknowledgement).ok()).toBe(true);
+  await expect(alwaysInclude).toHaveAttribute("aria-pressed", "true");
   await page
     .getByRole("button", { name: "Close media details", exact: true })
     .click();
+  const rejectedAcknowledgement = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/assets/") &&
+      response.request().method() === "PATCH" &&
+      response.request().postDataJSON()?.state?.rejected === true,
+  );
   await page
     .getByRole("button", { name: "Reject 03-exact-copy.jpg", exact: true })
     .click();
+  const rejectedResponse = await rejectedAcknowledgement;
+  expect(rejectedResponse.ok()).toBe(true);
+  expect((await rejectedResponse.json()).asset.state.rejected).toBe(true);
+  await expect(
+    page.getByRole("button", {
+      name: "Restore 03-exact-copy.jpg",
+      exact: true,
+    }),
+  ).toBeVisible();
   await importFolder(page, fixture.rawDirectory);
   await page
     .getByRole("button", {
@@ -207,6 +234,7 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   const pixelPhoto = assetNamed("06-pixel-portrait.jpg");
   const pixelVideo = assetNamed("07-pixel-motion.mp4");
   const rejected = assetNamed("03-exact-copy.jpg");
+  expect(rejected.state.rejected).toBe(true);
   const unsupported = new Set(
     current.assets
       .filter(

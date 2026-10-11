@@ -227,6 +227,21 @@ passed three consecutive repetitions (48.6 seconds); the complete Precision
 file and published-head CI also exercise the cleanup. Reproduction and
 verification logs are in `.cloud-onboarding/artifacts/openfilm-interaction-ci-teardown/`.
 
+The following head (`939ca259a83e43e8efb5add94dfa3fd359b85524`) passed all 76
+browser cases in PR CI, while its concurrent push run exposed a separate Proposal
+fixture precondition race. The test clicked Reject before the preceding Always
+include write finished; the existing busy guard could ignore that click. An
+unrejected duplicate changes the template's candidate partition, legitimately
+leaving the locked photo as its beat's only regeneration candidate. A held lock
+acknowledgement reproduced the missing persisted rejection. Waiting for each
+write's acknowledgement and visible state passed the same delayed-response
+scenario and the complete Proposal flow. The final test also asserts the catalog's
+rejected flag; regeneration, protected clips and drag-order assertions remain
+unchanged. Diagnostic delays are excluded from the final test. The product-level
+pending-mutation controls remain owned by PR #9, rather than being duplicated
+here. Evidence is in `.cloud-onboarding/artifacts/openfilm-interaction-proposal-fixture/`
+and `.cloud-onboarding/artifacts/openfilm-interaction-ci-proposal/`.
+
 Independent correctness review identified the disposed-loader draft overwrite
 and the measurement readiness issue; both have targeted regression coverage.
 Real Resolve import and actual model/GPU/camera/4K/Windows installation remain
