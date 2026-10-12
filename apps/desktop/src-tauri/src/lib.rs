@@ -5,6 +5,42 @@ use std::{
 };
 use tauri::{Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
+mod native_benchmark;
+use native_benchmark::{CheckpointKind, NativeBenchmark};
+
+fn benchmark_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let url = window
+        .url()
+        .map_err(|_| "Native window URL is unavailable")?;
+    if native_benchmark::local_main_window(window.label(), url.scheme(), url.host_str(), url.port())
+    {
+        Ok(())
+    } else {
+        Err("Native benchmark is restricted to the local main window".into())
+    }
+}
+
+#[tauri::command]
+fn native_benchmark_enabled(
+    window: tauri::WebviewWindow,
+    benchmark: tauri::State<'_, NativeBenchmark>,
+) -> Result<bool, String> {
+    benchmark_window(&window)?;
+    Ok(benchmark.enabled())
+}
+
+#[tauri::command]
+fn native_checkpoint(
+    window: tauri::WebviewWindow,
+    benchmark: tauri::State<'_, NativeBenchmark>,
+    kind: CheckpointKind,
+    clip_count: Option<u32>,
+    client_elapsed_ms: f64,
+    client_time_origin_ms: f64,
+) -> Result<(), String> {
+    benchmark_window(&window)?;
+    benchmark.record(kind, clip_count, client_elapsed_ms, client_time_origin_ms)
+}
 
 // Native commands are limited to desktop integration. The loopback application
 // service owns project/catalog/media operations and never runs shell strings.
@@ -93,9 +129,21 @@ fn configured_service() -> Result<Option<Child>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let origin = std::time::Instant::now();
+    let benchmark = NativeBenchmark::from_env(origin).unwrap_or_else(|error| {
+        eprintln!("Native benchmark disabled: {error}");
+        NativeBenchmark::disabled(origin)
+    });
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![pick_folder, pick_file, pick_files])
+        .manage(benchmark)
+        .invoke_handler(tauri::generate_handler![
+            pick_folder,
+            pick_file,
+            pick_files,
+            native_benchmark_enabled,
+            native_checkpoint
+        ])
         .setup(|app| {
             let child = configured_service().map_err(std::io::Error::other)?;
             app.manage(LocalService(Mutex::new(child)));

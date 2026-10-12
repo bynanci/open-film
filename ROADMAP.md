@@ -162,6 +162,11 @@ not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
 are merged in PR #6; actual workstation observations remain manual gates.
 Later creative features remain deferred.
+Native first-open and long-session memory tooling is documented in
+[the native performance procedure](docs/native-performance.md). It keeps
+renderer intent timing separate from native IPC receipts, records platform
+memory coverage, and preserves interruption evidence. Repeated workstation
+first-open and one-hour series remain unverified until actually executed.
 
 ## Composition-aware subtitle handoff
 

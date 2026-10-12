@@ -80,6 +80,12 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] README, contribution/conduct/security policies, architecture, format docs,
       changelog, roadmap, and ADRs.
 - [ ] Self-contained native installer and multi-platform installation validation.
+- [x] Native measurement tooling: opt-in UI/Edit clocks, generated 500-clip
+      fixture, rooted process-memory series, preserved partial evidence and
+      failure/cancellation/identity regressions; see [the procedure](docs/native-performance.md).
+- [ ] Workstation native first-open repetitions and one-hour memory evidence.
+      Requires real workstation execution; cloud compilation and process tests
+      do not satisfy this gate.
 - [x] Media relinking and logical-volume-aware library portability; native Windows
       remount checks remain manual.
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.

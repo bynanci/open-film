@@ -179,3 +179,7 @@ workstation-evidence/
 ```
 
 Keep evidence immutable once referenced from a release/PR validation record.
+
+Native startup and long-session memory use the separate
+[measurement runner](native-performance.md). Its versioned manifest/report
+and raw samples do not change these eight strict QA gates or certify a pass.

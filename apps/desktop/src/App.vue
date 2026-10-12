@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   initializeLocale,
@@ -52,6 +52,7 @@ import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
 import AnalysisJobActions from "./components/AnalysisJobActions.vue";
 import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
+import { nativeBenchmark } from "./nativeBenchmark";
 
 const { t } = useI18n();
 const interfaceLocales = [
@@ -365,12 +366,24 @@ async function changeTab(next: Tab) {
   if (next === tab.value || relinkBusy.value || busy.value) return;
   if (beatDirty.value && !(await saveBeat())) return;
   if (next === "edit") {
+    if (
+      typeof window !== "undefined" &&
+      window.__TAURI_INTERNALS__ &&
+      activeComposition.value
+    )
+      nativeBenchmark.record("edit-enter", { clipCount: clipCount.value });
     editorMountRequested.value = true;
     tab.value = next;
     if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
     return;
   }
   if (!(await flushEditor())) return;
+  if (
+    typeof window !== "undefined" &&
+    window.__TAURI_INTERNALS__ &&
+    tab.value === "edit"
+  )
+    nativeBenchmark.record("edit-leave", { clipCount: clipCount.value });
   tab.value = next;
   if (next === "story" && !beatDirty.value) hydrateBeat();
   if (next === "library") await checkMediaStatus();
@@ -409,6 +422,8 @@ function clearExport() {
   exportStale.value = false;
 }
 const native = !!window.__TAURI_INTERNALS__;
+let nativeBootGeneration = 0;
+let nativeDisposed = false;
 let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
@@ -564,8 +579,9 @@ async function run(label: string, action: () => Promise<void>) {
   }
 }
 async function boot() {
+  const generation = ++nativeBootGeneration;
   loading.value = true;
-  await run("openingWorkspace", async () => {
+  const opened = await run("openingWorkspace", async () => {
     try {
       workspaceInfo.value = await api.workspace();
       await initializeLocale(workspaceInfo.value.systemLocale);
@@ -586,6 +602,28 @@ async function boot() {
     }
   });
   loading.value = false;
+  if (!native || !opened) return;
+  await nextTick();
+  const startupProjectId = project.value?.id;
+  const kind = startupProjectId ? "library-ready" : "welcome-ready";
+  nativeBenchmark.afterFrames(kind, {}, () => {
+    if (
+      nativeDisposed ||
+      generation !== nativeBootGeneration ||
+      !connected.value ||
+      error.value ||
+      mediaStatusError.value ||
+      loading.value ||
+      busy.value ||
+      tab.value !== "library" ||
+      project.value?.id !== startupProjectId
+    )
+      return false;
+    const view = document.querySelector(
+      startupProjectId ? ".workspace-library" : ".project-launcher",
+    );
+    return !!view?.getClientRects().length;
+  });
 }
 function readRecentProjects(): RecentProject[] {
   try {
@@ -1344,6 +1382,8 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
+  nativeDisposed = true;
+  nativeBootGeneration++;
   if (poll) clearInterval(poll);
   window.removeEventListener("keydown", handleKeyboard);
 });

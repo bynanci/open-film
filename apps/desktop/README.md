@@ -1,5 +1,10 @@
 # OpenFilm desktop
 
+For native first-open and one-hour memory collection, use the
+[workstation runner](../../docs/native-performance.md). Its checkpoints are
+opt-in and local. Browser performance and Linux build/static tests do not replace
+workstation measurements or installer QA.
+
 The Vue workspace uses the local application service at `127.0.0.1:4310`.
 No remote fonts, media, models, or upload services are requested. Timeline strips use cached thumbnails of imported local media; only the
 selected clip opens its local source or compatible preview for inspection. No clip strip creates
