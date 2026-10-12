@@ -251,6 +251,19 @@ Evidence: [validation record](docs/validation-geometry-parity.md).
 - [x] Pass complete local regression gates and scoped review with actual FFmpeg and browser regressions.
 - [ ] Manual: real camera/proxy/color behavior and actual NLE import remain workstation checks.
 
+## Performance & Interaction Refinement
+
+Evidence: [measurement and validation record](docs/performance-interaction.md).
+
+- [x] Establish repeatable synthetic UI baselines before changing rendering behavior.
+- [x] Keep unopened timelines out of Library rendering while preserving existing draft recovery and mounted editing history.
+- [x] Keep source picker inputs stable across unrelated Activity updates.
+- [x] Avoid rebuilding read-only transcript words on waveform hover; preserve timing, seeking, edited alignment and language switching.
+- [x] Make keyboard focus distinguishable on selected and locked clips without moving them.
+- [x] Verify delayed recovery cannot bypass navigation, discard original recovery bytes, or overwrite a replacement editor's draft after disposal.
+- [x] Complete final candidate regression, multi-language visual/a11y checks and comparable measurements; record remaining narrow-window density and workstation limitations.
+- [ ] Manual: real-media/4K/GPU/native-window performance remains a workstation check.
+
 ## Composition-aware subtitle handoff
 
 Scope and acceptance: [workflow contract](docs/composition-captions.md).

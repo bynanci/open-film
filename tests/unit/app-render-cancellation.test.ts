@@ -4,13 +4,23 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { describe, expect, it } from "vitest";
 import type { Job } from "@openfilm/core";
-import { ApiError } from "../../apps/desktop/src/api";
+import {
+  ApiError,
+  type AnalysisJobRecoveryState,
+} from "../../apps/desktop/src/api";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 const { ref } = desktopRequire("vue") as {
   ref: <T>(value: T) => { value: T };
 };
 const source = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
+const emptyRecoveryStart = source.indexOf("const EMPTY_ANALYSIS_RECOVERY");
+const emptyRecoveryEnd = source.indexOf(
+  "const analysisRecovery =",
+  emptyRecoveryStart,
+);
+if (emptyRecoveryStart < 0 || emptyRecoveryEnd < 0)
+  throw new Error("Missing App empty analysis recovery state");
 const names = [
   "run",
   "refreshJobs",
@@ -24,6 +34,7 @@ const names = [
 const code = transformSync(
   [
     'let jobsGeneration = 0, polling = false, lastJobSignature = "";',
+    source.slice(emptyRecoveryStart, emptyRecoveryEnd),
     ...names.map((name) => {
       const start = source.indexOf(`async function ${name}(`);
       const end = source.indexOf("\n}", start) + 2;
@@ -43,7 +54,11 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-type JobRead = ReturnType<typeof deferred<{ jobs: Job[] }>>;
+type JobSnapshot = {
+  jobs: Job[];
+  analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+};
+type JobRead = ReturnType<typeof deferred<JobSnapshot>>;
 type Mode = "render" | "export";
 const current = (status: Job["status"]): Job => ({
   id: "current-render",
@@ -71,17 +86,18 @@ function host() {
   const notice = ref<unknown>(null);
   const requested = ref<string | null>(null);
   const busy = ref("");
+  const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
   const dependencies = {
     api: {
       jobs: () => {
-        const read = deferred<{ jobs: Job[] }>();
+        const read = deferred<JobSnapshot>();
         reads.push(read);
         return read.promise;
       },
     },
     project,
     jobs,
-    analysisRecovery: ref({}),
+    analysisRecovery,
     busy,
     error,
     notice,
@@ -122,6 +138,7 @@ function host() {
   };
   return {
     ...app,
+    analysisRecovery,
     reads,
     rendering,
     cancellation,
@@ -353,4 +370,74 @@ describe("App cancellation responses remain owned during overlapping job polling
     await newCancel;
     expect(h.jobs.value).toEqual([newJob]);
   });
+});
+
+const recoveryState = (
+  checkpoint: string,
+  ownerToken: string,
+): AnalysisJobRecoveryState => ({
+  jobId: "analysis-job",
+  ownerState: "unknown",
+  manualRecoveryAllowed: true,
+  checkpoint,
+  ownerToken,
+  canCancel: false,
+});
+
+describe("App analysis recovery polling preserves evidence without empty prop churn", () => {
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s shares empty snapshots but publishes fresh ownership evidence and removals",
+    async (operation) => {
+      const h = host();
+      const publish = async (snapshot: JobSnapshot) => {
+        const read = h[operation]();
+        h.reads.at(-1)!.resolve(snapshot);
+        await read;
+      };
+      await publish({ jobs: [], analysisRecovery: {} });
+      const empty = h.analysisRecovery.value;
+      expect(Object.isFrozen(empty)).toBe(true);
+      await publish({ jobs: [] });
+      expect(h.analysisRecovery.value).toBe(empty);
+      await publish({ jobs: [], analysisRecovery: {} });
+      expect(h.analysisRecovery.value).toBe(empty);
+
+      const first = recoveryState("checkpoint-1", "owner-1");
+      const second = recoveryState("checkpoint-2", "owner-2");
+      await publish({ jobs: [], analysisRecovery: { [first.jobId]: first } });
+      const previous = h.analysisRecovery.value;
+      expect(previous[first.jobId]).toEqual(first);
+      // Job signatures are unchanged: recovery evidence still must be fresh.
+      await publish({ jobs: [], analysisRecovery: { [second.jobId]: second } });
+      expect(h.analysisRecovery.value).not.toBe(previous);
+      expect(h.analysisRecovery.value[second.jobId]).toEqual(second);
+      expect(previous[first.jobId]).toEqual(first);
+
+      await publish({ jobs: [], analysisRecovery: {} });
+      expect(h.analysisRecovery.value).toBe(empty);
+      expect(h.analysisRecovery.value[first.jobId]).toBeUndefined();
+    },
+  );
+
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s cannot publish a delayed recovery snapshot into another project",
+    async (operation) => {
+      const h = host();
+      const pending = h[operation]();
+      h.project.value = { id: "new-film" };
+      const newer = recoveryState("new-checkpoint", "new-owner");
+      h.analysisRecovery.value = { [newer.jobId]: newer };
+      const currentRecovery = h.analysisRecovery.value;
+      const currentJobs = h.jobs.value;
+      const older = recoveryState("old-checkpoint", "old-owner");
+      h.reads[0]!.resolve({
+        jobs: [],
+        analysisRecovery: { [older.jobId]: older },
+      });
+      await pending;
+      expect(h.analysisRecovery.value).toBe(currentRecovery);
+      expect(h.analysisRecovery.value[newer.jobId]).toEqual(newer);
+      expect(h.jobs.value).toBe(currentJobs);
+    },
+  );
 });

@@ -86,6 +86,12 @@ See the [geometry contract](docs/architecture.md#shared-visual-geometry-contract
 and [validation record](docs/validation-geometry-parity.md). This is per-clip
 geometry validation, not a claim of a full live multitrack compositor or real NLE QA.
 
+The [performance and interaction refinement](docs/performance-interaction.md)
+keeps Library startup independent of an unopened timeline, preserves recovered
+drafts, and isolates waveform hover from read-only transcript rendering. Synthetic
+browser fixtures measure work for 2,000 library assets, 500 clips and 10,000
+transcript segments; these are UI measurements, not real-media throughput claims.
+
 **Composition-aware subtitles** reuse saved transcript revisions and one selected
 dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
 instances use film time. Partial boundary segments are omitted with warnings;

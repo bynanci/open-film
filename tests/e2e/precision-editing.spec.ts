@@ -36,6 +36,7 @@ const sizes = [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
+  { width: 1024, height: 768 },
 ];
 let root: string;
 let mediaDirectory: string;
@@ -149,7 +150,10 @@ test.beforeAll(async () => {
 test.beforeEach(async ({ request }) => {
   await closeProject(request);
 });
-test.afterEach(async ({ request }) => {
+test.afterEach(async ({ page, request }) => {
+  // Settle fixture reads and stop polling before closing their backing project.
+  await page.unrouteAll({ behavior: "wait" });
+  await page.close();
   await closeProject(request);
 });
 test.afterAll(async ({ request }) => {
@@ -419,7 +423,10 @@ async function analysisPanel(page: Page, locale: ProjectContentLocale) {
     .getByLabel(text(locale, "precision.execution"))
     .selectOption("cpu");
 }
-async function screenChecks(page: Page, locale: ProjectContentLocale) {
+async function screenChecks(
+  page: Page,
+  locale: ProjectContentLocale | "en-XA",
+) {
   for (const size of sizes) {
     await page.setViewportSize(size);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -1947,6 +1954,227 @@ for (const locale of ["zh-TW", "ja-JP"] as const) {
       evidence.transcript!.segments[0]!.words![1]!.start,
     );
     await screenChecks(page, locale);
+    if (locale === "zh-TW") {
+      // Exercise the actual runtime locale resolver without rebuilding media or
+      // adding a production test hook. The pseudo locale is development-only.
+      const beforeLocaleSwitch = await composition(request);
+      const switchedLocale = await page.evaluate(async () => {
+        const modulePath = "/src/i18n/index.ts";
+        const { setUiLocale, uiLocale } = await import(modulePath);
+        setUiLocale("en-XA");
+        return uiLocale.value;
+      });
+      expect(switchedLocale).toBe("en-XA");
+      await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+      await screenChecks(page, "en-XA");
+      expect(await composition(request)).toEqual(beforeLocaleSwitch);
+    }
     expect(missingKeys).toEqual([]);
   });
 }
+
+test("a first-visit Precision editor retains mutation barriers and history across workspace navigation", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { video, clip, audioClip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-lazy-mutation-barrier",
+  );
+  const filmId = (await project(request)).id;
+  const cutId = (await composition(request)).id;
+
+  // Prepare with the regular product flow, then start a fresh app session in
+  // Library. This deliberately exercises the first lazy editor mount.
+  await navigate(page, "library");
+  let editorReads = 0;
+  const editorPath = `/api/compositions/${cutId}/editor`;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === editorPath) editorReads++;
+  });
+  await page.reload();
+  await expect(page.locator(".asset-card")).toHaveCount(3);
+  await expect(page.locator(".workspace-library")).toBeVisible();
+  await expect(page.locator(".timeline-editor")).toHaveCount(0);
+  expect(editorReads).toBe(0);
+  await navigate(page, "edit");
+  await saved(page, locale);
+  expect(editorReads).toBe(1);
+  await page.locator(`[id="clip-${clip.id}"]`).click();
+  await mode(page, locale, "precision");
+  const trimIn = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  await expect(trimIn).toBeEnabled();
+  const beforeEdits = await composition(request);
+  const initialIn = clipById(beforeEdits, clip.id).sourceIn ?? 0;
+  for (const offset of [0.25, 0.5]) {
+    await trimIn.fill(String(initialIn + offset));
+    await trimIn.press("Tab");
+    await saved(page, locale);
+    expect(clipById(await composition(request), clip.id).sourceIn).toBeCloseTo(
+      initialIn + offset,
+      6,
+    );
+  }
+  const undo = page.getByRole("button", { name: "Undo edit", exact: true });
+  const redo = page.getByRole("button", { name: "Redo edit", exact: true });
+  await undo.click();
+  await saved(page, locale);
+  const beforeMarker = await composition(request);
+  expect(clipById(beforeMarker, clip.id).sourceIn).toBeCloseTo(
+    initialIn + 0.25,
+    6,
+  );
+  // Both histories are genuinely available before the held request.
+  await expect(undo).toBeEnabled();
+  await expect(redo).toBeEnabled();
+  const previousMarkers = (await intelligence(request, video.id)).markers;
+  const instance = page.locator(".timeline-editor");
+  await instance.evaluate((node) =>
+    node.setAttribute("data-integration-instance", "retained"),
+  );
+  const preview = page.getByLabel(text(locale, "precision.sourcePreview"), {
+    exact: true,
+  });
+  const previewSource = await preview.getAttribute("src");
+  const sourcePicker = page
+    .locator(".precision-source-picker")
+    .getByLabel(text(locale, "precision.selectedClip"));
+  const markerButton = page.getByRole("button", {
+    name: text(locale, "precision.addMarker"),
+    exact: true,
+  });
+  const waveform = page.getByRole("group", {
+    name: text(locale, "precision.waveform"),
+    exact: true,
+  });
+  const modes = page.getByRole("group", {
+    name: text(locale, "precision.modeLabel"),
+    exact: true,
+  });
+  const navigation = page.getByRole("navigation", {
+    name: text(locale, "app.navigation.label"),
+    exact: true,
+  });
+  let releaseMarker!: () => void;
+  const markerGate = new Promise<void>((resolve) => {
+    releaseMarker = resolve;
+  });
+  let heldMarker: TimelineMarker | undefined;
+  const markerPath = `/api/assets/${video.id}/markers`;
+  const competingWrites: string[] = [];
+  let recordCompetingWrites = true;
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      recordCompetingWrites &&
+      request.method() === "POST" &&
+      (path === `/api/compositions/${cutId}/undo` ||
+        path === `/api/compositions/${cutId}/redo` ||
+        path === "/api/project/close")
+    )
+      competingWrites.push(path);
+  });
+  await page.route(`**${markerPath}`, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    // The write is real and successful; only its acknowledgement is held.
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    heldMarker = (await response.json()).marker as TimelineMarker;
+    await markerGate;
+    await route.fulfill({ response });
+  });
+  try {
+    await waveform.press("Shift+ArrowRight");
+    await markerButton.click();
+    await expect.poll(() => heldMarker?.id).toBeTruthy();
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+    await waveform.press("ControlOrMeta+z");
+    await waveform.press("ControlOrMeta+Shift+z");
+
+    await sourcePicker.selectOption(audioClip.id);
+    await expect(preview).toHaveAttribute("src", previewSource!);
+    await expect(page.locator(`[id="clip-${clip.id}"]`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await mode(page, locale, "story");
+    await expect(
+      modes.getByRole("button", {
+        name: text(locale, "precision.precisionMode"),
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await navigate(page, "export");
+    await expect(
+      navigation.getByRole("button", {
+        name: text(locale, "app.navigation.edit"),
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-current", "page");
+    await page
+      .getByRole("button", { name: "Switch project", exact: true })
+      .click();
+    await expect(instance).toBeVisible();
+    expect((await project(request)).id).toBe(filmId);
+    expect(await composition(request)).toEqual(beforeMarker);
+    expect(competingWrites).toEqual([]);
+
+    releaseMarker();
+    await expect(markerButton).toBeEnabled();
+    await expect(undo).toBeEnabled();
+    await expect(redo).toBeEnabled();
+    recordCompetingWrites = false;
+    const persisted = (await intelligence(request, video.id)).markers;
+    expect(persisted).toHaveLength(previousMarkers.length + 1);
+    expect(persisted).toContainEqual(heldMarker);
+    expect(heldMarker).toMatchObject({ assetId: video.id, type: "manual" });
+    expect(await composition(request)).toEqual(beforeMarker);
+
+    await navigate(page, "library");
+    await expect(page.locator(".workspace-library")).toBeVisible();
+    await expect(instance).toHaveAttribute(
+      "data-integration-instance",
+      "retained",
+    );
+    await navigate(page, "edit");
+    await saved(page, locale);
+    await expect(instance).toHaveAttribute(
+      "data-integration-instance",
+      "retained",
+    );
+    await expect(
+      modes.getByRole("button", {
+        name: text(locale, "precision.precisionMode"),
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(undo).toBeEnabled();
+    await expect(redo).toBeEnabled();
+    await redo.click();
+    await saved(page, locale);
+    expect(clipById(await composition(request), clip.id).sourceIn).toBeCloseTo(
+      initialIn + 0.5,
+      6,
+    );
+    await undo.click();
+    await saved(page, locale);
+    expect(await composition(request)).toEqual(beforeMarker);
+    expect((await intelligence(request, video.id)).markers).toContainEqual(
+      heldMarker,
+    );
+  } finally {
+    releaseMarker();
+    // Release our held route before the suite's wait-for-routes teardown.
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});

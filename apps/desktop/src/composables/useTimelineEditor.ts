@@ -64,6 +64,9 @@ export function useTimelineEditor(
   }
   function retainDraft() {
     pendingCount.value = pending.length;
+    // Recovery owns the existing bytes until its initial snapshot/receipt is
+    // available. Closing during that read must not erase the only saved draft.
+    if (pending.length && !state.value) return;
     try {
       if (pending.length && state.value) {
         localStorage.setItem(
@@ -91,6 +94,7 @@ export function useTimelineEditor(
     return next;
   }
   async function load() {
+    if (disposed) return;
     status.value = "loading";
     let recovered: Draft | null = null;
     try {
@@ -110,13 +114,16 @@ export function useTimelineEditor(
     try {
       if (recovered) {
         pending = recovered.pending;
+        pendingCount.value = pending.length;
         batch = recovered.batch;
         if (batch) {
           const sending = batch;
           const acknowledged = await api.edit(compositionId, sending);
+          if (disposed) return;
           pending = pending.slice(sending.commands.length);
           batch = null;
           const saved = await api.editor(compositionId);
+          if (disposed) return;
           const acknowledgedRevision =
             acknowledged.acknowledgedRevision ?? acknowledged.revision;
           if (pending.length && saved.revision !== acknowledgedRevision) {
@@ -134,6 +141,7 @@ export function useTimelineEditor(
           }
         } else {
           const saved = await api.editor(compositionId);
+          if (disposed) return;
           if (recovered.state.revision === saved.revision) {
             publish(applyTo(saved, pending));
             status.value = "failed";
@@ -148,11 +156,13 @@ export function useTimelineEditor(
         edited();
       } else {
         const saved = await api.editor(compositionId);
+        if (disposed) return;
         publish(saved);
         status.value = "saved";
         reportNotice("");
       }
     } catch (cause) {
+      if (disposed) return;
       if (recovered) {
         pending = recovered.pending;
         batch = recovered.batch;
@@ -193,12 +203,9 @@ export function useTimelineEditor(
   function flushCommands(): Promise<boolean> {
     if (timer) clearTimeout(timer);
     if (saving) return saving;
-    if (!pending.length)
-      return Promise.resolve(
-        status.value !== "loading" &&
-          status.value !== "conflict" &&
-          !!state.value,
-      );
+    if (status.value === "loading" || !state.value)
+      return Promise.resolve(false);
+    if (!pending.length) return Promise.resolve(status.value !== "conflict");
     saving = (async () => {
       while (pending.length && state.value) {
         if (!batch)

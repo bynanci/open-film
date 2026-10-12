@@ -158,6 +158,11 @@ const beatFields = ref({
 const allClips = computed(
   () => state.value?.composition.tracks.flatMap((track) => track.clips) ?? [],
 );
+// Keep source-picker props stable during selection, playback and Activity updates.
+// Composition/assets and translated fallback labels still invalidate the list.
+const clipOptions = computed(() =>
+  allClips.value.map((clip) => ({ id: clip.id, label: name(clip) })),
+);
 const selectedClip = computed(() =>
   allClips.value.find((clip) => clip.id === selectedClipId.value),
 );
@@ -1186,7 +1191,7 @@ onBeforeUnmount(() => {
           "
           :source-version="sourceVersion"
           :height="workspaceHeight"
-          :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
+          :clips="clipOptions"
           :submit="command"
           @select="
             (id) => {
@@ -1218,7 +1223,7 @@ onBeforeUnmount(() => {
           :analysis-recovery="analysisRecovery"
           :recovering-analysis-jobs="recoveringAnalysisJobs"
           :height="workspaceHeight"
-          :clips="allClips.map((clip) => ({ id: clip.id, label: name(clip) }))"
+          :clips="clipOptions"
           @select="
             (id) => {
               const clip = allClips.find((item) => item.id === id);

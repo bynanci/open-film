@@ -105,6 +105,17 @@ remains the next external gate; it is not replaced by helper tests.
 Professional color grading, complex GPU effects, cloud collaboration, marketplaces,
 and mobile editing remain deferred. Milestones are priorities, not release dates.
 
+## Performance and interaction refinement
+
+Measure the existing workflow before adding complexity: defer unopened editor
+work while preserving recovery, stabilize source-picker props, isolate Precision
+transcript rendering, and keep keyboard focus visible on selected clips. Retain
+60-item Library pagination, 100-segment Transcript pages, cached waveform paths
+and existing job ownership. The [measurement record](docs/performance-interaction.md)
+separates reduced work from unchanged costs and workstation-only performance.
+The next UI performance target is the remaining 500-clip story-rail render work
+during selection, subject to the same before/after and correctness gates.
+
 ## 0.3 — Media Intelligence & Precision Editing
 
 P0 keeps Story-first editing and adds optional source intelligence: a local Whisper

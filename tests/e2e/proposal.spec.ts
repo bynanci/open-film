@@ -203,7 +203,9 @@ test("turns generated device media into a protected, edited and fitted Proposal 
         response.request().postDataJSON()?.state?.rejected === true,
     );
     await rejectCopy.click();
-    expect((await rejectedAcknowledgement).ok()).toBe(true);
+    const rejectedResponse = await rejectedAcknowledgement;
+    expect(rejectedResponse.ok()).toBe(true);
+    expect((await rejectedResponse.json()).asset.state.rejected).toBe(true);
     await expect(
       page.getByRole("button", {
         name: "Restore 03-exact-copy.jpg",
@@ -274,6 +276,7 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   const pixelPhoto = assetNamed("06-pixel-portrait.jpg");
   const pixelVideo = assetNamed("07-pixel-motion.mp4");
   const rejected = assetNamed("03-exact-copy.jpg");
+  expect(rejected.state.rejected).toBe(true);
   const unsupported = new Set(
     current.assets
       .filter(
