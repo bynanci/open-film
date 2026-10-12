@@ -262,6 +262,8 @@ Evidence: [measurement and validation record](docs/performance-interaction.md).
 - [x] Make keyboard focus distinguishable on selected and locked clips without moving them.
 - [x] Verify delayed recovery cannot bypass navigation, discard original recovery bytes, or overwrite a replacement editor's draft after disposal.
 - [x] Complete final candidate regression, multi-language visual/a11y checks and comparable measurements; record remaining narrow-window density and workstation limitations.
+- [x] Limit 500-clip selection rendering to the old/new clip while preserving source/status/locale updates, drag validation, history and recovery.
+- [x] Compare three baseline/candidate repetitions, expose first-mount cost and preserve real relink/Precision presentation with full regression coverage.
 - [ ] Manual: real-media/4K/GPU/native-window performance remains a workstation check.
 
 ## Composition-aware subtitle handoff
