@@ -295,22 +295,15 @@ Each selection scenario attempts 20 clicks with one initial no-op, verifies 19 a
 
 Values are median [minimum–maximum] milliseconds across three samples.
 
-| Metric | Before | After |
-| ------ | ------ | ----- |
-
-| First Edit automation elapsed | 837.3 [837.2–873.9] | 897.2 [838.0–938.3] |
-
-| First Edit parent render elapsed | 93.5 [88.4–95.3] | 42.3 [41.2–44.9] |
-
-| 19 same-beat selections: parent render elapsed | 568.1 [564.3–579.7] | 287.7 [275.0–288.5] |
-
+| Metric                                          | Before              | After               |
+| ----------------------------------------------- | ------------------- | ------------------- |
+| First Edit automation elapsed                   | 837.3 [837.2–873.9] | 897.2 [838.0–938.3] |
+| First Edit parent render elapsed                | 93.5 [88.4–95.3]    | 42.3 [41.2–44.9]    |
+| 19 same-beat selections: parent render elapsed  | 568.1 [564.3–579.7] | 287.7 [275.0–288.5] |
 | 19 cross-beat selections: parent render elapsed | 486.3 [457.3–493.6] | 280.1 [263.3–286.3] |
-
-| Same-beat selections: CDP ScriptDuration | 46.5 [43.6–46.7] | 45.9 [43.3–53.9] |
-
-| Cross-beat selections: CDP ScriptDuration | 43.6 [42.0–50.3] | 44.2 [42.1–45.8] |
-
-| Third Library/Edit revisit automation elapsed | 837.4 [763.0–864.4] | 805.9 [771.8–809.5] |
+| Same-beat selections: CDP ScriptDuration        | 46.5 [43.6–46.7]    | 45.9 [43.3–53.9]    |
+| Cross-beat selections: CDP ScriptDuration       | 43.6 [42.0–50.3]    | 44.2 [42.1–45.8]    |
+| Third Library/Edit revisit automation elapsed   | 837.4 [763.0–864.4] | 805.9 [771.8–809.5] |
 
 The bounded clip work reduction is established. First Edit automation elapsed increased by about 60 ms at its median, so no faster-startup claim is made. First mount now includes 500 leaf setups and test-only render wrappers. Candidate leaf render time is recorded separately from its parent. CDP ScriptDuration is essentially unchanged; parent render timings do not establish input latency or a general speedup. Heap samples use no forced GC and vary with garbage collection: they do not prove lower memory usage or leak freedom. Stable component IDs show retention over three short revisits, not long-session or native-window performance.
 
