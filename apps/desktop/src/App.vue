@@ -2602,6 +2602,8 @@ onUnmounted(() => {
           </p>
           <ExportWorkspace
             v-if="tab === 'export'"
+            :project-id="project.id"
+            :composition="activeComposition"
             :busy="!!busy"
             :path="exportPath"
             :filename="exportFilename"
