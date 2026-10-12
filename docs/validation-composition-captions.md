@@ -160,3 +160,27 @@ The final candidate's local gate runs formatting, i18n, lint, typecheck, unit an
 integration tests, build, interchange, native checks and the built CLI smoke test.
 Its complete browser gate is verified separately by the exact-head CI step; an
 interrupted earlier local browser run is not reported as that final gate.
+
+## PR convergence: publication-aware browser download
+
+The integration with merged PRs #8/#9 passed its focused caption suite, but push
+CI run 38185339258 at `12d1a3185184c453bb19524376649ff8878eef5f` failed one
+native WebVTT parser case (77 other browser cases passed). Its failure artifact
+was unavailable; the annotations do not prove a unique historical cause.
+
+A controlled delayed VTT publication reproduced a real fixture race: the prior
+SRT download link remains valid while the new publication is pending. The test
+clicked that link, downloaded `captions.srt` with first line `1`, and saved it as
+`mapped.vtt`; Chromium returned the same parser rejection. The fixture now waits
+for the successful response for the requested format and its new publication
+ID, filename and download link. It additionally checks the download's suggested
+filename and WebVTT header before retaining the original independent parser,
+timing, Unicode, provenance and immutability assertions.
+
+The same controlled delay passed after these waits, and the final complete
+caption browser suite passed 9/9 (31.4 seconds). Diagnostic routes and delays are
+excluded from the final test. Production publication behavior is unchanged.
+RED/GREEN patches, actual downloaded bytes, trace, logs and the manifest are in
+`.cloud-onboarding/artifacts/openfilm-pr-convergence/caption-publication-fixture/`.
+The new head must pass complete CI before merge; older success is historical
+evidence, not a replacement for that gate.

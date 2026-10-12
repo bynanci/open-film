@@ -352,13 +352,37 @@ test("corrected transcript exports mapped captions with warnings, independent pa
     { start: 4, end: 6, text: correctedText },
   ];
   for (const format of ["srt", "vtt"] as const) {
+    // A previous format's completed download stays available during publication.
+    // Wait for this publication and its link rather than downloading that copy.
+    const publicationResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/captions/export" &&
+        response.request().method() === "POST" &&
+        response.request().postDataJSON().format === format,
+    );
     await page.getByTestId(`caption-export-${format}`).click();
+    const response = await publicationResponse;
+    expect(response.ok(), await response.text()).toBe(true);
+    const publication = (await response.json()) as {
+      id: string;
+      format: string;
+    };
+    expect(publication.format).toBe(format);
+    await expect(page.locator(".caption-publication > code")).toHaveText(
+      `captions.${format}`,
+    );
+    await expect(page.getByTestId("caption-download")).toHaveAttribute(
+      "href",
+      new RegExp(`[?&]id=${publication.id}(?:&|$)`),
+    );
     const downloadPromise = page.waitForEvent("download");
     await page.getByTestId("caption-download").click();
     const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(`captions.${format}`);
     const path = info.outputPath(`mapped.${format}`);
     await download.saveAs(path);
     const content = await readFile(path, "utf8");
+    if (format === "vtt") expect(content.startsWith("WEBVTT\n\n")).toBe(true);
     expect(content).not.toContain("This was cut away");
     expect(content).not.toContain("Do not invent partial words");
     if (format === "vtt")
