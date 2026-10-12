@@ -9,7 +9,7 @@ import {
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Clip, Composition, Story } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
-import { initialLocale, navigate, openFilm } from "./ui-helpers.js";
+import { initialLocale, navigate, openFilm, uiText } from "./ui-helpers.js";
 
 interface EditorState {
   composition: Composition;
@@ -179,6 +179,163 @@ async function openTimeline(page: Page) {
   ).toBeVisible();
   await saved(page);
 }
+
+test("clip instances sharing an asset retain selection identity without changing the film or history", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request);
+  await openTimeline(page);
+  const before = await editorState(request);
+  expect(clipById(before, "opening-motion").assetId).toBe(
+    clipById(before, "ending-motion").assetId,
+  );
+  const originalButton = await page
+    .locator("#clip-opening-motion")
+    .elementHandle();
+  const draft = () =>
+    page.evaluate(() =>
+      Object.entries(localStorage).filter(([key]) =>
+        key.startsWith("openfilm:editor:"),
+      ),
+    );
+  const initialDraft = await draft();
+  const readsAndWrites: string[] = [];
+  page.on("request", (entry) => {
+    const path = new URL(entry.url()).pathname;
+    if (/\/compositions\/.+\/(?:editor|edit|undo|redo)$/.test(path))
+      readsAndWrites.push(`${entry.method()} ${path}`);
+  });
+  for (const id of ["opening-motion", "ending-motion", "opening-motion"]) {
+    const button = page.locator(`#clip-${id}`);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".editor-clip.selected")).toHaveCount(1);
+    await expect(
+      page.locator('.editor-clip[aria-pressed="true"]'),
+    ).toHaveAttribute("id", `clip-${id}`);
+    await expect(
+      page.locator(".editor-beat.selected .editor-beat-copy strong"),
+    ).toHaveText(id.startsWith("opening") ? "The beginning" : "Home again");
+    await expect(page.getByLabel("Source in", { exact: true })).toHaveValue(
+      "0",
+    );
+    await expect(page.getByLabel("Source out", { exact: true })).toHaveValue(
+      "3",
+    );
+  }
+  expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
+    true,
+  );
+  expect(await editorState(request)).toEqual(before);
+  expect(await draft()).toEqual(initialDraft);
+  expect(readsAndWrites).toEqual([]);
+
+  // Real keyboard focus exercises the rendered button, not a CSS-only fixture.
+  await page.locator("#clip-ending-photo").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#clip-ending-motion")).toBeFocused();
+  expect(
+    await page.locator("#clip-ending-motion").evaluate((button) => ({
+      visible: button.matches(":focus-visible"),
+      width: parseFloat(getComputedStyle(button).outlineWidth),
+    })),
+  ).toMatchObject({ visible: true, width: 2 });
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("rail drops reject different beats and tracks while preserving later reorder and locked selection", async ({
+  page,
+  request,
+}) => {
+  const fixture = await fixtureForEditing(request, true);
+  // Keep both beats visible: scrolling the target during native dragTo can
+  // move a different source under the browser's initial pointer coordinates.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await openTimeline(page);
+  const before = await editorState(request);
+  const writes: unknown[] = [];
+  await page.evaluate(() => {
+    const events: unknown[] = [];
+    for (const type of ["dragstart", "drop"])
+      document.addEventListener(
+        type,
+        (event) => {
+          events.push({
+            type,
+            id: (event.target as Element).closest(".editor-clip")?.id,
+          });
+          document.documentElement.dataset.testDragEvents =
+            JSON.stringify(events);
+        },
+        true,
+      );
+  });
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      /\/compositions\/.+\/(?:edit|undo|redo)$/.test(
+        new URL(entry.url()).pathname,
+      )
+    )
+      writes.push(entry.postDataJSON());
+  });
+  for (const id of ["ending-photo", "opening-audio"]) {
+    const target = page.locator(`#clip-${id}`);
+    await target.evaluate((button) => {
+      button.addEventListener(
+        "drop",
+        () => button.setAttribute("data-test-drop-received", "true"),
+        { once: true },
+      );
+    });
+    await page.locator("#clip-opening-motion").dragTo(target);
+    expect(
+      await page.evaluate(() =>
+        JSON.parse(
+          document.documentElement.dataset.testDragEvents ?? "[]",
+        ).slice(-2),
+      ),
+    ).toEqual([
+      { type: "dragstart", id: "clip-opening-motion" },
+      { type: "drop", id: `clip-${id}` },
+    ]);
+    await expect(target).toHaveAttribute("data-test-drop-received", "true");
+    await expect(page.locator(".editor-message[role='alert']")).toContainText(
+      uiText("en-US", "editor.moveWithinBeat"),
+    );
+    expect(await editorState(request)).toEqual(before);
+    expect(writes).toEqual([]);
+  }
+  await page
+    .locator("#clip-opening-motion")
+    .dragTo(page.locator("#clip-opening-photo"));
+  await saved(page);
+  expect(
+    clips(await editorState(request))
+      .slice(0, 2)
+      .map((clip) => clip.id),
+  ).toEqual(["opening-motion", "opening-photo"]);
+  expect(writes).toHaveLength(1);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await saved(page);
+  expect((await editorState(request)).composition).toEqual(before.composition);
+
+  await page.locator("#clip-opening-motion").click();
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await saved(page);
+  await page.locator("#clip-ending-photo").click();
+  const locked = page.locator("#clip-opening-motion");
+  await locked.click();
+  await expect(locked).toHaveAttribute("aria-pressed", "true");
+  await expect(locked).toHaveAttribute("draggable", "false");
+  await expect(locked.locator(".editor-clip-badge")).toBeVisible();
+  await expect(page.getByLabel("Source in", { exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Delete clip", exact: true }),
+  ).toBeDisabled();
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
 
 // The fixture uses real FFmpeg media, the importer and SQLite. Every edit below
 // goes through the browser controls, the HTTP editor and the project on disk.
