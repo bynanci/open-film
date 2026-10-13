@@ -175,7 +175,8 @@ copies preserve identical initial films without rehashing edited templates.
 Sampling races and evidence-volume failures retain explicit failure and owned
 process cleanup. Final checkpoints are refreshed before classification, and a
 surviving service fails finalization without force-killing active work. Automated
-regressions do not satisfy the workstation gate.
+regressions also reject an unexpected service exit while awaiting normal native
+shutdown. None of these satisfy the workstation gate.
 
 ## Composition-aware subtitle handoff
 

@@ -168,6 +168,10 @@ or run a second collection until both native/service processes have closed.
 Child liveness is checked again after asynchronous sampling and evidence writes.
 A native exit during that work is `app-exited`; an owned service exit is `failed`.
 Neither can become a completed collection merely because the time limit elapsed.
+Service liveness is also checked after normal native shutdown, before requesting
+service cleanup. An unexpected service exit while waiting for the operator to
+close the window fails finalization and replaces the provisional completed
+report with failure; the native window is never force-closed.
 The completed checkpoint lines are refreshed after the final asynchronous work,
 before scenario classification and report freezing, so an Edit visit delivered
 during the last sample is included.

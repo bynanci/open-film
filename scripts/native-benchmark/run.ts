@@ -633,6 +633,20 @@ export async function runNativeBenchmark(
         }
         await new Promise<void>((done) => native!.once("exit", () => done()));
       }
+      // Collection may finish long before the user closes the native window.
+      // Its service must remain live until we request intentional shutdown.
+      // A native PID excludes service cleanup after pre-launch cancellation.
+      if (
+        status !== "failed" &&
+        native?.pid &&
+        owned &&
+        (owned.service.exitCode !== null || owned.service.signalCode !== null)
+      )
+        rememberFailure(
+          new Error(
+            "Owned local service exited before native shutdown cleanup",
+          ),
+        );
     } catch (error) {
       rememberFailure(error);
     } finally {

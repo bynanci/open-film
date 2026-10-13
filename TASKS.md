@@ -88,6 +88,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Prevent completion after an owned child exits during sampling, and preserve supervision/cleanup when evidence persistence fails.
 - [x] Include Edit checkpoints delivered during the final sample in the terminal scenario report.
 - [x] Fail finalization when an owned service survives its shutdown grace period, preserving active work and explicit remaining-process evidence.
+- [x] Reject a successful benchmark when its service exits unexpectedly while waiting for normal native-window shutdown.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.

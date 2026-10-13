@@ -603,6 +603,105 @@ describe("native benchmark asynchronous failure paths", () => {
     }
   }
 
+  it("fails when the owned service exits while supervising a completed native collection", async () => {
+    await scenario(
+      async ({ config, signal, owners, closeNormally, listenersRestored }) => {
+        const crashSignal = join(config.outputDirectory, "..", "crash-service");
+        await writeFile(
+          config.serverScript,
+          `import{createServer}from'node:http';import{existsSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));const poll=setInterval(()=>{if(existsSync(${JSON.stringify(crashSignal)}))process.exit(7);},10);process.once('SIGTERM',()=>{clearInterval(poll);s.close();});`,
+        );
+        // Keep native open after collection until the test explicitly requests
+        // normal shutdown, matching the workstation runner's supervision phase.
+        faults.afterSample = undefined;
+        let settled = false;
+        const pending = runNativeBenchmark(config, { signal }).then(
+          (result) => {
+            settled = true;
+            return { result, error: undefined };
+          },
+          (error: unknown) => {
+            settled = true;
+            return { result: undefined, error };
+          },
+        );
+        try {
+          const deadline = Date.now() + 10000;
+          let terminal: { status: string } | undefined;
+          while (Date.now() < deadline) {
+            try {
+              const observed = JSON.parse(
+                await readFile(
+                  join(config.outputDirectory, "report.json"),
+                  "utf8",
+                ),
+              ) as { status: string };
+              if (observed.status !== "collecting") {
+                terminal = observed;
+                break;
+              }
+            } catch {
+              // Wait for a complete report publication by the actual runner.
+            }
+            await delay(10);
+          }
+          expect(terminal?.status).toBe("completed");
+          const owned = await owners();
+          expect(alive(owned.nativePid)).toBe(true);
+          expect(alive(owned.serverPid)).toBe(true);
+          // The real service exits with a nonzero code after the successful
+          // collection, while native remains open. No native signal is sent.
+          await writeFile(
+            crashSignal,
+            "actual owned service exit after collection",
+          );
+          expect(owned.serverPid).toBeGreaterThan(0);
+          await awaitExit(owned.serverPid!);
+          await delay(100);
+          expect.soft(alive(owned.nativePid)).toBe(true);
+          expect.soft(settled).toBe(false);
+        } finally {
+          await closeNormally();
+          // Always wait for supervised normal shutdown, even if a phase assertion
+          // fails, so this regression does not need to force-close the native app.
+          await pending;
+        }
+        const outcome = await pending;
+        const visibleFailure =
+          outcome.error instanceof Error
+            ? outcome.error.message
+            : outcome.result?.failure;
+        expect
+          .soft(visibleFailure ?? "")
+          .toMatch(/service.*(exit|fail|stop|crash)/iu);
+        if (outcome.result) expect.soft(outcome.result.status).toBe("failed");
+        const report = JSON.parse(
+          await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+        ) as { status: string; failure?: string };
+        expect.soft(report.status).toBe("failed");
+        expect
+          .soft(report.failure ?? "")
+          .toMatch(/service.*(exit|fail|stop|crash)/iu);
+        const lifecycle = JSON.parse(
+          await readFile(
+            join(config.outputDirectory, "lifecycle.json"),
+            "utf8",
+          ),
+        ) as {
+          nativeExit: { code: number; signal: string | null };
+          ownedServiceRemaining: boolean;
+        };
+        expect.soft(lifecycle.nativeExit.code).toBe(0);
+        expect.soft(lifecycle.nativeExit.signal).toBeNull();
+        expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
+        const owned = await owners();
+        expect.soft(alive(owned.nativePid)).toBe(false);
+        expect.soft(alive(owned.serverPid)).toBe(false);
+        listenersRestored();
+      },
+    );
+  });
+
   it("includes Edit readiness published by the actual child during the final awaited sample", async () => {
     await scenario(
       async ({
