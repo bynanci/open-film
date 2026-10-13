@@ -36,9 +36,10 @@ disabled; this test does not certify a Windows installer.
 The fixture has 2,000 generated 320×180, three-second H.264/AAC assets, 500 clips,
 10 beats and cached thumbnails. It uses hard links where supported, with a copy
 fallback, and records initial project/database/source hashes. It is synthetic;
-it does not exercise real 4K, transcription, GPU or camera quality. Move the
-entire root only with the existing folder relink workflow. The generator refuses
-an existing destination. Keep the fixture in place for comparable runs.
+it does not exercise real 4K, transcription, GPU or camera quality. The generator
+refuses an existing destination. Keep the fixture root in place for comparable
+runs: its saved source URIs are absolute, and relocation/relinking changes the
+declared project/database identities.
 
 ## Configure a run
 
@@ -78,6 +79,23 @@ Remove `project` for a Welcome launch. Keep it for a loaded Library/500-clip Edi
 run. Each output directory must be new. Binary/server/fixture hashes and actual
 process IDs and actual project/SQLite/WAL hashes before startup are captured.
 Final project hashes are recorded after shutdown; expected edits may change them.
+A project configuration names the **immutable generated template**. Before any
+owned process starts, the runner validates the complete versioned manifest,
+canonical project path, every declared file/media size and SHA256, and any SQLite
+WAL payload. A matching clip count alone is insufficient. Missing/modified inputs,
+ambiguous paths and an undeclared nonempty WAL reject the run before service launch.
+
+Each project run copies the declared project files into
+`<outputDirectory>/benchmark.openfilm`, verifies their original identities, and
+opens that isolated copy. Media references continue to use the validated original
+fixture. `manifest.json` records both template and runtime paths; its initial
+project hashes and `lifecycle.json` final hashes describe the runtime copy.
+Normal server shutdown updates `project.updatedAt`, and manual edits remain in
+the run copy. Neither operation alters the template or silently refreshes its
+manifest. This permits warm-up and retained runs to share the same initial film.
+Keep the copy with the raw evidence; it is not a portable project without the
+original media root. Prepare a new fixture if the template itself changes.
+
 A project run without a matching fixture-sized Edit visit is `scenario-incomplete`,
 not a completed Edit experiment. The supplied Git SHA and display/runtime/cache metadata
 are declarations: review the actual build/checkout provenance before comparison.
@@ -100,6 +118,8 @@ stale or unmounted views are not credited. These checkpoints do **not** establis
 that video or all lazy thumbnails decoded, or that a compositor presented a frame.
 The local service is prestarted: neither UI timing represents single-click
 packaged startup including service creation.
+Fixture preflight/copying precedes the runner clock and warms source caches;
+it is not included in UI readiness or first-Edit duration.
 
 No diagnostics run in browsers. Native diagnostics default to disabled; the
 runner enables a local fixed-field checkpoint file for its unique run only. No
@@ -145,6 +165,15 @@ the service available, then stops its own service when the native process exits.
 Repeated Ctrl+C during that wait still protects the app; do not kill the runner
 or run a second collection until both native/service processes have closed.
 `lifecycle.json` records actual exit and whether a service remained.
+Child liveness is checked again after asynchronous sampling and evidence writes.
+A native exit during that work is `app-exited`; an owned service exit is `failed`.
+Neither can become a completed collection merely because the time limit elapsed.
+
+An unwritable report does not bypass native-exit supervision or owned-service and
+listener cleanup. Finalization errors remain visible and fail the CLI; if storage
+permits, lifecycle evidence is still saved and the report records failure. A full
+volume can prevent all evidence writes, so preserve the terminal error and partial
+directory rather than treating missing files as a successful run.
 
 ## Memory interpretation and evidence
 

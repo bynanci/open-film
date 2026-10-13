@@ -13,6 +13,10 @@ import {
   type ProcessMemorySnapshot,
 } from "./process-memory";
 import {
+  copyNativeBenchmarkProject,
+  validateNativeBenchmarkFixture,
+} from "./validate-fixture";
+import {
   mergeMemorySnapshots,
   parseNativeEvents,
   summarizeNativeEvents,
@@ -279,24 +283,10 @@ export async function runNativeBenchmark(
   await regularFile(config.executable);
   await regularFile(config.serverScript);
   await regularFile(config.fixtureManifest);
-  const fixture = JSON.parse(
-    await readFile(config.fixtureManifest, "utf8"),
-  ) as {
-    fixtureVersion?: string;
-    counts?: { assets: number; clips: number; beats: number };
-  };
-  if (
-    fixture.fixtureVersion !== "1.0.0" ||
-    !fixture.counts ||
-    [fixture.counts.assets, fixture.counts.clips, fixture.counts.beats].some(
-      (value) => !Number.isSafeInteger(value) || value <= 0,
-    ) ||
-    fixture.counts.clips > fixture.counts.assets ||
-    fixture.counts.beats > fixture.counts.clips
-  )
-    throw new Error(
-      "Expected a versioned native fixture manifest with valid asset/clip/beat counts",
-    );
+  const fixture = await validateNativeBenchmarkFixture(
+    config.fixtureManifest,
+    config.project,
+  );
   if (config.nodeExecutable) await regularFile(config.nodeExecutable);
   if (
     config.project &&
@@ -307,6 +297,13 @@ export async function runNativeBenchmark(
   const directory = resolve(config.outputDirectory);
   // Exclusive creation protects previous raw evidence; never overwrite a run.
   await mkdir(directory);
+  const runtimeProject = config.project
+    ? await copyNativeBenchmarkProject(
+        config.fixtureManifest,
+        fixture,
+        join(directory, fixture.projectRelativePath),
+      )
+    : undefined;
   const runId = randomUUID();
   const eventPath = join(directory, "native-events.jsonl");
   await writeFile(eventPath, "", { flag: "wx" });
@@ -320,6 +317,13 @@ export async function runNativeBenchmark(
     runId,
     config,
     fixtureCounts: fixture.counts,
+    project: runtimeProject
+      ? {
+          template: config.project,
+          runtime: runtimeProject,
+          strategy: "verified-isolated-copy",
+        }
+      : undefined,
     createdAt: new Date().toISOString(),
     environment: {
       platform: platform(),
@@ -333,7 +337,7 @@ export async function runNativeBenchmark(
       executableSha256: await hashFile(config.executable),
       serverSha256: await hashFile(config.serverScript),
       fixtureManifestSha256: await hashFile(config.fixtureManifest),
-      projectInitialFiles: await projectFileHashes(config.project),
+      projectInitialFiles: await projectFileHashes(runtimeProject),
     },
     ownership: {} as { serverPid?: number; nativePid?: number },
   };
@@ -379,9 +383,9 @@ export async function runNativeBenchmark(
         : undefined,
     checkpoints: summarizeNativeEvents(events),
     scenario: {
-      expectedClipCount: fixture.counts!.clips,
+      expectedClipCount: fixture.counts.clips,
       matchingEditVisits: summarizeNativeEvents(events).editVisits.filter(
-        (visit) => visit.clipCount === fixture.counts!.clips,
+        (visit) => visit.clipCount === fixture.counts.clips,
       ).length,
       projectEditRequired: !!config.project,
     },
@@ -402,11 +406,25 @@ export async function runNativeBenchmark(
     ],
   });
   let finalReport: ReturnType<typeof report> | undefined;
+  let finalizationFailure: AggregateError | undefined;
+  const childrenLive = () => {
+    if (nativeFailure) throw nativeFailure;
+    if (
+      owned &&
+      (owned.service.exitCode !== null || owned.service.signalCode !== null)
+    )
+      throw new Error("Owned local service exited during measurement");
+    if (native && (native.exitCode !== null || native.signalCode !== null)) {
+      status = "app-exited";
+      return false;
+    }
+    return true;
+  };
   try {
     if (stopped)
       throw new Error("Measurement interrupted before service launch");
     owned = await startOwnedService(
-      config,
+      { ...config, project: runtimeProject },
       directory,
       () => stopped,
       async (service) => {
@@ -466,9 +484,7 @@ export async function runNativeBenchmark(
     );
     let nextSampleMs = 0;
     while (!stopped) {
-      if (nativeFailure) throw nativeFailure;
-      if (owned.service.exitCode !== null || owned.service.signalCode !== null)
-        throw new Error("Owned local service exited during measurement");
+      if (!childrenLive()) break;
       events = parseNativeEvents(
         await readFile(eventPath, "utf8"),
         runId,
@@ -499,7 +515,14 @@ export async function runNativeBenchmark(
             }),
           ),
         );
+        // A sampler can outlive either owned child and the duration deadline.
+        // Do not credit a stale snapshot or completion after that await.
+        if (!childrenLive() || stopped) break;
         for (const root of roots) {
+          if (root.rootState === "missing")
+            throw new Error(
+              "An owned process was missing during memory sampling",
+            );
           if (root.rootState === "identity-mismatch")
             throw new Error(
               "An owned root PID changed identity; measurement stopped to avoid attributing unrelated memory",
@@ -525,6 +548,8 @@ export async function runNativeBenchmark(
         nextSampleMs =
           performance.now() - start + config.intervalSeconds * 1000;
       }
+      // Evidence writes also yield to child exit/cancellation events.
+      if (!childrenLive() || stopped) break;
       if (
         firstCheckpointObservedMs !== undefined &&
         performance.now() - start - firstCheckpointObservedMs >=
@@ -533,7 +558,7 @@ export async function runNativeBenchmark(
         status =
           config.project &&
           !summarizeNativeEvents(events).editVisits.some(
-            (visit) => visit.clipCount === fixture.counts!.clips,
+            (visit) => visit.clipCount === fixture.counts.clips,
           )
             ? "scenario-incomplete"
             : "completed";
@@ -552,68 +577,121 @@ export async function runNativeBenchmark(
   } finally {
     // Freeze collection duration before waiting for the user to close the app.
     finalReport = report();
-    await writeFile(
-      join(directory, "report.json"),
-      JSON.stringify(finalReport, null, 2) + "\n",
-    );
+    const finalizationErrors: Error[] = [];
+    const rememberFailure = (error: unknown) => {
+      const problem = error instanceof Error ? error : new Error(String(error));
+      finalizationErrors.push(problem);
+      status = "failed";
+      failure = [failure, `Finalization failed: ${problem.message}`]
+        .filter(Boolean)
+        .join("; ");
+      finalReport = { ...finalReport!, status, failure };
+    };
+    try {
+      await writeFile(
+        join(directory, "report.json"),
+        JSON.stringify(finalReport, null, 2) + "\n",
+      );
+    } catch (error) {
+      rememberFailure(error);
+    }
     const appLive =
       !!native?.pid &&
       !nativeFailure &&
       native.exitCode === null &&
       native.signalCode === null;
-    process.stdout.write(
-      JSON.stringify({
-        event: "native-benchmark.finished",
-        directory,
-        status,
-        failure,
-        appLeftRunning: appLive,
-      }) + "\n",
-    );
-    // Detached children never receive the terminal's Ctrl+C. Keep the service
-    // owner alive until normal app exit; never discard user edits on timeout.
-    if (appLive) {
+    try {
       process.stdout.write(
-        "Collection stopped. Close the OpenFilm window normally to release its owned service.\n",
+        JSON.stringify({
+          event: "native-benchmark.finished",
+          directory,
+          status,
+          failure,
+          appLeftRunning: appLive,
+        }) + "\n",
       );
-      await new Promise<void>((done) => native!.once("exit", () => done()));
+    } catch (error) {
+      rememberFailure(error);
     }
-    if (
-      owned &&
-      owned.service.exitCode === null &&
-      owned.service.signalCode === null
-    ) {
-      const exited = new Promise<void>((done) =>
-        owned!.service.once("exit", () => done()),
+    try {
+      // Even an unwritable evidence volume must not abandon a live app or
+      // its owned service. Detached children do not receive terminal Ctrl+C.
+      if (appLive) {
+        try {
+          process.stdout.write(
+            "Collection stopped. Close the OpenFilm window normally to release its owned service.\n",
+          );
+        } catch (error) {
+          rememberFailure(error);
+        }
+        await new Promise<void>((done) => native!.once("exit", () => done()));
+      }
+    } catch (error) {
+      rememberFailure(error);
+    } finally {
+      try {
+        if (
+          owned &&
+          owned.service.exitCode === null &&
+          owned.service.signalCode === null
+        ) {
+          const exited = new Promise<void>((done) =>
+            owned!.service.once("exit", () => done()),
+          );
+          owned.service.kill("SIGTERM");
+          await Promise.race([exited, delay(2000, undefined, { ref: false })]);
+        }
+      } catch (error) {
+        rememberFailure(error);
+      } finally {
+        process.removeListener("SIGINT", interrupt);
+        process.removeListener("SIGTERM", interrupt);
+        options.signal?.removeEventListener("abort", interrupt);
+        owned?.service.unref();
+        native?.unref();
+      }
+    }
+    try {
+      await writeFile(
+        join(directory, "lifecycle.json"),
+        JSON.stringify(
+          {
+            runId,
+            closedAt: new Date().toISOString(),
+            nativeExit: native
+              ? { code: native.exitCode, signal: native.signalCode }
+              : undefined,
+            ownedServiceRemaining:
+              !!owned &&
+              owned.service.exitCode === null &&
+              owned.service.signalCode === null,
+            projectFinalFiles: await projectFileHashes(runtimeProject),
+          },
+          null,
+          2,
+        ) + "\n",
       );
-      owned.service.kill("SIGTERM");
-      await Promise.race([exited, delay(2000, undefined, { ref: false })]);
+    } catch (error) {
+      rememberFailure(error);
     }
-    process.removeListener("SIGINT", interrupt);
-    process.removeListener("SIGTERM", interrupt);
-    options.signal?.removeEventListener("abort", interrupt);
-    owned?.service.unref();
-    native?.unref();
-    await writeFile(
-      join(directory, "lifecycle.json"),
-      JSON.stringify(
-        {
-          runId,
-          closedAt: new Date().toISOString(),
-          nativeExit: native
-            ? { code: native.exitCode, signal: native.signalCode }
-            : undefined,
-          ownedServiceRemaining:
-            !!owned &&
-            owned.service.exitCode === null &&
-            owned.service.signalCode === null,
-          projectFinalFiles: await projectFileHashes(config.project),
-        },
-        null,
-        2,
-      ) + "\n",
-    );
+    if (finalizationErrors.length) {
+      // If only lifecycle persistence failed, make that failure visible in the
+      // report too. A full volume may prevent both; cleanup already ran.
+      try {
+        await writeFile(
+          join(directory, "report.json"),
+          JSON.stringify(finalReport, null, 2) + "\n",
+        );
+      } catch (error) {
+        rememberFailure(error);
+      }
+      finalizationFailure = new AggregateError(
+        finalizationErrors,
+        `Native benchmark finalization failed: ${finalizationErrors.map((error) => error.message).join("; ")}`,
+      );
+    }
   }
+  if (finalizationFailure) throw finalizationFailure;
   if (!finalReport)
     throw new Error("Native measurement report was not finalized");
   return finalReport;

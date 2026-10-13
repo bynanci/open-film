@@ -83,6 +83,9 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Native measurement tooling: opt-in UI/Edit clocks, generated 500-clip
       fixture, rooted process-memory series, preserved partial evidence and
       failure/cancellation/identity regressions; see [the procedure](docs/native-performance.md).
+- [x] Reject unrelated/changed benchmark projects, media and undeclared SQLite WAL before starting measurement processes.
+- [x] Keep repeated runs bound to the same immutable fixture using verified per-run project copies; preserve each run's edits and final hashes.
+- [x] Prevent completion after an owned child exits during sampling, and preserve supervision/cleanup when evidence persistence fails.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.
