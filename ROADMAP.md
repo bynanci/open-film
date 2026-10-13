@@ -188,6 +188,10 @@ ceiling (`EMLINK`). Linux fault injection verifies the complete 2,000-asset fixt
 with 1,023 real links and 977 independent copies; actual NTFS behavior remains
 unverified. Scoped terminal-output failures preserve failed report/lifecycle
 evidence and graceful cleanup, including a native exit while a write is pending.
+Automated visibility regressions preserve pending UI/Edit readiness through a
+hidden interval, resume with two fresh visible frame opportunities and the original
+clock origins, and cancel obsolete or unmounted views. Actual native presentation
+and workstation timings still require manual evidence.
 
 ## Composition-aware subtitle handoff
 

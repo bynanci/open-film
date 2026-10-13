@@ -424,6 +424,16 @@ function clearExport() {
 const native = !!window.__TAURI_INTERNALS__;
 let nativeBootGeneration = 0;
 let nativeDisposed = false;
+let cancelNativeBootReady: (() => void) | undefined;
+if (native)
+  watch(
+    [tab, () => project.value?.id, loading, busy, error, mediaStatusError],
+    () => {
+      cancelNativeBootReady?.();
+      cancelNativeBootReady = undefined;
+    },
+    { flush: "sync" },
+  );
 let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
@@ -579,6 +589,8 @@ async function run(label: string, action: () => Promise<void>) {
   }
 }
 async function boot() {
+  cancelNativeBootReady?.();
+  cancelNativeBootReady = undefined;
   const generation = ++nativeBootGeneration;
   loading.value = true;
   const opened = await run("openingWorkspace", async () => {
@@ -602,11 +614,18 @@ async function boot() {
     }
   });
   loading.value = false;
-  if (!native || !opened) return;
+  if (
+    !native ||
+    !opened ||
+    nativeDisposed ||
+    generation !== nativeBootGeneration
+  )
+    return;
   await nextTick();
+  if (nativeDisposed || generation !== nativeBootGeneration) return;
   const startupProjectId = project.value?.id;
   const kind = startupProjectId ? "library-ready" : "welcome-ready";
-  nativeBenchmark.afterFrames(kind, {}, () => {
+  cancelNativeBootReady = nativeBenchmark.afterFrames(kind, {}, () => {
     if (
       nativeDisposed ||
       generation !== nativeBootGeneration ||
@@ -1384,6 +1403,8 @@ onMounted(async () => {
 onUnmounted(() => {
   nativeDisposed = true;
   nativeBootGeneration++;
+  cancelNativeBootReady?.();
+  cancelNativeBootReady = undefined;
   if (poll) clearInterval(poll);
   window.removeEventListener("keydown", handleKeyboard);
 });

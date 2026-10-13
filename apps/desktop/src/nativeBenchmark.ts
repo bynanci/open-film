@@ -14,8 +14,10 @@ type Invoke = (
 export function createNativeBenchmark(dependencies: {
   isNative: () => boolean;
   invoke: Invoke;
-  requestFrame: (callback: FrameRequestCallback) => void;
+  requestFrame: (callback: FrameRequestCallback) => number;
+  cancelFrame: (handle: number) => void;
   isVisible: () => boolean;
+  onVisibilityChange: (callback: () => void) => () => void;
   now?: () => number;
   timeOrigin?: () => number;
 }) {
@@ -53,6 +55,7 @@ export function createNativeBenchmark(dependencies: {
         recorded?.();
       })
       .catch(() => {});
+    return writes;
   }
   function afterFrames(
     kind: NativeCheckpointKind,
@@ -60,24 +63,96 @@ export function createNativeBenchmark(dependencies: {
     current: () => boolean,
     recorded?: () => void,
   ) {
-    if (!dependencies.isNative()) return;
-    void enabled()
-      .then((active) => {
-        if (!active || !dependencies.isVisible() || !current()) return;
-        dependencies.requestFrame(() => {
-          if (!dependencies.isVisible() || !current()) return;
-          dependencies.requestFrame(() => {
-            if (!dependencies.isVisible() || !current()) return;
-            record(
-              kind,
-              data,
-              () => dependencies.isVisible() && current(),
-              recorded,
-            );
+    if (!dependencies.isNative()) return () => {};
+    let cancelled = false;
+    let sent = false;
+    let waitingForVisibility = false;
+    let attempt = 0;
+    let frame: number | undefined;
+    let unsubscribe: (() => void) | undefined;
+    function cancelFrame() {
+      if (frame !== undefined) dependencies.cancelFrame(frame);
+      frame = undefined;
+    }
+    function cancel() {
+      cancelled = true;
+      attempt++;
+      cancelFrame();
+      unsubscribe?.();
+      unsubscribe = undefined;
+    }
+    function waitForVisibility() {
+      waitingForVisibility = true;
+      attempt++;
+      cancelFrame();
+    }
+    function visibleAndCurrent(version: number) {
+      if (cancelled || sent || version !== attempt) return false;
+      if (!dependencies.isVisible()) {
+        // A minimized native window can suspend either frame and queued IPC.
+        // Wait without querying visibility-dependent DOM until it is restored.
+        waitForVisibility();
+        return false;
+      }
+      if (!current()) {
+        cancel();
+        return false;
+      }
+      return true;
+    }
+    function startFrames() {
+      if (cancelled || sent) return;
+      if (!dependencies.isVisible()) {
+        waitForVisibility();
+        return;
+      }
+      if (!current()) {
+        cancel();
+        return;
+      }
+      waitingForVisibility = false;
+      const version = ++attempt;
+      frame = dependencies.requestFrame(() => {
+        if (!visibleAndCurrent(version)) return;
+        frame = undefined;
+        frame = dependencies.requestFrame(() => {
+          if (!visibleAndCurrent(version)) return;
+          frame = undefined;
+          const write = record(
+            kind,
+            data,
+            () => {
+              if (!visibleAndCurrent(version)) return false;
+              // Once dispatched, this evidence cannot be unsent or replayed.
+              sent = true;
+              unsubscribe?.();
+              unsubscribe = undefined;
+              return true;
+            },
+            () => {
+              cancel();
+              recorded?.();
+            },
+          );
+          void write?.then(() => {
+            // Failed diagnostic IPC ends this attempt too; no automatic loop.
+            if (sent && version === attempt) cancel();
           });
         });
+      });
+    }
+    void enabled()
+      .then((active) => {
+        if (!active || cancelled) return;
+        unsubscribe = dependencies.onVisibilityChange(() => {
+          if (cancelled || sent) return;
+          if (!dependencies.isVisible()) waitForVisibility();
+          else if (waitingForVisibility) startFrames();
+        });
+        startFrames();
       })
       .catch(() => {});
+    return cancel;
   }
   return { record, afterFrames };
 }
@@ -90,7 +165,12 @@ export const nativeBenchmark = createNativeBenchmark({
     return invoke(command, args);
   },
   requestFrame: (callback) => {
-    requestAnimationFrame(callback);
+    return requestAnimationFrame(callback);
   },
+  cancelFrame: (handle) => cancelAnimationFrame(handle),
   isVisible: () => document.visibilityState === "visible",
+  onVisibilityChange: (callback) => {
+    document.addEventListener("visibilitychange", callback);
+    return () => document.removeEventListener("visibilitychange", callback);
+  },
 });

@@ -114,6 +114,7 @@ const editMode = ref<"story" | "precision" | "transcript">("story");
 let nativeEditGeneration = 0;
 let nativeEditDisposed = false;
 let nativeEditReadyForVisit = false;
+let cancelNativeEditReady: (() => void) | undefined;
 const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
@@ -827,9 +828,13 @@ function checkpointNativeEditReady(generation: number) {
   if (
     typeof window === "undefined" ||
     !window.__TAURI_INTERNALS__ ||
-    nativeEditReadyForVisit
+    nativeEditReadyForVisit ||
+    nativeEditDisposed ||
+    generation !== nativeEditGeneration
   )
     return;
+  cancelNativeEditReady?.();
+  cancelNativeEditReady = undefined;
   const snapshot = state.value;
   const root = editorElement.value;
   const count = allClips.value.length;
@@ -848,7 +853,7 @@ function checkpointNativeEditReady(generation: number) {
       (count ? 1 : 0);
   // This means usable Story Edit DOM, not decoded thumbnails/video or an
   // independently verified compositor presentation on the physical display.
-  nativeBenchmark.afterFrames(
+  cancelNativeEditReady = nativeBenchmark.afterFrames(
     "edit-ready",
     { clipCount: count },
     current,
@@ -858,9 +863,11 @@ function checkpointNativeEditReady(generation: number) {
   );
 }
 watch(
-  [() => props.active, () => state.value, status, editMode],
+  [() => props.active, () => state.value, status, editMode, hasPending],
   () => {
     if (typeof window === "undefined" || !window.__TAURI_INTERNALS__) return;
+    cancelNativeEditReady?.();
+    cancelNativeEditReady = undefined;
     const generation = ++nativeEditGeneration;
     if (!props.active) nativeEditReadyForVisit = false;
     if (!nativeEditReadyForVisit)
@@ -885,6 +892,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   nativeEditDisposed = true;
   nativeEditGeneration++;
+  cancelNativeEditReady?.();
+  cancelNativeEditReady = undefined;
   window.removeEventListener("keydown", keyboard);
   window.removeEventListener("resize", measureWorkspace);
   layoutObserver?.disconnect();

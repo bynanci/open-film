@@ -119,6 +119,10 @@ are declarations: review the actual build/checkout provenance before comparison.
 rendered clip count and one selected clip after two frame opportunities. Hidden,
 stale or unmounted views are not credited. These checkpoints do **not** establish
 that video or all lazy thumbnails decoded, or that a compositor presented a frame.
+Pending readiness resumes when a hidden document becomes visible, requiring two
+fresh visible frame opportunities while retaining the original boot/Edit clock
+origins. Obsolete snapshots, editor invalidation and unmount cancel the retry;
+an already-sent IPC checkpoint is not automatically replayed.
 The local service is prestarted: neither UI timing represents single-click
 packaged startup including service creation.
 Fixture preflight/copying precedes the runner clock and warms source caches;

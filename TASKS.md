@@ -94,6 +94,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Bind benchmark evidence to both the selected Node launcher and the actual service runtime version/executable hash.
 - [x] Finish the default fixture after a source reaches its hard-link limit, recording verified independent copies while preserving unexpected I/O failures.
 - [x] Preserve failed reports, lifecycle evidence and graceful cleanup after asynchronous stdout/stderr errors; retain native exits that occur while output is pending.
+- [x] Resume pending native UI/Edit readiness after restored visibility with two fresh frame opportunities, retaining original clocks and cancelling obsolete or unmounted views.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.

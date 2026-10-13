@@ -17,9 +17,12 @@ function deferred<T>() {
 async function turn() {
   for (let index = 0; index < 15; index++) await Promise.resolve();
 }
-function harness(native = true, enabled = true) {
+function harness(native = true, enabled = true, now?: () => number) {
   const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
   const frames: Array<(timestamp: number) => void> = [];
+  const handles = new Map<number, (timestamp: number) => void>();
+  let nextHandle = 0;
+  const visibilityListeners = new Set<() => void>();
   let visible = true;
   const invoke = vi.fn(
     async (
@@ -30,23 +33,53 @@ function harness(native = true, enabled = true) {
       return command === "native_benchmark_enabled" ? enabled : undefined;
     },
   );
+  const subscribe = vi.fn((callback: () => void) => {
+    visibilityListeners.add(callback);
+    return () => visibilityListeners.delete(callback);
+  });
   const benchmark = createNativeBenchmark({
     isNative: () => native,
     invoke,
     requestFrame: (callback) => {
+      const handle = ++nextHandle;
+      handles.set(handle, callback);
       frames.push(callback);
+      return handle;
+    },
+    cancelFrame: (handle) => {
+      const callback = handles.get(handle);
+      if (callback) {
+        const index = frames.indexOf(callback);
+        if (index >= 0) frames.splice(index, 1);
+      }
+      handles.delete(handle);
     },
     isVisible: () => visible,
+    now,
+    onVisibilityChange: subscribe,
   });
   return {
     benchmark,
     invoke,
     calls,
     frames,
+    visibilityListeners,
+    subscribe,
     hidden: () => {
       visible = false;
+      for (const listener of [...visibilityListeners]) listener();
     },
-    frame: () => frames.shift()?.(0),
+    visible: () => {
+      visible = true;
+      for (const listener of [...visibilityListeners]) listener();
+    },
+    frame: () => {
+      const callback = frames.shift();
+      for (const [handle, pending] of handles) {
+        if (pending === callback) handles.delete(handle);
+      }
+      callback?.(0);
+    },
   };
 }
 
@@ -58,6 +91,8 @@ describe("optional native readiness checkpoints", () => {
     await turn();
     expect(h.invoke).not.toHaveBeenCalled();
     expect(h.frames).toHaveLength(0);
+    expect(h.visibilityListeners.size).toBe(0);
+    expect(h.subscribe).not.toHaveBeenCalled();
   });
 
   it("memoizes disabled configuration and performs no checkpoint or frame work", async () => {
@@ -70,6 +105,278 @@ describe("optional native readiness checkpoints", () => {
       { command: "native_benchmark_enabled", args: undefined },
     ]);
     expect(h.frames).toHaveLength(0);
+    expect(h.visibilityListeners.size).toBe(0);
+    expect(h.subscribe).not.toHaveBeenCalled();
+  });
+
+  it.each(["configuration", "first-frame", "second-frame"])(
+    "resumes hidden %s readiness through two visible frames exactly once",
+    async (phase) => {
+      const h = harness();
+      const configuration = deferred<unknown>();
+      const recorded = vi.fn();
+      h.invoke.mockImplementation(async (command, args) => {
+        h.calls.push({ command, args });
+        if (command === "native_benchmark_enabled")
+          return configuration.promise;
+        return undefined;
+      });
+      const guard = vi.fn(() => true);
+      h.benchmark.afterFrames(
+        "edit-ready",
+        { clipCount: 500 },
+        guard,
+        recorded,
+      );
+      if (phase === "configuration") h.hidden();
+      configuration.resolve(true);
+      await turn();
+      if (phase === "first-frame") {
+        h.hidden();
+        h.frame();
+      } else if (phase === "second-frame") {
+        h.frame();
+        h.hidden();
+        h.frame();
+      }
+      await turn();
+      expect(
+        h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(0);
+      expect(h.visibilityListeners.size).toBe(1);
+      const checksWhileHidden = guard.mock.calls.length;
+      h.visible();
+      h.visible();
+      expect(h.frames).toHaveLength(1);
+      expect(guard.mock.calls.length).toBeGreaterThan(checksWhileHidden);
+      h.frame();
+      expect(h.frames).toHaveLength(1);
+      h.frame();
+      await turn();
+      expect(
+        h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(1);
+      expect(recorded).toHaveBeenCalledTimes(1);
+      expect(h.visibilityListeners.size).toBe(0);
+      h.visible();
+      expect(h.frames).toHaveLength(0);
+    },
+  );
+
+  it("restarts visibility frames when a ready write waits behind another receipt", async () => {
+    let clock = 10;
+    const h = harness(true, true, () => clock);
+    const enter = deferred<unknown>();
+    const recorded = vi.fn();
+    h.invoke.mockImplementation(async (command, args) => {
+      h.calls.push({ command, args });
+      if (command === "native_benchmark_enabled") return true;
+      if (args?.kind === "edit-enter") return enter.promise;
+      return undefined;
+    });
+    h.benchmark.record("edit-enter", { clipCount: 500 });
+    h.benchmark.afterFrames(
+      "edit-ready",
+      { clipCount: 500 },
+      () => true,
+      recorded,
+    );
+    await turn();
+    h.frame();
+    h.frame();
+    await turn();
+    h.hidden();
+    enter.resolve(undefined);
+    await turn();
+    expect(
+      h.calls.filter((call) => call.args?.kind === "edit-ready"),
+    ).toHaveLength(0);
+    expect(h.visibilityListeners.size).toBe(1);
+    clock = 200;
+    h.visible();
+    h.frame();
+    h.frame();
+    await turn();
+    expect(
+      h.calls.filter((call) => call.args?.kind === "edit-ready"),
+    ).toHaveLength(1);
+    expect(
+      h.calls.find((call) => call.args?.kind === "edit-ready")?.args,
+    ).toMatchObject({ clientElapsedMs: 200 });
+    expect(recorded).toHaveBeenCalledTimes(1);
+    expect(h.visibilityListeners.size).toBe(0);
+  });
+
+  it("restarts both visible frames when minimizing suspends an outstanding frame", async () => {
+    const h = harness();
+    h.benchmark.afterFrames("edit-ready", { clipCount: 500 }, () => true);
+    await turn();
+    h.frame();
+    expect(h.frames).toHaveLength(1);
+    // A real minimized WebView may never call this outstanding frame while
+    // hidden. Visibility must invalidate it without relying on that callback.
+    h.hidden();
+    expect(h.frames).toHaveLength(0);
+    h.visible();
+    expect(h.frames).toHaveLength(1);
+    h.frame();
+    await turn();
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(0);
+    h.frame();
+    await turn();
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(1);
+    expect(h.visibilityListeners.size).toBe(0);
+  });
+
+  it("keeps current frame ownership when an obsolete frame callback arrives", async () => {
+    const h = harness();
+    h.benchmark.afterFrames("edit-ready", {}, () => true);
+    await turn();
+    const obsolete = h.frames[0]!;
+    h.hidden();
+    h.visible();
+    expect(h.frames).toHaveLength(1);
+    obsolete(0);
+    expect(h.frames).toHaveLength(1);
+    h.hidden();
+    expect(h.frames).toHaveLength(0);
+    h.visible();
+    h.frame();
+    h.frame();
+    await turn();
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(1);
+  });
+
+  it("discards an obsolete queued write when restored frames finish before the earlier receipt", async () => {
+    const h = harness();
+    const enter = deferred<unknown>();
+    const recorded = vi.fn();
+    h.invoke.mockImplementation(async (command, args) => {
+      h.calls.push({ command, args });
+      if (command === "native_benchmark_enabled") return true;
+      if (args?.kind === "edit-enter") return enter.promise;
+      return undefined;
+    });
+    h.benchmark.record("edit-enter");
+    h.benchmark.afterFrames("edit-ready", {}, () => true, recorded);
+    await turn();
+    h.frame();
+    h.frame();
+    h.hidden();
+    h.visible();
+    h.frame();
+    h.frame();
+    await turn();
+    expect(
+      h.calls.filter((call) => call.args?.kind === "edit-ready"),
+    ).toHaveLength(0);
+    enter.resolve(undefined);
+    await turn();
+    expect(
+      h.calls.filter((call) => call.args?.kind === "edit-ready"),
+    ).toHaveLength(1);
+    expect(recorded).toHaveBeenCalledTimes(1);
+    expect(h.visibilityListeners.size).toBe(0);
+  });
+
+  it("cancels hidden subscriptions before unmount or superseding the visit", async () => {
+    const h = harness();
+    h.hidden();
+    const stop = h.benchmark.afterFrames(
+      "edit-ready",
+      { clipCount: 500 },
+      () => true,
+    );
+    await turn();
+    expect(h.visibilityListeners.size).toBe(1);
+    expect(stop).toBeTypeOf("function");
+    stop!();
+    expect(h.visibilityListeners.size).toBe(0);
+    h.visible();
+    expect(h.frames).toHaveLength(0);
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(0);
+  });
+
+  it("removes a hidden retry when its editor snapshot is stale on restore", async () => {
+    const h = harness();
+    let current = true;
+    h.hidden();
+    h.benchmark.afterFrames("edit-ready", { clipCount: 500 }, () => current);
+    await turn();
+    expect(h.visibilityListeners.size).toBe(1);
+    current = false;
+    h.visible();
+    expect(h.frames).toHaveLength(0);
+    expect(h.visibilityListeners.size).toBe(0);
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(0);
+  });
+
+  it("cancels readiness before its configuration promise or either frame resumes", async () => {
+    for (const phase of ["configuration", "first-frame", "second-frame"]) {
+      const h = harness();
+      const configuration = deferred<unknown>();
+      h.invoke.mockImplementation(async (command, args) => {
+        h.calls.push({ command, args });
+        return command === "native_benchmark_enabled"
+          ? configuration.promise
+          : undefined;
+      });
+      const stop = h.benchmark.afterFrames("edit-ready", {}, () => true);
+      if (phase !== "configuration") {
+        configuration.resolve(true);
+        await turn();
+        if (phase === "second-frame") h.frame();
+      }
+      stop();
+      configuration.resolve(true);
+      h.frame();
+      await turn();
+      expect(h.frames).toHaveLength(0);
+      expect(h.visibilityListeners.size).toBe(0);
+      expect(
+        h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(0);
+    }
+  });
+
+  it("does not retry a sent checkpoint when the window hides before its receipt", async () => {
+    const h = harness();
+    const receipt = deferred<unknown>();
+    const recorded = vi.fn();
+    h.invoke.mockImplementation(async (command, args) => {
+      h.calls.push({ command, args });
+      return command === "native_benchmark_enabled" ? true : receipt.promise;
+    });
+    h.benchmark.afterFrames(
+      "edit-ready",
+      { clipCount: 500 },
+      () => true,
+      recorded,
+    );
+    await turn();
+    h.frame();
+    h.frame();
+    await turn();
+    h.hidden();
+    h.visible();
+    receipt.resolve(undefined);
+    await turn();
+    expect(
+      h.calls.filter((call) => call.command === "native_checkpoint"),
+    ).toHaveLength(1);
+    expect(recorded).toHaveBeenCalledTimes(1);
+    expect(h.frames).toHaveLength(0);
+    expect(h.visibilityListeners.size).toBe(0);
   });
 
   it("serializes asynchronous enter, ready and leave receipts", async () => {
@@ -218,6 +525,19 @@ function actualFunction(
   dependencies: Record<string, unknown>,
 ) {
   const source = readFileSync(resolve(file), "utf8");
+  if (name === "onBeforeUnmount" || name === "onUnmounted") {
+    const start = source.indexOf(`${name}(() => {`);
+    const end = source.indexOf("\n});", start) + 4;
+    if (start < 0 || end < 4) throw new Error(`Missing actual ${name} hook`);
+    const code = transformSync(source.slice(start, end), {
+      loader: "ts",
+      format: "esm",
+    }).code;
+    return new Function(
+      "dependencies",
+      `let {${Object.keys(dependencies).join(",")}} = dependencies;\nlet cleanup; const ${name} = (callback) => cleanup = callback;\n${code}\nreturn cleanup;`,
+    )(dependencies) as () => void;
+  }
   let start = source.indexOf(`function ${name}(`);
   if (source.slice(start - 6, start) === "async ") start -= 6;
   const end = source.indexOf("\n}", start) + 2;
@@ -234,6 +554,49 @@ function actualFunction(
 }
 
 describe("actual workspace readiness guards", () => {
+  it.each(["boot", "editor"])(
+    "releases a hidden pending %s checkpoint in its actual unmount hook",
+    async (workspace) => {
+      const h = harness();
+      h.hidden();
+      const cancel = h.benchmark.afterFrames(
+        workspace === "boot" ? "welcome-ready" : "edit-ready",
+        {},
+        () => true,
+      );
+      await turn();
+      expect(h.visibilityListeners.size).toBe(1);
+      const cleanup = actualFunction(
+        workspace === "boot"
+          ? "apps/desktop/src/App.vue"
+          : "apps/desktop/src/components/TimelineEditor.vue",
+        workspace === "boot" ? "onUnmounted" : "onBeforeUnmount",
+        {
+          cancelNativeBootReady: cancel,
+          cancelNativeEditReady: cancel,
+          nativeDisposed: false,
+          nativeEditDisposed: false,
+          nativeBootGeneration: 1,
+          nativeEditGeneration: 1,
+          poll: undefined,
+          window: { removeEventListener: vi.fn() },
+          handleKeyboard: () => {},
+          keyboard: () => {},
+          measureWorkspace: () => {},
+          layoutObserver: undefined,
+          layoutFrame: 0,
+          cancelAnimationFrame: vi.fn(),
+        },
+      );
+      cleanup();
+      expect(h.visibilityListeners.size).toBe(0);
+      h.visible();
+      expect(h.frames).toHaveLength(0);
+      expect(
+        h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(0);
+    },
+  );
   it("performs no readiness DOM queries when native diagnostics are disabled", async () => {
     const h = harness(true, false);
     const getClientRects = vi.fn(() => [1]);
@@ -250,6 +613,7 @@ describe("actual workspace readiness guards", () => {
         editMode: ref("story"),
         editorElement: ref({ getClientRects, querySelectorAll }),
         allClips: ref([{ id: "clip" }]),
+        cancelNativeEditReady: undefined,
         nativeEditGeneration: 1,
         nativeEditReadyForVisit: false,
         nativeEditDisposed: false,
@@ -262,57 +626,77 @@ describe("actual workspace readiness guards", () => {
     expect(querySelectorAll).not.toHaveBeenCalled();
     expect(h.frames).toHaveLength(0);
   });
-  it.each(["success", "failed", "disconnected", "error", "unmounted"])(
-    "only reports a usable %s boot",
-    async (condition) => {
-      const queued: Array<{ kind: string; guard: () => boolean }> = [];
-      const disposed = condition === "unmounted";
-      const dependencies = {
-        native: true,
-        nativeBenchmark: {
-          afterFrames: (kind: string, _data: unknown, guard: () => boolean) =>
-            queued.push({ kind, guard }),
+  it.each([
+    "success",
+    "failed",
+    "disconnected",
+    "error",
+    "unmounted",
+    "unmounted-next-tick",
+    "superseded-next-tick",
+  ])("only reports a usable %s boot", async (condition) => {
+    const queued: Array<{ kind: string; guard: () => boolean }> = [];
+    const disposed = condition === "unmounted";
+    const dependencies = {
+      native: true,
+      nativeBenchmark: {
+        afterFrames: (kind: string, _data: unknown, guard: () => boolean) => {
+          queued.push({ kind, guard });
+          return stopReady;
         },
-        nativeBootGeneration: 0,
-        nativeDisposed: disposed,
-        connected: ref(condition !== "disconnected"),
-        error: ref(condition === "error" ? "Connection failed" : ""),
-        mediaStatusError: ref(""),
-        project: ref(null),
-        tab: ref("library"),
-        loading: ref(true),
-        busy: ref(""),
-        workspaceInfo: ref(null),
-        api: { workspace: async () => ({ systemLocale: "en-US" }) },
-        initializeLocale: async () => {},
-        nextTick: async () => {},
-        run: async (_label: string, action: () => Promise<void>) => {
-          if (condition === "failed") return false;
-          await action();
-          return true;
-        },
-        refreshProject: async () => {},
-        refreshRecents: async () => {},
-        document: { querySelector: () => ({ getClientRects: () => [1] }) },
-      };
-      const source = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
-      const start = source.indexOf("async function boot(");
-      const end = source.indexOf("\n}", start) + 2;
-      const code = transformSync(source.slice(start, end), {
-        loader: "ts",
-        format: "esm",
-      }).code;
-      const boot = new Function(
-        "dependencies",
-        `let {${Object.keys(dependencies).join(",")}} = dependencies;\n${code}\nreturn boot;`,
-      )(dependencies) as () => Promise<void>;
+      },
+      cancelNativeBootReady: undefined,
+      nativeBootGeneration: 0,
+      nativeDisposed: disposed,
+      connected: ref(condition !== "disconnected"),
+      error: ref(condition === "error" ? "Connection failed" : ""),
+      mediaStatusError: ref(""),
+      project: ref(null),
+      tab: ref("library"),
+      loading: ref(true),
+      busy: ref(""),
+      workspaceInfo: ref(null),
+      api: { workspace: async () => ({ systemLocale: "en-US" }) },
+      initializeLocale: async () => {},
+      nextTick: async () => {},
+      run: async (_label: string, action: () => Promise<void>) => {
+        if (condition === "failed") return false;
+        await action();
+        return true;
+      },
+      refreshProject: async () => {},
+      refreshRecents: async () => {},
+      document: { querySelector: () => ({ getClientRects: () => [1] }) },
+    };
+    const stopReady = vi.fn();
+    const source = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
+    const start = source.indexOf("async function boot(");
+    const end = source.indexOf("\n}", start) + 2;
+    const code = transformSync(source.slice(start, end), {
+      loader: "ts",
+      format: "esm",
+    }).code;
+    const boot = new Function(
+      "dependencies",
+      `let {${Object.keys(dependencies).join(",")}} = dependencies;\n${code}\n${
+        condition === "unmounted-next-tick"
+          ? "nextTick = async () => { nativeDisposed = true; };"
+          : condition === "superseded-next-tick"
+            ? "nextTick = async () => { nativeBootGeneration++; };"
+            : ""
+      }\nreturn boot;`,
+    )(dependencies) as () => Promise<void>;
+    await boot();
+    if (condition.endsWith("next-tick")) expect(queued).toHaveLength(0);
+    const accepted = queued.filter((entry) => entry.guard());
+    expect(accepted.map((entry) => entry.kind)).toEqual(
+      condition === "success" ? ["welcome-ready"] : [],
+    );
+    if (condition === "success") {
       await boot();
-      const accepted = queued.filter((entry) => entry.guard());
-      expect(accepted.map((entry) => entry.kind)).toEqual(
-        condition === "success" ? ["welcome-ready"] : [],
-      );
-    },
-  );
+      expect(stopReady).toHaveBeenCalledTimes(1);
+    }
+  });
 
   it.each([
     "ready",
@@ -348,9 +732,12 @@ describe("actual workspace readiness guards", () => {
       "checkpointNativeEditReady",
       {
         nativeBenchmark: {
-          afterFrames: (kind: string, _data: unknown, guard: () => boolean) =>
-            queued.push({ kind, guard }),
+          afterFrames: (kind: string, _data: unknown, guard: () => boolean) => {
+            queued.push({ kind, guard });
+            return stopReady;
+          },
         },
+        cancelNativeEditReady: undefined,
         props: { active: condition !== "inactive" },
         state,
         status: ref(
@@ -370,10 +757,15 @@ describe("actual workspace readiness guards", () => {
         window: { __TAURI_INTERNALS__: {} },
       },
     );
+    const stopReady = vi.fn();
     check(1);
     expect(
       queued.filter((entry) => entry.guard()).map((entry) => entry.kind),
     ).toEqual(condition === "ready" ? ["edit-ready"] : []);
+    if (condition === "ready") {
+      check(1);
+      expect(stopReady).toHaveBeenCalledTimes(1);
+    }
   });
 
   it.each(["new-snapshot", "reload", "left-edit", "hidden-dom"])(
@@ -407,6 +799,7 @@ describe("actual workspace readiness guards", () => {
           editMode: ref("story"),
           editorElement: ref(root),
           allClips: ref([{ id: "clip" }]),
+          cancelNativeEditReady: undefined,
           nativeEditGeneration: 1,
           nativeEditReadyForVisit: false,
           nativeEditDisposed: false,
