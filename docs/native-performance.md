@@ -165,6 +165,15 @@ the service available, then stops its own service when the native process exits.
 Repeated Ctrl+C during that wait still protects the app; do not kill the runner
 or run a second collection until both native/service processes have closed.
 `lifecycle.json` records actual exit and whether a service remained.
+The runner starts its service with a private Node IPC channel and an explicit
+benchmark-only control flag. Cleanup requests wait for the control handshake,
+then require a matching acknowledgement sent after project/database close and a
+normal service exit. This applies on Windows as well as POSIX; the runner never
+uses `ChildProcess.kill("SIGTERM")` for successful or startup-failure cleanup,
+because that forcibly terminates a Windows child. Ordinary services expose no
+HTTP shutdown endpoint. `serviceShutdown` and `serviceExit` preserve the actual
+acknowledgement and exit evidence. Missing acknowledgement or abnormal exit fails
+cleanup even if the process is no longer running.
 Child liveness is checked again after asynchronous sampling and evidence writes.
 A native exit during that work is `app-exited`; an owned service exit is `failed`.
 Neither can become a completed collection merely because the time limit elapsed.
@@ -187,6 +196,16 @@ still be finishing its graceful close; the runner does not force-kill an active
 mutation. Preserve the error and owned PID from `manifest.json`, and wait for that
 process to exit before another run. A surviving service is never credited as
 successful cleanup.
+An unsupported private-control handshake also fails cleanup. A remaining service
+is not force-killed or disconnected while it may still be closing the project.
+
+The manifest keeps the runner's version in `environment.node` and records the
+service's actual private-handshake runtime in `environment.serviceNode`.
+`identities.selectedNodeExecutable` / `selectedNodeSha256` identify the configured
+Node launcher (or default runner binary); `serviceNodeSha256` identifies the
+service-reported executable. Runtime binaries are hashed in bounded memory. These
+separate identities expose runtime changes between campaigns rather than
+attributing every service to the runner's Node version.
 
 ## Memory interpretation and evidence
 

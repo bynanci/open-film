@@ -1,7 +1,7 @@
 /** Local native runtime measurement. It never certifies workstation QA. */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, openSync } from "node:fs";
+import { closeSync, createReadStream, openSync } from "node:fs";
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { arch, cpus, platform, release, totalmem } from "node:os";
@@ -22,6 +22,7 @@ import {
   summarizeNativeEvents,
   type NativeEvent,
 } from "./record";
+import { observeOwnedServiceControl } from "./service-control";
 
 export interface BenchmarkConfig {
   candidateSha: string;
@@ -138,10 +139,11 @@ export function validateBenchmarkConfig(value: unknown): BenchmarkConfig {
     throw new Error("display must record positive width, height and scale");
   return data as unknown as BenchmarkConfig;
 }
-const hashFile = async (path: string) =>
-  createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex");
+const hashFile = async (path: string) => {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+};
 async function projectFileHashes(directory?: string) {
   if (!directory) return undefined;
   const files: Record<string, string> = {};
@@ -182,17 +184,30 @@ async function startOwnedService(
   config: BenchmarkConfig,
   directory: string,
   stopped: () => boolean,
-  publishOwner: (service: ChildProcess) => Promise<void>,
+  publishOwner: (
+    service: ChildProcess,
+    control: ReturnType<typeof observeOwnedServiceControl>,
+  ) => Promise<void>,
 ) {
   const log = openSync(join(directory, "service.log"), "wx");
-  const env: NodeJS.ProcessEnv = { ...process.env, OPENFILM_PORT: "4310" };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    OPENFILM_PORT: "4310",
+    OPENFILM_BENCHMARK_SERVICE_CONTROL: "1",
+  };
   if (config.project) env.OPENFILM_PROJECT = config.project;
   else delete env.OPENFILM_PROJECT;
   const service = spawn(
     config.nodeExecutable ?? process.execPath,
     [config.serverScript],
-    { env, stdio: ["ignore", log, log], windowsHide: true, detached: true },
+    {
+      env,
+      stdio: ["ignore", log, log, "ipc"],
+      windowsHide: true,
+      detached: true,
+    },
   );
+  const control = observeOwnedServiceControl(service);
   closeSync(log);
   let ready = false;
   let failure: Error | undefined;
@@ -203,49 +218,40 @@ async function startOwnedService(
     failure = new Error("Owned local service exited");
   });
   const start = performance.now();
-  try {
-    await publishOwner(service);
-    while (!ready) {
-      if (stopped())
-        throw new Error("Service startup interrupted before native launch");
-      if (failure) throw failure;
-      for (const line of (
-        await readFile(join(directory, "service.log"), "utf8")
-      )
-        .split("\n")
-        .slice(0, -1)) {
-        try {
-          const event = JSON.parse(line) as Record<string, unknown>;
-          if (
-            event.event === "server.ready" &&
-            event.host === "127.0.0.1" &&
-            event.port === 4310
-          )
-            ready = true;
-        } catch {
-          /* Other output is not service readiness evidence. */
-        }
-      }
-      if (performance.now() - start > config.startupTimeoutSeconds * 1000)
-        throw new Error(
-          "Owned local service did not publish server.ready before timeout",
-        );
-      await delay(50);
-    }
+  // The caller owns this child before any await and handles all cleanup via IPC.
+  await publishOwner(service, control);
+  while (!ready || !control.runtime) {
+    if (stopped())
+      throw new Error("Service startup interrupted before native launch");
     if (failure) throw failure;
-    const response = await fetch("http://127.0.0.1:4310/api/health", {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (
-      !response.ok ||
-      ((await response.json()) as { ok?: boolean }).ok !== true
-    )
-      throw new Error("Owned local service health check failed");
-    return { service };
-  } catch (error) {
-    service.kill();
-    throw error;
+    for (const line of (await readFile(join(directory, "service.log"), "utf8"))
+      .split("\n")
+      .slice(0, -1)) {
+      try {
+        const event = JSON.parse(line) as Record<string, unknown>;
+        if (
+          event.event === "server.ready" &&
+          event.host === "127.0.0.1" &&
+          event.port === 4310
+        )
+          ready = true;
+      } catch {
+        /* Other output is not service readiness evidence. */
+      }
+    }
+    if (performance.now() - start > config.startupTimeoutSeconds * 1000)
+      throw new Error(
+        "Owned local service readiness or private control handshake missing before timeout",
+      );
+    await delay(50);
   }
+  if (failure) throw failure;
+  const response = await fetch("http://127.0.0.1:4310/api/health", {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok || ((await response.json()) as { ok?: boolean }).ok !== true)
+    throw new Error("Owned local service health check failed");
+  return { service, control };
 }
 interface MemorySample {
   elapsedMs: number;
@@ -287,7 +293,9 @@ export async function runNativeBenchmark(
     config.fixtureManifest,
     config.project,
   );
-  if (config.nodeExecutable) await regularFile(config.nodeExecutable);
+  const selectedNodeExecutable = config.nodeExecutable ?? process.execPath;
+  await regularFile(selectedNodeExecutable);
+  const selectedNodeSha256 = await hashFile(selectedNodeExecutable);
   if (
     config.project &&
     (!isAbsolute(config.project) || !(await stat(config.project)).isDirectory())
@@ -332,11 +340,17 @@ export async function runNativeBenchmark(
       cpu: cpus()[0]?.model,
       memoryBytes: totalmem(),
       node: process.version,
+      serviceNode: undefined as ReturnType<
+        typeof observeOwnedServiceControl
+      >["runtime"],
     },
     identities: {
       executableSha256: await hashFile(config.executable),
       serverSha256: await hashFile(config.serverScript),
       fixtureManifestSha256: await hashFile(config.fixtureManifest),
+      selectedNodeExecutable,
+      selectedNodeSha256,
+      serviceNodeSha256: undefined as string | undefined,
       projectInitialFiles: await projectFileHashes(runtimeProject),
     },
     ownership: {} as { serverPid?: number; nativePid?: number },
@@ -427,8 +441,8 @@ export async function runNativeBenchmark(
       { ...config, project: runtimeProject },
       directory,
       () => stopped,
-      async (service) => {
-        owned = { service };
+      async (service, control) => {
+        owned = { service, control };
         manifest.ownership.serverPid = service.pid;
         await writeFile(
           join(directory, "manifest.json"),
@@ -437,6 +451,11 @@ export async function runNativeBenchmark(
       },
     );
     serviceReadyMs = performance.now() - start;
+    manifest.environment.serviceNode = owned.control.runtime;
+    await regularFile(owned.control.runtime!.executable);
+    manifest.identities.serviceNodeSha256 = await hashFile(
+      owned.control.runtime!.executable,
+    );
     manifest.ownership.serverPid = owned.service.pid;
     await writeFile(
       join(directory, "manifest.json"),
@@ -444,6 +463,7 @@ export async function runNativeBenchmark(
     );
     if (stopped)
       throw new Error("Measurement interrupted before native launch");
+    childrenLive();
     const output = openSync(join(directory, "native.log"), "wx");
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -656,20 +676,7 @@ export async function runNativeBenchmark(
           owned.service.exitCode === null &&
           owned.service.signalCode === null
         ) {
-          const exited = new Promise<void>((done) =>
-            owned!.service.once("exit", () => done()),
-          );
-          owned.service.kill("SIGTERM");
-          await Promise.race([exited, delay(2000, undefined, { ref: false })]);
-          if (
-            owned.service.exitCode === null &&
-            owned.service.signalCode === null
-          )
-            rememberFailure(
-              new Error(
-                `Owned local service did not exit within the shutdown grace period (PID ${owned.service.pid}); cleanup is incomplete`,
-              ),
-            );
+          await owned.control.close();
         }
       } catch (error) {
         rememberFailure(error);
@@ -677,6 +684,7 @@ export async function runNativeBenchmark(
         process.removeListener("SIGINT", interrupt);
         process.removeListener("SIGTERM", interrupt);
         options.signal?.removeEventListener("abort", interrupt);
+        owned?.control.dispose();
         owned?.service.unref();
         native?.unref();
       }
@@ -695,6 +703,13 @@ export async function runNativeBenchmark(
               !!owned &&
               owned.service.exitCode === null &&
               owned.service.signalCode === null,
+            serviceShutdown: owned?.control.shutdown,
+            serviceExit: owned
+              ? {
+                  code: owned.service.exitCode,
+                  signal: owned.service.signalCode,
+                }
+              : undefined,
             projectFinalFiles: await projectFileHashes(runtimeProject),
           },
           null,

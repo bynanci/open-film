@@ -14,7 +14,15 @@ import {
   type BenchmarkConfig,
 } from "../../scripts/native-benchmark/run";
 import { getEventListeners } from "node:events";
-import { mkdtemp, readFile, writeFile, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  copyFile,
+  mkdtemp,
+  readFile,
+  writeFile,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createNativeBenchmarkFixture } from "../../scripts/native-benchmark/create-fixture";
 import { basename, join, resolve } from "node:path";
@@ -91,6 +99,12 @@ async function awaitExit(pid: number) {
   if (alive(pid)) throw new Error(`Test-owned process ${pid} did not exit`);
 }
 
+function serviceShutdownProtocol(
+  options: { beforeClose?: string; delayMs?: number } = {},
+) {
+  return `let benchmarkShutdownRequested=false;process.on('message',async(message)=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL!=='1'||message?.type!=='openfilm.benchmark.shutdown'||typeof message.requestId!=='string'||benchmarkShutdownRequested)return;benchmarkShutdownRequested=true;${options.delayMs ? `await new Promise(resolve=>setTimeout(resolve,${options.delayMs}));` : ""}${options.beforeClose ?? ""}await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));process.send({type:'openfilm.benchmark.closed',requestId:message.requestId},error=>{if(error)process.exitCode=1;if(process.connected)process.disconnect();});});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});`;
+}
+
 const config = {
   candidateSha: "a".repeat(40),
   label: "candidate",
@@ -130,7 +144,7 @@ describe("native benchmark launch contract", () => {
       ).href;
       await writeFile(
         service,
-        `import{createServer}from'node:http';import{tsImport}from${JSON.stringify(tsxApi)};const{OpenFilmApplication}=await tsImport(${JSON.stringify(application)},import.meta.url);const app=await OpenFilmApplication.open(process.env.OPENFILM_PROJECT,{userDataDirectory:${JSON.stringify(join(root, "user-data"))}});const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>{app.close();s.close();});`,
+        `import{createServer}from'node:http';import{tsImport}from${JSON.stringify(tsxApi)};const{OpenFilmApplication}=await tsImport(${JSON.stringify(application)},import.meta.url);const app=await OpenFilmApplication.open(process.env.OPENFILM_PROJECT,{userDataDirectory:${JSON.stringify(join(root, "user-data"))}});const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>{app.close();s.close(()=>{if(process.connected)process.disconnect();});});${serviceShutdownProtocol({ beforeClose: "await app.close();" })}`,
       );
       await writeFile(
         emitter,
@@ -164,6 +178,8 @@ describe("native benchmark launch contract", () => {
           strategy: "verified-isolated-copy",
         });
         expect(lifecycle.ownedServiceRemaining).toBe(false);
+        expect(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
+        expect(lifecycle.serviceShutdown.acknowledged).toBe(true);
         expect(lifecycle.projectFinalFiles["project.json"]).not.toBe(
           manifest.identities.projectInitialFiles["project.json"],
         );
@@ -236,7 +252,7 @@ describe("native benchmark launch contract", () => {
       );
       await writeFile(
         service,
-        `import {createServer} from 'node:http'; const s=createServer((q,r)=>{r.setHeader('Content-Type','application/json');r.end('{"ok":true}');});s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close());`,
+        `import {createServer} from 'node:http'; const s=createServer((q,r)=>{r.setHeader('Content-Type','application/json');r.end('{"ok":true}');});s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close(()=>{if(process.connected)process.disconnect();}));${serviceShutdownProtocol()}`,
       );
       await writeFile(
         emitter,
@@ -290,7 +306,7 @@ describe("native benchmark launch contract", () => {
       );
       await writeFile(
         service,
-        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close());`,
+        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close(()=>{if(process.connected)process.disconnect();}));${serviceShutdownProtocol()}`,
       );
       await writeFile(binary, "this is not an executable", { mode: 0o600 });
       const outputDirectory = join(root, "evidence");
@@ -332,7 +348,7 @@ describe("native benchmark launch contract", () => {
         );
         await writeFile(
           service,
-          `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close());`,
+          `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close(()=>{if(process.connected)process.disconnect();}));${serviceShutdownProtocol()}`,
         );
         await writeFile(
           emitter,
@@ -391,7 +407,7 @@ describe("native benchmark launch contract", () => {
       const sentinel = join(root, "native-launched");
       await writeFile(
         service,
-        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>setTimeout(()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})),300));process.on('SIGTERM',()=>{s.close();process.exit(0)});`,
+        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>setTimeout(()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})),300));process.on('SIGTERM',()=>{s.close();process.exit(0)});${serviceShutdownProtocol()}`,
       );
       await writeFile(
         emitter,
@@ -492,7 +508,7 @@ describe("native benchmark asynchronous failure paths", () => {
       const emitter = join(root, "emitter.mjs");
       await writeFile(
         service,
-        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.once('SIGTERM',()=>setTimeout(()=>s.close(),${options.serviceCloseDelayMs ?? 0}));`,
+        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.once('SIGTERM',()=>setTimeout(()=>s.close(()=>{if(process.connected)process.disconnect();}),${options.serviceCloseDelayMs ?? 0}));${serviceShutdownProtocol({ delayMs: options.serviceCloseDelayMs ?? 0 })}`,
       );
       // A real child publishes the existing native event protocol and exits
       // normally. It is not a native GUI or workstation performance fixture.
@@ -603,13 +619,199 @@ describe("native benchmark asynchronous failure paths", () => {
     }
   }
 
+  it("records actual service runtime identity when a different Node executable path is selected", async () => {
+    await scenario(async ({ config, signal, owners, listenersRestored }) => {
+      // Use a real copied binary, not a fabricated --version response or a
+      // network-downloaded runtime. The version may equal the runner's; its
+      // independently observed executable path must identify the actual child.
+      const selectedNode = join(
+        config.outputDirectory,
+        "..",
+        process.platform === "win32" ? "selected-node.exe" : "selected-node",
+      );
+      await copyFile(process.execPath, selectedNode);
+      const expectedHash = createHash("sha256")
+        .update(await readFile(selectedNode))
+        .digest("hex");
+      const result = await runNativeBenchmark(
+        { ...config, nodeExecutable: selectedNode },
+        { signal },
+      );
+      expect(result.status).toBe("completed");
+      const manifest = JSON.parse(
+        await readFile(join(config.outputDirectory, "manifest.json"), "utf8"),
+      ) as {
+        config: { nodeExecutable: string };
+        environment: {
+          node: string;
+          serviceNode?: { version: string; executable: string };
+        };
+        identities: {
+          selectedNodeExecutable?: string;
+          selectedNodeSha256?: string;
+          serviceNodeSha256?: string;
+        };
+      };
+      expect(manifest.config.nodeExecutable).toBe(selectedNode);
+      expect(manifest.environment.node).toBe(process.version);
+      expect(manifest.environment.serviceNode).toEqual({
+        version: process.version,
+        executable: selectedNode,
+      });
+      expect(manifest.environment.serviceNode?.executable).not.toBe(
+        process.execPath,
+      );
+      expect(manifest.identities.selectedNodeSha256).toBe(expectedHash);
+      expect(manifest.identities.serviceNodeSha256).toBe(expectedHash);
+      expect(manifest.identities.selectedNodeExecutable).toBe(selectedNode);
+      expect(alive((await owners()).serverPid)).toBe(false);
+      listenersRestored();
+    });
+  });
+
+  it("requests graceful owned-service IPC shutdown after native closes", async () => {
+    await scenario(async ({ config, signal, owners, listenersRestored }) => {
+      const closedMarker = join(config.outputDirectory, "..", "service-closed");
+      const exitMarker = join(config.outputDirectory, "..", "service-exit");
+      await writeFile(
+        config.serverScript,
+        `import{createServer}from'node:http';import{writeFileSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));let ipcRequested=false,sigtermReceived=false,ackSent=false;s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('message',async(message)=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL!=='1'||message?.type!=='openfilm.benchmark.shutdown'||typeof message.requestId!=='string')return;ipcRequested=true;await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));writeFileSync(${JSON.stringify(closedMarker)},JSON.stringify({pid:process.pid,serverListening:s.listening}));process.send({type:'openfilm.benchmark.closed',requestId:message.requestId},error=>{if(error){process.exitCode=1;return;}ackSent=true;process.disconnect();});});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});process.once('SIGTERM',()=>{sigtermReceived=true;s.close();});process.on('exit',code=>writeFileSync(${JSON.stringify(exitMarker)},JSON.stringify({pid:process.pid,code,ipcRequested,sigtermReceived,ackSent})));`,
+      );
+      const result = await runNativeBenchmark(config, { signal });
+      expect(result.status).toBe("completed");
+      const owned = await owners();
+      let closed: { pid: number; serverListening: boolean } | undefined;
+      try {
+        closed = JSON.parse(await readFile(closedMarker, "utf8"));
+      } catch {
+        // Missing IPC marker is a regression, not a fixture setup error.
+      }
+      expect
+        .soft(closed)
+        .toEqual({ pid: owned.serverPid, serverListening: false });
+      const exit = JSON.parse(await readFile(exitMarker, "utf8")) as {
+        pid: number;
+        code: number;
+        ipcRequested: boolean;
+        sigtermReceived: boolean;
+        ackSent: boolean;
+      };
+      expect.soft(exit).toEqual({
+        pid: owned.serverPid,
+        code: 0,
+        ipcRequested: true,
+        sigtermReceived: false,
+        ackSent: true,
+      });
+      const lifecycle = JSON.parse(
+        await readFile(join(config.outputDirectory, "lifecycle.json"), "utf8"),
+      ) as {
+        nativeExit: { code: number; signal: string | null };
+        ownedServiceRemaining: boolean;
+        serviceExit: { code: number; signal: string | null };
+        serviceShutdown: {
+          method: string;
+          requestId: string;
+          acknowledged: boolean;
+        };
+      };
+      expect.soft(lifecycle.nativeExit).toEqual({ code: 0, signal: null });
+      expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
+      expect.soft(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
+      expect.soft(lifecycle.serviceShutdown.method).toBe("private-ipc");
+      expect
+        .soft(lifecycle.serviceShutdown.requestId)
+        .toMatch(/^[0-9a-f-]{36}$/iu);
+      expect.soft(lifecycle.serviceShutdown.acknowledged).toBe(true);
+      expect.soft(alive(owned.nativePid)).toBe(false);
+      expect.soft(alive(owned.serverPid)).toBe(false);
+      listenersRestored();
+    });
+  });
+
+  it.each([
+    { label: "missing ACK", ack: "none", exitCode: 0, acknowledged: false },
+    {
+      label: "mismatched request ID",
+      ack: "mismatched",
+      exitCode: 0,
+      acknowledged: false,
+    },
+    {
+      label: "matching ACK followed by nonzero exit",
+      ack: "matching",
+      exitCode: 3,
+      acknowledged: true,
+    },
+  ])(
+    "rejects incomplete private IPC shutdown: $label",
+    async ({ ack, exitCode, acknowledged }) => {
+      await scenario(async ({ config, signal, owners, listenersRestored }) => {
+        await writeFile(
+          config.serverScript,
+          `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('message',async(message)=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL!=='1'||message?.type!=='openfilm.benchmark.shutdown')return;await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));const ack=${JSON.stringify(ack)};if(ack==='none'){process.disconnect();return;}process.send({type:'openfilm.benchmark.closed',requestId:ack==='matching'?message.requestId:message.requestId+'-wrong'},error=>{process.exitCode=error?2:${exitCode};process.disconnect();});});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});process.once('SIGTERM',()=>s.close(()=>{if(process.connected)process.disconnect();}));`,
+        );
+        let failure: unknown;
+        let returned:
+          Awaited<ReturnType<typeof runNativeBenchmark>> | undefined;
+        try {
+          returned = await runNativeBenchmark(config, { signal });
+        } catch (error) {
+          failure = error;
+        }
+        const visibleFailure =
+          failure instanceof Error ? failure.message : returned?.failure;
+        expect
+          .soft(visibleFailure ?? "")
+          .toMatch(/service.*(shutdown|exit|acknowledge|cleanup|close)/iu);
+        if (returned) expect.soft(returned.status).toBe("failed");
+        const report = JSON.parse(
+          await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+        ) as { status: string; failure?: string };
+        expect.soft(report.status).toBe("failed");
+        expect
+          .soft(report.failure ?? "")
+          .toMatch(/service.*(shutdown|exit|acknowledge|cleanup|close)/iu);
+        const lifecycle = JSON.parse(
+          await readFile(
+            join(config.outputDirectory, "lifecycle.json"),
+            "utf8",
+          ),
+        ) as {
+          nativeExit: { code: number; signal: string | null };
+          serviceExit: { code: number; signal: string | null };
+          serviceShutdown: {
+            method: string;
+            requestId: string;
+            acknowledged: boolean;
+          };
+          ownedServiceRemaining: boolean;
+        };
+        expect.soft(lifecycle.nativeExit).toEqual({ code: 0, signal: null });
+        expect
+          .soft(lifecycle.serviceExit)
+          .toEqual({ code: exitCode, signal: null });
+        expect.soft(lifecycle.serviceShutdown.method).toBe("private-ipc");
+        expect
+          .soft(lifecycle.serviceShutdown.requestId)
+          .toMatch(/^[0-9a-f-]{36}$/iu);
+        expect.soft(lifecycle.serviceShutdown.acknowledged).toBe(acknowledged);
+        expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
+        const owned = await owners();
+        expect.soft(alive(owned.nativePid)).toBe(false);
+        expect.soft(alive(owned.serverPid)).toBe(false);
+        listenersRestored();
+      });
+    },
+  );
+
   it("fails when the owned service exits while supervising a completed native collection", async () => {
     await scenario(
       async ({ config, signal, owners, closeNormally, listenersRestored }) => {
         const crashSignal = join(config.outputDirectory, "..", "crash-service");
         await writeFile(
           config.serverScript,
-          `import{createServer}from'node:http';import{existsSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));const poll=setInterval(()=>{if(existsSync(${JSON.stringify(crashSignal)}))process.exit(7);},10);process.once('SIGTERM',()=>{clearInterval(poll);s.close();});`,
+          `import{createServer}from'node:http';import{existsSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));const poll=setInterval(()=>{if(existsSync(${JSON.stringify(crashSignal)}))process.exit(7);},10);process.once('SIGTERM',()=>{clearInterval(poll);s.close(()=>{if(process.connected)process.disconnect();});});${serviceShutdownProtocol({ beforeClose: "clearInterval(poll);" })}`,
         );
         // Keep native open after collection until the test explicitly requests
         // normal shutdown, matching the workstation runner's supervision phase.
