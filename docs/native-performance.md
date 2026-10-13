@@ -112,6 +112,10 @@ Compose-to-Edit enters through the same guarded navigation path after the compos
 job finishes. Its entry intent captures the new composition size before initial
 Edit rendering. Replacing a composition while already in Edit remounts the editor
 without creating a duplicate navigation intent.
+Once the create API acknowledges the composition, its returned film is kept in
+the current project cache. Later project-refresh or asset-preload errors remain
+visible through existing localized feedback but do not turn that creation into
+a failed action or suppress guarded Edit entry. Other compositions are retained.
 
 ## What each clock means
 

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import { ApiError } from "../../apps/desktop/src/api";
 import {
   summarizeNativeEvents,
   type NativeEvent,
@@ -520,12 +521,13 @@ describe("optional native readiness checkpoints", () => {
   });
 });
 
-const { ref, watch, nextTick } = createRequire(
+const { ref, watch, nextTick, computed } = createRequire(
   resolve("apps/desktop/package.json"),
 )("vue") as {
   ref: <T>(value: T) => { value: T };
   watch: (value: { value: string }, callback: () => void) => () => void;
   nextTick: () => Promise<void>;
+  computed: <T>(get: () => T) => { readonly value: T };
 };
 function actualFunction(
   file: string,
@@ -571,6 +573,8 @@ describe("actual workspace readiness guards", () => {
       lateDirty?: boolean;
       relinking?: boolean;
       failed?: boolean;
+      preloadFails?: boolean;
+      refreshFails?: boolean;
     } = {},
   ) {
     const h = harness(true, true, options.now);
@@ -579,8 +583,48 @@ describe("actual workspace readiness guards", () => {
     const error = ref<unknown>("");
     const beatDirty = ref(!!options.dirty);
     const activeCompositionId = ref("old-film");
-    const activeComposition = ref({ id: "old-film" });
-    const clipCount = ref(42);
+    const project = ref({
+      id: "project",
+      title: "User film",
+      projectContentLocale: "zh-TW",
+      timelines: [
+        {
+          id: "unrelated-film",
+          tracks: [{ clips: [{ assetId: "locked-memory" }] }],
+        },
+        {
+          id: "old-film",
+          tracks: [
+            {
+              clips: Array.from({ length: 42 }, () => ({
+                assetId: "old-memory",
+              })),
+            },
+          ],
+        },
+      ],
+    });
+    const unrelated = JSON.stringify(project.value.timelines[0]);
+    const source = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
+    const selection = source.slice(
+      source.indexOf("const activeComposition = computed("),
+      source.indexOf("\nconst compositionTitle ="),
+    );
+    const count = source.slice(
+      source.indexOf("const clipCount = computed("),
+      source.indexOf("\nconst previewVersion ="),
+    );
+    const code = transformSync(`${selection}\n${count}`, {
+      loader: "ts",
+      format: "esm",
+    }).code;
+    const { activeComposition, clipCount } = new Function(
+      "dependencies",
+      `const {project,activeCompositionId,computed} = dependencies;\n${code}\nreturn {activeComposition,clipCount};`,
+    )({ project, activeCompositionId, computed }) as {
+      activeComposition: { readonly value: { id: string } };
+      clipCount: { readonly value: number };
+    };
     const editorMountRequested = ref(false);
     const composition = {
       id: "new-film",
@@ -619,9 +663,42 @@ describe("actual workspace readiness guards", () => {
       if (options.failed) throw new Error("Composition generation failed");
       return { composition };
     });
+    const preloadError = new ApiError("Cache hydration failed", 0, {
+      code: "workspace.unavailable",
+    });
+    const refreshError = new ApiError("Project refresh failed", 0, {
+      code: "workspace.unavailable",
+    });
     const loadAssetIds = vi.fn(async () => {
       if (options.lateDirty) beatDirty.value = true;
+      if (options.preloadFails) throw preloadError;
     });
+    const refreshProject = actualFunction(
+      "apps/desktop/src/App.vue",
+      "refreshProject",
+      {
+        api: {
+          project: async () => {
+            if (options.refreshFails) throw refreshError;
+            return {
+              project: {
+                ...project.value,
+                timelines: [
+                  ...project.value.timelines.filter(
+                    (film) => film.id !== composition.id,
+                  ),
+                  composition,
+                ],
+              },
+              path: "/qa/project.openfilm",
+            };
+          },
+        },
+        project,
+        projectPath: ref(null),
+        connected: ref(true),
+      },
+    );
     const compose = actualFunction("apps/desktop/src/App.vue", "compose", {
       flushEditor,
       activeStory: ref({ id: "story" }),
@@ -631,11 +708,9 @@ describe("actual workspace readiness guards", () => {
       run,
       api: { compose: apiCompose },
       activeCompositionId,
+      project,
       clearExport: () => {},
-      refreshProject: async () => {
-        activeComposition.value = { id: composition.id };
-        clipCount.value = composition.tracks[0]!.clips.length;
-      },
+      refreshProject,
       previewVersion: ref(1),
       editorMountRequested,
       tab,
@@ -650,8 +725,63 @@ describe("actual workspace readiness guards", () => {
       apiCompose,
       loadAssetIds,
       editorMountRequested,
+      project,
+      activeComposition,
+      activeCompositionId,
+      clipCount,
+      error,
+      preloadError,
+      refreshError,
+      unrelated,
     };
   }
+
+  it.each([
+    ["story", "preload"],
+    ["story", "refresh"],
+    ["story", "both"],
+    ["edit", "preload"],
+    ["edit", "refresh"],
+    ["edit", "both"],
+  ])(
+    "keeps the committed composition usable from %s after %s reads fail",
+    async (initialTab, failure) => {
+      const view = composeFixture({
+        initialTab,
+        preloadFails: failure !== "refresh",
+        refreshFails: failure !== "preload",
+      });
+      await view.compose();
+      await turn();
+      expect(view.apiCompose).toHaveBeenCalledTimes(1);
+      expect(view.loadAssetIds).toHaveBeenCalledTimes(1);
+      expect(view.tab.value).toBe("edit");
+      expect(view.busy.value).toBe("");
+      expect(view.editorMountRequested.value).toBe(true);
+      expect(view.activeCompositionId.value).toBe("new-film");
+      expect(view.activeComposition.value.id).toBe("new-film");
+      expect(view.clipCount.value).toBe(500);
+      expect(
+        view.project.value.timelines.filter((film) => film.id === "new-film"),
+      ).toHaveLength(1);
+      expect(JSON.stringify(view.project.value.timelines[0])).toBe(
+        view.unrelated,
+      );
+      expect(view.project.value).toMatchObject({
+        title: "User film",
+        projectContentLocale: "zh-TW",
+      });
+      expect(view.error.value).toBe(
+        failure === "refresh" ? view.refreshError : view.preloadError,
+      );
+      expect(view.error.value).toMatchObject({ code: "workspace.unavailable" });
+      if (initialTab === "story") {
+        expect(
+          view.h.calls.filter((call) => call.args?.kind === "edit-enter"),
+        ).toMatchObject([{ args: { kind: "edit-enter", clipCount: 500 } }]);
+      } else expect(view.h.invoke).not.toHaveBeenCalled();
+    },
+  );
 
   it("pairs Compose's actual first Edit readiness with entry before the initial render", async () => {
     let clock = 10;

@@ -96,6 +96,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Preserve failed reports, lifecycle evidence and graceful cleanup after asynchronous stdout/stderr errors; retain native exits that occur while output is pending.
 - [x] Resume pending native UI/Edit readiness after restored visibility with two fresh frame opportunities, retaining original clocks and cancelling obsolete or unmounted views.
 - [x] Record Compose-to-Edit entry through guarded navigation after the composition job finishes; preserve already-Edit remounts without duplicate entry intent.
+- [x] Preserve acknowledged composition creation through later project/cache read failures, retaining other films and localized errors instead of encouraging duplicate creation.
 - [x] Emit a provisional collection-stop event and publish terminal completion only after native exit, acknowledged service shutdown and final evidence persistence.
 - [x] Replace published benchmark manifests through complete exclusive sibling writes and rename; failed updates retain the previous valid evidence.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.

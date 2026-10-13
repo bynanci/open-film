@@ -1134,9 +1134,25 @@ async function compose() {
   }
   const composed = await run("composingFilm", async () => {
     const { composition } = await api.compose(story.id);
+    // Creation is committed. Keep its acknowledged film available even if
+    // subsequent project/cache reads fail; retrying those must not create it again.
+    if (project.value)
+      project.value = {
+        ...project.value,
+        timelines: [
+          ...project.value.timelines.filter(
+            (film) => film.id !== composition.id,
+          ),
+          composition,
+        ],
+      };
     activeCompositionId.value = composition.id;
     clearExport();
-    await refreshProject();
+    try {
+      await refreshProject();
+    } catch (cause) {
+      error.value = cause;
+    }
     previewVersion.value = 0;
     const ids = [
       ...new Set(
@@ -1145,7 +1161,11 @@ async function compose() {
         ),
       ),
     ];
-    await loadAssetIds(ids);
+    try {
+      await loadAssetIds(ids);
+    } catch (cause) {
+      error.value = cause;
+    }
   });
   if (composed) {
     if (tab.value === "edit") editorMountRequested.value = true;
