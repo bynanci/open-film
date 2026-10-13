@@ -619,115 +619,290 @@ describe("native benchmark asynchronous failure paths", () => {
     }
   }
 
+  async function runThenCloseNormally(
+    config: BenchmarkConfig,
+    signal: AbortSignal,
+    closeNormally: () => Promise<void>,
+    beforeNormalClose?: () => Promise<void>,
+  ) {
+    // Model an operator: keep the native window open until collection has
+    // actually ended. A sample or evidence write can outlast the native timer.
+    faults.afterSample = undefined;
+    const pending = runNativeBenchmark(config, { signal }).then(
+      (result) => ({ result, error: undefined }),
+      (error: unknown) => ({ result: undefined, error }),
+    );
+    try {
+      // Use the same report-publication budget as the existing supervision
+      // regression; native collection/readiness/close timings are unchanged.
+      const deadline = Date.now() + 10000;
+      let terminalObserved = false;
+      while (Date.now() < deadline) {
+        try {
+          const observed = JSON.parse(
+            await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+          ) as { status?: string };
+          if (observed.status && observed.status !== "collecting") {
+            terminalObserved = true;
+            break;
+          }
+        } catch {
+          // Wait for a complete publication by the actual runner.
+        }
+        await delay(10);
+      }
+      if (!terminalObserved)
+        throw new Error(
+          "Runner did not publish its terminal collection report",
+        );
+      await beforeNormalClose?.();
+    } finally {
+      await closeNormally();
+      await pending;
+    }
+    const outcome = await pending;
+    if (outcome.error !== undefined) throw outcome.error;
+    if (!outcome.result)
+      throw new Error("Runner did not return a final report");
+    return outcome.result;
+  }
+
   it("records actual service runtime identity when a different Node executable path is selected", async () => {
-    await scenario(async ({ config, signal, owners, listenersRestored }) => {
-      // Use a real copied binary, not a fabricated --version response or a
-      // network-downloaded runtime. The version may equal the runner's; its
-      // independently observed executable path must identify the actual child.
-      const selectedNode = join(
-        config.outputDirectory,
-        "..",
-        process.platform === "win32" ? "selected-node.exe" : "selected-node",
-      );
-      await copyFile(process.execPath, selectedNode);
-      const expectedHash = createHash("sha256")
-        .update(await readFile(selectedNode))
-        .digest("hex");
-      const result = await runNativeBenchmark(
-        { ...config, nodeExecutable: selectedNode },
-        { signal },
-      );
-      expect(result.status).toBe("completed");
-      const manifest = JSON.parse(
-        await readFile(join(config.outputDirectory, "manifest.json"), "utf8"),
-      ) as {
-        config: { nodeExecutable: string };
-        environment: {
-          node: string;
-          serviceNode?: { version: string; executable: string };
+    await scenario(
+      async ({ config, signal, owners, closeNormally, listenersRestored }) => {
+        // Use a real copied binary, not a fabricated --version response or a
+        // network-downloaded runtime. The version may equal the runner's; its
+        // independently observed executable path must identify the actual child.
+        const selectedNode = join(
+          config.outputDirectory,
+          "..",
+          process.platform === "win32" ? "selected-node.exe" : "selected-node",
+        );
+        await copyFile(process.execPath, selectedNode);
+        const expectedHash = createHash("sha256")
+          .update(await readFile(selectedNode))
+          .digest("hex");
+        const result = await runThenCloseNormally(
+          { ...config, nodeExecutable: selectedNode },
+          signal,
+          closeNormally,
+        );
+        expect(result.status).toBe("completed");
+        const manifest = JSON.parse(
+          await readFile(join(config.outputDirectory, "manifest.json"), "utf8"),
+        ) as {
+          config: { nodeExecutable: string };
+          environment: {
+            node: string;
+            serviceNode?: { version: string; executable: string };
+          };
+          identities: {
+            selectedNodeExecutable?: string;
+            selectedNodeSha256?: string;
+            serviceNodeSha256?: string;
+          };
         };
-        identities: {
-          selectedNodeExecutable?: string;
-          selectedNodeSha256?: string;
-          serviceNodeSha256?: string;
-        };
-      };
-      expect(manifest.config.nodeExecutable).toBe(selectedNode);
-      expect(manifest.environment.node).toBe(process.version);
-      expect(manifest.environment.serviceNode).toEqual({
-        version: process.version,
-        executable: selectedNode,
-      });
-      expect(manifest.environment.serviceNode?.executable).not.toBe(
-        process.execPath,
-      );
-      expect(manifest.identities.selectedNodeSha256).toBe(expectedHash);
-      expect(manifest.identities.serviceNodeSha256).toBe(expectedHash);
-      expect(manifest.identities.selectedNodeExecutable).toBe(selectedNode);
-      expect(alive((await owners()).serverPid)).toBe(false);
-      listenersRestored();
-    });
+        expect(manifest.config.nodeExecutable).toBe(selectedNode);
+        expect(manifest.environment.node).toBe(process.version);
+        expect(manifest.environment.serviceNode).toEqual({
+          version: process.version,
+          executable: selectedNode,
+        });
+        expect(manifest.environment.serviceNode?.executable).not.toBe(
+          process.execPath,
+        );
+        expect(manifest.identities.selectedNodeSha256).toBe(expectedHash);
+        expect(manifest.identities.serviceNodeSha256).toBe(expectedHash);
+        expect(manifest.identities.selectedNodeExecutable).toBe(selectedNode);
+        expect(alive((await owners()).serverPid)).toBe(false);
+        listenersRestored();
+      },
+    );
   });
 
   it("requests graceful owned-service IPC shutdown after native closes", async () => {
-    await scenario(async ({ config, signal, owners, listenersRestored }) => {
-      const closedMarker = join(config.outputDirectory, "..", "service-closed");
-      const exitMarker = join(config.outputDirectory, "..", "service-exit");
-      await writeFile(
-        config.serverScript,
-        `import{createServer}from'node:http';import{writeFileSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));let ipcRequested=false,sigtermReceived=false,ackSent=false;s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('message',async(message)=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL!=='1'||message?.type!=='openfilm.benchmark.shutdown'||typeof message.requestId!=='string')return;ipcRequested=true;await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));writeFileSync(${JSON.stringify(closedMarker)},JSON.stringify({pid:process.pid,serverListening:s.listening}));process.send({type:'openfilm.benchmark.closed',requestId:message.requestId},error=>{if(error){process.exitCode=1;return;}ackSent=true;process.disconnect();});});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});process.once('SIGTERM',()=>{sigtermReceived=true;s.close();});process.on('exit',code=>writeFileSync(${JSON.stringify(exitMarker)},JSON.stringify({pid:process.pid,code,ipcRequested,sigtermReceived,ackSent})));`,
-      );
-      const result = await runNativeBenchmark(config, { signal });
-      expect(result.status).toBe("completed");
-      const owned = await owners();
-      let closed: { pid: number; serverListening: boolean } | undefined;
-      try {
-        closed = JSON.parse(await readFile(closedMarker, "utf8"));
-      } catch {
-        // Missing IPC marker is a regression, not a fixture setup error.
-      }
-      expect
-        .soft(closed)
-        .toEqual({ pid: owned.serverPid, serverListening: false });
-      const exit = JSON.parse(await readFile(exitMarker, "utf8")) as {
-        pid: number;
-        code: number;
-        ipcRequested: boolean;
-        sigtermReceived: boolean;
-        ackSent: boolean;
-      };
-      expect.soft(exit).toEqual({
-        pid: owned.serverPid,
-        code: 0,
-        ipcRequested: true,
-        sigtermReceived: false,
-        ackSent: true,
-      });
-      const lifecycle = JSON.parse(
-        await readFile(join(config.outputDirectory, "lifecycle.json"), "utf8"),
-      ) as {
-        nativeExit: { code: number; signal: string | null };
-        ownedServiceRemaining: boolean;
-        serviceExit: { code: number; signal: string | null };
-        serviceShutdown: {
-          method: string;
-          requestId: string;
-          acknowledged: boolean;
+    await scenario(
+      async ({ config, signal, owners, closeNormally, listenersRestored }) => {
+        const closedMarker = join(
+          config.outputDirectory,
+          "..",
+          "service-closed",
+        );
+        const exitMarker = join(config.outputDirectory, "..", "service-exit");
+        await writeFile(
+          config.serverScript,
+          `import{createServer}from'node:http';import{writeFileSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));let ipcRequested=false,sigtermReceived=false,ackSent=false;s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('message',async(message)=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL!=='1'||message?.type!=='openfilm.benchmark.shutdown'||typeof message.requestId!=='string')return;ipcRequested=true;await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));writeFileSync(${JSON.stringify(closedMarker)},JSON.stringify({pid:process.pid,serverListening:s.listening}));process.send({type:'openfilm.benchmark.closed',requestId:message.requestId},error=>{if(error){process.exitCode=1;return;}ackSent=true;process.disconnect();});});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});process.once('SIGTERM',()=>{sigtermReceived=true;s.close();});process.on('exit',code=>writeFileSync(${JSON.stringify(exitMarker)},JSON.stringify({pid:process.pid,code,ipcRequested,sigtermReceived,ackSent})));`,
+        );
+        const result = await runThenCloseNormally(
+          config,
+          signal,
+          closeNormally,
+        );
+        expect(result.status).toBe("completed");
+        const owned = await owners();
+        let closed: { pid: number; serverListening: boolean } | undefined;
+        try {
+          closed = JSON.parse(await readFile(closedMarker, "utf8"));
+        } catch {
+          // Missing IPC marker is a regression, not a fixture setup error.
+        }
+        expect
+          .soft(closed)
+          .toEqual({ pid: owned.serverPid, serverListening: false });
+        const exit = JSON.parse(await readFile(exitMarker, "utf8")) as {
+          pid: number;
+          code: number;
+          ipcRequested: boolean;
+          sigtermReceived: boolean;
+          ackSent: boolean;
         };
-      };
-      expect.soft(lifecycle.nativeExit).toEqual({ code: 0, signal: null });
-      expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
-      expect.soft(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
-      expect.soft(lifecycle.serviceShutdown.method).toBe("private-ipc");
-      expect
-        .soft(lifecycle.serviceShutdown.requestId)
-        .toMatch(/^[0-9a-f-]{36}$/iu);
-      expect.soft(lifecycle.serviceShutdown.acknowledged).toBe(true);
-      expect.soft(alive(owned.nativePid)).toBe(false);
-      expect.soft(alive(owned.serverPid)).toBe(false);
-      listenersRestored();
-    });
+        expect.soft(exit).toEqual({
+          pid: owned.serverPid,
+          code: 0,
+          ipcRequested: true,
+          sigtermReceived: false,
+          ackSent: true,
+        });
+        const lifecycle = JSON.parse(
+          await readFile(
+            join(config.outputDirectory, "lifecycle.json"),
+            "utf8",
+          ),
+        ) as {
+          nativeExit: { code: number; signal: string | null };
+          ownedServiceRemaining: boolean;
+          serviceExit: { code: number; signal: string | null };
+          serviceShutdown: {
+            method: string;
+            requestId: string;
+            acknowledged: boolean;
+          };
+        };
+        expect.soft(lifecycle.nativeExit).toEqual({ code: 0, signal: null });
+        expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
+        expect.soft(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
+        expect.soft(lifecycle.serviceShutdown.method).toBe("private-ipc");
+        expect
+          .soft(lifecycle.serviceShutdown.requestId)
+          .toMatch(/^[0-9a-f-]{36}$/iu);
+        expect.soft(lifecycle.serviceShutdown.acknowledged).toBe(true);
+        expect.soft(alive(owned.nativePid)).toBe(false);
+        expect.soft(alive(owned.serverPid)).toBe(false);
+        listenersRestored();
+      },
+    );
   });
+
+  it.each(["nonzero exit", "SIGTERM"] as const)(
+    "fails when native terminates after collection: %s",
+    async (mode) => {
+      await scenario(
+        async ({
+          config,
+          signal,
+          owners,
+          closeNormally,
+          listenersRestored,
+        }) => {
+          const crashSignal = join(
+            config.outputDirectory,
+            "..",
+            "crash-native",
+          );
+          const closeSignal = join(
+            config.outputDirectory,
+            "..",
+            "close-native",
+          );
+          const emitter = config.arguments?.[0];
+          if (!emitter)
+            throw new Error("Native protocol fixture lacks its emitter");
+          await writeFile(
+            emitter,
+            `import{appendFileSync,existsSync}from'node:fs';const emit=(kind,ms,extra={})=>appendFileSync(process.env.OPENFILM_NATIVE_BENCHMARK_EVENTS,JSON.stringify({runId:process.env.OPENFILM_NATIVE_BENCHMARK_RUN_ID,pid:process.pid,kind,nativeElapsedMs:ms,unixMs:Date.now(),clientElapsedMs:ms,clientTimeOriginMs:1000,...extra})+'\\n');emit('welcome-ready',10);emit('edit-enter',15);emit('edit-ready',20,{clipCount:2});const poll=setInterval(()=>{if(existsSync(${JSON.stringify(crashSignal)}))process.exit(7);if(existsSync(${JSON.stringify(closeSignal)})){clearInterval(poll);setTimeout(()=>{},150);}},10);`,
+          );
+          let failure: unknown;
+          let returned:
+            Awaited<ReturnType<typeof runNativeBenchmark>> | undefined;
+          try {
+            returned = await runThenCloseNormally(
+              config,
+              signal,
+              closeNormally,
+              async () => {
+                const terminal = JSON.parse(
+                  await readFile(
+                    join(config.outputDirectory, "report.json"),
+                    "utf8",
+                  ),
+                ) as { status: string };
+                expect(terminal.status).toBe("completed");
+                const owned = await owners();
+                expect(alive(owned.nativePid)).toBe(true);
+                expect(alive(owned.serverPid)).toBe(true);
+                // Both faults affect only the actual test-owned native child after
+                // collection; the owned service remains healthy for cleanup.
+                if (mode === "nonzero exit")
+                  await writeFile(crashSignal, "actual native process.exit(7)");
+                else process.kill(owned.nativePid!, "SIGTERM");
+                await awaitExit(owned.nativePid!);
+              },
+            );
+          } catch (error) {
+            failure = error;
+          }
+          const visibleFailure =
+            failure instanceof Error ? failure.message : returned?.failure;
+          expect
+            .soft(visibleFailure ?? "")
+            .toMatch(/native.*(exit|fail|signal|crash|close|shutdown)/iu);
+          if (returned) expect.soft(returned.status).toBe("failed");
+          const report = JSON.parse(
+            await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+          ) as { status: string; failure?: string };
+          expect.soft(report.status).toBe("failed");
+          expect
+            .soft(report.failure ?? "")
+            .toMatch(/native.*(exit|fail|signal|crash|close|shutdown)/iu);
+          const lifecycle = JSON.parse(
+            await readFile(
+              join(config.outputDirectory, "lifecycle.json"),
+              "utf8",
+            ),
+          ) as {
+            nativeExit: { code: number | null; signal: string | null };
+            serviceExit: { code: number; signal: string | null };
+            serviceShutdown: { method: string; acknowledged: boolean };
+            ownedServiceRemaining: boolean;
+          };
+          if (mode === "nonzero exit")
+            expect
+              .soft(lifecycle.nativeExit)
+              .toEqual({ code: 7, signal: null });
+          else if (process.platform === "win32") {
+            // Windows maps SIGTERM to forced termination, not a Unix signal.
+            expect.soft(lifecycle.nativeExit.code).not.toBe(0);
+            expect.soft(lifecycle.nativeExit.signal).toBeNull();
+          } else
+            expect
+              .soft(lifecycle.nativeExit)
+              .toEqual({ code: null, signal: "SIGTERM" });
+          expect.soft(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
+          expect.soft(lifecycle.serviceShutdown).toEqual(
+            expect.objectContaining({
+              method: "private-ipc",
+              acknowledged: true,
+            }),
+          );
+          expect.soft(lifecycle.ownedServiceRemaining).toBe(false);
+          const owned = await owners();
+          expect.soft(alive(owned.nativePid)).toBe(false);
+          expect.soft(alive(owned.serverPid)).toBe(false);
+          listenersRestored();
+        },
+      );
+    },
+  );
 
   it.each([
     { label: "missing ACK", ack: "none", exitCode: 0, acknowledged: false },

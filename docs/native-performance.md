@@ -181,6 +181,10 @@ Service liveness is also checked after normal native shutdown, before requesting
 service cleanup. An unexpected service exit while waiting for the operator to
 close the window fails finalization and replaces the provisional completed
 report with failure; the native window is never force-closed.
+The native process must also exit normally after collection. A nonzero exit or
+signal termination during that supervision fails the final report and CLI, while
+the service still receives its private graceful-close request. The frozen
+collection timings are unchanged; `lifecycle.json` retains the actual native exit.
 The completed checkpoint lines are refreshed after the final asynchronous work,
 before scenario classification and report freezing, so an Edit visit delivered
 during the last sample is included.

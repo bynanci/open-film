@@ -177,6 +177,8 @@ process cleanup. Final checkpoints are refreshed before classification, and a
 surviving service fails finalization without force-killing active work. Automated
 regressions also reject an unexpected service exit while awaiting normal native
 shutdown. None of these satisfy the workstation gate.
+An abnormal native exit during post-collection supervision also fails the final
+report without replacing frozen collection clocks or skipping service cleanup.
 Owned service cleanup uses a private acknowledged IPC protocol across platforms,
 including Windows, and separately records selected-launcher and actual-service
 Node identities. Process tests verify the protocol; Windows execution remains

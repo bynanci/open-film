@@ -89,6 +89,7 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Include Edit checkpoints delivered during the final sample in the terminal scenario report.
 - [x] Fail finalization when an owned service survives its shutdown grace period, preserving active work and explicit remaining-process evidence.
 - [x] Reject a successful benchmark when its service exits unexpectedly while waiting for normal native-window shutdown.
+- [x] Reject provisional success after native nonzero exit or signal termination, retaining actual exit evidence and graceful service cleanup.
 - [x] Request private IPC service shutdown, require project-close acknowledgement and normal exit, and preserve active work instead of forcibly terminating Windows services.
 - [x] Bind benchmark evidence to both the selected Node launcher and the actual service runtime version/executable hash.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.

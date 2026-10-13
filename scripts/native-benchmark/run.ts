@@ -653,6 +653,16 @@ export async function runNativeBenchmark(
         }
         await new Promise<void>((done) => native!.once("exit", () => done()));
       }
+      if (
+        (status === "completed" || status === "scenario-incomplete") &&
+        native?.pid &&
+        (native.exitCode !== 0 || native.signalCode !== null)
+      )
+        rememberFailure(
+          new Error(
+            `Native app exited abnormally after collection (code ${native.exitCode}, signal ${native.signalCode})`,
+          ),
+        );
       // Collection may finish long before the user closes the native window.
       // Its service must remain live until we request intentional shutdown.
       // A native PID excludes service cleanup after pre-launch cancellation.
