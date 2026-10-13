@@ -113,8 +113,11 @@ transcript rendering, and keep keyboard focus visible on selected clips. Retain
 60-item Library pagination, 100-segment Transcript pages, cached waveform paths
 and existing job ownership. The [measurement record](docs/performance-interaction.md)
 separates reduced work from unchanged costs and workstation-only performance.
-The next UI performance target is the remaining 500-clip story-rail render work
-during selection, subject to the same before/after and correctness gates.
+The 500-clip Story rail now isolates clip presentation: selecting a clip updates
+the old/new buttons while editor ownership and recovery stay in the parent.
+Three comparable synthetic repetitions verify the bounded work reduction; the
+measurement record discloses the added first-mount cost and memory limits.
+Native-window and long-session performance still require workstation evidence.
 
 ## 0.3 — Media Intelligence & Precision Editing
 

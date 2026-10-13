@@ -20,6 +20,7 @@ import type {
   WaveformData,
 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
+import { formatDuration } from "../../apps/desktop/src/i18n/format";
 import axe from "axe-core";
 import {
   chooseImportFolder,
@@ -2030,6 +2031,46 @@ test("a first-visit Precision editor retains mutation barriers and history acros
     initialIn + 0.25,
     6,
   );
+  const assertVisibleStoryTiming = async (acknowledged: Composition) => {
+    const selected = clipById(acknowledged, clip.id);
+    const beatClips = allClips(acknowledged).filter(
+      (entry) => entry.beatId === selected.beatId,
+    );
+    const beatSpan =
+      Math.max(
+        ...beatClips.map(
+          (entry) => entry.timelineStart + entry.timelineDuration,
+        ),
+      ) - Math.min(...beatClips.map((entry) => entry.timelineStart));
+    // Precision commits while the Story rail is hidden. A visible return must
+    // show the acknowledged trim, including the beat's full timeline span.
+    await mode(page, locale, "story");
+    const railClip = page.locator(`[id="clip-${clip.id}"]`);
+    await expect(railClip).toBeVisible();
+    await expect(railClip).toHaveAttribute("aria-pressed", "true");
+    const beat = page.locator(".editor-beat").filter({ has: railClip });
+    const directText = (element: Element) =>
+      Array.from(element.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent)
+        .join("")
+        .trim();
+    await expect
+      .poll(() =>
+        railClip.locator(".editor-clip-meta > small").evaluate(directText),
+      )
+      .toBe(formatDuration(selected.timelineDuration));
+    await expect
+      .poll(() => beat.locator(".editor-beat-time").evaluate(directText))
+      .toBe(formatDuration(beatSpan));
+    expect(await composition(request)).toEqual(acknowledged);
+    await mode(page, locale, "precision");
+    await expect(trimIn).toBeVisible();
+  };
+  expect(clipById(beforeMarker, clip.id).timelineDuration).not.toBe(
+    clipById(beforeEdits, clip.id).timelineDuration,
+  );
+  await assertVisibleStoryTiming(beforeMarker);
   // Both histories are genuinely available before the held request.
   await expect(undo).toBeEnabled();
   await expect(redo).toBeEnabled();
@@ -2166,9 +2207,11 @@ test("a first-visit Precision editor retains mutation barriers and history acros
       initialIn + 0.5,
       6,
     );
+    await assertVisibleStoryTiming(await composition(request));
     await undo.click();
     await saved(page, locale);
     expect(await composition(request)).toEqual(beforeMarker);
+    await assertVisibleStoryTiming(beforeMarker);
     expect((await intelligence(request, video.id)).markers).toContainEqual(
       heldMarker,
     );

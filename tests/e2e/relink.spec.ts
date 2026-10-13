@@ -243,6 +243,18 @@ test("moves a real edited project and its media, restores sources and imports th
     edited.tracks[0]!.clips.find((clip) => clip.id === "traveling-photo")!
       .timelineDuration,
   ).toBe(4.5);
+  const offlineMotion = page.locator("#clip-traveling-motion");
+  await expect(offlineMotion.locator(".editor-clip-source-status")).toHaveText(
+    "Missing",
+  );
+  await offlineMotion.click();
+  await expect(offlineMotion).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".editor-clip[aria-pressed=true]")).toHaveCount(1);
+  await expect(page.locator(".editor-missing-source")).toBeVisible();
+  await offlineMotion.evaluate((node) =>
+    node.setAttribute("data-relink-clip-instance", "retained"),
+  );
+  expect(await composition(request)).toEqual(edited);
   await navigate(page, "library");
 
   const impostors = join(fixture.root, "impostors");
@@ -309,7 +321,16 @@ test("moves a real edited project and its media, restores sources and imports th
   if (await detailClose.isVisible()) await detailClose.click();
   await navigate(page, "edit");
   await saved(page);
-  await page.locator("#clip-traveling-motion").click();
+  await expect(offlineMotion).toHaveAttribute("aria-pressed", "true");
+  await expect(offlineMotion).toHaveAttribute(
+    "data-relink-clip-instance",
+    "retained",
+  );
+  await expect(offlineMotion.locator(".editor-clip-source-status")).toHaveCount(
+    0,
+  );
+  await expect(page.locator(".editor-missing-source")).toHaveCount(0);
+  await offlineMotion.click();
   const source = page.getByLabel("Selected clip source preview", {
     exact: true,
   });

@@ -3,9 +3,10 @@
 ## Measurement contract
 
 Baseline: `34b6ff093294f97061dfb0ecb270413a52b6b7ee` (main, 2026-10-08).
-PRs #8 (transcription cancellation), #9 (analysis ownership/recovery, stacked on
-#8), and #10 (composition captions) remain separate. Their application, catalog,
-job ownership, revision and recovery contracts are outside this change.
+This historical baseline predates convergence of PRs #8 (transcription
+cancellation), #9 (analysis ownership/recovery) and #10 (composition captions).
+Their application, catalog, job ownership, revision and recovery contracts remain
+protected in the combined-source measurements below.
 
 These are synthetic UI workloads, not real 4K, camera, transcription, GPU or
 workstation benchmarks. Use the same Chromium, viewport, fixture and development
@@ -265,5 +266,81 @@ assertions. The combined-source work-budget report and RED/GREEN traces are in
 Independent correctness review identified the disposed-loader draft overwrite
 and the measurement readiness issue; both have targeted regression coverage.
 Real Resolve import and actual model/GPU/camera/4K/Windows installation remain
-manual gates. The next measured optimization target is the 500-clip Timeline
-rail's repeated parent updates, not a new feature milestone.
+manual gates. The following round targets the 500-clip Timeline rail's repeated presentation
+work during selection.
+
+## 500-clip Timeline selection boundary (2026-10-12)
+
+This round follows the merged ownership, captions and interaction work. Base is `75b2617e5b0bbb4806c0a201d2013b903699b1e5`; measured production candidate is `62e48e397d6346e551b0678a183529ba48ea699b`. The only production change extracts the existing clip button into `TimelineClip.vue`. Stable clip/display props and a per-clip selection boolean isolate presentation; selection, commands, drag ownership, history, pending-save guards, recovery and keyboard scrolling stay in `TimelineEditor.vue`. No cache, schema change, new poller or timeline engine was added.
+
+The identical benchmark runs on Chromium 151.0.7922.173 at 1440×900 against Vite development mode, with 2,000 assets, 500 clips, ten beats and a synthetic 10,000-segment transcript. One warm-up per version is excluded. Three retained baseline and three candidate repetitions passed, with desktop hashes identical before/after each run. Baseline fingerprint is `9b97d88da64900aec2ea04c29ca9248a1bc65e7cfe678c3aa124b3eff1b6962f`; candidate fingerprint is `855061c06dc3e8c5e67fe84567c411af5e53edc10f1eafe2c0ddb238d4edd593`. Frozen benchmark SHA256 is `941683b439105e8ac0af8d8b85a0989a9b377b8652ae4b8aed8f6cf82e286ea3`.
+
+### Work and correctness
+
+| Observation                                           | Before                     | After                                   |
+| ----------------------------------------------------- | -------------------------- | --------------------------------------- |
+| Actual-SFC clip-label evaluations for one selection   | 500                        | 2                                       |
+| Actual-SFC labels after unchanged jobs/recovery props | 500                        | 0                                       |
+| Already-selected clip click                           | 0                          | 0                                       |
+| Real browser leaf renders for 19 same-beat changes    | Inline parent presentation | 38 in each sample                       |
+| Real browser leaf renders for 19 cross-beat changes   | Inline parent presentation | 38 in each sample                       |
+| Clip-body renders during three unchanged jobs polls   | Inline parent presentation | 0                                       |
+| First Edit visible clips / selected-source videos     | 500 / 1                    | 500 / 1                                 |
+| Additional presentation component instances           | 0                          | 500, retained across all three revisits |
+| Selection editor/catalog reloads or command writes    | 0                          | 0                                       |
+
+Each selection scenario attempts 20 clicks with one initial no-op, verifies 19 actual changes, exactly one selected/ARIA-pressed button and the correct inspector. Composition, Story, revision, history and local recovery bytes remain unchanged. Necessary source/media reads and shared job polls remain. Returning to Edit preserves instance IDs and history while performing the existing one snapshot refresh; this refresh is necessary to show acknowledged Library changes.
+
+### Diagnostic timings and tradeoffs
+
+Values are median [minimum–maximum] milliseconds across three samples.
+
+| Metric                                          | Before              | After               |
+| ----------------------------------------------- | ------------------- | ------------------- |
+| First Edit automation elapsed                   | 837.3 [837.2–873.9] | 897.2 [838.0–938.3] |
+| First Edit parent render elapsed                | 93.5 [88.4–95.3]    | 42.3 [41.2–44.9]    |
+| 19 same-beat selections: parent render elapsed  | 568.1 [564.3–579.7] | 287.7 [275.0–288.5] |
+| 19 cross-beat selections: parent render elapsed | 486.3 [457.3–493.6] | 280.1 [263.3–286.3] |
+| Same-beat selections: CDP ScriptDuration        | 46.5 [43.6–46.7]    | 45.9 [43.3–53.9]    |
+| Cross-beat selections: CDP ScriptDuration       | 43.6 [42.0–50.3]    | 44.2 [42.1–45.8]    |
+| Third Library/Edit revisit automation elapsed   | 837.4 [763.0–864.4] | 805.9 [771.8–809.5] |
+
+The bounded clip work reduction is established. First Edit automation elapsed increased by about 60 ms at its median, so no faster-startup claim is made. First mount now includes 500 leaf setups and test-only render wrappers. Candidate leaf render time is recorded separately from its parent. CDP ScriptDuration is essentially unchanged; parent render timings do not establish input latency or a general speedup. Heap samples use no forced GC and vary with garbage collection: they do not prove lower memory usage or leak freedom. Stable component IDs show retention over three short revisits, not long-session or native-window performance.
+
+The new regression coverage verifies repeated asset IDs as separate clip instances, locked/offline selection, source-status/thumbnail/name repair, locale invalidation, trim/speed/transition/lock/replacement snapshots, invalid cross-beat/cross-track drag, and a successful later reorder. Visible Story timing follows acknowledged Precision trim/Undo/Redo; real relink clears missing badges without replacing the clip button. Native drag diagnostics revealed a test coordinate issue during target scrolling; the final case keeps both beats visible and requires the actual source/target events. The request monitor uses the real `/edit` endpoint. No production correctness fix was required for those fixture defects.
+
+Fresh independent whole-branch review found no P1/P2 issue. Actual-SFC tests passed 8/8; focused boundary units passed 40/40 and focused real-browser suites passed 34/34. Full regression results follow below.
+
+Real en-US, zh-TW, ja-JP and en-XA Edit screens were inspected at 1280×720, 1440×900 and 1920×1080. No extraction-specific overflow or text collision was observed. Small windows still require rail/panel scrolling; pseudo-locale wrapping can move selected content below the visible rail. The inspected fixtures collapse Inspector and contain no locked clip, so screenshots alone do not certify those states; functional browser tests cover them. Prior main screenshots use a different generated Story state, so no pixel parity or causal comparison of selected visibility is claimed. Automated layout/focus/axe checks do not establish complete WCAG or screen-reader compliance.
+
+### Reproduction and evidence
+
+Retain separate warm-up and comparison directories. Baseline runs use `OPENFILM_RAIL_BASELINE=1` only to exempt the absent new leaf budget; all selection/read-only and previous work budgets remain. Candidate and ordinary CI have no exemption and require positive leaf coverage, 38–40 renders per 19 changes and zero idle clip updates. Use the same actions and instrumentation for both.
+
+```sh
+OPENFILM_CHROMIUM=/usr/bin/chromium \
+OPENFILM_BENCHMARK_LABEL=rail-candidate \
+OPENFILM_BENCHMARK_OUTPUT=/tmp/openfilm-rail-candidate \
+pnpm test:e2e tests/e2e/interaction-performance.spec.ts --repeat-each=3
+```
+
+Evidence is stored relative to the workspace root in `.cloud-onboarding/artifacts/openfilm-timeline-selection/`: separate baseline/candidate warm-ups, three JSON reports per version, runner manifests, `comparison-summary.json`, source/instrumentation hashes, actual-SFC RED/GREEN logs, drag diagnostic trace, focused browser logs and visual inspection record. Reports are written even on failure; runner exit codes, complete samples and unchanged fingerprints are required before accepting them. Failed preflight measurements are retained under `harness-preflight/` and excluded from comparisons. Real Resolve, speech/model/GPU/camera/4K and installer/native-window QA remain workstation gates.
+
+### Final local regression
+
+All ten gates passed on frozen production commit `62e48e397d6346e551b0678a183529ba48ea699b`; tracked-file hashes were unchanged before/after. Later documentation-only commits retain its measured desktop fingerprint.
+
+| Command                            | Result                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm format:check`                | Passed                                                                 |
+| `pnpm test:i18n`                   | Passed, 1,102 keys                                                     |
+| `pnpm lint`                        | Passed                                                                 |
+| `pnpm typecheck`                   | Passed                                                                 |
+| `pnpm test`                        | 1,535 tests / 112 files passed                                         |
+| `pnpm build`                       | Passed                                                                 |
+| `pnpm test:e2e`                    | 96 passed                                                              |
+| `pnpm test:interchange`            | 18 official OTIO parser tests and relocation/source checks passed      |
+| `pnpm test:native`                 | Rust formatting, Clippy and harness passed; zero behavioral Rust tests |
+| `node scripts/smoke-built-cli.mjs` | Passed                                                                 |
+
+Complete gate logs, immutable manifest and browser screenshots are under `.cloud-onboarding/artifacts/openfilm-timeline-selection-regression-62e48e397d63/`. Published exact-head CI is authoritative for the later documentation commit and is linked from the pull request.
