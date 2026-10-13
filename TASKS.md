@@ -99,6 +99,9 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Preserve acknowledged composition creation through later project/cache read failures, retaining other films and localized errors instead of encouraging duplicate creation.
 - [x] Emit a provisional collection-stop event and publish terminal completion only after native exit, acknowledged service shutdown and final evidence persistence.
 - [x] Replace published benchmark manifests through complete exclusive sibling writes and rename; failed updates retain the previous valid evidence.
+- [x] Resume original-boot readiness after transient busy/error/loading states without replaying acknowledged checkpoints or reusing an obsolete project/view.
+- [x] Verify actual BigInt filesystem link/copy identities during fixture preflight, rejecting changed topology and unavailable identity evidence.
+- [x] Recheck Linux rooted process membership after memory reads; changed or unknown topology cannot produce a complete aggregate.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.

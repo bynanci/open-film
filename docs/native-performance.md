@@ -90,7 +90,11 @@ ambiguous paths and an undeclared nonempty WAL reject the run before service lau
 
 Each project run copies the declared project files into
 `<outputDirectory>/benchmark.openfilm`, verifies their original identities, and
-opens that isolated copy. Media references continue to use the validated original
+opens that isolated copy. Preflight also compares BigInt device/inode identities:
+source-linked paths must match the declared link count, and copied media must
+have independent identities. A byte-identical backup/copy that changes this
+topology is rejected. Filesystems without usable inode evidence fail explicitly
+instead of being credited as verified; real Windows behavior remains manual. Media references continue to use the validated original
 fixture. `manifest.json` records both template and runtime paths; its initial
 project hashes and `lifecycle.json` final hashes describe the runtime copy.
 Normal server shutdown updates `project.updatedAt`, and manual edits remain in
@@ -145,6 +149,12 @@ it is not included in UI readiness or first-Edit duration.
 No diagnostics run in browsers. Native diagnostics default to disabled; the
 runner enables a local fixed-field checkpoint file for its unique run only. No
 media, transcript text, project paths or remote telemetry enters checkpoints.
+
+Transient busy/error/loading/connection states cancel the current frame attempt
+but retain the original boot retry while its project and Library view remain
+valid. Recovery rearms that attempt with the original clock; acknowledged
+completion prevents replay. A project/view/generation change or unmount
+permanently expires that boot retry.
 
 ## Startup repetitions and one-hour soak
 
@@ -253,6 +263,11 @@ metrics, missing-data reasons, collection time and native/service roots. Metrics
 are bytes. The two owned trees are deduplicated; totals with unknown membership
 or missing metrics have no value. Check coverage before interpreting a peak.
 Sampling begins after UI readiness, so **startup peak memory is not measured**.
+Linux collection brackets its memory reads with two process enumerations.
+Rooted membership, PID creation identity or parent changes make aggregates
+partial/unavailable with no value. New unrelated processes do not invalidate a
+known stable rooted tree. This is bounded topology validation, not an atomic
+process snapshot; Windows/macOS runtime verification remains a manual gate.
 
 | Platform | RSS                               | Private metric                                 | PSS                      |
 | -------- | --------------------------------- | ---------------------------------------------- | ------------------------ |

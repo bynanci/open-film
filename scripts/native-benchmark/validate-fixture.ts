@@ -57,8 +57,8 @@ async function verifyFile(root: string, descriptor: FixtureFile) {
     root,
     join(root, descriptor.relativePath),
   );
-  const info = await stat(path);
-  if (!info.isFile() || info.size !== descriptor.fileSize)
+  const info = await stat(path, { bigint: true });
+  if (!info.isFile() || info.size !== BigInt(descriptor.fileSize))
     throw new Error(
       `Fixture file size/type mismatch: ${descriptor.relativePath}`,
     );
@@ -66,6 +66,11 @@ async function verifyFile(root: string, descriptor: FixtureFile) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   if (hash.digest("hex") !== descriptor.sha256.toLowerCase())
     throw new Error(`Fixture SHA256 mismatch: ${descriptor.relativePath}`);
+  if (info.ino === 0n)
+    throw new Error(
+      `Fixture filesystem identity is unavailable: ${descriptor.relativePath}`,
+    );
+  return `${info.dev}:${info.ino}`;
 }
 
 /** Verify immutable generated input identities before starting owned processes.
@@ -194,8 +199,30 @@ export async function validateNativeBenchmarkFixture(
     }
   }
   // Sequential streamed hashing bounds memory, including copy-based fixtures.
+  const identities = new Map<string, string>();
   for (const file of [...data.files, ...data.media])
-    await verifyFile(root, file);
+    identities.set(file.relativePath, await verifyFile(root, file));
+  // Matching bytes do not bind cache topology: links share the declared source
+  // file identity, while every copied media file must have its own identity.
+  const sourceIdentity = identities.get(source.relativePath)!;
+  let linkedMediaCount = 0;
+  const copiedIdentities = new Set<string>();
+  for (const media of data.media) {
+    const identity = identities.get(media.relativePath)!;
+    if (identity === sourceIdentity) linkedMediaCount++;
+    else {
+      if (copiedIdentities.has(identity))
+        throw new Error(
+          `Fixture copied media must be independent: ${media.relativePath}`,
+        );
+      copiedIdentities.add(identity);
+    }
+  }
+  if (
+    linkedMediaCount !== data.linkedMediaCount ||
+    copiedIdentities.size !== data.copiedMediaCount
+  )
+    throw new Error("Fixture media topology does not match declared counts");
   return data as unknown as NativeBenchmarkFixtureManifest;
 }
 

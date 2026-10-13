@@ -529,6 +529,12 @@ const { ref, watch, nextTick, computed } = createRequire(
   nextTick: () => Promise<void>;
   computed: <T>(get: () => T) => { readonly value: T };
 };
+const watchSources = createRequire(resolve("apps/desktop/package.json"))("vue")
+  .watch as (
+  source: unknown,
+  callback: () => void,
+  options?: { flush: "sync" },
+) => () => void;
 function actualFunction(
   file: string,
   name: string,
@@ -564,6 +570,324 @@ function actualFunction(
 }
 
 describe("actual workspace readiness guards", () => {
+  function bootFixture(
+    options: { hidden?: boolean; native?: boolean; enabled?: boolean } = {},
+  ) {
+    const h = harness(options.native ?? true, options.enabled ?? true);
+    if (options.hidden) h.hidden();
+    const probe = deferred<unknown>();
+    const receipt = deferred<unknown>();
+    let holdReceipt = false;
+    h.invoke.mockImplementation(async (command, args) => {
+      h.calls.push({ command, args });
+      if (command === "native_benchmark_enabled") return probe.promise;
+      return holdReceipt ? receipt.promise : undefined;
+    });
+    const tab = ref("library");
+    const project = ref<{ id: string; title: string } | null>({
+      id: "original",
+      title: "Memories",
+    });
+    const loading = ref(true);
+    const busy = ref("");
+    const error = ref<unknown>("");
+    const mediaStatusError = ref<unknown>("");
+    const connected = ref(true);
+    const stops: (() => void)[] = [];
+    let unmount = () => {};
+    const source = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
+    const head = source.slice(
+      source.indexOf("const native = !!window.__TAURI_INTERNALS__;"),
+      source.indexOf("let poll:"),
+    );
+    const bootStart = source.indexOf("async function boot(");
+    const boot = source.slice(bootStart, source.indexOf("\n}", bootStart) + 2);
+    const unmountStart = source.indexOf("onUnmounted(() => {");
+    const cleanup = source.slice(
+      unmountStart,
+      source.indexOf("\n});", unmountStart) + 4,
+    );
+    const deps = {
+      nativeBenchmark: h.benchmark,
+      window:
+        options.native === false
+          ? { removeEventListener: vi.fn() }
+          : { __TAURI_INTERNALS__: {}, removeEventListener: vi.fn() },
+      watch: (
+        sources: unknown,
+        callback: () => void,
+        opts: { flush: "sync" },
+      ) => {
+        const stop = watchSources(sources, callback, opts);
+        stops.push(stop);
+        return stop;
+      },
+      tab,
+      project,
+      loading,
+      busy,
+      error,
+      mediaStatusError,
+      connected,
+      run: actualFunction("apps/desktop/src/App.vue", "run", {
+        busy,
+        error,
+        notice: ref(null),
+      }),
+      workspaceInfo: ref(null),
+      api: { workspace: async () => ({ systemLocale: "en-US" }) },
+      initializeLocale: async () => {},
+      refreshProject: async () => {},
+      refreshRecents: async () => {},
+      storyTitle: ref(""),
+      storyTemplate: ref(""),
+      targetDuration: ref(0),
+      maxDuration: ref(0),
+      rememberProject: () => {},
+      reloadAssets: async () => {},
+      refreshJobs: async () => {},
+      checkMediaStatus: async () => {},
+      nextTick,
+      document: { querySelector: vi.fn(() => ({ getClientRects: () => [1] })) },
+      handleKeyboard: () => {},
+      poll: undefined,
+      onUnmounted: (callback: () => void) => {
+        unmount = callback;
+      },
+    };
+    const code = transformSync(`${head}\n${boot}\n${cleanup}`, {
+      loader: "ts",
+      format: "esm",
+    }).code;
+    const actual = new Function(
+      "dependencies",
+      `let {${Object.keys(deps).join(",")}} = dependencies;\n${code}\nreturn {boot};`,
+    )(deps) as { boot: () => Promise<void> };
+    return {
+      h,
+      probe,
+      receipt,
+      actual,
+      tab,
+      project,
+      loading,
+      busy,
+      error,
+      mediaStatusError,
+      connected,
+      document: deps.document,
+      holdReceipt: () => {
+        holdReceipt = true;
+      },
+      dispose: () => {
+        unmount();
+        for (const stop of stops.splice(0)) stop();
+      },
+    };
+  }
+
+  it.each(
+    ["busy", "error", "loading", "media-status", "connection"].flatMap(
+      (flag) => [
+        [flag, "configuration"],
+        [flag, "hidden"],
+      ],
+    ),
+  )(
+    "rearms original Library boot after transient %s during %s",
+    async (flag, phase) => {
+      const view = bootFixture({ hidden: phase === "hidden" });
+      try {
+        await view.actual.boot();
+        await turn();
+        if (phase === "hidden") {
+          view.probe.resolve(true);
+          await turn();
+        }
+        const state =
+          flag === "busy"
+            ? view.busy
+            : flag === "error"
+              ? view.error
+              : flag === "loading"
+                ? view.loading
+                : flag === "media-status"
+                  ? view.mediaStatusError
+                  : view.connected;
+        state.value =
+          flag === "connection"
+            ? false
+            : flag === "loading"
+              ? true
+              : "Temporary work";
+        await turn();
+        expect(view.h.frames).toHaveLength(0);
+        state.value =
+          flag === "connection" ? true : flag === "loading" ? false : "";
+        if (phase === "configuration") view.probe.resolve(true);
+        await turn();
+        view.h.visible();
+        expect(view.h.frames).toHaveLength(1);
+        view.h.frame();
+        view.h.frame();
+        await turn();
+        expect(
+          view.h.calls.filter((call) => call.command === "native_checkpoint"),
+        ).toMatchObject([
+          {
+            args: {
+              kind: "library-ready",
+              clientTimeOriginMs: performance.timeOrigin,
+            },
+          },
+        ]);
+        expect(
+          view.h.calls.filter(
+            (call) => call.command === "native_benchmark_enabled",
+          ),
+        ).toHaveLength(1);
+        expect(view.h.visibilityListeners.size).toBe(0);
+        view.busy.value = "Another action";
+        view.busy.value = "";
+        await turn();
+        expect(view.h.frames).toHaveLength(0);
+        expect(
+          view.h.calls.filter((call) => call.command === "native_checkpoint"),
+        ).toHaveLength(1);
+      } finally {
+        view.dispose();
+      }
+    },
+  );
+
+  it.each(["project", "view", "unmount"])(
+    "does not rearm an expired original %s boot",
+    async (expiry) => {
+      const view = bootFixture({ hidden: true });
+      try {
+        await view.actual.boot();
+        await turn();
+        if (expiry === "project") {
+          view.project.value = { id: "different", title: "Other" };
+          view.project.value = { id: "original", title: "Memories" };
+        } else if (expiry === "view") {
+          view.tab.value = "story";
+          view.tab.value = "library";
+        } else view.dispose();
+        view.busy.value = "Transient";
+        view.busy.value = "";
+        view.probe.resolve(true);
+        await turn();
+        view.h.visible();
+        expect(view.h.frames).toHaveLength(0);
+        expect(view.h.visibilityListeners.size).toBe(0);
+        expect(
+          view.h.calls.filter((call) => call.command === "native_checkpoint"),
+        ).toHaveLength(0);
+      } finally {
+        view.dispose();
+      }
+    },
+  );
+
+  it("acknowledges one boot receipt and cancels its rearmed queued attempt", async () => {
+    const view = bootFixture();
+    try {
+      view.holdReceipt();
+      await view.actual.boot();
+      view.probe.resolve(true);
+      await turn();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      view.busy.value = "Transient";
+      view.busy.value = "";
+      await turn();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      view.receipt.resolve(undefined);
+      await turn();
+      expect(
+        view.h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(1);
+      expect(view.h.frames).toHaveLength(0);
+      expect(view.h.visibilityListeners.size).toBe(0);
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it("lets only the latest boot generation finish a delayed enabled probe", async () => {
+    const view = bootFixture({ hidden: true });
+    try {
+      await view.actual.boot();
+      await view.actual.boot();
+      view.probe.resolve(true);
+      await turn();
+      view.h.visible();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      expect(
+        view.h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(1);
+      expect(view.h.visibilityListeners.size).toBe(0);
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it("does not let an earlier dispatched receipt cancel a new boot's attempt", async () => {
+    const view = bootFixture();
+    try {
+      view.holdReceipt();
+      await view.actual.boot();
+      view.probe.resolve(true);
+      await turn();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      await view.actual.boot();
+      await turn();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      view.receipt.resolve(undefined);
+      await turn();
+      expect(
+        view.h.calls.filter((call) => call.command === "native_checkpoint"),
+      ).toHaveLength(2);
+      expect(view.h.frames).toHaveLength(0);
+      expect(view.h.visibilityListeners.size).toBe(0);
+    } finally {
+      view.dispose();
+    }
+  });
+
+  it.each(["browser", "disabled"])(
+    "keeps boot rearming inactive for %s diagnostics",
+    async (mode) => {
+      const view = bootFixture({ native: mode !== "browser" });
+      try {
+        await view.actual.boot();
+        view.busy.value = "Transient";
+        view.busy.value = "";
+        view.probe.resolve(false);
+        await turn();
+        expect(view.h.frames).toHaveLength(0);
+        expect(view.h.subscribe).not.toHaveBeenCalled();
+        expect(view.document.querySelector).not.toHaveBeenCalled();
+        expect(
+          view.h.calls.filter((call) => call.command === "native_checkpoint"),
+        ).toHaveLength(0);
+        if (mode === "browser") expect(view.h.invoke).not.toHaveBeenCalled();
+      } finally {
+        view.dispose();
+      }
+    },
+  );
+
   function composeFixture(
     options: {
       now?: () => number;
@@ -889,6 +1213,7 @@ describe("actual workspace readiness guards", () => {
         workspace === "boot" ? "onUnmounted" : "onBeforeUnmount",
         {
           cancelNativeBootReady: cancel,
+          retryNativeBootReady: undefined,
           cancelNativeEditReady: cancel,
           nativeDisposed: false,
           nativeEditDisposed: false,
@@ -962,6 +1287,7 @@ describe("actual workspace readiness guards", () => {
         },
       },
       cancelNativeBootReady: undefined,
+      retryNativeBootReady: undefined,
       nativeBootGeneration: 0,
       nativeDisposed: disposed,
       connected: ref(condition !== "disconnected"),

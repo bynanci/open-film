@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   copyFile,
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -12,12 +13,32 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NativeBenchmarkFixtureManifest } from "../../scripts/native-benchmark/create-fixture";
 import { validateNativeBenchmarkFixture } from "../../scripts/native-benchmark/validate-fixture";
 
+const unavailableIdentities = vi.hoisted(() => new Set<string>());
+// The filesystem's unavailable inode boundary is injected; file creation,
+// links/copies, canonical paths, streamed hashes and sizes remain real.
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    stat: async (...args: Parameters<typeof actual.stat>) => {
+      const info = await actual.stat(...args);
+      if (
+        typeof args[0] === "string" &&
+        unavailableIdentities.has(args[0]) &&
+        typeof info.ino === "bigint"
+      )
+        info.ino = 0n;
+      return info;
+    },
+  };
+});
+
 const directories: string[] = [];
-async function fixture() {
+async function fixture(linkedMediaCount = 0) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-fixture-validation-"));
   directories.push(root);
   const project = join(root, "benchmark.openfilm");
@@ -41,6 +62,11 @@ async function fixture() {
       sha256: createHash("sha256").update(bytes).digest("hex"),
       fileSize: bytes.length,
     });
+  }
+  for (let index = 0; index < linkedMediaCount; index++) {
+    const path = join(root, `media/${String(index).padStart(4, "0")}.mp4`);
+    await rm(path);
+    await link(join(root, "generated/source.mp4"), path);
   }
   const manifest: NativeBenchmarkFixtureManifest = {
     fixtureVersion: "1.0.0",
@@ -66,8 +92,8 @@ async function fixture() {
       ...file,
       assetId: `asset-${index}`,
     })),
-    linkedMediaCount: 0,
-    copiedMediaCount: 2,
+    linkedMediaCount,
+    copiedMediaCount: 2 - linkedMediaCount,
     limitations: ["Small file-identity fixture; not actual media decoding QA."],
   };
   const manifestPath = join(root, "fixture-manifest.json");
@@ -76,6 +102,7 @@ async function fixture() {
   return { root, project, manifest, manifestPath, save };
 }
 afterEach(async () => {
+  unavailableIdentities.clear();
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
@@ -89,6 +116,113 @@ describe("native benchmark fixture preflight", () => {
     expect(await validateNativeBenchmarkFixture(f.manifestPath)).toEqual(
       f.manifest,
     );
+  });
+
+  it("accepts a genuine mixed fixture with source hard links and independent copies", async () => {
+    const f = await fixture(1);
+    const source = await stat(join(f.root, f.manifest.source.relativePath), {
+      bigint: true,
+    });
+    const linked = await stat(join(f.root, f.manifest.media[0]!.relativePath), {
+      bigint: true,
+    });
+    const copied = await stat(join(f.root, f.manifest.media[1]!.relativePath), {
+      bigint: true,
+    });
+    expect([linked.dev, linked.ino]).toEqual([source.dev, source.ino]);
+    expect([copied.dev, copied.ino]).not.toEqual([source.dev, source.ino]);
+
+    expect(
+      await validateNativeBenchmarkFixture(f.manifestPath, f.project),
+    ).toEqual(f.manifest);
+  });
+
+  it("rejects a declared hard link replaced by a byte-identical independent copy", async () => {
+    const f = await fixture(2);
+    const source = join(f.root, f.manifest.source.relativePath);
+    const media = join(f.root, f.manifest.media[0]!.relativePath);
+    await rm(media);
+    await copyFile(source, media);
+    expect(await readFile(media)).toEqual(await readFile(source));
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/topology|link.*count|cop.*count/iu);
+  });
+
+  it("rejects byte-identical source replacement that detaches the declared media links", async () => {
+    const f = await fixture(2);
+    const source = join(f.root, f.manifest.source.relativePath);
+    const backup = join(f.root, "generated/source-backup.mp4");
+    await copyFile(source, backup);
+    await rm(source);
+    await rename(backup, source);
+    expect(await readFile(source)).toEqual(
+      await readFile(join(f.root, f.manifest.media[0]!.relativePath)),
+    );
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/topology|independent|alias/iu);
+  });
+
+  it("rejects a declared independent copy replaced by a source hard link", async () => {
+    const f = await fixture();
+    const source = join(f.root, f.manifest.source.relativePath);
+    const media = join(f.root, f.manifest.media[0]!.relativePath);
+    await rm(media);
+    await link(source, media);
+    expect(await readFile(media)).toEqual(await readFile(source));
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/topology|link.*count|cop.*count/iu);
+  });
+
+  it("rejects copied media that alias one another despite matching bytes and aggregate counts", async () => {
+    const f = await fixture();
+    const first = join(f.root, f.manifest.media[0]!.relativePath);
+    const second = join(f.root, f.manifest.media[1]!.relativePath);
+    await rm(second);
+    await link(first, second);
+    expect(await readFile(first)).toEqual(await readFile(second));
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/topology|independent|alias/iu);
+  });
+
+  it("requires declared link and copy counts to match actual filesystem identities", async () => {
+    const f = await fixture();
+    f.manifest.linkedMediaCount = 1;
+    f.manifest.copiedMediaCount = 1;
+    await f.save();
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/topology|link.*count|cop.*count/iu);
+  });
+
+  it.each(["generated/source.mp4", "media/0000.mp4"])(
+    "rejects unavailable filesystem identity for source or media: %s",
+    async (relativePath) => {
+      const f = await fixture(2);
+      unavailableIdentities.add(join(f.root, relativePath));
+
+      await expect(
+        validateNativeBenchmarkFixture(f.manifestPath),
+      ).rejects.toThrow(/identity.*unavailable|unavailable.*identity/iu);
+    },
+  );
+
+  it("does not treat unavailable inode identities as verified source hard links", async () => {
+    const f = await fixture(2);
+    for (const file of [f.manifest.source, ...f.manifest.media])
+      unavailableIdentities.add(join(f.root, file.relativePath));
+
+    await expect(
+      validateNativeBenchmarkFixture(f.manifestPath),
+    ).rejects.toThrow(/identity.*unavailable|unavailable.*identity/iu);
   });
 
   it("binds to the canonical project even when its path uses a directory alias", async () => {

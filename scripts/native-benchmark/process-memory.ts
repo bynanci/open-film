@@ -400,7 +400,10 @@ export async function sampleProcessMemory(
       for (const node of tree) {
         try {
           const before = parseLinuxStat(await read(`/proc/${node.pid}/stat`));
-          if (`linux:${before.pid}:${before.startTicks}` !== node.identity)
+          if (
+            `linux:${before.pid}:${before.startTicks}` !== node.identity ||
+            before.parentPid !== node.parentPid
+          )
             throw new Error("Process identity changed");
           const resident = parseLinuxStatus(
             await read(`/proc/${node.pid}/status`),
@@ -419,7 +422,10 @@ export async function sampleProcessMemory(
             });
           }
           const after = parseLinuxStat(await read(`/proc/${node.pid}/stat`));
-          if (`linux:${after.pid}:${after.startTicks}` !== node.identity)
+          if (
+            `linux:${after.pid}:${after.startTicks}` !== node.identity ||
+            after.parentPid !== node.parentPid
+          )
             throw new Error("Process identity changed");
           Object.assign(node, resident, proportional);
         } catch {
@@ -430,6 +436,78 @@ export async function sampleProcessMemory(
               "Process disappeared or changed identity during memory collection",
           });
         }
+      }
+      try {
+        // /proc is not an atomic snapshot: a new descendant can appear after
+        // the initial PID list, and an already sampled PID can exit/reparent.
+        // Validate the rooted membership, identities and ancestry once after
+        // memory reads. Never publish a total over a changed or unknown tree.
+        const final = await linuxNodes(options);
+        snapshot.unavailable.push(...final.unavailable);
+        const finalRoot = final.nodes.find((node) => node.pid === rootPid);
+        if (!finalRoot) {
+          snapshot.rootState = final.unavailable.some(
+            (entry) => entry.pid === rootPid,
+          )
+            ? "unavailable"
+            : "missing";
+          snapshot.unavailable.push({
+            pid: rootPid,
+            operation: "identity",
+            reason:
+              "Root disappeared or became unreadable during memory collection",
+          });
+          return snapshot;
+        }
+        if (finalRoot.identity !== root.identity) {
+          snapshot.rootState = "identity-mismatch";
+          snapshot.rootIdentity = finalRoot.identity;
+          snapshot.unavailable.push({
+            pid: rootPid,
+            operation: "identity",
+            reason: "Root PID changed identity during memory collection",
+          });
+          return snapshot;
+        }
+        const finalTree = processTree(
+          final.nodes,
+          finalRoot,
+          snapshot.unavailable,
+        );
+        const finalByPid = new Map(finalTree.map((node) => [node.pid, node]));
+        const changed =
+          tree.length !== finalTree.length ||
+          tree.some((node) => {
+            const current = finalByPid.get(node.pid);
+            return (
+              !current ||
+              current.identity !== node.identity ||
+              current.parentPid !== node.parentPid
+            );
+          });
+        if (changed) {
+          for (const node of tree) {
+            const current = finalByPid.get(node.pid);
+            if (
+              !current ||
+              current.identity !== node.identity ||
+              current.parentPid !== node.parentPid
+            )
+              for (const metric of metrics) delete node[metric];
+          }
+          snapshot.unavailable.push({
+            pid: rootPid,
+            operation: "topology",
+            reason:
+              "Rooted process membership, identity, or ancestry changed during memory collection",
+          });
+        }
+      } catch {
+        snapshot.unavailable.push({
+          operation: "topology",
+          reason:
+            "Final Linux process enumeration failed; rooted coverage is unavailable",
+        });
       }
     }
     snapshot.rootState =

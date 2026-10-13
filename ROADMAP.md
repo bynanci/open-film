@@ -199,6 +199,11 @@ and visible errors without making cache recovery another creation action. Collec
 provisional; terminal events follow shutdown and final evidence persistence.
 Manifest updates publish a complete sibling write by rename, preserving the last
 valid manifest if replacement fails. These regressions do not replace Windows QA.
+Readiness also rearms after transient startup state changes within the original
+boot. Preflight verifies actual hard-link/copy topology rather than trusting
+counts, and Linux memory sampling validates rooted membership after its reads.
+Unknown identities or changed process trees cannot be credited as complete
+evidence; these checks still require Windows/workstation validation.
 
 ## Composition-aware subtitle handoff
 

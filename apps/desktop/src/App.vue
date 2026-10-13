@@ -425,12 +425,22 @@ const native = !!window.__TAURI_INTERNALS__;
 let nativeBootGeneration = 0;
 let nativeDisposed = false;
 let cancelNativeBootReady: (() => void) | undefined;
+let retryNativeBootReady: (() => void) | undefined;
 if (native)
   watch(
-    [tab, () => project.value?.id, loading, busy, error, mediaStatusError],
+    [
+      tab,
+      () => project.value?.id,
+      loading,
+      busy,
+      error,
+      mediaStatusError,
+      connected,
+    ],
     () => {
       cancelNativeBootReady?.();
       cancelNativeBootReady = undefined;
+      retryNativeBootReady?.();
     },
     { flush: "sync" },
   );
@@ -589,6 +599,7 @@ async function run(label: string, action: () => Promise<void>) {
   }
 }
 async function boot() {
+  retryNativeBootReady = undefined;
   cancelNativeBootReady?.();
   cancelNativeBootReady = undefined;
   const generation = ++nativeBootGeneration;
@@ -625,24 +636,51 @@ async function boot() {
   if (nativeDisposed || generation !== nativeBootGeneration) return;
   const startupProjectId = project.value?.id;
   const kind = startupProjectId ? "library-ready" : "welcome-ready";
-  cancelNativeBootReady = nativeBenchmark.afterFrames(kind, {}, () => {
-    if (
-      nativeDisposed ||
-      generation !== nativeBootGeneration ||
-      !connected.value ||
-      error.value ||
-      mediaStatusError.value ||
-      loading.value ||
-      busy.value ||
-      tab.value !== "library" ||
-      project.value?.id !== startupProjectId
-    )
-      return false;
-    const view = document.querySelector(
-      startupProjectId ? ".workspace-library" : ".project-launcher",
+  const originalView = () =>
+    !nativeDisposed &&
+    generation === nativeBootGeneration &&
+    tab.value === "library" &&
+    project.value?.id === startupProjectId;
+  const eligible = () =>
+    connected.value &&
+    !error.value &&
+    !mediaStatusError.value &&
+    !loading.value &&
+    !busy.value;
+  function retryBootReady() {
+    if (retryNativeBootReady !== retryBootReady) return;
+    if (!originalView()) {
+      retryNativeBootReady = undefined;
+      return;
+    }
+    if (!eligible()) return;
+    cancelNativeBootReady = nativeBenchmark.afterFrames(
+      kind,
+      {},
+      () => {
+        if (
+          retryNativeBootReady !== retryBootReady ||
+          !originalView() ||
+          !eligible()
+        )
+          return false;
+        const view = document.querySelector(
+          startupProjectId ? ".workspace-library" : ".project-launcher",
+        );
+        return !!view?.getClientRects().length;
+      },
+      () => {
+        if (retryNativeBootReady !== retryBootReady) return;
+        retryNativeBootReady = undefined;
+        // A transient state may have rearmed while this receipt was pending.
+        // The successful receipt completes this boot and cancels that attempt.
+        cancelNativeBootReady?.();
+        cancelNativeBootReady = undefined;
+      },
     );
-    return !!view?.getClientRects().length;
-  });
+  }
+  retryNativeBootReady = retryBootReady;
+  retryBootReady();
 }
 function readRecentProjects(): RecentProject[] {
   try {
@@ -1425,6 +1463,7 @@ onMounted(async () => {
 onUnmounted(() => {
   nativeDisposed = true;
   nativeBootGeneration++;
+  retryNativeBootReady = undefined;
   cancelNativeBootReady?.();
   cancelNativeBootReady = undefined;
   if (poll) clearInterval(poll);

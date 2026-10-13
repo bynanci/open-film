@@ -19,7 +19,9 @@ function stat(
 }
 function linuxFixture() {
   const files = new Map<string, string>();
+  const pids = new Set<string>();
   const add = (pid: number, parentPid: number, start: number, rss = 10) => {
+    pids.add(String(pid));
     files.set(`/proc/${pid}/stat`, stat(pid, parentPid, start));
     files.set(`/proc/${pid}/status`, `Name:\topenfilm\nVmRSS:\t${rss} kB\n`);
     files.set(
@@ -38,9 +40,10 @@ function linuxFixture() {
   });
   return {
     files,
+    pids,
     add,
     readFile,
-    readDirectory: async () => ["100", "101", "102", "300", "self", "sys"],
+    readDirectory: async () => [...pids, "self", "sys"],
   };
 }
 const windows = [
@@ -170,6 +173,158 @@ describe("rooted native process memory sampling", () => {
       fixture.readFile.mock.calls.some(([path]) => path === "/proc/300/status"),
     ).toBe(false);
     expect(snapshot.privateBytesDefinition).toBe("private-resident");
+  });
+
+  it("marks the rooted total partial when a new child starts during memory reads", async () => {
+    const fixture = linuxFixture();
+    const readDirectory = vi.fn(fixture.readDirectory);
+    const snapshot = await sampleProcessMemory(100, {
+      platform: "linux",
+      ...fixture,
+      readDirectory,
+      readFile: async (path) => {
+        const result = await fixture.readFile(path);
+        if (path === "/proc/102/status") fixture.add(103, 102, 1003, 12);
+        return result;
+      },
+    });
+    expect(snapshot.rootState).toBe("available");
+    for (const metric of ["rssBytes", "privateBytes", "pssBytes"] as const)
+      expect(snapshot.totals[metric]).toEqual({ coverage: "partial" });
+    expect(snapshot.unavailable).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: "topology",
+          reason: expect.stringMatching(/changed.*memory collection/iu),
+        }),
+      ]),
+    );
+    expect(readDirectory).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["PID reuse", "disappearance", "changed parent"] as const)(
+    "invalidates rooted coverage after memory reads detect late child %s",
+    async (change) => {
+      const fixture = linuxFixture();
+      let childMemoryRead = false;
+      let changed = false;
+      const snapshot = await sampleProcessMemory(100, {
+        platform: "linux",
+        ...fixture,
+        readFile: async (path) => {
+          const result = await fixture.readFile(path);
+          if (path === "/proc/102/status") childMemoryRead = true;
+          // Return the final per-process identity check unchanged, then mutate
+          // /proc before the rooted post-read enumeration observes it.
+          if (path === "/proc/102/stat" && childMemoryRead && !changed) {
+            changed = true;
+            if (change === "PID reuse") fixture.add(101, 100, 7777);
+            else if (change === "disappearance") fixture.pids.delete("101");
+            else fixture.files.set("/proc/102/stat", stat(102, 100, 1002));
+          }
+          return result;
+        },
+      });
+      expect(changed).toBe(true);
+      expect(snapshot.rootState).toBe("available");
+      for (const metric of ["rssBytes", "privateBytes", "pssBytes"] as const)
+        expect(snapshot.totals[metric]).toEqual({ coverage: "partial" });
+      const invalidPid = change === "changed parent" ? 102 : 101;
+      expect(
+        snapshot.processes.find((process) => process.pid === invalidPid)
+          ?.rssBytes,
+      ).toBeUndefined();
+      expect(
+        snapshot.unavailable.some((entry) => entry.operation === "topology"),
+      ).toBe(true);
+    },
+  );
+
+  it("retains complete rooted coverage when unrelated process membership changes", async () => {
+    const fixture = linuxFixture();
+    const snapshot = await sampleProcessMemory(100, {
+      platform: "linux",
+      ...fixture,
+      readFile: async (path) => {
+        const result = await fixture.readFile(path);
+        if (path === "/proc/102/status") fixture.add(400, 1, 5000, 9999);
+        return result;
+      },
+    });
+    expect(snapshot.rootState).toBe("available");
+    expect(snapshot.totals.rssBytes).toEqual({
+      coverage: "complete",
+      value: 175 * 1024,
+    });
+    expect(snapshot.totals.privateBytes).toEqual({
+      coverage: "complete",
+      value: 15 * 1024,
+    });
+    expect(snapshot.totals.pssBytes).toEqual({
+      coverage: "complete",
+      value: 24 * 1024,
+    });
+    expect(
+      fixture.readFile.mock.calls.some(([path]) => path === "/proc/400/status"),
+    ).toBe(false);
+  });
+
+  it.each(["PID reuse", "disappearance", "identity unavailable"] as const)(
+    "preserves the root state when late root %s follows completed memory reads",
+    async (change) => {
+      const fixture = linuxFixture();
+      let childMemoryRead = false;
+      let changed = false;
+      const snapshot = await sampleProcessMemory(100, {
+        platform: "linux",
+        ...fixture,
+        expectedRootIdentity: "linux:100:1000",
+        readFile: async (path) => {
+          const result = await fixture.readFile(path);
+          if (path === "/proc/102/status") childMemoryRead = true;
+          if (path === "/proc/102/stat" && childMemoryRead && !changed) {
+            changed = true;
+            if (change === "PID reuse") fixture.add(100, 1, 9999);
+            else if (change === "disappearance") fixture.pids.delete("100");
+            else fixture.files.delete("/proc/100/stat");
+          }
+          return result;
+        },
+      });
+      expect(snapshot.rootState).toBe(
+        change === "PID reuse"
+          ? "identity-mismatch"
+          : change === "disappearance"
+            ? "missing"
+            : "unavailable",
+      );
+      expect(snapshot.processes).toEqual([]);
+      for (const metric of ["rssBytes", "privateBytes", "pssBytes"] as const)
+        expect(snapshot.totals[metric]).toEqual({ coverage: "unavailable" });
+      if (change === "PID reuse")
+        expect(snapshot.rootIdentity).toBe("linux:100:9999");
+    },
+  );
+
+  it("keeps known per-process samples but withholds totals when final enumeration fails", async () => {
+    const fixture = linuxFixture();
+    let enumerations = 0;
+    const snapshot = await sampleProcessMemory(100, {
+      platform: "linux",
+      ...fixture,
+      readDirectory: async () => {
+        if (++enumerations === 2)
+          throw new Error("EACCES: final /proc enumeration");
+        return fixture.readDirectory();
+      },
+    });
+    expect(snapshot.rootState).toBe("available");
+    expect(snapshot.processes[0]?.rssBytes).toBe(100 * 1024);
+    for (const metric of ["rssBytes", "privateBytes", "pssBytes"] as const)
+      expect(snapshot.totals[metric]).toEqual({ coverage: "partial" });
+    expect(
+      snapshot.unavailable.some((entry) => entry.operation === "topology"),
+    ).toBe(true);
   });
 
   it("preserves unavailable root versus missing root without returning zero totals", async () => {
