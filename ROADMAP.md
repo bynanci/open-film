@@ -183,6 +183,11 @@ Owned service cleanup uses a private acknowledged IPC protocol across platforms,
 including Windows, and separately records selected-launcher and actual-service
 Node identities. Process tests verify the protocol; Windows execution remains
 unverified until workstation evidence is collected.
+Fixture creation also falls back to exclusive copies on a per-source hard-link
+ceiling (`EMLINK`). Linux fault injection verifies the complete 2,000-asset fixture
+with 1,023 real links and 977 independent copies; actual NTFS behavior remains
+unverified. Scoped terminal-output failures preserve failed report/lifecycle
+evidence and graceful cleanup, including a native exit while a write is pending.
 
 ## Composition-aware subtitle handoff
 

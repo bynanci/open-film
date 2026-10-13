@@ -92,6 +92,8 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Reject provisional success after native nonzero exit or signal termination, retaining actual exit evidence and graceful service cleanup.
 - [x] Request private IPC service shutdown, require project-close acknowledgement and normal exit, and preserve active work instead of forcibly terminating Windows services.
 - [x] Bind benchmark evidence to both the selected Node launcher and the actual service runtime version/executable hash.
+- [x] Finish the default fixture after a source reaches its hard-link limit, recording verified independent copies while preserving unexpected I/O failures.
+- [x] Preserve failed reports, lifecycle evidence and graceful cleanup after asynchronous stdout/stderr errors; retain native exits that occur while output is pending.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.

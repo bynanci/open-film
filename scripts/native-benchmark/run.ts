@@ -23,6 +23,7 @@ import {
   type NativeEvent,
 } from "./record";
 import { observeOwnedServiceControl } from "./service-control";
+import { observeBenchmarkOutput } from "./output-control";
 
 export interface BenchmarkConfig {
   candidateSha: string;
@@ -378,6 +379,7 @@ export async function runNativeBenchmark(
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
   options.signal?.addEventListener("abort", interrupt, { once: true });
+  const outputControl = observeBenchmarkOutput();
   const report = () => ({
     schemaVersion: "1.0.0",
     verification: "measurement-only",
@@ -422,6 +424,7 @@ export async function runNativeBenchmark(
   let finalReport: ReturnType<typeof report> | undefined;
   let finalizationFailure: AggregateError | undefined;
   const childrenLive = () => {
+    if (outputControl.failure) throw outputControl.failure;
     if (nativeFailure) throw nativeFailure;
     if (
       owned &&
@@ -494,7 +497,7 @@ export async function runNativeBenchmark(
       join(directory, "manifest.json"),
       JSON.stringify(manifest, null, 2) + "\n",
     );
-    process.stdout.write(
+    const startedOutputFailure = await outputControl.stdout(
       JSON.stringify({
         event: "native-benchmark.started",
         directory,
@@ -502,6 +505,7 @@ export async function runNativeBenchmark(
         ...manifest.ownership,
       }) + "\n",
     );
+    if (startedOutputFailure) throw startedOutputFailure;
     let nextSampleMs = 0;
     while (!stopped) {
       if (!childrenLive()) break;
@@ -607,6 +611,7 @@ export async function runNativeBenchmark(
     const finalizationErrors: Error[] = [];
     const rememberFailure = (error: unknown) => {
       const problem = error instanceof Error ? error : new Error(String(error));
+      if (finalizationErrors.includes(problem)) return;
       finalizationErrors.push(problem);
       status = "failed";
       failure = [failure, `Finalization failed: ${problem.message}`]
@@ -628,7 +633,7 @@ export async function runNativeBenchmark(
       native.exitCode === null &&
       native.signalCode === null;
     try {
-      process.stdout.write(
+      const problem = await outputControl.stdout(
         JSON.stringify({
           event: "native-benchmark.finished",
           directory,
@@ -637,6 +642,7 @@ export async function runNativeBenchmark(
           appLeftRunning: appLive,
         }) + "\n",
       );
+      if (problem) rememberFailure(problem);
     } catch (error) {
       rememberFailure(error);
     }
@@ -645,13 +651,23 @@ export async function runNativeBenchmark(
       // its owned service. Detached children do not receive terminal Ctrl+C.
       if (appLive) {
         try {
-          process.stdout.write(
-            "Collection stopped. Close the OpenFilm window normally to release its owned service.\n",
-          );
+          const notice =
+            "Collection stopped. Close the OpenFilm window normally to release its owned service.\n";
+          const problem = await outputControl.stdout(notice);
+          if (problem) {
+            rememberFailure(problem);
+            const fallback = await outputControl.stderr(
+              `Benchmark output failed: ${problem.message}\n${notice}`,
+            );
+            if (fallback) rememberFailure(fallback);
+          }
         } catch (error) {
           rememberFailure(error);
         }
-        await new Promise<void>((done) => native!.once("exit", () => done()));
+        // The child may exit while terminal write callbacks are pending. Check
+        // current state and subscribe synchronously so its exit cannot be lost.
+        if (native!.exitCode === null && native!.signalCode === null)
+          await new Promise<void>((done) => native!.once("exit", () => done()));
       }
       if (
         (status === "completed" || status === "scenario-incomplete") &&
@@ -729,6 +745,8 @@ export async function runNativeBenchmark(
     } catch (error) {
       rememberFailure(error);
     }
+    await outputControl.dispose();
+    if (outputControl.failure) rememberFailure(outputControl.failure);
     if (finalizationErrors.length) {
       // If only lifecycle persistence failed, make that failure visible in the
       // report too. A full volume may prevent both; cleanup already ran.
@@ -788,7 +806,11 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 )
-  main(process.argv.slice(2)).catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
+  main(process.argv.slice(2)).catch(async (error: unknown) => {
     process.exitCode = 1;
+    const terminal = observeBenchmarkOutput();
+    await terminal.stderr(
+      (error instanceof Error ? error.message : String(error)) + "\n",
+    );
+    await terminal.dispose();
   });

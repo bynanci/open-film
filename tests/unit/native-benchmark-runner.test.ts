@@ -14,6 +14,7 @@ import {
   type BenchmarkConfig,
 } from "../../scripts/native-benchmark/run";
 import { getEventListeners } from "node:events";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFile,
@@ -480,7 +481,11 @@ describe("native benchmark asynchronous failure paths", () => {
       publishDeferredEdit: () => Promise<void>;
       listenersRestored: () => void;
     }) => Promise<void>,
-    options: { deferredEdit?: boolean; serviceCloseDelayMs?: number } = {},
+    options: {
+      deferredEdit?: boolean;
+      serviceCloseDelayMs?: number;
+      externallySupervisedChildren?: boolean;
+    } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), "openfilm-benchmark-processes-"));
     const outputDirectory = join(root, "evidence");
@@ -598,7 +603,11 @@ describe("native benchmark asynchronous failure paths", () => {
       faults.writeNames.clear();
       const owned = await owners();
       for (const pid of [owned.nativePid, owned.serverPid]) {
-        if (pid !== undefined && alive(pid)) {
+        if (
+          !options.externallySupervisedChildren &&
+          pid !== undefined &&
+          alive(pid)
+        ) {
           process.kill(pid, "SIGTERM");
           await awaitExit(pid);
         }
@@ -666,6 +675,359 @@ describe("native benchmark asynchronous failure paths", () => {
       throw new Error("Runner did not return a final report");
     return outcome.result;
   }
+
+  it("supervises normal native and service shutdown after asynchronous stdout EPIPE", async () => {
+    const stillRunning = async (pid: number | undefined) => {
+      if (!alive(pid)) return false;
+      if (process.platform === "linux" && pid !== undefined) {
+        try {
+          const state = await readFile(`/proc/${pid}/stat`, "utf8");
+          if (state.slice(state.lastIndexOf(")") + 2).startsWith("Z "))
+            return false;
+        } catch {
+          return alive(pid);
+        }
+      }
+      return true;
+    };
+    const waitForNaturalExit = async (pid: number | undefined) => {
+      const deadline = Date.now() + 3000;
+      while (await stillRunning(pid)) {
+        if (Date.now() >= deadline)
+          throw new Error(`Synthetic child ${pid} did not close naturally`);
+        await delay(10);
+      }
+    };
+    await scenario(
+      async ({ config, owners, closeNormally, listenersRestored }) => {
+        const evidenceRoot = join(config.outputDirectory, "..");
+        const input = join(evidenceRoot, "cli-config.json");
+        const launcher = join(evidenceRoot, "cli-launcher.mjs");
+        const epipeMarker = join(evidenceRoot, "stdout-epipe.json");
+        const auditPath = join(evidenceRoot, "listener-audit.json");
+        const stopService = join(evidenceRoot, "stop-lab-service");
+        const closedMarker = join(evidenceRoot, "lab-service-closed.json");
+        await writeFile(input, JSON.stringify(config));
+        await writeFile(
+          config.serverScript,
+          `import{createServer}from'node:http';import{existsSync,writeFileSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));let closing=false;const finish=async(kind,requestId)=>{if(closing)return;closing=true;clearInterval(poll);await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));writeFileSync(${JSON.stringify(closedMarker)},JSON.stringify({kind,requestId}));if(kind==='private-ipc'&&process.connected)process.send({type:'openfilm.benchmark.closed',requestId},()=>process.disconnect());else if(process.connected)process.disconnect();};const poll=setInterval(()=>{if(existsSync(${JSON.stringify(stopService)}))void finish('lab-fallback');},10);process.on('message',message=>{if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&message?.type==='openfilm.benchmark.shutdown')void finish('private-ipc',message.requestId);});if(process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL==='1'&&process.send)process.send({type:'openfilm.benchmark.control-ready',runtime:{version:process.version,executable:process.execPath}});s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.once('SIGTERM',()=>void finish('lab-signal'));`,
+        );
+        const runModule = pathToFileURL(
+          resolve("scripts/native-benchmark/run.ts"),
+        ).href;
+        await writeFile(
+          launcher,
+          `import{readFile,writeFile}from'node:fs/promises';import{writeFileSync}from'node:fs';import{getEventListeners}from'node:events';import{runNativeBenchmark}from${JSON.stringify(runModule)};const controller=new AbortController();const originalStdout=process.stdout.rawListeners('error');const originalStderr=process.stderr.rawListeners('error');const persistent=stream=>stream.rawListeners('error').filter(listener=>!listener.listener).length;const counts=()=>({sigint:process.listenerCount('SIGINT'),sigterm:process.listenerCount('SIGTERM'),abort:getEventListeners(controller.signal,'abort').length,stdoutErrors:persistent(process.stdout),stderrErrors:persistent(process.stderr)});const streamAudit=(stream,original)=>{const current=stream.rawListeners('error');return{unexpectedAfter:current.filter(listener=>!original.includes(listener)).length,missingPersistent:original.filter(listener=>!listener.listener&&!current.includes(listener)).length,onceBefore:original.filter(listener=>listener.listener).length,onceAfter:current.filter(listener=>listener.listener).length};};const before=counts();const actualWrite=process.stdout.write.bind(process.stdout);process.stdout.write=(...args)=>{const callback=typeof args.at(-1)==='function'?args.pop():undefined;return actualWrite(...args,error=>{if(error?.code==='EPIPE')writeFileSync(${JSON.stringify(epipeMarker)},JSON.stringify({code:error.code,message:error.message}));callback?.(error);});};let result,failure;try{result=await runNativeBenchmark(JSON.parse(await readFile(${JSON.stringify(input)},'utf8')),{signal:controller.signal});}catch(error){failure=error instanceof Error?error.message:String(error);}await writeFile(${JSON.stringify(auditPath)},JSON.stringify({before,after:counts(),streams:{stdout:streamAudit(process.stdout,originalStdout),stderr:streamAudit(process.stderr,originalStderr)},resultStatus:result?.status,failure}));if(failure||result?.status!=='completed'){process.exitCode=1;process.stderr.write((failure||result?.failure||'Measurement failed')+'\\n');}`,
+        );
+        // The stdout pipe belongs only to this isolated launcher. No global
+        // uncaughtException/error handler is installed in it or in Vitest.
+        const cli = spawn(process.execPath, ["--import", "tsx", launcher], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        let pipeClosed = false;
+        let cliClosed = false;
+        const done = new Promise<{
+          code: number | null;
+          signal: string | null;
+        }>((resolveExit, reject) => {
+          cli.once("error", reject);
+          cli.once("close", (code, signal) => {
+            cliClosed = true;
+            resolveExit({ code, signal });
+          });
+        });
+        cli.stderr!.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        cli.stdout!.on("data", (chunk) => {
+          stdout += String(chunk);
+          if (
+            !pipeClosed &&
+            stdout.includes('"event":"native-benchmark.started"')
+          ) {
+            pipeClosed = true;
+            cli.stdout!.destroy();
+          }
+        });
+        try {
+          let actualEpipe: { code: string } | undefined;
+          try {
+            const deadline = Date.now() + 10000;
+            while (Date.now() < deadline) {
+              try {
+                actualEpipe = JSON.parse(await readFile(epipeMarker, "utf8"));
+                break;
+              } catch {
+                await delay(10);
+              }
+            }
+            expect(actualEpipe?.code).toBe("EPIPE");
+            expect(pipeClosed).toBe(true);
+            expect.soft(cliClosed).toBe(false);
+            const owned = await owners();
+            expect.soft(alive(owned.nativePid)).toBe(true);
+            expect.soft(alive(owned.serverPid)).toBe(true);
+          } finally {
+            // An operator still closes the native window normally after output
+            // failure; never signal the test-owned native child to satisfy QA.
+            await closeNormally();
+          }
+          const exit = await done;
+          expect.soft(exit).toEqual({ code: 1, signal: null });
+          expect.soft(stderr).toMatch(/EPIPE/iu);
+          expect.soft(stderr).not.toContain("Unhandled 'error' event");
+          const report = JSON.parse(
+            await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+          ) as { status: string; failure?: string };
+          expect.soft(report.status).toBe("failed");
+          expect.soft(report.failure ?? "").toMatch(/EPIPE/iu);
+          let lifecycle:
+            | {
+                nativeExit: { code: number; signal: string | null };
+                serviceExit: { code: number; signal: string | null };
+                serviceShutdown: { method: string; acknowledged: boolean };
+                ownedServiceRemaining: boolean;
+              }
+            | undefined;
+          let audit:
+            | {
+                before: Record<string, number>;
+                after: Record<string, number>;
+                streams: {
+                  stdout: {
+                    unexpectedAfter: number;
+                    missingPersistent: number;
+                  };
+                  stderr: {
+                    unexpectedAfter: number;
+                    missingPersistent: number;
+                  };
+                };
+                failure?: string;
+              }
+            | undefined;
+          try {
+            lifecycle = JSON.parse(
+              await readFile(
+                join(config.outputDirectory, "lifecycle.json"),
+                "utf8",
+              ),
+            );
+          } catch {
+            /* A missing lifecycle proves incomplete supervision. */
+          }
+          try {
+            audit = JSON.parse(await readFile(auditPath, "utf8"));
+          } catch {
+            /* An uncaught asynchronous stream failure prevents the audit. */
+          }
+          expect.soft(lifecycle).toBeDefined();
+          expect.soft(lifecycle?.nativeExit).toEqual({ code: 0, signal: null });
+          expect
+            .soft(lifecycle?.serviceExit)
+            .toEqual({ code: 0, signal: null });
+          expect.soft(lifecycle?.serviceShutdown).toEqual(
+            expect.objectContaining({
+              method: "private-ipc",
+              acknowledged: true,
+            }),
+          );
+          expect.soft(lifecycle?.ownedServiceRemaining).toBe(false);
+          expect.soft(audit).toBeDefined();
+          expect.soft(audit?.after).toEqual(audit?.before);
+          // Node's preexisting once error handler may be consumed by the real
+          // EPIPE. Persistent handlers must remain and no new handler may leak.
+          expect.soft(audit?.streams).toEqual({
+            stdout: expect.objectContaining({
+              unexpectedAfter: 0,
+              missingPersistent: 0,
+            }),
+            stderr: expect.objectContaining({
+              unexpectedAfter: 0,
+              missingPersistent: 0,
+            }),
+          });
+          const owned = await owners();
+          expect.soft(alive(owned.nativePid)).toBe(false);
+          expect.soft(alive(owned.serverPid)).toBe(false);
+          listenersRestored();
+        } finally {
+          await closeNormally();
+          await done;
+          const owned = await owners();
+          await waitForNaturalExit(owned.nativePid);
+          // Only a failed OLD launcher can strand the synthetic HTTP service.
+          // Release that lab resource through its sentinel, not a forced kill.
+          if (await stillRunning(owned.serverPid)) {
+            await writeFile(
+              stopService,
+              "release only the synthetic lab service",
+            );
+            await waitForNaturalExit(owned.serverPid);
+          }
+        }
+      },
+      { externallySupervisedChildren: true },
+    );
+  });
+
+  it("finishes cleanup when native exits during the awaited finished-output callback", async () => {
+    const running = async (pid: number | undefined) => {
+      if (!alive(pid)) return false;
+      if (process.platform === "linux" && pid !== undefined) {
+        try {
+          const state = await readFile(`/proc/${pid}/stat`, "utf8");
+          if (state.slice(state.lastIndexOf(")") + 2).startsWith("Z "))
+            return false;
+        } catch {
+          return alive(pid);
+        }
+      }
+      return true;
+    };
+    const naturalExit = async (pid: number | undefined) => {
+      const deadline = Date.now() + 3000;
+      while (await running(pid)) {
+        if (Date.now() >= deadline)
+          throw new Error(`Synthetic child ${pid} did not exit naturally`);
+        await delay(10);
+      }
+    };
+    await scenario(
+      async ({ config, owners, closeNormally, listenersRestored }) => {
+        const root = join(config.outputDirectory, "..");
+        const input = join(root, "race-config.json");
+        const launcher = join(root, "race-launcher.mjs");
+        const held = join(root, "finished-callback-held");
+        const release = join(root, "release-finished-callback");
+        const stopService = join(root, "stop-race-lab-service");
+        const nativeExit = join(root, "native-normal-exit.json");
+        const closeNative = join(root, "close-native");
+        const emitter = config.arguments?.[0];
+        if (!emitter) throw new Error("Missing native protocol emitter");
+        await writeFile(input, JSON.stringify(config));
+        await writeFile(
+          config.serverScript,
+          `import{createServer}from'node:http';import{existsSync}from'node:fs';const s=createServer((q,r)=>r.end('{"ok":true}'));const poll=setInterval(()=>{if(existsSync(${JSON.stringify(stopService)})){clearInterval(poll);s.close(()=>{if(process.connected)process.disconnect();});}},10);s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));${serviceShutdownProtocol({ beforeClose: "clearInterval(poll);" })}`,
+        );
+        await writeFile(
+          emitter,
+          `import{appendFileSync,existsSync,writeFileSync}from'node:fs';const emit=(kind,ms,extra={})=>appendFileSync(process.env.OPENFILM_NATIVE_BENCHMARK_EVENTS,JSON.stringify({runId:process.env.OPENFILM_NATIVE_BENCHMARK_RUN_ID,pid:process.pid,kind,nativeElapsedMs:ms,unixMs:Date.now(),clientElapsedMs:ms,clientTimeOriginMs:1000,...extra})+'\\n');emit('welcome-ready',10);emit('edit-enter',15);emit('edit-ready',20,{clipCount:2});const poll=setInterval(()=>{if(existsSync(${JSON.stringify(closeNative)})){clearInterval(poll);setTimeout(()=>{},150);}},10);process.on('exit',code=>writeFileSync(${JSON.stringify(nativeExit)},JSON.stringify({code,pid:process.pid})));`,
+        );
+        const module = pathToFileURL(
+          resolve("scripts/native-benchmark/run.ts"),
+        ).href;
+        await writeFile(
+          launcher,
+          `import{readFile}from'node:fs/promises';import{existsSync,writeFileSync}from'node:fs';import{runNativeBenchmark}from${JSON.stringify(module)};const actualWrite=process.stdout.write.bind(process.stdout);process.stdout.write=(...args)=>{const callback=typeof args.at(-1)==='function'?args.pop():undefined;const finished=String(args[0]).includes('"event":"native-benchmark.finished"');return actualWrite(...args,error=>{if(finished&&!error){writeFileSync(${JSON.stringify(held)},'actual finished output written; callback withheld');const poll=setInterval(()=>{if(existsSync(${JSON.stringify(release)})){clearInterval(poll);callback?.(error);}},10);}else callback?.(error);});};try{const result=await runNativeBenchmark(JSON.parse(await readFile(${JSON.stringify(input)},'utf8')));if(result.status!=='completed')process.exitCode=1;}catch(error){process.exitCode=1;process.stderr.write((error instanceof Error?error.message:String(error))+'\\n');}`,
+        );
+        const cli = spawn(process.execPath, ["--import", "tsx", launcher], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        cli.stdout!.resume();
+        let stderr = "";
+        cli.stderr!.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        let cliClosed = false;
+        let completionTimedOut = false;
+        const done = new Promise<{
+          code: number | null;
+          signal: string | null;
+        }>((resolveExit, reject) => {
+          cli.once("error", reject);
+          cli.once("close", (code, signal) => {
+            cliClosed = true;
+            resolveExit({ code, signal });
+          });
+        });
+        try {
+          const deadline = Date.now() + 10000;
+          let callbackHeld = false;
+          while (Date.now() < deadline) {
+            try {
+              await readFile(held);
+              callbackHeld = true;
+              break;
+            } catch {
+              await delay(10);
+            }
+          }
+          expect(callbackHeld).toBe(true);
+          const owned = await owners();
+          expect(alive(owned.nativePid)).toBe(true);
+          await closeNormally();
+          await naturalExit(owned.nativePid);
+          expect(JSON.parse(await readFile(nativeExit, "utf8"))).toEqual({
+            code: 0,
+            pid: owned.nativePid,
+          });
+          expect(cliClosed).toBe(false);
+          // Native's actual exit precedes callback delivery. The runner must
+          // inspect current child state before subscribing to an exit event.
+          await writeFile(
+            release,
+            "deliver successful finished-write callback",
+          );
+          const completed = await Promise.race([
+            done.then(() => true),
+            delay(2500).then(() => false),
+          ]);
+          completionTimedOut = !completed;
+          expect(completed).toBe(true);
+          expect(await done).toEqual({ code: 0, signal: null });
+          expect(stderr).not.toMatch(
+            /Unhandled|Native benchmark finalization failed/iu,
+          );
+          const report = JSON.parse(
+            await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+          ) as { status: string };
+          expect(report.status).toBe("completed");
+          const lifecycle = JSON.parse(
+            await readFile(
+              join(config.outputDirectory, "lifecycle.json"),
+              "utf8",
+            ),
+          ) as {
+            nativeExit: { code: number; signal: string | null };
+            serviceExit: { code: number; signal: string | null };
+            serviceShutdown: { acknowledged: boolean };
+            ownedServiceRemaining: boolean;
+          };
+          expect(lifecycle.nativeExit).toEqual({ code: 0, signal: null });
+          expect(lifecycle.serviceExit).toEqual({ code: 0, signal: null });
+          expect(lifecycle.serviceShutdown.acknowledged).toBe(true);
+          expect(lifecycle.ownedServiceRemaining).toBe(false);
+          expect(alive(owned.nativePid)).toBe(false);
+          expect(alive(owned.serverPid)).toBe(false);
+          listenersRestored();
+        } finally {
+          await closeNormally();
+          await writeFile(release, "release lab callback during teardown");
+          const owned = await owners();
+          await naturalExit(owned.nativePid);
+          if (!cliClosed && !completionTimedOut)
+            await Promise.race([done, delay(2500)]);
+          // Only the isolated OLD lab runner can hang after native already exited
+          // normally. Terminate that runner, never the native app or service.
+          if (!cliClosed) cli.kill("SIGKILL");
+          await done;
+          if (await running(owned.serverPid)) {
+            await writeFile(
+              stopService,
+              "release only synthetic HTTP lab service",
+            );
+            await naturalExit(owned.serverPid);
+          }
+        }
+      },
+      { externallySupervisedChildren: true },
+    );
+  });
 
   it("records actual service runtime identity when a different Node executable path is selected", async () => {
     await scenario(

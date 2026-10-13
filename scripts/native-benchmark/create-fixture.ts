@@ -180,10 +180,10 @@ export async function createNativeBenchmarkFixture(
         await link(sourcePath, path);
         linkedMediaCount++;
       } catch (error) {
-        // A removable filesystem may not implement hard links. Copies preserve
-        // the workload and identity while the manifest records storage cost.
+        // Filesystems may not implement hard links or can reach their per-file
+        // link ceiling. Copies preserve the workload and recorded identity.
         if (
-          !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV"].includes(
+          !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EMLINK"].includes(
             (error as NodeJS.ErrnoException).code ?? "",
           )
         )

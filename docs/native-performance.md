@@ -40,6 +40,9 @@ it does not exercise real 4K, transcription, GPU or camera quality. The generato
 refuses an existing destination. Keep the fixture root in place for comparable
 runs: its saved source URIs are absolute, and relocation/relinking changes the
 declared project/database identities.
+Per-source hard-link capacity errors (`EMLINK`, including filesystem link ceilings)
+also use exclusive copies. The manifest records linked and copied counts; an
+unexpected I/O error still fails fixture creation instead of publishing a manifest.
 
 ## Configure a run
 
@@ -194,6 +197,12 @@ listener cleanup. Finalization errors remain visible and fail the CLI; if storag
 permits, lifecycle evidence is still saved and the report records failure. A full
 volume can prevent all evidence writes, so preserve the terminal error and partial
 directory rather than treating missing files as a successful run.
+Scoped stdout/stderr handlers also capture asynchronous write failures, such as a
+broken pipe, without abandoning native-exit supervision or private service close.
+Available report/lifecycle files retain failure; a surviving terminal stream can
+still show normal-close instructions. Shutdown supervision retains native exit
+before, during or after awaited terminal output, so an exit during a pending write
+cannot strand the supervisor.
 If the owned service survives the two-second shutdown grace period, finalization
 fails and `lifecycle.json` records `ownedServiceRemaining: true`. The service may
 still be finishing its graceful close; the runner does not force-kill an active
@@ -249,7 +258,11 @@ The strict [workstation QA 1.0.0 contract](workstation-qa.md) remains unchanged.
 
 Automated fixture, protocol, memory-parser and readiness guards are tested in CI.
 The Linux process sampler can observe actual test processes; those observations
-are not native UI performance data. Real workstation first-open repetitions,
+are not native UI performance data. A Linux filesystem-boundary fault-injection
+regression creates all 2,000 assets using 1,023 actual links and 977 independent
+copies, verifies their sizes/hashes, and preserves unexpected `EIO` failures.
+That validates the `EMLINK` fallback, not actual NTFS execution or performance.
+Real workstation first-open repetitions,
 one-hour memory series, Windows/macOS collectors and native screen behavior
 require workstation execution and review. Resolve remains an independent manual
 gate; this tool does not run or certify Resolve.
