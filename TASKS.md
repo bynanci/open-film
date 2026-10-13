@@ -86,6 +86,8 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] Reject unrelated/changed benchmark projects, media and undeclared SQLite WAL before starting measurement processes.
 - [x] Keep repeated runs bound to the same immutable fixture using verified per-run project copies; preserve each run's edits and final hashes.
 - [x] Prevent completion after an owned child exits during sampling, and preserve supervision/cleanup when evidence persistence fails.
+- [x] Include Edit checkpoints delivered during the final sample in the terminal scenario report.
+- [x] Fail finalization when an owned service survives its shutdown grace period, preserving active work and explicit remaining-process evidence.
 - [ ] Workstation native first-open repetitions and one-hour memory evidence.
       Requires real workstation execution; cloud compilation and process tests
       do not satisfy this gate.

@@ -173,7 +173,9 @@ first-open and one-hour series remain unverified until actually executed.
 Fixture preflight binds project/database/media bytes, and verified per-run project
 copies preserve identical initial films without rehashing edited templates.
 Sampling races and evidence-volume failures retain explicit failure and owned
-process cleanup; automated regressions do not satisfy the workstation gate.
+process cleanup. Final checkpoints are refreshed before classification, and a
+surviving service fails finalization without force-killing active work. Automated
+regressions do not satisfy the workstation gate.
 
 ## Composition-aware subtitle handoff
 

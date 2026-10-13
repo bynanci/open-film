@@ -168,12 +168,21 @@ or run a second collection until both native/service processes have closed.
 Child liveness is checked again after asynchronous sampling and evidence writes.
 A native exit during that work is `app-exited`; an owned service exit is `failed`.
 Neither can become a completed collection merely because the time limit elapsed.
+The completed checkpoint lines are refreshed after the final asynchronous work,
+before scenario classification and report freezing, so an Edit visit delivered
+during the last sample is included.
 
 An unwritable report does not bypass native-exit supervision or owned-service and
 listener cleanup. Finalization errors remain visible and fail the CLI; if storage
 permits, lifecycle evidence is still saved and the report records failure. A full
 volume can prevent all evidence writes, so preserve the terminal error and partial
 directory rather than treating missing files as a successful run.
+If the owned service survives the two-second shutdown grace period, finalization
+fails and `lifecycle.json` records `ownedServiceRemaining: true`. The service may
+still be finishing its graceful close; the runner does not force-kill an active
+mutation. Preserve the error and owned PID from `manifest.json`, and wait for that
+process to exit before another run. A surviving service is never credited as
+successful cleanup.
 
 ## Memory interpretation and evidence
 

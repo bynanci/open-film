@@ -461,13 +461,16 @@ describe("native benchmark asynchronous failure paths", () => {
       signal: AbortSignal;
       owners: () => Promise<Owners>;
       closeNormally: () => Promise<void>;
+      publishDeferredEdit: () => Promise<void>;
       listenersRestored: () => void;
     }) => Promise<void>,
+    options: { deferredEdit?: boolean; serviceCloseDelayMs?: number } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), "openfilm-benchmark-processes-"));
     const outputDirectory = join(root, "evidence");
     const controller = new AbortController();
     const closeSignal = join(root, "close-native");
+    const editSignal = join(root, "publish-edit");
     const closeNormally = async () => {
       await writeFile(closeSignal, "normal protocol-child shutdown");
     };
@@ -489,13 +492,13 @@ describe("native benchmark asynchronous failure paths", () => {
       const emitter = join(root, "emitter.mjs");
       await writeFile(
         service,
-        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.on('SIGTERM',()=>s.close());`,
+        `import{createServer}from'node:http';const s=createServer((q,r)=>r.end('{"ok":true}'));s.listen(4310,'127.0.0.1',()=>console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:4310})));process.once('SIGTERM',()=>setTimeout(()=>s.close(),${options.serviceCloseDelayMs ?? 0}));`,
       );
       // A real child publishes the existing native event protocol and exits
       // normally. It is not a native GUI or workstation performance fixture.
       await writeFile(
         emitter,
-        `import{appendFileSync,existsSync}from'node:fs';const emit=(kind,ms,extra={})=>appendFileSync(process.env.OPENFILM_NATIVE_BENCHMARK_EVENTS,JSON.stringify({runId:process.env.OPENFILM_NATIVE_BENCHMARK_RUN_ID,pid:process.pid,kind,nativeElapsedMs:ms,unixMs:Date.now(),clientElapsedMs:ms,clientTimeOriginMs:1000,...extra})+'\\n');emit('welcome-ready',10);emit('edit-enter',15);emit('edit-ready',20,{clipCount:2});const poll=setInterval(()=>{if(existsSync(${JSON.stringify(closeSignal)})){clearInterval(poll);setTimeout(()=>{},150);}},10);`,
+        `import{appendFileSync,existsSync}from'node:fs';const emit=(kind,ms,extra={})=>appendFileSync(process.env.OPENFILM_NATIVE_BENCHMARK_EVENTS,JSON.stringify({runId:process.env.OPENFILM_NATIVE_BENCHMARK_RUN_ID,pid:process.pid,kind,nativeElapsedMs:ms,unixMs:Date.now(),clientElapsedMs:ms,clientTimeOriginMs:1000,...extra})+'\\n');emit('welcome-ready',10);const edit=()=>{emit('edit-enter',15);emit('edit-ready',20,{clipCount:2});};let editPublished=${!options.deferredEdit};if(editPublished)edit();const poll=setInterval(()=>{if(!editPublished&&existsSync(${JSON.stringify(editSignal)})){editPublished=true;edit();}if(existsSync(${JSON.stringify(closeSignal)})){clearInterval(poll);setTimeout(()=>{},150);}},10);`,
       );
       // Keep the child live until both actual asynchronous root snapshots have
       // returned. Its normal shutdown then occurs after report writes, without
@@ -525,6 +528,45 @@ describe("native benchmark asynchronous failure paths", () => {
         signal: controller.signal,
         owners,
         closeNormally,
+        publishDeferredEdit: async () => {
+          await writeFile(editSignal, "publish actual child Edit checkpoints");
+          const manifest = JSON.parse(
+            await readFile(join(outputDirectory, "manifest.json"), "utf8"),
+          ) as { runId: string; ownership: Owners };
+          const deadline = Date.now() + 3000;
+          while (Date.now() < deadline) {
+            const events = (
+              await readFile(
+                join(outputDirectory, "native-events.jsonl"),
+                "utf8",
+              )
+            )
+              .split("\n")
+              .slice(0, -1)
+              .filter(Boolean)
+              .map(
+                (line) =>
+                  JSON.parse(line) as {
+                    runId: string;
+                    pid: number;
+                    kind: string;
+                  },
+              );
+            if (
+              events.some(
+                (event) =>
+                  event.runId === manifest.runId &&
+                  event.pid === manifest.ownership.nativePid &&
+                  event.kind === "edit-ready",
+              )
+            )
+              return;
+            await delay(10);
+          }
+          throw new Error(
+            "Actual native protocol child did not publish deferred Edit readiness",
+          );
+        },
         listenersRestored: () => {
           expect.soft(process.listeners("SIGINT")).toEqual(originalInt);
           expect.soft(process.listeners("SIGTERM")).toEqual(originalTerm);
@@ -560,6 +602,96 @@ describe("native benchmark asynchronous failure paths", () => {
       await rm(root, { recursive: true, force: true });
     }
   }
+
+  it("includes Edit readiness published by the actual child during the final awaited sample", async () => {
+    await scenario(
+      async ({
+        config,
+        signal,
+        owners,
+        closeNormally,
+        publishDeferredEdit,
+        listenersRestored,
+      }) => {
+        let published = false;
+        faults.afterSample = async (snapshot) => {
+          if (!published && snapshot.rootPid === (await owners()).nativePid) {
+            published = true;
+            await publishDeferredEdit();
+            // The deadline is crossed after new native evidence is already on
+            // disk, while the runner still holds its welcome-only event list.
+            await delay(150);
+            await closeNormally();
+          }
+        };
+        const result = await runNativeBenchmark(config, { signal });
+        expect(published).toBe(true);
+        expect(result.status).toBe("completed");
+        expect(result.scenario.matchingEditVisits).toBe(1);
+        expect(result.checkpoints.editVisits).toHaveLength(1);
+        expect(result.checkpoints.editVisits[0]?.clipCount).toBe(2);
+        const saved = JSON.parse(
+          await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+        ) as typeof result;
+        expect(saved.status).toBe("completed");
+        expect(saved.checkpoints.editVisits).toEqual(
+          result.checkpoints.editVisits,
+        );
+        expect(alive((await owners()).serverPid)).toBe(false);
+        listenersRestored();
+      },
+      { deferredEdit: true },
+    );
+  });
+
+  it("reports incomplete service cleanup without force killing a slow graceful shutdown", async () => {
+    await scenario(
+      async ({ config, signal, owners, listenersRestored }) => {
+        let failure: unknown;
+        let returned:
+          Awaited<ReturnType<typeof runNativeBenchmark>> | undefined;
+        try {
+          returned = await runNativeBenchmark(config, { signal });
+        } catch (error) {
+          failure = error;
+        }
+        const owned = await owners();
+        // Capture whether the runner abandoned a live service before waiting
+        // for that same test-owned service to finish its normal shutdown.
+        const serviceWasLive = alive(owned.serverPid);
+        if (owned.serverPid !== undefined) await awaitExit(owned.serverPid);
+        expect.soft(returned).toBeUndefined();
+        expect.soft(failure).toBeInstanceOf(Error);
+        expect
+          .soft(failure instanceof Error ? failure.message : "")
+          .toMatch(
+            /service.*(cleanup|shutdown|stop|exit|remain)|cleanup.*service/iu,
+          );
+        expect.soft(serviceWasLive).toBe(true);
+        expect.soft(alive(owned.nativePid)).toBe(false);
+        expect.soft(alive(owned.serverPid)).toBe(false);
+        const report = JSON.parse(
+          await readFile(join(config.outputDirectory, "report.json"), "utf8"),
+        ) as { status: string; failure?: string };
+        expect.soft(report.status).toBe("failed");
+        expect
+          .soft(report.failure)
+          .toMatch(
+            /service.*(cleanup|shutdown|stop|exit|remain)|cleanup.*service/iu,
+          );
+        const lifecycle = JSON.parse(
+          await readFile(
+            join(config.outputDirectory, "lifecycle.json"),
+            "utf8",
+          ),
+        ) as { ownedServiceRemaining: boolean; nativeExit: { code: number } };
+        expect.soft(lifecycle.ownedServiceRemaining).toBe(true);
+        expect.soft(lifecycle.nativeExit.code).toBe(0);
+        listenersRestored();
+      },
+      { serviceCloseDelayMs: 2800 },
+    );
+  });
 
   it.each(["nativePid", "serverPid"] as const)(
     "does not mark completion when %s exits during the awaited memory sample",

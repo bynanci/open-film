@@ -555,6 +555,13 @@ export async function runNativeBenchmark(
         performance.now() - start - firstCheckpointObservedMs >=
           config.durationSeconds * 1000
       ) {
+        // The final sample/writes may span newly delivered Edit checkpoints.
+        events = parseNativeEvents(
+          await readFile(eventPath, "utf8"),
+          runId,
+          native.pid,
+        );
+        if (!childrenLive() || stopped) break;
         status =
           config.project &&
           !summarizeNativeEvents(events).editVisits.some(
@@ -640,6 +647,15 @@ export async function runNativeBenchmark(
           );
           owned.service.kill("SIGTERM");
           await Promise.race([exited, delay(2000, undefined, { ref: false })]);
+          if (
+            owned.service.exitCode === null &&
+            owned.service.signalCode === null
+          )
+            rememberFailure(
+              new Error(
+                `Owned local service did not exit within the shutdown grace period (PID ${owned.service.pid}); cleanup is incomplete`,
+              ),
+            );
         }
       } catch (error) {
         rememberFailure(error);
