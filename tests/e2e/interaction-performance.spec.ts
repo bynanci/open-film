@@ -20,6 +20,7 @@ import {
   WAVEFORM_CACHE_IDENTITY,
 } from "@openfilm/media";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
+import type { EditorState } from "../../apps/desktop/src/api.js";
 import { initialLocale, navigate, uiText } from "./ui-helpers.js";
 
 // Synthetic UI work only: catalog rows share a tiny generated local video. The
@@ -38,6 +39,9 @@ interface Probe {
   longTasks: number[];
   mutations: Record<string, number>;
   observers: MutationObserver[];
+  mountedComponents: Record<string, number>;
+  initialRenderInstrumented: boolean;
+  mountHookInstalled: boolean;
 }
 declare global {
   interface Window {
@@ -50,33 +54,33 @@ async function installRenderProbe(page: Page) {
     // Test-only Vue dev runtime instrumentation, never shipped to production.
     // Wrap only render functions; ownership, watchers and scheduler stay intact.
     type Instance = {
+      uid: number;
       type: { __name?: string; name?: string };
       parent?: Instance;
+      appContext: {
+        app: { mixin: (options: { beforeMount: () => void }) => void };
+      };
       render: (...args: unknown[]) => unknown;
       measured?: boolean;
     };
-    const found = new Set<Instance>();
-    for (const element of Array.from(document.querySelectorAll("*"))) {
-      let instance = (element as Element & { __vueParentComponent?: Instance })
-        .__vueParentComponent;
-      while (instance && !found.has(instance)) {
-        found.add(instance);
-        instance = instance.parent;
-      }
-    }
-    for (const instance of found) {
+    const measuredNames = [
+      "App",
+      "TimelineEditor",
+      "TimelineClip",
+      "PrecisionEditor",
+      "PrecisionTranscript",
+      "TranscriptEditor",
+    ];
+    function wrapRender(instance: Instance, initialMount: boolean) {
       const name = instance.type.__name ?? instance.type.name ?? "anonymous";
-      if (
-        instance.measured ||
-        ![
-          "App",
-          "TimelineEditor",
-          "PrecisionEditor",
-          "PrecisionTranscript",
-          "TranscriptEditor",
-        ].includes(name)
-      )
-        continue;
+      if (!measuredNames.includes(name)) return;
+      if (initialMount) {
+        const probe = window.__interactionProbe;
+        probe.mountedComponents[name] =
+          (probe.mountedComponents[name] ?? 0) + 1;
+        if (name === "TimelineEditor") probe.initialRenderInstrumented = true;
+      }
+      if (instance.measured) return;
       instance.measured = true;
       if (!window.__interactionProbe.instrumentedComponents.includes(name))
         window.__interactionProbe.instrumentedComponents.push(name);
@@ -94,6 +98,31 @@ async function installRenderProbe(page: Page) {
           entry.milliseconds += performance.now() - start;
         }
       };
+    }
+    const found = new Set<Instance>();
+    for (const element of Array.from(document.querySelectorAll("*"))) {
+      let instance = (element as Element & { __vueParentComponent?: Instance })
+        .__vueParentComponent;
+      while (instance && !found.has(instance)) {
+        found.add(instance);
+        instance = instance.parent;
+      }
+    }
+    for (const instance of found) wrapRender(instance, false);
+    if (!window.__interactionProbe.mountHookInstalled) {
+      const owner = found.values().next().value;
+      if (owner) {
+        // Registered after Library startup, before the deferred first Edit.
+        // Vue calls beforeMount before its first render. The identical hook
+        // runs in baseline and candidate; candidate's 500 extra wrappers may
+        // themselves add mount overhead and are disclosed in the report.
+        owner.appContext.app.mixin({
+          beforeMount(this: { $: Instance }) {
+            wrapRender(this.$, true);
+          },
+        });
+        window.__interactionProbe.mountHookInstalled = true;
+      }
     }
     for (const selector of [
       ".editor-story-rail",
@@ -142,6 +171,9 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       longTasks: [],
       mutations: {},
       observers: [],
+      mountedComponents: {},
+      initialRenderInstrumented: false,
+      mountHookInstalled: false,
     };
     new PerformanceObserver((list) =>
       window.__interactionProbe.longTasks.push(
@@ -205,30 +237,62 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     await settle(page);
     const elapsedMs = performance.now() - start;
     const after = await snapshot();
-    const dom = await page.evaluate(() => ({
-      elements: document.querySelectorAll("*").length,
-      libraryCards: document.querySelectorAll(".asset-card").length,
-      firstLibraryAsset: document.querySelector(".asset-card .asset-name")
-        ?.textContent,
-      timelineClips: document.querySelectorAll(".editor-clip").length,
-      transcriptRows: document.querySelectorAll(
-        '[data-testid="transcript-row"]',
-      ).length,
-      precisionSegments: document.querySelectorAll(".precision-segment").length,
-      videos: document.querySelectorAll("video").length,
-      ...window.__interactionProbe,
-      observers: undefined,
-    }));
-    samples.push({
+    const dom = await page.evaluate(() => {
+      type Instance = {
+        uid: number;
+        type: { __name?: string; name?: string };
+        parent?: Instance;
+      };
+      const instances = new Set<Instance>();
+      for (const element of Array.from(document.querySelectorAll("*"))) {
+        let instance = (
+          element as Element & { __vueParentComponent?: Instance }
+        ).__vueParentComponent;
+        while (instance && !instances.has(instance)) {
+          instances.add(instance);
+          instance = instance.parent;
+        }
+      }
+      const componentInstances: Record<string, number[]> = {};
+      for (const instance of instances) {
+        const name = instance.type.__name ?? instance.type.name ?? "anonymous";
+        (componentInstances[name] ??= []).push(instance.uid);
+      }
+      return {
+        elements: document.querySelectorAll("*").length,
+        libraryCards: document.querySelectorAll(".asset-card").length,
+        firstLibraryAsset: document.querySelector(".asset-card .asset-name")
+          ?.textContent,
+        timelineClips: document.querySelectorAll(".editor-clip").length,
+        transcriptRows: document.querySelectorAll(
+          '[data-testid="transcript-row"]',
+        ).length,
+        precisionSegments:
+          document.querySelectorAll(".precision-segment").length,
+        videos: document.querySelectorAll("video").length,
+        ...window.__interactionProbe,
+        observers: undefined,
+        componentInstances,
+        selectedClipIds: Array.from(
+          document.querySelectorAll('.editor-clip[aria-pressed="true"]'),
+          (clip) => clip.id,
+        ),
+      };
+    });
+    const sample = {
       name,
       elapsedMs,
       scriptMs: (after.ScriptDuration! - before.ScriptDuration!) * 1_000,
       layoutMs: (after.LayoutDuration! - before.LayoutDuration!) * 1_000,
       taskMs: (after.TaskDuration! - before.TaskDuration!) * 1_000,
       heapBytes: after.JSHeapUsedSize,
+      heapBeforeBytes: before.JSHeapUsedSize,
+      heapDeltaBytes: after.JSHeapUsedSize! - before.JSHeapUsedSize!,
       requests: requests.slice(requestStart),
       ...dom,
-    });
+    };
+    samples.push(sample);
+    return sample;
   }
   try {
     await generateSampleMedia(join(root, "generated"));
@@ -358,6 +422,7 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       })),
       provenance: { ...provenance, ...sceneCacheIdentity() },
     });
+    const draftKey = `openfilm:editor:${app.project.id}:benchmark-cut`;
     app.close();
     expect(
       (
@@ -407,16 +472,158 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     await measure("timeline-open", async () => {
       await navigate(page, "edit");
       await expect(page.locator(".editor-clip")).toHaveCount(500);
+      await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+      await expect(page.locator("#clip-benchmark-0000")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(
+        page.locator(".editor-inspector-title h3").first(),
+      ).toHaveText("Memory 0000.mp4");
     });
-    await measure("timeline-select-twenty", async () => {
-      for (let index = 0; index < 20; index++) {
-        await page
-          .locator(`#clip-benchmark-${String(index % 2).padStart(4, "0")}`)
-          .click();
-        await settle(page);
+    async function editorContract() {
+      const response = await request.get(
+        `${api}/compositions/benchmark-cut/editor`,
+      );
+      expect(response.ok()).toBe(true);
+      const state = (await response.json()) as EditorState;
+      return {
+        composition: state.composition,
+        story: state.story,
+        revision: state.revision,
+        canUndo: state.canUndo,
+        canRedo: state.canRedo,
+        recoveryDraft: await page.evaluate(
+          (key) => localStorage.getItem(key),
+          draftKey,
+        ),
+      };
+    }
+    const selectionContract = await editorContract();
+    for (const [name, alternate] of [
+      ["timeline-select-twenty", 1],
+      ["timeline-select-cross-beat-twenty", 50],
+    ] as const) {
+      // Each scenario starts on clip 0. Its first click is deliberately a
+      // no-op: twenty attempts must produce nineteen real selection changes.
+      await page.locator("#clip-benchmark-0000").click();
+      await expect(
+        page.locator(".editor-inspector-title h3").first(),
+      ).toHaveText("Memory 0000.mp4");
+      await settle(page);
+      let attemptedClicks = 0;
+      let actualSelectionChanges = 0;
+      const sample = await measure(name, async () => {
+        for (let index = 0; index < 20; index++) {
+          const suffix = String(index % 2 === 0 ? 0 : alternate).padStart(
+            4,
+            "0",
+          );
+          const clip = page.locator(`#clip-benchmark-${suffix}`);
+          const changed = (await clip.getAttribute("aria-pressed")) !== "true";
+          await clip.click();
+          attemptedClicks++;
+          await expect(clip).toHaveClass(/selected/);
+          await expect(clip).toHaveAttribute("aria-pressed", "true");
+          await expect(
+            page.locator('.editor-clip[aria-pressed="true"]'),
+          ).toHaveCount(1);
+          await expect(
+            page.locator(".editor-inspector-title h3").first(),
+          ).toHaveText(`Memory ${suffix}.mp4`);
+          if (changed) actualSelectionChanges++;
+          await settle(page);
+        }
+      });
+      Object.assign(sample, { attemptedClicks, actualSelectionChanges });
+      expect(attemptedClicks).toBe(20);
+      expect(actualSelectionChanges).toBe(19);
+      expect(await editorContract()).toEqual(selectionContract);
+      expect(
+        sample.requests.some((path) =>
+          /\/compositions\/.+\/editor|\/api\/(?:assets|catalog)(?:[/?]|$)/.test(
+            path,
+          ),
+        ),
+      ).toBe(false);
+      expect(sample.requests.every((path) => path.startsWith("GET "))).toBe(
+        true,
+      );
+      if (process.env.OPENFILM_RAIL_BASELINE !== "1") {
+        expect(sample.instrumentedComponents).toContain("TimelineClip");
+        const leaves = sample.renders.TimelineClip?.calls ?? 0;
+        expect(leaves).toBeGreaterThanOrEqual(actualSelectionChanges * 2);
+        expect(leaves).toBeLessThanOrEqual(40);
       }
-    });
+    }
     await page.locator("#clip-benchmark-0000").click();
+    await expect(page.locator(".editor-inspector-title h3").first()).toHaveText(
+      "Memory 0000.mp4",
+    );
+    await settle(page);
+    await measure("timeline-three-idle-polls", async () => {
+      const initial = requests.filter(
+        (entry) => entry === "GET /api/jobs",
+      ).length;
+      await expect
+        .poll(
+          () =>
+            requests.filter((entry) => entry === "GET /api/jobs").length -
+            initial,
+          { timeout: 10_000, intervals: [100] },
+        )
+        .toBeGreaterThanOrEqual(3);
+    });
+    const firstMount = samples.find(
+      (sample) => sample.name === "timeline-open",
+    )!;
+    const firstInstances = firstMount.componentInstances as Record<
+      string,
+      number[]
+    >;
+    expect(firstMount.initialRenderInstrumented).toBe(true);
+    expect(
+      (firstMount.renders as RenderCounts).TimelineEditor?.calls ?? 0,
+    ).toBeGreaterThan(0);
+    expect(firstInstances.TimelineEditor).toHaveLength(1);
+    expect(
+      (firstMount.requests as string[]).filter((path) =>
+        /\/compositions\/.+\/editor/.test(path),
+      ),
+    ).toHaveLength(1);
+    if (process.env.OPENFILM_RAIL_BASELINE !== "1") {
+      expect(firstInstances.TimelineClip).toHaveLength(500);
+      expect(
+        (firstMount.renders as RenderCounts).TimelineClip?.calls ?? 0,
+      ).toBeGreaterThanOrEqual(500);
+    }
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const sample = await measure(
+        `timeline-library-revisit-${cycle}`,
+        async () => {
+          await navigate(page, "library");
+          await expect(page.locator(".workspace-library")).toBeVisible();
+          await navigate(page, "edit");
+          await expect(page.locator("#clip-benchmark-0000")).toHaveAttribute(
+            "aria-pressed",
+            "true",
+          );
+          await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+        },
+      );
+      expect(sample.componentInstances.TimelineEditor).toEqual(
+        firstInstances.TimelineEditor,
+      );
+      expect(sample.componentInstances.TimelineClip ?? []).toEqual(
+        firstInstances.TimelineClip ?? [],
+      );
+      expect(
+        sample.requests.filter((path) =>
+          /\/compositions\/.+\/editor/.test(path),
+        ),
+      ).toHaveLength(1);
+      expect(await editorContract()).toEqual(selectionContract);
+    }
     await measure("precision-open", async () => {
       await page
         .getByRole("button", { name: "Precision", exact: true })
@@ -502,10 +709,21 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
     expect(
       (hover.requests as string[]).every((path) => path === "GET /api/jobs"),
     ).toBe(true);
+    const railIdle = samples.find(
+      (sample) => sample.name === "timeline-three-idle-polls",
+    )!;
+    if (process.env.OPENFILM_RAIL_BASELINE !== "1") {
+      expect(railIdle.instrumentedComponents).toContain("TimelineClip");
+      expect((railIdle.renders as RenderCounts).TimelineClip?.calls ?? 0).toBe(
+        0,
+      );
+    }
     const idle = samples.find(
       (sample) => sample.name === "precision-three-idle-polls",
     )!;
     expect((idle.renders as RenderCounts).PrecisionEditor?.calls ?? 0).toBe(0);
+    if (process.env.OPENFILM_RAIL_BASELINE !== "1")
+      expect((idle.renders as RenderCounts).TimelineClip?.calls ?? 0).toBe(0);
     expect((idle.renders as RenderCounts).PrecisionTranscript?.calls ?? 0).toBe(
       0,
     );
@@ -520,6 +738,9 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
       productionSourceFiles: productionFiles(),
       productionSourceBefore: sourceBefore,
       productionSourceAfter: await fingerprint(),
+      railBaselineBudgetExemption: process.env.OPENFILM_RAIL_BASELINE === "1",
+      instrumentation:
+        "Vue instance render wrappers and app beforeMount mixin, installed after startup Library and before first Edit. Baseline and candidate use the same hooks. Candidate's 500 leaf wrappers may add measured initial-mount overhead. DOM component UID snapshots prove retention; direct clip-label evaluations are measured separately by actual-SFC unit tests. Heap is sampled without forced GC.",
       measurement:
         "Fresh browser per repetition; Vite dev server shared within --repeat-each. Warm-up run separate. Vue render elapsed is inclusive test instrumentation; CDP has separate accounting. No ASR, realistic speech density, 4K decode or workstation performance claim.",
       browser: await page.context().browser()?.version(),

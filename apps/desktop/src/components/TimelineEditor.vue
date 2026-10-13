@@ -33,6 +33,7 @@ import {
 } from "../api";
 import { useTimelineEditor } from "../composables/useTimelineEditor";
 import Icon from "./Icon.vue";
+import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
@@ -416,6 +417,12 @@ function move(direction: number) {
       clipId: selectedClip.value.id,
       toIndex: selectedIndex.value + direction,
     });
+}
+function startClipDrag(clipId: string) {
+  draggedClipId.value = clipId;
+}
+function endClipDrag() {
+  draggedClipId.value = "";
 }
 function drop(targetClip: Clip) {
   const dragged = allClips.value.find(
@@ -1470,82 +1477,24 @@ onBeforeUnmount(() => {
                   t('editor.beats.clipsLabel', { title: group.title })
                 "
               >
-                <button
+                <TimelineClip
                   v-for="clip in group.clips"
-                  :id="`clip-${clip.id}`"
                   :key="clip.id"
-                  class="editor-clip"
-                  :class="{
-                    selected: selectedClipId === clip.id,
-                    locked: clip.locked,
-                  }"
-                  :style="{
-                    width: `${Math.min(240, Math.max(120, clip.timelineDuration * 24))}px`,
-                  }"
-                  :aria-label="
-                    t(
-                      clip.locked
-                        ? 'editor.clip.selectLocked'
-                        : 'editor.clip.select',
-                      { name: name(clip) },
-                    )
+                  :clip="clip"
+                  :selected="selectedClipId === clip.id"
+                  :asset-name="assetMap.get(clip.assetId)?.name"
+                  :thumbnail-src="
+                    assetMap.get(clip.assetId)?.thumbnailUri
+                      ? thumbnailUrl(clip.assetId)
+                      : undefined
                   "
-                  :aria-pressed="selectedClipId === clip.id"
-                  :draggable="!clip.locked"
-                  @click="chooseClip(clip)"
-                  @dragstart="draggedClipId = clip.id"
-                  @dragend="draggedClipId = ''"
-                  @dragover.prevent
-                  @drop.prevent="drop(clip)"
-                >
-                  <img
-                    v-if="assetMap.get(clip.assetId)?.thumbnailUri"
-                    :src="thumbnailUrl(clip.assetId)"
-                    alt=""
-                    loading="lazy"
-                    draggable="false"
-                  /><span v-else class="editor-source-empty"
-                    ><Icon
-                      :name="
-                        assetMap.get(clip.assetId)?.mediaType === 'audio'
-                          ? 'volume'
-                          : 'film'
-                      "
-                  /></span>
-                  <span
-                    v-if="
-                      sourceStatuses?.[clip.assetId] &&
-                      sourceStatuses[clip.assetId]?.status !== 'available'
-                    "
-                    class="editor-clip-source-status"
-                    >{{
-                      t(
-                        sourceStatuses[clip.assetId]?.status === "missing"
-                          ? "editor.source.missingShort"
-                          : "editor.source.inaccessibleShort",
-                      )
-                    }}</span
-                  >
-                  <span v-if="clip.locked" class="editor-clip-badge"
-                    ><Icon name="lock" :size="11" />{{
-                      t("editor.clip.locked")
-                    }}</span
-                  ><span class="editor-clip-meta"
-                    ><strong>{{ name(clip) }}</strong
-                    ><small
-                      >{{ duration(clip.timelineDuration)
-                      }}<span
-                        v-if="
-                          clip.transform?.speed && clip.transform.speed !== 1
-                        "
-                      >
-                        · {{ formatNumber(clip.transform.speed) }}×</span
-                      ><span v-if="clip.transition">
-                        · {{ t("editor.clip.fade") }}</span
-                      ></small
-                    ></span
-                  >
-                </button>
+                  :media-type="assetMap.get(clip.assetId)?.mediaType"
+                  :source-status="sourceStatuses?.[clip.assetId]?.status"
+                  @select="chooseClip"
+                  @drag-start="startClipDrag"
+                  @drag-end="endClipDrag"
+                  @drop="drop"
+                />
                 <p v-if="!group.clips.length" class="editor-note">
                   {{ t("editor.beats.empty") }}
                 </p>
