@@ -16,6 +16,7 @@ import {
   shorteningAction,
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
+import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -276,6 +277,8 @@ async function mountTimeline(
     errorDetail: String,
     localizeError: String,
   };
+  const benchmarkInvoke = vi.fn();
+  const benchmarkFrame = vi.fn();
   const dependencies: Record<string, unknown> = {
     vue,
     "vue-i18n": { useI18n },
@@ -284,6 +287,14 @@ async function mountTimeline(
     "../api": io,
     "../i18n": i18n,
     "../duration": { durationStatus },
+    "../nativeBenchmark": {
+      nativeBenchmark: createNativeBenchmark({
+        isNative: () => false,
+        invoke: benchmarkInvoke,
+        requestFrame: benchmarkFrame,
+        isVisible: () => true,
+      }),
+    },
     "../editorPresentation": { clipControls, shorteningAction },
     "../sourcePresentation": { sourcePresentation },
     "./Icon.vue": {
@@ -404,6 +415,8 @@ async function mountTimeline(
     await settle();
   };
   const assertReadOnly = () => {
+    expect(benchmarkInvoke).not.toHaveBeenCalled();
+    expect(benchmarkFrame).not.toHaveBeenCalled();
     expect(api.edit).not.toHaveBeenCalled();
     expect(api.history).not.toHaveBeenCalled();
     expect(local.setItem).not.toHaveBeenCalled();
