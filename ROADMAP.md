@@ -192,6 +192,11 @@ Automated visibility regressions preserve pending UI/Edit readiness through a
 hidden interval, resume with two fresh visible frame opportunities and the original
 clock origins, and cancel obsolete or unmounted views. Actual native presentation
 and workstation timings still require manual evidence.
+Compose-to-Edit visits use the guarded navigation path after the composition job
+finishes, including the pre-render entry clock. Collection-stop events are
+provisional; terminal events follow shutdown and final evidence persistence.
+Manifest updates publish a complete sibling write by rename, preserving the last
+valid manifest if replacement fails. These regressions do not replace Windows QA.
 
 ## Composition-aware subtitle handoff
 

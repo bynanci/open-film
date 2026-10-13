@@ -24,6 +24,7 @@ import {
 } from "./record";
 import { observeOwnedServiceControl } from "./service-control";
 import { observeBenchmarkOutput } from "./output-control";
+import { replaceBenchmarkManifest } from "./atomic-manifest";
 
 export interface BenchmarkConfig {
   candidateSha: string;
@@ -447,7 +448,7 @@ export async function runNativeBenchmark(
       async (service, control) => {
         owned = { service, control };
         manifest.ownership.serverPid = service.pid;
-        await writeFile(
+        await replaceBenchmarkManifest(
           join(directory, "manifest.json"),
           JSON.stringify(manifest, null, 2) + "\n",
         );
@@ -460,7 +461,7 @@ export async function runNativeBenchmark(
       owned.control.runtime!.executable,
     );
     manifest.ownership.serverPid = owned.service.pid;
-    await writeFile(
+    await replaceBenchmarkManifest(
       join(directory, "manifest.json"),
       JSON.stringify(manifest, null, 2) + "\n",
     );
@@ -493,7 +494,7 @@ export async function runNativeBenchmark(
     if (!native.pid)
       throw new Error("Native executable did not create a process");
     manifest.ownership.nativePid = native.pid;
-    await writeFile(
+    await replaceBenchmarkManifest(
       join(directory, "manifest.json"),
       JSON.stringify(manifest, null, 2) + "\n",
     );
@@ -635,9 +636,10 @@ export async function runNativeBenchmark(
     try {
       const problem = await outputControl.stdout(
         JSON.stringify({
-          event: "native-benchmark.finished",
+          event: "native-benchmark.collection-stopped",
+          terminal: false,
           directory,
-          status,
+          collectionStatus: status,
           failure,
           appLeftRunning: appLive,
         }) + "\n",
@@ -745,6 +747,39 @@ export async function runNativeBenchmark(
     } catch (error) {
       rememberFailure(error);
     }
+    if (outputControl.failure) rememberFailure(outputControl.failure);
+    // Native shutdown, owned-service ACK/exit and lifecycle persistence can all
+    // fail after collection. Publish the final report before announcing a
+    // terminal outcome; the earlier collection-stopped event is provisional.
+    try {
+      await writeFile(
+        join(directory, "report.json"),
+        JSON.stringify(finalReport, null, 2) + "\n",
+      );
+    } catch (error) {
+      rememberFailure(error);
+    }
+    try {
+      const problem = await outputControl.stdout(
+        JSON.stringify({
+          event: "native-benchmark.finished",
+          terminal: true,
+          directory,
+          status,
+          failure,
+          appLeftRunning:
+            !!native?.pid &&
+            native.exitCode === null &&
+            native.signalCode === null,
+        }) + "\n",
+      );
+      if (problem) rememberFailure(problem);
+    } catch (error) {
+      rememberFailure(error);
+    }
+    // Keep scoped stream supervision until the final callback/error turn has
+    // drained. A broken terminal pipe fails the report/CLI without retrying a
+    // terminal event that may have been partially delivered.
     await outputControl.dispose();
     if (outputControl.failure) rememberFailure(outputControl.failure);
     if (finalizationErrors.length) {

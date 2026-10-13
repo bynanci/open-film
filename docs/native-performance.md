@@ -96,12 +96,22 @@ project hashes and `lifecycle.json` final hashes describe the runtime copy.
 Normal server shutdown updates `project.updatedAt`, and manual edits remain in
 the run copy. Neither operation alters the template or silently refreshes its
 manifest. This permits warm-up and retained runs to share the same initial film.
+The initial run manifest is created exclusively. Later PID/runtime updates write
+an exclusive sibling temporary file, close it and rename it over the manifest.
+Partial writes or denied replacement retain the previous valid manifest and fail
+the run; temporary cleanup does not delete the published destination. This is
+atomic replacement tooling, not a power-loss durability or real Windows claim.
 Keep the copy with the raw evidence; it is not a portable project without the
 original media root. Prepare a new fixture if the template itself changes.
 
 A project run without a matching fixture-sized Edit visit is `scenario-incomplete`,
 not a completed Edit experiment. The supplied Git SHA and display/runtime/cache metadata
 are declarations: review the actual build/checkout provenance before comparison.
+
+Compose-to-Edit enters through the same guarded navigation path after the compose
+job finishes. Its entry intent captures the new composition size before initial
+Edit rendering. Replacing a composition while already in Edit remounts the editor
+without creating a duplicate navigation intent.
 
 ## What each clock means
 
@@ -172,6 +182,14 @@ the service available, then stops its own service when the native process exits.
 Repeated Ctrl+C during that wait still protects the app; do not kill the runner
 or run a second collection until both native/service processes have closed.
 `lifecycle.json` records actual exit and whether a service remained.
+Machine-readable `native-benchmark.collection-stopped` has `terminal: false`
+and a provisional `collectionStatus`; it requests normal window closure when
+needed. Exactly one `native-benchmark.finished` with `terminal: true` is attempted
+after native exit, service close acknowledgement/exit and final report/lifecycle
+writes. Consumers must wait for that terminal event and a successful CLI exit;
+collection-stop alone is not completion. Late shutdown or evidence-write failures
+change the final status to failed without replacing frozen measurement clocks.
+A broken terminal pipe fails the report/CLI and is not retried as another event.
 The runner starts its service with a private Node IPC channel and an explicit
 benchmark-only control flag. Cleanup requests wait for the control handshake,
 then require a matching acknowledgement sent after project/database close and a

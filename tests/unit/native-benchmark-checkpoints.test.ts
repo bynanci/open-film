@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import {
+  summarizeNativeEvents,
+  type NativeEvent,
+} from "../../scripts/native-benchmark/record";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -516,8 +520,12 @@ describe("optional native readiness checkpoints", () => {
   });
 });
 
-const { ref } = createRequire(resolve("apps/desktop/package.json"))("vue") as {
+const { ref, watch, nextTick } = createRequire(
+  resolve("apps/desktop/package.json"),
+)("vue") as {
   ref: <T>(value: T) => { value: T };
+  watch: (value: { value: string }, callback: () => void) => () => void;
+  nextTick: () => Promise<void>;
 };
 function actualFunction(
   file: string,
@@ -554,6 +562,184 @@ function actualFunction(
 }
 
 describe("actual workspace readiness guards", () => {
+  function composeFixture(
+    options: {
+      now?: () => number;
+      initialTab?: string;
+      flushFails?: boolean;
+      dirty?: boolean;
+      lateDirty?: boolean;
+      relinking?: boolean;
+      failed?: boolean;
+    } = {},
+  ) {
+    const h = harness(true, true, options.now);
+    const tab = ref(options.initialTab ?? "story");
+    const busy = ref("");
+    const error = ref<unknown>("");
+    const beatDirty = ref(!!options.dirty);
+    const activeCompositionId = ref("old-film");
+    const activeComposition = ref({ id: "old-film" });
+    const clipCount = ref(42);
+    const editorMountRequested = ref(false);
+    const composition = {
+      id: "new-film",
+      tracks: [
+        {
+          clips: Array.from({ length: 500 }, (_, index) => ({
+            assetId: `asset-${index % 5}`,
+          })),
+        },
+      ],
+    };
+    const flushEditor = vi.fn(async () => !options.flushFails);
+    const timelineEditor = ref(null);
+    const run = actualFunction("apps/desktop/src/App.vue", "run", {
+      busy,
+      error,
+      notice: ref(null),
+    });
+    const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
+      tab,
+      relinkBusy: ref(!!options.relinking),
+      busy,
+      beatDirty,
+      saveBeat: async () => false,
+      flushEditor,
+      activeComposition,
+      clipCount,
+      editorMountRequested,
+      timelineEditor,
+      nativeBenchmark: h.benchmark,
+      window: { __TAURI_INTERNALS__: {} },
+      checkMediaStatus: async () => {},
+      hydrateBeat: () => {},
+    });
+    const apiCompose = vi.fn(async () => {
+      if (options.failed) throw new Error("Composition generation failed");
+      return { composition };
+    });
+    const loadAssetIds = vi.fn(async () => {
+      if (options.lateDirty) beatDirty.value = true;
+    });
+    const compose = actualFunction("apps/desktop/src/App.vue", "compose", {
+      flushEditor,
+      activeStory: ref({ id: "story" }),
+      beatDirty,
+      error,
+      message: (key: string) => key,
+      run,
+      api: { compose: apiCompose },
+      activeCompositionId,
+      clearExport: () => {},
+      refreshProject: async () => {
+        activeComposition.value = { id: composition.id };
+        clipCount.value = composition.tracks[0]!.clips.length;
+      },
+      previewVersion: ref(1),
+      editorMountRequested,
+      tab,
+      loadAssetIds,
+      changeTab,
+    });
+    return {
+      h,
+      tab,
+      busy,
+      compose,
+      apiCompose,
+      loadAssetIds,
+      editorMountRequested,
+    };
+  }
+
+  it("pairs Compose's actual first Edit readiness with entry before the initial render", async () => {
+    let clock = 10;
+    const view = composeFixture({ now: () => clock });
+    const initialRender = vi.fn(() => {
+      clock += 80;
+    });
+    const stop = watch(view.tab, initialRender);
+    try {
+      await view.compose();
+      await nextTick();
+      await turn();
+      expect(view.tab.value).toBe("edit");
+      expect(view.busy.value).toBe("");
+      expect(view.editorMountRequested.value).toBe(true);
+      expect(view.loadAssetIds).toHaveBeenCalledWith([
+        "asset-0",
+        "asset-1",
+        "asset-2",
+        "asset-3",
+        "asset-4",
+      ]);
+      expect(initialRender).toHaveBeenCalledTimes(1);
+      view.h.benchmark.afterFrames(
+        "edit-ready",
+        { clipCount: 500 },
+        () => true,
+      );
+      await turn();
+      view.h.frame();
+      view.h.frame();
+      await turn();
+      const events = view.h.calls
+        .filter((call) => call.command === "native_checkpoint")
+        .map((call, index): NativeEvent => ({
+          runId: "compose-native-flow",
+          pid: 1,
+          kind: call.args!.kind as NativeEvent["kind"],
+          nativeElapsedMs: index,
+          unixMs: index + 1,
+          clientElapsedMs: Number(call.args!.clientElapsedMs),
+          clientTimeOriginMs: Number(call.args!.clientTimeOriginMs),
+          clipCount: call.args!.clipCount as number | undefined,
+        }));
+      const summary = summarizeNativeEvents(events);
+      expect(summary.editVisits).toHaveLength(1);
+      expect(summary.editVisits[0]).toMatchObject({
+        clipCount: 500,
+        durationMs: 80,
+        enter: { kind: "edit-enter", clientElapsedMs: 10, clipCount: 500 },
+        ready: { kind: "edit-ready", clientElapsedMs: 90 },
+      });
+      expect(summary.incompleteEditVisits).toBe(0);
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(["flush-failed", "dirty", "failed", "late-dirty", "relinking"])(
+    "does not enter Edit or emit an intent when Compose is blocked by %s",
+    async (condition) => {
+      const view = composeFixture({
+        flushFails: condition === "flush-failed",
+        dirty: condition === "dirty",
+        failed: condition === "failed",
+        lateDirty: condition === "late-dirty",
+        relinking: condition === "relinking",
+      });
+      await view.compose();
+      await turn();
+      expect(view.tab.value).toBe("story");
+      expect(view.h.invoke).not.toHaveBeenCalled();
+      expect(view.h.frames).toHaveLength(0);
+      expect(view.h.subscribe).not.toHaveBeenCalled();
+      expect(view.busy.value).toBe("");
+    },
+  );
+
+  it("does not duplicate Edit entry when composing in an already active Edit visit", async () => {
+    const view = composeFixture({ initialTab: "edit" });
+    await view.compose();
+    await turn();
+    expect(view.tab.value).toBe("edit");
+    expect(view.apiCompose).toHaveBeenCalledTimes(1);
+    expect(view.editorMountRequested.value).toBe(true);
+    expect(view.h.invoke).not.toHaveBeenCalled();
+  });
+
   it.each(["boot", "editor"])(
     "releases a hidden pending %s checkpoint in its actual unmount hook",
     async (workspace) => {

@@ -1132,14 +1132,12 @@ async function compose() {
     error.value = message("feedback.saveBeat");
     return;
   }
-  await run("composingFilm", async () => {
+  const composed = await run("composingFilm", async () => {
     const { composition } = await api.compose(story.id);
     activeCompositionId.value = composition.id;
     clearExport();
     await refreshProject();
     previewVersion.value = 0;
-    editorMountRequested.value = true;
-    tab.value = "edit";
     const ids = [
       ...new Set(
         composition.tracks.flatMap((track) =>
@@ -1149,6 +1147,10 @@ async function compose() {
     ];
     await loadAssetIds(ids);
   });
+  if (composed) {
+    if (tab.value === "edit") editorMountRequested.value = true;
+    else await changeTab("edit");
+  }
 }
 async function renderPreview() {
   if (!(await flushPending())) return;
