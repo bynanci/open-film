@@ -13,6 +13,7 @@ import {
 } from "./content.js";
 
 export * from "./content.js";
+export * from "./scene-plan.js";
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value));
 const date = (asset: MediaAsset): number =>

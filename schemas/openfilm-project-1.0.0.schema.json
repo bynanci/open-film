@@ -362,6 +362,14 @@
           "minLength": 1,
           "pattern": "\\S"
         },
+        "script": {
+          "type": "object",
+          "properties": {
+            "narration": { "type": "string", "maxLength": 8000 },
+            "visualDirection": { "type": "string", "maxLength": 8000 }
+          },
+          "required": ["narration", "visualDirection"]
+        },
         "targetDuration": {
           "type": "number",
           "exclusiveMinimum": 0

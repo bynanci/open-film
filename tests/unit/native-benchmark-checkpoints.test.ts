@@ -569,6 +569,44 @@ function actualFunction(
   )(dependencies) as (...args: unknown[]) => unknown;
 }
 
+function categoryNavigationFixture(busy = ref(""), error = ref<unknown>("")) {
+  const categoryDirty = ref(false);
+  const notice = ref<unknown>(null);
+  const asset = { id: "memory", tags: ["Original"] };
+  const assetCache = ref<Record<string, typeof asset>>({ memory: asset });
+  const assetMutations = new Map<string, number>();
+  const patch = vi.fn(async (_path: string, body: { tags: string[] }) => ({
+    asset: { ...asset, tags: body.tags },
+  }));
+  const saveCategories = actualFunction(
+    "apps/desktop/src/App.vue",
+    "saveCategories",
+    {
+      categoryDirty,
+      busy,
+      error,
+      notice,
+      selectedAsset: ref(asset),
+      selectedAssetId: ref(asset.id),
+      categoryDraft: ref("New category"),
+      relinkBusy: ref(false),
+      project: ref({ id: "project" }),
+      assets: ref([asset]),
+      patch,
+      cacheAssets: actualFunction("apps/desktop/src/App.vue", "cacheAssets", {
+        assetCache,
+        assetMutations,
+      }),
+      run: actualFunction("apps/desktop/src/App.vue", "run", {
+        busy,
+        error,
+        notice,
+      }),
+    },
+  );
+  return { categoryDirty, saveCategories, patch };
+}
+
 describe("actual workspace readiness guards", () => {
   function bootFixture(
     options: { hidden?: boolean; native?: boolean; enabled?: boolean } = {},
@@ -650,6 +688,14 @@ describe("actual workspace readiness guards", () => {
       nextTick,
       document: { querySelector: vi.fn(() => ({ getClientRects: () => [1] })) },
       handleKeyboard: () => {},
+      protectDrafts: actualFunction(
+        "apps/desktop/src/App.vue",
+        "protectDrafts",
+        {
+          categoryDirty: ref(false),
+          scenePlanDraftPresent: ref(false),
+        },
+      ),
       poll: undefined,
       onUnmounted: (callback: () => void) => {
         unmount = callback;
@@ -967,7 +1013,9 @@ describe("actual workspace readiness guards", () => {
       error,
       notice: ref(null),
     });
+    const categories = categoryNavigationFixture(busy, error);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
+      ...categories,
       tab,
       relinkBusy: ref(!!options.relinking),
       busy,
@@ -1021,6 +1069,7 @@ describe("actual workspace readiness guards", () => {
         project,
         projectPath: ref(null),
         connected: ref(true),
+        projectMutationVersion: 0,
       },
     );
     const compose = actualFunction("apps/desktop/src/App.vue", "compose", {
@@ -1222,6 +1271,14 @@ describe("actual workspace readiness guards", () => {
           poll: undefined,
           window: { removeEventListener: vi.fn() },
           handleKeyboard: () => {},
+          protectDrafts: actualFunction(
+            "apps/desktop/src/App.vue",
+            "protectDrafts",
+            {
+              categoryDirty: ref(false),
+              scenePlanDraftPresent: ref(false),
+            },
+          ),
           keyboard: () => {},
           measureWorkspace: () => {},
           layoutObserver: undefined,
@@ -1466,7 +1523,10 @@ describe("actual workspace readiness guards", () => {
     const beatDirty = ref(false);
     let beatSaved = true;
     let editorSaved = true;
+    const categoryError = ref<unknown>("");
+    const categories = categoryNavigationFixture(busy, categoryError);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
+      ...categories,
       tab,
       relinkBusy: ref(false),
       busy,
@@ -1484,6 +1544,15 @@ describe("actual workspace readiness guards", () => {
       checkMediaStatus: async () => {},
       hydrateBeat: () => {},
     });
+    categories.categoryDirty.value = true;
+    const categoryFailure = new Error("Category save failed");
+    categories.patch.mockRejectedValueOnce(categoryFailure);
+    await changeTab("edit");
+    expect(calls).toEqual([]);
+    expect(tab.value).toBe("library");
+    expect(categories.categoryDirty.value).toBe(true);
+    expect(categoryError.value).toBe(categoryFailure);
+    categories.categoryDirty.value = false;
     busy.value = "saving";
     await changeTab("edit");
     expect(calls).toEqual([]);

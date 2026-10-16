@@ -25,6 +25,7 @@ import AppSettings from "./components/AppSettings.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
+import ScenePlanner from "./components/ScenePlanner.vue";
 import type {
   MediaAsset,
   OpenFilmProject,
@@ -41,6 +42,7 @@ import {
   thumbnailUrl,
   previewUrl,
   type EditorState,
+  type ScenePlan,
   type MediaStatus,
   type SourceStatus,
   type ExportCompatibilityReport,
@@ -155,6 +157,19 @@ const stateFilter = ref("");
 const mediaFilter = ref("");
 const selectedAssetId = ref("");
 const selectedAsset = computed(() => assetCache.value[selectedAssetId.value]);
+const categoryDraft = ref("");
+const categoryDirty = ref(false);
+watch(
+  selectedAssetId,
+  () => {
+    categoryDraft.value = selectedAsset.value?.tags.join(", ") ?? "";
+    categoryDirty.value = false;
+  },
+  { flush: "sync" },
+);
+const scenePlannerOpen = ref(false);
+const scenePlanDraftPresent = ref(false);
+let projectMutationVersion = 0;
 const libraryView = ref<"all" | "events" | "duplicates">("all");
 const libraryFilter = ref<
   "all" | "events" | "duplicates" | "favorite" | "rejected" | "missing"
@@ -257,7 +272,16 @@ const beatDraft = ref<{
   intent: string;
   targetDuration: number;
   selectedAssetIds: string[];
-}>({ title: "", intent: "", targetDuration: 0, selectedAssetIds: [] });
+  narration: string;
+  visualDirection: string;
+}>({
+  title: "",
+  intent: "",
+  targetDuration: 0,
+  selectedAssetIds: [],
+  narration: "",
+  visualDirection: "",
+});
 const beatDirty = ref(false);
 const candidateOffset = ref(0);
 const candidateIds = computed(() => activeBeat.value?.candidateAssetIds ?? []);
@@ -364,6 +388,7 @@ async function flushEditor() {
 }
 async function changeTab(next: Tab) {
   if (next === tab.value || relinkBusy.value || busy.value) return;
+  if (categoryDirty.value && !(await saveCategories())) return;
   if (beatDirty.value && !(await saveBeat())) return;
   if (next === "edit") {
     if (
@@ -525,7 +550,10 @@ async function mediaRelinked(updated: MediaAsset[]) {
   }
 }
 async function refreshProject() {
+  const mutationVersion = projectMutationVersion;
   const result = await api.project();
+  // A pre-accept polling response must not erase a newly acknowledged plan.
+  if (mutationVersion !== projectMutationVersion) return;
   project.value = result.project;
   projectPath.value = result.path;
   connected.value = true;
@@ -748,6 +776,9 @@ async function resetProjectView() {
   relinkOpen.value = false;
   sourceVersion.value += 1;
   selectedAssetId.value = "";
+  categoryDirty.value = false;
+  scenePlannerOpen.value = false;
+  scenePlanDraftPresent.value = false;
   groupSelection.value = null;
   libraryFilter.value = "all";
   libraryView.value = "all";
@@ -776,7 +807,7 @@ async function resetProjectView() {
   rememberProject();
 }
 async function createFilm(value: FilmCreation) {
-  if (analysisRecoveryPending.value || !(await flushPending())) return;
+  if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
   await run("creatingProject", async () => {
     await api.createProject(value);
     await resetProjectView();
@@ -784,7 +815,7 @@ async function createFilm(value: FilmCreation) {
   });
 }
 async function openProject(path: string) {
-  if (analysisRecoveryPending.value || !(await flushPending())) return;
+  if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
   await run("openingProject", async () => {
     await post("/project/open", { path });
     await resetProjectView();
@@ -830,8 +861,59 @@ async function uploadFiles(files: File[]) {
   });
 }
 async function flushPending() {
+  if (categoryDirty.value && !(await saveCategories())) return false;
   if (!(await flushEditor())) return false;
   return beatDirty.value ? saveBeat() : true;
+}
+async function flushProjectPending() {
+  if (scenePlanDraftPresent.value) {
+    error.value = { uiKey: "scenePlan.draftPending" };
+    return false;
+  }
+  return flushPending();
+}
+async function acceptScenePlan(plan: ScenePlan) {
+  const accepted = await api.acceptScenePlan(plan);
+  // Creation is acknowledged. Publish it before any fallible follow-up read,
+  // preserving other films and the user's project settings.
+  projectMutationVersion++;
+  if (project.value)
+    project.value = {
+      ...project.value,
+      stories: [
+        ...project.value.stories.filter(
+          (story) => story.id !== accepted.story.id,
+        ),
+        accepted.story,
+      ],
+      timelines: [
+        ...project.value.timelines.filter(
+          (film) => film.id !== accepted.composition.id,
+        ),
+        accepted.composition,
+      ],
+    };
+  activeStoryId.value = accepted.story.id;
+  activeBeatIndex.value = 0;
+  activeCompositionId.value = accepted.composition.id;
+  previewVersion.value = 0;
+  previewStale.value = false;
+  clearExport();
+  hydrateBeat();
+  // Follow-up failures do not invite another create request.
+  try {
+    await loadCandidates();
+  } catch (cause) {
+    error.value = cause;
+  }
+}
+async function openScenePlanner() {
+  if (busy.value || relinkBusy.value || !(await flushPending())) return;
+  scenePlannerOpen.value = true;
+  storyCreateOpen.value = false;
+}
+function scenePlannerWorking(working: boolean) {
+  busy.value = working ? "planningStory" : "";
 }
 async function changeFilmLocale(locale: FilmLocale) {
   if (locale === project.value?.projectContentLocale || !(await flushPending()))
@@ -960,6 +1042,42 @@ async function pollJobs() {
     polling = false;
   }
 }
+async function saveCategories(): Promise<boolean> {
+  if (!categoryDirty.value) return true;
+  const asset = selectedAsset.value;
+  if (!asset || busy.value || relinkBusy.value) return false;
+  const draft = categoryDraft.value;
+  const projectId = project.value?.id;
+  const tags = [
+    ...new Set(
+      draft
+        .split(/[,，\n]/)
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const saved = await run("savingSelection", async () => {
+    const result = await patch<{ asset: MediaAsset }>(
+      `/assets/${encodeURIComponent(asset.id)}`,
+      { tags },
+    );
+    if (project.value?.id !== projectId) return;
+    cacheAssets([result.asset], true);
+    assets.value = assets.value.map((item) =>
+      item.id === asset.id ? result.asset : item,
+    );
+    if (selectedAssetId.value === asset.id && categoryDraft.value === draft) {
+      categoryDraft.value = result.asset.tags.join(", ");
+      categoryDirty.value = false;
+      notice.value = { uiKey: "scenePlan.categoriesSaved" };
+    }
+  });
+  return saved && !categoryDirty.value;
+}
+async function closeInspector() {
+  if (busy.value || (categoryDirty.value && !(await saveCategories()))) return;
+  selectedAssetId.value = "";
+}
 async function toggleAsset(asset: MediaAsset, key: AssetState) {
   await run("savingSelection", async () => {
     const result = await patch<{ asset: MediaAsset }>(
@@ -1074,6 +1192,8 @@ function hydrateBeat() {
     intent: beat?.intent ?? "",
     targetDuration: beat?.targetDuration ?? 0,
     selectedAssetIds: [...(beat?.selectedAssetIds ?? [])],
+    narration: beat?.script?.narration ?? "",
+    visualDirection: beat?.script?.visualDirection ?? "",
   };
   beatDirty.value = false;
   candidateOffset.value = 0;
@@ -1090,6 +1210,7 @@ watch(
   },
 );
 function chooseCandidate(asset: MediaAsset) {
+  if (busy.value || relinkBusy.value) return;
   if (asset.state.rejected) {
     error.value = message("feedback.restoreFirst");
     return;
@@ -1142,6 +1263,14 @@ async function saveBeat(): Promise<boolean> {
       intent: draft.intent.trim(),
       targetDuration: Number(draft.targetDuration),
       selectedAssetIds: draft.selectedAssetIds,
+      ...(beat.script || draft.narration || draft.visualDirection
+        ? {
+            script: {
+              narration: draft.narration,
+              visualDirection: draft.visualDirection,
+            },
+          }
+        : {}),
     };
     const beats = story.beats.map((item) =>
       item.id === beat.id ? updated : item,
@@ -1405,7 +1534,11 @@ async function changeWorkspace() {
   const current = () =>
     project.value?.id === closingProject &&
     analysisRecoveryGeneration === closingGeneration;
-  if (!(await flushPending()) || !current() || projectSwitchBlocked.value)
+  if (
+    !(await flushProjectPending()) ||
+    !current() ||
+    projectSwitchBlocked.value
+  )
     return;
   await run("closingProject", async () => {
     // A transcription submission can finish while its draft is being flushed,
@@ -1442,15 +1575,22 @@ function lastSourceFolder(uri: string): string {
     return uri;
   }
 }
-function inspectAsset(asset: MediaAsset) {
+async function inspectAsset(asset: MediaAsset) {
+  if (busy.value || (categoryDirty.value && !(await saveCategories()))) return;
   selectedAssetId.value = asset.id;
 }
 function handleKeyboard(event: KeyboardEvent) {
   if (settingsOpen.value) return;
   if (event.key === "Escape") {
-    selectedAssetId.value = "";
+    void closeInspector();
     importOpen.value = false;
     storyCreateOpen.value = false;
+  }
+}
+function protectDrafts(event: BeforeUnloadEvent) {
+  if (categoryDirty.value || scenePlanDraftPresent.value) {
+    event.preventDefault();
+    event.returnValue = "";
   }
 }
 onMounted(async () => {
@@ -1459,6 +1599,7 @@ onMounted(async () => {
     void pollJobs();
   }, 1000);
   window.addEventListener("keydown", handleKeyboard);
+  window.addEventListener("beforeunload", protectDrafts);
 });
 onUnmounted(() => {
   nativeDisposed = true;
@@ -1468,6 +1609,7 @@ onUnmounted(() => {
   cancelNativeBootReady = undefined;
   if (poll) clearInterval(poll);
   window.removeEventListener("keydown", handleKeyboard);
+  window.removeEventListener("beforeunload", protectDrafts);
 });
 </script>
 
@@ -1617,6 +1759,14 @@ onUnmounted(() => {
             }}</button
           ><button
             v-if="tab === 'story'"
+            class="secondary"
+            data-testid="scene-planner-toggle"
+            :disabled="!!busy || relinkBusy"
+            @click="openScenePlanner"
+          >
+            {{ t("scenePlan.heading") }}</button
+          ><button
+            v-if="tab === 'story'"
             class="primary"
             :disabled="!!busy"
             @click="storyCreateOpen = !storyCreateOpen"
@@ -1625,6 +1775,24 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <ScenePlanner
+        v-if="scenePlannerOpen"
+        v-show="tab === 'story'"
+        :key="project.id"
+        :title="project.title"
+        :target-duration="
+          project.filmSettings?.targetDuration ?? targetDuration
+        "
+        :max-duration="project.filmSettings?.maxDuration ?? maxDuration"
+        :visible-asset-ids="assets.map((asset) => asset.id)"
+        :disabled="!!busy || relinkBusy"
+        :prepare="flushPending"
+        :accept-plan="acceptScenePlan"
+        @close="scenePlannerOpen = false"
+        @working="scenePlannerWorking"
+        @draft="scenePlanDraftPresent = $event"
+      />
 
       <RelinkMedia
         v-if="relinkOpen && tab === 'library'"
@@ -2035,7 +2203,7 @@ onUnmounted(() => {
                     ><button
                       class="icon-button"
                       :aria-label="t('app.inspector.close')"
-                      @click="selectedAssetId = ''"
+                      @click="closeInspector"
                     >
                       <Icon name="reject" :size="16" />
                     </button>
@@ -2097,6 +2265,31 @@ onUnmounted(() => {
                       </div>
                     </dl>
                   </details>
+                  <form
+                    class="category-editor"
+                    @submit.prevent="saveCategories"
+                  >
+                    <label class="field"
+                      >{{ t("scenePlan.categories") }}
+                      <input
+                        v-model="categoryDraft"
+                        data-testid="category-tags"
+                        :disabled="!!busy || relinkBusy"
+                        :aria-describedby="'category-help'"
+                        @input="categoryDirty = true"
+                      />
+                    </label>
+                    <small id="category-help">{{
+                      t("scenePlan.categoriesHint")
+                    }}</small>
+                    <button
+                      class="secondary"
+                      data-testid="save-category-tags"
+                      :disabled="!categoryDirty || !!busy || relinkBusy"
+                    >
+                      {{ t("scenePlan.saveCategories") }}
+                    </button>
+                  </form>
                   <SourceDetails :asset="selectedAsset" />
                   <div class="rating-control">
                     <span>{{ t("app.inspector.rating") }}</span>
@@ -2479,7 +2672,11 @@ onUnmounted(() => {
                 :key="beat.id"
                 :class="{ active: activeBeatIndex === index }"
                 :aria-current="activeBeatIndex === index ? 'step' : undefined"
-                :disabled="beatDirty && activeBeatIndex !== index"
+                :disabled="
+                  !!busy ||
+                  relinkBusy ||
+                  (beatDirty && activeBeatIndex !== index)
+                "
                 @click="activeBeatIndex = index"
               >
                 <span class="beat-number">{{
@@ -2554,12 +2751,14 @@ onUnmounted(() => {
                   >{{ t("app.story.beatTitle")
                   }}<input
                     v-model="beatDraft.title"
+                    :disabled="!!busy || relinkBusy"
                     :aria-label="t('app.story.beatTitle')"
                     @input="beatDirty = true" /></label
                 ><label class="field compact-field"
                   >{{ t("app.story.beatDurationLabel")
                   }}<input
                     v-model.number="beatDraft.targetDuration"
+                    :disabled="!!busy || relinkBusy"
                     :aria-label="t('app.story.beatDuration')"
                     type="number"
                     min="0.01"
@@ -2569,8 +2768,33 @@ onUnmounted(() => {
                   >{{ t("app.story.intent")
                   }}<textarea
                     v-model="beatDraft.intent"
+                    :disabled="!!busy || relinkBusy"
                     :aria-label="t('app.story.beatIntent')"
                     rows="2"
+                    @input="beatDirty = true"
+                  />
+                </label>
+              </div>
+              <div class="beat-script-fields">
+                <label class="field"
+                  >{{ t("scenePlan.narration")
+                  }}<textarea
+                    v-model="beatDraft.narration"
+                    :disabled="!!busy || relinkBusy"
+                    data-testid="beat-script-narration"
+                    rows="3"
+                    maxlength="8000"
+                    @input="beatDirty = true"
+                  />
+                </label>
+                <label class="field"
+                  >{{ t("scenePlan.visualDirection")
+                  }}<textarea
+                    v-model="beatDraft.visualDirection"
+                    :disabled="!!busy || relinkBusy"
+                    data-testid="beat-script-visual-direction"
+                    rows="3"
+                    maxlength="8000"
                     @input="beatDirty = true"
                   />
                 </label>
@@ -2614,6 +2838,7 @@ onUnmounted(() => {
                     :asset="asset"
                     :source-status="sourceStatuses[asset.id]"
                     choice
+                    :mutation-disabled="!!busy || relinkBusy"
                     chosen
                     @select="chooseCandidate"
                   />
@@ -2631,6 +2856,7 @@ onUnmounted(() => {
                   :asset="asset"
                   :source-status="sourceStatuses[asset.id]"
                   choice
+                  :mutation-disabled="!!busy || relinkBusy"
                   :chosen="beatDraft.selectedAssetIds.includes(asset.id)"
                   @select="chooseCandidate"
                 />

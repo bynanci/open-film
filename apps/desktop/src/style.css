@@ -2090,3 +2090,34 @@ td {
   color: var(--ink);
   font-weight: 600;
 }
+
+.category-editor {
+  display: grid;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-4);
+  border-block: 1px solid var(--of-border-subtle);
+  margin-block: var(--of-space-4);
+  min-width: 0;
+}
+.category-editor small {
+  color: var(--of-text-secondary);
+  line-height: 1.5;
+}
+.category-editor button {
+  justify-self: start;
+  white-space: normal;
+}
+.beat-script-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-space-4);
+  margin-block: var(--of-space-4);
+}
+.beat-script-fields .field {
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .beat-script-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

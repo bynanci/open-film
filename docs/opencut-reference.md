@@ -1,4 +1,4 @@
-# OpenCut reference and the composition-caption slice
+# OpenCut reference and bounded workflow adaptations
 
 Reference checked 2026-10-08 (Asia/Taipei). This is source inspection, not an
 OpenCut runtime, rendering-quality or compatibility certification. No OpenCut
@@ -73,3 +73,48 @@ Source review does not verify OpenCut execution, real ASR quality, GPU speed,
 caption playback in Resolve, Windows installers or camera/4K quality. OpenFilm's
 existing workstation manual gates remain in effect; format parsing only verifies
 that specific exported file format and cannot close those gates.
+
+## 2026-10-16 follow-up — Classified memories to scene scripts
+
+The earlier comparison and caption-slice decisions above are historical evidence
+for that implementation, not a permanent deferral of user-requested creative work.
+The current priority is **classified photos/videos → editable script and scenes →
+reviewed composition within a time limit**. See [the workflow contract](scene-script-planning.md).
+OpenFilm starts this slice from main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+after PR #13 merged; real workstation measurement remains open in
+[issue #7](https://github.com/bynanci/open-film/issues/7).
+
+GitHub repository metadata and default-branch commits were re-read on 2026-10-16
+UTC. The current OpenCut head remains `e668010778568641babef2cc40be4703ae6916d6`;
+classic remains `cf5e79e919144200294fb9fed22a222592a0aeea` and archived. The local
+classic reference's origin is `https://github.com/OpenCut-app/opencut-classic.git`.
+The root licenses remain MIT, copyright 2026 OpenCut and 2025–2026 OpenCut
+respectively. Neither repository was installed or executed for this follow-up.
+
+| Reference evidence at the pinned classic commit                                                           | Decision for this slice                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/components/editor/scenes-view.tsx`, `core/managers/scenes-manager.ts`, `timeline/scenes.ts` | **Adapt** named scene navigation and explicit active selection. Classic scenes own separate tracks; OpenFilm narrative scenes use existing Story beats, not another timeline container.                              |
+| `apps/web/src/commands/{base-command,batch-command}.ts`, `core/managers/commands.ts`                      | **Adapt** shared validated operations and explicit selection ownership. OpenFilm retains its application persistence/retry boundaries; accepting a plan must not be implemented as unrelated UI writes.              |
+| `apps/web/src/services/renderer/{scene-builder,scene-exporter}.ts`                                        | **Adopt** one interpretation of the proposed result for preview and output. OpenFilm previews the existing solver's composition and keeps its FFmpeg/geometry contracts.                                             |
+| `apps/web/src/animation/*`, `retime/{resolve,split}.ts`                                                   | **Defer** motion and keyframes from this slice. Scene direction is editable writing guidance, not evidence that an animation is rendered. A future motion feature requires shared preview/output timing.             |
+| Current OpenCut `README.md`: Editor API, headless mode and scripting tab                                  | **Distinguish** code automation from narrative screenplay writing. Announced scripting is not evidence of automatic photo-to-script generation. No such production capability was established by this source review. |
+
+OpenFilm already has media tags, event grouping, user preferences, editable beat
+intent/selection and duration constraints. The observed gaps were the Library tag
+editor and a reviewable scene-writing flow connecting those inputs to the actual
+solver result. The current implementation targets at most 2,000 candidates and
+30 scenes, editable narration/visual direction, cut or bounded crossfade, and
+atomic acceptance as a new Story/composition pair. Every scene reserves playable
+time before the remaining budget is distributed; infeasible minima fail visibly.
+A signature over catalog source fields, project ID and film locale rejects stale
+proposals without claiming an actual source-file rehash at planning time.
+Targeted implementation tests pass as recorded in [TASKS](../TASKS.md); full
+candidate gates and CI are separate. This reference inspection alone is not
+verification of either editor's runtime.
+
+The initial planner is offline and uses classifications the user supplies. It
+does not infer image semantics, synthesize narration or invoke an AI provider.
+Optional, reviewable LanguageProvider assistance over declared text can follow
+once the basic flow is verified. OpenCut implementation, branding and assets
+are not copied; the licensing and manual-verification boundaries above continue
+to apply.

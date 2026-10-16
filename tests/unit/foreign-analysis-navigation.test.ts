@@ -16,7 +16,16 @@ const activeStart = source.indexOf("const activeJobs = computed(");
 const activeEnd = source.indexOf("const recentJob =", activeStart);
 if (activeStart < 0 || activeEnd < 0)
   throw new Error("Missing App job navigation state");
-const functions = ["run", "flushEditor", "flushPending", "changeWorkspace"];
+const functions = [
+  "run",
+  "flushEditor",
+  "flushPending",
+  "flushProjectPending",
+  "saveCategories",
+  "cacheAssets",
+  "protectDrafts",
+  "changeWorkspace",
+];
 // Execute App's actual reactive job state, close operation and draft flush.
 // The headless host supplies only external I/O and the editor's public flush.
 const code = transformSync(
@@ -24,7 +33,8 @@ const code = transformSync(
     "let statusGeneration = 0, jobsGeneration = 0, analysisRecoveryGeneration = 0;",
     source.slice(activeStart, activeEnd),
     ...functions.map((name) => {
-      const start = source.indexOf(`async function ${name}(`);
+      let start = source.indexOf(`function ${name}(`);
+      if (source.slice(start - 6, start) === "async ") start -= 6;
       const end = source.indexOf("\n}", start) + 2;
       if (start < 0 || end < 2) throw new Error(`Missing App function ${name}`);
       return source.slice(start, end);
@@ -75,6 +85,10 @@ function host(
   const analysisRecovery = vue.ref<Record<string, AnalysisJobRecoveryState>>(
     recovery ? { [recovery.jobId]: recovery } : {},
   );
+  const selectedAssetId = vue.ref("memory");
+  const assetCache = vue.ref<Record<string, { id: string; tags: string[] }>>({
+    memory: { id: "memory", tags: ["Old category"] },
+  });
   const dependencies = {
     computed: vue.computed,
     jobs,
@@ -84,6 +98,17 @@ function host(
     analysisRecoveryPending: vue.ref(false),
     timelineEditor: vue.ref({ flush }),
     beatDirty: vue.ref(false),
+    categoryDirty: vue.ref(false),
+    scenePlanDraftPresent: vue.ref(false),
+    categoryDraft: vue.ref("New category"),
+    selectedAssetId,
+    selectedAsset: vue.computed(() => assetCache.value[selectedAssetId.value]),
+    assetCache,
+    assetMutations: new Map<string, number>(),
+    assets: vue.ref(Object.values(assetCache.value)),
+    patch: vi.fn(async (_path: string, body: { tags: string[] }) => ({
+      asset: { id: "memory", tags: body.tags },
+    })),
     saveBeat: vi.fn(async () => true),
     error: vue.ref<unknown>(null),
     notice: vue.ref<unknown>(null),
@@ -106,9 +131,13 @@ function host(
   };
   const app = new Function(
     "dependencies",
-    `const {${Object.keys(dependencies).join(",")}}=dependencies;\n${code}\nreturn {changeWorkspace,activeJobs,advanceSession(){analysisRecoveryGeneration++;},projectSwitchBlocked:typeof projectSwitchBlocked === "undefined" ? undefined : projectSwitchBlocked};`,
+    `const {${Object.keys(dependencies).join(",")}}=dependencies;\n${code}\nreturn {changeWorkspace,protectDrafts,activeJobs,advanceSession(){analysisRecoveryGeneration++;},projectSwitchBlocked:typeof projectSwitchBlocked === "undefined" ? undefined : projectSwitchBlocked};`,
   )(dependencies) as {
     changeWorkspace: () => Promise<void>;
+    protectDrafts: (event: {
+      preventDefault: () => void;
+      returnValue: string;
+    }) => void;
     activeJobs: { value: Job[] };
     advanceSession: () => void;
     projectSwitchBlocked?: { value: boolean };
@@ -249,6 +278,52 @@ describe("project navigation during analysis owned by another process", () => {
     expect(h.project.value).not.toBeNull();
     expect(h.error.value).toBe("feedback.flushFailed");
   });
+
+  it("keeps a reviewed scene draft until it is accepted or explicitly discarded", async () => {
+    const h = host();
+    h.scenePlanDraftPresent.value = true;
+    await h.changeWorkspace();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.flush).not.toHaveBeenCalled();
+    expect(h.project.value).not.toBeNull();
+    expect(h.error.value).toEqual({ uiKey: "scenePlan.draftPending" });
+    h.scenePlanDraftPresent.value = false;
+    await h.changeWorkspace();
+    expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
+  });
+
+  it("keeps category drafts and the project when the actual category save fails", async () => {
+    const h = host();
+    const cause = new Error("Category storage unavailable");
+    h.categoryDirty.value = true;
+    h.patch.mockRejectedValue(cause);
+    await h.changeWorkspace();
+    expect(h.patch).toHaveBeenCalledExactlyOnceWith("/assets/memory", {
+      tags: ["New category"],
+    });
+    expect(h.categoryDirty.value).toBe(true);
+    expect(h.categoryDraft.value).toBe("New category");
+    expect(h.assetCache.value.memory?.tags).toEqual(["Old category"]);
+    expect(h.error.value).toBe(cause);
+    expect(h.flush).not.toHaveBeenCalled();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.project.value).not.toBeNull();
+  });
+
+  it.each(["clean", "categories", "scene-plan"])(
+    "protects only unsaved %s work before unload",
+    (state) => {
+      const h = host();
+      h.categoryDirty.value = state === "categories";
+      h.scenePlanDraftPresent.value = state === "scene-plan";
+      const event = { preventDefault: vi.fn(), returnValue: "unchanged" };
+      h.protectDrafts(event);
+      expect(event.preventDefault).toHaveBeenCalledTimes(
+        state === "clean" ? 0 : 1,
+      );
+      expect(event.returnValue).toBe(state === "clean" ? "unchanged" : "");
+    },
+  );
 
   it("also preserves an unsaved Story draft when its save fails", async () => {
     const h = host();

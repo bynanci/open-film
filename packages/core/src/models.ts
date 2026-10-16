@@ -80,6 +80,8 @@ export interface StoryBeat {
   id: string;
   title: string;
   intent?: string;
+  /** Editable planning text; never a claim that narration or motion was rendered. */
+  script?: { narration: string; visualDirection: string };
   /** Stable content identity; never derive this from the displayed title. */
   templateBeatKey?: string;
   /** Absent provenance is legacy/user content and must remain unchanged. */

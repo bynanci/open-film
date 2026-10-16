@@ -41,6 +41,8 @@ import {
   resolveUserDataDirectory,
   createReviewOwner,
   type ReviewOptions,
+  type ScenePlanAcceptance,
+  type ScenePlanOptions,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -336,7 +338,10 @@ function json(response: ServerResponse, status: number, value: unknown) {
   });
   response.end(JSON.stringify(value));
 }
-async function body(request: IncomingMessage): Promise<Body> {
+async function body(
+  request: IncomingMessage,
+  maximumBytes = 1024 * 1024,
+): Promise<Body> {
   if (!request.headers["content-type"]?.startsWith("application/json"))
     throw new HttpError(415, "Use application/json.");
   let size = 0;
@@ -344,7 +349,11 @@ async function body(request: IncomingMessage): Promise<Body> {
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += bytes.length;
-    if (size > 1024 * 1024) throw new HttpError(413, "Request exceeds 1 MiB.");
+    if (size > maximumBytes)
+      throw new HttpError(
+        413,
+        `Request exceeds ${maximumBytes / (1024 * 1024)} MiB.`,
+      );
     chunks.push(bytes);
   }
   try {
@@ -2074,6 +2083,28 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, application.analyze());
           return;
         }
+        if (method === "POST" && route === "/api/story-plans/preview") {
+          errorContext = "story.invalid";
+          const data = await body(request);
+          json(response, 200, {
+            plan: application.previewScenePlan(
+              data as unknown as ScenePlanOptions,
+            ),
+          });
+          return;
+        }
+        if (method === "POST" && route === "/api/story-plans/accept") {
+          errorContext = "story.invalid";
+          // Thirty authored scenes and 2000 candidates can exceed the ordinary
+          // form cap even without the informational composition in the request.
+          const data = await body(request, 16 * 1024 * 1024);
+          json(
+            response,
+            201,
+            application.acceptScenePlan(data.plan as ScenePlanAcceptance),
+          );
+          return;
+        }
         if (method === "POST" && route === "/api/stories") {
           errorContext = "story.invalid";
           const data = await body(request);
@@ -2108,7 +2139,9 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         if (method === "PATCH" && storyMatch) {
-          const data = await body(request);
+          // Story editing sends the complete beat collection. Match scene-plan
+          // acceptance so a valid maximum-size authored script remains editable.
+          const data = await body(request, 16 * 1024 * 1024);
           const index = application.project.stories.findIndex(
             (story) => story.id === decodeURIComponent(storyMatch[1]!),
           );

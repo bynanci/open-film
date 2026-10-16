@@ -61,6 +61,7 @@ watch(
         })
       "
       :aria-pressed="choice ? !!chosen : !!selected"
+      :disabled="choice && mutationDisabled"
       @click="$emit('select', asset)"
     >
       <img

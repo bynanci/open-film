@@ -12,6 +12,58 @@ export default {
   ...media,
   ...precision,
   ...transcript,
+  scenePlan: {
+    heading: "規劃腳本與場景",
+    description: "將回憶編排成場景，為每一段故事安排時間。",
+    evidence:
+      "這份離線草稿根據你設定的分類、拍攝日期與故事簡介編排，不會辨識照片內容。腳本與畫面指示是可編輯的規劃文字，不會自動產生配音或字幕。",
+    close: "關閉規劃",
+    title: "影片名稱",
+    brief: "你想訴說什麼故事？",
+    briefHint: "描述場合、想傳達的心情或訊息。",
+    grouping: "場景編排依據",
+    category: "分類",
+    chronology: "拍攝日期",
+    scope: "納入的回憶",
+    allMedia: "所有符合條件的素材",
+    visibleMedia: "目前素材頁（{count}）",
+    target: "目標長度（秒）",
+    maximum: "最長時間（秒）",
+    transition: "場景節奏",
+    cut: "直接切換",
+    crossfade: "交叉淡化",
+    working: "準備中…",
+    preview: "預覽場景規劃",
+    review: "審閱你的場景規劃",
+    reviewHint:
+      "先修改場景名稱、意圖與腳本筆記，再建立新的故事與剪輯。既有影片會保留。",
+    timing: "目標 {target} · 最長 {maximum}",
+    audioExcluded: "已排除純音訊素材：{count}。之後可在剪輯中加入音樂。",
+    previewAgain: "規劃設定已變更。請重新預覽，確認時長符合新設定後再建立。",
+    sceneTitle: "場景名稱",
+    intent: "場景意圖",
+    narration: "腳本／旁白筆記",
+    visualDirection: "畫面指示",
+    candidates: "候選回憶：{count}",
+    accept: "建立故事與剪輯",
+    accepted: "故事與剪輯已建立。可以在下方審閱場景，或前往剪輯。",
+    stale:
+      "預覽後，素材或影片語言已變更。你的腳本草稿仍保留在此，請重新預覽以取得最新規劃。",
+    discardWarning: "要捨棄這份尚未儲存的場景規劃並關閉嗎？",
+    regenerateWarning:
+      "重新預覽會取代這份草稿中修改過的腳本。請先保留想留下的文字。",
+    keep: "保留草稿",
+    discard: "捨棄草稿",
+    regenerate: "以新預覽取代",
+    draftPending: "切換專案前，請先接受或明確捨棄場景規劃。",
+    sceneTiming: "實際 {actual} · 預算 {target}",
+    memoryPreview: "選取回憶預覽",
+    categories: "分類",
+    categoriesHint: "以逗號分隔分類。第一個分類決定此回憶所屬的場景。",
+    saveCategories: "儲存分類",
+    categoriesSaved: "分類已儲存。",
+    categoryPending: "請先儲存目前分類再繼續。",
+  },
   captions: {
     title: "字幕",
     description:
@@ -89,6 +141,16 @@ export default {
   },
   errors: {
     ...system.errors,
+    story: {
+      ...system.errors.story,
+      sceneTooShort:
+        "這些場景至少需要 {minimum} 秒。請增加目標與最長時間，或合併分類。",
+      sceneLimit:
+        "這份場景規劃超過 {limit} 個群組。請減少分類，或選取較少的回憶。",
+      planStale: "素材或影片語言已變更。請重新預覽場景規劃後再接受。",
+      planConflict:
+        "這份場景規劃已以其他內容接受。請開啟已建立的故事，或建立新的規劃。",
+    },
     captions: {
       srtTextUnsupported:
         "文字包含 SRT 無法可靠保留的格式語法，請改用 WebVTT 輸出。",

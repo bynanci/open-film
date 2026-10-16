@@ -5,6 +5,34 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — Classified memories to scene scripts
+
+Scope and acceptance: [scene-script planning](docs/scene-script-planning.md).
+The current slice starts from main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+which includes merged PR #13. Targeted verification passes: 36 new domain tests
+(105 related tests in the exercised group), 21 application/integration tests and
+five browser tests with real rendering, reopening and delayed acceptance. Full
+candidate gates and CI remain a separate entry below. Real workstation evidence
+is tracked separately by [issue #7](https://github.com/bynanci/open-film/issues/7).
+
+- [x] Let people classify memories in Library and review category/chronology-based
+      scenes without claiming automatic understanding of photo contents.
+- [x] Provide editable scene purpose, narration and visual direction in the film
+      language; preserve custom text after save/reopen and UI language changes.
+- [x] Preview the actual solver-generated cut against target/maximum durations,
+      with valid cuts/crossfades and protected required/locked selections.
+- [x] Accept a reviewed plan as one new Story/composition pair, reject stale
+      inputs and preserve unrelated films through save failures and retry/reopen.
+- [x] Share bounded planning and acceptance through Desktop, HTTP and CLI, with
+      generated-media unit/integration/browser regressions, large valid plan
+      payloads and protected controls during delayed acceptance.
+- [ ] Complete the full candidate regression gates, publish CI for its exact head
+      and resolve any remaining correctness review findings.
+
+Narration synthesis, image interpretation, motion/keyframes and a scene-writing
+LanguageProvider are outside this slice. Optional reviewable language assistance
+for declared scene/category text is the next creative increment after verification.
+
 ## P0 — Foundation and media workflow
 
 - [x] Let users cancel an unresponsive transcription provider, close/reopen and

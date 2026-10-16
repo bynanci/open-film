@@ -6,6 +6,7 @@ import {
   OpenFilmApplication,
   TimelineEditor,
   resolveUserDataDirectory,
+  type ScenePlanAcceptance,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -37,6 +38,8 @@ Usage:
   openfilm marker <asset-id> --project <film.openfilm> --time <source-seconds>
   openfilm rate <asset-id> --project <film.openfilm> --rating 5 [--favorite --lock]
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
+  openfilm scene-plan preview --project <film.openfilm> --group-by category|chronology --target 270 --max 300 [--brief "Film intention" --transition cut|crossfade --assets id1,id2]
+  openfilm scene-plan accept --project <film.openfilm> --plan <preview.json>
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
@@ -89,6 +92,10 @@ function parse(args: string[]) {
     "clip-limit",
     "rating",
     "template",
+    "group-by",
+    "brief",
+    "transition",
+    "plan",
     "target",
     "max",
     "story",
@@ -219,7 +226,8 @@ async function main() {
   if (!project)
     throw new Error("Use --project <film.openfilm> to select a project.");
   const app =
-    command === "captions"
+    command === "captions" ||
+    (command === "scene-plan" && positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
           resolve(project),
           runtimeOptions,
@@ -615,6 +623,50 @@ async function main() {
           assetIds: value(options, "assets")?.split(",").filter(Boolean),
         }),
       });
+    } else if (command === "scene-plan") {
+      if (positional[1] === "preview") {
+        print({
+          plan: app.previewScenePlan({
+            title: value(options, "title"),
+            groupBy: (value(options, "group-by") ?? "category") as
+              "category" | "chronology",
+            targetDuration:
+              positive(options, "target") ??
+              app.project.filmSettings?.targetDuration ??
+              270,
+            maxDuration:
+              positive(options, "max") ??
+              app.project.filmSettings?.maxDuration ??
+              300,
+            brief: value(options, "brief"),
+            transition: value(options, "transition") as
+              "cut" | "crossfade" | undefined,
+            assetIds: value(options, "assets")?.split(",").filter(Boolean),
+          }),
+        });
+      } else if (positional[1] === "accept") {
+        const path = value(options, "plan");
+        if (!path)
+          throw new Error(
+            "Use --plan <preview.json> with a saved scene-plan preview.",
+          );
+        const file = resolve(path);
+        const info = await stat(file);
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error(
+            "Scene-plan JSON must be a regular file of at most 16 MiB.",
+          );
+        const bytes = await readFile(file);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Scene-plan JSON exceeds 16 MiB.");
+        const input = JSON.parse(bytes.toString("utf8")) as {
+          plan: ScenePlanAcceptance;
+        };
+        print(app.acceptScenePlan(input.plan));
+      } else
+        throw new Error(
+          "Choose scene-plan preview or accept. Run openfilm --help.",
+        );
     } else if (command === "compose")
       print({ composition: app.compose(value(options, "story")) });
     else if (command === "render")
