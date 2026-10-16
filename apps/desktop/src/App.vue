@@ -157,12 +157,12 @@ const stateFilter = ref("");
 const mediaFilter = ref("");
 const selectedAssetId = ref("");
 const selectedAsset = computed(() => assetCache.value[selectedAssetId.value]);
-const categoryDraft = ref("");
+const categoryDraft = ref<string[]>([]);
 const categoryDirty = ref(false);
 watch(
   selectedAssetId,
   () => {
-    categoryDraft.value = selectedAsset.value?.tags.join(", ") ?? "";
+    categoryDraft.value = [...(selectedAsset.value?.tags ?? [])];
     categoryDirty.value = false;
   },
   { flush: "sync" },
@@ -1042,20 +1042,32 @@ async function pollJobs() {
     polling = false;
   }
 }
+function addCategory() {
+  if (busy.value || relinkBusy.value) return;
+  categoryDraft.value = [...categoryDraft.value, ""];
+  categoryDirty.value = true;
+}
+function removeCategory(index: number) {
+  if (busy.value || relinkBusy.value) return;
+  categoryDraft.value = categoryDraft.value.filter(
+    (_, position) => position !== index,
+  );
+  categoryDirty.value = true;
+}
 async function saveCategories(): Promise<boolean> {
   if (!categoryDirty.value) return true;
   const asset = selectedAsset.value;
   if (!asset || busy.value || relinkBusy.value) return false;
-  const draft = categoryDraft.value;
+  const draft = [...categoryDraft.value];
   const projectId = project.value?.id;
-  const tags = [
-    ...new Set(
-      draft
-        .split(/[,，\n]/)
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-    ),
-  ];
+  if (draft.some((category) => !category.trim())) {
+    error.value = { uiKey: "scenePlan.categoryRequired" };
+    return false;
+  }
+  // A category is an opaque user-authored string, not delimiter-separated text.
+  // Preserve punctuation, line endings, whitespace, order and duplicates exactly.
+  const savedSignature = JSON.stringify(draft);
+  const tags = draft;
   const saved = await run("savingSelection", async () => {
     const result = await patch<{ asset: MediaAsset }>(
       `/assets/${encodeURIComponent(asset.id)}`,
@@ -1066,8 +1078,11 @@ async function saveCategories(): Promise<boolean> {
     assets.value = assets.value.map((item) =>
       item.id === asset.id ? result.asset : item,
     );
-    if (selectedAssetId.value === asset.id && categoryDraft.value === draft) {
-      categoryDraft.value = result.asset.tags.join(", ");
+    if (
+      selectedAssetId.value === asset.id &&
+      JSON.stringify(categoryDraft.value) === savedSignature
+    ) {
+      categoryDraft.value = [...result.asset.tags];
       categoryDirty.value = false;
       notice.value = { uiKey: "scenePlan.categoriesSaved" };
     }
@@ -2267,21 +2282,60 @@ onUnmounted(() => {
                   </details>
                   <form
                     class="category-editor"
+                    :aria-label="t('scenePlan.categories')"
                     @submit.prevent="saveCategories"
                   >
-                    <label class="field"
-                      >{{ t("scenePlan.categories") }}
-                      <input
-                        v-model="categoryDraft"
-                        data-testid="category-tags"
-                        :disabled="!!busy || relinkBusy"
-                        :aria-describedby="'category-help'"
-                        @input="categoryDirty = true"
-                      />
-                    </label>
+                    <h3>{{ t("scenePlan.categories") }}</h3>
                     <small id="category-help">{{
                       t("scenePlan.categoriesHint")
                     }}</small>
+                    <div
+                      v-for="(_, index) in categoryDraft"
+                      :key="index"
+                      class="category-row"
+                    >
+                      <label class="field">
+                        {{
+                          t("scenePlan.categoryLabel", {
+                            number: formatNumber(index + 1),
+                          })
+                        }}
+                        <textarea
+                          v-model="categoryDraft[index]"
+                          data-testid="category-tag"
+                          rows="2"
+                          :disabled="!!busy || relinkBusy"
+                          aria-describedby="category-help"
+                          required
+                          @input="categoryDirty = true"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        class="icon-button"
+                        data-testid="remove-category"
+                        :disabled="!!busy || relinkBusy"
+                        :aria-label="
+                          t('scenePlan.removeCategory', {
+                            number: formatNumber(index + 1),
+                          })
+                        "
+                        @click="removeCategory(index)"
+                      >
+                        <Icon name="reject" :size="16" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      class="secondary"
+                      data-testid="add-category"
+                      :disabled="!!busy || relinkBusy"
+                      @click="addCategory"
+                    >
+                      <Icon name="plus" :size="16" />{{
+                        t("scenePlan.addCategory")
+                      }}
+                    </button>
                     <button
                       class="secondary"
                       data-testid="save-category-tags"

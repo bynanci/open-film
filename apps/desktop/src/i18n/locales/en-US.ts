@@ -65,7 +65,11 @@ export default {
     memoryPreview: "Selected memory preview",
     categories: "Categories",
     categoriesHint:
-      "Separate categories with commas. The first category groups this memory into a scene.",
+      "Each row is one category, including punctuation and line breaks. The first category groups this memory into a scene.",
+    categoryLabel: "Category {number}",
+    addCategory: "Add category",
+    removeCategory: "Remove category {number}",
+    categoryRequired: "Enter a category in every row, or remove the empty row.",
     saveCategories: "Save categories",
     categoriesSaved: "Categories saved.",
     categoryPending: "Save the current categories before continuing.",

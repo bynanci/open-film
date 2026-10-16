@@ -67,9 +67,10 @@ across 124 files, build, built CLI smoke, 18 official OTIO checks, native checks
 (7 Rust tests) and locked Cargo build. Interchange used a fresh candidate-specific
 output after its first invocation correctly refused to overwrite the earlier
 reference bundle. The successful retry and initial refusal are both retained.
-Full-browser and CI outcomes for the current published candidate are reported in
-the [live PR checks](https://github.com/bynanci/open-film/pull/15/checks); they are
-not inferred from this completed local-core/native evidence.
+Its complete local browser run then passed **101 tests in 14.3 minutes**. This is
+historical evidence for that runtime, not proof that later review findings are
+resolved. Current published-candidate results remain in the
+[live PR checks](https://github.com/bynanci/open-film/pull/15/checks).
 
 **Merge gate:** publish the corrected candidate, require its complete CI to pass,
 refresh review threads/head/base and address any correctness findings before
@@ -106,6 +107,42 @@ The source signature covers relevant catalog fields, project ID and film locale.
 It does not rehash media bytes during planning. Rendering retains its own source
 inspection. Same-plan retries return the saved/current composition, preserving
 subsequent manual edits rather than replaying an old preview.
+
+## Follow-up correctness review
+
+The later review identified additional P2 issues even after the earlier local
+full-browser success. CI alone does not resolve them; fixes require regression
+evidence and a new published-candidate review.
+
+- **Rendering metadata was missing from the source signature.** Version 2 binds
+  the fixed-size audio-presence/invalid-stream state and HDR transfer, primaries
+  and matrix evidence actually consumed by rendering. It does not hash complete
+  probe documents or unrelated analysis payloads.
+- **A moved managed project falsely invalidated its own CLI preview.** Read-only
+  preview and writable acceptance now use the same effective source URI and
+  validated owned relative identity. Normal root/library reference repairs no
+  longer masquerade as source changes, while actual URI/hash/path changes still
+  invalidate the plan. The two application fixes were demonstrated by six
+  failing regressions before the fix (and one passing control), then **32 passing
+  integration cases**: 30 scene-planning cases and two caption-portability cases
+  in 12.79 seconds. ESLint and TypeScript checks also passed.
+- **Literal category values were corrupted by delimiter parsing.** A real browser
+  reproduction changed four existing categories into six while editing only
+  another value: ASCII/full-width commas were split, outer spaces stripped and
+  newlines flattened. The replacement editor keeps one category per text field
+  with explicit add/remove actions and saves the array literally. The regression
+  covers commas, LF/CRLF, outer spaces, duplicates, editing another row and
+  save/reopen, plus explicitly editing a literal value and removing one duplicate.
+  The corrected working source passed six scene-browser cases in 23.5 seconds
+  and 107 related actual-function harness tests. These are source-bound working
+  results, not CI for the subsequently published combined fix.
+
+The revised category UI passes i18n coverage with 1,156 semantic keys. Application
+evidence is retained in `scene-plan-pr15-application-review-{red,green,final}.log`;
+category evidence is in `category-roundtrip-proof.json` with its red/green logs.
+These follow-up results must not be attributed to the earlier 19eb52e/ac4024f
+commits. The combined candidate requires fresh CI and review under the merge
+policy above.
 
 ## Evidence and manual limits
 

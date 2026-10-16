@@ -588,7 +588,7 @@ function categoryNavigationFixture(busy = ref(""), error = ref<unknown>("")) {
       notice,
       selectedAsset: ref(asset),
       selectedAssetId: ref(asset.id),
-      categoryDraft: ref("New category"),
+      categoryDraft: ref(["New category"]),
       relinkBusy: ref(false),
       project: ref({ id: "project" }),
       assets: ref([asset]),

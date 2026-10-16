@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   ApplicationError,
   validateProject,
@@ -11,6 +13,7 @@ import { previewIssue } from "@openfilm/media";
 import { createSceneStory } from "@openfilm/story";
 import { compose } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { isInside } from "./path-safety.js";
 
 export interface ScenePlanOptions {
   title?: string;
@@ -104,38 +107,109 @@ function sourceScope(
   });
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Only fields currently consumed by rendering; never hash complete probe payloads. */
+function renderEvidence(asset: MediaAsset) {
+  const streams = record(asset.metadata["openfilm.ffprobe"])?.streams;
+  const audio =
+    streams === undefined || streams === null
+      ? false
+      : !Array.isArray(streams) || streams.some((stream) => !record(stream))
+        ? "invalid-streams"
+        : streams.some((stream) => record(stream)?.codec_type === "audio");
+  const color = record(asset.metadata["openfilm.color"]);
+  const text = (key: string) => {
+    const value = color?.[key];
+    return typeof value === "string"
+      ? value
+      : value === undefined
+        ? null
+        : "invalid-color-field";
+  };
+  return {
+    audio,
+    color: {
+      state:
+        asset.metadata["openfilm.color"] === undefined
+          ? "absent"
+          : color
+            ? "record"
+            : "invalid",
+      transfer: text("transfer"),
+      primaries: text("primaries"),
+      matrix: text("matrix"),
+    },
+  };
+}
+
 function sourceSignature(
   app: OpenFilmApplication,
   assets: MediaAsset[],
 ): string {
   return digest({
-    version: 1,
+    version: 2,
     projectId: app.project.id,
     contentLocale: app.project.projectContentLocale ?? "en-US",
-    // Bind the fields actually used for selection, ordering and playback. Large
-    // analysis documents and unrelated extension metadata do not belong here.
-    assets: assets.map((asset) => ({
-      id: asset.id,
-      uri: asset.uri,
-      name: asset.name,
-      mediaType: asset.mediaType,
-      capturedAt: asset.capturedAt,
-      capturedAtConfidence: asset.capturedAtConfidence,
-      duration: asset.duration,
-      dimensions: asset.dimensions,
-      frameRate: asset.frameRate,
-      codec: asset.codec,
-      hdr: asset.hdr,
-      colorSpace: asset.colorSpace,
-      contentHash: asset.contentHash,
-      perceptualHash: asset.perceptualHash,
-      tags: asset.tags,
-      rating: asset.rating,
-      state: asset.state,
-      previewIssue: previewIssue(asset) ?? null,
-      reference: asset.metadata["openfilm.reference"],
-      filesystem: asset.metadata["openfilm.filesystem"],
-    })),
+    // Bind selection and playback evidence without embedding large analysis
+    // documents or incidental derived-reference bookkeeping in the signature.
+    assets: assets.map((asset) => {
+      const source = app.getSourceAsset(asset.id) ?? asset;
+      const managed = record(asset.metadata["openfilm.managedSource"]);
+      const relativePath = managed?.relativePath;
+      const path =
+        typeof relativePath === "string"
+          ? resolve(app.directory, relativePath)
+          : undefined;
+      const root = join(app.directory, "sources");
+      const ownedManaged =
+        typeof relativePath === "string" &&
+        relativePath.startsWith("sources/") &&
+        !relativePath.includes("\\") &&
+        managed?.uri === asset.uri &&
+        path !== undefined &&
+        path !== root &&
+        isInside(root, path) &&
+        source.uri === pathToFileURL(path).href;
+      return {
+        id: asset.id,
+        uri: source.uri,
+        name: asset.name,
+        mediaType: asset.mediaType,
+        capturedAt: asset.capturedAt,
+        capturedAtConfidence: asset.capturedAtConfidence,
+        duration: asset.duration,
+        dimensions: asset.dimensions,
+        frameRate: asset.frameRate,
+        codec: asset.codec,
+        hdr: asset.hdr,
+        colorSpace: asset.colorSpace,
+        contentHash: asset.contentHash,
+        perceptualHash: asset.perceptualHash,
+        tags: asset.tags,
+        rating: asset.rating,
+        state: asset.state,
+        previewIssue: previewIssue(asset) ?? null,
+        render: renderEvidence(asset),
+        // A normal open repairs managed absolute roots/library fallbacks. A
+        // read-only preview binds the same resolved URI plus owned relative
+        // identity, so those repairs do not masquerade as a source change.
+        reference: ownedManaged
+          ? { managedRelativePath: relativePath }
+          : asset.metadata["openfilm.reference"],
+        managedSource: managed
+          ? {
+              relativePath,
+              uri: ownedManaged ? source.uri : managed.uri,
+            }
+          : undefined,
+        filesystem: asset.metadata["openfilm.filesystem"],
+      };
+    }),
   });
 }
 

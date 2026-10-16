@@ -258,9 +258,9 @@ test("reviews categorized memories as a bounded film, preserves existing edits, 
       exact: true,
     })
     .click();
-  await page
-    .getByTestId("category-tags")
-    .fill("出發 / Departure, 旅行 / Travel");
+  await page.getByTestId("category-tag").first().fill("出發 / Departure");
+  await page.getByTestId("add-category").click();
+  await page.getByTestId("category-tag").nth(1).fill("旅行 / Travel");
   await page.getByTestId("save-category-tags").click();
   await expect
     .poll(
@@ -456,6 +456,102 @@ test("a changed category rejects the stale plan without losing reviewed script o
   await expect(page.getByTestId("scene-plan-result")).toBeVisible();
   expect(await project(request)).toEqual(before);
   await layout(page, "en-US-stale-reviewed-plan-1440x900");
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("editing one category preserves other category text verbatim across save and reopen", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createSourceFilm(request, "en-US");
+  const original = [
+    "  Places, people  ",
+    "青森，旅の記録",
+    "第一幕\n第二幕",
+    "CRLF\r\nremains unchanged",
+    "Repeated category",
+    "Repeated category",
+    "Other category",
+  ];
+  expect(
+    (
+      await request.patch(`${api}/assets/${fixture.photo.id}`, {
+        data: { tags: original },
+      })
+    ).ok(),
+  ).toBe(true);
+  await initialLocale(page);
+  await page.goto("/");
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "media.card.inspect", { name: fixture.photo.name }),
+      exact: true,
+    })
+    .click();
+  const fields = page.getByTestId("category-tag");
+  await expect(fields).toHaveCount(original.length);
+  for (const [index, tag] of original.entries()) {
+    // Textareas normalize line endings for display. Saving another row must
+    // still preserve the catalog's exact CRLF bytes in the untouched category.
+    await expect(fields.nth(index)).toHaveValue(tag.replace(/\r\n/g, "\n"));
+  }
+  const changed = [...original.slice(0, -1), "Updated category"];
+  await fields.last().fill(changed.at(-1)!);
+  await page.getByTestId("save-category-tags").click();
+  await expect
+    .poll(
+      async () =>
+        (await assets(request)).find((asset) => asset.id === fixture.photo.id)!
+          .tags,
+    )
+    .toEqual(changed);
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await openFilm(page, fixture.project);
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "media.card.inspect", { name: fixture.photo.name }),
+      exact: true,
+    })
+    .click();
+  await expect(fields).toHaveCount(changed.length);
+  for (const [index, tag] of changed.entries())
+    await expect(fields.nth(index)).toHaveValue(tag.replace(/\r\n/g, "\n"));
+  expect(
+    (await assets(request)).find((asset) => asset.id === fixture.photo.id)!
+      .tags,
+  ).toEqual(changed);
+
+  const edited = [
+    '  Places, people，"our memories"\n青森 & #1  ',
+    ...changed.slice(1),
+  ];
+  await fields.first().fill(edited[0]!);
+  await page.getByTestId("save-category-tags").click();
+  await expect
+    .poll(
+      async () =>
+        (await assets(request)).find((asset) => asset.id === fixture.photo.id)!
+          .tags,
+    )
+    .toEqual(edited);
+  // Removal is explicit and affects only the selected row, including when
+  // two independently stored categories have identical text.
+  await page.getByTestId("remove-category").nth(4).click();
+  const removed = edited.filter((_, index) => index !== 4);
+  await expect(fields).toHaveCount(removed.length);
+  await page.getByTestId("save-category-tags").click();
+  await expect
+    .poll(
+      async () =>
+        (await assets(request)).find((asset) => asset.id === fixture.photo.id)!
+          .tags,
+    )
+    .toEqual(removed);
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 

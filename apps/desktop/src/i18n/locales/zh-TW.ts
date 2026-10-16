@@ -60,7 +60,12 @@ export default {
     sceneTiming: "實際 {actual} · 預算 {target}",
     memoryPreview: "選取回憶預覽",
     categories: "分類",
-    categoriesHint: "以逗號分隔分類。第一個分類決定此回憶所屬的場景。",
+    categoriesHint:
+      "每一列是一個分類，標點符號與換行會保留。第一個分類決定此回憶所屬的場景。",
+    categoryLabel: "分類 {number}",
+    addCategory: "新增分類",
+    removeCategory: "移除分類 {number}",
+    categoryRequired: "請填寫每列分類，或移除空白列。",
     saveCategories: "儲存分類",
     categoriesSaved: "分類已儲存。",
     categoryPending: "請先儲存目前分類再繼續。",

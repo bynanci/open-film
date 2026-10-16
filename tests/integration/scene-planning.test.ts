@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { OpenFilmApplication, type ScenePlan } from "@openfilm/application";
 import { type MediaAsset, type OpenFilmProject } from "@openfilm/core";
 import { startServer } from "../../apps/server/src/server.js";
+import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
 
 const exec = promisify(execFile);
 const cleanups: Array<() => Promise<unknown> | void> = [];
@@ -213,6 +214,104 @@ describe("reviewable scene-plan application lifecycle", () => {
     expect(app.project).toEqual(previous);
   });
 
+  it.each(["audio", "transfer", "primaries", "matrix"] as const)(
+    "rejects metadata-only changes to render-relevant %s evidence",
+    async (field) => {
+      const { app } = await fixture();
+      const metadata = {
+        "openfilm.ffprobe": { streams: [{ codec_type: "video" }] },
+        "openfilm.color": {
+          hdr: true,
+          transfer: "smpte2084",
+          primaries: "bt2020",
+          matrix: "bt2020nc",
+        },
+      };
+      app.catalog.upsertAsset(
+        asset("spoken-hdr", {
+          mediaType: "video",
+          duration: 8,
+          hdr: true,
+          metadata,
+        }),
+      );
+      const plan = app.previewScenePlan({
+        ...options,
+        assetIds: ["spoken-hdr"],
+      });
+      const changed = structuredClone(metadata);
+      if (field === "audio")
+        changed["openfilm.ffprobe"].streams.push({ codec_type: "audio" });
+      else changed["openfilm.color"][field] = "unsupported";
+      app.catalog.upsertAsset({
+        ...app.catalog.getAsset("spoken-hdr")!,
+        metadata: changed,
+      });
+      await rejectsCode(() => app.acceptScenePlan(plan), "story.planStale");
+      expect(app.project.stories).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    { label: "non-array streams", streams: {} },
+    { label: "null stream entry", streams: [null] },
+  ])(
+    "does not treat malformed $label as unchanged silent media",
+    async ({ streams }) => {
+      const { app } = await fixture();
+      const original = app.catalog.getAsset("home-1")!;
+      app.catalog.upsertAsset({
+        ...original,
+        metadata: {
+          "openfilm.ffprobe": { streams: [{ codec_type: "video" }] },
+        },
+      });
+      const plan = app.previewScenePlan(options);
+      app.catalog.upsertAsset({
+        ...original,
+        metadata: { "openfilm.ffprobe": { streams } },
+      });
+      await rejectsCode(() => app.acceptScenePlan(plan), "story.planStale");
+    },
+  );
+
+  it("does not invalidate a plan for unrelated ffprobe or color extension metadata", async () => {
+    const { app } = await fixture();
+    const original = app.catalog.getAsset("home-1")!;
+    app.catalog.upsertAsset({
+      ...original,
+      metadata: {
+        "openfilm.ffprobe": {
+          streams: [{ codec_type: "video" }],
+          format: { tags: { comment: "before" } },
+        },
+        "openfilm.color": {
+          transfer: "bt709",
+          primaries: "bt709",
+          matrix: "bt709",
+          extension: "before",
+        },
+      },
+    });
+    const plan = app.previewScenePlan(options);
+    app.catalog.upsertAsset({
+      ...original,
+      metadata: {
+        "openfilm.ffprobe": {
+          streams: [{ codec_type: "video", tags: { comment: "after" } }],
+          format: { tags: { comment: "after" } },
+        },
+        "openfilm.color": {
+          transfer: "bt709",
+          primaries: "bt709",
+          matrix: "bt709",
+          extension: "after",
+        },
+      },
+    });
+    expect(app.acceptScenePlan(plan).story.id).toBe(plan.story.id);
+  });
+
   it("binds project identity and film locale while ignoring unrelated analysis metadata", async () => {
     const { app } = await fixture();
     const plan = app.previewScenePlan(options);
@@ -364,6 +463,115 @@ describe("reviewable scene-plan application lifecycle", () => {
 });
 
 describe("scene-plan public boundaries", () => {
+  it.each(["copy", "move"] as const)(
+    "previews a managed project after %s read-only, then accepts and reopens the same plan",
+    async (operation) => {
+      const root = await mkdtemp(join(tmpdir(), "openfilm-scene-managed-"));
+      cleanups.push(() => rm(root, { recursive: true, force: true }));
+      const original = join(root, "Original # & 回憶.openfilm");
+      let app: OpenFilmApplication | undefined =
+        await OpenFilmApplication.create(original, "Portable scene script");
+      cleanups.push(() => app?.close());
+      const sources = join(original, "sources", "upload");
+      await generateSampleMedia(sources);
+      const imported = await app.importManagedSources(
+        [join(sources, "01-photo.png"), join(sources, "03-evening.png")],
+        { proxies: false },
+      );
+      expect(imported.imported).toBe(2);
+      if (operation === "move")
+        for (const item of app.catalog.listAssets()) {
+          const metadata = { ...item.metadata };
+          delete metadata["openfilm.reference"];
+          app.catalog.upsertAsset({ ...item, metadata });
+        }
+      app.close();
+      app = undefined;
+      const moved = join(root, "Relocated # & 記憶.openfilm");
+      if (operation === "copy") await cp(original, moved, { recursive: true });
+      else await rename(original, moved);
+      const projectBefore = await readFile(join(moved, "project.json"));
+      const catalogBefore = await readFile(join(moved, "database.sqlite"));
+      const cli = (...args: string[]) =>
+        exec(
+          process.execPath,
+          [
+            "--import",
+            "tsx",
+            "apps/cli/src/index.ts",
+            ...args,
+            "--project",
+            moved,
+            "--user-data-dir",
+            join(root, "user"),
+          ],
+          { cwd: process.cwd() },
+        );
+      const preview = await cli(
+        "scene-plan",
+        "preview",
+        "--group-by",
+        "category",
+        "--target",
+        "8",
+        "--max",
+        "10",
+      );
+      expect(await readFile(join(moved, "project.json"))).toEqual(
+        projectBefore,
+      );
+      expect(await readFile(join(moved, "database.sqlite"))).toEqual(
+        catalogBefore,
+      );
+      const path = join(root, "managed-preview.json");
+      await writeFile(path, preview.stdout);
+      const accepted = JSON.parse(
+        (await cli("scene-plan", "accept", "--plan", path)).stdout,
+      );
+      expect(
+        JSON.parse((await cli("scene-plan", "accept", "--plan", path)).stdout),
+      ).toEqual(accepted);
+      app = await OpenFilmApplication.open(moved);
+      expect(app.project.timelines).toHaveLength(1);
+      expect(app.project.timelines[0]!.id).toBe(accepted.composition.id);
+      for (const item of app.catalog.listAssets())
+        expect(item.uri).toContain(pathToFileURL(join(moved, "sources")).href);
+      // A later real managed-source change must still invalidate a fresh draft.
+      const next = app.previewScenePlan({
+        ...options,
+        targetDuration: 8,
+        maxDuration: 10,
+      });
+      const item = app.catalog.listAssets()[0]!;
+      const managed = item.metadata["openfilm.managedSource"] as {
+        relativePath: string;
+        uri: string;
+      };
+      app.catalog.upsertAsset({
+        ...item,
+        metadata: {
+          ...item.metadata,
+          "openfilm.managedSource": {
+            ...managed,
+            relativePath: "sources/upload/different.png",
+          },
+        },
+      });
+      await rejectsCode(() => app!.acceptScenePlan(next), "story.planStale");
+      app.catalog.upsertAsset({
+        ...item,
+        contentHash: "changed-source-content",
+      });
+      await rejectsCode(() => app!.acceptScenePlan(next), "story.planStale");
+      // A relinked external source no longer belongs to the managed-path hint.
+      app.catalog.upsertAsset({
+        ...item,
+        uri: pathToFileURL(join(root, "external.png")).href,
+      });
+      await rejectsCode(() => app!.acceptScenePlan(next), "story.planStale");
+    },
+  );
+
   it("accepts a 2000-clip CLI preview larger than the ordinary form payload cap", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-scene-large-cli-"));
     cleanups.push(() => rm(root, { recursive: true, force: true }));

@@ -30,10 +30,12 @@ flow. Interface language and film language remain separate.
 
 ## User workflow
 
-1. In Library, select a memory and edit **Categories** in its Inspector. Separate
-   categories with commas and choose **Save categories**. Mark favorites, rejected
-   media and locked selections as appropriate. The first tag determines category
-   grouping, so use it consistently for a set such as a trip or chapter.
+1. In Library, select a memory and edit **Categories** in its Inspector. Each
+   category has its own text field; add or remove rows, then choose **Save
+   categories**. Commas, full-width commas, line breaks, spaces and duplicate
+   values are preserved as category data, not parsed as separators. The first
+   category determines scene grouping. Mark favorites, rejected media and locked
+   selections as appropriate.
 2. In Story, choose **Plan script and scenes**. Enter the title and brief, choose
    Categories or Capture date, and select all eligible media or the current
    Library page. Set the target, maximum and Cut/Crossfade rhythm.
@@ -116,6 +118,11 @@ information. It does not bind unrelated project state or rehash the actual media
 file bytes during planning. Acceptance rechecks those catalog inputs; changed
 inputs produce `story.planStale` (HTTP 409) and require a fresh preview. Rendering
 retains its own actual-source inspection; planning does not replace that check.
+The signature includes the saved audio-presence and HDR color evidence consumed
+by rendering. Read-only previews of a moved managed project use its resolved
+source URI and validated project-owned relative identity, so normal open-time
+reference repairs do not falsely invalidate unchanged sources. Actual source
+URI/hash/path changes still require a fresh preview.
 
 The application validates user-edited script and scene input and saves the new
 Story and composition in one publication boundary. A failed save must not leave

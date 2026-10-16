@@ -100,7 +100,7 @@ function host(
     beatDirty: vue.ref(false),
     categoryDirty: vue.ref(false),
     scenePlanDraftPresent: vue.ref(false),
-    categoryDraft: vue.ref("New category"),
+    categoryDraft: vue.ref(["New category"]),
     selectedAssetId,
     selectedAsset: vue.computed(() => assetCache.value[selectedAssetId.value]),
     assetCache,
@@ -302,7 +302,7 @@ describe("project navigation during analysis owned by another process", () => {
       tags: ["New category"],
     });
     expect(h.categoryDirty.value).toBe(true);
-    expect(h.categoryDraft.value).toBe("New category");
+    expect(h.categoryDraft.value).toEqual(["New category"]);
     expect(h.assetCache.value.memory?.tags).toEqual(["Old category"]);
     expect(h.error.value).toBe(cause);
     expect(h.flush).not.toHaveBeenCalled();

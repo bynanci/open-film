@@ -2104,6 +2104,18 @@ td {
   min-width: 0;
   max-width: 100%;
 }
+.category-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--of-space-2);
+  align-items: start;
+}
+.category-row .field {
+  margin-bottom: 0;
+}
+.category-editor h3 {
+  overflow-wrap: anywhere;
+}
 .category-editor small {
   overflow-wrap: anywhere;
   color: var(--of-text-secondary);

@@ -64,7 +64,12 @@ export default {
     memoryPreview: "選択した思い出のプレビュー",
     categories: "カテゴリー",
     categoriesHint:
-      "カテゴリーをコンマで区切ります。最初のカテゴリーでシーンにまとめます。",
+      "各行が1つのカテゴリーです。句読点や改行も保持します。最初のカテゴリーでシーンにまとめます。",
+    categoryLabel: "カテゴリー {number}",
+    addCategory: "カテゴリーを追加",
+    removeCategory: "カテゴリー {number} を削除",
+    categoryRequired:
+      "各行にカテゴリーを入力するか、空の行を削除してください。",
     saveCategories: "カテゴリーを保存",
     categoriesSaved: "カテゴリーを保存しました。",
     categoryPending: "現在のカテゴリーを保存してから続けてください。",
