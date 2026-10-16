@@ -8,12 +8,13 @@ system or downstream NLE. Commands and test responsibilities are in
 ## Current — Classified memories to scene scripts
 
 Scope and acceptance: [scene-script planning](docs/scene-script-planning.md).
+Evidence: [validation record](docs/validation-scene-script-planning.md).
 The current slice starts from main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
-which includes merged PR #13. Targeted verification passes: 36 new domain tests
-(105 related tests in the exercised group), 21 application/integration tests and
-five browser tests with real rendering, reopening and delayed acceptance. Full
-candidate gates and CI remain a separate entry below. Real workstation evidence
-is tracked separately by [issue #7](https://github.com/bynanci/open-film/issues/7).
+which includes merged PR #13; PR #14's isolated fixture repair is now merged in
+main `61af41fbac17c32ffdc11679612636566bd73a1c`. The record separates passing
+targeted tests, the initial full-browser failures and corrected 13-test UI run.
+Final candidate CI/review remains a separate entry below. Real workstation
+evidence is tracked by [issue #7](https://github.com/bynanci/open-film/issues/7).
 
 - [x] Let people classify memories in Library and review category/chronology-based
       scenes without claiming automatic understanding of photo contents.
@@ -26,8 +27,10 @@ is tracked separately by [issue #7](https://github.com/bynanci/open-film/issues/
 - [x] Share bounded planning and acceptance through Desktop, HTTP and CLI, with
       generated-media unit/integration/browser regressions, large valid plan
       payloads and protected controls during delayed acceptance.
-- [ ] Complete the full candidate regression gates, publish CI for its exact head
-      and resolve any remaining correctness review findings.
+- [x] Fix the observed boundary/review failures and preserve passing corrected
+      UI regressions for pseudo-layout and concurrent typing during beat saves.
+- [ ] Require complete green CI for the corrected published candidate, refresh
+      its review/head/base and resolve remaining correctness findings before merge.
 
 Narration synthesis, image interpretation, motion/keyframes and a scene-writing
 LanguageProvider are outside this slice. Optional reviewable language assistance

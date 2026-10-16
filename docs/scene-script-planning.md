@@ -2,11 +2,11 @@
 
 This development slice connects **Library categories → editable scene script →
 duration-checked film**. It builds on the existing Story, composition solver and
-editor. Targeted verification passes: 36 new domain tests (105 related tests in
-the exercised group), 21 application/integration tests and five browser tests,
-including real rendering, reopening and delayed acceptance. Full candidate
-regression gates and CI are reported separately in the PR; workstation
-verification remains separate. See [TASKS](../TASKS.md).
+editor. The [validation record](validation-scene-script-planning.md) reports
+targeted domain/application/browser results, real rendering/reopen, initial
+full-suite failures and the corrected UI run. Complete corrected-candidate CI
+and review are a separate merge gate in [PR #15](https://github.com/bynanci/open-film/pull/15/checks);
+workstation verification remains separate. See [TASKS](../TASKS.md).
 
 The starting point is main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`, after
 PR #13's measurement tooling merged. Real workstation observations remain open
@@ -78,7 +78,9 @@ limits, not a large-library performance claim. The existing story scope rules an
 required/locked-source protections still apply; rejected media are ineligible.
 The scene planner selects photos and videos. It reports excluded audio sources;
 a locked audio source requires an explicit selection decision rather than silent
-omission. Music and narration can be handled through the existing editing flow.
+omission. This planner does not add a soundtrack or recorded narration. Desktop
+can edit or replace audio clips that already exist, but cannot add a new soundtrack
+track to this visual-only composition.
 
 The target is a preference and the maximum is a hard composition constraint.
 Scene budgets guide the existing solver; the **solver's proposed composition**
@@ -197,10 +199,11 @@ The targeted suites establish:
 - Delayed acceptance disables conflicting old-beat controls, preserves the
   acknowledged new film and retains the intended script after reopening.
 
-Complete candidate format/i18n/lint/typecheck/unit/build/browser/interchange/native
-gates and CI are tracked separately in the PR. Existing Story/Precision
-synchronization, Undo/Redo, locks, recovery and export remain part of that full
-regression gate; the targeted counts above alone do not claim its completion.
+The [validation record](validation-scene-script-planning.md) preserves exact
+candidate gate outcomes and the initial failures, while current full CI is in the
+[PR checks](https://github.com/bynanci/open-film/pull/15/checks). Existing
+Story/Precision synchronization, Undo/Redo, locks, recovery and export remain part
+of that full regression gate; targeted tests alone do not claim its completion.
 
 Automated generated-fixture success does not certify a compelling screenplay,
 real photo understanding, speech timing, Windows startup/memory, Pixel/Insta360

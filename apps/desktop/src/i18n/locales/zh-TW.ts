@@ -38,7 +38,8 @@ export default {
     reviewHint:
       "先修改場景名稱、意圖與腳本筆記，再建立新的故事與剪輯。既有影片會保留。",
     timing: "目標 {target} · 最長 {maximum}",
-    audioExcluded: "已排除純音訊素材：{count}。之後可在剪輯中加入音樂。",
+    audioExcluded:
+      "已排除純音訊素材：{count}。這份規劃不會加入音樂或錄製的旁白。",
     previewAgain: "規劃設定已變更。請重新預覽，確認時長符合新設定後再建立。",
     sceneTitle: "場景名稱",
     intent: "場景意圖",

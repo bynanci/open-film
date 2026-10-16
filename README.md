@@ -105,9 +105,9 @@ then review an actual solver-generated cut against the film's time limit. Accept
 creates a new Story and composition while preserving existing films. The offline
 starters use declared classifications; they do not infer photo contents or generate
 voice-over. See [the workflow and validation contract](docs/scene-script-planning.md).
-Targeted domain, application/CLI/API and localized browser tests pass, including
-real rendering and reopen. Full candidate regression and CI status remain tracked
-separately in [TASKS](TASKS.md) and the PR.
+The [validation record](docs/validation-scene-script-planning.md) separates
+targeted results, initial full-suite failures and corrected UI checks. Complete
+candidate CI/review is tracked in [TASKS](TASKS.md) and [PR #15](https://github.com/bynanci/open-film/pull/15/checks).
 
 ## Requirements
 

@@ -2751,14 +2751,14 @@ onUnmounted(() => {
                   >{{ t("app.story.beatTitle")
                   }}<input
                     v-model="beatDraft.title"
-                    :disabled="!!busy || relinkBusy"
+                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
                     :aria-label="t('app.story.beatTitle')"
                     @input="beatDirty = true" /></label
                 ><label class="field compact-field"
                   >{{ t("app.story.beatDurationLabel")
                   }}<input
                     v-model.number="beatDraft.targetDuration"
-                    :disabled="!!busy || relinkBusy"
+                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
                     :aria-label="t('app.story.beatDuration')"
                     type="number"
                     min="0.01"
@@ -2768,7 +2768,7 @@ onUnmounted(() => {
                   >{{ t("app.story.intent")
                   }}<textarea
                     v-model="beatDraft.intent"
-                    :disabled="!!busy || relinkBusy"
+                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
                     :aria-label="t('app.story.beatIntent')"
                     rows="2"
                     @input="beatDirty = true"
@@ -2780,7 +2780,7 @@ onUnmounted(() => {
                   >{{ t("scenePlan.narration")
                   }}<textarea
                     v-model="beatDraft.narration"
-                    :disabled="!!busy || relinkBusy"
+                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
                     data-testid="beat-script-narration"
                     rows="3"
                     maxlength="8000"
@@ -2791,7 +2791,7 @@ onUnmounted(() => {
                   >{{ t("scenePlan.visualDirection")
                   }}<textarea
                     v-model="beatDraft.visualDirection"
-                    :disabled="!!busy || relinkBusy"
+                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
                     data-testid="beat-script-visual-direction"
                     rows="3"
                     maxlength="8000"

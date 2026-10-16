@@ -31,10 +31,13 @@ before accepting a new Story/composition pair. Stale proposals and failed writes
 must preserve existing films. See [the contract](docs/scene-script-planning.md)
 and [current acceptance tasks](TASKS.md#current--classified-memories-to-scene-scripts).
 
-This slice passes targeted domain, application/CLI/HTTP and localized browser
-verification, including real rendering and reopen. Full candidate gates and CI
-are reported separately in the PR. Its starting main is
-`e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`, including merged PR #13.
+The [validation record](docs/validation-scene-script-planning.md) separates
+targeted domain/application/browser success, the initial full-suite failures and
+the corrected UI run. The corrected published candidate still requires complete
+[PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks) and review
+before merge. Its starting main is `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+including merged PR #13; PR #14's fixture repair subsequently merged as
+`61af41fbac17c32ffdc11679612636566bd73a1c`.
 The [OpenCut reference](docs/opencut-reference.md) supplies scene-navigation,
 command and preview/export principles; it does not establish a working
 photo-to-screenplay capability to copy. Offline starters use declared categories

@@ -2093,13 +2093,19 @@ td {
 
 .category-editor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--of-space-3);
   padding-block: var(--of-space-4);
   border-block: 1px solid var(--of-border-subtle);
   margin-block: var(--of-space-4);
   min-width: 0;
 }
+.category-editor > * {
+  min-width: 0;
+  max-width: 100%;
+}
 .category-editor small {
+  overflow-wrap: anywhere;
   color: var(--of-text-secondary);
   line-height: 1.5;
 }

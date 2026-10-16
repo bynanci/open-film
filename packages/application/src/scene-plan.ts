@@ -148,7 +148,7 @@ function renderable(
     const issue = previewIssue(asset);
     if (asset.mediaType === "audio" && asset.state.locked)
       invalid(
-        `Locked audio "${asset.name}" cannot be placed in a visual scene plan. Unlock it before planning; add music in Edit.`,
+        `Locked audio "${asset.name}" cannot be placed in a visual scene plan. Unlock it only if you want to exclude it from this visual plan.`,
       );
     if (issue && (asset.state.locked || explicit.has(asset.id)))
       throw new ApplicationError(

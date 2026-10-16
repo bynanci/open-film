@@ -40,7 +40,7 @@ export default {
       "Edit the scene titles, intentions and script notes before creating a new story and edit. Existing films stay available.",
     timing: "Target {target} · Maximum {maximum}",
     audioExcluded:
-      "Audio-only sources excluded: {count}. Add music later in Edit.",
+      "Audio-only sources excluded: {count}. This plan does not add music or recorded narration.",
     previewAgain:
       "Your planning settings changed. Preview again before accepting so the duration matches these settings.",
     sceneTitle: "Scene title",
