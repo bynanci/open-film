@@ -225,6 +225,32 @@ tests do not claim browser layout measurements for the remote consent state.
 Independent read-only review found no new P1/P2 in the restored corrections.
 Complete corrected-head regression and CI remain required before merge.
 
+## Decision failure classification and persisted identifier bounds
+
+On `4079811a43b5b8bc32bf3378757ad0759e42d495`, all **2,023 unit/integration
+tests across 139 files** and the other non-browser gates passed. The browser
+run was intentionally stopped after **68 passed**, with one interrupted and
+41 not run, when review found two additional correctness gaps.
+
+Accept/Skip lock contention reached the HTTP fallback as `review.suggestionStale`
+(400), causing the client to clear an uncertain acceptance instead of retaining
+its request for retry. Both decisions now preserve structured application
+errors, translate SQLite busy to `jobs.busy` (409), and translate unexpected
+failures to `operation.failed` (500). The last category also covers a real audit
+write failure after text/receipt publication. Listing retains its existing
+non-busy error behavior. Fresh **10/10 application** and **4/4 real HTTP** cases
+pass, including both held-lock routes, bad-request/stale controls and a
+post-publication exact retry that preserves a later manual edit and one receipt.
+
+Restored receipt identifiers are now bounded consistently with stored knowledge
+identifiers: nonblank, at most 256 UTF-16 code units, well-formed Unicode and
+no C0/DEL controls. This applies to all four receipt identity fields without
+restricting existing opaque Story/scene IDs. Core and real workspace/export
+reopening tests first reproduced **52 failures with 34 controls passing**, then
+passed **86/86**. They cover each invalid field, valid boundary values, unchanged
+project bytes and unchanged pending audit evidence after rejection. JSON Schema
+documents the stricter authoritative runtime UTF-16 and Unicode checks.
+
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);
 this dated local record does not substitute a targeted or earlier run for them.

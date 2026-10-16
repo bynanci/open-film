@@ -804,28 +804,27 @@
       },
       "required": ["templateId", "targetDuration", "maxDuration"]
     },
+    "sceneScriptReviewReceiptIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F]+$",
+      "$comment": "Runtime validation also requires well-formed Unicode and a maximum of 256 UTF-16 code units."
+    },
     "sceneScriptReviewReceipt": {
       "type": "object",
       "properties": {
         "suggestionId": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "\\S"
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
         },
         "requestId": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "\\S"
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
         },
         "evidenceHash": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "\\S"
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
         },
         "acceptedRevisionId": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "\\S"
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
         },
         "acceptedAt": {
           "type": "string",

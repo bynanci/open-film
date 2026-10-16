@@ -114,6 +114,10 @@ each pass, including after an owned or caller transaction rolls back; an
 in-memory cache cannot certify a committed audit update. Unverifiable saved
 projects remain inspectable without changing lifecycle state. Temporary lock
 contention reports a retryable busy state.
+Accept and Skip also report lock contention as `jobs.busy` (409), so acceptance
+retains its exact retry request. Unexpected decision failures report
+`operation.failed` (500) rather than claiming evidence is stale, including when
+the project publication succeeded but audit finalization failed.
 
 The text lives in `project.json`, so SQLite alone cannot make acceptance atomic.
 The application saves the changed script together with a small
@@ -147,6 +151,9 @@ The project receipt field is optional for existing 1.0 projects, bounded to
 10,000 receipts with unique suggestion and acceptance-request IDs, and separate
 from editable Story payloads. Restored projects must satisfy both uniqueness
 checks before opening or reconciling pending evidence.
+All four receipt identity fields are nonblank, well-formed Unicode, contain no
+C0/DEL controls and are bounded to 256 UTF-16 code units, matching the stored
+review identifier contract. Existing opaque Story and scene IDs are unchanged.
 Catalog schema v5 adds `scene_script_suggestions` transactionally; the existing
 v4 transcript identity migration is not repeated. Legacy project migration and
 opaque transcript identity remain covered by regression tests.

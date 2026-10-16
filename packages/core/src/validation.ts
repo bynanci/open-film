@@ -63,6 +63,17 @@ function string(value: unknown, path: string): string {
   return value;
 }
 
+/** Match the bounded knowledge identifiers without importing its cyclic domain. */
+function receiptIdentifier(value: unknown, path: string): void {
+  const text = string(value, path);
+  if (text.length > 256) fail(path, "expected at most 256 UTF-16 code units");
+  for (const character of text) {
+    const point = character.codePointAt(0)!;
+    if (point < 32 || point === 127 || (point >= 0xd800 && point <= 0xdfff))
+      fail(path, "expected well-formed Unicode without control characters");
+  }
+}
+
 function number(
   value: unknown,
   path: string,
@@ -517,7 +528,7 @@ export function validateProject(
         "evidenceHash",
         "acceptedRevisionId",
       ])
-        string(receipt[key], `${itemPath}.${key}`);
+        receiptIdentifier(receipt[key], `${itemPath}.${key}`);
       const id = String(receipt.suggestionId);
       if (seen.has(id))
         fail(`${itemPath}.suggestionId`, "duplicate suggestion receipt");

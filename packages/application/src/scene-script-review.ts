@@ -252,12 +252,11 @@ export class SceneScriptReviewService {
     }
   }
 
-  list(storyId: string, options: PageOptions = {}) {
+  private withBusyError<T>(operation: () => T): T {
     try {
-      return this.app.catalog.withProjectWrite(() =>
-        this.listUnderWriteLock(storyId, options),
-      );
+      return operation();
     } catch (error) {
+      if (error instanceof ApplicationError) throw error;
       if (
         error &&
         typeof error === "object" &&
@@ -271,6 +270,30 @@ export class SceneScriptReviewService {
         );
       throw error;
     }
+  }
+
+  private withDecisionErrors<T>(operation: () => T): T {
+    try {
+      return this.withBusyError(operation);
+    } catch (error) {
+      if (error instanceof ApplicationError) throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new ApplicationError(
+        "operation.failed",
+        detail,
+        500,
+        undefined,
+        detail,
+      );
+    }
+  }
+
+  list(storyId: string, options: PageOptions = {}) {
+    return this.withBusyError(() =>
+      this.app.catalog.withProjectWrite(() =>
+        this.listUnderWriteLock(storyId, options),
+      ),
+    );
   }
 
   private listUnderWriteLock(storyId: string, options: PageOptions) {
@@ -560,9 +583,8 @@ export class SceneScriptReviewService {
         "request.invalid",
         "Acceptance requires a valid request ID and source revision.",
       );
-    return this.app.catalog.knowledge.withSceneScriptSuggestion(
-      id,
-      (suggestion) => {
+    return this.withDecisionErrors(() =>
+      this.app.catalog.knowledge.withSceneScriptSuggestion(id, (suggestion) => {
         this.saved();
         const story = this.story(suggestion.target.storyId);
         const receipt = this.app.project.sceneScriptReviewReceipts?.find(
@@ -657,14 +679,13 @@ export class SceneScriptReviewService {
           requestId: input.requestId,
         });
         return structuredClone(this.story(suggestion.target.storyId));
-      },
+      }),
     );
   }
 
   skip(id: string): SceneScriptReviewSuggestion {
-    return this.app.catalog.knowledge.withSceneScriptSuggestion(
-      id,
-      (suggestion) => {
+    return this.withDecisionErrors(() =>
+      this.app.catalog.knowledge.withSceneScriptSuggestion(id, (suggestion) => {
         this.saved();
         if (
           this.app.project.sceneScriptReviewReceipts?.some(
@@ -678,7 +699,7 @@ export class SceneScriptReviewService {
           suggestion.id,
           { status: "skipped" },
         );
-      },
+      }),
     );
   }
 }

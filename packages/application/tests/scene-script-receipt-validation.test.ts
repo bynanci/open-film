@@ -102,6 +102,50 @@ async function publishedReceipts() {
 }
 
 describe("restored script acceptance request identity", () => {
+  it.each(
+    ["workspace", "export"].flatMap((intent) =>
+      [
+        "requestId",
+        "acceptedRevisionId",
+        "suggestionId",
+        "evidenceHash",
+      ].flatMap((field) =>
+        ["bad\nid", "x".repeat(257), "\ud800"].map((value) => ({
+          intent: intent as "workspace" | "export",
+          field,
+          value,
+        })),
+      ),
+    ),
+  )(
+    "rejects malformed $field before $intent opening can reconcile evidence",
+    async ({ intent, field, value }) => {
+      const context = await publishedReceipts();
+      context.project.sceneScriptReviewReceipts[0][field] = value;
+      const bytes = JSON.stringify(context.project, null, 2) + "\n";
+      await writeFile(context.path, bytes);
+      await expect(
+        OpenFilmApplication.open(context.directory, context.runtime, {
+          intent,
+        }).then((opened) => {
+          cleanup.push(() => opened.catalog.close());
+          return opened;
+        }),
+      ).rejects.toThrow(field);
+      expect(await readFile(context.path, "utf8")).toBe(bytes);
+      const catalog = new ProjectCatalog(context.directory);
+      try {
+        expect(
+          catalog.knowledge
+            .sceneScriptSuggestionsList("story", {})
+            .suggestions.map((item) => item.status),
+        ).toEqual(["pending", "pending"]);
+      } finally {
+        catalog.close();
+      }
+    },
+  );
+
   it.each(["workspace", "export"] as const)(
     "rejects duplicate request IDs before %s opening can reconcile pending evidence",
     async (intent) => {

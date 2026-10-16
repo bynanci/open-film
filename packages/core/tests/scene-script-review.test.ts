@@ -123,6 +123,48 @@ describe("project script review receipts", () => {
   });
 
   it.each(
+    ["suggestionId", "requestId", "evidenceHash", "acceptedRevisionId"].flatMap(
+      (field) =>
+        [
+          "x".repeat(257),
+          "bad\nid",
+          "bad\tid",
+          "bad\u0000id",
+          "bad\u007fid",
+          "\ud800",
+          "\udc00",
+        ].map((value) => ({ field, value })),
+    ),
+  )(
+    "rejects malformed persisted receipt $field: $value",
+    ({ field, value }) => {
+      const project = {
+        ...core.createProject("Restored film"),
+        sceneScriptReviewReceipts: [{ ...receipt(), [field]: value }],
+      };
+      expect(() => core.validateProject(project)).toThrow(field);
+      expect(() => core.migrateProject(project)).toThrow(field);
+    },
+  );
+
+  it.each(
+    ["suggestionId", "requestId", "evidenceHash", "acceptedRevisionId"].flatMap(
+      (field) =>
+        ["x".repeat(256), "😀".repeat(128)].map((value) => ({ field, value })),
+    ),
+  )(
+    "preserves well-formed receipt $field at the 256-unit boundary",
+    ({ field, value }) => {
+      const project = {
+        ...core.createProject("Restored film"),
+        sceneScriptReviewReceipts: [{ ...receipt(), [field]: value }],
+      };
+      expect(core.validateProject(project)).toEqual(project);
+      expect(core.migrateProject(project)).toEqual(project);
+    },
+  );
+
+  it.each(
     [
       [receipt(), receipt()],
       [{ ...receipt(), acceptedAt: "2026-02-30T00:00:00Z" }],
