@@ -144,6 +144,35 @@ These follow-up results must not be attributed to the earlier 19eb52e/ac4024f
 commits. The combined candidate requires fresh CI and review under the merge
 policy above.
 
+## Second follow-up: per-scene output and SDR metadata
+
+Candidate `f7d936b15af4b20e985545ea1aef6ed1ce79a228` passed its local core gates
+(1,838 tests), native checks and 18 OTIO checks. Its full browser run was
+deliberately interrupted with **exit 130** when two further P2 findings were
+confirmed. That interrupted run is not a success, and its CI cannot certify the
+subsequent corrections.
+
+- **Edited acceptance could save an empty scene.** Checking only the total cut
+  missed a beat whose candidates were emptied, excluded or given too little time.
+  Preview/acceptance now verify at least one positive-duration visual clip for
+  every beat after solving. The empty-candidate, fully filtered-pool and
+  0.1-second-budget regressions all reject without saving, even when the submitted
+  scene minimum is zero.
+- **SDR color-only changes falsely invalidated a draft.** Signature version 3
+  matches the renderer's `asset.hdr` predicate for color evidence. Audio evidence
+  and the HDR flag remain bound. SDR color changes with `hdr` absent or false
+  are accepted; switching SDR to HDR still invalidates a plan even when the saved
+  color fields are unchanged.
+
+The new regression selection first produced **5 failures and 1 passing control**
+(30 other scene cases skipped), then the corrected integration run passed
+**38 tests in 13.01 seconds**: 36 scene-planning and two caption-portability
+cases. Evidence is retained in `scene-plan-pr15-second-review-red.log` and
+`scene-plan-pr15-second-review-tests.log`; the interrupted candidate receipts
+remain under `f7d936b-gates-before-two-p2/`. These targeted results belong to the
+correction source; the combined published head still follows the complete CI
+and review policy above.
+
 ## Evidence and manual limits
 
 Session artifacts retain per-gate logs and source hashes, the 99/2 failing full

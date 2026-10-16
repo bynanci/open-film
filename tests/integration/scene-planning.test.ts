@@ -312,6 +312,57 @@ describe("reviewable scene-plan application lifecycle", () => {
     expect(app.acceptScenePlan(plan).story.id).toBe(plan.story.id);
   });
 
+  it.each([undefined, false] as const)(
+    "accepts SDR color-only re-probing when hdr is %s",
+    async (hdr) => {
+      const { app } = await fixture();
+      const original = app.catalog.getAsset("home-1")!;
+      const before = {
+        ...original,
+        hdr,
+        metadata: {
+          "openfilm.color": {
+            transfer: "bt709",
+            primaries: "bt709",
+            matrix: "bt709",
+          },
+        },
+      };
+      app.catalog.upsertAsset(before);
+      const plan = app.previewScenePlan(options);
+      app.catalog.upsertAsset({
+        ...before,
+        metadata: {
+          "openfilm.color": {
+            transfer: "arib-std-b67",
+            primaries: "bt2020",
+            matrix: "bt2020nc",
+          },
+        },
+      });
+      expect(app.acceptScenePlan(plan).story.id).toBe(plan.story.id);
+    },
+  );
+
+  it("rejects an SDR-to-HDR mode change even when color metadata stays identical", async () => {
+    const { app } = await fixture();
+    const before = {
+      ...app.catalog.getAsset("home-1")!,
+      hdr: false,
+      metadata: {
+        "openfilm.color": {
+          transfer: "arib-std-b67",
+          primaries: "bt2020",
+          matrix: "bt2020nc",
+        },
+      },
+    };
+    app.catalog.upsertAsset(before);
+    const plan = app.previewScenePlan(options);
+    app.catalog.upsertAsset({ ...before, hdr: true });
+    await rejectsCode(() => app.acceptScenePlan(plan), "story.planStale");
+  });
+
   it("binds project identity and film locale while ignoring unrelated analysis metadata", async () => {
     const { app } = await fixture();
     const plan = app.previewScenePlan(options);
@@ -391,6 +442,31 @@ describe("reviewable scene-plan application lifecycle", () => {
       "media.unsupported",
     );
   });
+
+  it.each(["empty-pool", "filtered-pool", "unplayable-budget"] as const)(
+    "rejects an edited %s scene instead of saving an empty beat",
+    async (change) => {
+      const { app, directory } = await fixture();
+      const plan = app.previewScenePlan(options);
+      expect(plan.story.beats).toHaveLength(2);
+      const beat = plan.story.beats[0]!;
+      beat.minDuration = 0;
+      if (change === "empty-pool") beat.candidateAssetIds = [];
+      else if (change === "filtered-pool")
+        beat.constraints = [
+          { type: "must-exclude", assetIds: [...beat.candidateAssetIds!] },
+        ];
+      else {
+        beat.targetDuration = 0.1;
+        beat.maxDuration = 0.1;
+      }
+      const previous = structuredClone(app.project);
+      const bytes = await readFile(join(directory, "project.json"));
+      await rejectsCode(() => app.acceptScenePlan(plan), "story.invalid");
+      expect(app.project).toEqual(previous);
+      expect(await readFile(join(directory, "project.json"))).toEqual(bytes);
+    },
+  );
 
   it("rejects references outside preview scope and refuses missing or infeasible bounds", async () => {
     const { app } = await fixture();

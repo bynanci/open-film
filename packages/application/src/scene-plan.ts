@@ -133,17 +133,21 @@ function renderEvidence(asset: MediaAsset) {
   };
   return {
     audio,
-    color: {
-      state:
-        asset.metadata["openfilm.color"] === undefined
-          ? "absent"
-          : color
-            ? "record"
-            : "invalid",
-      transfer: text("transfer"),
-      primaries: text("primaries"),
-      matrix: text("matrix"),
-    },
+    // Match hdrToneMapFilter's early return: SDR rendering never reads these
+    // color fields. The separately bound hdr flag still catches mode changes.
+    color: asset.hdr
+      ? {
+          state:
+            asset.metadata["openfilm.color"] === undefined
+              ? "absent"
+              : color
+                ? "record"
+                : "invalid",
+          transfer: text("transfer"),
+          primaries: text("primaries"),
+          matrix: text("matrix"),
+        }
+      : null,
   };
 }
 
@@ -152,7 +156,7 @@ function sourceSignature(
   assets: MediaAsset[],
 ): string {
   return digest({
-    version: 2,
+    version: 3,
     projectId: app.project.id,
     contentLocale: app.project.projectContentLocale ?? "en-US",
     // Bind selection and playback evidence without embedding large analysis
@@ -269,6 +273,18 @@ function solvePlan(
   )
     invalid(
       "The scene plan has no playable photos or videos. Increase its duration or choose media with usable timing.",
+    );
+  const playableBeatIds = new Set(
+    composition.tracks
+      .filter((track) => track.type === "video")
+      .flatMap((track) => track.clips)
+      .filter((clip) => clip.timelineDuration > 0)
+      .map((clip) => clip.beatId),
+  );
+  const emptyScene = story.beats.find((beat) => !playableBeatIds.has(beat.id));
+  if (emptyScene)
+    invalid(
+      `Scene "${emptyScene.title}" has no playable photos or videos. Choose usable media, remove conflicting exclusions, or increase its duration before accepting.`,
     );
   if (transition === "crossfade")
     for (const track of composition.tracks) {

@@ -102,7 +102,11 @@ Source bounds, required selections, duplicate prevention and duration conflicts
 use the same composition rules as an ordinary Story. If required content cannot
 fit, the user must change the relevant selection or limit. Optional crossfades
 must remain valid for their actual neighboring clips and resulting timing.
-Successful acceptance requires a validated composition within the maximum.
+Successful acceptance requires a validated composition within the maximum and
+at least one positive-duration visual clip for **every scene**, including a
+user-edited plan. Empty or fully filtered candidates and a budget too short to
+select any clip fail before saving; setting a scene minimum to zero does not
+bypass this result check.
 
 Narration length is a writing consideration, not a measured speech duration.
 The planner does not certify that an unrecorded voice-over fits its scene. Record
@@ -118,8 +122,10 @@ information. It does not bind unrelated project state or rehash the actual media
 file bytes during planning. Acceptance rechecks those catalog inputs; changed
 inputs produce `story.planStale` (HTTP 409) and require a fresh preview. Rendering
 retains its own actual-source inspection; planning does not replace that check.
-The signature includes the saved audio-presence and HDR color evidence consumed
-by rendering. Read-only previews of a moved managed project use its resolved
+The signature includes saved audio-presence evidence and the asset's HDR flag.
+HDR color evidence is included only when that flag makes the renderer consume
+it; changing unused SDR color metadata alone does not invalidate a draft.
+Read-only previews of a moved managed project use its resolved
 source URI and validated project-owned relative identity, so normal open-time
 reference repairs do not falsely invalidate unchanged sources. Actual source
 URI/hash/path changes still require a fresh preview.
