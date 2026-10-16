@@ -33,9 +33,10 @@ and [current acceptance tasks](TASKS.md#current--classified-memories-to-scene-sc
 
 The [validation record](docs/validation-scene-script-planning.md) separates
 targeted domain/application/browser success, the initial full-suite failures and
-the corrected UI run. The corrected published candidate still requires complete
-[PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks) and review
-before merge. Its starting main is `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+the corrected UI run. Published-head outcomes are recorded in
+[PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks); merge policy
+requires complete green CI and fresh correctness review for that head. Its starting
+main is `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
 including merged PR #13; PR #14's fixture repair subsequently merged as
 `61af41fbac17c32ffdc11679612636566bd73a1c`.
 The [OpenCut reference](docs/opencut-reference.md) supplies scene-navigation,

@@ -13,7 +13,7 @@ The current slice starts from main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
 which includes merged PR #13; PR #14's isolated fixture repair is now merged in
 main `61af41fbac17c32ffdc11679612636566bd73a1c`. The record separates passing
 targeted tests, the initial full-browser failures and corrected 13-test UI run.
-Final candidate CI/review remains a separate entry below. Real workstation
+Published-head CI/review follows the merge policy below. Real workstation
 evidence is tracked by [issue #7](https://github.com/bynanci/open-film/issues/7).
 
 - [x] Let people classify memories in Library and review category/chronology-based
@@ -29,8 +29,10 @@ evidence is tracked by [issue #7](https://github.com/bynanci/open-film/issues/7)
       payloads and protected controls during delayed acceptance.
 - [x] Fix the observed boundary/review failures and preserve passing corrected
       UI regressions for pseudo-layout and concurrent typing during beat saves.
-- [ ] Require complete green CI for the corrected published candidate, refresh
-      its review/head/base and resolve remaining correctness findings before merge.
+
+Merge policy: require complete green CI for the exact published head, refresh
+its review/head/base and resolve correctness findings before merge. Current
+results are recorded in [PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks).
 
 Narration synthesis, image interpretation, motion/keyframes and a scene-writing
 LanguageProvider are outside this slice. Optional reviewable language assistance

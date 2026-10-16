@@ -2,9 +2,8 @@
 
 Evidence recorded 2026-10-16 UTC for [PR #15](https://github.com/bynanci/open-film/pull/15).
 This record separates the initial candidate, corrected UI checks and the final
-merge gate. Current published-head results are in the [PR checks](https://github.com/bynanci/open-film/pull/15/checks);
-the pending gate below is not a claim that the corrected whole candidate has
-already passed CI.
+merge policy. Current published-head results are in the [PR checks](https://github.com/bynanci/open-film/pull/15/checks);
+this dated evidence record does not substitute earlier results for a newer head.
 
 ## Source and dependency
 
@@ -62,6 +61,16 @@ existing audio clips, but cannot add a new soundtrack track to this new cut.
 That later copy/diagnostic clarification and this record are not retroactively
 included in the 13-test source snapshot.
 
+The corrected runtime candidate `19eb52e27e3e3feb16390a3fff18a5f732238c4d`
+subsequently passed format, i18n (1,152 keys), lint, typecheck, all 1,829 tests
+across 124 files, build, built CLI smoke, 18 official OTIO checks, native checks
+(7 Rust tests) and locked Cargo build. Interchange used a fresh candidate-specific
+output after its first invocation correctly refused to overwrite the earlier
+reference bundle. The successful retry and initial refusal are both retained.
+Full-browser and CI outcomes for the current published candidate are reported in
+the [live PR checks](https://github.com/bynanci/open-film/pull/15/checks); they are
+not inferred from this completed local-core/native evidence.
+
 **Merge gate:** publish the corrected candidate, require its complete CI to pass,
 refresh review threads/head/base and address any correctness findings before
 merging PR #15. The [live PR checks](https://github.com/bynanci/open-film/pull/15/checks)
@@ -102,8 +111,9 @@ subsequent manual edits rather than replaying an old preview.
 
 Session artifacts retain per-gate logs and source hashes, the 99/2 failing full
 browser run, the corrected 13-test run, review reproductions and screenshots.
-Key receipts are `final-core-gates.json`, `final-native-gates.json`,
-`local-gate-source-hashes.json`, `browser-accept-race-proof.json`,
+Initial full-suite receipts are archived under `b368-full-gates/`. Corrected
+runtime receipts are `corrected-core-gates.json` and `final-native-gates.json`;
+additional records include `local-gate-source-hashes.json`, `browser-accept-race-proof.json`,
 `corrected-ui-source-hashes.json` and `corrected-ui-browser-proof.json` in the
 `openfilm-story-planning-20261016` artifact collection. PR CI is the published
 reproduction path; cloud-local files alone are not a workstation attestation.
