@@ -58,6 +58,7 @@
     "sceneScriptReviewReceipts": {
       "type": "array",
       "maxItems": 10000,
+      "$comment": "Project validation additionally requires unique suggestionId and requestId values across entries.",
       "items": {
         "$ref": "#/$defs/sceneScriptReviewReceipt"
       }

@@ -8,8 +8,13 @@ from real model quality and workstation observations.
 
 ## Test-first evidence
 
-Session artifacts are under
+Original session artifacts were recorded under
 `/workspace/.cloud-onboarding/artifacts/openfilm-script-review-20261016/`.
+That instance was replaced after its execution connection failed; those local
+logs were not restored. Current verification is recorded separately under
+`/workspace/.cloud-onboarding/artifacts/openfilm-script-review-resume-20261016/`.
+The dated observations below do not substitute for the recovered candidate's
+complete gates and published checks.
 
 - Domain/catalog tests first failed on the missing scene target, store, migration
   and receipt contracts: 29 failures and one legacy-project control passed.
@@ -58,7 +63,7 @@ and one delayed-acknowledgement failure: the test removed its network intercepti
 before the real follow-up read settled. Keeping interception stable through the
 real acknowledgement and follow-up UI made the focused case pass, then all seven
 passed without sleeps, relaxed assertions or product changes. Original logs and
-trace remain in the session artifacts.
+trace were recorded in that original instance's session artifacts.
 
 Independent read-only reviews found and verified regressions for live-owner
 reopening, invalid acceptance request IDs, loaded-project identity races, legacy
@@ -179,6 +184,46 @@ contention and both receipt rollback paths. The two receipt paths also failed
 before the correction. All **77/77 compatibility cases** across scene review,
 project writer, strict close and the new list suite passed. These later source
 changes again require complete corrected-head gates and review before merging.
+
+## Restored publication, portability and consent corrections
+
+GitHub's review of `ec7f013de8dfd1a39a95bb850867955b34c4c05f` found four
+additional P2 issues even though both exact-head Verify runs succeeded
+([PR run](https://github.com/bynanci/open-film/actions/runs/38895891621),
+[push run](https://github.com/bynanci/open-film/actions/runs/38895885023)).
+Its local browser run was intentionally stopped after 84 passed, with one
+interrupted and 25 not run. It was not a complete local browser pass.
+
+The fixes were reconstructed after the instance replacement. Production and
+regression-file hashes match the independently reviewed pre-interruption
+versions. New tests reproduced the issues before restoring production changes:
+
+- **Failed mutations:** seven Story/film/import cases failed with three controls
+  passing. Candidate publication now restores the complete pre-call authored
+  draft on failure; import caches receive new libraries only after successful
+  publication. Closing or retrying cannot silently save a rejected operation.
+- **Moved managed sources:** four cases failed, with passive export passing.
+  Workspace repair now couples catalog locations and changed manifest roots
+  under the existing writer lock and loaded baseline check. Failed opening
+  closes storage without autosave. The five cases use actual managed PNG media
+  named `回憶 frame.png`, including partial prior repair, review/accept/reopen,
+  passive export, a concurrent manifest change and failed publication cleanup.
+- **Restored request identity:** three core/workspace/export cases failed with
+  23 controls passing. Both suggestion IDs and acceptance request IDs must be
+  unique across project receipts before opening can reconcile pending evidence.
+  The real two-receipt fixture verifies unchanged bytes and pending rows on
+  rejection, and recovery of both valid distinct receipts.
+- **Remote disclosure:** four mounted-component cases failed because the visible
+  consent text omitted the opaque Story and scene IDs actually sent. The three
+  locale strings now disclose them before opt-in. Tests also verify no generation
+  before consent, exact-descriptor consent and no automatic job when granting it.
+
+Fresh focused results passed **15/15 application regressions**, **26/26
+receipt/core cases** and **4/4 disclosure cases**. Typecheck and i18n validate
+the actual component in en-US, zh-TW, ja-JP and pseudo-localization. The component
+tests do not claim browser layout measurements for the remote consent state.
+Independent read-only review found no new P1/P2 in the restored corrections.
+Complete corrected-head regression and CI remain required before merge.
 
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);

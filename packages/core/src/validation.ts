@@ -507,6 +507,7 @@ export function validateProject(
     if (receipts.length > 10000)
       fail(receiptPath, "at most 10000 script review receipts are supported");
     const seen = new Set<string>();
+    const requests = new Set<string>();
     receipts.forEach((value, index) => {
       const itemPath = `${receiptPath}[${index}]`;
       const receipt = object(value, itemPath);
@@ -521,6 +522,10 @@ export function validateProject(
       if (seen.has(id))
         fail(`${itemPath}.suggestionId`, "duplicate suggestion receipt");
       seen.add(id);
+      const requestId = String(receipt.requestId);
+      if (requests.has(requestId))
+        fail(`${itemPath}.requestId`, "duplicate acceptance request receipt");
+      requests.add(requestId);
       timestamp(receipt.acceptedAt, `${itemPath}.acceptedAt`);
     });
   });

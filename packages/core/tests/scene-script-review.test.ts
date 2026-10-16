@@ -94,6 +94,34 @@ describe("project script review receipts", () => {
     expect(core.validateProject(value)).toEqual(value);
   });
 
+  it("rejects one acceptance request reused for different suggestion evidence", () => {
+    const value = {
+      ...core.createProject("Restored film"),
+      sceneScriptReviewReceipts: [
+        receipt(),
+        { ...receipt(), suggestionId: "another-suggestion" },
+      ],
+    };
+    expect(() => core.validateProject(value)).toThrow(/requestId/);
+    expect(() => core.migrateProject(value)).toThrow(/requestId/);
+  });
+
+  it("preserves distinct request identities across multiple restored receipts", () => {
+    const value = {
+      ...core.createProject("Restored film"),
+      sceneScriptReviewReceipts: [
+        receipt(),
+        {
+          ...receipt(),
+          suggestionId: "another-suggestion",
+          requestId: "another-request",
+        },
+      ],
+    };
+    expect(core.validateProject(value)).toEqual(value);
+    expect(core.migrateProject(value)).toEqual(value);
+  });
+
   it.each(
     [
       [receipt(), receipt()],

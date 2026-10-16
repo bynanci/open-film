@@ -25,7 +25,7 @@ export default {
     remoteConsent:
       "Script review sends the selected script text and its scene context to this provider after you grant consent.",
     dataAccess:
-      "This review sends the selected text, film and scene titles, scene intention, timing targets and film language. It does not send media files, locations or the other script field.",
+      "This review sends the selected text, film and scene titles, story and scene IDs, scene intention, timing targets and film language. It does not send media files, locations or the other script field.",
     grantConsent: "Allow declared script review data",
     revokeConsent: "Revoke script review consent",
     uncertainAcceptance:

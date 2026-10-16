@@ -47,6 +47,8 @@ Remote consent must match the displayed provider ID, destination and complete
 declared data-kind set. The existing `ProviderRegistry` authorizes each call and
 checks descriptor integrity. Revocation or provider replacement prevents obsolete
 results from being published. Local providers require no remote consent.
+The visible disclosure includes Story and scene identifiers; existing project
+IDs may be arbitrary user-supplied strings rather than anonymous UUIDs.
 
 The prompt contains an instruction line followed by bounded JSON:
 
@@ -125,6 +127,9 @@ ownership of its outer transaction. A stale writer must reopen; it cannot
 overwrite newer text through a later save or cleanup. Temporary lock contention
 remains retryable. The lock coordinates OpenFilm processes; an arbitrary external
 file editor does not participate in that protocol.
+Failed Story/film creation and import-library publication restore the previous
+in-memory draft; closing or retrying must not publish an operation reported as
+failed. Import caches receive a new library only after its save succeeds.
 If validation or project-file publication fails before the atomic rename, no
 accepted text is published. If catalog finalization or the response fails after
 the file was saved, the exact receipt lets Retry/reopen
@@ -139,7 +144,9 @@ Network failures, 5xx responses, temporary lock contention and other conflicts
 retain the exact retry receipt because publication may still be uncertain.
 
 The project receipt field is optional for existing 1.0 projects, bounded to
-10,000 unique suggestion receipts, and separate from editable Story payloads.
+10,000 receipts with unique suggestion and acceptance-request IDs, and separate
+from editable Story payloads. Restored projects must satisfy both uniqueness
+checks before opening or reconciling pending evidence.
 Catalog schema v5 adds `scene_script_suggestions` transactionally; the existing
 v4 transcript identity migration is not repeated. Legacy project migration and
 opaque transcript identity remain covered by regression tests.
@@ -151,6 +158,13 @@ further saving, so cleanup cannot recreate or overwrite external state.
 Incidental root `updatedAt` changes do not count as scene content changes.
 Safe observer cleanup does not certify a successful save: service shutdown uses
 strict workspace saving before issuing its successful close acknowledgement.
+
+Moving a project with managed sources repairs the catalog locations and saves
+changed library roots under the same writer lock before workspace review is
+available. A partial earlier relocation can also be repaired when the catalog
+already has the new location. Failed opening releases storage without a cleanup
+autosave. Export-only opening remains passive and performs neither repair nor
+manifest publication.
 
 Jobs use the existing Activity, cancellation and execution-owner machinery.
 Cancellation releases a non-cooperating provider and rejects late output. Another
