@@ -28,6 +28,8 @@ export default {
     uncertainAcceptance:
       "接受建議的回應遺失了。請保留此場景，並重試同一次接受操作，以確認已儲存的內容。",
     retryAcceptance: "重試接受操作",
+    reopenRequired:
+      "已儲存的專案已變更或無法驗證。請重新開啟此專案後再繼續變更。先前已儲存的內容會保留。",
     reload: "重新載入建議",
     running: "正在檢視場景腳本…",
     cancel: "取消腳本檢視",

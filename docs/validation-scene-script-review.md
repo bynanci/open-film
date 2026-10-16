@@ -123,6 +123,38 @@ cases** and the **unchanged 7/7 owned-service integration cases** passed. In
 particular, the original storage-failure case again receives `close-failed`,
 exit 1 and no successful close acknowledgement. No old assertion was relaxed.
 
+Candidate `aa6ae8fa3051281ff41bb4e583073f7f9bdfa251` subsequently passed
+**1,976 unit/integration tests across 134 files**, format, i18n, lint, typecheck,
+build, built CLI smoke, all 18 official OTIO cases and the Linux native checks
+and locked build. Its complete browser run was deliberately interrupted after
+56 completed cases when a further UI recovery deadlock was confirmed; that
+interrupted run is not recorded as a complete browser pass.
+
+## Reopening after an external save
+
+An explicit `409 / story.planConflict` requires reopening the project, but the
+panel previously retained a retry receipt that blocked project switching.
+Two navigation regressions and three localized-rendering regressions first
+failed, with 14 controls passing. Only that exact status/code combination now
+removes the browser receipt, releases navigation and preserves localized reopen
+guidance without a follow-up request. Network errors, 5xx, `jobs.busy` and
+unclassified conflicts retain exact retry protection. Authoritative project-file
+receipts and suggestion evidence are not removed or rewritten by this UI fix.
+
+The corrected group passed **157/157 UI/App cases**, type checks and i18n
+validation of **1,178 semantic keys**. A read-only independent review found no
+remaining P1/P2 issue in that correction. The focused browser suite then passed
+**8/8 in 38.2 seconds**, including a second real OpenFilm application writing
+the same project: acceptance rejects with the exact conflict, navigation
+recovers, reopening preserves external text, old evidence becomes stale and a
+fresh suggestion can be explicitly accepted. Other Story fields, compositions,
+clip edits/locks, media state and source files remain unchanged. All 138 runtime
+and browser fixture/spec file hashes were identical before and after the run.
+The conflict screenshot was checked in Traditional Chinese at 1440×900.
+
+The focused run validates the frozen correction, not a substitute for the new
+published head's complete regression and CI gates.
+
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);
 this dated local record does not substitute a targeted or earlier run for them.

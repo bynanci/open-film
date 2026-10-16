@@ -31,6 +31,8 @@ export default {
     uncertainAcceptance:
       "The acceptance response was lost. Keep this scene open and retry the same acceptance to confirm what was saved.",
     retryAcceptance: "Retry acceptance",
+    reopenRequired:
+      "The saved project changed or could not be verified. Reopen this project before making further changes. Earlier changes that were saved will be kept.",
     reload: "Reload suggestions",
     running: "Reviewing scene script…",
     cancel: "Cancel script review",

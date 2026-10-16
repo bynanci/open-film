@@ -73,6 +73,12 @@ try {
 const history = ref(false);
 const busy = ref(false);
 const error = shallowRef<unknown>();
+const reopenRequired = computed(
+  () =>
+    error.value instanceof ApiError &&
+    error.value.status === 409 &&
+    error.value.code === "story.planConflict",
+);
 const provider = shallowRef<ReviewProviderState>();
 const pageSize = 10;
 const data = shallowRef<ScriptReviewSuggestionsState>({
@@ -253,11 +259,14 @@ async function transmitAcceptance(value: Acceptance, current: () => boolean) {
     if (
       cause instanceof ApiError &&
       (cause.code === "review.suggestionStale" ||
-        (cause.status === 404 && cause.code === "request.notFound"))
+        (cause.status === 404 && cause.code === "request.notFound") ||
+        (cause.status === 409 && cause.code === "story.planConflict"))
     ) {
       uncertainAcceptance.value = undefined;
       retainAcceptance();
-      await refresh();
+      // This conflict rejects the current attempt before publication. Reopening
+      // reconciles any earlier accepted receipt saved in the project itself.
+      if (cause.code !== "story.planConflict") await refresh();
       return current();
     }
     return false;
@@ -477,7 +486,13 @@ onBeforeUnmount(() => {
       role="alert"
       data-testid="script-review-error"
     >
-      <p>{{ localizeError(error) }}</p>
+      <p>
+        {{
+          reopenRequired
+            ? t("scriptReview.reopenRequired")
+            : localizeError(error)
+        }}
+      </p>
       <details>
         <summary>{{ t("common.technicalDetails") }}</summary>
         <pre>{{ errorDetail(error) }}</pre>

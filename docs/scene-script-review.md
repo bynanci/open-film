@@ -115,10 +115,18 @@ ownership of its outer transaction. A stale writer must reopen; it cannot
 overwrite newer text through a later save or cleanup. Temporary lock contention
 remains retryable. The lock coordinates OpenFilm processes; an arbitrary external
 file editor does not participate in that protocol.
-If file saving fails, no accepted text is published. If catalog finalization or
-the response fails after the file was saved, the exact receipt lets Retry/reopen
+If validation or project-file publication fails before the atomic rename, no
+accepted text is published. If catalog finalization or the response fails after
+the file was saved, the exact receipt lets Retry/reopen
 finish the audit without applying the change twice or replacing later edits.
 Reusing a request ID for different evidence is rejected.
+
+An explicit `409 / story.planConflict` response requires reopening the project.
+The review panel clears only its browser retry receipt and releases project
+navigation, so the user can reopen safely; it does not accept or skip evidence.
+Any already published project receipt remains authoritative during reopening.
+Network failures, 5xx responses, temporary lock contention and other conflicts
+retain the exact retry receipt because publication may still be uncertain.
 
 The project receipt field is optional for existing 1.0 projects, bounded to
 10,000 unique suggestion receipts, and separate from editable Story payloads.

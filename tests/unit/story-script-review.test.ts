@@ -6,6 +6,7 @@ import { ApiError } from "../../apps/desktop/src/api";
 import en from "../../apps/desktop/src/i18n/locales/en-US";
 import zh from "../../apps/desktop/src/i18n/locales/zh-TW";
 import ja from "../../apps/desktop/src/i18n/locales/ja-JP";
+import { translateError } from "../../apps/desktop/src/i18n/errors";
 
 const requireDesktop = createRequire(
   new URL("../../apps/desktop/package.json", import.meta.url),
@@ -32,6 +33,7 @@ type Panel = {
   field: { value: Field };
   history: { value: boolean };
   busy: { value: boolean };
+  error: { value: unknown };
   data: {
     value: { suggestions: Suggestion[]; total: number; revision: string };
   };
@@ -208,7 +210,8 @@ function fixture(storage = new Map<string, string>(), locale = "en-US") {
       post: vi.fn(),
       useI18n: () => ({ t: i18n.global.t }),
       errorDetail: String,
-      localizeError: String,
+      localizeError: (cause: unknown) =>
+        translateError(cause, i18n.global.t, (key) => i18n.global.te(key)),
       formatNumber: String,
       defineProps: () => props,
       defineEmits: () => emit,
@@ -368,6 +371,127 @@ describe("saved Story script review", () => {
     await h.panel.retryAcceptance();
     expect(h.storage.size).toBe(0);
     expect(await h.panel.flushPending()).toBe(true);
+  });
+  it.each(["initial acceptance", "retry after a lost acknowledgement"])(
+    "releases navigation to reopen a changed saved project after %s",
+    async (attempt) => {
+      const h = fixture();
+      await h.panel.refresh();
+      const originalStory = structuredClone(h.story);
+      const originalEvidence = JSON.stringify(h.panel.data.value);
+      if (attempt === "retry after a lost acknowledgement") {
+        h.api.acceptScriptSuggestion.mockRejectedValue(
+          new Error("Lost acknowledgement"),
+        );
+        await h.panel.accept(suggestion());
+        expect(h.storage.size).toBe(1);
+        expect(await h.panel.flushPending()).toBe(false);
+      }
+      const conflict = new ApiError(
+        "The saved project changed; reopen it.",
+        409,
+        {
+          code: "story.planConflict",
+        },
+      );
+      h.api.acceptScriptSuggestion.mockRejectedValue(conflict);
+      const readsBefore = h.api.scriptReviewSuggestions.mock.calls.length;
+      const work =
+        attempt === "initial acceptance"
+          ? h.panel.accept(suggestion())
+          : h.panel.retryAcceptance();
+      const navigation = h.panel.flushPending();
+      await work;
+      expect(await navigation).toBe(true);
+      expect(h.storage.size).toBe(0);
+      expect(h.emit).toHaveBeenLastCalledWith("busy", false);
+      expect(
+        h.emit.mock.calls.filter((call) => call[0] === "pending").at(-1),
+      ).toEqual(["pending", false]);
+      expect(h.emit.mock.calls.some((call) => call[0] === "accepted")).toBe(
+        false,
+      );
+      expect(h.story).toEqual(originalStory);
+      expect(JSON.stringify(h.panel.data.value)).toBe(originalEvidence);
+      expect(h.props.prepare).toHaveBeenCalledTimes(1);
+      expect(h.panel.error.value).toBe(conflict);
+      expect(h.api.skipScriptSuggestion).not.toHaveBeenCalled();
+      expect(h.api.runScriptReview).not.toHaveBeenCalled();
+      expect(h.api.scriptReviewSuggestions).toHaveBeenCalledTimes(readsBefore);
+      expect(await h.html()).not.toContain(
+        'data-testid="script-review-retry-accept"',
+      );
+      if (attempt === "retry after a lost acknowledgement") {
+        expect(h.api.acceptScriptSuggestion.mock.calls[1]).toEqual(
+          h.api.acceptScriptSuggestion.mock.calls[0],
+        );
+      }
+      const reopened = fixture(h.storage);
+      expect(await reopened.panel.flushPending()).toBe(true);
+    },
+  );
+  it.each([
+    ["en-US", "Reopen this project"],
+    ["zh-TW", "重新開啟此專案"],
+    ["ja-JP", "このプロジェクトを開き直してください"],
+  ])(
+    "shows actionable project-reopen guidance in %s",
+    async (locale, advice) => {
+      const h = fixture(new Map(), locale);
+      await h.panel.refresh();
+      h.api.acceptScriptSuggestion.mockRejectedValue(
+        new ApiError("The saved project changed; reopen it.", 409, {
+          code: "story.planConflict",
+        }),
+      );
+      await h.panel.accept(suggestion());
+      const html = await h.html();
+      expect(html).toContain(advice);
+      expect(html).not.toContain("scriptReview.reopenRequired");
+      expect(html).not.toContain('data-testid="script-review-retry-accept"');
+    },
+  );
+  it.each([
+    ["network failure", new Error("Connection was lost")],
+    [
+      "server failure",
+      new ApiError("Server failed", 500, { code: "operation.failed" }),
+    ],
+    [
+      "busy saver",
+      new ApiError("Another save is active", 409, { code: "jobs.busy" }),
+    ],
+    [
+      "unclassified rejection",
+      new ApiError("Cannot confirm this request", 409, {
+        code: "request.invalid",
+      }),
+    ],
+    [
+      "unconfirmed conflict status",
+      new ApiError("Server failed while checking saved state", 500, {
+        code: "story.planConflict",
+      }),
+    ],
+  ])("retains the exact uncertain receipt after %s", async (_name, cause) => {
+    const h = fixture();
+    await h.panel.refresh();
+    h.api.acceptScriptSuggestion.mockRejectedValue(cause);
+    await h.panel.accept(suggestion());
+    expect(h.storage.size).toBe(1);
+    const originalReceipt = [...h.storage.values()][0];
+    await h.panel.retryAcceptance();
+    expect([...h.storage.values()][0]).toBe(originalReceipt);
+    expect(h.api.acceptScriptSuggestion.mock.calls[1]).toEqual(
+      h.api.acceptScriptSuggestion.mock.calls[0],
+    );
+    expect(await h.panel.flushPending()).toBe(false);
+    expect(await h.html()).toContain(
+      'data-testid="script-review-retry-accept"',
+    );
+    expect(h.emit.mock.calls.some((call) => call[0] === "accepted")).toBe(
+      false,
+    );
   });
   it("discards late reads and acceptance callbacks after losing the project/beat owner", async () => {
     const h = fixture();

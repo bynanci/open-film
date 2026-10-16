@@ -398,6 +398,117 @@ test("rejects a stale review after an independent script edit and preserves the 
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("an externally saved script releases rejected acceptance recovery and can be reviewed after reopening", async ({
+  page,
+  request,
+}) => {
+  const locale = "zh-TW";
+  const fixture = await sourceFilm(request, locale);
+  const baseline = await project(request);
+  const baselineAssets = await assets(request);
+  await begin(page, locale);
+  const { suggestion, card } = await generate(page, request, "narration");
+  const newer =
+    "  另一位作者已儲存新的旁白。\nKeep this independently saved text.  ";
+  // A real second workspace saves the portable project while the server still
+  // owns its older snapshot. No intercepted or fabricated conflict is used.
+  const second = await OpenFilmApplication.open(fixture.project);
+  try {
+    authoredStory(second.project).beats[0]!.script!.narration = newer;
+    await second.save();
+  } finally {
+    second.close();
+  }
+  const path = join(fixture.project, "project.json");
+  const externalBytes = await readFile(path, "utf8");
+  const external = JSON.parse(externalBytes) as OpenFilmProject;
+  const expectedStory = structuredClone(authoredStory(baseline));
+  expectedStory.beats[0]!.script!.narration = newer;
+  expect(authoredStory(external)).toEqual(expectedStory);
+  expect(external.timelines).toEqual(baseline.timelines);
+
+  const rejection = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        `/api/script-review/suggestions/${suggestion.id}/accept` &&
+      response.request().method() === "POST",
+  );
+  await card.getByTestId("script-review-accept").click();
+  const rejected = await rejection;
+  expect(rejected.status()).toBe(409);
+  expect((await rejected.json()).code).toBe("story.planConflict");
+  await expect(page.getByTestId("script-review-error")).toContainText(
+    uiText(locale, "scriptReview.reopenRequired"),
+  );
+  await expect(page.getByTestId("script-review-retry-accept")).toHaveCount(0);
+  await expect(page.getByTestId("script-review-pending")).toHaveCount(0);
+  await expect(page.getByTestId("beat-script-narration")).toBeEnabled();
+  await expect(
+    page.getByLabel(uiText(locale, "app.story.active"), { exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(
+      (key) => localStorage.getItem(key),
+      `openfilm:script-review-accept:${baseline.id}`,
+    ),
+  ).toBeNull();
+  expect(await readFile(path, "utf8")).toBe(externalBytes);
+  expect((await project(request)).sceneScriptReviewReceipts ?? []).toEqual([]);
+  await assertFilmUnchanged(request, baseline, baselineAssets);
+  await layout(page, "zh-TW-script-review-external-save-conflict-1440x900");
+
+  const switchProject = page.getByRole("button", {
+    name: uiText(locale, "app.navigation.switchProject"),
+    exact: true,
+  });
+  await expect(switchProject).toBeEnabled();
+  await switchProject.click();
+  await expect(page.locator(".launcher-actions")).toBeVisible();
+  expect(await readFile(path, "utf8")).toBe(externalBytes);
+  await openFilm(page, fixture.project, locale);
+  await storyWorkspace(page, locale);
+  await expect(page.getByTestId("beat-script-narration")).toHaveValue(newer);
+  await expect(page.getByTestId("beat-script-visual-direction")).toHaveValue(
+    visualDirection,
+  );
+  expect(await project(request)).toEqual(external);
+  await page.getByTestId("script-review-history").click();
+  const stale = page
+    .getByTestId("script-review-suggestion")
+    .and(page.locator(`[data-suggestion-id="${suggestion.id}"]`));
+  await expect(stale).toHaveAttribute("data-status", "stale");
+  await expect(stale.getByTestId("script-review-accept")).toHaveCount(0);
+  expect((await suggestions(request, "narration", "pending")).total).toBe(0);
+  await page.getByTestId("script-review-history").click();
+
+  const fresh = await generate(page, request, "narration");
+  expect(fresh.suggestion.id).not.toBe(suggestion.id);
+  expect(fresh.suggestion.before).toBe(newer);
+  expect(fresh.suggestion.after).toBe(newer + marker);
+  const acceptance = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        `/api/script-review/suggestions/${fresh.suggestion.id}/accept` &&
+      response.request().method() === "POST",
+  );
+  await fresh.card.getByTestId("script-review-accept").click();
+  expect((await acceptance).status()).toBe(200);
+  await expect(page.getByTestId("beat-script-narration")).toHaveValue(
+    fresh.suggestion.after,
+  );
+  const accepted = await project(request);
+  expectedStory.beats[0]!.script!.narration = fresh.suggestion.after;
+  expect(authoredStory(accepted)).toEqual(expectedStory);
+  expect(accepted.sceneScriptReviewReceipts).toHaveLength(1);
+  expect(accepted.sceneScriptReviewReceipts![0]!.suggestionId).toBe(
+    fresh.suggestion.id,
+  );
+  expect((await suggestions(request, "narration", "accepted")).total).toBe(1);
+  expect((await suggestions(request, "narration", "stale")).total).toBe(1);
+  await assertFilmUnchanged(request, baseline, baselineAssets);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
 test("acceptance freezes the beat and guards navigation until its real server acknowledgment arrives", async ({
   page,
   request,
