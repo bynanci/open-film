@@ -96,7 +96,10 @@ same scene. Stale evidence can be skipped; accepting it requires a new review.
 
 The SQLite catalog stores immutable before/after/reason/provider evidence and
 `pending`, `accepted`, `skipped` or `stale` lifecycle state. Equivalent reruns
-deduplicate rather than resetting a person's accepted/skipped decision. Reads
+deduplicate rather than resetting a person's accepted/skipped decision. An
+explicit rerun may create fresh pending evidence when the previous match is
+stale, including after the source text is restored. The old ID, text, status and
+audit remain intact; simply reading history never revives stale evidence. Reads
 are paged, and exact-scene status updates use the catalog rather than rendering
 every suggestion.
 
@@ -104,6 +107,14 @@ The text lives in `project.json`, so SQLite alone cannot make acceptance atomic.
 The application saves the changed script together with a small
 `sceneScriptReviewReceipts` entry in the same atomic project-file publication.
 A catalog transaction serializes acceptance against competing review decisions.
+Every existing-project save, including ordinary Story/timeline saves and close,
+uses the same SQLite write lock. Its owner-baseline check and atomic file
+publication run together under that lock, so another OpenFilm process cannot
+save between acceptance's final check and publication. Nested acceptance keeps
+ownership of its outer transaction. A stale writer must reopen; it cannot
+overwrite newer text through a later save or cleanup. Temporary lock contention
+remains retryable. The lock coordinates OpenFilm processes; an arbitrary external
+file editor does not participate in that protocol.
 If file saving fails, no accepted text is published. If catalog finalization or
 the response fails after the file was saved, the exact receipt lets Retry/reopen
 finish the audit without applying the change twice or replacing later edits.

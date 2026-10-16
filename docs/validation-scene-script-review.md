@@ -76,7 +76,35 @@ bare Job JSON on stdout, sends normal progress to stderr, forwards the existing
 abort signal and returns 1 for failure or 130 for cancellation. All four cases
 pass, including successful exit zero and persisted job/source state. SIGINT and
 SIGTERM checks run on Linux; they do not certify real Windows console behavior.
-The CLI-only correction requires its own exact-head CI and renewed review.
+The CLI-only correction received a renewed exact-head review, which identified
+the additional concurrency/regeneration gaps below.
+
+## Further correctness review
+
+The review of `b58cb685a58a0d9a73ca83cb9a0c9694cd38fece` found:
+
+- **P1: an ordinary second-process save could race acceptance's final read and
+  atomic rename.** Three real-child regressions first failed: the competing save
+  succeeded inside that seam, stale ordinary save succeeded, and stale close
+  overwrote newer text. All manifest saves now compare their owner baseline and
+  publish under the shared SQLite IMMEDIATE lock; nested acceptance retains its
+  outer transaction. Additional cases verify retry after temporary contention
+  and preservation after an owned transaction fails following file publication.
+  The five writer regressions pass, with **581/581 application/catalog cases**
+  across 33 files passing. Unrelated I/O failures retain the existing retryable
+  application connection; only confirmed persistence conflicts suppress cleanup
+  saves. The protocol coordinates OpenFilm writers, not arbitrary external file
+  editors.
+- **P2: restoring source text could leave explicit regeneration stuck on old
+  stale evidence.** Five failures were reproduced before the fix. Explicit
+  regeneration now archives only the old internal dedupe slot and creates a new
+  pending record transactionally. Old IDs, status, text and audit remain intact;
+  reads do not reactivate evidence, and accepted/skipped choices still dedupe.
+  **24 focused catalog cases** pass, including actual concurrent child writers
+  converging on one pending successor and rollback after an insertion failure.
+
+These source changes require new complete gates, exact-head CI and review before
+merge. The earlier 109-test browser run does not certify these later writers.
 
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);

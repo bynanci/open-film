@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readFileSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -445,13 +446,54 @@ export class OpenFilmApplication {
         "Another process changed the saved project. Reopen it before saving further changes.",
         409,
       );
-    const project = validateProject({
-      ...this.project,
-      updatedAt: new Date().toISOString(),
-    });
-    atomicJsonSync(join(this.directory, "project.json"), project);
-    this.project = project;
-    this.persistedProject = savedScriptProjectIdentity(project);
+    try {
+      const project = this.catalog.withProjectWrite(() => {
+        let disk: unknown;
+        try {
+          disk = JSON.parse(
+            readFileSync(join(this.directory, "project.json"), "utf8"),
+          );
+        } catch {
+          this.persistenceConflict = true;
+          throw new ApplicationError(
+            "story.planConflict",
+            "The saved project could not be verified. Reopen it before saving further changes.",
+            409,
+          );
+        }
+        if (savedScriptProjectIdentity(disk) !== this.persistedProject) {
+          this.persistenceConflict = true;
+          throw new ApplicationError(
+            "story.planConflict",
+            "Another process changed the saved project. Reopen it before saving further changes.",
+            409,
+          );
+        }
+        const project = validateProject({
+          ...this.project,
+          updatedAt: new Date().toISOString(),
+        });
+        atomicJsonSync(join(this.directory, "project.json"), project);
+        return project;
+      });
+      // An owned lock can fail to commit after publication. Retaining the old
+      // baseline until it returns keeps later cleanup from undoing that file.
+      this.project = project;
+      this.persistedProject = savedScriptProjectIdentity(project);
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "errcode" in error &&
+        error.errcode === 5
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Another process is saving this project. Wait for it to finish before retrying.",
+          409,
+        );
+      throw error;
+    }
   }
 
   async save(): Promise<void> {
@@ -603,7 +645,12 @@ export class OpenFilmApplication {
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
-    if (this.intent !== "export" && !this.persistenceConflict) this.saveSync();
+    try {
+      if (this.intent !== "export" && !this.persistenceConflict)
+        this.saveSync();
+    } catch (error) {
+      if (!this.persistenceConflict) throw error;
+    }
     this.catalog.close();
   }
 

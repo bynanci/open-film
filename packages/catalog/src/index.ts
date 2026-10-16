@@ -251,6 +251,24 @@ export class ProjectCatalog {
     }
   }
 
+  /** Serialize manifest baseline checks and publication with all catalog writers.
+   * A caller already inside an IMMEDIATE transaction retains its ownership. */
+  withProjectWrite<T>(publish: () => T): T {
+    const ownsTransaction = !this.database.isTransaction;
+    if (ownsTransaction) this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = publish();
+      if (result && typeof (result as { then?: unknown }).then === "function")
+        throw new Error("Project publication must be synchronous.");
+      if (ownsTransaction) this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (ownsTransaction && this.database.isTransaction)
+        this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   upsertAsset(asset: MediaAsset): void {
     validateAsset(asset);
     this.database

@@ -1,7 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Job, type SceneScriptReviewSuggestion } from "@openfilm/core";
 import { CATALOG_SCHEMA_VERSION, ProjectCatalog } from "../src/index.js";
@@ -57,6 +60,209 @@ const accepted = {
 };
 
 describe("durable Story script review", () => {
+  it("creates fresh pending evidence after an obsolete source is restored and explicitly reviewed again", async () => {
+    const f = await fixture(),
+      store = f.catalog.knowledge;
+    const original = store.saveSceneScriptSuggestion(suggestion());
+    store.staleSceneScriptSuggestions(
+      "story",
+      "beat",
+      "narration",
+      "edited-source",
+    );
+    const stale = store.getSceneScriptSuggestion(original.id)!;
+    expect(stale.status).toBe("stale");
+    // Restoring context and reading history never revives obsolete evidence.
+    store.staleSceneScriptSuggestions("story", "beat", "narration", "base");
+    expect(
+      store.sceneScriptSuggestionsList("story", { status: "pending" }).total,
+    ).toBe(0);
+    const regenerated = store.saveSceneScriptSuggestion(
+      suggestion({ id: "regenerated", createdAt: "2026-10-16T00:00:02Z" }),
+    );
+    expect(regenerated).toMatchObject({
+      id: "regenerated",
+      status: "pending",
+      sourceRevisionId: "base",
+    });
+    expect(store.getSceneScriptSuggestion(original.id)).toEqual(stale);
+    expect(
+      f
+        .reopen()
+        .knowledge.sceneScriptSuggestionsList("story", { status: "pending" })
+        .suggestions,
+    ).toEqual([regenerated]);
+    expect(
+      f.catalog.knowledge.saveSceneScriptSuggestion(
+        suggestion({ id: "retry" }),
+      ),
+    ).toEqual(regenerated);
+    f.catalog.knowledge.staleSceneScriptSuggestions(
+      "story",
+      "beat",
+      "narration",
+      "another-edit",
+    );
+    f.catalog.knowledge.staleSceneScriptSuggestions(
+      "story",
+      "beat",
+      "narration",
+      "base",
+    );
+    const again = f.catalog.knowledge.saveSceneScriptSuggestion(
+      suggestion({ id: "regenerated-again" }),
+    );
+    expect(again).toMatchObject({ id: "regenerated-again", status: "pending" });
+    expect(
+      f.catalog.knowledge
+        .sceneScriptSuggestionsList("story", { status: "stale" })
+        .suggestions.map((row) => row.id)
+        .sort(),
+    ).toEqual(["regenerated", "suggestion"]);
+  });
+
+  it("rolls back the dedupe slot when a regenerated ID conflicts with existing evidence", async () => {
+    const f = await fixture(),
+      store = f.catalog.knowledge;
+    store.saveSceneScriptSuggestion(suggestion());
+    store.saveSceneScriptSuggestion(
+      suggestion({ id: "occupied", after: "Different suggestion" }),
+    );
+    store.staleSceneScriptSuggestions(
+      "story",
+      "beat",
+      "narration",
+      "edited-source",
+    );
+    const database = new DatabaseSync(join(f.directory, "database.sqlite"));
+    try {
+      const before = database
+        .prepare(
+          "SELECT id,dedupe_key,status,data FROM scene_script_suggestions ORDER BY id",
+        )
+        .all();
+      expect(() =>
+        store.saveSceneScriptSuggestion(suggestion({ id: "occupied" })),
+      ).toThrow();
+      expect(
+        database
+          .prepare(
+            "SELECT id,dedupe_key,status,data FROM scene_script_suggestions ORDER BY id",
+          )
+          .all(),
+      ).toEqual(before);
+    } finally {
+      database.close();
+    }
+    expect(
+      store.saveSceneScriptSuggestion(suggestion({ id: "regenerated" })),
+    ).toMatchObject({ id: "regenerated", status: "pending" });
+  });
+
+  it.each(["accepted", "skipped"] as const)(
+    "preserves a %s decision on regenerated evidence without deduplicating against an older stale ID",
+    async (status) => {
+      const f = await fixture(),
+        store = f.catalog.knowledge;
+      store.saveSceneScriptSuggestion(suggestion());
+      store.staleSceneScriptSuggestions(
+        "story",
+        "beat",
+        "narration",
+        "edited-source",
+      );
+      const regenerated = store.saveSceneScriptSuggestion(
+        suggestion({ id: "regenerated" }),
+      );
+      expect(regenerated.id).toBe("regenerated");
+      const reviewed = store.updateSceneScriptSuggestion(
+        regenerated.id,
+        status === "accepted" ? accepted : { status },
+      );
+      store.updateSceneScriptSuggestion("suggestion", { status: "skipped" });
+      expect(
+        store.saveSceneScriptSuggestion(suggestion({ id: "retry" })),
+      ).toEqual(reviewed);
+      expect(store.sceneScriptSuggestionsList("story").total).toBe(2);
+    },
+  );
+
+  it("publishes one pending regeneration across concurrent processes while old stale IDs retain their lifecycle", async () => {
+    const f = await fixture(),
+      store = f.catalog.knowledge;
+    store.saveSceneScriptSuggestion(suggestion());
+    store.staleSceneScriptSuggestions(
+      "story",
+      "beat",
+      "narration",
+      "edited-source",
+    );
+    const require = createRequire(import.meta.url);
+    const script = `import { ProjectCatalog } from ${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)};
+const [directory, serialized] = process.argv.slice(1);
+const catalog = new ProjectCatalog(directory);
+try { process.stdout.write(JSON.stringify(catalog.knowledge.saveSceneScriptSuggestion(JSON.parse(serialized)))); }
+finally { catalog.close(); }`;
+    const saveInChild = (id: string) =>
+      new Promise<SceneScriptReviewSuggestion>((resolve, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            "--import",
+            require.resolve("tsx"),
+            "--input-type=module",
+            "-e",
+            script,
+            f.directory,
+            JSON.stringify(suggestion({ id })),
+          ],
+          { cwd: fileURLToPath(new URL("../../../", import.meta.url)) },
+        );
+        let output = "",
+          error = "";
+        const timeout = setTimeout(() => child.kill("SIGKILL"), 20000);
+        child.stdout.on("data", (chunk) => {
+          output += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+          error += String(chunk);
+        });
+        child.once("error", reject);
+        child.once("close", (code) => {
+          clearTimeout(timeout);
+          if (code !== 0)
+            reject(new Error(`Regeneration worker exited ${code}: ${error}`));
+          else {
+            try {
+              resolve(JSON.parse(output) as SceneScriptReviewSuggestion);
+            } catch (failure) {
+              reject(failure);
+            }
+          }
+        });
+      });
+    const [first, second] = await Promise.all([
+      saveInChild("regenerated-a"),
+      saveInChild("regenerated-b"),
+    ]);
+    expect(first).toEqual(second);
+    expect(first.status).toBe("pending");
+    expect(first.id).not.toBe("suggestion");
+    expect(
+      store.sceneScriptSuggestionsList("story", { status: "pending" })
+        .suggestions,
+    ).toEqual([first]);
+    expect(store.sceneScriptSuggestionsList("story").total).toBe(2);
+    expect(() =>
+      store.updateSceneScriptSuggestion("suggestion", accepted),
+    ).toThrow();
+    store.updateSceneScriptSuggestion("suggestion", { status: "skipped" });
+    expect(store.getSceneScriptSuggestion(first.id)).toEqual(first);
+    expect(
+      store.saveSceneScriptSuggestion(suggestion({ id: "later-retry" })),
+    ).toEqual(first);
+  });
+
   it("persists evidence without assets and deduplicates retries without resetting reviewed state", async () => {
     const f = await fixture();
     const value = f.catalog.knowledge.saveSceneScriptSuggestion(suggestion());

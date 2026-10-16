@@ -118,29 +118,53 @@ export class CatalogKnowledgeStore {
         ]),
       )
       .digest("hex");
-    const existing = this.database
-      .prepare("SELECT data FROM scene_script_suggestions WHERE dedupe_key=?")
-      .get(key);
-    if (existing)
-      return validateSceneScriptReviewSuggestion(
-        JSON.parse(String(existing.data)),
-      );
-    this.database
-      .prepare(
-        "INSERT INTO scene_script_suggestions(id,story_id,beat_id,field,source_revision_id,status,dedupe_key,created_at,data) VALUES(?,?,?,?,?,?,?,?,?)",
-      )
-      .run(
-        suggestion.id,
-        storyKey(suggestion.target.storyId),
-        storyKey(suggestion.target.beatId),
-        suggestion.target.field,
-        suggestion.sourceRevisionId,
-        suggestion.status,
-        key,
-        suggestion.createdAt,
-        JSON.stringify(suggestion),
-      );
-    return suggestion;
+    const ownsTransaction = !this.database.isTransaction;
+    if (ownsTransaction) this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const stored = this.database
+        .prepare("SELECT data FROM scene_script_suggestions WHERE dedupe_key=?")
+        .get(key);
+      if (stored) {
+        const existing = validateSceneScriptReviewSuggestion(
+          JSON.parse(String(stored.data)),
+        );
+        if (
+          existing.status !== "stale" ||
+          suggestion.status !== "pending" ||
+          existing.id === suggestion.id
+        ) {
+          if (ownsTransaction) this.database.exec("COMMIT");
+          return existing;
+        }
+        // Explicit regeneration gets a new pending identity. Keep the obsolete
+        // evidence intact while reserving the canonical dedupe slot for its successor.
+        this.database
+          .prepare(
+            "UPDATE scene_script_suggestions SET dedupe_key=? WHERE id=?",
+          )
+          .run(`${key}:stale:${existing.id}`, existing.id);
+      }
+      this.database
+        .prepare(
+          "INSERT INTO scene_script_suggestions(id,story_id,beat_id,field,source_revision_id,status,dedupe_key,created_at,data) VALUES(?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          suggestion.id,
+          storyKey(suggestion.target.storyId),
+          storyKey(suggestion.target.beatId),
+          suggestion.target.field,
+          suggestion.sourceRevisionId,
+          suggestion.status,
+          key,
+          suggestion.createdAt,
+          JSON.stringify(suggestion),
+        );
+      if (ownsTransaction) this.database.exec("COMMIT");
+      return suggestion;
+    } catch (error) {
+      if (ownsTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   getSceneScriptSuggestion(
