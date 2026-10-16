@@ -155,6 +155,31 @@ The conflict screenshot was checked in Traditional Chinese at 1440×900.
 The focused run validates the frozen correction, not a substitute for the new
 published head's complete regression and CI gates.
 
+## Listing and concurrent project publication
+
+Candidate `0be625b6a365c42ff0ee8f81e06ab62577c8ba9d` passed **1,986
+unit/integration cases across 134 files** and all other local non-browser gates.
+Its browser run was deliberately interrupted after **55 passed**, with one case
+interrupted and 54 not run, when GitHub review identified a further P2 race:
+listing checked the saved project before updating lifecycle state without the
+shared lock, so a new suggestion from a second writer could be marked stale.
+
+Two real-child regressions first reproduced the problem for both exact-scene
+polling and broad Story history. The correction holds the shared project write
+lock across saved verification, revision calculation, receipt reconciliation
+and the bounded listing/stale updates. Reconciliation uses that same transaction
+instead of a nested `BEGIN`. Receipt recovery rechecks actual database state,
+so an owned or caller rollback cannot leave an authoritative in-memory memo.
+Temporary contention reports retryable `jobs.busy`; unsaved, malformed, missing
+and already-obsolete project views remain inspectable without lifecycle writes.
+
+The new focused suite passed **13/13**, including both real-child races,
+reopening fresh evidence, bounded field staling/pagination, retry after lock
+contention and both receipt rollback paths. The two receipt paths also failed
+before the correction. All **77/77 compatibility cases** across scene review,
+project writer, strict close and the new list suite passed. These later source
+changes again require complete corrected-head gates and review before merging.
+
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);
 this dated local record does not substitute a targeted or earlier run for them.

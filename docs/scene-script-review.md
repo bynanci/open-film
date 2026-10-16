@@ -103,6 +103,16 @@ audit remain intact; simply reading history never revives stale evidence. Reads
 are paged, and exact-scene status updates use the catalog rather than rendering
 every suggestion.
 
+Listing can reconcile published receipts and mark obsolete pending evidence.
+Its saved-project check, revision calculation, receipt reconciliation and scoped
+or history lifecycle updates therefore share the same write lock as project
+saves. An old viewer cannot stale fresh evidence published by another OpenFilm
+process in the middle of polling. Receipt recovery checks database state on
+each pass, including after an owned or caller transaction rolls back; an
+in-memory cache cannot certify a committed audit update. Unverifiable saved
+projects remain inspectable without changing lifecycle state. Temporary lock
+contention reports a retryable busy state.
+
 The text lives in `project.json`, so SQLite alone cannot make acceptance atomic.
 The application saves the changed script together with a small
 `sceneScriptReviewReceipts` entry in the same atomic project-file publication.

@@ -97,7 +97,6 @@ function evidenceHash(suggestion: SceneScriptReviewSuggestion): string {
 
 /** Reasoned evidence for one saved planning field. Generation never edits a Story. */
 export class SceneScriptReviewService {
-  private readonly reconciledReceipts = new Map<string, string>();
   constructor(
     private readonly app: OpenFilmApplication,
     private readonly publish: (next: OpenFilmProject) => void,
@@ -216,9 +215,13 @@ export class SceneScriptReviewService {
       ]),
     );
     for (const [id, receipt] of receipts) {
-      const identity = JSON.stringify(receipt);
-      if (this.reconciledReceipts.get(id) === identity) continue;
       const recorded = this.app.catalog.knowledge.getSceneScriptSuggestion(id);
+      if (!recorded)
+        throw new ApplicationError(
+          "request.notFound",
+          "Scene script suggestion not found.",
+          404,
+        );
       if (recorded?.status === "accepted") {
         if (
           receipt.evidenceHash !== evidenceHash(recorded) ||
@@ -229,34 +232,58 @@ export class SceneScriptReviewService {
           stale(
             "A published script review receipt no longer matches its accepted audit evidence.",
           );
-        this.reconciledReceipts.set(id, identity);
         continue;
       }
-      this.app.catalog.knowledge.withSceneScriptSuggestion(id, (suggestion) => {
-        if (
-          receipt.evidenceHash !== evidenceHash(suggestion) ||
-          (suggestion.status !== "pending" && suggestion.status !== "accepted")
-        )
-          stale(
-            "A published script review receipt no longer matches its audit evidence.",
-          );
-        this.app.catalog.knowledge.updateSceneScriptSuggestion(id, {
-          status: "accepted",
-          requestId: receipt.requestId,
-          acceptedAt: receipt.acceptedAt,
-          acceptedRevisionId: receipt.acceptedRevisionId,
-        });
+      // list() already owns the shared writer transaction. Re-read every
+      // receipt so an owned or caller rollback cannot leave an authoritative memo.
+      if (
+        receipt.evidenceHash !== evidenceHash(recorded) ||
+        recorded.status !== "pending"
+      )
+        stale(
+          "A published script review receipt no longer matches its audit evidence.",
+        );
+      this.app.catalog.knowledge.updateSceneScriptSuggestion(id, {
+        status: "accepted",
+        requestId: receipt.requestId,
+        acceptedAt: receipt.acceptedAt,
+        acceptedRevisionId: receipt.acceptedRevisionId,
       });
-      this.reconciledReceipts.set(id, identity);
     }
   }
 
   list(storyId: string, options: PageOptions = {}) {
+    try {
+      return this.app.catalog.withProjectWrite(() =>
+        this.listUnderWriteLock(storyId, options),
+      );
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "errcode" in error &&
+        error.errcode === 5
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Another process is updating this project. Wait for it to finish before retrying.",
+          409,
+        );
+      throw error;
+    }
+  }
+
+  private listUnderWriteLock(storyId: string, options: PageOptions) {
     this.story(storyId);
     let saved = true;
     try {
       this.saved();
-    } catch {
+    } catch (error) {
+      if (
+        !(error instanceof ApplicationError) ||
+        error.code !== "story.planConflict"
+      )
+        throw error;
       // Evidence remains inspectable when a project needs recovery. Do not
       // change lifecycle state using an unverified or obsolete in-memory view.
       saved = false;
@@ -299,7 +326,8 @@ export class SceneScriptReviewService {
             suggestion.target.beatId,
             suggestion.target.field,
           );
-        } catch {
+        } catch (error) {
+          if (!(error instanceof ApplicationError)) throw error;
           /* Removed or invalid target. */
         }
         if (current === suggestion.sourceRevisionId) continue;
