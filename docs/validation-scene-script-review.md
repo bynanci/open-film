@@ -25,9 +25,10 @@ Session artifacts are under
   component regressions cover preparation, pending manual edits and receipt
   recovery before the final browser run.
 
-## Observed local results before publication
+## Initial published candidate and review correction
 
-On 2026-10-16, the frozen source passed:
+On 2026-10-16, candidate
+`00087c1b7939c51bdbaa66090ba141f89d9bbf92` passed:
 
 | Gate                                    | Observed result                                                                      |
 | --------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -38,6 +39,7 @@ On 2026-10-16, the frozen source passed:
 | `pnpm build` / built CLI smoke          | Passed                                                                               |
 | `pnpm test:interchange`                 | Passed: 18 official OpenTimelineIO 0.18.1 tests, source hashes/bounds and relocation |
 | `pnpm test:native` / locked Cargo build | Passed: Linux formatting/clippy, seven Rust tests and native compile                 |
+| Full `pnpm test:e2e`                    | Passed: 109 tests in 14.9 minutes                                                    |
 
 The focused browser run passed **7/7 in 37.1 seconds**. It covers explicit
 Accept/Skip, field isolation, stale evidence, delayed/lost acknowledgements,
@@ -45,8 +47,9 @@ history/reopening, three languages and pseudo-localization. Screenshots cover
 en-US/en-XA at 1280×720, zh-TW at 1440×900 and ja-JP at 1920×1080. All 138 product
 runtime files had identical before/after hashes during that run. The later
 malformed/missing-project cleanup guard passed its own regressions, then the full
-1,952-test run above. The complete browser suite runs again for the published
-candidate; focused browser success alone does not certify that full suite.
+1,952-test run above. The complete 109-test browser run then passed with all 349
+frozen source/configuration/test hashes unchanged. A concurrently added CLI-only
+regression file was outside that browser runtime.
 
 Two initial browser launches executed zero cases because the environment proxy
 returned HTTP 403 for unused loopback ports. Merging `NO_PROXY`/`no_proxy` before
@@ -65,7 +68,18 @@ the core/catalog group passed **372 tests**, and the actual HTTP/CLI boundary
 passed **eight cases**. The frozen source reviews had no unresolved correctness
 findings. Published-head CI and review remain separate merge gates below.
 
-Complete published-candidate results must come from the exact-head PR checks;
+GitHub's review of the initial published head subsequently found two CLI
+correctness gaps: the new command omitted its abort signal and returned exit zero
+for failed/cancelled jobs. Real CLI subprocesses with an explicitly preloaded
+local provider reproduced both problems before the fix. The correction preserves
+bare Job JSON on stdout, sends normal progress to stderr, forwards the existing
+abort signal and returns 1 for failure or 130 for cancellation. All four cases
+pass, including successful exit zero and persisted job/source state. SIGINT and
+SIGTERM checks run on Linux; they do not certify real Windows console behavior.
+The CLI-only correction requires its own exact-head CI and renewed review.
+
+Complete published-candidate results are recorded in
+[PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);
 this dated local record does not substitute a targeted or earlier run for them.
 
 ## Regression and merge gates

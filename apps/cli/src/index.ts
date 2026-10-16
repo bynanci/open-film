@@ -581,9 +581,18 @@ async function main() {
             throw new Error(
               "Specify --beat and --field narration|visualDirection.",
             );
-          if (action === "run")
-            print(await app.runSceneScriptReview(id, { beatId, field }));
-          else {
+          if (action === "run") {
+            const job = await app.runSceneScriptReview(id, {
+              beatId,
+              field,
+              signal: controller.signal,
+              onJob: (job) =>
+                console.error(JSON.stringify({ event: "job.progress", job })),
+            });
+            print(job);
+            if (job.status === "cancelled") process.exitCode = 130;
+            else if (job.status === "failed") process.exitCode = 1;
+          } else {
             const status = value(options, "status");
             if (
               status !== undefined &&
