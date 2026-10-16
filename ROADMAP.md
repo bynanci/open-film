@@ -165,6 +165,45 @@ not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
 are merged in PR #6; actual workstation observations remain manual gates.
 Later creative features remain deferred.
+Native first-open and long-session memory tooling is documented in
+[the native performance procedure](docs/native-performance.md). It keeps
+renderer intent timing separate from native IPC receipts, records platform
+memory coverage, and preserves interruption evidence. Repeated workstation
+first-open and one-hour series remain unverified until actually executed.
+Fixture preflight binds project/database/media bytes, and verified per-run project
+copies preserve identical initial films without rehashing edited templates.
+Sampling races and evidence-volume failures retain explicit failure and owned
+process cleanup. Final checkpoints are refreshed before classification, and a
+surviving service fails finalization without force-killing active work. Automated
+regressions also reject an unexpected service exit while awaiting normal native
+shutdown. None of these satisfy the workstation gate.
+An abnormal native exit during post-collection supervision also fails the final
+report without replacing frozen collection clocks or skipping service cleanup.
+Owned service cleanup uses a private acknowledged IPC protocol across platforms,
+including Windows, and separately records selected-launcher and actual-service
+Node identities. Process tests verify the protocol; Windows execution remains
+unverified until workstation evidence is collected.
+Fixture creation also falls back to exclusive copies on a per-source hard-link
+ceiling (`EMLINK`). Linux fault injection verifies the complete 2,000-asset fixture
+with 1,023 real links and 977 independent copies; actual NTFS behavior remains
+unverified. Scoped terminal-output failures preserve failed report/lifecycle
+evidence and graceful cleanup, including a native exit while a write is pending.
+Automated visibility regressions preserve pending UI/Edit readiness through a
+hidden interval, resume with two fresh visible frame opportunities and the original
+clock origins, and cancel obsolete or unmounted views. Actual native presentation
+and workstation timings still require manual evidence.
+Compose-to-Edit visits use the guarded navigation path after the composition job
+finishes, including the pre-render entry clock. Acknowledged creation remains
+available if later project or asset-cache reads fail, preserving unrelated films
+and visible errors without making cache recovery another creation action. Collection-stop events are
+provisional; terminal events follow shutdown and final evidence persistence.
+Manifest updates publish a complete sibling write by rename, preserving the last
+valid manifest if replacement fails. These regressions do not replace Windows QA.
+Readiness also rearms after transient startup state changes within the original
+boot. Preflight verifies actual hard-link/copy topology rather than trusting
+counts, and Linux memory sampling validates rooted membership after its reads.
+Unknown identities or changed process trees cannot be credited as complete
+evidence; these checks still require Windows/workstation validation.
 
 ## Composition-aware subtitle handoff
 

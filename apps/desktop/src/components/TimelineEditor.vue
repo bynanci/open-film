@@ -42,6 +42,7 @@ import { useI18n } from "vue-i18n";
 import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
 import { durationStatus } from "../duration";
 import { clipControls, shorteningAction } from "../editorPresentation";
+import { nativeBenchmark } from "../nativeBenchmark";
 const { t } = useI18n();
 
 const props = defineProps<{
@@ -110,6 +111,10 @@ const selectedClipId = ref("");
 const selectedBeatId = ref("");
 const inspector = ref<"clip" | "beat">("clip");
 const editMode = ref<"story" | "precision" | "transcript">("story");
+let nativeEditGeneration = 0;
+let nativeEditDisposed = false;
+let nativeEditReadyForVisit = false;
+let cancelNativeEditReady: (() => void) | undefined;
 const showFit = ref(false);
 const inspectorOpen = ref(true);
 const editorElement = ref<HTMLElement | null>(null);
@@ -819,6 +824,57 @@ watch(
   },
   { flush: "post" },
 );
+function checkpointNativeEditReady(generation: number) {
+  if (
+    typeof window === "undefined" ||
+    !window.__TAURI_INTERNALS__ ||
+    nativeEditReadyForVisit ||
+    nativeEditDisposed ||
+    generation !== nativeEditGeneration
+  )
+    return;
+  cancelNativeEditReady?.();
+  cancelNativeEditReady = undefined;
+  const snapshot = state.value;
+  const root = editorElement.value;
+  const count = allClips.value.length;
+  const current = () =>
+    !nativeEditDisposed &&
+    generation === nativeEditGeneration &&
+    props.active &&
+    editMode.value === "story" &&
+    status.value === "saved" &&
+    !hasPending.value &&
+    !!snapshot &&
+    state.value === snapshot &&
+    !!root?.getClientRects().length &&
+    root.querySelectorAll(".editor-clip").length === count &&
+    root.querySelectorAll('.editor-clip[aria-pressed="true"]').length ===
+      (count ? 1 : 0);
+  // This means usable Story Edit DOM, not decoded thumbnails/video or an
+  // independently verified compositor presentation on the physical display.
+  cancelNativeEditReady = nativeBenchmark.afterFrames(
+    "edit-ready",
+    { clipCount: count },
+    current,
+    () => {
+      if (current()) nativeEditReadyForVisit = true;
+    },
+  );
+}
+watch(
+  [() => props.active, () => state.value, status, editMode, hasPending],
+  () => {
+    if (typeof window === "undefined" || !window.__TAURI_INTERNALS__) return;
+    cancelNativeEditReady?.();
+    cancelNativeEditReady = undefined;
+    const generation = ++nativeEditGeneration;
+    if (!props.active) nativeEditReadyForVisit = false;
+    if (!nativeEditReadyForVisit)
+      void nextTick(() => checkpointNativeEditReady(generation));
+  },
+  { immediate: true, flush: "sync" },
+);
 onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
@@ -834,6 +890,10 @@ onMounted(() => {
   measureWorkspace();
 });
 onBeforeUnmount(() => {
+  nativeEditDisposed = true;
+  nativeEditGeneration++;
+  cancelNativeEditReady?.();
+  cancelNativeEditReady = undefined;
   window.removeEventListener("keydown", keyboard);
   window.removeEventListener("resize", measureWorkspace);
   layoutObserver?.disconnect();

@@ -80,6 +80,31 @@ system or downstream NLE. Commands and test responsibilities are in
 - [x] README, contribution/conduct/security policies, architecture, format docs,
       changelog, roadmap, and ADRs.
 - [ ] Self-contained native installer and multi-platform installation validation.
+- [x] Native measurement tooling: opt-in UI/Edit clocks, generated 500-clip
+      fixture, rooted process-memory series, preserved partial evidence and
+      failure/cancellation/identity regressions; see [the procedure](docs/native-performance.md).
+- [x] Reject unrelated/changed benchmark projects, media and undeclared SQLite WAL before starting measurement processes.
+- [x] Keep repeated runs bound to the same immutable fixture using verified per-run project copies; preserve each run's edits and final hashes.
+- [x] Prevent completion after an owned child exits during sampling, and preserve supervision/cleanup when evidence persistence fails.
+- [x] Include Edit checkpoints delivered during the final sample in the terminal scenario report.
+- [x] Fail finalization when an owned service survives its shutdown grace period, preserving active work and explicit remaining-process evidence.
+- [x] Reject a successful benchmark when its service exits unexpectedly while waiting for normal native-window shutdown.
+- [x] Reject provisional success after native nonzero exit or signal termination, retaining actual exit evidence and graceful service cleanup.
+- [x] Request private IPC service shutdown, require project-close acknowledgement and normal exit, and preserve active work instead of forcibly terminating Windows services.
+- [x] Bind benchmark evidence to both the selected Node launcher and the actual service runtime version/executable hash.
+- [x] Finish the default fixture after a source reaches its hard-link limit, recording verified independent copies while preserving unexpected I/O failures.
+- [x] Preserve failed reports, lifecycle evidence and graceful cleanup after asynchronous stdout/stderr errors; retain native exits that occur while output is pending.
+- [x] Resume pending native UI/Edit readiness after restored visibility with two fresh frame opportunities, retaining original clocks and cancelling obsolete or unmounted views.
+- [x] Record Compose-to-Edit entry through guarded navigation after the composition job finishes; preserve already-Edit remounts without duplicate entry intent.
+- [x] Preserve acknowledged composition creation through later project/cache read failures, retaining other films and localized errors instead of encouraging duplicate creation.
+- [x] Emit a provisional collection-stop event and publish terminal completion only after native exit, acknowledged service shutdown and final evidence persistence.
+- [x] Replace published benchmark manifests through complete exclusive sibling writes and rename; failed updates retain the previous valid evidence.
+- [x] Resume original-boot readiness after transient busy/error/loading states without replaying acknowledged checkpoints or reusing an obsolete project/view.
+- [x] Verify actual BigInt filesystem link/copy identities during fixture preflight, rejecting changed topology and unavailable identity evidence.
+- [x] Recheck Linux rooted process membership after memory reads; changed or unknown topology cannot produce a complete aggregate.
+- [ ] Workstation native first-open repetitions and one-hour memory evidence.
+      Requires real workstation execution; cloud compilation and process tests
+      do not satisfy this gate.
 - [x] Media relinking and logical-volume-aware library portability; native Windows
       remount checks remain manual.
 - [ ] Plugin discovery/loading beyond built-in registration and SDK contracts.

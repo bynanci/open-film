@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   initializeLocale,
@@ -52,6 +52,7 @@ import RelinkMedia from "./components/RelinkMedia.vue";
 import SourceDetails from "./components/SourceDetails.vue";
 import AnalysisJobActions from "./components/AnalysisJobActions.vue";
 import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
+import { nativeBenchmark } from "./nativeBenchmark";
 
 const { t } = useI18n();
 const interfaceLocales = [
@@ -365,12 +366,24 @@ async function changeTab(next: Tab) {
   if (next === tab.value || relinkBusy.value || busy.value) return;
   if (beatDirty.value && !(await saveBeat())) return;
   if (next === "edit") {
+    if (
+      typeof window !== "undefined" &&
+      window.__TAURI_INTERNALS__ &&
+      activeComposition.value
+    )
+      nativeBenchmark.record("edit-enter", { clipCount: clipCount.value });
     editorMountRequested.value = true;
     tab.value = next;
     if (!timelineEditor.value?.hasPending) await timelineEditor.value?.reload();
     return;
   }
   if (!(await flushEditor())) return;
+  if (
+    typeof window !== "undefined" &&
+    window.__TAURI_INTERNALS__ &&
+    tab.value === "edit"
+  )
+    nativeBenchmark.record("edit-leave", { clipCount: clipCount.value });
   tab.value = next;
   if (next === "story" && !beatDirty.value) hydrateBeat();
   if (next === "library") await checkMediaStatus();
@@ -409,6 +422,28 @@ function clearExport() {
   exportStale.value = false;
 }
 const native = !!window.__TAURI_INTERNALS__;
+let nativeBootGeneration = 0;
+let nativeDisposed = false;
+let cancelNativeBootReady: (() => void) | undefined;
+let retryNativeBootReady: (() => void) | undefined;
+if (native)
+  watch(
+    [
+      tab,
+      () => project.value?.id,
+      loading,
+      busy,
+      error,
+      mediaStatusError,
+      connected,
+    ],
+    () => {
+      cancelNativeBootReady?.();
+      cancelNativeBootReady = undefined;
+      retryNativeBootReady?.();
+    },
+    { flush: "sync" },
+  );
 let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
@@ -564,8 +599,12 @@ async function run(label: string, action: () => Promise<void>) {
   }
 }
 async function boot() {
+  retryNativeBootReady = undefined;
+  cancelNativeBootReady?.();
+  cancelNativeBootReady = undefined;
+  const generation = ++nativeBootGeneration;
   loading.value = true;
-  await run("openingWorkspace", async () => {
+  const opened = await run("openingWorkspace", async () => {
     try {
       workspaceInfo.value = await api.workspace();
       await initializeLocale(workspaceInfo.value.systemLocale);
@@ -586,6 +625,62 @@ async function boot() {
     }
   });
   loading.value = false;
+  if (
+    !native ||
+    !opened ||
+    nativeDisposed ||
+    generation !== nativeBootGeneration
+  )
+    return;
+  await nextTick();
+  if (nativeDisposed || generation !== nativeBootGeneration) return;
+  const startupProjectId = project.value?.id;
+  const kind = startupProjectId ? "library-ready" : "welcome-ready";
+  const originalView = () =>
+    !nativeDisposed &&
+    generation === nativeBootGeneration &&
+    tab.value === "library" &&
+    project.value?.id === startupProjectId;
+  const eligible = () =>
+    connected.value &&
+    !error.value &&
+    !mediaStatusError.value &&
+    !loading.value &&
+    !busy.value;
+  function retryBootReady() {
+    if (retryNativeBootReady !== retryBootReady) return;
+    if (!originalView()) {
+      retryNativeBootReady = undefined;
+      return;
+    }
+    if (!eligible()) return;
+    cancelNativeBootReady = nativeBenchmark.afterFrames(
+      kind,
+      {},
+      () => {
+        if (
+          retryNativeBootReady !== retryBootReady ||
+          !originalView() ||
+          !eligible()
+        )
+          return false;
+        const view = document.querySelector(
+          startupProjectId ? ".workspace-library" : ".project-launcher",
+        );
+        return !!view?.getClientRects().length;
+      },
+      () => {
+        if (retryNativeBootReady !== retryBootReady) return;
+        retryNativeBootReady = undefined;
+        // A transient state may have rearmed while this receipt was pending.
+        // The successful receipt completes this boot and cancels that attempt.
+        cancelNativeBootReady?.();
+        cancelNativeBootReady = undefined;
+      },
+    );
+  }
+  retryNativeBootReady = retryBootReady;
+  retryBootReady();
 }
 function readRecentProjects(): RecentProject[] {
   try {
@@ -1075,14 +1170,28 @@ async function compose() {
     error.value = message("feedback.saveBeat");
     return;
   }
-  await run("composingFilm", async () => {
+  const composed = await run("composingFilm", async () => {
     const { composition } = await api.compose(story.id);
+    // Creation is committed. Keep its acknowledged film available even if
+    // subsequent project/cache reads fail; retrying those must not create it again.
+    if (project.value)
+      project.value = {
+        ...project.value,
+        timelines: [
+          ...project.value.timelines.filter(
+            (film) => film.id !== composition.id,
+          ),
+          composition,
+        ],
+      };
     activeCompositionId.value = composition.id;
     clearExport();
-    await refreshProject();
+    try {
+      await refreshProject();
+    } catch (cause) {
+      error.value = cause;
+    }
     previewVersion.value = 0;
-    editorMountRequested.value = true;
-    tab.value = "edit";
     const ids = [
       ...new Set(
         composition.tracks.flatMap((track) =>
@@ -1090,8 +1199,16 @@ async function compose() {
         ),
       ),
     ];
-    await loadAssetIds(ids);
+    try {
+      await loadAssetIds(ids);
+    } catch (cause) {
+      error.value = cause;
+    }
   });
+  if (composed) {
+    if (tab.value === "edit") editorMountRequested.value = true;
+    else await changeTab("edit");
+  }
 }
 async function renderPreview() {
   if (!(await flushPending())) return;
@@ -1344,6 +1461,11 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeyboard);
 });
 onUnmounted(() => {
+  nativeDisposed = true;
+  nativeBootGeneration++;
+  retryNativeBootReady = undefined;
+  cancelNativeBootReady?.();
+  cancelNativeBootReady = undefined;
   if (poll) clearInterval(poll);
   window.removeEventListener("keydown", handleKeyboard);
 });
