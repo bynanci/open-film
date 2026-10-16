@@ -20,6 +20,7 @@ import type {
   GlossaryInput,
   TranscriptReviewSuggestion as ReviewSuggestion,
   ReviewBatch,
+  SceneScriptReviewSuggestion,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -210,6 +211,15 @@ export interface ReviewSuggestionsState {
   total: number;
   offset: number;
   limit: number;
+}
+
+export type ScriptReviewField = "narration" | "visualDirection";
+export interface ScriptReviewSuggestionsState {
+  suggestions: SceneScriptReviewSuggestion[];
+  total: number;
+  offset: number;
+  limit: number;
+  revision: string;
 }
 
 export interface CreateFilmInput {
@@ -557,13 +567,18 @@ export const api = {
       `/glossary/${encodeURIComponent(id)}?${new URLSearchParams({ scope })}`,
       { method: "DELETE" },
     ),
-  reviewProvider: () => request<ReviewProviderState>("/review/provider"),
+  reviewProvider: (workflow?: "scene-script") =>
+    request<ReviewProviderState>(
+      `/review/provider${workflow ? `?workflow=${workflow}` : ""}`,
+    ),
   reviewConsent: (
     allow: boolean,
     disclosedProvider?: ReviewProviderState["provider"],
+    workflow?: "scene-script",
   ) =>
     post<ReviewProviderState>("/review/consent", {
       allow,
+      ...(workflow ? { workflow } : {}),
       ...(allow && disclosedProvider
         ? {
             providerId: disclosedProvider.id,
@@ -677,6 +692,48 @@ export const api = {
       },
     }),
   createStory: (body: unknown) => post<{ story: Story }>("/stories", body),
+  scriptReviewSuggestions: (
+    storyId: string,
+    input: {
+      beatId: string;
+      field: ScriptReviewField;
+      status?: SceneScriptReviewSuggestion["status"];
+      offset?: number;
+      limit?: number;
+    },
+  ) =>
+    request<ScriptReviewSuggestionsState>(
+      `/stories/${encodeURIComponent(storyId)}/script-review/suggestions?${new URLSearchParams(
+        {
+          beatId: input.beatId,
+          field: input.field,
+          offset: String(input.offset ?? 0),
+          limit: String(input.limit ?? 10),
+          ...(input.status ? { status: input.status } : {}),
+        },
+      )}`,
+    ),
+  runScriptReview: (
+    storyId: string,
+    body: { beatId: string; field: ScriptReviewField },
+  ) =>
+    post<{ job: Job }>(
+      `/stories/${encodeURIComponent(storyId)}/script-review`,
+      body,
+    ),
+  acceptScriptSuggestion: (
+    id: string,
+    receipt: { baseRevision: string; requestId: string },
+  ) =>
+    post<{ story: Story }>(
+      `/script-review/suggestions/${encodeURIComponent(id)}/accept`,
+      receipt,
+    ),
+  skipScriptSuggestion: (id: string) =>
+    post<{ suggestion: SceneScriptReviewSuggestion }>(
+      `/script-review/suggestions/${encodeURIComponent(id)}/skip`,
+      {},
+    ),
   refreshSuggestions: (storyId: string, beatId: string) =>
     post<{ story: Story }>(
       `/stories/${encodeURIComponent(storyId)}/beats/${encodeURIComponent(beatId)}/suggestions`,

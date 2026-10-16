@@ -12,6 +12,32 @@ export default {
   ...media,
   ...precision,
   ...transcript,
+  scriptReview: {
+    heading: "腳本建議",
+    description: "每次檢視一個已儲存的場景欄位。只有接受建議後才會儲存變更。",
+    field: "要檢視的文字",
+    generate: "產生修改建議",
+    history: "顯示已處理建議",
+    pending: "顯示待處理建議",
+    providerMissing: "尚未設定選用的腳本語言服務。您可以繼續撰寫自己的腳本。",
+    remoteConsent: "您同意後，腳本檢視才會將所選文字及場景背景傳送至此服務。",
+    dataAccess:
+      "這次檢視會傳送所選文字、影片與場景標題、場景意圖、時間目標和影片語言，不會傳送媒體檔案、位置或另一個腳本欄位。",
+    grantConsent: "允許所列腳本檢視資料",
+    revokeConsent: "撤回腳本檢視同意",
+    uncertainAcceptance:
+      "接受建議的回應遺失了。請保留此場景，並重試同一次接受操作，以確認已儲存的內容。",
+    retryAcceptance: "重試接受操作",
+    reload: "重新載入建議",
+    running: "正在檢視場景腳本…",
+    cancel: "取消腳本檢視",
+    cancelled: "腳本檢視已取消，已儲存的建議仍可使用。",
+    noSuggestions:
+      "此欄位沒有待處理的建議。選用的語言檢視會保留原文，直到您接受建議。",
+    noHistory: "此欄位尚未有任何建議紀錄。",
+    pages: "腳本建議分頁",
+    jobTitle: "場景腳本檢視",
+  },
   scenePlan: {
     heading: "規劃腳本與場景",
     description: "將回憶編排成場景，為每一段故事安排時間。",

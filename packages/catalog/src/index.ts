@@ -14,6 +14,7 @@ import {
 import {
   CatalogKnowledgeStore,
   migrateKnowledgeSchema,
+  migrateSceneScriptReviewSchema,
 } from "./knowledge-store.js";
 import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
 
@@ -210,7 +211,7 @@ export class ProjectCatalog {
       if (version >= 2) new CatalogIntelligenceStore(this.database);
       if (version >= 3) {
         new CatalogTranscriptEditorStore(this.database);
-        new CatalogKnowledgeStore(this.database);
+        new CatalogKnowledgeStore(this.database, version >= 5);
       }
       if (version < CATALOG_SCHEMA_VERSION) {
         this.database.exec("BEGIN IMMEDIATE");
@@ -231,7 +232,8 @@ export class ProjectCatalog {
             migrateTranscriptEditorSchema(this.database);
             migrateKnowledgeSchema(this.database);
           }
-          migrateTranscriptSegmentIdentity(this.database);
+          if (version < 4) migrateTranscriptSegmentIdentity(this.database);
+          if (version < 5) migrateSceneScriptReviewSchema(this.database);
           this.database.exec(
             `PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`,
           );

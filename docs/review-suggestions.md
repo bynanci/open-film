@@ -6,6 +6,12 @@ suggested text, why it was proposed, and Preview, Accept and Skip actions. Previ
 seeks the original media so a correction can be checked against the recording.
 Diff presentation includes labels and deletion/insertion styling as well as color.
 
+Saved Story narration and visual direction have a separate
+[scene-script review](scene-script-review.md) panel using the same provider and
+generic evidence model. It targets a Story/scene/field rather than a transcript,
+and uses project-file receipts to protect script acceptance. The transcript
+commands and storage described below retain their existing behavior.
+
 ## Offline and optional provider review
 
 Glossary review is deterministic and local. It works when no LanguageProvider is

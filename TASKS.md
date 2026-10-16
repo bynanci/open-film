@@ -5,7 +5,32 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Classified memories to scene scripts
+## Current — Reviewable scene-script suggestions
+
+Scope: [scene-script review](docs/scene-script-review.md).
+Evidence: [validation record](docs/validation-scene-script-review.md).
+Base: main `b6225512b701f609170de57967c63fcaa344209f`, after PR #15 merged
+with successful main CI. Real model quality and workstation observations remain
+separate in [issue #7](https://github.com/bynanci/open-film/issues/7).
+
+- [x] Let people review reasoned narration or visual-direction changes beside a
+      saved Story scene, with explicit Accept/Skip and preserved original evidence.
+- [x] Use the existing LanguageProvider registry and exact disclosed remote
+      consent; allow text-only providers without sending source media or paths.
+- [x] Preserve newer manual text, other script fields, timing, clips and existing
+      films through stale output, concurrent work and rejected acceptance.
+- [x] Preserve accepted text and its audit through file/DB failures, uncertain
+      responses, retry, reopening and external project changes.
+- [x] Share the workflow through Desktop, HTTP and CLI with bounded storage,
+      transactional catalog migration, jobs, cancellation and owner recovery.
+- [x] Cover three-language/pseudo layouts and keyboard controls with focused
+      browser regressions; include them in existing CI and review the source.
+
+Merge policy: require complete green CI for the exact published head, refresh
+review/head/base and resolve correctness findings before merging. Targeted and
+complete local results remain distinct in the validation record.
+
+## Completed slice — Classified memories to scene scripts
 
 Scope and acceptance: [scene-script planning](docs/scene-script-planning.md).
 Evidence: [validation record](docs/validation-scene-script-planning.md).
@@ -34,9 +59,8 @@ Merge policy: require complete green CI for the exact published head, refresh
 its review/head/base and resolve correctness findings before merge. Current
 results are recorded in [PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks).
 
-Narration synthesis, image interpretation, motion/keyframes and a scene-writing
-LanguageProvider are outside this slice. Optional reviewable language assistance
-for declared scene/category text is the next creative increment after verification.
+Narration synthesis, image interpretation and motion/keyframes are outside this
+slice. Optional text-based script assistance is tracked in the current slice above.
 
 ## P0 — Foundation and media workflow
 

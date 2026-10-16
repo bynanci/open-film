@@ -37,6 +37,17 @@ flowchart TD
 
 ## Packages and boundaries
 
+Scene-script review extends the existing generic `ReviewSuggestion` with a real
+Story/beat/field target. `SceneScriptReviewService` in application owns the
+whitelisted prompt, source binding, field-only mutation and retry; it calls the
+same KnowledgeService/ProviderRegistry that owns language-provider consent.
+Catalog schema v5 stores durable scene-script evidence separately from
+transcript-targeted suggestions. The atomic project-file update includes a small
+acceptance receipt alongside the changed script, allowing recovery across the
+project-file/SQLite boundary. Desktop, HTTP and CLI use that shared service.
+See [scene-script review](scene-script-review.md) for privacy and publication
+contracts. It does not create another composition or timeline engine.
+
 | Package           | Responsibility                                                                            |
 | ----------------- | ----------------------------------------------------------------------------------------- |
 | `core`            | Media, event, story, composition, project, and job models; schema validation/migration.   |

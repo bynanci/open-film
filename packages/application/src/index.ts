@@ -94,6 +94,11 @@ import {
   type KnowledgeOptions,
   type ReviewOptions,
 } from "./knowledge.js";
+import {
+  SceneScriptReviewService,
+  savedScriptProjectIdentity,
+  type SceneScriptReviewOptions,
+} from "./scene-script-review.js";
 export {
   MediaIntelligence,
   type IntelligenceOptions,
@@ -115,6 +120,10 @@ export {
   type ReviewOptions,
 } from "./knowledge.js";
 export { GlobalGlossaryStore } from "./global-glossary.js";
+export {
+  SceneScriptReviewService,
+  type SceneScriptReviewOptions,
+} from "./scene-script-review.js";
 export { resolveUserDataDirectory } from "./user-data.js";
 export {
   createReviewOwner,
@@ -221,7 +230,10 @@ export class OpenFilmApplication {
   readonly transcriptEditor: TranscriptEditor;
   readonly captions: CaptionService;
   readonly knowledge: KnowledgeService;
+  readonly sceneScriptReview: SceneScriptReviewService;
   private activeJobs = 0;
+  private persistedProject: string;
+  private persistenceConflict = false;
 
   private constructor(
     readonly directory: string,
@@ -229,6 +241,9 @@ export class OpenFilmApplication {
     runtime: OpenFilmRuntimeOptions = {},
     private readonly intent: "workspace" | "export" = "workspace",
   ) {
+    // Bind the baseline to the loaded state, never a second disk read that
+    // could have advanced while open() was awaiting filesystem work.
+    this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
       this.intelligence = new MediaIntelligence(this.catalog);
@@ -238,6 +253,23 @@ export class OpenFilmApplication {
         this.catalog,
         this.transcriptEditor,
         runtime,
+      );
+      this.sceneScriptReview = new SceneScriptReviewService(
+        this,
+        (next) => {
+          const previous = this.project;
+          try {
+            this.project = next;
+            this.saveSync();
+          } catch (error) {
+            this.project = previous;
+            throw error;
+          }
+        },
+        (disk) => {
+          if (savedScriptProjectIdentity(disk) !== this.persistedProject)
+            this.persistenceConflict = true;
+        },
       );
     } catch (error) {
       this.catalog.close();
@@ -361,6 +393,7 @@ export class OpenFilmApplication {
         [
           "language-review",
           "glossary-review",
+          "scene-script-review",
           "transcribe",
           "waveform",
           "scenes",
@@ -406,12 +439,19 @@ export class OpenFilmApplication {
   }
 
   private saveSync(): void {
+    if (this.persistenceConflict)
+      throw new ApplicationError(
+        "story.planConflict",
+        "Another process changed the saved project. Reopen it before saving further changes.",
+        409,
+      );
     const project = validateProject({
       ...this.project,
       updatedAt: new Date().toISOString(),
     });
     atomicJsonSync(join(this.directory, "project.json"), project);
     this.project = project;
+    this.persistedProject = savedScriptProjectIdentity(project);
   }
 
   async save(): Promise<void> {
@@ -540,12 +580,30 @@ export class OpenFilmApplication {
     }
   }
 
+  async runSceneScriptReview(
+    storyId: string,
+    options: SceneScriptReviewOptions,
+  ): Promise<Job> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before starting another review.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.sceneScriptReview.run(storyId, options);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
   close(): void {
     if (this.activeJobs)
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
-    if (this.intent !== "export") this.saveSync();
+    if (this.intent !== "export" && !this.persistenceConflict) this.saveSync();
     this.catalog.close();
   }
 

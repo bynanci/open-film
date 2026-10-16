@@ -502,6 +502,28 @@ export function validateProject(
     dimension(settings[key], `${path}.settings.${key}`);
   positive(settings.frameRate, `${path}.settings.frameRate`);
   const knownAssets = options.assetIds ? new Set(options.assetIds) : undefined;
+  optional(data, "sceneScriptReviewReceipts", path, (value, receiptPath) => {
+    const receipts = array(value, receiptPath);
+    if (receipts.length > 10000)
+      fail(receiptPath, "at most 10000 script review receipts are supported");
+    const seen = new Set<string>();
+    receipts.forEach((value, index) => {
+      const itemPath = `${receiptPath}[${index}]`;
+      const receipt = object(value, itemPath);
+      for (const key of [
+        "suggestionId",
+        "requestId",
+        "evidenceHash",
+        "acceptedRevisionId",
+      ])
+        string(receipt[key], `${itemPath}.${key}`);
+      const id = String(receipt.suggestionId);
+      if (seen.has(id))
+        fail(`${itemPath}.suggestionId`, "duplicate suggestion receipt");
+      seen.add(id);
+      timestamp(receipt.acceptedAt, `${itemPath}.acceptedAt`);
+    });
+  });
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
@@ -537,6 +559,10 @@ export function validateJob(value: unknown): Job {
     "cancelled",
   ]);
   optional(data, "progress", path, (v, p) => number(v, p, 0, 1));
+  for (const key of ["storyId", "beatId"]) optional(data, key, path, string);
+  optional(data, "scriptField", path, (value, fieldPath) =>
+    choice(value, fieldPath, ["narration", "visualDirection"]),
+  );
   for (const key of ["createdAt", "updatedAt"])
     optional(data, key, path, timestamp);
   optional(data, "errors", path, (v, p) => {

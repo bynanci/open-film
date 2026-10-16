@@ -71,6 +71,15 @@ export interface FilmSettings {
   maxDuration: number;
 }
 
+/** Saved with the script itself so a retry can reconcile catalog commit ambiguity. */
+export interface SceneScriptReviewReceipt {
+  suggestionId: string;
+  requestId: string;
+  evidenceHash: string;
+  acceptedRevisionId: string;
+  acceptedAt: string;
+}
+
 export type StoryConstraint =
   | { type: "must-include" | "must-exclude"; assetIds: string[] }
   | { type: "chronological"; enabled?: boolean }
@@ -160,6 +169,7 @@ export interface OpenFilmProject {
   /** Legacy projects without this field use en-US for newly generated text. */
   projectContentLocale?: ProjectContentLocale;
   filmSettings?: FilmSettings;
+  sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
 }
 
 export interface Event {
@@ -196,6 +206,9 @@ export interface Job {
   progress?: number;
   /** Source-scoped analysis jobs share the same durable Activity model. */
   assetId?: string;
+  storyId?: string;
+  beatId?: string;
+  scriptField?: "narration" | "visualDirection";
   stage?: string;
   execution?: "cpu" | "gpu";
   model?: string;

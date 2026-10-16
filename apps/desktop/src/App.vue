@@ -26,6 +26,7 @@ import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
+import StoryScriptReview from "./components/StoryScriptReview.vue";
 import type {
   MediaAsset,
   OpenFilmProject,
@@ -189,6 +190,11 @@ const groupHeading = computed(() =>
     : (groupSelection.value?.title ?? ""),
 );
 const jobs = ref<Job[]>([]);
+const storyScriptReview = ref<InstanceType<typeof StoryScriptReview> | null>(
+  null,
+);
+const storyReviewBusy = ref(false);
+const storyReviewPending = ref(false);
 // Empty poll results carry no recovery evidence; keep their prop identity stable.
 // Non-empty maps remain fresh so owner/checkpoint changes are always published.
 const EMPTY_ANALYSIS_RECOVERY: Record<string, AnalysisJobRecoveryState> =
@@ -228,6 +234,8 @@ function jobBlocksProjectSwitch(job: Job, recovery?: AnalysisJobRecoveryState) {
 const projectSwitchBlocked = computed(
   () =>
     !!busy.value ||
+    storyReviewBusy.value ||
+    storyReviewPending.value ||
     relinkBusy.value ||
     analysisRecoveryPending.value ||
     jobs.value.some((job) =>
@@ -388,6 +396,8 @@ async function flushEditor() {
 }
 async function changeTab(next: Tab) {
   if (next === tab.value || relinkBusy.value || busy.value) return;
+  if (storyScriptReview.value && !(await storyScriptReview.value.flush()))
+    return;
   if (categoryDirty.value && !(await saveCategories())) return;
   if (beatDirty.value && !(await saveBeat())) return;
   if (next === "edit") {
@@ -650,6 +660,7 @@ async function boot() {
       await reloadAssets();
       await refreshJobs();
       await checkMediaStatus();
+      restoreScriptReviewTarget();
     }
   });
   loading.value = false;
@@ -803,6 +814,7 @@ async function resetProjectView() {
   await reloadAssets();
   await refreshJobs();
   tab.value = "library";
+  restoreScriptReviewTarget();
   await checkMediaStatus();
   rememberProject();
 }
@@ -860,7 +872,13 @@ async function uploadFiles(files: File[]) {
     }
   });
 }
-async function flushPending() {
+async function flushPending(preparingScriptReview = false) {
+  if (
+    !preparingScriptReview &&
+    storyScriptReview.value &&
+    !(await storyScriptReview.value.flush())
+  )
+    return false;
   if (categoryDirty.value && !(await saveCategories())) return false;
   if (!(await flushEditor())) return false;
   return beatDirty.value ? saveBeat() : true;
@@ -1010,6 +1028,16 @@ async function pollJobs() {
         jobs.value.find((previous) => previous.id === job.id)?.status !==
           job.status,
     );
+    const scriptReviewChanged = result.jobs.some(
+      (job) =>
+        job.type === "scene-script-review" &&
+        !jobs.value.some(
+          (previous) =>
+            previous.id === job.id &&
+            previous.status === job.status &&
+            previous.progress === job.progress,
+        ),
+    );
     const workflowChanged = result.jobs.some(
       (job) =>
         (job.type === "import" || job.type === "render") &&
@@ -1035,6 +1063,7 @@ async function pollJobs() {
         await refreshProject();
       }
       if (newlyImported) await checkMediaStatus();
+      if (scriptReviewChanged) await storyScriptReview.value?.refresh();
     }
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
@@ -1213,8 +1242,44 @@ function hydrateBeat() {
   beatDirty.value = false;
   candidateOffset.value = 0;
 }
+function restoreScriptReviewTarget() {
+  if (!project.value) return;
+  try {
+    const raw = localStorage.getItem(
+      `openfilm:script-review-accept:${project.value.id}`,
+    );
+    if (!raw) return;
+    const value = JSON.parse(raw) as { storyId?: string; beatId?: string };
+    const story = project.value.stories.find(
+      (item) => item.id === value.storyId,
+    );
+    const beatIndex =
+      story?.beats.findIndex((beat) => beat.id === value.beatId) ?? -1;
+    if (!story || beatIndex < 0) return;
+    activeStoryId.value = story.id;
+    activeBeatIndex.value = beatIndex;
+    tab.value = "story";
+  } catch {
+    /* Invalid browser recovery data never changes saved Story text. */
+  }
+}
+function scriptReviewAccepted(story: Story) {
+  if (!project.value?.stories.some((item) => item.id === story.id)) return;
+  projectMutationVersion++;
+  project.value = {
+    ...project.value,
+    stories: project.value.stories.map((item) =>
+      item.id === story.id ? story : item,
+    ),
+  };
+  if (activeStory.value?.id === story.id && !beatDirty.value) hydrateBeat();
+}
 watch(
-  () => `${activeStory.value?.id ?? ""}:${activeBeat.value?.id ?? ""}`,
+  [
+    () => project.value?.id,
+    () => activeStory.value?.id,
+    () => activeBeat.value?.id,
+  ],
   async () => {
     hydrateBeat();
     try {
@@ -1225,7 +1290,13 @@ watch(
   },
 );
 function chooseCandidate(asset: MediaAsset) {
-  if (busy.value || relinkBusy.value) return;
+  if (
+    busy.value ||
+    relinkBusy.value ||
+    storyReviewBusy.value ||
+    storyReviewPending.value
+  )
+    return;
   if (asset.state.rejected) {
     error.value = message("feedback.restoreFirst");
     return;
@@ -1307,6 +1378,8 @@ async function saveBeat(): Promise<boolean> {
   return saved && !beatDirty.value;
 }
 async function compose() {
+  if (storyScriptReview.value && !(await storyScriptReview.value.flush()))
+    return;
   if (!(await flushEditor())) return;
   const story = activeStory.value;
   if (!story) return;
@@ -1457,6 +1530,8 @@ async function exportFilm(format: string) {
   });
 }
 function jobTitle(job: Job): string {
+  if (job.type === "scene-script-review")
+    return `${t("scriptReview.jobTitle")} · ${t(`precision.jobStatuses.${job.status}`)}`;
   if (["glossary-review", "language-review"].includes(job.type)) {
     const kind =
       job.type === "glossary-review" ? "glossaryReview" : "languageReview";
@@ -1603,7 +1678,13 @@ function handleKeyboard(event: KeyboardEvent) {
   }
 }
 function protectDrafts(event: BeforeUnloadEvent) {
-  if (categoryDirty.value || scenePlanDraftPresent.value) {
+  if (
+    categoryDirty.value ||
+    scenePlanDraftPresent.value ||
+    beatDirty.value ||
+    storyReviewBusy.value ||
+    storyReviewPending.value
+  ) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -1783,7 +1864,7 @@ onUnmounted(() => {
           ><button
             v-if="tab === 'story'"
             class="primary"
-            :disabled="!!busy"
+            :disabled="!!busy || storyReviewBusy || storyReviewPending"
             @click="storyCreateOpen = !storyCreateOpen"
           >
             <Icon name="plus" />{{ t("app.story.new") }}
@@ -1858,7 +1939,11 @@ onUnmounted(() => {
               :name="
                 job.type === 'render'
                   ? 'film'
-                  : ['glossary-review', 'language-review'].includes(job.type)
+                  : [
+                        'glossary-review',
+                        'language-review',
+                        'scene-script-review',
+                      ].includes(job.type)
                     ? 'search'
                     : 'folder'
               "
@@ -1886,8 +1971,14 @@ onUnmounted(() => {
                 ? t('app.activity.previewProgress')
                 : ['transcribe', 'waveform', 'scenes'].includes(job.type)
                   ? t('precision.analysis')
-                  : ['glossary-review', 'language-review'].includes(job.type)
-                    ? t('transcript.jobStages.reviewing')
+                  : [
+                        'glossary-review',
+                        'language-review',
+                        'scene-script-review',
+                      ].includes(job.type)
+                    ? job.type === 'scene-script-review'
+                      ? t('scriptReview.running')
+                      : t('transcript.jobStages.reviewing')
                     : t('app.activity.importProgress')
             "
           />
@@ -1917,6 +2008,7 @@ onUnmounted(() => {
                       "scenes",
                       "glossary-review",
                       "language-review",
+                      "scene-script-review",
                     ].includes(job.type)
                   ? t("precision.cancel")
                   : job.type === "render"
@@ -2694,7 +2786,9 @@ onUnmounted(() => {
               }}<select
                 :value="activeStory.id"
                 :aria-label="t('app.story.active')"
-                :disabled="!!busy || relinkBusy"
+                :disabled="
+                  !!busy || relinkBusy || storyReviewBusy || storyReviewPending
+                "
                 @change="changeStory"
               >
                 <option
@@ -2713,7 +2807,9 @@ onUnmounted(() => {
             }}</span
             ><button
               class="primary"
-              :disabled="!!busy || beatDirty"
+              :disabled="
+                !!busy || beatDirty || storyReviewBusy || storyReviewPending
+              "
               @click="compose"
             >
               {{ t("app.story.compose") }}<Icon name="arrow" />
@@ -2729,6 +2825,8 @@ onUnmounted(() => {
                 :disabled="
                   !!busy ||
                   relinkBusy ||
+                  storyReviewBusy ||
+                  storyReviewPending ||
                   (beatDirty && activeBeatIndex !== index)
                 "
                 @click="activeBeatIndex = index"
@@ -2794,7 +2892,12 @@ onUnmounted(() => {
                 </div>
                 <button
                   class="secondary"
-                  :disabled="!beatDirty || !!busy"
+                  :disabled="
+                    !beatDirty ||
+                    !!busy ||
+                    storyReviewBusy ||
+                    storyReviewPending
+                  "
                   @click="saveBeat"
                 >
                   {{ t("app.story.saveBeat") }}<Icon name="check" :size="15" />
@@ -2805,14 +2908,24 @@ onUnmounted(() => {
                   >{{ t("app.story.beatTitle")
                   }}<input
                     v-model="beatDraft.title"
-                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
+                    :disabled="
+                      (!!busy && busy !== 'savingBeat') ||
+                      relinkBusy ||
+                      ((storyReviewBusy || storyReviewPending) &&
+                        busy !== 'savingBeat')
+                    "
                     :aria-label="t('app.story.beatTitle')"
                     @input="beatDirty = true" /></label
                 ><label class="field compact-field"
                   >{{ t("app.story.beatDurationLabel")
                   }}<input
                     v-model.number="beatDraft.targetDuration"
-                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
+                    :disabled="
+                      (!!busy && busy !== 'savingBeat') ||
+                      relinkBusy ||
+                      ((storyReviewBusy || storyReviewPending) &&
+                        busy !== 'savingBeat')
+                    "
                     :aria-label="t('app.story.beatDuration')"
                     type="number"
                     min="0.01"
@@ -2822,7 +2935,12 @@ onUnmounted(() => {
                   >{{ t("app.story.intent")
                   }}<textarea
                     v-model="beatDraft.intent"
-                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
+                    :disabled="
+                      (!!busy && busy !== 'savingBeat') ||
+                      relinkBusy ||
+                      ((storyReviewBusy || storyReviewPending) &&
+                        busy !== 'savingBeat')
+                    "
                     :aria-label="t('app.story.beatIntent')"
                     rows="2"
                     @input="beatDirty = true"
@@ -2834,7 +2952,12 @@ onUnmounted(() => {
                   >{{ t("scenePlan.narration")
                   }}<textarea
                     v-model="beatDraft.narration"
-                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
+                    :disabled="
+                      (!!busy && busy !== 'savingBeat') ||
+                      relinkBusy ||
+                      ((storyReviewBusy || storyReviewPending) &&
+                        busy !== 'savingBeat')
+                    "
                     data-testid="beat-script-narration"
                     rows="3"
                     maxlength="8000"
@@ -2845,7 +2968,12 @@ onUnmounted(() => {
                   >{{ t("scenePlan.visualDirection")
                   }}<textarea
                     v-model="beatDraft.visualDirection"
-                    :disabled="(!!busy && busy !== 'savingBeat') || relinkBusy"
+                    :disabled="
+                      (!!busy && busy !== 'savingBeat') ||
+                      relinkBusy ||
+                      ((storyReviewBusy || storyReviewPending) &&
+                        busy !== 'savingBeat')
+                    "
                     data-testid="beat-script-visual-direction"
                     rows="3"
                     maxlength="8000"
@@ -2853,6 +2981,22 @@ onUnmounted(() => {
                   />
                 </label>
               </div>
+              <StoryScriptReview
+                :key="
+                  JSON.stringify([project.id, activeStory.id, activeBeat.id])
+                "
+                ref="storyScriptReview"
+                :project-id="project.id"
+                :story-id="activeStory.id"
+                :beat-id="activeBeat.id"
+                :jobs="jobs"
+                :disabled="!!busy || relinkBusy"
+                :prepare="() => flushPending(true)"
+                @accepted="scriptReviewAccepted"
+                @activity="refreshJobs"
+                @busy="storyReviewBusy = $event"
+                @pending="storyReviewPending = $event"
+              />
               <div class="candidate-heading">
                 <h3>{{ t("app.story.choose") }}</h3>
                 <span>{{

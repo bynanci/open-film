@@ -49,7 +49,7 @@ async function legacyV2(segmentId = "segment", text = "Original words") {
   const path = join(directory, "database.sqlite"),
     database = new DatabaseSync(path);
   database.exec(
-    `DROP TABLE transcript_edit_requests;DROP TABLE transcript_editor_history;DROP TABLE transcript_revision_metadata;DROP TABLE review_batches;DROP TABLE review_suggestions;DROP TABLE project_glossary;PRAGMA user_version=2;`,
+    `DROP TABLE scene_script_suggestions;DROP TABLE transcript_edit_requests;DROP TABLE transcript_editor_history;DROP TABLE transcript_revision_metadata;DROP TABLE review_batches;DROP TABLE review_suggestions;DROP TABLE project_glossary;PRAGMA user_version=2;`,
   );
   const header = database
       .prepare("SELECT header FROM intelligence_transcripts")

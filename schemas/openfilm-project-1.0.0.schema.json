@@ -54,6 +54,13 @@
     },
     "filmSettings": {
       "$ref": "#/$defs/filmSettings"
+    },
+    "sceneScriptReviewReceipts": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/sceneScriptReviewReceipt"
+      }
     }
   },
   "required": [
@@ -365,8 +372,14 @@
         "script": {
           "type": "object",
           "properties": {
-            "narration": { "type": "string", "maxLength": 8000 },
-            "visualDirection": { "type": "string", "maxLength": 8000 }
+            "narration": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "visualDirection": {
+              "type": "string",
+              "maxLength": 8000
+            }
           },
           "required": ["narration", "visualDirection"]
         },
@@ -789,6 +802,43 @@
         }
       },
       "required": ["templateId", "targetDuration", "maxDuration"]
+    },
+    "sceneScriptReviewReceipt": {
+      "type": "object",
+      "properties": {
+        "suggestionId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "evidenceHash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "acceptedRevisionId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        }
+      },
+      "required": [
+        "suggestionId",
+        "requestId",
+        "evidenceHash",
+        "acceptedRevisionId",
+        "acceptedAt"
+      ]
     }
   }
 }

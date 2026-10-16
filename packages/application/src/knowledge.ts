@@ -21,6 +21,7 @@ import type { ProjectCatalog } from "@openfilm/catalog";
 import { ProviderRegistry } from "@openfilm/analysis";
 import type {
   LanguageProvider,
+  ProviderDataKind,
   RemoteProviderConsent,
 } from "@openfilm/plugin-sdk";
 import { GlobalGlossaryStore } from "./global-glossary.js";
@@ -85,20 +86,81 @@ export class KnowledgeService {
         "review.providerUnavailable",
         "The review provider must implement language generation.",
       );
+    // Replacements revoke captured registries too: a pending batch must not
+    // keep using consent for a descriptor that is no longer registered.
+    for (const previous of this.registry.list())
+      this.registry.unregister(previous.id);
     this.registry = next;
     this.provider = provider;
   }
 
-  languageProvider() {
+  languageProvider(
+    requiredDataKinds: readonly ProviderDataKind[] = ["text", "transcripts"],
+  ) {
     const provider = this.registry.list()[0];
     return {
       configured: provider !== undefined,
       available:
         provider?.enabled === true &&
-        provider.dataKinds.includes("text") &&
-        provider.dataKinds.includes("transcripts"),
+        requiredDataKinds.every((kind) => provider.dataKinds.includes(kind)),
       ...(provider ? { provider } : {}),
     };
+  }
+
+  /** Shared descriptor-bound generation gate for text review workflows. */
+  async generateReviewText(
+    prompt: string,
+    options: {
+      requiredDataKinds?: readonly ProviderDataKind[];
+      signal?: AbortSignal;
+      maxOutputBytes?: number;
+    } = {},
+  ) {
+    abort(options.signal);
+    const required = options.requiredDataKinds ?? ["text"];
+    const ready = this.languageProvider(required);
+    if (!ready.available || !ready.provider)
+      throw new ApplicationError(
+        "review.providerUnavailable",
+        "Configure and authorize a language provider before reviewing text.",
+      );
+    if (Buffer.byteLength(prompt, "utf8") > REVIEW_PROMPT_BYTE_LIMIT)
+      throw new ApplicationError(
+        "request.tooLarge",
+        "The review request exceeds its byte limit.",
+      );
+    const registry = this.registry;
+    const source = {
+      type: "provider" as const,
+      id: ready.provider.id,
+      ...(this.providerModel === undefined
+        ? {}
+        : { model: this.providerModel }),
+    };
+    const text = await cancellableProviderResult(
+      registry.generate(source.id, prompt, { signal: options.signal }, [
+        ...required,
+      ]),
+      options.signal,
+    );
+    abort(options.signal);
+    if (
+      registry !== this.registry ||
+      !this.languageProvider(required).available
+    )
+      throw new ApplicationError(
+        "review.providerUnavailable",
+        "The review provider authorization changed during generation.",
+      );
+    if (
+      typeof text !== "string" ||
+      Buffer.byteLength(text, "utf8") > (options.maxOutputBytes ?? 200000)
+    )
+      throw new ApplicationError(
+        "review.invalidOutput",
+        "The review provider returned an oversized or non-text result.",
+      );
+    return { text, source };
   }
   grantConsent(consent: RemoteProviderConsent) {
     this.registry.grantConsent(consent);
@@ -983,7 +1045,12 @@ export class KnowledgeService {
   }
   reviewRecoveryStatus(jobId: string) {
     const job = this.catalog.listJobs().find((item) => item.id === jobId);
-    if (!job || !["language-review", "glossary-review"].includes(job.type))
+    if (
+      !job ||
+      !["language-review", "glossary-review", "scene-script-review"].includes(
+        job.type,
+      )
+    )
       throw new ApplicationError(
         "request.notFound",
         "Review job not found.",
@@ -1018,7 +1085,12 @@ export class KnowledgeService {
         "Confirm that the previous review process has stopped before recovering it.",
       );
     const job = this.catalog.listJobs().find((item) => item.id === jobId);
-    if (!job || !["language-review", "glossary-review"].includes(job.type))
+    if (
+      !job ||
+      !["language-review", "glossary-review", "scene-script-review"].includes(
+        job.type,
+      )
+    )
       throw new ApplicationError(
         "request.notFound",
         "Review job not found.",
@@ -1080,7 +1152,12 @@ export class KnowledgeService {
 
   recoverInterruptedReviews() {
     for (const job of this.catalog.listJobs()) {
-      if (!["language-review", "glossary-review"].includes(job.type)) continue;
+      if (
+        !["language-review", "glossary-review", "scene-script-review"].includes(
+          job.type,
+        )
+      )
+        continue;
       if (reviewOwnerState(job.reviewOwner) !== "dead") continue;
       const unfinished = this.catalog.knowledge
         .batches(job.id)
