@@ -17,14 +17,39 @@ switch films while foreign analysis continues; local jobs and pending mutations
 retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
-instead of silently dropping a second action. Future creative milestones remain
-deferred; merging development source is not a **Released** installer or
+instead of silently dropping a second action. The current creative priority is
+the bounded scene-script workflow below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
-The next bounded pain point is capability-aware transcription language defaults:
-an English-only provider should not leave Transcript on unsupported Auto with a
-disabled action. Precision already adjusts to supported choices; Transcript
-needs the same predictable behavior, independently of UI and film languages.
+## Current — Classified memories to scene scripts
+
+Help people turn photos and saved categories into editable scenes, narration
+drafts and visual direction, then compose within an explicit time limit. Library
+tags and chronological grouping feed a bounded offline planner; proposed scenes
+use existing Story beats and the duration solver. A user reviews the actual cut
+before accepting a new Story/composition pair. Stale proposals and failed writes
+must preserve existing films. See [the contract](docs/scene-script-planning.md)
+and [current acceptance tasks](TASKS.md#current--classified-memories-to-scene-scripts).
+
+The [validation record](docs/validation-scene-script-planning.md) separates
+targeted domain/application/browser success, the initial full-suite failures and
+the corrected UI run. Published-head outcomes are recorded in
+[PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks); merge policy
+requires complete green CI and fresh correctness review for that head. Its starting
+main is `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+including merged PR #13; PR #14's fixture repair subsequently merged as
+`61af41fbac17c32ffdc11679612636566bd73a1c`.
+The [OpenCut reference](docs/opencut-reference.md) supplies scene-navigation,
+command and preview/export principles; it does not establish a working
+photo-to-screenplay capability to copy. Offline starters use declared categories
+and chronology, with no image-understanding or generated-voice claim.
+
+After verification, the next creative increment is optional LanguageProvider
+suggestions over declared scene/category text, with review, source binding and
+existing remote consent. Motion/keyframes and visual analysis are separate
+capabilities. Workstation first-open/one-hour memory data and real Resolve QA
+remain independent manual gates; [issue #7](https://github.com/bynanci/open-film/issues/7)
+stays open until actual evidence is collected.
 
 ## 0.1 — Local story and rough cut
 
@@ -164,7 +189,8 @@ See [geometry validation](docs/validation-geometry-parity.md). This milestone do
 not certify actual Resolve/camera/color/installer behavior or build a live GPU
 multitrack compositor. Workstation evidence and explicit safe review recovery
 are merged in PR #6; actual workstation observations remain manual gates.
-Later creative features remain deferred.
+Further creative work is prioritized in the current scene-script slice above;
+geometry itself does not implement script planning, motion or visual analysis.
 Native first-open and long-session memory tooling is documented in
 [the native performance procedure](docs/native-performance.md). It keeps
 renderer intent timing separate from native IPC receipts, records platform

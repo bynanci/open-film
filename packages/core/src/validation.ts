@@ -282,6 +282,17 @@ function story(
     const beat = object(entry, beatPath);
     string(beat.title, `${beatPath}.title`);
     optional(beat, "intent", beatPath, string);
+    optional(beat, "script", beatPath, (value, path) => {
+      const script = object(value, path);
+      for (const field of ["narration", "visualDirection"]) {
+        const text = script[field];
+        if (typeof text !== "string" || [...text].length > 8000)
+          fail(
+            `${path}.${field}`,
+            "expected a string of at most 8000 characters",
+          );
+      }
+    });
     optional(beat, "templateBeatKey", beatPath, string);
     for (const key of ["titleSource", "intentSource"])
       optional(beat, key, beatPath, (v, p) =>

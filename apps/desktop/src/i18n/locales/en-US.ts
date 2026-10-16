@@ -12,6 +12,68 @@ export default {
   ...media,
   ...precision,
   ...transcript,
+  scenePlan: {
+    heading: "Plan script and scenes",
+    description:
+      "Shape selected memories into a scene plan with a clear time budget.",
+    evidence:
+      "This offline draft uses your categories, dates and brief. It does not interpret image contents. Script and visual notes are editable planning text; they do not create voiceover or captions.",
+    close: "Close planner",
+    title: "Film title",
+    brief: "What story would you like to tell?",
+    briefHint: "Describe the occasion, feeling or message you want to share.",
+    grouping: "Arrange scenes by",
+    category: "Categories",
+    chronology: "Capture date",
+    scope: "Memories to include",
+    allMedia: "All eligible media",
+    visibleMedia: "Current library page ({count})",
+    target: "Target length (seconds)",
+    maximum: "Maximum length (seconds)",
+    transition: "Scene rhythm",
+    cut: "Cut",
+    crossfade: "Crossfade",
+    working: "Preparing…",
+    preview: "Preview scene plan",
+    review: "Review your scene plan",
+    reviewHint:
+      "Edit the scene titles, intentions and script notes before creating a new story and edit. Existing films stay available.",
+    timing: "Target {target} · Maximum {maximum}",
+    audioExcluded:
+      "Audio-only sources excluded: {count}. This plan does not add music or recorded narration.",
+    previewAgain:
+      "Your planning settings changed. Preview again before accepting so the duration matches these settings.",
+    sceneTitle: "Scene title",
+    intent: "Scene intention",
+    narration: "Script / narration notes",
+    visualDirection: "Visual direction",
+    candidates: "Candidate memories: {count}",
+    accept: "Create story and edit",
+    accepted:
+      "Your story and edit are ready below. Review the scenes or continue to Edit.",
+    stale:
+      "The source memories or film language changed after this preview. Your script draft is safe here. Preview again to create an up-to-date plan.",
+    discardWarning: "Discard this unsaved scene plan and close the planner?",
+    regenerateWarning:
+      "Previewing again will replace the script changes in this draft. Keep any text you want before continuing.",
+    keep: "Keep draft",
+    discard: "Discard draft",
+    regenerate: "Replace with new preview",
+    draftPending:
+      "Accept or explicitly discard your scene plan before changing projects.",
+    sceneTiming: "Actual {actual} · Budget {target}",
+    memoryPreview: "Selected memory preview",
+    categories: "Categories",
+    categoriesHint:
+      "Each row is one category, including punctuation and line breaks. The first category groups this memory into a scene.",
+    categoryLabel: "Category {number}",
+    addCategory: "Add category",
+    removeCategory: "Remove category {number}",
+    categoryRequired: "Enter a category in every row, or remove the empty row.",
+    saveCategories: "Save categories",
+    categoriesSaved: "Categories saved.",
+    categoryPending: "Save the current categories before continuing.",
+  },
   captions: {
     title: "Captions",
     description:
@@ -106,6 +168,17 @@ export default {
   },
   errors: {
     ...system.errors,
+    story: {
+      ...system.errors.story,
+      sceneTooShort:
+        "These scenes need at least {minimum} seconds. Increase the target and maximum length, or combine categories.",
+      sceneLimit:
+        "This scene plan has more than {limit} groups. Use fewer categories or select a smaller set of memories.",
+      planStale:
+        "The source memories or film language changed. Preview your scene plan again before accepting.",
+      planConflict:
+        "This scene plan was already accepted with different content. Open the created story or start a new plan.",
+    },
     captions: {
       srtTextUnsupported:
         "This text contains formatting syntax SRT cannot preserve reliably. Export WebVTT instead.",

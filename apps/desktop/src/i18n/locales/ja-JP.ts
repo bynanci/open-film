@@ -12,6 +12,68 @@ export default {
   ...media,
   ...precision,
   ...transcript,
+  scenePlan: {
+    heading: "脚本とシーンを計画",
+    description: "思い出をシーンにまとめ、それぞれの時間を割り当てます。",
+    evidence:
+      "このオフラインの下書きは、カテゴリー、撮影日、あらすじに基づきます。写真の内容は認識しません。脚本と演出メモは編集可能な計画用テキストで、ナレーション音声や字幕は生成しません。",
+    close: "計画を閉じる",
+    title: "作品名",
+    brief: "どんな物語を伝えたいですか？",
+    briefHint: "きっかけ、伝えたい気持ちやメッセージを記入してください。",
+    grouping: "シーンのまとめ方",
+    category: "カテゴリー",
+    chronology: "撮影日",
+    scope: "使う思い出",
+    allMedia: "条件に合うすべてのメディア",
+    visibleMedia: "現在のライブラリページ（{count}）",
+    target: "目標時間（秒）",
+    maximum: "上限時間（秒）",
+    transition: "シーンのリズム",
+    cut: "カット",
+    crossfade: "クロスフェード",
+    working: "準備中…",
+    preview: "シーン案をプレビュー",
+    review: "シーン案を確認",
+    reviewHint:
+      "シーン名、意図、脚本メモを編集してから、新しいストーリーと編集を作成します。既存の作品は残ります。",
+    timing: "目標 {target} · 上限 {maximum}",
+    audioExcluded:
+      "音声のみの素材を除外しました：{count}。この計画では音楽や収録済みのナレーションを追加しません。",
+    previewAgain:
+      "計画の設定が変わりました。もう一度プレビューし、時間を確認してから作成してください。",
+    sceneTitle: "シーン名",
+    intent: "シーンの意図",
+    narration: "脚本・ナレーションメモ",
+    visualDirection: "映像の演出",
+    candidates: "候補の思い出：{count}",
+    accept: "ストーリーと編集を作成",
+    accepted:
+      "ストーリーと編集を作成しました。下でシーンを確認するか、編集に進めます。",
+    stale:
+      "プレビュー後に素材または作品の言語が変わりました。脚本の下書きはここに残っています。再度プレビューして最新の案を作成してください。",
+    discardWarning: "未保存のシーン案を破棄して閉じますか？",
+    regenerateWarning:
+      "再プレビューすると、この下書きで編集した脚本が置き換わります。残したい文章を先に控えてください。",
+    keep: "下書きを残す",
+    discard: "下書きを破棄",
+    regenerate: "新しいプレビューで置換",
+    draftPending:
+      "プロジェクトを切り替える前に、シーン案を採用するか破棄してください。",
+    sceneTiming: "実際 {actual} · 予算 {target}",
+    memoryPreview: "選択した思い出のプレビュー",
+    categories: "カテゴリー",
+    categoriesHint:
+      "各行が1つのカテゴリーです。句読点や改行も保持します。最初のカテゴリーでシーンにまとめます。",
+    categoryLabel: "カテゴリー {number}",
+    addCategory: "カテゴリーを追加",
+    removeCategory: "カテゴリー {number} を削除",
+    categoryRequired:
+      "各行にカテゴリーを入力するか、空の行を削除してください。",
+    saveCategories: "カテゴリーを保存",
+    categoriesSaved: "カテゴリーを保存しました。",
+    categoryPending: "現在のカテゴリーを保存してから続けてください。",
+  },
   captions: {
     title: "字幕",
     description:
@@ -104,6 +166,17 @@ export default {
   },
   errors: {
     ...system.errors,
+    story: {
+      ...system.errors.story,
+      sceneTooShort:
+        "これらのシーンには少なくとも {minimum} 秒必要です。目標時間と上限時間を延ばすか、カテゴリーをまとめてください。",
+      sceneLimit:
+        "このシーン案は {limit} グループを超えています。カテゴリーを減らすか、思い出を絞ってください。",
+      planStale:
+        "素材または作品の言語が変わりました。シーン案を再プレビューしてから採用してください。",
+      planConflict:
+        "このシーン案は別の内容ですでに採用されています。作成済みのストーリーを開くか、新しい案を作成してください。",
+    },
     captions: {
       srtTextUnsupported:
         "この文字には SRT で確実に保持できない書式の構文が含まれています。WebVTT で書き出してください。",

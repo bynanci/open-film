@@ -5,6 +5,39 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — Classified memories to scene scripts
+
+Scope and acceptance: [scene-script planning](docs/scene-script-planning.md).
+Evidence: [validation record](docs/validation-scene-script-planning.md).
+The current slice starts from main `e2e926b23ac0fe3bb8aa1d474592a3aef80e6ae6`,
+which includes merged PR #13; PR #14's isolated fixture repair is now merged in
+main `61af41fbac17c32ffdc11679612636566bd73a1c`. The record separates passing
+targeted tests, the initial full-browser failures and corrected 13-test UI run.
+Published-head CI/review follows the merge policy below. Real workstation
+evidence is tracked by [issue #7](https://github.com/bynanci/open-film/issues/7).
+
+- [x] Let people classify memories in Library and review category/chronology-based
+      scenes without claiming automatic understanding of photo contents.
+- [x] Provide editable scene purpose, narration and visual direction in the film
+      language; preserve custom text after save/reopen and UI language changes.
+- [x] Preview the actual solver-generated cut against target/maximum durations,
+      with valid cuts/crossfades and protected required/locked selections.
+- [x] Accept a reviewed plan as one new Story/composition pair, reject stale
+      inputs and preserve unrelated films through save failures and retry/reopen.
+- [x] Share bounded planning and acceptance through Desktop, HTTP and CLI, with
+      generated-media unit/integration/browser regressions, large valid plan
+      payloads and protected controls during delayed acceptance.
+- [x] Fix the observed boundary/review failures and preserve passing corrected
+      UI regressions for pseudo-layout and concurrent typing during beat saves.
+
+Merge policy: require complete green CI for the exact published head, refresh
+its review/head/base and resolve correctness findings before merge. Current
+results are recorded in [PR #15 checks](https://github.com/bynanci/open-film/pull/15/checks).
+
+Narration synthesis, image interpretation, motion/keyframes and a scene-writing
+LanguageProvider are outside this slice. Optional reviewable language assistance
+for declared scene/category text is the next creative increment after verification.
+
 ## P0 — Foundation and media workflow
 
 - [x] Let users cancel an unresponsive transcription provider, close/reopen and

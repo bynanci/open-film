@@ -49,6 +49,24 @@ export interface EditorState extends EditorDocument {
   canRedo: boolean;
 }
 
+export interface ScenePlanOptions {
+  title: string;
+  groupBy: "category" | "chronology";
+  targetDuration: number;
+  maxDuration: number;
+  brief?: string;
+  assetIds?: string[];
+  transition: "cut" | "crossfade";
+}
+export interface ScenePlan {
+  story: Story;
+  composition: Composition;
+  sourceAssetIds: string[];
+  sourceSignature: string;
+  transition: "cut" | "crossfade";
+  excludedAudioCount: number;
+}
+
 export interface ExportCompatibilityReport {
   format: string;
   warnings: string[];
@@ -647,6 +665,17 @@ export const api = {
     ),
   analyze: () =>
     post<{ events: Event[]; duplicates: SimilarityGroup[] }>("/analyze"),
+  previewScenePlan: (options: ScenePlanOptions) =>
+    post<{ plan: ScenePlan }>("/story-plans/preview", options),
+  acceptScenePlan: (plan: ScenePlan) =>
+    post<{ story: Story; composition: Composition }>("/story-plans/accept", {
+      plan: {
+        story: plan.story,
+        sourceAssetIds: plan.sourceAssetIds,
+        sourceSignature: plan.sourceSignature,
+        transition: plan.transition,
+      },
+    }),
   createStory: (body: unknown) => post<{ story: Story }>("/stories", body),
   refreshSuggestions: (storyId: string, beatId: string) =>
     post<{ story: Story }>(

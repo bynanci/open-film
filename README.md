@@ -99,6 +99,16 @@ edited word alignment is never presented as precise. No model, remote service,
 caption track or burn-in is required. See [the workflow and limits](docs/composition-captions.md)
 and [the pinned OpenCut reference](docs/opencut-reference.md).
 
+**Scene-script planning is the current development slice:** use saved media
+categories or chronology to draft editable scenes, narration and visual direction,
+then review an actual solver-generated cut against the film's time limit. Accepting
+creates a new Story and composition while preserving existing films. The offline
+starters use declared classifications; they do not infer photo contents or generate
+voice-over. See [the workflow and validation contract](docs/scene-script-planning.md).
+The [validation record](docs/validation-scene-script-planning.md) separates
+targeted results, initial full-suite failures and corrected UI checks. Complete
+candidate CI/review is tracked in [TASKS](TASKS.md) and [PR #15](https://github.com/bynanci/open-film/pull/15/checks).
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`

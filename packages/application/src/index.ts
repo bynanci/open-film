@@ -121,6 +121,18 @@ export {
   ownsReviewOwner,
   reviewOwnerState,
 } from "./review-owner.js";
+import {
+  previewScenePlan,
+  acceptScenePlan,
+  type ScenePlan,
+  type ScenePlanOptions,
+  type ScenePlanAcceptance,
+} from "./scene-plan.js";
+export type {
+  ScenePlan,
+  ScenePlanOptions,
+  ScenePlanAcceptance,
+} from "./scene-plan.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions;
 
 export interface ImportOptions {
@@ -955,6 +967,17 @@ export class OpenFilmApplication {
       throw error;
     }
     return structuredClone(this.project);
+  }
+
+  previewScenePlan(options: ScenePlanOptions): ScenePlan {
+    return previewScenePlan(this, options);
+  }
+
+  acceptScenePlan(plan: ScenePlanAcceptance): {
+    story: Story;
+    composition: Composition;
+  } {
+    return acceptScenePlan(this, plan, () => this.saveSync());
   }
 
   generateStory(options: StoryOptions = {}): Story {

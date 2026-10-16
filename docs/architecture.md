@@ -174,6 +174,30 @@ The application caps a story scope at 2,000 candidates, including locks. Catalog
 pagination supports larger libraries, but no 100,000-asset benchmark or unrestricted
 story-scale guarantee is implied.
 
+## Classified memories and scene-script planning
+
+The scene-script slice extends `StoryBeat` with optional narration and visual
+direction in `script`. Portable Story algorithms group a bounded source scope by
+the first saved category tag or chronology and supply editable offline starters.
+They use declared metadata, not inferred image contents. The film content locale
+selects starter text; saved user script is independent of interface language.
+
+The application binds current catalog source fields, project ID and film locale
+in a source signature, owns scope validation and uses the existing solver's actual
+preview. Planning does not rehash actual source-file bytes; rendering retains its
+own source inspection. Each scene receives a playable minimum before remaining
+time is allocated. Acceptance validates the reviewed Story, solves again
+and atomically publishes a new Story/composition pair; it never treats a client
+composition as executable authority. Durable receipt identity handles the exact
+same acceptance retry while stale or changed proposals are rejected. API, CLI and
+Desktop use this service rather than a second Vue-only planning engine.
+
+This adds no media-analysis provider, generated speech, motion renderer or catalog
+replacement. Script text remains Story content in the portable project. Scope,
+duration, failure and regression requirements are recorded in
+[scene-script planning](scene-script-planning.md); candidate verification is
+tracked separately from the contract.
+
 ## Editing and source relocation
 
 The solver applies pure commands to composition/story snapshots. The application
