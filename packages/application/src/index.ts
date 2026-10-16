@@ -640,16 +640,20 @@ export class OpenFilmApplication {
     }
   }
 
-  close(): void {
+  /** Lifecycle owners may require a successful workspace save before closing. */
+  close(options: { requireSave?: boolean } = {}): void {
     if (this.activeJobs)
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
     try {
-      if (this.intent !== "export" && !this.persistenceConflict)
+      if (
+        this.intent !== "export" &&
+        (options.requireSave || !this.persistenceConflict)
+      )
         this.saveSync();
     } catch (error) {
-      if (!this.persistenceConflict) throw error;
+      if (options.requireSave || !this.persistenceConflict) throw error;
     }
     this.catalog.close();
   }

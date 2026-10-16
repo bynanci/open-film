@@ -106,6 +106,23 @@ The review of `b58cb685a58a0d9a73ca83cb9a0c9694cd38fece` found:
 These source changes require new complete gates, exact-head CI and review before
 merge. The earlier 109-test browser run does not certify these later writers.
 
+The first complete unit/integration run of
+`0f79e9667a51c860ae4be9a68ee4710dc47f1427` passed **1,965 cases and failed one**.
+The existing owned-service regression replaced `project.json` with a directory:
+default stale-observer cleanup suppressed the persistence error, allowing a
+successful shutdown acknowledgement. The correction keeps default safe project
+close/switch behavior, while runtime shutdown explicitly requires a successful
+workspace save. Export intent remains read-only. The original integration
+assertions are retained; new strict-close cases first reproduced directory,
+malformed, missing and previously detected conflicts as four failures, with six
+controls passing. This regression must pass with the complete corrected-head
+gates before merge.
+
+After the correction, **10/10 strict-close cases**, **64/64 focused application
+cases** and the **unchanged 7/7 owned-service integration cases** passed. In
+particular, the original storage-failure case again receives `close-failed`,
+exit 1 and no successful close acknowledgement. No old assertion was relaxed.
+
 Complete published-candidate results are recorded in
 [PR #16 checks](https://github.com/bynanci/open-film/pull/16/checks);
 this dated local record does not substitute a targeted or earlier run for them.

@@ -2519,7 +2519,7 @@ export async function startServer(options: ServerOptions = {}) {
     await mutationQueue;
     await stopped;
     await discardUploads();
-    app?.close();
+    app?.close({ requireSave: true });
   };
   return { server, port, close };
 }

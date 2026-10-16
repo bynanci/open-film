@@ -131,6 +131,8 @@ project must reopen before publishing; stale state must not overwrite the newer
 file during cleanup. Missing, unreadable or malformed saved files also block
 further saving, so cleanup cannot recreate or overwrite external state.
 Incidental root `updatedAt` changes do not count as scene content changes.
+Safe observer cleanup does not certify a successful save: service shutdown uses
+strict workspace saving before issuing its successful close acknowledgement.
 
 Jobs use the existing Activity, cancellation and execution-owner machinery.
 Cancellation releases a non-cooperating provider and rejects late output. Another
