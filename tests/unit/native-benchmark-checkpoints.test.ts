@@ -677,6 +677,7 @@ describe("actual workspace readiness guards", () => {
       initializeLocale: async () => {},
       refreshProject: async () => {},
       refreshRecents: async () => {},
+      restoreScriptReviewTarget: () => {},
       storyTitle: ref(""),
       storyTemplate: ref(""),
       targetDuration: ref(0),
@@ -694,6 +695,9 @@ describe("actual workspace readiness guards", () => {
         {
           categoryDirty: ref(false),
           scenePlanDraftPresent: ref(false),
+          beatDirty: ref(false),
+          storyReviewBusy: ref(false),
+          storyReviewPending: ref(false),
         },
       ),
       poll: undefined,
@@ -1016,6 +1020,7 @@ describe("actual workspace readiness guards", () => {
     const categories = categoryNavigationFixture(busy, error);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
       ...categories,
+      storyScriptReview: ref(null),
       tab,
       relinkBusy: ref(!!options.relinking),
       busy,
@@ -1073,6 +1078,7 @@ describe("actual workspace readiness guards", () => {
       },
     );
     const compose = actualFunction("apps/desktop/src/App.vue", "compose", {
+      storyScriptReview: ref(null),
       flushEditor,
       activeStory: ref({ id: "story" }),
       beatDirty,
@@ -1277,6 +1283,9 @@ describe("actual workspace readiness guards", () => {
             {
               categoryDirty: ref(false),
               scenePlanDraftPresent: ref(false),
+              beatDirty: ref(false),
+              storyReviewBusy: ref(false),
+              storyReviewPending: ref(false),
             },
           ),
           keyboard: () => {},
@@ -1365,6 +1374,7 @@ describe("actual workspace readiness guards", () => {
       },
       refreshProject: async () => {},
       refreshRecents: async () => {},
+      restoreScriptReviewTarget: () => {},
       document: { querySelector: () => ({ getClientRects: () => [1] }) },
     };
     const stopReady = vi.fn();
@@ -1527,6 +1537,7 @@ describe("actual workspace readiness guards", () => {
     const categories = categoryNavigationFixture(busy, categoryError);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
       ...categories,
+      storyScriptReview: ref(null),
       tab,
       relinkBusy: ref(false),
       busy,

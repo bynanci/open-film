@@ -12,6 +12,38 @@ export default {
   ...media,
   ...precision,
   ...transcript,
+  scriptReview: {
+    heading: "Script suggestions",
+    description:
+      "Review one saved scene field at a time. Changes are saved only when you accept them.",
+    field: "Text to review",
+    generate: "Suggest improvements",
+    history: "Show reviewed suggestions",
+    pending: "Show pending suggestions",
+    providerMissing:
+      "No optional language provider is configured for script review. You can keep writing your own script.",
+    remoteConsent:
+      "Script review sends the selected script text and its scene context to this provider after you grant consent.",
+    dataAccess:
+      "This review sends the selected text, film and scene titles, story and scene IDs, scene intention, timing targets and film language. It does not send media files, locations or the other script field.",
+    grantConsent: "Allow declared script review data",
+    revokeConsent: "Revoke script review consent",
+    uncertainAcceptance:
+      "The acceptance response was lost. Keep this scene open and retry the same acceptance to confirm what was saved.",
+    retryAcceptance: "Retry acceptance",
+    reopenRequired:
+      "The saved project changed or could not be verified. Reopen this project before making further changes. Earlier changes that were saved will be kept.",
+    reload: "Reload suggestions",
+    running: "Reviewing scene script…",
+    cancel: "Cancel script review",
+    cancelled:
+      "Script review cancelled. Saved suggestions are still available.",
+    noSuggestions:
+      "No pending suggestions for this field. Optional language review keeps your text unchanged until you accept a suggestion.",
+    noHistory: "No suggestions have been recorded for this field.",
+    pages: "Script suggestion pages",
+    jobTitle: "Scene script review",
+  },
   scenePlan: {
     heading: "Plan script and scenes",
     description:

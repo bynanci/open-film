@@ -24,6 +24,8 @@ export const GLOSSARY_SOURCE_LIMIT = 512;
 export const GLOSSARY_REPLACEMENT_LIMIT = 4096;
 export const REVIEW_PAGE_LIMIT = 100;
 export const TRANSCRIPT_TEXT_LIMIT = 20000;
+export const SCENE_SCRIPT_TEXT_LIMIT = 8000;
+export type SceneScriptField = "narration" | "visualDirection";
 
 export interface ReviewSuggestion {
   id: string;
@@ -33,6 +35,8 @@ export interface ReviewSuggestion {
     segmentId?: string;
     clipId?: string;
     beatId?: string;
+    storyId?: string;
+    field?: SceneScriptField;
   };
   sourceRevisionId: string;
   before: string;
@@ -59,6 +63,13 @@ export type TranscriptReviewSuggestion = ReviewSuggestion & {
     clipId?: string;
     beatId?: string;
   };
+};
+
+/** Provider-authored evidence for one editable field of an existing Story scene. */
+export type SceneScriptReviewSuggestion = ReviewSuggestion & {
+  kind: "scene-script";
+  target: { storyId: string; beatId: string; field: SceneScriptField };
+  source: { type: "provider"; id: string; model?: string };
 };
 
 export interface ReviewBatch {
@@ -127,6 +138,13 @@ function providerIdentifier(value: unknown): string {
   return value;
 }
 
+/** Story IDs predate knowledge review and remain opaque nonblank strings. */
+function storyIdentifier(value: unknown): string {
+  if (typeof value !== "string" || !value.trim())
+    throw new Error("Story and scene IDs must be nonblank strings.");
+  return value;
+}
+
 function date(value: unknown): string {
   if (
     typeof value !== "string" ||
@@ -167,9 +185,13 @@ export function validateReviewSuggestion(value: unknown): ReviewSuggestion {
   const target = object(data.target);
   const source = object(data.source);
   if (
-    ![target.assetId, target.segmentId, target.clipId, target.beatId].some(
-      (value) => value !== undefined,
-    )
+    ![
+      target.assetId,
+      target.segmentId,
+      target.clipId,
+      target.beatId,
+      target.storyId,
+    ].some((value) => value !== undefined)
   )
     throw new Error("Review evidence must identify a target.");
   if (
@@ -198,6 +220,12 @@ export function validateReviewSuggestion(value: unknown): ReviewSuggestion {
     throw new Error("A review suggestion must change the text.");
   const confidence = data.confidence;
   if (
+    target.field !== undefined &&
+    target.field !== "narration" &&
+    target.field !== "visualDirection"
+  )
+    throw new Error("Invalid scene script field.");
+  if (
     confidence !== undefined &&
     (typeof confidence !== "number" ||
       !Number.isFinite(confidence) ||
@@ -220,7 +248,18 @@ export function validateReviewSuggestion(value: unknown): ReviewSuggestion {
         : { clipId: identifier(target.clipId) }),
       ...(target.beatId === undefined
         ? {}
-        : { beatId: identifier(target.beatId) }),
+        : {
+            beatId:
+              data.kind === "scene-script"
+                ? storyIdentifier(target.beatId)
+                : identifier(target.beatId),
+          }),
+      ...(target.storyId === undefined
+        ? {}
+        : { storyId: storyIdentifier(target.storyId) }),
+      ...(target.field === undefined
+        ? {}
+        : { field: target.field as SceneScriptField }),
     },
     sourceRevisionId: identifier(data.sourceRevisionId),
     before,
@@ -260,6 +299,29 @@ export function validateTranscriptReviewSuggestion(
       "Transcript corrections require both a media asset and a segment target.",
     );
   return evidence as TranscriptReviewSuggestion;
+}
+
+export function validateSceneScriptReviewSuggestion(
+  value: unknown,
+): SceneScriptReviewSuggestion {
+  const evidence = validateReviewSuggestion(value);
+  const target = object(object(value).target);
+  if (
+    evidence.kind !== "scene-script" ||
+    !evidence.target.storyId ||
+    !evidence.target.beatId ||
+    !evidence.target.field ||
+    Object.keys(target).some(
+      (key) => !["storyId", "beatId", "field"].includes(key),
+    ) ||
+    evidence.source.type !== "provider" ||
+    [...evidence.before].length > SCENE_SCRIPT_TEXT_LIMIT ||
+    [...evidence.after].length > SCENE_SCRIPT_TEXT_LIMIT
+  )
+    throw new Error(
+      "Scene script suggestions require a provider, a Story scene field, and valid script text.",
+    );
+  return evidence as SceneScriptReviewSuggestion;
 }
 
 /** Project entries shadow global definitions. Localized UI never changes content data. */

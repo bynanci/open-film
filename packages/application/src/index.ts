@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readFileSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -94,6 +95,11 @@ import {
   type KnowledgeOptions,
   type ReviewOptions,
 } from "./knowledge.js";
+import {
+  SceneScriptReviewService,
+  savedScriptProjectIdentity,
+  type SceneScriptReviewOptions,
+} from "./scene-script-review.js";
 export {
   MediaIntelligence,
   type IntelligenceOptions,
@@ -115,6 +121,10 @@ export {
   type ReviewOptions,
 } from "./knowledge.js";
 export { GlobalGlossaryStore } from "./global-glossary.js";
+export {
+  SceneScriptReviewService,
+  type SceneScriptReviewOptions,
+} from "./scene-script-review.js";
 export { resolveUserDataDirectory } from "./user-data.js";
 export {
   createReviewOwner,
@@ -221,7 +231,10 @@ export class OpenFilmApplication {
   readonly transcriptEditor: TranscriptEditor;
   readonly captions: CaptionService;
   readonly knowledge: KnowledgeService;
+  readonly sceneScriptReview: SceneScriptReviewService;
   private activeJobs = 0;
+  private persistedProject: string;
+  private persistenceConflict = false;
 
   private constructor(
     readonly directory: string,
@@ -229,6 +242,9 @@ export class OpenFilmApplication {
     runtime: OpenFilmRuntimeOptions = {},
     private readonly intent: "workspace" | "export" = "workspace",
   ) {
+    // Bind the baseline to the loaded state, never a second disk read that
+    // could have advanced while open() was awaiting filesystem work.
+    this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
       this.intelligence = new MediaIntelligence(this.catalog);
@@ -238,6 +254,14 @@ export class OpenFilmApplication {
         this.catalog,
         this.transcriptEditor,
         runtime,
+      );
+      this.sceneScriptReview = new SceneScriptReviewService(
+        this,
+        (next) => this.publishProject(next),
+        (disk) => {
+          if (savedScriptProjectIdentity(disk) !== this.persistedProject)
+            this.persistenceConflict = true;
+        },
       );
     } catch (error) {
       this.catalog.close();
@@ -314,80 +338,56 @@ export class OpenFilmApplication {
       // references, or save this possibly obsolete project on CLI shutdown.
       return application;
     }
-    // Cache references are relative to the project, so its complete directory can move.
-    for (const summary of application.catalog.iterateAssetSummaries()) {
-      let asset = application.catalog.getAsset(summary.id)!;
-      const managed = asset.metadata["openfilm.managedSource"] as
-        { relativePath?: unknown; uri?: unknown } | undefined;
-      const uri = managedSourceUri(canonical, asset);
-      if (uri && asset.uri !== uri) {
-        const managedRoot = join(canonical, "sources");
-        const reference = referenceFor(asset, project.mediaLibraries);
-        asset = {
-          ...asset,
-          uri,
-          metadata: {
-            ...asset.metadata,
-            "openfilm.managedSource": { ...managed, uri },
-            "openfilm.reference": {
-              ...reference,
-              rootUri: pathToFileURL(managedRoot).href,
-              relativePath: relative(managedRoot, localPath(uri))
-                .split(sep)
-                .join("/"),
-            },
-          },
-        };
-        application.catalog.upsertAsset(asset);
-        const library = project.mediaLibraries.find(
-          (item) => item.id === reference.mediaLibraryId,
-        );
-        if (library) library.uri = pathToFileURL(managedRoot).href;
+    try {
+      application.repairMediaReferences();
+      for (const job of application.catalog.listJobs()) {
+        if (
+          [
+            "language-review",
+            "glossary-review",
+            "scene-script-review",
+            "transcribe",
+            "waveform",
+            "scenes",
+          ].includes(job.type)
+        )
+          continue;
+        if (job.status === "running" || job.status === "queued")
+          application.catalog.saveJob({
+            ...job,
+            status: "failed",
+            updatedAt: new Date().toISOString(),
+            errors: [
+              ...(job.errors ?? []),
+              {
+                uri: "",
+                stage: "interrupted",
+                message:
+                  job.type === "import"
+                    ? "The previous process stopped. Import again to resume completed files."
+                    : "The previous process stopped. Retry this task; previously saved analysis remains available.",
+              },
+            ],
+          });
       }
-      const thumbnailUri =
-        asset.thumbnailUri &&
-        portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
-      const proxyUri =
-        asset.proxyUri && portableCacheUri(asset, asset.proxyUri, "proxies");
-      if (thumbnailUri !== asset.thumbnailUri || proxyUri !== asset.proxyUri)
-        application.catalog.upsertAsset({
-          ...asset,
-          ...(thumbnailUri ? { thumbnailUri } : {}),
-          ...(proxyUri ? { proxyUri } : {}),
-        });
-    }
-    for (const job of application.catalog.listJobs()) {
+      application.knowledge.recoverInterruptedReviews();
+      application.intelligence.recoverInterruptedJobs();
+      return application;
+    } catch (error) {
+      application.catalog.close();
       if (
-        [
-          "language-review",
-          "glossary-review",
-          "transcribe",
-          "waveform",
-          "scenes",
-        ].includes(job.type)
+        error &&
+        typeof error === "object" &&
+        "errcode" in error &&
+        error.errcode === 5
       )
-        continue;
-      if (job.status === "running" || job.status === "queued")
-        application.catalog.saveJob({
-          ...job,
-          status: "failed",
-          updatedAt: new Date().toISOString(),
-          errors: [
-            ...(job.errors ?? []),
-            {
-              uri: "",
-              stage: "interrupted",
-              message:
-                job.type === "import"
-                  ? "The previous process stopped. Import again to resume completed files."
-                  : "The previous process stopped. Retry this task; previously saved analysis remains available.",
-            },
-          ],
-        });
+        throw new ApplicationError(
+          "jobs.busy",
+          "Another process is updating this project. Wait for it to finish before reopening.",
+          409,
+        );
+      throw error;
     }
-    application.knowledge.recoverInterruptedReviews();
-    application.intelligence.recoverInterruptedJobs();
-    return application;
   }
 
   static async openForExport(
@@ -405,13 +405,134 @@ export class OpenFilmApplication {
     return uri && uri !== asset.uri ? { ...asset, uri } : asset;
   }
 
-  private saveSync(): void {
-    const project = validateProject({
-      ...this.project,
-      updatedAt: new Date().toISOString(),
+  private repairMediaReferences(): void {
+    this.catalog.withProjectWrite(() => {
+      let next: OpenFilmProject | undefined;
+      // Keep moved catalog locations and their manifest library roots together.
+      for (const summary of this.catalog.iterateAssetSummaries()) {
+        let asset = this.catalog.getAsset(summary.id)!;
+        const managed = asset.metadata["openfilm.managedSource"] as
+          { relativePath?: unknown; uri?: unknown } | undefined;
+        const uri = managedSourceUri(this.directory, asset);
+        if (uri) {
+          const managedRoot = join(this.directory, "sources");
+          const rootUri = pathToFileURL(managedRoot).href;
+          const reference = referenceFor(asset, this.project.mediaLibraries);
+          const relativePath = relative(managedRoot, localPath(uri))
+            .split(sep)
+            .join("/");
+          if (
+            asset.uri !== uri ||
+            reference.rootUri !== rootUri ||
+            reference.relativePath !== relativePath
+          ) {
+            asset = {
+              ...asset,
+              uri,
+              metadata: {
+                ...asset.metadata,
+                "openfilm.managedSource": { ...managed, uri },
+                "openfilm.reference": { ...reference, rootUri, relativePath },
+              },
+            };
+            this.catalog.upsertAsset(asset);
+          }
+          const library = (next ?? this.project).mediaLibraries.find(
+            (item) => item.id === reference.mediaLibraryId,
+          );
+          if (library && library.uri !== rootUri) {
+            next ??= {
+              ...this.project,
+              mediaLibraries: this.project.mediaLibraries.map((item) => ({
+                ...item,
+              })),
+            };
+            next.mediaLibraries.find((item) => item.id === library.id)!.uri =
+              rootUri;
+          }
+        }
+        const thumbnailUri =
+          asset.thumbnailUri &&
+          portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
+        const proxyUri =
+          asset.proxyUri && portableCacheUri(asset, asset.proxyUri, "proxies");
+        if (thumbnailUri !== asset.thumbnailUri || proxyUri !== asset.proxyUri)
+          this.catalog.upsertAsset({
+            ...asset,
+            ...(thumbnailUri ? { thumbnailUri } : {}),
+            ...(proxyUri ? { proxyUri } : {}),
+          });
+      }
+      if (next) this.publishProject(next);
     });
-    atomicJsonSync(join(this.directory, "project.json"), project);
-    this.project = project;
+  }
+
+  private publishProject(next: OpenFilmProject): void {
+    const previous = this.project;
+    try {
+      this.project = next;
+      this.saveSync();
+    } catch (error) {
+      this.project = previous;
+      throw error;
+    }
+  }
+
+  private saveSync(): void {
+    if (this.persistenceConflict)
+      throw new ApplicationError(
+        "story.planConflict",
+        "Another process changed the saved project. Reopen it before saving further changes.",
+        409,
+      );
+    try {
+      const project = this.catalog.withProjectWrite(() => {
+        let disk: unknown;
+        try {
+          disk = JSON.parse(
+            readFileSync(join(this.directory, "project.json"), "utf8"),
+          );
+        } catch {
+          this.persistenceConflict = true;
+          throw new ApplicationError(
+            "story.planConflict",
+            "The saved project could not be verified. Reopen it before saving further changes.",
+            409,
+          );
+        }
+        if (savedScriptProjectIdentity(disk) !== this.persistedProject) {
+          this.persistenceConflict = true;
+          throw new ApplicationError(
+            "story.planConflict",
+            "Another process changed the saved project. Reopen it before saving further changes.",
+            409,
+          );
+        }
+        const project = validateProject({
+          ...this.project,
+          updatedAt: new Date().toISOString(),
+        });
+        atomicJsonSync(join(this.directory, "project.json"), project);
+        return project;
+      });
+      // An owned lock can fail to commit after publication. Retaining the old
+      // baseline until it returns keeps later cleanup from undoing that file.
+      this.project = project;
+      this.persistedProject = savedScriptProjectIdentity(project);
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "errcode" in error &&
+        error.errcode === 5
+      )
+        throw new ApplicationError(
+          "jobs.busy",
+          "Another process is saving this project. Wait for it to finish before retrying.",
+          409,
+        );
+      throw error;
+    }
   }
 
   async save(): Promise<void> {
@@ -540,12 +661,39 @@ export class OpenFilmApplication {
     }
   }
 
-  close(): void {
+  async runSceneScriptReview(
+    storyId: string,
+    options: SceneScriptReviewOptions,
+  ): Promise<Job> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active job before starting another review.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.sceneScriptReview.run(storyId, options);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  /** Lifecycle owners may require a successful workspace save before closing. */
+  close(options: { requireSave?: boolean } = {}): void {
     if (this.activeJobs)
       throw new Error(
         "Cancel or wait for active jobs before closing this project",
       );
-    if (this.intent !== "export") this.saveSync();
+    try {
+      if (
+        this.intent !== "export" &&
+        (options.requireSave || !this.persistenceConflict)
+      )
+        this.saveSync();
+    } catch (error) {
+      if (options.requireSave || !this.persistenceConflict) throw error;
+    }
     this.catalog.close();
   }
 
@@ -834,9 +982,11 @@ export class OpenFilmApplication {
       let library = libraries.get(uri);
       if (!library) {
         library = { id: randomUUID(), uri, name: basename(root) };
-        this.project.mediaLibraries.push(library);
+        this.publishProject({
+          ...this.project,
+          mediaLibraries: [...this.project.mediaLibraries, library],
+        });
         libraries.set(uri, library);
-        this.saveSync();
       }
       return library;
     };
@@ -959,13 +1109,7 @@ export class OpenFilmApplication {
         ),
       };
     validateProject(next);
-    try {
-      this.project = next;
-      this.saveSync();
-    } catch (error) {
-      this.project = previous;
-      throw error;
-    }
+    this.publishProject(next);
     return structuredClone(this.project);
   }
 
@@ -1062,8 +1206,10 @@ export class OpenFilmApplication {
         ? { maxDuration: options.maxDuration }
         : {}),
     });
-    this.project.stories.push(story);
-    this.saveSync();
+    this.publishProject({
+      ...this.project,
+      stories: [...this.project.stories, story],
+    });
     return structuredClone(story);
   }
 
@@ -1116,13 +1262,7 @@ export class OpenFilmApplication {
     updated.beats.find((item) => item.id === beatId)!.candidateAssetIds =
       ranked;
     validateProject(next);
-    try {
-      this.project = next;
-      this.saveSync();
-    } catch (error) {
-      this.project = previous;
-      throw error;
-    }
+    this.publishProject(next);
     return structuredClone(updated);
   }
 
@@ -1171,8 +1311,10 @@ export class OpenFilmApplication {
       story,
       assets.filter((asset) => !previewIssue(asset)),
     );
-    this.project.timelines.push(composition);
-    this.saveSync();
+    this.publishProject({
+      ...this.project,
+      timelines: [...this.project.timelines, composition],
+    });
     return structuredClone(composition);
   }
 

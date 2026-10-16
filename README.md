@@ -99,7 +99,7 @@ edited word alignment is never presented as precise. No model, remote service,
 caption track or burn-in is required. See [the workflow and limits](docs/composition-captions.md)
 and [the pinned OpenCut reference](docs/opencut-reference.md).
 
-**Scene-script planning is the current development slice:** use saved media
+**Scene-script planning:** use saved media
 categories or chronology to draft editable scenes, narration and visual direction,
 then review an actual solver-generated cut against the film's time limit. Accepting
 creates a new Story and composition while preserving existing films. The offline
@@ -108,6 +108,15 @@ voice-over. See [the workflow and validation contract](docs/scene-script-plannin
 The [validation record](docs/validation-scene-script-planning.md) separates
 targeted results, initial full-suite failures and corrected UI checks. Complete
 candidate CI/review is tracked in [TASKS](TASKS.md) and [PR #15](https://github.com/bynanci/open-film/pull/15/checks).
+
+**Reviewable script suggestions** extend saved Story scenes with optional
+LanguageProvider assistance. Choose Narration or Visual direction, compare the
+original and suggested text with its reason, then Accept or Skip. Suggestions
+and decisions survive reopening; source checks and acceptance receipts protect
+manual edits and uncertain retries. Script review supports text-only providers
+and uses existing remote consent. No provider is configured by default. See
+[the workflow, privacy and recovery contract](docs/scene-script-review.md) and
+[validation](docs/validation-scene-script-review.md).
 
 ## Requirements
 

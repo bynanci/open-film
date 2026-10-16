@@ -35,6 +35,11 @@ Usage:
   openfilm review skip <suggestion-id> --project <film.openfilm>
   openfilm review batches|retry-batch|skip-batch <job-id> --project <film.openfilm> [--index 0]
   openfilm review recover <job-id> --project <film.openfilm> --confirm-stopped
+  openfilm script-review list <story-id> --project <film.openfilm> --beat <beat-id> --field narration|visualDirection [--status pending]
+  openfilm script-review run <story-id> --project <film.openfilm> --beat <beat-id> --field narration|visualDirection
+  openfilm script-review accept <suggestion-id> --project <film.openfilm> --base-revision <id> --request-id <id>
+  openfilm script-review skip <suggestion-id> --project <film.openfilm>
+  openfilm script-review provider --project <film.openfilm>
   openfilm marker <asset-id> --project <film.openfilm> --time <source-seconds>
   openfilm rate <asset-id> --project <film.openfilm> --rating 5 [--favorite --lock]
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
@@ -119,6 +124,8 @@ function parse(args: string[]) {
     "id",
     "status",
     "batch-size",
+    "beat",
+    "field",
     "index",
     "user-data-dir",
   ]);
@@ -551,6 +558,63 @@ async function main() {
         throw new Error(
           "Choose review run, list, accept, skip, batches, recover, retry-batch or skip-batch.",
         );
+    } else if (command === "script-review") {
+      const action = positional[1];
+      const id = positional[2];
+      if (action === "provider")
+        print(app.knowledge.languageProvider(["text"]));
+      else {
+        if (!id) throw new Error("Specify a Story or script suggestion ID.");
+        if (action === "accept")
+          print({
+            story: app.sceneScriptReview.accept(id, {
+              baseRevision: value(options, "base-revision") ?? "",
+              requestId: value(options, "request-id") ?? "",
+            }),
+          });
+        else if (action === "skip")
+          print({ suggestion: app.sceneScriptReview.skip(id) });
+        else if (action === "list" || action === "run") {
+          const beatId = value(options, "beat");
+          const field = value(options, "field");
+          if (!beatId || (field !== "narration" && field !== "visualDirection"))
+            throw new Error(
+              "Specify --beat and --field narration|visualDirection.",
+            );
+          if (action === "run") {
+            const job = await app.runSceneScriptReview(id, {
+              beatId,
+              field,
+              signal: controller.signal,
+              onJob: (job) =>
+                console.error(JSON.stringify({ event: "job.progress", job })),
+            });
+            print(job);
+            if (job.status === "cancelled") process.exitCode = 130;
+            else if (job.status === "failed") process.exitCode = 1;
+          } else {
+            const status = value(options, "status");
+            if (
+              status !== undefined &&
+              !["pending", "accepted", "skipped", "stale"].includes(status)
+            )
+              throw new Error("Choose a valid script suggestion status.");
+            print(
+              app.sceneScriptReview.list(id, {
+                beatId,
+                field,
+                offset: Number(value(options, "offset") ?? 0),
+                limit: Number(value(options, "limit") ?? 100),
+                status: status as
+                  "pending" | "accepted" | "skipped" | "stale" | undefined,
+              }),
+            );
+          }
+        } else
+          throw new Error(
+            "Choose script-review provider, list, run, accept or skip.",
+          );
+      }
     } else if (command === "captions") {
       const action = positional[1];
       const projectId = app.project.id;

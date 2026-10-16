@@ -21,7 +21,19 @@ instead of silently dropping a second action. The current creative priority is
 the bounded scene-script workflow below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
-## Current — Classified memories to scene scripts
+## Current — Reviewable scene-script suggestions
+
+Extend saved Story narration and visual direction with optional LanguageProvider
+suggestions, visible explanations and individual Accept/Skip decisions. Reuse the
+configured provider and disclosed consent; bind evidence to the selected field's
+actual source context. Durable receipts recover uncertain acceptance without
+reapplying changes or overwriting newer text. Existing scene timing and
+Compositions remain under the normal editing and solver workflow. See
+[the contract](docs/scene-script-review.md),
+[validation](docs/validation-scene-script-review.md) and
+[acceptance tasks](TASKS.md#current--reviewable-scene-script-suggestions).
+
+## Completed slice — Classified memories to scene scripts
 
 Help people turn photos and saved categories into editable scenes, narration
 drafts and visual direction, then compose within an explicit time limit. Library
@@ -29,7 +41,7 @@ tags and chronological grouping feed a bounded offline planner; proposed scenes
 use existing Story beats and the duration solver. A user reviews the actual cut
 before accepting a new Story/composition pair. Stale proposals and failed writes
 must preserve existing films. See [the contract](docs/scene-script-planning.md)
-and [current acceptance tasks](TASKS.md#current--classified-memories-to-scene-scripts).
+and [acceptance tasks](TASKS.md#completed-slice--classified-memories-to-scene-scripts).
 
 The [validation record](docs/validation-scene-script-planning.md) separates
 targeted domain/application/browser success, the initial full-suite failures and
@@ -44,9 +56,8 @@ command and preview/export principles; it does not establish a working
 photo-to-screenplay capability to copy. Offline starters use declared categories
 and chronology, with no image-understanding or generated-voice claim.
 
-After verification, the next creative increment is optional LanguageProvider
-suggestions over declared scene/category text, with review, source binding and
-existing remote consent. Motion/keyframes and visual analysis are separate
+Optional LanguageProvider suggestions over declared scene text are the current
+creative increment above. Motion/keyframes and visual analysis are separate
 capabilities. Workstation first-open/one-hour memory data and real Resolve QA
 remain independent manual gates; [issue #7](https://github.com/bynanci/open-film/issues/7)
 stays open until actual evidence is collected.

@@ -319,6 +319,12 @@ async function inspectCatalog(path: string): Promise<void> {
       ])
         database.prepare(query).get();
     }
+    if (version >= 5)
+      database
+        .prepare(
+          "SELECT id,story_id,beat_id,field,source_revision_id,status,dedupe_key,created_at,data FROM scene_script_suggestions LIMIT 1",
+        )
+        .get();
   } finally {
     database?.close();
     if (temporary) await rm(temporary, { recursive: true, force: true });
@@ -1133,15 +1139,36 @@ export async function startServer(options: ServerOptions = {}) {
           method === "GET" &&
           ["/api/review/provider", "/api/review/providers"].includes(route)
         ) {
-          json(response, 200, application.knowledge.languageProvider());
+          const workflow = url.searchParams.get("workflow");
+          if (workflow !== null && workflow !== "scene-script")
+            throw new HttpError(400, "Choose a supported review workflow.");
+          json(
+            response,
+            200,
+            application.knowledge.languageProvider(
+              workflow === "scene-script" ? ["text"] : undefined,
+            ),
+          );
           return;
         }
         if (method === "POST" && route === "/api/review/consent") {
           const data = await body(request);
-          keys(data, ["allow", "providerId", "endpoint", "dataKinds"]);
+          keys(data, [
+            "allow",
+            "providerId",
+            "endpoint",
+            "dataKinds",
+            "workflow",
+          ]);
           if (typeof data.allow !== "boolean")
             throw new HttpError(400, "allow must be a boolean.");
-          const provider = application.knowledge.languageProvider().provider;
+          if (data.workflow !== undefined && data.workflow !== "scene-script")
+            throw new HttpError(400, "Choose a supported review workflow.");
+          const requiredKinds =
+            data.workflow === "scene-script" ? (["text"] as const) : undefined;
+          const provider = application.knowledge.languageProvider(
+            requiredKinds === undefined ? undefined : [...requiredKinds],
+          ).provider;
           if (!provider || provider.execution !== "remote")
             throw new HttpError(
               400,
@@ -1169,16 +1196,135 @@ export async function startServer(options: ServerOptions = {}) {
               dataKinds: [...provider.dataKinds],
               grantedAt: new Date().toISOString(),
             });
-            if (!application.knowledge.languageProvider().available) {
+            if (
+              !application.knowledge.languageProvider(
+                requiredKinds === undefined ? undefined : [...requiredKinds],
+              ).available
+            ) {
               application.knowledge.revokeConsent(provider.id);
               throw new HttpError(
                 400,
-                "The configured language provider changed or cannot review transcript text. Configure it again before granting consent.",
+                "The configured language provider changed or cannot perform this review. Configure it again before granting consent.",
                 "review.providerUnavailable",
               );
             }
           } else application.knowledge.revokeConsent(provider.id);
-          json(response, 200, application.knowledge.languageProvider());
+          json(
+            response,
+            200,
+            application.knowledge.languageProvider(
+              requiredKinds === undefined ? undefined : [...requiredKinds],
+            ),
+          );
+          return;
+        }
+        const scriptReview =
+          /^\/api\/stories\/([^/]+)\/script-review(?:\/(suggestions))?$/.exec(
+            route,
+          );
+        if (scriptReview && method === "GET" && scriptReview[2]) {
+          const field = url.searchParams.get("field");
+          const beatId = url.searchParams.get("beatId");
+          const status = url.searchParams.get("status") ?? undefined;
+          if (
+            !beatId ||
+            (field !== "narration" && field !== "visualDirection") ||
+            (status !== undefined &&
+              !["pending", "accepted", "skipped", "stale"].includes(status))
+          )
+            throw new HttpError(
+              400,
+              "Choose a scene, script field and valid review status.",
+            );
+          json(
+            response,
+            200,
+            application.sceneScriptReview.list(
+              decodeURIComponent(scriptReview[1]!),
+              {
+                beatId,
+                field,
+                ...pageOptions(url, 100),
+                status: status as ReviewSuggestion["status"] | undefined,
+              },
+            ),
+          );
+          return;
+        }
+        if (scriptReview && method === "POST" && !scriptReview[2]) {
+          errorContext = "review.invalidOutput";
+          const data = await body(request);
+          keys(data, ["beatId", "field"]);
+          const storyId = decodeURIComponent(scriptReview[1]!);
+          const story = application.project.stories.find(
+            (item) => item.id === storyId,
+          );
+          if (!story)
+            throw new HttpError(404, "Story not found.", "request.notFound");
+          if (
+            typeof data.beatId !== "string" ||
+            !story.beats.some((beat) => beat.id === data.beatId) ||
+            (data.field !== "narration" && data.field !== "visualDirection")
+          )
+            throw new HttpError(400, "Choose a saved scene and script field.");
+          if (!application.knowledge.languageProvider(["text"]).available)
+            throw new HttpError(
+              400,
+              "Configure and authorize a text language provider before reviewing scripts.",
+              "review.providerUnavailable",
+            );
+          const beatId = data.beatId;
+          const field = data.field;
+          await startReview(
+            {
+              id: randomUUID(),
+              type: "scene-script-review",
+              storyId,
+              beatId,
+              scriptField: field,
+              status: "queued",
+              progress: 0,
+              createdAt: new Date().toISOString(),
+            },
+            (options) =>
+              application.runSceneScriptReview(storyId, {
+                ...options,
+                beatId,
+                field,
+              }),
+          );
+          return;
+        }
+        const scriptSuggestion =
+          /^\/api\/script-review\/suggestions\/([^/]+)\/(accept|skip)$/.exec(
+            route,
+          );
+        if (scriptSuggestion && method === "POST") {
+          errorContext = "review.suggestionStale";
+          const data = await body(request);
+          const id = decodeURIComponent(scriptSuggestion[1]!);
+          if (scriptSuggestion[2] === "accept") {
+            keys(data, ["baseRevision", "requestId"]);
+            if (
+              typeof data.baseRevision !== "string" ||
+              typeof data.requestId !== "string"
+            )
+              throw new HttpError(
+                400,
+                "Acceptance requires a source revision and request ID.",
+              );
+            json(response, 200, {
+              story: application.sceneScriptReview.accept(id, {
+                baseRevision: data.baseRevision,
+                requestId: data.requestId,
+              }),
+            });
+          } else {
+            keys(data, []);
+            json(response, 200, {
+              suggestion: application.sceneScriptReview.skip(id),
+            });
+          }
           return;
         }
         const review =
@@ -2373,7 +2519,7 @@ export async function startServer(options: ServerOptions = {}) {
     await mutationQueue;
     await stopped;
     await discardUploads();
-    app?.close();
+    app?.close({ requireSave: true });
   };
   return { server, port, close };
 }

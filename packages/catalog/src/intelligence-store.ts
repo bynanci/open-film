@@ -14,7 +14,7 @@ import {
 import { recordTranscriptRevision } from "./transcript-editor-store.js";
 import { transcriptSegmentKey } from "./transcript-segment-identity.js";
 
-export const CATALOG_SCHEMA_VERSION = 4;
+export const CATALOG_SCHEMA_VERSION = 5;
 export const INTELLIGENCE_CACHE_VERSION = "1";
 export const TRANSCRIPT_PAGE_LIMIT = 200;
 

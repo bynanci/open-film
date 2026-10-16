@@ -1,5 +1,13 @@
 # OpenFilm desktop
 
+In Story, saved scene narration and visual direction can request optional
+language-provider suggestions. The panel shows original/proposed text and a
+reason, with individual Accept/Skip and reviewed history. Manual drafts save
+before review; stale suggestions require regeneration, and uncertain acceptance
+retains an exact Retry receipt through reopening. Text-only providers work with
+the existing descriptor-bound consent flow. No provider is installed by default.
+See [scene-script review](../../docs/scene-script-review.md).
+
 For native first-open and one-hour memory collection, use the
 [workstation runner](../../docs/native-performance.md). Its checkpoints are
 opt-in and local. Browser performance and Linux build/static tests do not replace

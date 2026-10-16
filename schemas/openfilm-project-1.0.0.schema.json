@@ -54,6 +54,14 @@
     },
     "filmSettings": {
       "$ref": "#/$defs/filmSettings"
+    },
+    "sceneScriptReviewReceipts": {
+      "type": "array",
+      "maxItems": 10000,
+      "$comment": "Project validation additionally requires unique suggestionId and requestId values across entries.",
+      "items": {
+        "$ref": "#/$defs/sceneScriptReviewReceipt"
+      }
     }
   },
   "required": [
@@ -365,8 +373,14 @@
         "script": {
           "type": "object",
           "properties": {
-            "narration": { "type": "string", "maxLength": 8000 },
-            "visualDirection": { "type": "string", "maxLength": 8000 }
+            "narration": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "visualDirection": {
+              "type": "string",
+              "maxLength": 8000
+            }
           },
           "required": ["narration", "visualDirection"]
         },
@@ -789,6 +803,42 @@
         }
       },
       "required": ["templateId", "targetDuration", "maxDuration"]
+    },
+    "sceneScriptReviewReceiptIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u001F\\u007F]+$",
+      "$comment": "Runtime validation also requires well-formed Unicode and a maximum of 256 UTF-16 code units."
+    },
+    "sceneScriptReviewReceipt": {
+      "type": "object",
+      "properties": {
+        "suggestionId": {
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
+        },
+        "requestId": {
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
+        },
+        "acceptedRevisionId": {
+          "$ref": "#/$defs/sceneScriptReviewReceiptIdentifier"
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+        }
+      },
+      "required": [
+        "suggestionId",
+        "requestId",
+        "evidenceHash",
+        "acceptedRevisionId",
+        "acceptedAt"
+      ]
     }
   }
 }

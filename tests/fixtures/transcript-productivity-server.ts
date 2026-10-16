@@ -22,10 +22,37 @@ const provider: LanguageProvider = {
   dataKinds: ["text", "transcripts"],
   async generate(prompt, options) {
     const input = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1)) as {
+      task?: string;
       language: string;
+      beat?: { id: string };
+      field?: "narration" | "visualDirection";
+      text?: string;
       segments: { segmentId: string; text: string }[];
       glossary: { source: string; replacement: string }[];
     };
+    if (input.task === "scene-script-review") {
+      if (
+        typeof input.beat?.id !== "string" ||
+        !["narration", "visualDirection"].includes(input.field ?? "") ||
+        typeof input.text !== "string" ||
+        input.text.length > 8000
+      )
+        throw new Error("The script review fixture received an invalid field.");
+      await delay(150, undefined, { signal: options?.signal });
+      return JSON.stringify({
+        suggestions: input.text.endsWith(" [fixture script reviewed]")
+          ? []
+          : [
+              {
+                beatId: input.beat.id,
+                field: input.field,
+                after: `${input.text} [fixture script reviewed]`,
+                reason:
+                  "TEST FIXTURE: a deterministic script change for review controls; not an AI quality judgment.",
+              },
+            ],
+      });
+    }
     if (
       !Array.isArray(input.segments) ||
       input.segments.length > 100 ||

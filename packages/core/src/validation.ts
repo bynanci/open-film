@@ -63,6 +63,17 @@ function string(value: unknown, path: string): string {
   return value;
 }
 
+/** Match the bounded knowledge identifiers without importing its cyclic domain. */
+function receiptIdentifier(value: unknown, path: string): void {
+  const text = string(value, path);
+  if (text.length > 256) fail(path, "expected at most 256 UTF-16 code units");
+  for (const character of text) {
+    const point = character.codePointAt(0)!;
+    if (point < 32 || point === 127 || (point >= 0xd800 && point <= 0xdfff))
+      fail(path, "expected well-formed Unicode without control characters");
+  }
+}
+
 function number(
   value: unknown,
   path: string,
@@ -502,6 +513,33 @@ export function validateProject(
     dimension(settings[key], `${path}.settings.${key}`);
   positive(settings.frameRate, `${path}.settings.frameRate`);
   const knownAssets = options.assetIds ? new Set(options.assetIds) : undefined;
+  optional(data, "sceneScriptReviewReceipts", path, (value, receiptPath) => {
+    const receipts = array(value, receiptPath);
+    if (receipts.length > 10000)
+      fail(receiptPath, "at most 10000 script review receipts are supported");
+    const seen = new Set<string>();
+    const requests = new Set<string>();
+    receipts.forEach((value, index) => {
+      const itemPath = `${receiptPath}[${index}]`;
+      const receipt = object(value, itemPath);
+      for (const key of [
+        "suggestionId",
+        "requestId",
+        "evidenceHash",
+        "acceptedRevisionId",
+      ])
+        receiptIdentifier(receipt[key], `${itemPath}.${key}`);
+      const id = String(receipt.suggestionId);
+      if (seen.has(id))
+        fail(`${itemPath}.suggestionId`, "duplicate suggestion receipt");
+      seen.add(id);
+      const requestId = String(receipt.requestId);
+      if (requests.has(requestId))
+        fail(`${itemPath}.requestId`, "duplicate acceptance request receipt");
+      requests.add(requestId);
+      timestamp(receipt.acceptedAt, `${itemPath}.acceptedAt`);
+    });
+  });
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
@@ -537,6 +575,10 @@ export function validateJob(value: unknown): Job {
     "cancelled",
   ]);
   optional(data, "progress", path, (v, p) => number(v, p, 0, 1));
+  for (const key of ["storyId", "beatId"]) optional(data, key, path, string);
+  optional(data, "scriptField", path, (value, fieldPath) =>
+    choice(value, fieldPath, ["narration", "visualDirection"]),
+  );
   for (const key of ["createdAt", "updatedAt"])
     optional(data, key, path, timestamp);
   optional(data, "errors", path, (v, p) => {

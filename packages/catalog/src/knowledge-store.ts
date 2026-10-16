@@ -6,10 +6,13 @@ import {
   REVIEW_PAGE_LIMIT,
   validateGlossaryEntry,
   validateTranscriptReviewSuggestion,
+  validateSceneScriptReviewSuggestion,
   type GlossaryEntry,
   type GlossaryInput,
   type Job,
   type ReviewBatch,
+  type SceneScriptField,
+  type SceneScriptReviewSuggestion,
   type TranscriptReviewSuggestion as ReviewSuggestion,
 } from "@openfilm/core";
 
@@ -35,15 +38,56 @@ export function migrateKnowledgeSchema(database: DatabaseSync): void {
   `);
 }
 
+/** Runs in the catalog's v4 → v5 transaction. Story IDs have no asset FK. */
+export function migrateSceneScriptReviewSchema(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE scene_script_suggestions (
+      id TEXT PRIMARY KEY, story_id TEXT NOT NULL, beat_id TEXT NOT NULL,
+      field TEXT NOT NULL CHECK(field IN ('narration','visualDirection')),
+      source_revision_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','accepted','skipped','stale')),
+      dedupe_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, data TEXT NOT NULL
+    );
+    CREATE INDEX scene_script_suggestions_scope ON scene_script_suggestions(story_id,beat_id,field,status,created_at,id);
+  `);
+}
+
 export interface ReviewPageOptions {
   status?: ReviewSuggestion["status"];
   offset?: number;
   limit?: number;
 }
+export interface SceneScriptReviewPageOptions extends ReviewPageOptions {
+  beatId?: string;
+  field?: SceneScriptField;
+}
+export type SceneScriptReviewLifecyclePatch = Pick<
+  SceneScriptReviewSuggestion,
+  "status"
+> &
+  Partial<
+    Pick<
+      SceneScriptReviewSuggestion,
+      "acceptedAt" | "acceptedRevisionId" | "requestId"
+    >
+  >;
+
+/** JSON encodes opaque legacy Story IDs injectively, including isolated surrogates. */
+function storyKey(id: string): string {
+  if (typeof id !== "string" || !id.trim())
+    throw new ApplicationError(
+      "request.invalid",
+      "Story and scene IDs must be nonblank strings.",
+    );
+  return JSON.stringify(id);
+}
 
 /** All state and evidence travel with the project; global vocabulary lives elsewhere. */
 export class CatalogKnowledgeStore {
-  constructor(private readonly database: DatabaseSync) {
+  constructor(
+    private readonly database: DatabaseSync,
+    verifySceneScriptReview = true,
+  ) {
     for (const [table, columns] of [
       ["project_glossary", "id,source,data"],
       [
@@ -53,6 +97,282 @@ export class CatalogKnowledgeStore {
       ["review_batches", "job_id,batch_index,asset_id,source_revision_id,data"],
     ])
       database.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`);
+    if (verifySceneScriptReview)
+      database.prepare(
+        "SELECT id,story_id,beat_id,field,source_revision_id,status,dedupe_key,created_at,data FROM scene_script_suggestions LIMIT 0",
+      );
+  }
+
+  saveSceneScriptSuggestion(
+    value: SceneScriptReviewSuggestion,
+  ): SceneScriptReviewSuggestion {
+    const suggestion = validateSceneScriptReviewSuggestion(value);
+    const key = createHash("sha256")
+      .update(
+        JSON.stringify([
+          suggestion.sourceRevisionId,
+          suggestion.target,
+          suggestion.before,
+          suggestion.after,
+          suggestion.source,
+        ]),
+      )
+      .digest("hex");
+    const ownsTransaction = !this.database.isTransaction;
+    if (ownsTransaction) this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const stored = this.database
+        .prepare("SELECT data FROM scene_script_suggestions WHERE dedupe_key=?")
+        .get(key);
+      if (stored) {
+        const existing = validateSceneScriptReviewSuggestion(
+          JSON.parse(String(stored.data)),
+        );
+        if (
+          existing.status !== "stale" ||
+          suggestion.status !== "pending" ||
+          existing.id === suggestion.id
+        ) {
+          if (ownsTransaction) this.database.exec("COMMIT");
+          return existing;
+        }
+        // Explicit regeneration gets a new pending identity. Keep the obsolete
+        // evidence intact while reserving the canonical dedupe slot for its successor.
+        this.database
+          .prepare(
+            "UPDATE scene_script_suggestions SET dedupe_key=? WHERE id=?",
+          )
+          .run(`${key}:stale:${existing.id}`, existing.id);
+      }
+      this.database
+        .prepare(
+          "INSERT INTO scene_script_suggestions(id,story_id,beat_id,field,source_revision_id,status,dedupe_key,created_at,data) VALUES(?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          suggestion.id,
+          storyKey(suggestion.target.storyId),
+          storyKey(suggestion.target.beatId),
+          suggestion.target.field,
+          suggestion.sourceRevisionId,
+          suggestion.status,
+          key,
+          suggestion.createdAt,
+          JSON.stringify(suggestion),
+        );
+      if (ownsTransaction) this.database.exec("COMMIT");
+      return suggestion;
+    } catch (error) {
+      if (ownsTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getSceneScriptSuggestion(
+    id: string,
+  ): SceneScriptReviewSuggestion | undefined {
+    const row = this.database
+      .prepare("SELECT data FROM scene_script_suggestions WHERE id=?")
+      .get(id);
+    return row
+      ? validateSceneScriptReviewSuggestion(JSON.parse(String(row.data)))
+      : undefined;
+  }
+
+  sceneScriptSuggestionsList(
+    storyId: string,
+    options: SceneScriptReviewPageOptions = {},
+  ) {
+    const offset = options.offset ?? 0,
+      limit = options.limit ?? REVIEW_PAGE_LIMIT;
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > REVIEW_PAGE_LIMIT ||
+      (options.status !== undefined &&
+        !["pending", "accepted", "skipped", "stale"].includes(
+          options.status,
+        )) ||
+      (options.field !== undefined &&
+        !["narration", "visualDirection"].includes(options.field))
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid scene script review page.",
+      );
+    const conditions = ["story_id=?"],
+      params: string[] = [storyKey(storyId)];
+    if (options.beatId !== undefined) {
+      conditions.push("beat_id=?");
+      params.push(storyKey(options.beatId));
+    }
+    if (options.field !== undefined) {
+      conditions.push("field=?");
+      params.push(options.field);
+    }
+    if (options.status !== undefined) {
+      conditions.push("status=?");
+      params.push(options.status);
+    }
+    const where = conditions.join(" AND ");
+    const total = Number(
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM scene_script_suggestions WHERE ${where}`,
+        )
+        .get(...params)!.count,
+    );
+    const suggestions = this.database
+      .prepare(
+        `SELECT data FROM scene_script_suggestions WHERE ${where} ORDER BY created_at,id LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset)
+      .map((row) =>
+        validateSceneScriptReviewSuggestion(JSON.parse(String(row.data))),
+      );
+    return { suggestions, total, offset, limit };
+  }
+
+  updateSceneScriptSuggestion(
+    id: string,
+    patch: SceneScriptReviewLifecyclePatch,
+  ): SceneScriptReviewSuggestion {
+    const before = this.getSceneScriptSuggestion(id);
+    if (!before)
+      throw new ApplicationError(
+        "request.notFound",
+        "Scene script suggestion not found.",
+        404,
+      );
+    if (
+      Object.keys(patch).some(
+        (key) =>
+          !["status", "acceptedAt", "acceptedRevisionId", "requestId"].includes(
+            key,
+          ),
+      )
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Only review lifecycle fields may change.",
+      );
+    if (
+      before.status !== "pending" &&
+      before.status !== patch.status &&
+      !(before.status === "stale" && patch.status === "skipped")
+    )
+      throw new ApplicationError(
+        "review.suggestionStale",
+        "This scene script suggestion was already reviewed or has become stale.",
+        409,
+      );
+    const after = validateSceneScriptReviewSuggestion({ ...before, ...patch });
+    if (
+      before.status === "accepted" &&
+      JSON.stringify(after) !== JSON.stringify(before)
+    )
+      throw new ApplicationError(
+        "review.suggestionStale",
+        "Accepted scene script audit evidence cannot change.",
+        409,
+      );
+    const updated = this.database
+      .prepare(
+        "UPDATE scene_script_suggestions SET status=?,data=? WHERE id=? AND data=?",
+      )
+      .run(after.status, JSON.stringify(after), id, JSON.stringify(before));
+    if (Number(updated.changes) !== 1)
+      throw new ApplicationError(
+        "review.suggestionStale",
+        "This scene script suggestion changed while it was being reviewed. Reload it before trying again.",
+        409,
+      );
+    return after;
+  }
+
+  staleSceneScriptSuggestions(
+    storyId: string,
+    beatId: string,
+    field: SceneScriptField,
+    currentRevision: string,
+  ): void {
+    this.database
+      .prepare(
+        "UPDATE scene_script_suggestions SET status='stale',data=json_set(data,'$.status','stale') WHERE story_id=? AND beat_id=? AND field=? AND source_revision_id<>? AND status='pending'",
+      )
+      .run(storyKey(storyId), storyKey(beatId), field, currentRevision);
+  }
+
+  /** Serialize acceptance and Skip across connections; project I/O belongs to the caller. */
+  withSceneScriptSuggestion<T>(
+    id: string,
+    handler: (suggestion: SceneScriptReviewSuggestion) => T,
+  ): T {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const suggestion = this.getSceneScriptSuggestion(id);
+      if (!suggestion)
+        throw new ApplicationError(
+          "request.notFound",
+          "Scene script suggestion not found.",
+          404,
+        );
+      const result = handler(suggestion);
+      if (result && typeof (result as { then?: unknown }).then === "function")
+        throw new ApplicationError(
+          "request.invalid",
+          "Scene script acceptance must complete synchronously.",
+        );
+      this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** Exact ownership checkpoint, evidence and completed Activity publish together. */
+  completeSceneScriptReview(
+    observedJob: Job,
+    completedJob: Job,
+    suggestions: SceneScriptReviewSuggestion[],
+  ): void {
+    if (
+      observedJob.type !== "scene-script-review" ||
+      observedJob.status !== "running" ||
+      !observedJob.reviewOwner ||
+      completedJob.id !== observedJob.id ||
+      completedJob.type !== observedJob.type ||
+      completedJob.storyId !== observedJob.storyId ||
+      completedJob.beatId !== observedJob.beatId ||
+      completedJob.scriptField !== observedJob.scriptField ||
+      JSON.stringify(completedJob.reviewOwner) !==
+        JSON.stringify(observedJob.reviewOwner) ||
+      completedJob.status !== "completed" ||
+      suggestions.some(
+        (row) =>
+          row.target.storyId !== observedJob.storyId ||
+          (observedJob.beatId !== undefined &&
+            row.target.beatId !== observedJob.beatId) ||
+          (observedJob.scriptField !== undefined &&
+            row.target.field !== observedJob.scriptField),
+      )
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "Invalid scene script review completion.",
+      );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.compareAndSetReviewJob(observedJob, completedJob);
+      for (const suggestion of suggestions)
+        this.saveSceneScriptSuggestion(suggestion);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   glossaryList(): GlossaryEntry[] {

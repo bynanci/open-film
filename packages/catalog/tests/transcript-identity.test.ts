@@ -85,6 +85,7 @@ function downgrade(path: string, version: 2 | 3): void {
   try {
     database.exec(`
       BEGIN IMMEDIATE;
+      DROP TABLE scene_script_suggestions;
       ALTER TABLE intelligence_segments RENAME TO preserved_segments;
       CREATE TABLE intelligence_segments (
         revision INTEGER NOT NULL REFERENCES intelligence_transcripts(revision) ON DELETE CASCADE,
