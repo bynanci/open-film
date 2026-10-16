@@ -291,9 +291,19 @@ async function createSourceFilm(
   await page
     .getByLabel(text(locale, "app.story.title"), { exact: true })
     .fill("Keep these words / この言葉を残す");
+  // A click dispatches the handler without awaiting its asynchronous creation.
+  // Wait for both the durable response and the rendered story before the
+  // independent API context reads project state for the Precision fixture.
+  const storyCreated = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/stories" &&
+      response.request().method() === "POST",
+  );
   await page
     .getByRole("button", { name: text(locale, "app.story.plan"), exact: true })
     .click();
+  expect((await storyCreated).status()).toBe(201);
+  await expect(page.locator(".beat-list button").first()).toBeVisible();
   const story = (await project(request)).stories[0]!;
   for (const asset of [video, audio]) {
     const beatIndex = story.beats.findIndex((beat) =>
