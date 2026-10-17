@@ -242,6 +242,16 @@ counts, and Linux memory sampling validates rooted membership after its reads.
 Unknown identities or changed process trees cannot be credited as complete
 evidence; these checks still require Windows/workstation validation.
 
+## Monitor stability and frame transport
+
+Edit now keeps visual clip positions aligned to integer output pixels and frame
+ticks, streams render progress without reloading project data on every tick, and
+exposes preview-only framing guides, source-frame stepping, clip looping and quick
+transform controls. These remain on the existing composition and FFmpeg paths.
+Automated FFmpeg and browser regressions are recorded in
+[monitor validation](docs/validation-monitor-stability.md); physical display and
+native resize behavior remain workstation checks.
+
 ## Composition-aware subtitle handoff
 
 The first caption slice reuses corrected transcripts to preview and export

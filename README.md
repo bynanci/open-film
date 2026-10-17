@@ -92,6 +92,11 @@ drafts, and isolates waveform hover from read-only transcript rendering. Synthet
 browser fixtures measure work for 2,000 library assets, 500 clips and 10,000
 transcript segments; these are UI measurements, not real-media throughput claims.
 
+**Monitor stability and frame transport** keep FFmpeg overlays aligned to output
+pixels/frame ticks and provide preview-only composition guides, frame stepping,
+clip looping and quick transform controls in Edit. These controls reuse existing
+composition commands; see the [validation record](docs/validation-monitor-stability.md).
+
 **Composition-aware subtitles** reuse saved transcript revisions and one selected
 dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
 instances use film time. Partial boundary segments are omitted with warnings;

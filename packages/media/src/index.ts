@@ -32,6 +32,7 @@ export interface ProcessOptions {
   maxOutputBytes?: number;
   timeoutMs?: number;
   cwd?: string;
+  onStdout?: (chunk: Buffer) => void;
 }
 export interface ProcessOutput {
   stdout: Buffer;
@@ -86,7 +87,14 @@ export function runProcess(
       bytes += chunk.length;
       if (bytes > (options.maxOutputBytes ?? 8 * 1024 * 1024))
         stop(new Error(`${command} output exceeded its size limit`));
-      else output.push(chunk);
+      else {
+        output.push(chunk);
+        try {
+          options.onStdout?.(chunk);
+        } catch {
+          /* Progress observers cannot change the child process outcome. */
+        }
+      }
     });
     child.stderr.on("data", (chunk: Buffer) => {
       stderrBytes += chunk.length;

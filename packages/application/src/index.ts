@@ -1355,14 +1355,22 @@ export class OpenFilmApplication {
 
   async render(
     compositionId?: string,
-    options: { signal?: AbortSignal; jobId?: string } = {},
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    } = {},
   ): Promise<string> {
     return this.renderFilm(compositionId, options, false);
   }
 
   async exportMp4(
     compositionId?: string,
-    options: { signal?: AbortSignal; jobId?: string } = {},
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    } = {},
   ): Promise<{ path: string; report: ExportReport }> {
     const path = await this.renderFilm(compositionId, options, true);
     return { path, report: { format: "mp4", warnings: [] } };
@@ -1370,7 +1378,11 @@ export class OpenFilmApplication {
 
   private async renderFilm(
     compositionId: string | undefined,
-    options: { signal?: AbortSignal; jobId?: string },
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    },
     exportFile: boolean,
   ): Promise<string> {
     const composition = this.composition(compositionId);
@@ -1445,7 +1457,22 @@ export class OpenFilmApplication {
         assets,
         output,
         this.project.settings,
-        options,
+        {
+          signal: options.signal,
+          onProgress: (progress) => {
+            const previous = job.progress ?? 0;
+            const next = Math.min(0.99, Math.max(previous, progress));
+            if (next - previous < 0.01) return;
+            job.progress = next;
+            job.updatedAt = new Date().toISOString();
+            this.catalog.saveJob(job);
+            try {
+              options.onProgress?.(next);
+            } catch {
+              /* A progress observer is not a render stage. */
+            }
+          },
+        },
       );
       job.status = "completed";
       job.progress = 1;

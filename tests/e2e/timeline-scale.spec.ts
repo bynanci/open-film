@@ -203,6 +203,73 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
     )
     .toBeGreaterThanOrEqual(1);
 
+  const monitorState = async () =>
+    (
+      await (
+        await request.get(`${base}/api/compositions/large-cut/editor`)
+      ).json()
+    ).composition;
+  const compositionBeforeGuides = await monitorState();
+  await editor
+    .getByLabel("Preview framing guide", { exact: true })
+    .selectOption("vertical");
+  await editor.getByRole("button", { name: "Rule of thirds" }).click();
+  await editor.getByRole("button", { name: "Action and title safe" }).click();
+  const guide = editor.locator(".editor-monitor-guide-frame");
+  await expect(guide).toBeVisible();
+  const guideBox = (await guide.boundingBox())!;
+  expect(Math.abs(guideBox.width / guideBox.height - 9 / 16)).toBeLessThan(
+    0.02,
+  );
+  await editor.locator(".editor-story-rail").focus();
+  await page.keyboard.press("g");
+  await expect(guide).toBeHidden();
+  await page.keyboard.press("g");
+  await expect(guide).toBeVisible();
+  expect(await monitorState()).toEqual(compositionBeforeGuides);
+  await editor.getByRole("button", { name: "Rule of thirds" }).click();
+  await editor.getByRole("button", { name: "Action and title safe" }).click();
+  await editor
+    .getByLabel("Preview framing guide", { exact: true })
+    .selectOption("landscape");
+
+  const timecode = editor.locator(".editor-monitor-transport time");
+  await expect(timecode).toHaveText("00:00:00:00");
+  await editor.getByRole("button", { name: "Step forward one frame" }).click();
+  await expect(timecode).toHaveText("00:00:00:01");
+  await editor.getByRole("button", { name: "Step back one frame" }).click();
+  await expect(timecode).toHaveText("00:00:00:00");
+  const sourceOut = editor.getByLabel("Source out", { exact: true });
+  await sourceOut.fill("0.5");
+  await sourceOut.press("Tab");
+  await expect(
+    editor.getByRole("status").filter({ hasText: /^Saved$/ }),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Loop selected clip" }).click();
+  const loopEnabled = editor.getByRole("button", {
+    name: "Looping selected clip",
+  });
+  await expect(loopEnabled).toHaveAttribute("aria-pressed", "true");
+  await editor.getByRole("button", { name: "Play clip", exact: true }).click();
+  await page.waitForFunction(() => {
+    const video = document.querySelector("video");
+    return video instanceof HTMLVideoElement && video.currentTime > 0.35;
+  });
+  await page.waitForFunction(() => {
+    const video = document.querySelector("video");
+    return video instanceof HTMLVideoElement && video.currentTime < 0.12;
+  });
+  await editor.getByRole("button", { name: "Pause clip", exact: true }).click();
+  await loopEnabled.click();
+  await expect(
+    editor.getByRole("button", { name: "Loop selected clip" }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await sourceOut.fill("3");
+  await sourceOut.press("Tab");
+  await expect(
+    editor.getByRole("status").filter({ hasText: /^Saved$/ }),
+  ).toBeVisible();
+
   const compositionFrame = editor.locator(".editor-composition-frame");
   await expect(compositionFrame).toBeVisible();
   const scaleInput = editor.getByLabel("Clip scale", { exact: true });
@@ -276,6 +343,21 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   await expectCurrentViewportFit();
   await page.setViewportSize({ width: 1280, height: 720 });
   await expectCurrentViewportFit();
+  const stableHeights = await editor.locator(".editor-workspace").evaluate(
+    (element) =>
+      new Promise<number[]>((resolve) => {
+        const values: number[] = [];
+        const sample = () => {
+          values.push(element.getBoundingClientRect().height);
+          if (values.length >= 12) resolve(values);
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
+  expect(
+    Math.max(...stableHeights) - Math.min(...stableHeights),
+  ).toBeLessThanOrEqual(1);
   expect(pageErrors).toEqual([]);
 
   expect([...requestedSources]).toEqual(["asset-000"]);

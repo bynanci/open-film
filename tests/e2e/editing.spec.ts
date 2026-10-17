@@ -835,6 +835,23 @@ test("saves photo rotation through reopening and keeps visual controls absent fo
   const fixture = await fixtureForEditing(request, true);
   await openTimeline(page);
   await page.locator("#clip-opening-photo").click();
+  await page.getByRole("button", { name: "↻ +90°" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  await page.getByRole("button", { name: "↺ −90°" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(0);
+  await page.getByRole("button", { name: "↻ +90°" }).click();
+  await saved(page);
+  await page.getByRole("button", { name: "Reset transform" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(0);
   await field(page, "Clip rotation", "90");
   await saved(page);
   expect(

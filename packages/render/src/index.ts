@@ -61,7 +61,10 @@ export class FFmpegRenderer {
     assets: MediaAsset[],
     outputPath: string,
     settings: RenderSettings = defaults,
-    options: { signal?: AbortSignal } = {},
+    options: {
+      signal?: AbortSignal;
+      onProgress?: (progress: number) => void;
+    } = {},
   ): Promise<string> {
     checkAbort(options.signal);
     finite(composition.duration, "Composition duration", true);
@@ -97,9 +100,18 @@ export class FFmpegRenderer {
     const work = join(dirname(output), `.render-${randomUUID()}`);
     await mkdir(work);
     const temporaryOutput = join(work, "preview.mp4");
-    const args: string[] = ["-v", "error", "-nostdin", "-threads", "1"];
+    const args: string[] = [
+      "-v",
+      "error",
+      "-nostdin",
+      "-threads",
+      "1",
+      "-progress",
+      "pipe:1",
+      "-nostats",
+    ];
     const filters: string[] = [
-      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)}[base]`,
+      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
     ];
     const audioLabels: string[] = [];
     let videoLabel = "base";
@@ -178,7 +190,7 @@ export class FFmpegRenderer {
               transform.push(
                 `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
               );
-            transform.push(`fps=${number(settings.frameRate)}`);
+            transform.push(`fps=${number(settings.frameRate)}:round=near`);
             const fade = clip.transition?.duration ?? 0;
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
@@ -199,11 +211,11 @@ export class FFmpegRenderer {
                 ? `trim=duration=${number(displayedDuration)}`
                 : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
             filters.push(
-              `[${input}:v]${trim},setpts=(PTS-STARTPTS)/${number(speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS+${number(start)}/TB[${label}]`,
+              `[${input}:v]${trim},setpts=(PTS-STARTPTS)/${number(speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+round(${number(start)}/TB)[${label}]`,
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=(W-w)/2+${number(geometry.x)}:y=(H-h)/2+${number(geometry.y)}:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }
@@ -264,10 +276,42 @@ export class FFmpegRenderer {
         "-y",
         temporaryOutput,
       );
+      let progressBuffer = "";
+      let lastProgress = -1;
+      const publishProgress = (value: number) => {
+        const bounded = Math.min(1, Math.max(0, value));
+        if (bounded < 1 && bounded - lastProgress < 0.01) return;
+        lastProgress = bounded;
+        try {
+          options.onProgress?.(bounded);
+        } catch {
+          /* Progress observers do not own the render operation. */
+        }
+      };
       await runProcess("ffmpeg", args, {
         signal: options.signal,
         timeoutMs: 1800000,
         cwd: work,
+        onStdout: (chunk) => {
+          progressBuffer += chunk.toString("utf8");
+          const lines = progressBuffer.split(/\r?\n/u);
+          progressBuffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const separator = line.indexOf("=");
+            if (separator < 0) continue;
+            const key = line.slice(0, separator);
+            const value = line.slice(separator + 1);
+            if (key === "progress" && value === "end") {
+              publishProgress(1);
+              continue;
+            }
+            if (key === "out_time_us" || key === "out_time_ms") {
+              const microseconds = Number(value);
+              if (Number.isFinite(microseconds) && microseconds >= 0)
+                publishProgress(microseconds / 1_000_000 / outputDuration);
+            }
+          }
+        },
       });
       checkAbort(options.signal);
       await rename(temporaryOutput, output);
@@ -309,7 +353,10 @@ export async function renderComposition(
   assets: MediaAsset[],
   outputPath: string,
   settings?: RenderSettings,
-  options?: { signal?: AbortSignal },
+  options?: {
+    signal?: AbortSignal;
+    onProgress?: (progress: number) => void;
+  },
 ): Promise<string> {
   return new FFmpegRenderer().render(
     composition,

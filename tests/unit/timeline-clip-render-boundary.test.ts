@@ -17,6 +17,14 @@ import {
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import {
+  clampFrameStep,
+  formatTimecode,
+  frameGuideRect,
+  nextStableWorkspaceHeight,
+  playbackBoundaryAction,
+  roundFrameDimensions,
+} from "../../apps/desktop/src/monitor";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -296,6 +304,14 @@ async function mountTimeline(
         isVisible: () => true,
         onVisibilityChange: () => () => {},
       }),
+    },
+    "../monitor": {
+      clampFrameStep,
+      formatTimecode,
+      frameGuideRect,
+      nextStableWorkspaceHeight,
+      playbackBoundaryAction,
+      roundFrameDimensions,
     },
     "../editorPresentation": { clipControls, shorteningAction },
     "../sourcePresentation": { sourcePresentation },

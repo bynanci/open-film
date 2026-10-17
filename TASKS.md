@@ -348,6 +348,17 @@ Evidence: [measurement and validation record](docs/performance-interaction.md).
 - [x] Compare three baseline/candidate repetitions, expose first-mount cost and preserve real relink/Precision presentation with full regression coverage.
 - [ ] Manual: real-media/4K/GPU/native-window performance remains a workstation check.
 
+## Monitor stability and frame-accurate preview
+
+Evidence: [validation record](docs/validation-monitor-stability.md).
+
+- [x] Keep rendered overlays on integer output pixels and clip starts on output-frame ticks; cover odd offsets with decoded FFmpeg frames.
+- [x] Publish bounded, monotonic FFmpeg render progress without catalog/project reloads on every poll.
+- [x] Keep monitor sizing stable and expose preview-only composition guides, aspect presets, frame transport and loop controls.
+- [x] Route quick 90-degree rotation and transform reset through the existing composition command/history path.
+- [x] Verify real browser interactions and a 500-clip monitor layout; retain responsive sizing and composition persistence.
+- [ ] Manual: verify physical monitor presentation and resize behavior on native Windows/macOS workstations.
+
 ## Composition-aware subtitle handoff
 
 Scope and acceptance: [workflow contract](docs/composition-captions.md).
