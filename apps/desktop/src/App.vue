@@ -1038,16 +1038,23 @@ async function pollJobs() {
             previous.progress === job.progress,
         ),
     );
-    const workflowChanged = result.jobs.some(
-      (job) =>
-        (job.type === "import" || job.type === "render") &&
-        !jobs.value.some(
+    const workflowChanged = result.jobs.some((job) => {
+      if (job.type === "import")
+        return !jobs.value.some(
           (previous) =>
             previous.id === job.id &&
             previous.status === job.status &&
             previous.progress === job.progress,
-        ),
-    );
+        );
+      if (
+        job.type !== "render" ||
+        !["completed", "failed", "cancelled"].includes(job.status)
+      )
+        return false;
+      return jobs.value.some(
+        (previous) => previous.id === job.id && previous.status !== job.status,
+      );
+    });
     jobs.value = result.jobs;
     analysisRecovery.value =
       result.analysisRecovery && Object.keys(result.analysisRecovery).length
@@ -3246,6 +3253,7 @@ onUnmounted(() => {
             :composition-id="activeComposition.id"
             :project-settings="project.settings"
             :active="tab === 'edit'"
+            :preview-visible="showRenderedPreview"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
             :jobs="jobs"

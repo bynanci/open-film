@@ -43,6 +43,16 @@ import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
 import { durationStatus } from "../duration";
 import { clipControls, shorteningAction } from "../editorPresentation";
 import { nativeBenchmark } from "../nativeBenchmark";
+import {
+  clampFrameStep,
+  formatTimecode,
+  frameGuideRect,
+  mapFramePixelOffsetToViewport,
+  nextStableWorkspaceHeight,
+  playbackBoundaryAction,
+  restartTimeAtClipBoundary,
+  roundFrameDimensions,
+} from "../monitor";
 const { t } = useI18n();
 
 const props = defineProps<{
@@ -51,6 +61,7 @@ const props = defineProps<{
   active: boolean;
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
+  previewVisible?: boolean;
   jobs?: readonly Job[];
   analysisRecovery?: Record<string, import("../api").AnalysisJobRecoveryState>;
   recoveringAnalysisJobs?: Record<string, boolean>;
@@ -122,6 +133,15 @@ const workspaceElement = ref<HTMLElement | null>(null);
 const sourceScreenElement = ref<HTMLElement | null>(null);
 const sourceViewport = ref<FrameSize>({ width: 1, height: 1 });
 const sourcePreviewSize = ref<FrameSize>();
+const sourceTime = ref(0);
+const monitorFrameRate = computed(
+  () => selectedAsset.value?.frameRate ?? props.projectSettings.frameRate,
+);
+const loopClip = ref(false);
+const showRuleOfThirds = ref(false);
+const showSafeFrame = ref(false);
+const monitorAspect = ref<"landscape" | "vertical" | "square">("landscape");
+let playbackBoundaryHandled = false;
 const precisionElement = ref<HTMLElement | null>(null);
 const transcriptElement = ref<HTMLElement | null>(null);
 async function setEditMode(mode: "story" | "precision" | "transcript") {
@@ -297,6 +317,11 @@ const regenerateModes = [
   { mode: "replace-similar", label: "editor.rhythm.replace-similar" },
   { mode: "remove-repetition", label: "editor.rhythm.remove-repetition" },
 ] as const;
+const monitorAspects = [
+  { value: "landscape", label: "editor.monitor.landscape", ratio: "16:9" },
+  { value: "vertical", label: "editor.monitor.vertical", ratio: "9:16" },
+  { value: "square", label: "editor.monitor.square", ratio: "1:1" },
+] as const;
 
 function name(clip: Clip) {
   return (
@@ -355,6 +380,14 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
+function rotateSelected(degrees: -90 | 90) {
+  const { scale, rotation, x, y } = clipFields.value;
+  editClip({ type: "transform", scale, rotation: rotation + degrees, x, y });
+}
+function resetSelectedTransform() {
+  clipFields.value = { ...clipFields.value, scale: 1, rotation: 0, x: 0, y: 0 };
+  editClip({ type: "transform", scale: 1, rotation: 0, x: 0, y: 0 });
+}
 function previewNumber(
   value: unknown,
   fallback: number,
@@ -382,15 +415,35 @@ const previewGeometry = computed(() => {
     sourceViewport.value,
   );
 });
+const monitorAspectRatio = computed(
+  () =>
+    ({ landscape: 16 / 9, vertical: 9 / 16, square: 1 })[monitorAspect.value],
+);
+const monitorGuideFrame = computed(() =>
+  frameGuideRect(
+    sourceViewport.value.width,
+    sourceViewport.value.height,
+    monitorAspectRatio.value,
+  ),
+);
+const monitorGuideStyle = computed(() => ({
+  width: `${monitorGuideFrame.value.width}px`,
+  height: `${monitorGuideFrame.value.height}px`,
+}));
 const previewFrameStyle = computed(() => ({
-  width: `${previewGeometry.value.frame.width}px`,
-  height: `${previewGeometry.value.frame.height}px`,
+  width: `${roundFrameDimensions(previewGeometry.value.frame).width}px`,
+  height: `${roundFrameDimensions(previewGeometry.value.frame).height}px`,
 }));
-const previewMediaStyle = computed(() => ({
-  width: `${previewGeometry.value.media.width}px`,
-  height: `${previewGeometry.value.media.height}px`,
-  transform: `translate(${previewGeometry.value.x}px, ${previewGeometry.value.y}px) rotate(${previewGeometry.value.rotation}deg) scale(${previewGeometry.value.scale})`,
-}));
+const previewMediaStyle = computed(() => {
+  const geometry = previewGeometry.value;
+  const x = mapFramePixelOffsetToViewport(geometry.x, geometry.frame.scale);
+  const y = mapFramePixelOffsetToViewport(geometry.y, geometry.frame.scale);
+  return {
+    width: `${roundFrameDimensions(geometry.media).width}px`,
+    height: `${roundFrameDimensions(geometry.media).height}px`,
+    transform: `translate3d(${x}px, ${y}px, 0) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
+  };
+});
 function capturePreviewSize(event: Event) {
   const media = event.currentTarget;
   const width =
@@ -485,6 +538,8 @@ function configurePlayer() {
   const clip = playbackClip.value;
   if (!player || !clip) return;
   player.currentTime = clip.sourceIn ?? 0;
+  sourceTime.value = clip.sourceIn ?? 0;
+  playbackBoundaryHandled = false;
   try {
     player.playbackRate = clip.transform?.speed ?? 1;
     if (sourceError.value === unsupportedSpeedMessage) sourceError.value = "";
@@ -496,14 +551,82 @@ function configurePlayer() {
 }
 function stopAtOut() {
   const player = sourcePlayer.value;
-  if (
-    player &&
-    playbackClip.value?.sourceOut !== undefined &&
-    player.currentTime >= playbackClip.value.sourceOut
-  ) {
-    player.pause();
-    player.currentTime = playbackClip.value?.sourceIn ?? 0;
+  const clip = playbackClip.value;
+  const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+  if (!player) return;
+  const action = playbackBoundaryAction({
+    playing: !player.paused,
+    seeking: player.seeking,
+    currentTime: player.currentTime,
+    sourceOut,
+    frameRate: monitorFrameRate.value,
+    handled: playbackBoundaryHandled,
+    loop: loopClip.value,
+  });
+  if (action === "continue") {
+    playbackBoundaryHandled = false;
+    return;
   }
+  if (action !== "loop" && action !== "stop") return;
+  playbackBoundaryHandled = true;
+  if (action === "loop") {
+    player.currentTime = clip?.sourceIn ?? 0;
+    sourceTime.value = player.currentTime;
+  } else {
+    if (sourceOut === undefined) return;
+    player.pause();
+    player.currentTime = sourceOut;
+    sourceTime.value = sourceOut;
+  }
+}
+function updateSourceTime() {
+  if (!sourcePlayer.value) return;
+  sourceTime.value = sourcePlayer.value.currentTime;
+  stopAtOut();
+}
+function sourcePlaybackStarted() {
+  const player = sourcePlayer.value;
+  const clip = playbackClip.value;
+  const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+  if (player && clip && playbackBoundaryHandled) {
+    const restart = restartTimeAtClipBoundary({
+      boundaryHandled: playbackBoundaryHandled,
+      currentTime: player.currentTime,
+      sourceIn: clip.sourceIn ?? 0,
+      sourceOut,
+      frameRate: monitorFrameRate.value,
+    });
+    if (restart !== undefined) {
+      player.currentTime = restart;
+      sourceTime.value = restart;
+    }
+  }
+  playbackBoundaryHandled = false;
+  playing.value = true;
+}
+function stepSourceFrame(direction: -1 | 1) {
+  const player = sourcePlayer.value;
+  const clip = playbackClip.value;
+  if (!player || selectedAsset.value?.mediaType !== "video" || !clip) return;
+  const minimum = clip.sourceIn ?? 0;
+  const maximum =
+    clip.sourceOut ?? selectedAsset.value.duration ?? player.duration;
+  const next = clampFrameStep(
+    player.currentTime,
+    direction,
+    monitorFrameRate.value,
+    minimum,
+    maximum,
+  );
+  player.pause();
+  playbackBoundaryHandled = false;
+  player.currentTime = next;
+  sourceTime.value = next;
+}
+function toggleMonitorGuides() {
+  const next = !(showRuleOfThirds.value && showSafeFrame.value);
+  showRuleOfThirds.value = next;
+  showSafeFrame.value = next;
 }
 function togglePlayback() {
   if (selectedSourceInfo.value?.previewSupported === false) return;
@@ -512,11 +635,23 @@ function togglePlayback() {
     emit("playback");
     return;
   }
-  if (player.paused)
+  if (player.paused) {
+    const clip = playbackClip.value;
+    const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+    if (
+      clip &&
+      sourceOut !== undefined &&
+      player.currentTime >=
+        sourceOut - 0.5 / Math.max(1, monitorFrameRate.value)
+    ) {
+      player.currentTime = clip.sourceIn ?? 0;
+      sourceTime.value = player.currentTime;
+      playbackBoundaryHandled = false;
+    }
     void player.play().catch(() => {
       sourceError.value = "playback";
     });
-  else player.pause();
+  } else player.pause();
 }
 function keyboard(event: KeyboardEvent) {
   if (editMode.value === "transcript") return;
@@ -536,6 +671,10 @@ function keyboard(event: KeyboardEvent) {
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   if (editMode.value !== "story") return;
+  if (event.key.toLowerCase() === "g") {
+    event.preventDefault();
+    toggleMonitorGuides();
+  }
   if (event.code === "Space" && !element?.closest("button")) {
     event.preventDefault();
     togglePlayback();
@@ -578,7 +717,14 @@ function measureWorkspace() {
     if (sourceScreenElement.value) {
       const width = sourceScreenElement.value.clientWidth;
       const height = sourceScreenElement.value.clientHeight;
-      if (width > 0 && height > 0) sourceViewport.value = { width, height };
+      if (width > 0 && height > 0) {
+        const nextViewport = roundFrameDimensions({ width, height });
+        if (
+          nextViewport.width !== sourceViewport.value.width ||
+          nextViewport.height !== sourceViewport.value.height
+        )
+          sourceViewport.value = nextViewport;
+      }
     }
     const workspace =
       editMode.value === "precision"
@@ -589,7 +735,7 @@ function measureWorkspace() {
     if (!props.active || !workspace) return;
     const footer = editorElement.value?.querySelector(".editor-shortcuts");
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
-    workspaceHeight.value = Math.max(
+    const measuredHeight = Math.max(
       editMode.value !== "story" ? 416 : 272,
       Math.floor(
         window.innerHeight -
@@ -598,6 +744,12 @@ function measureWorkspace() {
           16,
       ),
     );
+    const stableHeight = nextStableWorkspaceHeight(
+      workspaceHeight.value,
+      measuredHeight,
+    );
+    if (stableHeight !== workspaceHeight.value)
+      workspaceHeight.value = stableHeight;
   });
 }
 watch(
@@ -750,6 +902,11 @@ function clipValues(clip: Clip) {
 }
 watch(selectedClip, (clip, previous) => {
   if (!clip) return;
+  if (!previous || previous.id !== clip.id) {
+    loopClip.value = false;
+    playbackBoundaryHandled = false;
+    sourceTime.value = clip.sourceIn ?? 0;
+  }
   const next = clipValues(clip);
   if (
     !previous ||
@@ -766,6 +923,7 @@ watch(selectedClip, (clip, previous) => {
   }
   if (
     !previous ||
+    previous.id !== clip.id ||
     previous.assetId !== clip.assetId ||
     previous.sourceIn !== clip.sourceIn ||
     previous.transform?.speed !== clip.transform?.speed ||
@@ -799,6 +957,7 @@ watch(selectedBeat, (beat, previous) => {
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
   playing.value = false;
+  sourceTime.value = selectedClip.value?.sourceIn ?? 0;
   sourcePreviewSize.value = undefined;
 });
 watch(
@@ -807,6 +966,10 @@ watch(
     if (!active) sourcePlayer.value?.pause();
     else void nextTick(measureWorkspace);
   },
+);
+watch(
+  () => props.previewVisible,
+  () => void nextTick(measureWorkspace),
 );
 watch(editMode, () => {
   sourcePlayer.value?.pause();
@@ -880,11 +1043,6 @@ onMounted(() => {
   window.addEventListener("keydown", keyboard);
   window.addEventListener("resize", measureWorkspace);
   layoutObserver = new ResizeObserver(measureWorkspace);
-  if (editorElement.value) {
-    layoutObserver.observe(editorElement.value);
-    if (editorElement.value.parentElement)
-      layoutObserver.observe(editorElement.value.parentElement);
-  }
   if (sourceScreenElement.value && props.active && editMode.value === "story")
     layoutObserver.observe(sourceScreenElement.value);
   measureWorkspace();
@@ -1392,8 +1550,8 @@ onBeforeUnmount(() => {
                     preload="metadata"
                     :aria-label="t('editor.source.preview')"
                     @loadedmetadata="configurePlayer"
-                    @timeupdate="stopAtOut"
-                    @play="playing = true"
+                    @timeupdate="updateSourceTime"
+                    @play="sourcePlaybackStarted"
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
                   />
@@ -1420,8 +1578,9 @@ onBeforeUnmount(() => {
                       capturePreviewSize($event);
                       configurePlayer();
                     "
-                    @timeupdate="stopAtOut"
-                    @play="playing = true"
+                    @seeked="updateSourceTime"
+                    @timeupdate="updateSourceTime"
+                    @play="sourcePlaybackStarted"
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
                   />
@@ -1432,6 +1591,74 @@ onBeforeUnmount(() => {
                   t("editor.source.choose")
                 }}</span>
               </div>
+              <template
+                v-if="
+                  selectedAsset &&
+                  !sourceUnavailable &&
+                  selectedSourceInfo?.previewSupported !== false &&
+                  selectedAsset.mediaType !== 'audio'
+                "
+              >
+                <div
+                  class="editor-monitor-tools"
+                  role="group"
+                  :aria-label="t('editor.monitor.controls')"
+                >
+                  <label class="sr-only" for="monitor-aspect-guide">{{
+                    t("editor.monitor.aspect")
+                  }}</label>
+                  <select id="monitor-aspect-guide" v-model="monitorAspect">
+                    <option
+                      v-for="choice in monitorAspects"
+                      :key="choice.value"
+                      :value="choice.value"
+                    >
+                      {{ choice.ratio }} · {{ t(choice.label) }}
+                    </option>
+                  </select>
+                  <button
+                    class="editor-button"
+                    :aria-pressed="showRuleOfThirds"
+                    @click="showRuleOfThirds = !showRuleOfThirds"
+                  >
+                    {{ t("editor.monitor.thirds") }}
+                  </button>
+                  <button
+                    class="editor-button"
+                    :aria-pressed="showSafeFrame"
+                    @click="showSafeFrame = !showSafeFrame"
+                  >
+                    {{ t("editor.monitor.safe") }}
+                  </button>
+                  <kbd aria-label="G">G</kbd>
+                  <span class="editor-monitor-guide-note">{{
+                    t("editor.monitor.previewOnly")
+                  }}</span>
+                </div>
+                <div
+                  v-if="showRuleOfThirds || showSafeFrame"
+                  class="editor-monitor-guide-layer"
+                  aria-hidden="true"
+                >
+                  <div
+                    class="editor-monitor-guide-frame"
+                    :style="monitorGuideStyle"
+                  >
+                    <div
+                      v-if="showRuleOfThirds"
+                      class="editor-monitor-thirds"
+                    />
+                    <div
+                      v-if="showSafeFrame"
+                      class="editor-monitor-safe editor-monitor-safe-action"
+                    />
+                    <div
+                      v-if="showSafeFrame"
+                      class="editor-monitor-safe editor-monitor-safe-title"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
             <div class="editor-source-caption">
               <span :title="selectedAsset?.name"
@@ -1446,7 +1673,52 @@ onBeforeUnmount(() => {
                     )
                   }}</small
                 ></span
-              ><button
+              >
+              <div
+                v-if="
+                  selectedAsset &&
+                  selectedAsset.mediaType !== 'image' &&
+                  !sourceUnavailable &&
+                  selectedSourceInfo?.previewSupported !== false
+                "
+                class="editor-monitor-transport"
+                role="group"
+                :aria-label="t('editor.monitor.transport')"
+              >
+                <time :aria-label="t('editor.monitor.timecode')">{{
+                  formatTimecode(sourceTime, monitorFrameRate)
+                }}</time>
+                <template v-if="selectedAsset.mediaType === 'video'">
+                  <button
+                    class="editor-button"
+                    :aria-label="t('editor.monitor.previousFrame')"
+                    @click="stepSourceFrame(-1)"
+                  >
+                    −1f
+                  </button>
+                  <button
+                    class="editor-button"
+                    :aria-label="t('editor.monitor.nextFrame')"
+                    @click="stepSourceFrame(1)"
+                  >
+                    +1f
+                  </button>
+                </template>
+                <button
+                  class="editor-button"
+                  :aria-pressed="loopClip"
+                  @click="loopClip = !loopClip"
+                >
+                  {{
+                    t(
+                      loopClip
+                        ? "editor.monitor.loopEnabled"
+                        : "editor.monitor.loop",
+                    )
+                  }}
+                </button>
+              </div>
+              <button
                 v-if="
                   selectedAsset &&
                   !sourceUnavailable &&
@@ -1847,6 +2119,17 @@ onBeforeUnmount(() => {
                       step="1"
                       @change="transform"
                   /></label>
+                </div>
+                <div class="editor-actions editor-geometry-actions">
+                  <button class="editor-button" @click="rotateSelected(-90)">
+                    ↺ −90°
+                  </button>
+                  <button class="editor-button" @click="rotateSelected(90)">
+                    ↻ +90°
+                  </button>
+                  <button class="editor-button" @click="resetSelectedTransform">
+                    {{ t("editor.monitor.resetTransform") }}
+                  </button>
                 </div>
               </template>
               <div class="editor-divider" />

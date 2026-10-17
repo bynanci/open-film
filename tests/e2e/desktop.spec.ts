@@ -224,6 +224,34 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       )
       .toBeGreaterThan(0);
     await preview.evaluate((element) => (element as HTMLVideoElement).pause());
+    await page.setViewportSize({ width: 1440, height: 1080 });
+    const editorWorkspace = page.locator(".editor-workspace");
+    const visiblePreviewHeight = await editorWorkspace.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await page
+      .getByRole("button", { name: "Hide film preview", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        editorWorkspace.evaluate(
+          (element) => element.getBoundingClientRect().height,
+        ),
+      )
+      .toBeGreaterThan(visiblePreviewHeight + 80);
+    const hiddenPreviewHeight = await editorWorkspace.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await page
+      .getByRole("button", { name: "Show film preview", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        editorWorkspace.evaluate(
+          (element) => element.getBoundingClientRect().height,
+        ),
+      )
+      .toBeLessThan(hiddenPreviewHeight - 80);
     await page.screenshot({
       path: test.info().outputPath("timeline.png"),
       fullPage: true,

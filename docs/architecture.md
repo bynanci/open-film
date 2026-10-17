@@ -312,3 +312,10 @@ pixels. The contract is versioned as `CLIP_GEOMETRY_CONTRACT_VERSION` in
 This contract does not claim NLE interchange support. Exporters that cannot
 faithfully represent a transform must continue to reject it or mark it metadata-only
 rather than silently changing geometry.
+
+The Story Edit monitor's aspect guides are display overlays only; they do not
+change project output geometry or enter the render graph. Source stepping and clip
+loop bounds use the selected asset's frame rate and edit range. Render overlays use
+integer output-pixel positions and presentation timestamps rounded to the output
+time base. See [monitor stability validation](validation-monitor-stability.md)
+for the FFmpeg and browser regression evidence and the remaining workstation gate.

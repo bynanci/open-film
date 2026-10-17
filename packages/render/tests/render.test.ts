@@ -40,6 +40,232 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
+  it.each([
+    { frameRate: 30, timelineStart: 0.01, expectedFrame: 0 },
+    { frameRate: 30, timelineStart: 0.02, expectedFrame: 1 },
+    {
+      frameRate: 30000 / 1001,
+      timelineStart: 0.02,
+      expectedFrame: 1,
+    },
+  ])(
+    "activates a clip at $timelineStart seconds on rounded output frame $expectedFrame ($frameRate fps)",
+    async ({ frameRate, timelineStart, expectedFrame }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "openfilm-render-fractional-start-"),
+      );
+      directories.push(directory);
+      const source = join(directory, "white.png");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=white:s=8x8",
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-update",
+        "1",
+        "-y",
+        source,
+      ]);
+      const asset = await inspectMedia({
+        path: source,
+        uri: pathToFileURL(source).href,
+        name: "white.png",
+      });
+      const output = join(directory, "fractional-start.mp4");
+      await new FFmpegRenderer().render(
+        {
+          id: "fractional-start",
+          storyId: "story",
+          duration: 0.2,
+          tracks: [
+            {
+              id: "video",
+              type: "video",
+              clips: [
+                {
+                  id: "white",
+                  assetId: asset.id,
+                  timelineStart,
+                  timelineDuration: 0.1,
+                },
+              ],
+            },
+          ],
+        },
+        [asset],
+        output,
+        { width: 64, height: 36, frameRate },
+      );
+      const pixels = await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-vf",
+        "crop=2:2:32:18,format=gray,scale=1:1:flags=neighbor",
+        "-frames:v",
+        "3",
+        "-f",
+        "rawvideo",
+        "-",
+      ]);
+      expect([...pixels.stdout]).toHaveLength(3);
+      if (expectedFrame > 0)
+        expect(pixels.stdout[expectedFrame - 1]).toBeLessThan(30);
+      expect(pixels.stdout[expectedFrame]).toBeGreaterThan(220);
+    },
+  );
+
+  it("preserves odd-pixel overlay placement in the rendered monitor frame", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-render-rgba-"));
+    directories.push(directory);
+    const source = join(directory, "white.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=white:s=8x8",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "white.png",
+    });
+    const composition: Composition = {
+      id: "odd-offset",
+      storyId: "story",
+      duration: 0.5,
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "white",
+              assetId: asset.id,
+              timelineStart: 0,
+              timelineDuration: 0.5,
+              transform: { x: 1 },
+            },
+          ],
+        },
+      ],
+    };
+    const output = join(directory, "odd-offset.mp4");
+    await new FFmpegRenderer().render(composition, [asset], output, {
+      width: 64,
+      height: 36,
+      frameRate: 30,
+    });
+    const lineAt = async (time: number) => {
+      const decoded = await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-ss",
+        String(time),
+        "-i",
+        output,
+        "-frames:v",
+        "1",
+        "-vf",
+        "crop=64:1:0:18,format=gray",
+        "-f",
+        "rawvideo",
+        "-",
+      ]);
+      return [...decoded.stdout];
+    };
+    const first = await lineAt(0.1);
+    const later = await lineAt(0.4);
+    const startOfWhite = (line: number[]) =>
+      line.findIndex((value) => value > 220);
+    expect(startOfWhite(first)).toBe(15);
+    expect(startOfWhite(later)).toBe(15);
+    expect(later).toEqual(first);
+  }, 30000);
+
+  it("reports monotonic render progress from FFmpeg through completion", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-progress-"),
+    );
+    directories.push(directory);
+    const source = join(directory, "white.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=white:s=8x8",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      source,
+    ]);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "white.png",
+    });
+    const progress: number[] = [];
+    await new FFmpegRenderer().render(
+      {
+        id: "progress",
+        storyId: "story",
+        duration: 0.5,
+        tracks: [
+          {
+            id: "video",
+            type: "video",
+            clips: [
+              {
+                id: "white",
+                assetId: asset.id,
+                timelineStart: 0,
+                timelineDuration: 0.5,
+              },
+            ],
+          },
+        ],
+      },
+      [asset],
+      join(directory, "progress.mp4"),
+      { width: 64, height: 36, frameRate: 30 },
+      { onProgress: (value) => progress.push(value) },
+    );
+    expect(progress.length).toBeGreaterThan(0);
+    expect(
+      progress.every(
+        (value, index) =>
+          Number.isFinite(value) &&
+          value >= 0 &&
+          value <= 1 &&
+          (index === 0 || value >= progress[index - 1]!),
+      ),
+    ).toBe(true);
+    expect(progress.at(-1)).toBe(1);
+  }, 30000);
+
   it.each(["video", "audio", "music"] as const)(
     "requires a reframed export before decoding an audible 360 source on a %s track",
     async (trackType) => {

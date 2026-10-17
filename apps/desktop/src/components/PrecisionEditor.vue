@@ -23,6 +23,7 @@ import {
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
+import { shouldSeekHover } from "../monitor";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
 import PrecisionTranscript from "./PrecisionTranscript.vue";
 
@@ -109,6 +110,7 @@ let jobRead = 0;
 let controller = new AbortController();
 let polling: ReturnType<typeof setTimeout> | undefined;
 let hoverFrame = 0;
+let lastHoverSeek: number | undefined;
 let disposed = false;
 let drag: { side: "in" | "out"; snapshot: string; pointerId: number } | null =
   null;
@@ -628,6 +630,9 @@ function movePointer(event: PointerEvent) {
       trimOut.value = snapped(at, trimIn.value + epsilon, sourceDuration.value);
     seek(drag.side === "in" ? trimIn.value : trimOut.value);
   } else if (hoverPreview.value && !playing.value) {
+    if (!shouldSeekHover(lastHoverSeek, at, props.asset?.frameRate ?? 30))
+      return;
+    lastHoverSeek = at;
     cancelAnimationFrame(hoverFrame);
     hoverFrame = requestAnimationFrame(() => seek(at));
   }
@@ -1267,7 +1272,10 @@ onBeforeUnmount(() => {
             :aria-label="t('precision.waveform')"
             @pointerdown="seek(snapped(pointerTime($event)))"
             @pointermove="movePointer"
-            @pointerleave="hoverTime = undefined"
+            @pointerleave="
+              hoverTime = undefined;
+              lastHoverSeek = undefined;
+            "
             @pointerup="finishDrag"
             @pointercancel="cancelDrag"
             @dblclick="addMarker(pointerTime($event))"
