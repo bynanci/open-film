@@ -3,8 +3,10 @@ import {
   clampFrameStep,
   formatTimecode,
   frameGuideRect,
+  mapFramePixelOffsetToViewport,
   nextStableWorkspaceHeight,
   playbackBoundaryAction,
+  restartTimeAtClipBoundary,
   roundFrameDimensions,
 } from "../../apps/desktop/src/monitor";
 
@@ -22,9 +24,16 @@ describe("monitor geometry and transport helpers", () => {
     });
   });
 
+  it("rounds frame-space offsets before mapping them to fractional CSS pixels", () => {
+    expect(mapFramePixelOffsetToViewport(1 / 3, 1 / 3)).toBeCloseTo(1 / 3);
+    expect(mapFramePixelOffsetToViewport(-0.5, 0.5)).toBeCloseTo(-0.5);
+  });
+
   it("steps on frame boundaries and clamps to the selected source range", () => {
     expect(clampFrameStep(1.5, -1, 30, 0.2, 3)).toBeCloseTo(44 / 30);
     expect(clampFrameStep(1.5, 1, 30, 0.2, 3)).toBeCloseTo(46 / 30);
+    expect(clampFrameStep(1.51, -1, 30, 0.2, 3)).toBeCloseTo(45 / 30);
+    expect(clampFrameStep(1.49, 1, 30, 0.2, 3)).toBeCloseTo(45 / 30);
     expect(clampFrameStep(0.2, -1, 30, 0.2, 3)).toBe(0.2);
     expect(clampFrameStep(3, 1, 30, 0.2, 3)).toBe(3);
   });
@@ -68,5 +77,22 @@ describe("monitor geometry and transport helpers", () => {
     expect(
       playbackBoundaryAction({ ...boundary, playing: true, handled: true }),
     ).toBe("ignore");
+  });
+
+  it("restarts native playback at the source in after a handled clip boundary", () => {
+    const boundary = {
+      boundaryHandled: true,
+      currentTime: 2,
+      sourceIn: 0.5,
+      sourceOut: 2,
+      frameRate: 30,
+    };
+    expect(restartTimeAtClipBoundary(boundary)).toBe(0.5);
+    expect(
+      restartTimeAtClipBoundary({ ...boundary, currentTime: 1.8 }),
+    ).toBeUndefined();
+    expect(
+      restartTimeAtClipBoundary({ ...boundary, boundaryHandled: false }),
+    ).toBeUndefined();
   });
 });

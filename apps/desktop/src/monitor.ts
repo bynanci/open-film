@@ -22,6 +22,19 @@ export function roundFrameDimensions(size: FrameSize): FrameSize {
   };
 }
 
+export function mapFramePixelOffsetToViewport(
+  viewportOffset: number,
+  frameScale: number,
+): number {
+  if (
+    !Number.isFinite(viewportOffset) ||
+    !Number.isFinite(frameScale) ||
+    frameScale <= 0
+  )
+    return 0;
+  return Math.round(viewportOffset / frameScale) * frameScale;
+}
+
 export function clampFrameStep(
   seconds: number,
   direction: -1 | 1,
@@ -30,10 +43,13 @@ export function clampFrameStep(
   maximum: number,
 ): number {
   const rate = Number.isFinite(frameRate) && frameRate > 0 ? frameRate : 30;
-  const frame = Math.round(
-    (Number.isFinite(seconds) ? seconds : minimum) * rate,
-  );
-  return Math.max(minimum, Math.min(maximum, (frame + direction) / rate));
+  const position = (Number.isFinite(seconds) ? seconds : minimum) * rate;
+  const epsilon = 1e-6;
+  const frame =
+    direction > 0
+      ? Math.floor(position + epsilon) + 1
+      : Math.ceil(position - epsilon) - 1;
+  return Math.max(minimum, Math.min(maximum, frame / rate));
 }
 
 export function formatTimecode(seconds: number, frameRate: number): string {
@@ -102,4 +118,28 @@ export function playbackBoundaryAction(input: {
   if (input.currentTime < input.sourceOut - 0.5 / rate) return "continue";
   if (input.handled) return "ignore";
   return input.loop ? "loop" : "stop";
+}
+
+export function restartTimeAtClipBoundary(input: {
+  boundaryHandled: boolean;
+  currentTime: number;
+  sourceIn: number;
+  sourceOut: number | undefined;
+  frameRate: number;
+}): number | undefined {
+  if (
+    !input.boundaryHandled ||
+    input.sourceOut === undefined ||
+    !Number.isFinite(input.sourceOut) ||
+    !Number.isFinite(input.currentTime) ||
+    !Number.isFinite(input.sourceIn)
+  )
+    return undefined;
+  const rate =
+    Number.isFinite(input.frameRate) && input.frameRate > 0
+      ? input.frameRate
+      : 30;
+  return input.currentTime >= input.sourceOut - 0.5 / rate
+    ? input.sourceIn
+    : undefined;
 }

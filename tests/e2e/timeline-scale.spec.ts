@@ -264,6 +264,29 @@ test("keeps 500 video clips on cached lazy thumbnails and decodes only the selec
   await expect(
     editor.getByRole("button", { name: "Loop selected clip" }),
   ).toHaveAttribute("aria-pressed", "false");
+  await editor.getByRole("button", { name: "Play clip", exact: true }).click();
+  await page.waitForFunction(() => {
+    const video = document.querySelector("video");
+    return (
+      video instanceof HTMLVideoElement &&
+      video.paused &&
+      video.currentTime >= 0.48
+    );
+  });
+  await editor
+    .getByLabel("Selected clip source preview", { exact: true })
+    .evaluate(async (element) => {
+      await (element as HTMLVideoElement).play();
+    });
+  await page.waitForFunction(() => {
+    const video = document.querySelector("video");
+    return (
+      video instanceof HTMLVideoElement &&
+      !video.paused &&
+      video.currentTime < 0.12
+    );
+  });
+  await editor.getByRole("button", { name: "Pause clip", exact: true }).click();
   await sourceOut.fill("3");
   await sourceOut.press("Tab");
   await expect(

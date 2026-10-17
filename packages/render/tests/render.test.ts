@@ -40,6 +40,88 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
+  it.each([
+    { frameRate: 30, timelineStart: 0.01, expectedFrame: 0 },
+    { frameRate: 30, timelineStart: 0.02, expectedFrame: 1 },
+    {
+      frameRate: 30000 / 1001,
+      timelineStart: 0.02,
+      expectedFrame: 1,
+    },
+  ])(
+    "activates a clip at $timelineStart seconds on rounded output frame $expectedFrame ($frameRate fps)",
+    async ({ frameRate, timelineStart, expectedFrame }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "openfilm-render-fractional-start-"),
+      );
+      directories.push(directory);
+      const source = join(directory, "white.png");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=white:s=8x8",
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-update",
+        "1",
+        "-y",
+        source,
+      ]);
+      const asset = await inspectMedia({
+        path: source,
+        uri: pathToFileURL(source).href,
+        name: "white.png",
+      });
+      const output = join(directory, "fractional-start.mp4");
+      await new FFmpegRenderer().render(
+        {
+          id: "fractional-start",
+          storyId: "story",
+          duration: 0.2,
+          tracks: [
+            {
+              id: "video",
+              type: "video",
+              clips: [
+                {
+                  id: "white",
+                  assetId: asset.id,
+                  timelineStart,
+                  timelineDuration: 0.1,
+                },
+              ],
+            },
+          ],
+        },
+        [asset],
+        output,
+        { width: 64, height: 36, frameRate },
+      );
+      const pixels = await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-vf",
+        "crop=2:2:32:18,format=gray,scale=1:1:flags=neighbor",
+        "-frames:v",
+        "3",
+        "-f",
+        "rawvideo",
+        "-",
+      ]);
+      expect([...pixels.stdout]).toHaveLength(3);
+      if (expectedFrame > 0)
+        expect(pixels.stdout[expectedFrame - 1]).toBeLessThan(30);
+      expect(pixels.stdout[expectedFrame]).toBeGreaterThan(220);
+    },
+  );
+
   it("preserves odd-pixel overlay placement in the rendered monitor frame", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openfilm-render-rgba-"));
     directories.push(directory);

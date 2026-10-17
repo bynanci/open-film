@@ -3253,6 +3253,7 @@ onUnmounted(() => {
             :composition-id="activeComposition.id"
             :project-settings="project.settings"
             :active="tab === 'edit'"
+            :preview-visible="showRenderedPreview"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
             :jobs="jobs"

@@ -47,8 +47,10 @@ import {
   clampFrameStep,
   formatTimecode,
   frameGuideRect,
+  mapFramePixelOffsetToViewport,
   nextStableWorkspaceHeight,
   playbackBoundaryAction,
+  restartTimeAtClipBoundary,
   roundFrameDimensions,
 } from "../monitor";
 const { t } = useI18n();
@@ -59,6 +61,7 @@ const props = defineProps<{
   active: boolean;
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
+  previewVisible?: boolean;
   jobs?: readonly Job[];
   analysisRecovery?: Record<string, import("../api").AnalysisJobRecoveryState>;
   recoveringAnalysisJobs?: Record<string, boolean>;
@@ -431,11 +434,16 @@ const previewFrameStyle = computed(() => ({
   width: `${roundFrameDimensions(previewGeometry.value.frame).width}px`,
   height: `${roundFrameDimensions(previewGeometry.value.frame).height}px`,
 }));
-const previewMediaStyle = computed(() => ({
-  width: `${roundFrameDimensions(previewGeometry.value.media).width}px`,
-  height: `${roundFrameDimensions(previewGeometry.value.media).height}px`,
-  transform: `translate3d(${Math.round(previewGeometry.value.x)}px, ${Math.round(previewGeometry.value.y)}px, 0) rotate(${previewGeometry.value.rotation}deg) scale(${previewGeometry.value.scale})`,
-}));
+const previewMediaStyle = computed(() => {
+  const geometry = previewGeometry.value;
+  const x = mapFramePixelOffsetToViewport(geometry.x, geometry.frame.scale);
+  const y = mapFramePixelOffsetToViewport(geometry.y, geometry.frame.scale);
+  return {
+    width: `${roundFrameDimensions(geometry.media).width}px`,
+    height: `${roundFrameDimensions(geometry.media).height}px`,
+    transform: `translate3d(${x}px, ${y}px, 0) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
+  };
+});
 function capturePreviewSize(event: Event) {
   const media = event.currentTarget;
   const width =
@@ -575,6 +583,26 @@ function updateSourceTime() {
   if (!sourcePlayer.value) return;
   sourceTime.value = sourcePlayer.value.currentTime;
   stopAtOut();
+}
+function sourcePlaybackStarted() {
+  const player = sourcePlayer.value;
+  const clip = playbackClip.value;
+  const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+  if (player && clip && playbackBoundaryHandled) {
+    const restart = restartTimeAtClipBoundary({
+      boundaryHandled: playbackBoundaryHandled,
+      currentTime: player.currentTime,
+      sourceIn: clip.sourceIn ?? 0,
+      sourceOut,
+      frameRate: monitorFrameRate.value,
+    });
+    if (restart !== undefined) {
+      player.currentTime = restart;
+      sourceTime.value = restart;
+    }
+  }
+  playbackBoundaryHandled = false;
+  playing.value = true;
 }
 function stepSourceFrame(direction: -1 | 1) {
   const player = sourcePlayer.value;
@@ -895,6 +923,7 @@ watch(selectedClip, (clip, previous) => {
   }
   if (
     !previous ||
+    previous.id !== clip.id ||
     previous.assetId !== clip.assetId ||
     previous.sourceIn !== clip.sourceIn ||
     previous.transform?.speed !== clip.transform?.speed ||
@@ -937,6 +966,10 @@ watch(
     if (!active) sourcePlayer.value?.pause();
     else void nextTick(measureWorkspace);
   },
+);
+watch(
+  () => props.previewVisible,
+  () => void nextTick(measureWorkspace),
 );
 watch(editMode, () => {
   sourcePlayer.value?.pause();
@@ -1518,7 +1551,7 @@ onBeforeUnmount(() => {
                     :aria-label="t('editor.source.preview')"
                     @loadedmetadata="configurePlayer"
                     @timeupdate="updateSourceTime"
-                    @play="playing = true"
+                    @play="sourcePlaybackStarted"
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
                   />
@@ -1547,7 +1580,7 @@ onBeforeUnmount(() => {
                     "
                     @seeked="updateSourceTime"
                     @timeupdate="updateSourceTime"
-                    @play="playing = true"
+                    @play="sourcePlaybackStarted"
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
                   />

@@ -81,6 +81,7 @@ export class FFmpegRenderer {
       composition.duration,
       settings.frameRate,
     );
+    const outputFrameRate = Number(number(settings.frameRate));
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
@@ -126,6 +127,9 @@ export class FFmpegRenderer {
           const clip = clips[clipIndex]!;
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
+          const startFrame = Math.round(start * outputFrameRate);
+          const alignedStart =
+            Math.floor((startFrame / outputFrameRate) * 1e8) / 1e8;
           const duration = clip.timelineDuration;
           const suffix = sequence++;
           if (track.type === "titles" || clip.title !== undefined) {
@@ -134,7 +138,7 @@ export class FFmpegRenderer {
             await writeFile(titleFile, clip.title, "utf8");
             const titleLabel = `title${suffix}`;
             filters.push(
-              `[${videoLabel}]drawtext=textfile=title-${suffix}.txt:expansion=none:fontcolor=white:fontsize=${Math.round(settings.height / 16)}:x=(w-text_w)/2:y=h*0.8-text_h/2:box=1:boxcolor=black@0.55:boxborderw=16:enable='gte(t,${number(start)})*lt(t,${number(start + duration)})'[${titleLabel}]`,
+              `[${videoLabel}]drawtext=textfile=title-${suffix}.txt:expansion=none:fontcolor=white:fontsize=${Math.round(settings.height / 16)}:x=(w-text_w)/2:y=h*0.8-text_h/2:box=1:boxcolor=black@0.55:boxborderw=16:enable='gte(t,${number(alignedStart)})*lt(t,${number(alignedStart + duration)})'[${titleLabel}]`,
             );
             videoLabel = titleLabel;
             if (track.type === "titles") continue;
@@ -211,11 +215,11 @@ export class FFmpegRenderer {
                 ? `trim=duration=${number(displayedDuration)}`
                 : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
             filters.push(
-              `[${input}:v]${trim},setpts=(PTS-STARTPTS)/${number(speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+round(${number(start)}/TB)[${label}]`,
+              `[${input}:v]${trim},setpts=(PTS-STARTPTS)/${number(speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(t,${number(alignedStart)})*lt(t,${number(alignedStart + displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }
