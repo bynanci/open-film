@@ -34,8 +34,10 @@ encoding and explicit fallback warnings.
 A public generated 20-second A/B fixture has produced two real MP4s with equal
 duration, sampled frame comparisons and measured fades/ducking. The evidence
 does not establish private-film improvement, real narration quality or projector
-readability. Full candidate regression, localized browser checks and final
-published-head CI/review remain pending. See [the contract](docs/photo-film-quality.md),
+readability. Local regression and localized browser checks have completed;
+the browser ledger separates a missing-parser-environment failure from its
+successful configured retry. Independent correctness review is complete, while
+exact published-head CI is tracked separately on the candidate PR. See [the contract](docs/photo-film-quality.md),
 [validation](docs/validation-photo-film-quality.md) and
 [acceptance tasks](TASKS.md#current--photo-film-quality).
 

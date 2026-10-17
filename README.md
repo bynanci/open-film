@@ -11,7 +11,8 @@ and SQLite storage. No cloud account or AI provider is required.
 The current **photo-film quality** slice adds manual focal layouts, bounded still
 motion, measured CJK graphic titles and music/narration overlays. A generated
 twenty-second A/B film records actual rendered differences and audio automation;
-complete candidate regression and UI verification are still being collected.
+local regression and UI results are recorded separately from candidate CI and
+workstation verification.
 
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export

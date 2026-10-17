@@ -28,10 +28,15 @@ artistic quality or replace workstation gates.
 - [x] Generate public CC0 calibration assets and two actual 20-second MP4s, with
       composition diff, 24 sampled frames each, source hashes, font/encoding
       manifests and FFprobe/loudness/true-peak/RMS evidence.
-- [ ] Finish full candidate regression and localized browser/accessibility checks,
-      then record exact published-head CI and resolve correctness findings.
-- [ ] Re-run the A/B evidence against the final candidate revision and compare
-      the decoded frames after any renderer changes.
+- [x] Pass local format/i18n/lint/types, 153-file/2,213-test Vitest, build,
+      official OTIO and built-CLI checks. Exercise all 117 browser cases through
+      116 passes in the complete run and one correctly configured retry; retain
+      the original Python-environment failure separately in the validation record.
+- [x] Fix independent Desktop review findings for motion-only preview, persisted
+      diptych spacing and audio Undo/Redo playback, with focused browser regressions.
+- [x] Re-run the A/B evidence against committed implementation
+      `ae61376ee8e9413e0982c00075053a2fe297b7c1` with a clean working tree,
+      review the extracted frames and verify unchanged 20-second output/source hashes.
 - [ ] Manual: judge real photo selection/layout, original speech/music and
       projection readability on intended playback hardware.
 - [ ] Manual: real Windows/native installation, Pixel/Insta360 sources and
@@ -42,6 +47,8 @@ under that envelope; shortening clamps its end to the remaining duration.
 Splitting audio with active automation is rejected until envelope partitioning
 is implemented. Complete local/remote regression evidence remains distinct from
 the focused measurements above.
+Published-head CI and merge readiness are tracked separately on the candidate
+PR checks; local results do not substitute for those checks or workstation QA.
 
 ## Implemented slice — Reviewable scene-script suggestions
 

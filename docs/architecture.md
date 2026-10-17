@@ -374,4 +374,4 @@ diffs, sampled frames and FFprobe/loudness/true-peak/RMS evidence. These prove
 specific pipeline behavior and preserve private paths in local manifests; they
 do not establish artistic quality or real speech clarity. See [the contract](photo-film-quality.md)
 and [the execution record](validation-photo-film-quality.md) for scoped automated
-results, pending candidate regression and independent workstation gates.
+results, candidate regression attempts and independent workstation gates.
