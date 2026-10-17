@@ -187,6 +187,12 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
         >
       </div>
     </div>
+    <details v-if="filename && format === 'mp4'" class="export-report-details">
+      <summary>{{ t("app.export.renderDetails") }}</summary>
+      <a :href="exportDownloadUrl(`${filename}.manifest.json`)" download>{{
+        t("app.export.downloadRecipe")
+      }}</a>
+    </details>
     <p v-if="path && stale" class="preview-stale" role="status">
       {{ t("app.export.stale") }}
     </p>

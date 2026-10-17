@@ -5,7 +5,45 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Reviewable scene-script suggestions
+## Current — Photo-film quality
+
+Scope: [photo-film quality contract](docs/photo-film-quality.md).
+Evidence: [actual generated A/B validation](docs/validation-photo-film-quality.md).
+This is a rendering/editing slice over the existing project and composition
+engine. Generated fixture success does not certify the supplied private film's
+artistic quality or replace workstation gates.
+
+- [x] Preserve old projects while adding validated, optional version-1 photo
+      layouts, bounded motion, graphic title roles and audio automation.
+- [x] Render manual focal/protected hero framing and explicit two-source diptychs
+      through a shared frame-space plan; report safe fallback instead of hiding crop loss.
+- [x] Render clip-local hold, push-in and pan with shared arbitrary-seek timing;
+      keep the comparison's push-in/pan active and protected subjects visible.
+- [x] Measure local CJK glyphs and line breaks and reuse the graphic-title raster
+      for preview/render, with actual font identity in private output evidence.
+- [x] Add imported music/narration on explicit overlay tracks through existing
+      commands, without extending the film or rippling the visual story.
+- [x] Render clip-local fades, gain envelopes and manual ducking; verify the
+      actual exported synthetic audio instead of only testing filter strings.
+- [x] Generate public CC0 calibration assets and two actual 20-second MP4s, with
+      composition diff, 24 sampled frames each, source hashes, font/encoding
+      manifests and FFprobe/loudness/true-peak/RMS evidence.
+- [ ] Finish full candidate regression and localized browser/accessibility checks,
+      then record exact published-head CI and resolve correctness findings.
+- [ ] Re-run the A/B evidence against the final candidate revision and compare
+      the decoded frames after any renderer changes.
+- [ ] Manual: judge real photo selection/layout, original speech/music and
+      projection readability on intended playback hardware.
+- [ ] Manual: real Windows/native installation, Pixel/Insta360 sources and
+      Resolve import/finishing remain independent workstation gates.
+
+Configured audio envelopes are clip-local. Moving source-in changes the content
+under that envelope; shortening clamps its end to the remaining duration.
+Splitting audio with active automation is rejected until envelope partitioning
+is implemented. Complete local/remote regression evidence remains distinct from
+the focused measurements above.
+
+## Implemented slice — Reviewable scene-script suggestions
 
 Scope: [scene-script review](docs/scene-script-review.md).
 Evidence: [validation record](docs/validation-scene-script-review.md).

@@ -20,6 +20,106 @@ export default {
     media: "Media",
     storyMoment: "Story moment",
     yourStory: "Your story",
+    presentation: {
+      heading: "Photo direction",
+      description:
+        "Give this memory its own framing and pace. Changes remain editable.",
+      layout: "Photo layout",
+      original: "Original framing",
+      contain: "Preserve whole photo",
+      hero: "Hero crop",
+      diptych: "Two-photo comparison",
+      secondPhoto: "Second photo",
+      motion: "Camera movement",
+      motionPresets: {
+        hold: "Hold",
+        "push-in": "Gentle push-in",
+        pan: "Slow pan",
+      },
+      motionHint:
+        "A gentle 6% movement; review the subject at the beginning and end.",
+      focalControls: "Focal point and protected region",
+      focalX: "Focal point X (0–1)",
+      focalY: "Focal point Y (0–1)",
+      protectRegion: "Keep this region visible",
+      protectHint:
+        "Normalized source coordinates. If the crop cannot protect the whole region, the preview keeps the original proportions.",
+      region: {
+        x: "Left (0–1)",
+        y: "Top (0–1)",
+        width: "Width (0–1)",
+        height: "Height (0–1)",
+      },
+      safeCropFallback:
+        "The crop cannot keep the protected region visible. The full photo is shown instead.",
+      motionHeld:
+        "This movement would leave the safe bounds. The photo stays still instead.",
+      protectedWarning:
+        "The protected region needs more space. Review the framing before exporting.",
+      sourceWarning:
+        "A photo used by this layout is unavailable. Find the source before exporting.",
+      geometryWarning:
+        "This framing needs review. Check the subject and photo boundaries.",
+      titleFailed:
+        "The text preview could not be updated. Wait until the edit is saved, then retry.",
+      retryTitle: "Retry text preview",
+      titleHeading: "On-screen text",
+      titleText: "Text shown in the film",
+      titleRole: "Text role",
+      roles: {
+        "film-title": "Film title",
+        "scene-statement": "Scene statement",
+        subtitle: "Subtitle",
+      },
+      titlePosition: "Text position",
+      center: "Center",
+      bottom: "Bottom",
+      titleBackground: "Text background",
+      scrim: "Soft dark background",
+      none: "None",
+      preview: "Photo layout and motion preview",
+      seek: "Seek within photo presentation",
+      previewNote:
+        "Layout preview. Render the film to review transitions and the full soundtrack.",
+    },
+    sound: {
+      tab: "Sound",
+      heading: "Music and your own voice",
+      description:
+        "Add imported audio over the picture. Sound does not extend the visual story.",
+      source: "Audio source",
+      choose: "Choose imported audio…",
+      noAudio:
+        "Add music or a recorded voice file in Library, then return here.",
+      role: "Audio role",
+      roles: {
+        music: "Music",
+        narration: "Narration",
+        ambience: "Ambience",
+        dialogue: "Dialogue",
+      },
+      start: "Film start (seconds)",
+      length: "Length (seconds)",
+      add: "Add to film",
+      tracks: "Sound in this film",
+      preview: "Selected audio preview",
+      previewHint:
+        "Source preview applies volume changes on playback updates. Render a preview to hear precise fades and the complete mix.",
+      fadeIn: "Fade in (seconds)",
+      fadeOut: "Fade out (seconds)",
+      ducking: "Lower music during speech",
+      duckingHint:
+        "Set one local-time region on this sound clip. Applying replaces its current ducking region.",
+      duckStart: "Region start (seconds)",
+      duckEnd: "Region end (seconds)",
+      duckGain: "Lowered gain (0–1)",
+      attack: "Fade down (seconds)",
+      release: "Fade up (seconds)",
+      applyDuck: "Apply ducking region",
+      removeDuck: "Remove ducking",
+      editHint:
+        "Select this sound in Clip to change its source range, volume or lock.",
+    },
     monitor: {
       controls: "Monitor guides and playback",
       aspect: "Preview framing guide",

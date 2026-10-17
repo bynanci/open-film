@@ -59,6 +59,8 @@ def check_timeline(timeline, original, report, settings):
         assert isinstance(track, otio.schema.Track)
         assert track.kind == ("Audio" if expected["type"] in ("audio", "music") else "Video")
         assert track.metadata["openfilm"]["trackType"] == expected["type"]
+        if "timing" in expected:
+            assert track.metadata["openfilm"]["timing"] == expected["timing"]
         close(track.duration().to_seconds(), original["duration"], "track gaps/duration")
         expected_clips = {clip["id"]: clip for clip in expected["clips"]}
         seen = set()
@@ -73,6 +75,16 @@ def check_timeline(timeline, original, report, settings):
             seen.add(data["clipId"])
             plain_clip = json.loads(otio.adapters.write_to_string(child, "otio_json"))
             assert plain_clip["metadata"]["openfilm"]["clip"] == original_clip
+            secondary_id = original_clip.get("layout", {}).get("secondary", {}).get("assetId")
+            if secondary_id:
+                secondary = assets[secondary_id]
+                references = plain_clip["metadata"]["openfilm"]["secondaryMediaReferences"]
+                assert len(references) == 1
+                assert references[0]["assetId"] == secondary_id
+                assert references[0]["target_url"] == secondary["uri"]
+                assert references[0]["contentHash"] == secondary["contentHash"]
+                assert references[0]["mediaType"] == "image"
+                local_source(references[0]["target_url"])
             asset = assets[original_clip["assetId"]]
             assert isinstance(child.media_reference, otio.schema.ExternalReference)
             assert child.media_reference.target_url == asset["uri"]

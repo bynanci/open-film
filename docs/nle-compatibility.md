@@ -27,9 +27,14 @@ therefore remains open. Use [the QA record](resolve-qa-record.md)
 to record each capability independently when application testing is performed.
 
 Advanced edits are **metadata only**, a known implementation limit. Speed,
-volume/mute, scale, rotation, position, incoming crossfades, titles and clip locks
-are retained exactly in OpenFilm metadata and must be recreated manually in the
-NLE. They are not native OTIO effects. Export returns explicit warnings, and the
+volume/mute, scale, rotation, position, incoming crossfades, titles, photo layouts,
+protected regions, photo motion, title styles, audio automation, non-ripple track
+editing and clip locks are retained exactly in OpenFilm metadata and must be
+recreated manually in the NLE. They are not native OTIO effects. In particular,
+a diptych exports a native cut using its primary photo; the second photo's URI,
+asset ID, hash and portable reference travel as secondary-source metadata. The
+NLE does not automatically render the second photo or reproduce the layout.
+Export returns explicit warnings, and the
 application writes an adjacent `.otio.report.json` compatibility report, including
 current missing/inaccessible-source warnings. The edit compatibility portion is
 also embedded in the OTIO document so it remains available with the file.
@@ -47,9 +52,14 @@ also embedded in the OTIO document so it remains available with the file.
 | Scale, rotation and position                         | Metadata only                                                                                           | Metadata yes; native transforms not implemented        | Original values verified                                      | Manual recreation required                                   |
 | Incoming crossfade                                   | Metadata only; exported layout uses cuts                                                                | Metadata yes; native transition not implemented        | Original transition type/duration verified                    | Manual recreation required                                   |
 | Generated title and overlay/title-track behavior     | Metadata only over a native Video cut track                                                             | Metadata yes; native title/compositing not implemented | Original title, transform and track type retained             | Manual recreation required                                   |
+| Photo layout, focal point and protected region       | Metadata only; diptych retains both source identities while native cut uses primary photo               | Metadata yes; native photo composition not implemented | Exact fields and secondary source identities preserved        | Manual recreation required                                   |
+| Hold, push-in and pan recipes                        | Metadata only; no native motion/keyframe effect                                                         | Metadata yes; native motion not implemented            | Recipe start/end and easing preserved                         | Manual recreation required                                   |
+| Title roles, typography and layout                   | Metadata only                                                                                           | Metadata yes; native typography not implemented        | Exact style fields preserved                                  | Manual recreation required                                   |
+| Audio fades, gain envelopes and ducking              | Metadata only; native cut has no automation                                                             | Metadata yes; native automation not implemented        | Exact local-time envelope and ducking regions preserved       | Manual recreation required                                   |
+| Non-ripple soundtrack editing                        | Native Audio track timing; OpenFilm editing policy in metadata                                          | Metadata yes; editing policy not implemented by NLE    | Track timing policy preserved                                 | Recreate editing policy manually                             |
 | Clip lock and beat identity                          | Metadata only                                                                                           | Yes                                                    | Preserved                                                     | Reapply locks/organization manually                          |
 | Within-track overlapping clips                       | Rejected with an actionable error                                                                       | Not exported                                           | Not applicable                                                | Not claimed                                                  |
-| FCPXML / EDL advanced effects                        | Rejected; no expansion in this round                                                                    | Existing limited formats only                          | Existing XML/resource checks retained                         | Not claimed                                                  |
+| FCPXML / EDL advanced effects                        | Rejected; including explicit contain/hold/default quality recipes and non-ripple track policy           | Existing limited formats only                          | Existing XML/resource checks retained                         | Not claimed                                                  |
 
 “Schema-valid” here means the official library recognizes and deserializes the
 standard OTIO schema objects used by the exporter. No separate Resolve-specific
@@ -79,7 +89,14 @@ Original data locations are:
 
 - Timeline `metadata.openfilm.composition`: the complete original composition.
 - Each Clip's `metadata.openfilm.clip`: exact original source/timeline fields,
-  transform, transition, title, lock and beat ID.
+  transform, transition, title, layout, motion, titleStyle, audioAutomation, lock
+  and beat ID.
+- Diptych Clip `metadata.openfilm.secondaryMediaReferences`: second photo's
+  source URL, name, asset ID, content hash and portable reference. The exporter
+  rejects a missing secondary catalog source or empty URI just as it rejects a
+  missing primary source. Filesystem availability is checked by the application
+  and the interchange source gate separately.
+- Track `metadata.openfilm`: original track type and optional `timing` policy.
 - Timeline `metadata.openfilm.compatibility`: warnings and the affected clip IDs.
 - Padding Gap `metadata.openfilm`: owning clip ID, reason, record start and length.
 
@@ -110,6 +127,15 @@ retime padding, gaps and total duration. It independently rejects a temporarily
 missing source even when the OTIO file itself parses. Originals are restored and
 rehashed afterward. Generated fixtures are synthetic evidence, not real-camera
 or Resolve playback evidence.
+
+The edited fixture also includes a diptych, protected region, push-in recipe,
+title style, soundtrack automation and non-ripple track policy. Official parser
+read/write/read checks their full original metadata and both photo source URLs
+and hashes. This establishes metadata preservation only. FCPXML and EDL reject
+these optional fields explicitly, including a `hold` motion with identical
+endpoints or an explicit `contain` layout, rather than silently dropping the
+authored recipe. JSON retains the full composition and all referenced assets,
+including a diptych's second photo.
 
 ## Manual Resolve import procedure
 

@@ -165,6 +165,8 @@ export default {
       },
       saved: "已儲存至專案",
       downloadMp4: "下載 MP4",
+      renderDetails: "使用的版本與檢查",
+      downloadRecipe: "下載私人輸出紀錄",
       downloadFile: "下載 {format}",
       resolveGuide: {
         title: "接著在 DaVinci Resolve 中",

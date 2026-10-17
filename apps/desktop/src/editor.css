@@ -299,6 +299,7 @@
 }
 
 .editor-composition-frame {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -760,6 +761,156 @@ button.editor-beat-heading:hover {
   border: 1px solid var(--editor-border);
   border-radius: var(--of-radius-md);
   background: var(--editor-inset);
+}
+
+.editor-presentation-inspector,
+.editor-soundtrack-panel {
+  display: grid;
+  gap: var(--of-space-3);
+  min-width: 0;
+}
+
+.editor-presentation-inspector h3,
+.editor-soundtrack-panel h3 {
+  margin: 0;
+  font-size: var(--of-font-body);
+  font-weight: 600;
+}
+
+.editor-presentation-inspector h4 {
+  margin: var(--of-space-2) 0 0;
+  font-size: var(--of-font-caption);
+  font-weight: 550;
+}
+
+.editor-presentation-details summary {
+  cursor: pointer;
+  color: var(--editor-text);
+  padding-block: var(--of-space-2);
+}
+
+.editor-presentation-check {
+  display: flex;
+  gap: var(--of-space-2);
+  align-items: start;
+}
+
+.editor-presentation-check input {
+  width: auto;
+  margin-top: 0.25em;
+}
+
+.editor-presentation-warnings {
+  padding: var(--of-space-3);
+  border-left: 2px solid var(--of-warning);
+  color: var(--editor-text);
+  background: var(--of-warning-soft);
+}
+
+.editor-presentation-warnings p {
+  margin: 0;
+}
+
+.editor-soundtrack-list {
+  display: grid;
+  gap: var(--of-space-2);
+}
+
+.editor-soundtrack-list > button {
+  display: grid;
+  justify-items: start;
+  gap: var(--of-space-1);
+  text-align: start;
+  min-width: 0;
+}
+
+.editor-soundtrack-list span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.editor-soundtrack-list small {
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+}
+
+.editor-soundtrack-panel audio {
+  width: 100%;
+  min-width: 0;
+}
+
+.photo-presentation-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--of-space-2);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--of-space-2);
+}
+
+.photo-presentation-frame {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.photo-presentation-static,
+.photo-presentation-layers {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
+.editor-source-screen .photo-presentation-layers > img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  border: 0;
+}
+
+.editor-source-screen .photo-presentation-title,
+.editor-composition-frame > .editor-title-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  transform: none;
+  pointer-events: none;
+}
+
+.photo-presentation-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--of-space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.photo-presentation-transport input {
+  flex: 1 1 auto;
+  min-width: 2rem;
+}
+
+.photo-presentation-transport time {
+  flex: 0 0 auto;
+  color: var(--editor-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.photo-presentation-target {
+  flex: 1 1 260px;
+  max-width: 480px;
+  min-width: 0;
 }
 
 .editor-inspector-tabs button {

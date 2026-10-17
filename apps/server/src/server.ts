@@ -1946,6 +1946,29 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        const titlePreview =
+          /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
+        if (method === "GET" && titlePreview) {
+          const compositionId = decodeURIComponent(titlePreview[1]!);
+          const clipId = decodeURIComponent(titlePreview[2]!);
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(409, "This title belongs to another project.");
+          const state = editorFor(application).get(compositionId);
+          if (url.searchParams.get("revision") !== state.revision)
+            throw new HttpError(
+              409,
+              "This title preview is stale. Wait for the current edit to save.",
+            );
+          const path = await application.titleOverlay(compositionId, clipId);
+          await streamFile(
+            request,
+            response,
+            path,
+            join(application.directory, "cache"),
+            "image/png",
+          );
+          return;
+        }
         const editorMatch =
           /^\/api\/compositions\/([^/]+)\/(editor|edit|undo|redo)$/.exec(route);
         if (editorMatch) {

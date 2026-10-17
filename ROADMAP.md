@@ -18,10 +18,36 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. The current creative priority is
-the bounded scene-script workflow below; merging development source is not a **Released** installer or
+the bounded photo-film quality slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
-## Current — Reviewable scene-script suggestions
+## Current — Photo-film quality
+
+Turn manual design decisions into actual output using the existing composition,
+commands and renderer: protected focal layouts, diptychs, bounded still motion,
+measured CJK title roles and non-rippling imported music/narration overlays.
+Local font measurement/rasterization runs in the Node service, while the Desktop
+uses the resulting PNG without importing the native font/raster runtime.
+Per-render private recipes record source identities, font hashes, timing,
+encoding and explicit fallback warnings.
+
+A public generated 20-second A/B fixture has produced two real MP4s with equal
+duration, sampled frame comparisons and measured fades/ducking. The evidence
+does not establish private-film improvement, real narration quality or projector
+readability. Full candidate regression, localized browser checks and final
+published-head CI/review remain pending. See [the contract](docs/photo-film-quality.md),
+[validation](docs/validation-photo-film-quality.md) and
+[acceptance tasks](TASKS.md#current--photo-film-quality).
+
+Next creative increments should bind reviewed scene directions to these
+supported primitives and improve source-range/rhythm choices. Semantic image
+understanding, grading, generated narration and automatic audio analysis remain
+later work. Audio automation currently stays clip-local when trimming or changing
+source-in; splitting configured envelopes requires explicit removal and manual
+reconfiguration. Real source listening, projection, Windows/camera and Resolve
+gates continue independently.
+
+## Implemented slice — Reviewable scene-script suggestions
 
 Extend saved Story narration and visual direction with optional LanguageProvider
 suggestions, visible explanations and individual Accept/Skip decisions. Reuse the
@@ -31,7 +57,7 @@ reapplying changes or overwriting newer text. Existing scene timing and
 Compositions remain under the normal editing and solver workflow. See
 [the contract](docs/scene-script-review.md),
 [validation](docs/validation-scene-script-review.md) and
-[acceptance tasks](TASKS.md#current--reviewable-scene-script-suggestions).
+[acceptance tasks](TASKS.md#implemented-slice--reviewable-scene-script-suggestions).
 
 ## Completed slice — Classified memories to scene scripts
 
@@ -56,9 +82,9 @@ command and preview/export principles; it does not establish a working
 photo-to-screenplay capability to copy. Offline starters use declared categories
 and chronology, with no image-understanding or generated-voice claim.
 
-Optional LanguageProvider suggestions over declared scene text are the current
-creative increment above. Motion/keyframes and visual analysis are separate
-capabilities. Workstation first-open/one-hour memory data and real Resolve QA
+Optional LanguageProvider suggestions over declared scene text are implemented
+above. The current photo-film slice adds manual structured layouts and bounded
+still motion; visual analysis remains a separate capability. Workstation first-open/one-hour memory data and real Resolve QA
 remain independent manual gates; [issue #7](https://github.com/bynanci/open-film/issues/7)
 stays open until actual evidence is collected.
 
@@ -265,7 +291,7 @@ A future product flow is an explicit **derived composition / story variant**,
 preserving the original and comparing selections, constraints and duration.
 Recipes build on the existing headless CLI only when a repeatable workflow needs
 them. A real extension must justify plugin lifecycle/permissions; MCP begins with
-queries and revision-bound proposals. Keyframes and compositor work require a
+queries and revision-bound proposals. Further keyframes and compositor work require a
 specific editing limitation and shared preview/render semantics. None of these
 broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.

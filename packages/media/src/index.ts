@@ -14,7 +14,7 @@ import {
   sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { MediaAsset } from "@openfilm/core";
+import { assetDisplayDimensions, type MediaAsset } from "@openfilm/core";
 import type {
   MediaCandidate as SourceCandidate,
   MediaMetadata,
@@ -305,9 +305,31 @@ export async function inspectMedia(
   const info = await lstat(path);
   if (!info.isFile() || info.isSymbolicLink())
     throw new Error("Source changed or is not a regular file");
+  const exif = await extractExif(path, signal);
+  const orientation = Number(exif.Orientation);
+  const inspectImageFrame =
+    images.has(extname(path).toLowerCase()) &&
+    !(Number.isInteger(orientation) && orientation >= 1 && orientation <= 8);
   const probe = await runProcess(
     "ffprobe",
-    ["-v", "error", "-show_format", "-show_streams", "-of", "json", path],
+    [
+      "-v",
+      "error",
+      "-show_format",
+      "-show_streams",
+      ...(inspectImageFrame
+        ? [
+            "-show_frames",
+            "-read_intervals",
+            "%+#1",
+            "-show_entries",
+            "frame=width,height,sample_aspect_ratio:frame_tags=Orientation:frame_side_data=rotation",
+          ]
+        : []),
+      "-of",
+      "json",
+      path,
+    ],
     { signal },
   );
   const result = JSON.parse(probe.stdout.toString("utf8")) as {
@@ -337,7 +359,6 @@ export async function inspectMedia(
   const color = probeColor(video);
   if (!video && !audio)
     throw new Error("No decodable image, video or audio stream was found");
-  const exif = await extractExif(path, signal);
   const tags = {
     ...result.format?.tags,
     ...video?.tags,
@@ -359,7 +380,7 @@ export async function inspectMedia(
   const frameRate = rate && rate[1] ? rate[0]! / rate[1] : undefined;
   const latitude = Number(exif.GPSLatitude);
   const longitude = Number(exif.GPSLongitude);
-  return {
+  const asset: MediaAsset = {
     id: createHash("sha256").update(candidate.uri).digest("hex").slice(0, 32),
     uri: candidate.uri,
     name: candidate.name || basename(path),
@@ -424,6 +445,12 @@ export async function inspectMedia(
       "openfilm.timestamp": timestamp,
     },
   };
+  if (mediaType === "image") {
+    const display = assetDisplayDimensions(asset);
+    if (display)
+      asset.metadata["openfilm.display"] = { version: 1, ...display };
+  }
+  return asset;
 }
 
 export async function hashFile(

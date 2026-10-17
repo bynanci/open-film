@@ -3,3 +3,9 @@ Copyright 2026 OpenFilm contributors
 
 Licensed under the Apache License, Version 2.0.
 Third-party dependencies retain their own licenses; see docs/third-party.md.
+
+Local title rendering uses fontkit (MIT) and resvg (MPL-2.0), with their
+upstream copyright and license notices retained in the installed packages.
+Noto CJK fonts, when installed separately, are SIL Open Font License 1.1.
+No operating-system fonts or private photographic material are redistributed
+as part of this implementation.

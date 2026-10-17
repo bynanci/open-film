@@ -20,6 +20,104 @@ export default {
     media: "メディア",
     storyMoment: "ストーリーの瞬間",
     yourStory: "あなたのストーリー",
+    presentation: {
+      heading: "写真の演出",
+      description: "思い出に合う構図とテンポを選びます。いつでも調整できます。",
+      layout: "写真のレイアウト",
+      original: "元の構図",
+      contain: "写真全体を表示",
+      hero: "主役を大きく",
+      diptych: "2枚を並べる",
+      secondPhoto: "2枚目の写真",
+      motion: "カメラの動き",
+      motionPresets: {
+        hold: "静止",
+        "push-in": "ゆっくり寄る",
+        pan: "ゆっくり横移動",
+      },
+      motionHint:
+        "動きの幅は6%です。始点と終点で人物の位置を確認してください。",
+      focalControls: "焦点と保護範囲",
+      focalX: "焦点 X（0–1）",
+      focalY: "焦点 Y（0–1）",
+      protectRegion: "この範囲を表示したままにする",
+      protectHint:
+        "元の写真に対する比率です。範囲全体を保護できない場合は、元の縦横比を保ちます。",
+      region: {
+        x: "左（0–1）",
+        y: "上（0–1）",
+        width: "幅（0–1）",
+        height: "高さ（0–1）",
+      },
+      safeCropFallback:
+        "この切り抜きでは保護範囲を表示できないため、写真全体を表示します。",
+      motionHeld: "この動きは安全な範囲を超えるため、写真を静止表示します。",
+      protectedWarning:
+        "保護範囲に必要な余白が足りません。書き出す前に構図を確認してください。",
+      sourceWarning:
+        "このレイアウトの写真にアクセスできません。書き出す前に元ファイルを探してください。",
+      geometryWarning:
+        "構図を確認してください。人物の位置と写真の端に注意してください。",
+      titleFailed:
+        "文字のプレビューを更新できませんでした。編集が保存されてから、もう一度お試しください。",
+      retryTitle: "文字のプレビューを再試行",
+      titleHeading: "画面の文字",
+      titleText: "映像に表示する文字",
+      titleRole: "文字の役割",
+      roles: {
+        "film-title": "作品タイトル",
+        "scene-statement": "シーンのメッセージ",
+        subtitle: "字幕",
+      },
+      titlePosition: "文字の位置",
+      center: "中央",
+      bottom: "下部",
+      titleBackground: "文字の背景",
+      scrim: "柔らかな暗い背景",
+      none: "なし",
+      preview: "写真の構図と動きのプレビュー",
+      seek: "写真の表示時間を移動",
+      previewNote:
+        "レイアウトのプレビューです。トランジションと音声全体はレンダリングして確認してください。",
+    },
+    sound: {
+      tab: "音声",
+      heading: "音楽とあなたの声",
+      description:
+        "読み込んだ音声を映像に重ねます。音声を追加しても映像の長さは変わりません。",
+      source: "音声ファイル",
+      choose: "読み込んだ音声を選択…",
+      noAudio:
+        "ライブラリで音楽や録音済みのナレーションを追加してから、ここに戻ってください。",
+      role: "音声の役割",
+      roles: {
+        music: "音楽",
+        narration: "ナレーション",
+        ambience: "環境音",
+        dialogue: "会話",
+      },
+      start: "映像内の開始（秒）",
+      length: "長さ（秒）",
+      add: "映像に追加",
+      tracks: "この映像の音声",
+      preview: "選択した音声のプレビュー",
+      previewHint:
+        "元音声のプレビューでは再生の更新時に音量を反映します。正確なフェードとミックス全体はレンダリングして確認してください。",
+      fadeIn: "フェードイン（秒）",
+      fadeOut: "フェードアウト（秒）",
+      ducking: "話している間は音楽を下げる",
+      duckingHint:
+        "この音声内の時間で範囲を指定します。適用すると現在の範囲を置き換えます。",
+      duckStart: "範囲の開始（秒）",
+      duckEnd: "範囲の終了（秒）",
+      duckGain: "下げた音量（0–1）",
+      attack: "下げる時間（秒）",
+      release: "戻す時間（秒）",
+      applyDuck: "音量を下げる範囲を適用",
+      removeDuck: "音量調整を解除",
+      editHint:
+        "「クリップ」でこの音声を選ぶと、元の範囲、音量、ロックを変更できます。",
+    },
     monitor: {
       controls: "モニターガイドと再生操作",
       aspect: "プレビューのフレーミングガイド",

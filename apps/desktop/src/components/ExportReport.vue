@@ -43,6 +43,11 @@ const manualFeatures = computed(() => {
     title: "titles",
     overlay: "titles",
     "clip lock": "clipLocks",
+    "photo layout": "photoLayout",
+    "photo motion": "photoMotion",
+    "title style": "titleStyle",
+    "audio automation": "audioAutomation",
+    "overlay timing": "overlayTiming",
   };
   const required = new Set(
     edits.flatMap((edit) =>

@@ -10,6 +10,7 @@ import {
 import {
   resolveClipGeometry,
   resolvePreviewClipGeometry,
+  evaluateAudioGain,
   type Clip,
   type FrameSize,
   type Job,
@@ -28,6 +29,7 @@ import {
 import {
   sourceUrl,
   thumbnailUrl,
+  titlePreviewUrl,
   type EditorState,
   type SourceStatus,
 } from "../api";
@@ -37,6 +39,9 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
+import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
+import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
+import SoundtrackPanel from "./SoundtrackPanel.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
@@ -120,7 +125,10 @@ async function flush() {
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
-const inspector = ref<"clip" | "beat">("clip");
+const inspector = ref<"clip" | "beat" | "sound">("clip");
+const photoPlayer = ref<InstanceType<typeof PhotoPresentationPreview> | null>(
+  null,
+);
 const editMode = ref<"story" | "precision" | "transcript">("story");
 let nativeEditGeneration = 0;
 let nativeEditDisposed = false;
@@ -160,6 +168,8 @@ const draggedClipId = ref("");
 const replacementId = ref("");
 const sourcePlayer = ref<HTMLMediaElement | null>(null);
 const sourceError = ref("");
+const titlePreviewFailed = ref(false);
+const titlePreviewRetry = ref(0);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
 const clipFields = ref({
@@ -192,11 +202,24 @@ const clipOptions = computed(() =>
 const selectedClip = computed(() =>
   allClips.value.find((clip) => clip.id === selectedClipId.value),
 );
+const photoPresentationAllowed = computed(
+  () =>
+    state.value?.composition.tracks.some(
+      (track) =>
+        track.type === "video" &&
+        track.clips.some((clip) => clip.id === selectedClipId.value),
+    ) ?? false,
+);
 const assetMap = computed(
   () => new Map(state.value?.assets.map((asset) => [asset.id, asset]) ?? []),
 );
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
+);
+const photoPresentationActive = computed(
+  () =>
+    selectedAsset.value?.mediaType === "image" &&
+    !!(selectedClip.value?.layout || selectedClip.value?.motion),
 );
 const selectedSourceInfo = computed(() =>
   selectedAsset.value
@@ -221,18 +244,25 @@ const sourcePlaybackKey = computed(
   () =>
     `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
+watch([selectedClipId, () => state.value?.revision], () => {
+  titlePreviewFailed.value = false;
+});
 const selectedBeat = computed(() =>
   state.value?.story.beats.find((beat) => beat.id === selectedBeatId.value),
 );
 const groups = computed(() => {
   const beats = state.value?.story.beats ?? [];
+  const storyClips =
+    state.value?.composition.tracks
+      .filter((track) => track.timing !== "overlay")
+      .flatMap((track) => track.clips) ?? [];
   const list = beats.map((beat) => ({
     id: beat.id,
     title: beat.title,
     intent: beat.intent,
-    clips: allClips.value.filter((clip) => clip.beatId === beat.id),
+    clips: storyClips.filter((clip) => clip.beatId === beat.id),
   }));
-  const loose = allClips.value.filter(
+  const loose = storyClips.filter(
     (clip) => !beats.some((beat) => beat.id === clip.beatId),
   );
   if (loose.length)
@@ -547,7 +577,9 @@ function configurePlayer() {
     player.pause();
     sourceError.value = unsupportedSpeedMessage;
   }
-  player.volume = clip.transform?.volume ?? 1;
+  player.volume =
+    (clip.transform?.volume ?? 1) *
+    evaluateAudioGain(clip.audioAutomation, 0, clip.timelineDuration);
 }
 function stopAtOut() {
   const player = sourcePlayer.value;
@@ -582,6 +614,14 @@ function stopAtOut() {
 function updateSourceTime() {
   if (!sourcePlayer.value) return;
   sourceTime.value = sourcePlayer.value.currentTime;
+  const clip = playbackClip.value;
+  if (clip?.audioAutomation) {
+    const time =
+      (sourceTime.value - (clip.sourceIn ?? 0)) / (clip.transform?.speed ?? 1);
+    sourcePlayer.value.volume =
+      (clip.transform?.volume ?? 1) *
+      evaluateAudioGain(clip.audioAutomation, time, clip.timelineDuration);
+  }
   stopAtOut();
 }
 function sourcePlaybackStarted() {
@@ -630,6 +670,10 @@ function toggleMonitorGuides() {
 }
 function togglePlayback() {
   if (selectedSourceInfo.value?.previewSupported === false) return;
+  if (photoPresentationActive.value) {
+    photoPlayer.value?.toggle();
+    return;
+  }
   const player = sourcePlayer.value;
   if (!player) {
     emit("playback");
@@ -1523,6 +1567,20 @@ onBeforeUnmount(() => {
                     </p>
                   </div>
                 </div>
+                <PhotoPresentationPreview
+                  v-else-if="selectedClip && photoPresentationActive"
+                  ref="photoPlayer"
+                  :clip="selectedClip"
+                  :assets="state.assets"
+                  :frame="projectSettings"
+                  :viewport="sourceViewport"
+                  :transport-target="`#photo-transport-${compositionId}`"
+                  :composition-id="compositionId"
+                  :revision="state.revision"
+                  :project-id="projectId"
+                  :source-version="sourceVersion"
+                  :active="active && editMode === 'story'"
+                />
                 <div
                   v-else-if="selectedAsset.mediaType === 'image'"
                   class="editor-composition-frame"
@@ -1535,6 +1593,22 @@ onBeforeUnmount(() => {
                     :style="previewMediaStyle"
                     @load="capturePreviewSize"
                     @error="sourceError = 'photo'"
+                  />
+                  <img
+                    v-if="selectedClip?.title"
+                    :key="`title:${state.revision}:${titlePreviewRetry}`"
+                    class="editor-title-overlay"
+                    :src="
+                      titlePreviewUrl(
+                        compositionId,
+                        selectedClip.id,
+                        state.revision,
+                        projectId,
+                      )
+                    "
+                    :alt="selectedClip.title"
+                    @load="titlePreviewFailed = false"
+                    @error="titlePreviewFailed = true"
                   />
                 </div>
                 <div
@@ -1583,6 +1657,22 @@ onBeforeUnmount(() => {
                     @play="sourcePlaybackStarted"
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
+                  />
+                  <img
+                    v-if="selectedClip?.title"
+                    :key="`title:${state.revision}:${titlePreviewRetry}`"
+                    class="editor-title-overlay"
+                    :src="
+                      titlePreviewUrl(
+                        compositionId,
+                        selectedClip.id,
+                        state.revision,
+                        projectId,
+                      )
+                    "
+                    :alt="selectedClip.title"
+                    @load="titlePreviewFailed = false"
+                    @error="titlePreviewFailed = true"
                   />
                 </div>
               </template>
@@ -1675,6 +1765,11 @@ onBeforeUnmount(() => {
                 ></span
               >
               <div
+                v-show="photoPresentationActive"
+                :id="`photo-transport-${compositionId}`"
+                class="photo-presentation-target"
+              />
+              <div
                 v-if="
                   selectedAsset &&
                   selectedAsset.mediaType !== 'image' &&
@@ -1729,6 +1824,22 @@ onBeforeUnmount(() => {
                 @click="togglePlayback"
               >
                 {{ t(playing ? "editor.source.pause" : "editor.source.play") }}
+              </button>
+            </div>
+            <div
+              v-if="titlePreviewFailed"
+              class="editor-source-warning"
+              role="status"
+            >
+              <p>{{ t("editor.presentation.titleFailed") }}</p>
+              <button
+                class="editor-button"
+                @click="
+                  titlePreviewFailed = false;
+                  titlePreviewRetry++;
+                "
+              >
+                {{ t("editor.presentation.retryTitle") }}
               </button>
             </div>
             <div
@@ -1853,6 +1964,13 @@ onBeforeUnmount(() => {
               @click="inspector = 'beat'"
             >
               {{ t("editor.beats.title") }}
+            </button>
+            <button
+              :class="{ selected: inspector === 'sound' }"
+              :aria-pressed="inspector === 'sound'"
+              @click="inspector = 'sound'"
+            >
+              {{ t("editor.sound.tab") }}
             </button>
           </div>
           <template
@@ -2132,6 +2250,15 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </template>
+              <PhotoPresentationInspector
+                v-if="controls.visual"
+                :clip="selectedClip"
+                :asset="selectedAsset"
+                :assets="state.assets"
+                :frame="projectSettings"
+                :allow-photo-presentation="photoPresentationAllowed"
+                @command="command"
+              />
               <div class="editor-divider" />
               <div class="editor-actions">
                 <button
@@ -2185,6 +2312,21 @@ onBeforeUnmount(() => {
               <SourceDetails :asset="selectedAsset" compact />
             </details>
           </template>
+          <SoundtrackPanel
+            v-else-if="inspector === 'sound'"
+            :composition="state.composition"
+            :assets="state.assets"
+            :selected-clip="selectedClip"
+            :busy="historyBusy"
+            :active="active && editMode === 'story'"
+            @command="command"
+            @select="
+              (clip) => {
+                chooseClip(clip);
+                inspector = 'sound';
+              }
+            "
+          />
           <template v-else-if="inspector === 'beat' && selectedBeat"
             ><div class="editor-inspector-title">
               <h3>{{ selectedBeat.title }}</h3>

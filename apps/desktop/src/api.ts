@@ -304,6 +304,13 @@ export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
 export const sourceUrl = (id: string, version?: string | number): string =>
   `${prefix}/source/${encodeURIComponent(id)}${version === undefined ? "" : `?v=${encodeURIComponent(version)}`}`;
+export const titlePreviewUrl = (
+  compositionId: string,
+  clipId: string,
+  revision: string,
+  projectId?: string,
+): string =>
+  `${prefix}/compositions/${encodeURIComponent(compositionId)}/title/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ revision, ...(projectId ? { projectId } : {}) })}`;
 export const captionDownloadUrl = (
   id: string,
   projectId: string,

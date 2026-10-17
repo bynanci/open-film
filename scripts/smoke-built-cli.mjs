@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -190,6 +190,85 @@ try {
     );
     assert.ok((await stat(exported.path)).size > 0);
   }
+  // Native rasterizer resolution and the fontkit bundle must work from the
+  // shipped Node entry point, including actual CJK shaping and FFmpeg input.
+  const titleProject = JSON.parse(
+    await readFile(join(project, "project.json"), "utf8"),
+  );
+  titleProject.settings.width = 640;
+  titleProject.settings.height = 360;
+  const titleComposition = {
+    id: "built-cli-title-smoke",
+    storyId: composed.composition.storyId,
+    duration: 1,
+    tracks: [
+      {
+        id: "built-cli-title-video",
+        type: "video",
+        clips: [
+          {
+            id: "built-cli-title-clip",
+            assetId: first.id,
+            timelineStart: 0,
+            timelineDuration: 1,
+            sourceIn: 0,
+            sourceOut: 1,
+            title: "我們的故事 Our story",
+            titleStyle: { version: 1, role: "film-title", fontSize: 28 },
+          },
+        ],
+      },
+    ],
+  };
+  titleProject.timelines.push(titleComposition);
+  await writeFile(join(project, "project.json"), JSON.stringify(titleProject));
+  const titled = await command(
+    "render",
+    "--project",
+    project,
+    "--composition",
+    titleComposition.id,
+  );
+  assert.ok((await stat(titled.path)).size > 0);
+  const titleManifest = JSON.parse(
+    await readFile(`${titled.path}.manifest.json`, "utf8"),
+  );
+  assert.equal(titleManifest.fonts.length, 1);
+  assert.match(titleManifest.fonts[0].sha256, /^[a-f\d]{64}$/u);
+  assert.ok(titleManifest.fonts[0].postscriptName);
+  const { stdout: titlePixels } = await execute(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-ss",
+      "0.5",
+      "-i",
+      titled.path,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "pipe:1",
+    ],
+    { encoding: "buffer", maxBuffer: 2 * 1024 * 1024 },
+  );
+  let whiteTitlePixels = 0;
+  for (let offset = 0; offset < titlePixels.length; offset += 3) {
+    // The procedural teal/yellow source has no near-white pixels.
+    if (
+      titlePixels[offset] > 220 &&
+      titlePixels[offset + 1] > 220 &&
+      titlePixels[offset + 2] > 220
+    )
+      whiteTitlePixels++;
+  }
+  assert.ok(
+    whiteTitlePixels > 100,
+    "The built CLI's CJK title must be visible above its source image.",
+  );
   const reopened = await command("list", "--project", project);
   assert.equal(
     reopened.assets.find((asset) => asset.id === first.id).rating,
@@ -197,7 +276,7 @@ try {
   );
   assert.deepEqual(await Promise.all(originals.map(digest)), before);
   console.log(
-    "Built CLI: real import, Story, local FFmpeg waveform/scenes, paged protocol-fixture words/markers, missing-model failure, bounded playable MP4, exports and reopen passed; Story/composition and original hashes unchanged by intelligence. Protocol fixture is not ASR QA.",
+    "Built CLI: real import, Story, local FFmpeg waveform/scenes, paged protocol-fixture words/markers, missing-model failure, bounded playable MP4, local CJK title raster/native packaging, exports and reopen passed; Story/composition and original hashes unchanged by intelligence. Protocol fixture is not ASR QA.",
   );
 } finally {
   await rm(root, { recursive: true, force: true });

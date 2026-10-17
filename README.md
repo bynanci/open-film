@@ -8,6 +8,11 @@ editable film. Original files are never modified.
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
+The current **photo-film quality** slice adds manual focal layouts, bounded still
+motion, measured CJK graphic titles and music/narration overlays. A generated
+twenty-second A/B film records actual rendered differences and audio automation;
+complete candidate regression and UI verification are still being collected.
+
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
@@ -37,6 +42,10 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   export SRT/WebVTT with a source-revision receipt in **Export → Subtitles**.
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
+- Give photos contain, protected hero or explicit diptych layouts; use hold,
+  gentle push-in or pan, and choose distinct film-title, scene and subtitle roles.
+- Add imported music or narration over the existing cut, with clip-local fades,
+  gain points and manual ducking, without moving pictures or extending the film.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
   target suggestions, and recover autosave failures without dropping the draft.
 - Keep editing missing media, reconnect a moved folder or single file, and move
@@ -123,13 +132,27 @@ and uses existing remote consent. No provider is configured by default. See
 [the workflow, privacy and recovery contract](docs/scene-script-review.md) and
 [validation](docs/validation-scene-script-review.md).
 
+**Photo-film quality:** manual composition controls now reach both the selected
+photo monitor and FFmpeg output through shared geometry/time contracts. Local
+font measurement produces the same graphic-title PNG for preview and rendering.
+Rendered MP4 sidecars retain the composition, source hashes, font identity,
+encoding and warnings. [The contract](docs/photo-film-quality.md) and
+[generated A/B validation](docs/validation-photo-film-quality.md) describe what
+was actually measured. The fixture establishes rendered behavior; judging a
+private film, listening to real audio and testing projection remain manual.
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`
 is used directly and can emit an experimental API warning on Node 24.
 
-Install FFmpeg and FFprobe on `PATH`; the sample workflow needs H.264/AAC encoding
-and the renderer's title support needs FFmpeg's `drawtext` filter. For richer
+Install FFmpeg and FFprobe on `PATH`; the sample workflow needs H.264/AAC encoding.
+Graphic titles use locally installed fonts, measured by `fontkit` and rasterized
+by `@resvg/resvg-js` in the local Node service. These are installed runtime
+dependencies; the native font/raster loader does not enter the Desktop browser
+bundle. Install a CJK font such as Noto Sans CJK for Traditional Chinese/Japanese
+text, or explicitly configure `OPENFILM_TITLE_FONT` with a local font file.
+No runtime font download is required. For richer
 camera metadata, OpenFilm first tries `exiftool` on `PATH`, then its installed
 `exiftool-vendored.pl` distribution through **Perl**. If both are unavailable,
 FFprobe and filesystem timestamps provide a fallback recorded in metadata.

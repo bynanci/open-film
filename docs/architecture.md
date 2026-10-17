@@ -68,7 +68,7 @@ contracts. It does not create another composition or timeline engine.
 | `media`           | Local inspection, source matching/status, hashes and safe thumbnail/proxy conversion.     |
 | `source-pixel`    | Pixel metadata/Motion Photo evidence and DNG inspection through existing source ports.    |
 | `source-insta360` | Flat export metadata and original-source associations; raw/spherical preview limits.      |
-| `render`          | Composition-to-FFmpeg preview adapter.                                                    |
+| `render`          | Composition-to-FFmpeg adapter, local title rasterization and private render manifests.    |
 | `application`     | Import/render/export orchestration, durable editing and relinking shared by CLI/API.      |
 | `ui`              | Reserved package; current desktop helpers live in `apps/desktop`.                         |
 
@@ -319,3 +319,59 @@ loop bounds use the selected asset's frame rate and edit range. Render overlays 
 integer output-pixel positions and presentation timestamps rounded to the output
 time base. See [monitor stability validation](validation-monitor-stability.md)
 for the FFmpeg and browser regression evidence and the remaining workstation gate.
+
+## Photo presentation and audio overlays
+
+Photo-film quality extends the existing `Clip` with optional version-1 `layout`,
+`motion`, `titleStyle` and `audioAutomation` fields. Existing schema-1.0.0 projects
+without these fields retain their legacy behavior. The project JSON already owns
+Composition content, so these additions need no catalog migration or second
+timeline. Core validates them at runtime; the existing application editor and
+solver commands own locks, revision checks, history, persistence and recovery.
+
+Core's presentation plan resolves contain, focal/protected hero and explicit
+two-photo diptych layouts in composition pixels. Source focal points and
+protected rectangles use normalized display-oriented image coordinates. Unsafe
+crop requests fall back explicitly to contain. A pure clip-local evaluator
+resolves hold, push-in and pan at arbitrary seek times with declared easing and
+bounded endpoints. The selected-photo monitor and FFmpeg adapter consume that
+same plan; existing static transform controls remain on the normal geometry
+path. Unsupported intentions are not silently promoted into rendered features.
+
+Graphic title roles use a separate pure text-layout contract in Core. The local
+Node renderer measures actual glyph advances using `fontkit` and rasterizes a
+transparent PNG using `@resvg/resvg-js`. Preview and FFmpeg use that same raster,
+including its resolved font, wrapping and placement. Font files stay local;
+missing or unsupported glyphs produce explicit diagnostics. These graphic roles
+do not rewrite transcript revisions, ASR word timing or derived SRT/WebVTT.
+`fontkit` and the platform-specific resvg native runtime are local Node/service
+dependencies. The build keeps the resvg loader external so it can resolve its
+installed platform package; Desktop receives the PNG and browser-safe layout
+data, without bundling the native font/raster implementation.
+
+Added music and imported narration use existing audio/music track types with
+explicit `timing: "overlay"`. Their edits never ripple the visual story or extend
+the existing film. Roles, fades, gain points and manual ducking live in the
+Composition and use **clip-local timeline seconds**, rather than original source
+time. A source-in trim changes the media heard underneath the same local
+envelope; it does not attempt source-aligned envelope slicing. Shortening the
+clip or film clamps automation to the new end. Speed changes also preserve the
+local-timeline interpretation. Users can explicitly reconfigure the envelope
+afterward. Splitting a clip with active fades, gain points or ducking is rejected
+until a validated partitioning contract exists; copying one envelope to both
+halves would create a different mix.
+
+The renderer expresses this automation after source trim/speed conversion and
+before timeline delay/mixing, using actual audio samples. A private
+`<output>.manifest.json` sidecar records the Composition and its hash, actual
+source hashes, resolved fonts, timing/encoding settings, fallback warnings and
+output hash. Interchange retains new effects as OpenFilm metadata and reports
+manual recreation where the target cannot express them. It does not equate OTIO
+parser success with Resolve effect verification.
+
+The generated twenty-second A/B workflow creates real MP4s, structural recipe
+diffs, sampled frames and FFprobe/loudness/true-peak/RMS evidence. These prove
+specific pipeline behavior and preserve private paths in local manifests; they
+do not establish artistic quality or real speech clarity. See [the contract](photo-film-quality.md)
+and [the execution record](validation-photo-film-quality.md) for scoped automated
+results, pending candidate regression and independent workstation gates.

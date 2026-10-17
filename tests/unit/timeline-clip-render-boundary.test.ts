@@ -285,6 +285,8 @@ async function mountTimeline(
     api,
     ApiError,
     sourceUrl: (id: string) => `source:${id}`,
+    titlePreviewUrl: (compositionId: string, clipId: string) =>
+      `title:${compositionId}:${clipId}`,
     thumbnailUrl: (id: string) => `thumbnail:${id}`,
   };
   const i18n = {
@@ -349,6 +351,18 @@ async function mountTimeline(
       },
     },
     "./TranscriptEditor.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./PhotoPresentationPreview.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./PhotoPresentationInspector.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./SoundtrackPanel.vue": {
       __esModule: true,
       default: { render: () => null },
     },

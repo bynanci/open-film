@@ -376,3 +376,211 @@ describe("OTIO cut layout and explicit advanced-edit preservation", () => {
     },
   );
 });
+
+describe("photo-film quality interchange", () => {
+  const portrait: MediaAsset = {
+    ...assets[0]!,
+    id: "portrait",
+    mediaType: "image",
+    duration: undefined,
+    name: "portrait.jpg",
+    uri: "file:///media/portrait.jpg",
+    contentHash: "portrait-sha256",
+  };
+  const companion: MediaAsset = {
+    ...portrait,
+    id: "companion",
+    name: "companion.jpg",
+    uri: "file:///media/companion.jpg",
+    contentHash: "companion-sha256",
+    metadata: {
+      "openfilm.reference": { relativePath: "photos/companion.jpg" },
+    },
+  };
+  const soundtrack: MediaAsset = {
+    ...assets[0]!,
+    id: "soundtrack",
+    mediaType: "audio",
+    name: "soundtrack.wav",
+    uri: "file:///media/soundtrack.wav",
+  };
+  const quality: Composition = {
+    id: "quality",
+    storyId: "story",
+    duration: 20,
+    tracks: [
+      {
+        id: "photos",
+        type: "video",
+        clips: [
+          {
+            id: "pair",
+            assetId: portrait.id,
+            timelineStart: 0,
+            timelineDuration: 20,
+            layout: {
+              version: 1,
+              preset: "diptych",
+              focalPoint: { x: 0.4, y: 0.5 },
+              secondary: {
+                assetId: companion.id,
+                protectedRegion: { x: 0.1, y: 0.2, width: 0.5, height: 0.6 },
+              },
+              gap: 24,
+            },
+            motion: {
+              version: 1,
+              preset: "push-in",
+              easing: "ease-in-out",
+              from: { scale: 1, x: 0, y: 0 },
+              to: { scale: 1.08, x: 2, y: -3 },
+            },
+            title: "我們一起走過的日子",
+            titleStyle: {
+              version: 1,
+              role: "scene-statement",
+              fontFamily: "Noto Sans CJK TC",
+              fontSize: 48,
+              maxWidth: 1400,
+              align: "center",
+              background: "scrim",
+            },
+          },
+        ],
+      },
+      {
+        id: "soundtrack",
+        type: "music",
+        timing: "overlay",
+        clips: [
+          {
+            id: "music",
+            assetId: soundtrack.id,
+            sourceIn: 4,
+            sourceOut: 24,
+            timelineStart: 0,
+            timelineDuration: 20,
+            audioAutomation: {
+              version: 1,
+              role: "music",
+              fadeIn: 1,
+              fadeOut: 2,
+              points: [{ time: 0, gain: 0.8 }],
+              ducking: [
+                { start: 5, end: 10, gain: 0.25, attack: 1, release: 1 },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const qualityAssets = [portrait, companion, soundtrack];
+
+  it("preserves quality decisions and every source identity without claiming native NLE effects", () => {
+    const before = structuredClone(quality);
+    const output = exportTimeline("otio", quality, qualityAssets);
+    const decoded = JSON.parse(output.content);
+    const photo = decoded.tracks.children[0].children[0];
+    const musicTrack = decoded.tracks.children[1];
+    expect(decoded.metadata.openfilm.composition).toEqual(quality);
+    expect(photo.metadata.openfilm.clip).toEqual(quality.tracks[0]!.clips[0]);
+    expect(photo.metadata.openfilm.secondaryMediaReferences).toEqual([
+      {
+        assetId: companion.id,
+        name: companion.name,
+        target_url: companion.uri,
+        mediaType: "image",
+        contentHash: companion.contentHash,
+        portableReference: companion.metadata["openfilm.reference"],
+      },
+    ]);
+    expect(musicTrack.metadata.openfilm).toMatchObject({
+      trackType: "music",
+      timing: "overlay",
+    });
+    expect(
+      musicTrack.children[0].metadata.openfilm.clip.audioAutomation,
+    ).toEqual(quality.tracks[1]!.clips[0]!.audioAutomation);
+    expect(photo.effects).toEqual([]);
+    expect(photo.media_reference.target_url).toBe(portrait.uri);
+    expect(
+      photo.source_range.duration.value / photo.source_range.duration.rate,
+    ).toBe(20);
+    expect(decoded.metadata.openfilm.compatibility).toMatchObject({
+      realNleVerified: false,
+      advancedEdits: "metadata-only",
+      metadataOnlyEdits: [
+        {
+          clipId: "pair",
+          features: ["title", "photo layout", "photo motion", "title style"],
+        },
+        {
+          clipId: "music",
+          features: ["audio automation", "overlay timing"],
+        },
+      ],
+    });
+    expect(
+      output.warnings?.some((warning) =>
+        warning.includes("recreated manually"),
+      ),
+    ).toBe(true);
+    expect(quality).toEqual(before);
+  });
+
+  it("includes secondary photo assets in portable JSON and rejects missing secondary identity", () => {
+    const decoded = JSON.parse(
+      exportTimeline("json", quality, [...qualityAssets, ...assets]).content,
+    );
+    expect(decoded.composition).toEqual(quality);
+    expect(decoded.assets.map((asset: MediaAsset) => asset.id)).toEqual([
+      "portrait",
+      "companion",
+      "soundtrack",
+    ]);
+    for (const format of ["json", "otio", "fcpxml", "edl"] as const) {
+      expect(() =>
+        exportTimeline(format, quality, [portrait, soundtrack]),
+      ).toThrow(/companion.*relink/);
+      expect(() =>
+        exportTimeline(format, quality, [
+          portrait,
+          { ...companion, uri: "" },
+          soundtrack,
+        ]),
+      ).toThrow(/companion.jpg.*no URI/);
+    }
+  });
+
+  it.each(["fcpxml", "edl"] as const)(
+    "rejects %s quality fields explicitly, including hold/contain recipes with identity values",
+    (format) => {
+      const plain = structuredClone(composition);
+      const clip = plain.tracks[0]!.clips[0]!;
+      const unsupported = {
+        layout: { version: 1, preset: "contain" },
+        motion: {
+          version: 1,
+          preset: "hold",
+          easing: "linear",
+          from: { scale: 1, x: 0, y: 0 },
+          to: { scale: 1, x: 0, y: 0 },
+        },
+        titleStyle: { version: 1, role: "subtitle" },
+        audioAutomation: { version: 1, role: "dialogue" },
+      } as const;
+      for (const [field, value] of Object.entries(unsupported)) {
+        Object.assign(clip, { [field]: value });
+        expect(() => exportTimeline(format, plain, assets)).toThrow(
+          `cannot represent ${field}`,
+        );
+        delete clip[field as keyof typeof unsupported];
+      }
+      plain.tracks[0]!.timing = "overlay";
+      expect(() => exportTimeline(format, plain, assets)).toThrow(
+        "overlay timing",
+      );
+    },
+  );
+});

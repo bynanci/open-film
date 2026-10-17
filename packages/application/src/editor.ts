@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { validateProject, type MediaAsset } from "@openfilm/core";
+import {
+  validateProject,
+  validatePhotoLayout,
+  validatePhotoMotion,
+  validateTitleStyle,
+  validateAudioAutomation,
+  type MediaAsset,
+} from "@openfilm/core";
 import {
   applyTimelineCommand,
   type EditorDocument,
@@ -94,6 +101,18 @@ function positive(value: unknown, path: string): number {
   return result;
 }
 
+function nested(
+  value: unknown,
+  path: string,
+  validate: (value: unknown) => unknown,
+): void {
+  try {
+    validate(value);
+  } catch (error) {
+    invalid(path, error instanceof Error ? error.message : String(error));
+  }
+}
+
 function command(value: unknown, index: number): TimelineCommand {
   const path = `commands[${index}]`;
   const data = record(value, path);
@@ -106,6 +125,66 @@ function command(value: unknown, index: number): TimelineCommand {
     type === "beat" || type === "regenerate-beat" ? "beatId" : "clipId",
   ];
   switch (type) {
+    case "presentation": {
+      const presentationFields = ["layout", "motion", "title", "titleStyle"];
+      fields.push(...presentationFields);
+      if (!presentationFields.some((field) => Object.hasOwn(data, field)))
+        invalid(path, "provide a presentation field to change");
+      for (const [field, validator] of [
+        ["layout", validatePhotoLayout],
+        ["motion", validatePhotoMotion],
+        ["titleStyle", validateTitleStyle],
+      ] as const)
+        if (Object.hasOwn(data, field) && data[field] !== null)
+          nested(data[field], `${path}.${field}`, validator);
+      if (
+        Object.hasOwn(data, "title") &&
+        data.title !== null &&
+        (typeof data.title !== "string" ||
+          !data.title.trim() ||
+          data.title.length > 10000)
+      )
+        invalid(
+          `${path}.title`,
+          "expected nonempty text of at most 10000 characters, or null to remove",
+        );
+      break;
+    }
+    case "audio.add":
+      fields.push(
+        "assetId",
+        "role",
+        "timelineStart",
+        "sourceIn",
+        "sourceOut",
+        "volume",
+      );
+      nonempty(data.assetId, `${path}.assetId`);
+      nested(
+        { version: 1, role: data.role },
+        `${path}.role`,
+        validateAudioAutomation,
+      );
+      finite(data.timelineStart, `${path}.timelineStart`, 0);
+      finite(data.sourceIn, `${path}.sourceIn`, 0);
+      if (
+        positive(data.sourceOut, `${path}.sourceOut`) <= Number(data.sourceIn)
+      )
+        invalid(path, "sourceOut must be greater than sourceIn");
+      if (
+        Object.hasOwn(data, "volume") &&
+        finite(data.volume, `${path}.volume`, 0) > 1
+      )
+        invalid(`${path}.volume`, "must be between 0 and 1");
+      break;
+    case "audio.configure":
+      fields.push("automation");
+      nested(data.automation, `${path}.automation`, validateAudioAutomation);
+      break;
+    case "audio.move":
+      fields.push("timelineStart");
+      finite(data.timelineStart, `${path}.timelineStart`, 0);
+      break;
     case "clip.split":
       fields.push("sourceTime");
       finite(data.sourceTime, `${path}.sourceTime`, 0);
@@ -292,7 +371,12 @@ export class TimelineEditor {
     const ids = new Set([
       ...composition.tracks
         .filter((track) => track.type !== "titles")
-        .flatMap((track) => track.clips.map((clip) => clip.assetId)),
+        .flatMap((track) =>
+          track.clips.flatMap((clip) => [
+            clip.assetId,
+            ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+          ]),
+        ),
       ...story.beats.flatMap((beat) => [
         ...(beat.candidateAssetIds ?? []),
         ...(beat.selectedAssetIds ?? []),
@@ -305,7 +389,8 @@ export class TimelineEditor {
       (beat) => beat.candidateAssetIds === undefined,
     );
     for (const asset of this.application.catalog.iterateAssetSummaries())
-      if (implicitPool || asset.state.locked) ids.add(asset.id);
+      if (implicitPool || asset.state.locked || asset.mediaType === "audio")
+        ids.add(asset.id);
     const assets = [...ids].sort().map((id) => {
       const asset = this.application.catalog.getAsset(id);
       if (!asset)
@@ -368,20 +453,25 @@ export class TimelineEditor {
       const before = this.current(compositionId, parsed.baseRevision);
       let next = document(before);
       const assets = [...before.assets];
-      // Explicit replacements may name an asset outside this story's candidate pool.
-      for (const item of parsed.commands)
-        if (
-          item.type === "replace" &&
-          !assets.some((asset) => asset.id === item.assetId)
-        ) {
-          const replacement = this.application.catalog.getAsset(item.assetId);
-          if (!replacement)
+      // Explicit edits may reference source media outside this story's candidate pool.
+      for (const item of parsed.commands) {
+        const referenced =
+          item.type === "replace" || item.type === "audio.add"
+            ? [item.assetId]
+            : item.type === "presentation" && item.layout?.secondary
+              ? [item.layout.secondary.assetId]
+              : [];
+        for (const assetId of referenced) {
+          if (assets.some((asset) => asset.id === assetId)) continue;
+          const source = this.application.catalog.getAsset(assetId);
+          if (!source)
             throw new TimelineEditorError(
-              `Replacement asset not found: ${item.assetId}`,
+              `Edit source asset not found: ${assetId}`,
               404,
             );
-          assets.push(replacement);
+          assets.push(source);
         }
+      }
       try {
         for (const item of parsed.commands)
           next = applyTimelineCommand(next, assets, item);

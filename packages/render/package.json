@@ -8,6 +8,11 @@
   },
   "dependencies": {
     "@openfilm/core": "workspace:*",
-    "@openfilm/media": "workspace:*"
+    "@openfilm/media": "workspace:*",
+    "@resvg/resvg-js": "2.6.2",
+    "fontkit": "2.0.4"
+  },
+  "devDependencies": {
+    "@types/fontkit": "2.0.9"
   }
 }

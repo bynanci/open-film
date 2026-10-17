@@ -586,6 +586,18 @@
             }
           },
           "required": ["type", "duration"]
+        },
+        "layout": {
+          "$ref": "#/$defs/photoLayout"
+        },
+        "motion": {
+          "$ref": "#/$defs/photoMotion"
+        },
+        "titleStyle": {
+          "$ref": "#/$defs/titleStyle"
+        },
+        "audioAutomation": {
+          "$ref": "#/$defs/audioAutomation"
         }
       },
       "required": ["id", "assetId", "timelineStart", "timelineDuration"]
@@ -606,6 +618,9 @@
           "items": {
             "$ref": "#/$defs/clip"
           }
+        },
+        "timing": {
+          "const": "overlay"
         }
       },
       "required": ["id", "type", "clips"]
@@ -839,6 +854,282 @@
         "acceptedRevisionId",
         "acceptedAt"
       ]
+    },
+    "photoFocalPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": ["x", "y"]
+    },
+    "photoProtectedRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "type": "number",
+          "maximum": 1,
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "maximum": 1,
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": ["x", "y", "width", "height"]
+    },
+    "photoLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "preset": {
+          "enum": ["contain", "hero", "diptych"]
+        },
+        "focalPoint": {
+          "$ref": "#/$defs/photoFocalPoint"
+        },
+        "protectedRegion": {
+          "$ref": "#/$defs/photoProtectedRegion"
+        },
+        "secondary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "assetId": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "focalPoint": {
+              "$ref": "#/$defs/photoFocalPoint"
+            },
+            "protectedRegion": {
+              "$ref": "#/$defs/photoProtectedRegion"
+            }
+          },
+          "required": ["assetId"]
+        },
+        "gap": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": ["version", "preset"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "preset": {
+                "const": "diptych"
+              }
+            }
+          },
+          "then": {
+            "required": ["secondary"]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["secondary"]
+                },
+                {
+                  "required": ["gap"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "photoMotionTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": ["scale", "x", "y"]
+    },
+    "photoMotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "preset": {
+          "enum": ["hold", "push-in", "pan"]
+        },
+        "easing": {
+          "enum": ["linear", "ease-in-out"]
+        },
+        "from": {
+          "$ref": "#/$defs/photoMotionTransform"
+        },
+        "to": {
+          "$ref": "#/$defs/photoMotionTransform"
+        }
+      },
+      "required": ["version", "preset", "easing", "from", "to"]
+    },
+    "titleStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "role": {
+          "enum": ["film-title", "scene-statement", "subtitle"]
+        },
+        "fontFamily": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "fontSize": {
+          "type": "number",
+          "maximum": 4096,
+          "exclusiveMinimum": 0
+        },
+        "fontWeight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900
+        },
+        "lineHeight": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "tracking": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "maxWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "align": {
+          "enum": ["left", "center", "right"]
+        },
+        "background": {
+          "enum": ["none", "scrim"]
+        },
+        "position": {
+          "enum": ["center", "bottom"]
+        }
+      },
+      "required": ["version", "role"]
+    },
+    "audioAutomation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "role": {
+          "enum": ["music", "narration", "ambience", "dialogue"]
+        },
+        "fadeIn": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fadeOut": {
+          "type": "number",
+          "minimum": 0
+        },
+        "points": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "time": {
+                "type": "number",
+                "minimum": 0
+              },
+              "gain": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": ["time", "gain"]
+          }
+        },
+        "ducking": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "gain": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "attack": {
+                "type": "number",
+                "minimum": 0
+              },
+              "release": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": ["start", "end", "gain", "attack", "release"]
+          }
+        }
+      },
+      "required": ["version", "role"]
     }
   }
 }
