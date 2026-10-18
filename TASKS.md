@@ -5,6 +5,20 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — Apache-2.0 restoration
+
+Policy: [licensing](docs/licensing.md) and
+[ADR 010](docs/adr/010-apache-license-restoration.md).
+
+- [x] Allow commercial use and proprietary derivatives under Apache-2.0 while
+      retaining required notices, earlier Apache/GPL grants and third-party terms.
+- [x] Keep the exact original Apache license, archive the preceding GPL text and
+      align every first-party package, Rust declaration and original look recipe.
+- [x] Verify current declarations and historical notices through regression tests;
+      retain CC0 fixture grants and separate FFmpeg, font and dependency licenses.
+      Six licensing cases and twelve recipe cases pass; published full-gate
+      outcomes are recorded in the integrating PR's checks.
+
 ## Current — Photo pull-out preset follow-up
 
 Contract: [photo-film quality](docs/photo-film-quality.md#photo-pull-out).
@@ -86,9 +100,9 @@ Evidence: [validation](docs/validation-film-looks.md) and
 - [x] Correct known Vue SSR dependency behavior, verify local API trust guards and
       reject non-self-contained media inputs while preserving supported formats.
       Record remaining native transitive notices in the [security review](docs/security-review-2026-10-18.md).
-- [x] Apply the selected GPL-3.0-only derivative distribution terms, preserve exact
-      historical Apache text/notices and fixture CC0 grants, and document AGPL's
-      alternative network-service scope in [licensing](docs/licensing.md).
+- [x] Record the earlier GPL-3.0-only distribution decision as historical, preserving
+      its grants alongside Apache text/notices and fixture CC0 grants. The current
+      Apache-2.0 restoration is tracked above and in [licensing](docs/licensing.md).
 - [x] Refresh imported media even when a small import completes before its first
       jobs acknowledgement; reproduce the missed transition in unit/browser
       regressions while preserving project ownership and render-progress isolation.
@@ -561,4 +575,4 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 - [x] Validate actual downloaded files with independent parsers and localized, bounded browser screens.
 - [ ] Manual: subtitle playback in a real NLE/player remains separate from format-parser validation.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

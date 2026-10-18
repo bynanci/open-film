@@ -1,4 +1,4 @@
-> **Historical licensing record:** the original Apache-2.0 grants remain available. The current derivative distribution is GPL-3.0-only; see [licensing](licensing.md) and [ADR 009](adr/009-copyleft-license.md).
+> **Licensing record:** OpenFilm first-party material is Apache-2.0. Historical grants remain available; see [licensing](licensing.md) and [ADR 010](adr/010-apache-license-restoration.md).
 
 # Vidscribe reference and OpenFilm 0.3 adaptation
 
@@ -24,8 +24,8 @@ reference's application architecture, code blocks, bundled model, assets or UI.
 The pinned Vidscribe [license](https://github.com/AinxietyLab/VidScribe/blob/b145eaf1f7ae8f52588375e6d1e06e1ee58e3867/LICENSE)
 is MIT, copyright 2026 VidScribe contributors. Its notice must accompany copies
 or substantial portions if any are introduced later. At the reviewed baseline, OpenFilm used
-Apache-2.0; those grants remain available. The current derivative distribution
-uses GPL-3.0-only as described in [licensing](licensing.md). The reference describes its bundled YuNet model as Apache-2.0;
+Apache-2.0, which is also the current first-party license as described in
+[licensing](licensing.md). Historical grants remain available. The reference describes its bundled YuNet model as Apache-2.0;
 that comment is not a substitute for checking model provenance and distribution
 terms before any future adoption. No reference model is being bundled here.
 
@@ -94,4 +94,4 @@ fixture provenance separately. GPU availability or performance requires an
 actual compatible GPU run. None of these checks establishes DaVinci Resolve
 application compatibility.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

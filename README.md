@@ -353,7 +353,7 @@ See [architecture](docs/architecture.md), [project format](docs/project-format.m
 [roadmap](ROADMAP.md), and [task status](TASKS.md).
 Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md) and our
 [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues as described in
-[SECURITY.md](SECURITY.md). The current derivative distribution is [GPL-3.0-only](LICENSE), with prior Apache grants preserved in [the licensing record](docs/licensing.md); generated
+[SECURITY.md](SECURITY.md). OpenFilm first-party code and original film-look recipes are [Apache-2.0](LICENSE), with historical grants preserved in [the licensing record](docs/licensing.md); generated
 sample media is dedicated to the public domain under CC0 1.0.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

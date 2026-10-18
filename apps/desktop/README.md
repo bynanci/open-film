@@ -219,4 +219,4 @@ OTIO file; the interchange file does not embed source media. For a reproducible
 generated-media check on another computer, use the
 [portable workstation QA guide](../../docs/resolve-workstation-qa.md).
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

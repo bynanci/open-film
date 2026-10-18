@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import type { Clip, Composition, FilmLook } from "./models.js";
 import { validateFilmLook } from "./validation.js";
 
 export const FILM_LOOK_RECIPE_VERSION = 1 as const;
 export const FILM_LOOK_MATRIX_DOMAIN = "encoded-sdr-rgb" as const;
 export const FILM_LOOK_RECIPE_ORIGIN = "openfilm-original" as const;
-export const FILM_LOOK_RECIPE_LICENSE = "GPL-3.0-only" as const;
+export const FILM_LOOK_RECIPE_LICENSE = "Apache-2.0" as const;
 /** Row-major SVG 4×5 coefficients; every public recipe has exactly 20 values. */
 export type FilmLookMatrix = readonly number[];
 const identity = Object.freeze([

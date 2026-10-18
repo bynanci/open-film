@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { evaluateTitleOpacity, type Clip } from "@openfilm/core";
 

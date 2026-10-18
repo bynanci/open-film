@@ -1,9 +1,11 @@
-OpenFilm modified distribution — 2026-10-18
+OpenFilm Apache-2.0 restoration — 2026-10-18
 
-This derivative work as a whole and new OpenFilm contributions are licensed
-under GPL-3.0-only. Preexisting portions retain their Apache-2.0 grants.
-This transition does not revoke previously granted rights. See LICENSE,
-LICENSES/Apache-2.0.txt and docs/licensing.md. Third-party terms remain applicable.
+OpenFilm's current first-party distribution and authorized new contributions
+are offered under Apache-2.0. Previously granted Apache-2.0 and GPL-3.0-only
+rights remain available for the material covered by those grants. This change
+does not relicense third-party components or claim copyright assignments.
+See LICENSE, docs/licensing.md and LICENSES/GPL-3.0-only.txt for the current
+terms and historical licensing record. Third-party terms remain applicable.
 
 Original attribution notice, retained verbatim:
 --------------------------------------------

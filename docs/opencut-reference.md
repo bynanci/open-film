@@ -1,4 +1,4 @@
-> **Historical licensing record:** the original Apache-2.0 grants remain available. The current derivative distribution is GPL-3.0-only; see [licensing](licensing.md) and [ADR 009](adr/009-copyleft-license.md).
+> **Licensing record:** OpenFilm first-party material is Apache-2.0. Historical grants remain available; see [licensing](licensing.md) and [ADR 010](adr/010-apache-license-restoration.md).
 
 # OpenCut reference and bounded workflow adaptations
 
@@ -68,8 +68,8 @@ claim for assets, dependency bundles or externally downloaded models. For exampl
 current `crates/media/setup/ffmpeg.json` explicitly labels its pinned FFmpeg build
 `LGPL-2.1-or-later`. None of those files or bundled materials are imported here.
 The reviewed baseline adapted concepts through original implementation under
-Apache-2.0. Those grants remain available; the current derivative distribution
-uses GPL-3.0-only as described in [licensing](licensing.md). Any future substantial code copy must carry the exact source,
+Apache-2.0, which is also the current first-party license as described in
+[licensing](licensing.md). Historical grants remain available. Any future substantial code copy must carry the exact source,
 commit, affected paths and required copyright/permission notice.
 
 Source review does not verify OpenCut execution, real ASR quality, GPU speed,
@@ -122,4 +122,4 @@ once the basic flow is verified. OpenCut implementation, branding and assets
 are not copied; the licensing and manual-verification boundaries above continue
 to apply.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

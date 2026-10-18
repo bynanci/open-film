@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -42,7 +42,7 @@ describe("portable film look recipes", () => {
   it("publishes original recipe licensing and an encoded-SDR working-domain contract", () => {
     expect(FILM_LOOK_MATRIX_DOMAIN).toBe("encoded-sdr-rgb");
     expect(FILM_LOOK_RECIPE_ORIGIN).toBe("openfilm-original");
-    expect(FILM_LOOK_RECIPE_LICENSE).toBe("GPL-3.0-only");
+    expect(FILM_LOOK_RECIPE_LICENSE).toBe("Apache-2.0");
     for (const value of [
       FILM_LOOK_MATRIX_DOMAIN,
       FILM_LOOK_RECIPE_ORIGIN,

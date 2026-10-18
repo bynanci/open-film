@@ -195,4 +195,4 @@ files` folder if the bundle moved between machines.
    feature verified only after this procedure succeeds. No such result is claimed
    by the automated gate.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

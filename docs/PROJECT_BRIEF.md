@@ -1,4 +1,4 @@
-> **Historical licensing record:** the original Apache-2.0 grants remain available. The current derivative distribution is GPL-3.0-only; see [licensing](licensing.md) and [ADR 009](adr/009-copyleft-license.md).
+> **Licensing record:** OpenFilm first-party material is Apache-2.0. Historical grants remain available; see [licensing](licensing.md) and [ADR 010](adr/010-apache-license-restoration.md).
 
 你是一名 Principal Software Engineer、Media Pipeline Architect、Video Editing Systems Engineer、Open-source Maintainer 與 Product Designer。
 
@@ -1862,4 +1862,4 @@ documented
 
 除非真正遇到 blocker，否則持續推進。
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

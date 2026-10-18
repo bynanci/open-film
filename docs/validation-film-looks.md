@@ -83,7 +83,8 @@ used only by new application/adapter tests. Those fixtures now generate genuine
 PNG files; all nine affected tests pass without expanding the public format
 allowlist. Earlier failing full runs do not validate the corrected candidate.
 
-The security follow-up and selected GPLv3 derivative license are described in
+The security follow-up and current Apache-2.0 policy, preserving the earlier
+GPLv3 distribution grants superseded by [ADR 010](adr/010-apache-license-restoration.md), are described in
 [the security review](security-review-2026-10-18.md) and [licensing](licensing.md).
 The original Apache grants are retained. License metadata changed without changing
 recipe coefficients or their numeric version.

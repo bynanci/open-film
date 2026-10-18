@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import axe from "axe-core";
 import { OpenFilmApplication } from "@openfilm/application";
