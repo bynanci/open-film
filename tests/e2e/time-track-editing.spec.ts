@@ -409,3 +409,126 @@ test("one-frame clips keep precise widths and independently reachable start and 
     .poll(async () => (await clip(request, "photo")).timelineDuration)
     .toBeCloseTo(1 / 24 + 0.25, 6);
 });
+
+for (const resize of ["viewport", "inspector"] as const) {
+  test(`resizing the ${resize} cancels a captured trim before scroll clamping can change its duration`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openFixture(page, request, 60);
+    const before = await composition(request);
+    let editPosts = 0;
+    page.on("request", (entry) => {
+      if (
+        entry.method() === "POST" &&
+        new URL(entry.url()).pathname === "/api/compositions/track-cut/edit"
+      )
+        editPosts++;
+    });
+    const scroller = page.locator(".time-track-scroller");
+    await page
+      .locator('.time-track-clip[data-clip-id="photo"] .time-track-clip-body')
+      .click({ position: { x: 20, y: 15 } });
+    const original = await scroller.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      return { scroll: element.scrollLeft, width: element.clientWidth };
+    });
+    expect(original.scroll).toBeGreaterThan(0);
+    const end = page.getByRole("button", {
+      name: "Trim end of 01-photo.png",
+      exact: true,
+    });
+    const box = await end.boundingBox();
+    expect(box).not.toBeNull();
+    const start = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x - 12, start.y);
+    await expect(
+      page.locator('.time-track-clip[data-clip-id="photo"]'),
+    ).toHaveClass(/is-drafting/);
+    if (resize === "viewport") {
+      await page.setViewportSize({ width: 1480, height: 720 });
+    } else {
+      // Keyboard activation changes the container without releasing its active pointer.
+      await page
+        .getByRole("button", { name: "Hide inspector", exact: true })
+        .focus();
+      await page.keyboard.press("Enter");
+    }
+    await expect
+      .poll(async () => scroller.evaluate((element) => element.clientWidth))
+      .toBeGreaterThan(original.width);
+    await expect
+      .poll(async () => scroller.evaluate((element) => element.scrollLeft))
+      .toBeLessThan(original.scroll);
+    await expect(page.locator(".time-track-clip.is-drafting")).toHaveCount(0);
+    await page.mouse.up();
+    await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+    expect(await composition(request)).toEqual(before);
+    expect(editPosts).toBe(0);
+  });
+}
+
+for (const selection of ["selected", "unselected"] as const) {
+  test(`direct trimming a ${selection} clip keeps the collapsed inspector closed and completes the gesture`, async ({
+    page,
+    request,
+  }) => {
+    await openFixture(page, request);
+    await page
+      .getByRole("button", { name: "Hide inspector", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Show inspector", exact: true }),
+    ).toBeVisible();
+    const handle = page.getByRole("button", {
+      name:
+        selection === "selected"
+          ? "Trim end of 04-motion.mp4"
+          : "Trim start of 01-photo.png",
+      exact: true,
+    });
+    await drag(page, handle, -12);
+    if (selection === "selected") {
+      await expect.poll(async () => (await clip(request)).sourceOut).toBe(2);
+    } else {
+      await expect
+        .poll(async () => (await clip(request, "photo")).timelineDuration)
+        .toBe(4.25);
+      await expect(
+        page.locator(
+          '.time-track-clip[data-clip-id="photo"] .time-track-clip-body',
+        ),
+      ).toHaveAttribute("aria-pressed", "true");
+    }
+    await expect(
+      page.getByRole("button", { name: "Show inspector", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+    await handle.focus();
+    await page.keyboard.press("ArrowLeft");
+    if (selection === "selected") {
+      await expect
+        .poll(async () => (await clip(request)).sourceOut)
+        .toBeCloseTo(2 - 2 / 24, 6);
+    } else {
+      await expect
+        .poll(async () => (await clip(request, "photo")).timelineDuration)
+        .toBeCloseTo(4.25 + 1 / 24, 6);
+    }
+    await expect(
+      page.getByRole("button", { name: "Show inspector", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+    await page
+      .locator(
+        `.time-track-clip[data-clip-id="${selection === "selected" ? "motion" : "photo"}"] .time-track-clip-body`,
+      )
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Hide inspector", exact: true }),
+    ).toBeVisible();
+  });
+}

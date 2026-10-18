@@ -33,7 +33,7 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
 }>();
 const emit = defineEmits<{
-  select: [clip: Clip];
+  select: [clip: Clip, openInspector?: boolean];
   commit: [command: TimelineCommand];
   activity: [active: boolean];
 }>();
@@ -48,9 +48,12 @@ const gesture = shallowRef<{
   originX: number;
   originScroll: number;
   originRailWidth: number;
+  originViewportWidth: number;
+  originViewportLeft: number;
   pointerId: number;
   target: HTMLButtonElement;
 } | null>(null);
+let viewportObserver: ResizeObserver | undefined;
 const assetsById = computed(
   () => new Map(props.assets.map((asset) => [asset.id, asset])),
 );
@@ -120,7 +123,7 @@ function begin(event: PointerEvent, clip: Clip, edge: TimelineResizeEdge) {
   event.preventDefault();
   const asset = assetsById.value.get(clip.assetId)!;
   const target = event.currentTarget as HTMLButtonElement;
-  emit("select", clip);
+  emit("select", clip, false);
   target.focus({ preventScroll: true });
   target.setPointerCapture(event.pointerId);
   // Keep the scroll range stable while shortening the last clip. Otherwise the
@@ -133,6 +136,8 @@ function begin(event: PointerEvent, clip: Clip, edge: TimelineResizeEdge) {
     originX: event.clientX,
     originScroll: scroller.value?.scrollLeft ?? 0,
     originRailWidth,
+    originViewportWidth: scroller.value?.clientWidth ?? 0,
+    originViewportLeft: scroller.value?.getBoundingClientRect().left ?? 0,
     pointerId: event.pointerId,
     target,
   };
@@ -143,6 +148,12 @@ function begin(event: PointerEvent, clip: Clip, edge: TimelineResizeEdge) {
 function move(event: PointerEvent) {
   const current = gesture.value;
   if (!current || event.pointerId !== current.pointerId) return;
+  // A container resize can clamp scrollLeft. Its coordinate change must cancel
+  // the captured draft rather than become another source trim delta.
+  if (viewportChanged(current)) {
+    cancel();
+    return;
+  }
   event.preventDefault();
   const pixels =
     event.clientX -
@@ -155,6 +166,17 @@ function move(event: PointerEvent) {
     current.edge,
     timelineSecondsFromPixels(pixels, pixelsPerSecond.value),
     props.frameRate,
+  );
+}
+
+function viewportChanged(current: NonNullable<typeof gesture.value>) {
+  const viewport = scroller.value;
+  return (
+    !viewport ||
+    viewport.clientWidth !== current.originViewportWidth ||
+    Math.abs(
+      viewport.getBoundingClientRect().left - current.originViewportLeft,
+    ) > 0.01
   );
 }
 
@@ -188,7 +210,7 @@ function resizeWithKeyboard(
     delta,
     fps,
   );
-  emit("select", clip);
+  emit("select", clip, false);
   if (change) emit("commit", change.command);
 }
 
@@ -226,11 +248,18 @@ watch(
   },
 );
 onMounted(() => {
+  viewportObserver = new ResizeObserver(() => {
+    // Feedback may change the lane's height during a normal drag; only changes
+    // to the horizontal coordinate system invalidate this interaction.
+    if (gesture.value && viewportChanged(gesture.value)) cancel();
+  });
+  if (scroller.value) viewportObserver.observe(scroller.value);
   window.addEventListener("keydown", escape, true);
   window.addEventListener("blur", cancel);
 });
 onBeforeUnmount(() => {
   cancel();
+  viewportObserver?.disconnect();
   window.removeEventListener("keydown", escape, true);
   window.removeEventListener("blur", cancel);
 });

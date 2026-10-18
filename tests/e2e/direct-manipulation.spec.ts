@@ -16,6 +16,49 @@ test.afterEach(async ({ request }) => {
   await Promise.all(cleanup.splice(0).map((action) => action()));
 });
 
+test("resetting an unchanged picture preserves redo and does not create an empty edit", async ({
+  page,
+  request,
+}) => {
+  await openFixture(page, request);
+  await page
+    .getByRole("button", { name: "Adjust picture", exact: true })
+    .click();
+  await move(page, 24, 12);
+  await expect
+    .poll(async () => (await clip(request)).transform?.x ?? 0)
+    .toBeGreaterThan(0);
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  const moved = (await clip(request)).transform;
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  const endpoint = `${base}/compositions/gesture-cut/editor`;
+  const before = await (await request.get(endpoint)).json();
+  expect(before.canRedo).toBe(true);
+  const edits: string[] = [];
+  page.on("request", (entry) => {
+    if (
+      entry.method() === "POST" &&
+      new URL(entry.url()).pathname === "/api/compositions/gesture-cut/edit"
+    )
+      edits.push(entry.postData()!);
+  });
+  await page
+    .getByRole("button", { name: "Reset picture", exact: true })
+    .click();
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  await page
+    .getByRole("button", { name: "Center picture", exact: true })
+    .click();
+  await expect(page.locator(".editor-save-state")).toHaveText("Saved");
+  const after = await (await request.get(endpoint)).json();
+  expect(edits).toEqual([]);
+  expect(after.revision).toBe(before.revision);
+  expect(after.canRedo).toBe(true);
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect.poll(async () => (await clip(request)).transform).toEqual(moved);
+});
+
 async function openFixture(page: Page, request: APIRequestContext) {
   const fixture = await createDesktopFixture(1);
   cleanup.push(fixture.cleanup);
@@ -86,6 +129,34 @@ async function openFixture(page: Page, request: APIRequestContext) {
   await expect(page.locator(".editor-save-state")).toHaveText("Saved");
   return fixture;
 }
+
+test("resetting rejected numeric geometry clears its validation without creating an edit", async ({
+  page,
+  request,
+}) => {
+  await openFixture(page, request);
+  const scale = page.getByLabel("Clip scale", { exact: true });
+  await scale.fill("-1");
+  await scale.press("Tab");
+  await expect(page.locator(".editor-message.error")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Adjust picture", exact: true })
+    .click();
+  const before = await (
+    await request.get(`${base}/compositions/gesture-cut/editor`)
+  ).json();
+  await page
+    .getByRole("button", { name: "Reset picture", exact: true })
+    .click();
+  await expect(scale).toHaveValue("1");
+  await expect(page.locator(".editor-message.error")).toHaveCount(0, {
+    timeout: 2000,
+  });
+  const after = await (
+    await request.get(`${base}/compositions/gesture-cut/editor`)
+  ).json();
+  expect(after.revision).toBe(before.revision);
+});
 async function clip(request: APIRequestContext, id = "photo"): Promise<Clip> {
   const response = await request.get(`${base}/compositions/gesture-cut/editor`);
   expect(response.ok()).toBe(true);

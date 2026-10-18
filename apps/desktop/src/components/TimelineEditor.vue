@@ -408,6 +408,16 @@ function previewPicture(value: PreviewTransform) {
 }
 function commitPicture(value: PreviewTransform) {
   if (!selectedClip.value || !pictureAvailable.value) return;
+  const current = resolveClipGeometry(selectedClip.value.transform);
+  if (
+    current.x === value.x &&
+    current.y === value.y &&
+    current.scale === value.scale &&
+    current.rotation === value.rotation
+  ) {
+    reportNotice("");
+    return;
+  }
   void commitGesture({
     type: "transform",
     clipId: selectedClip.value.id,
