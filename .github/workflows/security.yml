@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-3.0-only
+name: Dependency security
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+  pull_request:
+    paths:
+      - "**/package.json"
+      - "pnpm-lock.yaml"
+      - "apps/desktop/src-tauri/Cargo.lock"
+      - ".github/workflows/security.yml"
+permissions:
+  contents: read
+jobs:
+  javascript-advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - run: pnpm install --frozen-lockfile
+      - name: Check known dependency vulnerabilities
+        run: pnpm audit --json > npm-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: javascript-advisories
+          path: npm-audit.json
+          if-no-files-found: error
+  rust-advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned advisory scanner
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          cargo +1.99.0 install cargo-audit --version 0.22.2 --locked
+      - name: Check RustSec advisories
+        run: cargo +1.99.0 audit --file apps/desktop/src-tauri/Cargo.lock --json > rust-audit.json
+      - name: Show informational advisories separately
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('rust-audit.json')
+          if path.exists() and path.stat().st_size:
+              report = json.loads(path.read_text())
+              for category, entries in report.get('warnings', {}).items():
+                  for item in entries:
+                      print(category, item['advisory']['id'], item['package']['name'], item['package']['version'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-advisories
+          path: rust-audit.json
+          if-no-files-found: error

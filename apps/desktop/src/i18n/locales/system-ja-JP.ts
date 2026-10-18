@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   common: {
     unknownDate: "撮影日不明",
@@ -65,6 +67,8 @@ export default {
         "ストーリーを保存できませんでした。選択した思い出と長さの制限を確認してください。",
     },
     timeline: {
+      lookLocked:
+        "この変更は保護された{count}個のクリップに影響します。クリップまたは素材のロックを解除するか、ロックされていないクリップを調整してください。",
       notFound:
         "この編集は利用できなくなりました。フィルムの最新バージョンを開いてください。",
       conflict:

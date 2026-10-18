@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -35,6 +37,7 @@ import {
   errorInfo,
   migrateProject,
   validateProject,
+  validateFilmLook,
   type Composition,
   type Event,
   type Job,
@@ -43,6 +46,7 @@ import {
   type SimilarityGroup,
   type Story,
   type FilmSettings,
+  type FilmLook,
   type ProjectContentLocale,
 } from "@openfilm/core";
 import { ProjectCatalog } from "@openfilm/catalog";
@@ -155,6 +159,13 @@ export interface ImportOptions {
   onProgress?: (job: Job) => void;
   proxies?: boolean;
   jobId?: string;
+}
+/** MP4/preview policy is a render snapshot, never a saved composition edit. */
+export interface FilmRenderOptions {
+  signal?: AbortSignal;
+  jobId?: string;
+  onProgress?: (progress: number) => void;
+  lookOverride?: FilmLook | null;
 }
 export interface ImportResult {
   job: Job;
@@ -1367,11 +1378,7 @@ export class OpenFilmApplication {
 
   async render(
     compositionId?: string,
-    options: {
-      signal?: AbortSignal;
-      jobId?: string;
-      onProgress?: (progress: number) => void;
-    } = {},
+    options: FilmRenderOptions = {},
   ): Promise<string> {
     return this.renderFilm(compositionId, options, false);
   }
@@ -1452,11 +1459,7 @@ export class OpenFilmApplication {
 
   async exportMp4(
     compositionId?: string,
-    options: {
-      signal?: AbortSignal;
-      jobId?: string;
-      onProgress?: (progress: number) => void;
-    } = {},
+    options: FilmRenderOptions = {},
   ): Promise<{ path: string; report: ExportReport }> {
     const path = await this.renderFilm(compositionId, options, true);
     const manifest = JSON.parse(
@@ -1467,13 +1470,24 @@ export class OpenFilmApplication {
 
   private async renderFilm(
     compositionId: string | undefined,
-    options: {
-      signal?: AbortSignal;
-      jobId?: string;
-      onProgress?: (progress: number) => void;
-    },
+    options: FilmRenderOptions,
     exportFile: boolean,
   ): Promise<string> {
+    let lookOverride: FilmLook | null | undefined;
+    try {
+      lookOverride =
+        options.lookOverride == null
+          ? options.lookOverride
+          : validateFilmLook(options.lookOverride);
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose a supported film look with strength between zero and one.",
+        400,
+        undefined,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     const composition = structuredClone(this.composition(compositionId));
     const renderSettings = { ...this.project.settings };
     const projectEvidence = {
@@ -1557,6 +1571,7 @@ export class OpenFilmApplication {
         {
           signal: options.signal,
           project: projectEvidence,
+          lookOverride,
           onProgress: (progress) => {
             const previous = job.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));

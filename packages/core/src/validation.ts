@@ -1,7 +1,10 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import {
   PROJECT_SCHEMA_VERSION,
   PROJECT_CONTENT_LOCALES,
   MAX_SCENE_DIRECTION_RECEIPTS,
+  FILM_LOOK_PRESET_IDS,
   type Composition,
   type Job,
   type MediaAsset,
@@ -11,6 +14,7 @@ import {
   type PhotoMotion,
   type TitleStyle,
   type AudioAutomation,
+  type FilmLook,
 } from "./models.js";
 
 export interface ValidationIssue {
@@ -141,6 +145,26 @@ function presentationObject(
     if (!keys.includes(key))
       fail(`${path}.${key}`, "unsupported presentation field");
   return data;
+}
+
+function filmLook(value: unknown, path: string): FilmLook {
+  const data = presentationObject(value, path, [
+    "version",
+    "preset",
+    "strength",
+  ]);
+  if (data.version !== 1)
+    fail(`${path}.version`, "expected supported look version 1");
+  choice(data.preset, `${path}.preset`, FILM_LOOK_PRESET_IDS);
+  const strength = number(data.strength, `${path}.strength`, 0);
+  if (strength > 1)
+    fail(`${path}.strength`, "expected a strength between 0 and 1");
+  return data as unknown as FilmLook;
+}
+
+export function validateFilmLook(value: unknown): FilmLook {
+  filmLook(value, "look");
+  return copyJson(value, "look") as FilmLook;
 }
 
 function versionOne(value: ObjectValue, path: string): void {
@@ -797,6 +821,28 @@ function composition(
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);
   const clipIds = new Set<string>();
+  optional(data, "defaultLook", path, filmLook);
+  optional(data, "beatLooks", path, (value, beatPath) => {
+    const entries = array(value, beatPath);
+    if (entries.length > 1000)
+      fail(beatPath, "expected at most 1000 scene look overrides");
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      const entryPath = `${beatPath}[${index}]`;
+      const item = presentationObject(entry, entryPath, ["beatId", "look"]);
+      receiptIdentifier(item.beatId, `${entryPath}.beatId`);
+      const id = item.beatId as string;
+      if (seen.has(id))
+        fail(`${entryPath}.beatId`, `duplicate scene look for ${id}`);
+      if (beatIds && !beatIds.has(id))
+        fail(
+          `${entryPath}.beatId`,
+          `unknown beat ID ${id} for this composition's story`,
+        );
+      seen.add(id);
+      filmLook(item.look, `${entryPath}.look`);
+    });
+  });
   tracks.forEach((entry, i) => {
     const trackPath = `${path}.tracks[${i}]`;
     const track = object(entry, trackPath);
@@ -854,6 +900,17 @@ function composition(
       optional(clip, "audioAutomation", clipPath, (v, p) =>
         audioAutomation(v, p, length),
       );
+      optional(clip, "look", clipPath, filmLook);
+      if (
+        clip.look !== undefined &&
+        (track.type === "audio" ||
+          track.type === "music" ||
+          track.type === "titles")
+      )
+        fail(
+          `${clipPath}.look`,
+          "creative looks require a visual media track, not audio or titles",
+        );
       optional(clip, "locked", clipPath, boolean);
       optional(clip, "transform", clipPath, (v, p) => {
         const transform = object(v, p);

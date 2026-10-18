@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import type {
   Clip,
   Composition,
@@ -5,6 +7,7 @@ import type {
   ProjectSettings,
   Track,
 } from "@openfilm/core";
+import { isFilmLookActive, resolveFilmLook } from "@openfilm/core";
 
 export type ExportFormat = "json" | "otio" | "fcpxml" | "edl";
 export interface ExportResult {
@@ -19,6 +22,20 @@ export interface OtioCompatibilityReport {
   advancedEdits: "metadata-only";
   warnings: string[];
   metadataOnlyEdits: { clipId: string; features: string[] }[];
+}
+
+function isVisualTrack(track: Track): boolean {
+  return track.type === "video" || track.type === "overlay";
+}
+
+function hasFilmLookConfig(composition: Composition): boolean {
+  return (
+    composition.defaultLook !== undefined ||
+    composition.beatLooks !== undefined ||
+    composition.tracks.some((track) =>
+      track.clips.some((clip) => clip.look !== undefined),
+    )
+  );
 }
 
 /** This report travels with the file; metadata does not recreate an NLE effect. */
@@ -45,6 +62,11 @@ export function otioCompatibilityReport(
       if (clip.motion !== undefined) features.push("photo motion");
       if (clip.titleStyle !== undefined) features.push("title style");
       if (clip.audioAutomation !== undefined) features.push("audio automation");
+      if (
+        isVisualTrack(track) &&
+        isFilmLookActive(resolveFilmLook(composition, clip).look)
+      )
+        features.push("look");
       if (track.timing === "overlay") features.push("overlay timing");
       if (track.type === "overlay") features.push("overlay");
       if (clip.transition) features.push(clip.transition.type);
@@ -244,6 +266,22 @@ export function exportTimeline(
             composition,
             assets: assets.filter((asset) => used.has(asset.id)),
             settings,
+            ...(hasFilmLookConfig(composition)
+              ? {
+                  metadata: {
+                    openfilm: {
+                      effectiveLooks: composition.tracks.flatMap((track) =>
+                        isVisualTrack(track)
+                          ? track.clips.map((clip) => ({
+                              clipId: clip.id,
+                              ...resolveFilmLook(composition, clip),
+                            }))
+                          : [],
+                      ),
+                    },
+                  },
+                }
+              : {}),
           },
           null,
           2,
@@ -307,6 +345,13 @@ export function exportTimeline(
       );
     let end = 0;
     for (const clip of sortedClips(track)) {
+      if (
+        isVisualTrack(track) &&
+        isFilmLookActive(resolveFilmLook(composition, clip).look)
+      )
+        throw new Error(
+          `${format} export cannot represent look on clip ${clip.id}. Use JSON or OTIO metadata to preserve this edit and recreate color manually in the NLE.`,
+        );
       rejectEdits(clip, format);
       if (clip.timelineStart < end - 1e-6)
         throw new Error(
@@ -396,6 +441,9 @@ function otio(
             assetId: asset.id,
             beatId: clip.beatId,
             clip,
+            ...(isVisualTrack(track) && hasFilmLookConfig(composition)
+              ? { effectiveLook: resolveFilmLook(composition, clip) }
+              : {}),
             ...(clip.layout?.secondary
               ? {
                   secondaryMediaReferences: [

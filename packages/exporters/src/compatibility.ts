@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 /** Capability evidence is independent of translated product copy. */
 export type NleFeatureId =
   | "cuts"
@@ -11,6 +13,7 @@ export type NleFeatureId =
   | "speed"
   | "volumeMute"
   | "transform"
+  | "look"
   | "crossfade"
   | "titles"
   | "photoLayout"
@@ -92,6 +95,14 @@ export const resolveCompatibility = {
       realNleVerified: false,
       manualRecreation: true,
     })),
+    {
+      id: "look",
+      implementation: "metadata-only",
+      schemaValidated: true,
+      parserValidated: false,
+      realNleVerified: false,
+      manualRecreation: true,
+    } satisfies NleFeatureCompatibility,
     {
       id: "overlappingClips",
       implementation: "unsupported",

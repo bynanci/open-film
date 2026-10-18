@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   editor: {
     timeline: "影片時間軸",
@@ -263,6 +265,7 @@ export default {
       },
     },
     source: {
+      seek: "在所選片段內定位",
       missing: "媒體離線",
       inaccessible: "無法存取媒體",
       missingShort: "離線",

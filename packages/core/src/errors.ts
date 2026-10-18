@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 /** Stable product errors; diagnostic English stays in detail for inspection. */
 export const applicationErrorCodes = [
   "request.invalid",
@@ -29,6 +31,7 @@ export const applicationErrorCodes = [
   "timeline.notFound",
   "timeline.conflict",
   "timeline.invalidEdit",
+  "timeline.lookLocked",
   "render.overMaximum",
   "render.failed",
   "import.failed",

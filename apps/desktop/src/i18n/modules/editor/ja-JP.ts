@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   editor: {
     timeline: "映像のタイムライン",
@@ -284,6 +286,7 @@ export default {
       },
     },
     source: {
+      seek: "選択したクリップ内を移動",
       missing: "メディアが見つかりません",
       inaccessible: "メディアにアクセスできません",
       missingShort: "未検出",

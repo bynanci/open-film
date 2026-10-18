@@ -1,9 +1,17 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Clip, Job, MediaAsset, TimelineMarker } from "@openfilm/core";
+import {
+  resolveFilmLook,
+  type Clip,
+  type Job,
+  type MediaAsset,
+  type TimelineMarker,
+} from "@openfilm/core";
 import type { IntelligenceState } from "../../apps/desktop/src/api";
 
 const vue = createRequire(resolve("apps/desktop/package.json"))("vue");
@@ -173,6 +181,8 @@ function timeline(child: Partial<Barrier>) {
   });
   const instance = timelineFactory({
     ...reactivity,
+    useId: () => "precision-navigation-timeline",
+    resolveFilmLook,
     defineProps: () => ({
       projectId: "project",
       compositionId: "film",

@@ -4,4 +4,4 @@ calibration pictures and synthesized tones in this fixture using CC0 1.0.
 
 https://creativecommons.org/publicdomain/zero/1.0/
 
-The generator and scenario source code follow the repository Apache-2.0 license.
+The generator source is distributed as part of the current GPL-3.0-only OpenFilm derivative; historical Apache-2.0 grants for the generator and scenario remain available. Generated-media CC0 terms are unchanged.

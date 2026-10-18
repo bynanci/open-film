@@ -69,5 +69,7 @@ evidence. Follow [the Code of Conduct](CODE_OF_CONDUCT.md), and use the private
 reporting guidance in [SECURITY.md](SECURITY.md) for vulnerabilities.
 
 Unless explicitly stated otherwise, contributions are submitted under the
-repository's Apache-2.0 license. Confirm that you have the right to contribute
+repository's GPL-3.0-only license for new contributions. Existing Apache-2.0 portions retain their grants; see [licensing](docs/licensing.md). Confirm that you have the right to contribute
 the code and any included media.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

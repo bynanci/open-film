@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   common: {
     unknownDate: "拍攝日期不明",
@@ -53,6 +55,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      lookLocked:
+        "這項風格變更會影響 {count} 個受保護片段。請先解鎖片段或來源，或只調整未鎖定的片段。",
       notFound: "已找不到這份剪輯。請開啟影片的最新版本。",
       conflict:
         "您剪輯期間，已儲存的影片有了變更。請檢視新版本，或重新套用已保留的草稿。",

@@ -1,7 +1,10 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { photoPresentationFilters } from "./photo-filters.js";
+import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
 import { createTitleOverlay } from "./titles.js";
 import {
@@ -15,6 +18,7 @@ import {
   writeRenderManifest,
   type RenderFontEvidence,
   type RenderProjectEvidence,
+  type RenderLookEvidence,
 } from "./manifest.js";
 export {
   createTitleOverlay,
@@ -23,6 +27,10 @@ export {
 } from "./titles.js";
 import {
   resolveClipGeometry,
+  resolveFilmLook,
+  validateFilmLook,
+  filmLookMatrix,
+  type FilmLook,
   frameAlignedDuration,
   type Clip,
   type Composition,
@@ -34,12 +42,20 @@ import {
   runProcess,
   previewVideoFilters,
   previewIssue,
+  localMediaInputOptions,
 } from "@openfilm/media";
 
 export interface RenderSettings {
   width: number;
   height: number;
   frameRate: number;
+}
+export interface RenderOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: number) => void;
+  project?: RenderProjectEvidence;
+  /** Null or omitted preserves each clip's saved film, scene and clip choices. */
+  lookOverride?: FilmLook | null;
 }
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
@@ -81,17 +97,25 @@ export class FFmpegRenderer {
     assets: MediaAsset[],
     outputPath: string,
     settings: RenderSettings = defaults,
-    options: {
-      signal?: AbortSignal;
-      onProgress?: (progress: number) => void;
-      project?: RenderProjectEvidence;
-    } = {},
+    options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
     const project = options.project ? { ...options.project } : undefined;
+    const lookOverride =
+      options.lookOverride == null
+        ? null
+        : validateFilmLook(structuredClone(options.lookOverride));
+    if (composition.defaultLook) validateFilmLook(composition.defaultLook);
+    for (const entry of composition.beatLooks ?? [])
+      validateFilmLook(entry.look);
+    for (const track of composition.tracks)
+      for (const clip of track.clips)
+        if (clip.look) validateFilmLook(clip.look);
+    const resolvedLooks = new Map<Clip, FilmLook>();
+    const looks: RenderLookEvidence[] = [];
     finite(composition.duration, "Composition duration", true);
     for (const [key, value] of Object.entries(settings))
       finite(value, key, true);
@@ -147,6 +171,27 @@ export class FFmpegRenderer {
           throw new Error(
             `Clip ${clip.id} references missing asset ${clip.assetId}`,
           );
+        if (
+          track.type !== "audio" &&
+          track.type !== "music" &&
+          asset.mediaType !== "audio"
+        ) {
+          const effective = resolveFilmLook(composition, clip, lookOverride);
+          resolvedLooks.set(clip, effective.look);
+          looks.push({
+            clipId: clip.id,
+            assetIds: [
+              clip.assetId,
+              ...(clip.layout?.secondary
+                ? [clip.layout.secondary.assetId]
+                : []),
+            ],
+            source: effective.source,
+            preset: effective.look.preset,
+            strength: effective.look.strength,
+            matrix: filmLookMatrix(effective.look),
+          });
+        }
         const issue = previewIssue(asset);
         if (issue) throw new Error(`${asset.name}: ${issue}`);
         if (
@@ -313,7 +358,16 @@ export class FFmpegRenderer {
             );
           if (asset.mediaType === "image")
             args.push("-loop", "1", "-framerate", number(settings.frameRate));
-          args.push("-threads", "1", "-i", localPath(asset.uri));
+          args.push(
+            "-threads",
+            "1",
+            ...(await localMediaInputOptions(
+              localPath(asset.uri),
+              options.signal,
+            )),
+            "-i",
+            localPath(asset.uri),
+          );
           const input = inputIndex++;
           if (visual) {
             const label = `visual${suffix}`;
@@ -322,7 +376,10 @@ export class FFmpegRenderer {
               asset.mediaType === "image" && !!(clip.layout || clip.motion);
             const transform: string[] = presentedPhoto
               ? []
-              : await previewVideoFilters(asset, options.signal);
+              : [
+                  ...(await previewVideoFilters(asset, options.signal)),
+                  ...filmLookFilters(resolvedLooks.get(clip)),
+                ];
             // Contain-fit the decoded display aspect, including non-square pixels.
             // Missing SAR means square pixels. Explicit dimensions + setsar=1
             // avoid version-specific scale reset_sar and an intermediate resize.
@@ -367,6 +424,7 @@ export class FFmpegRenderer {
                   suffix,
                   duration: displayedDuration,
                   signal: options.signal,
+                  look: resolvedLooks.get(clip),
                 },
               );
               args.push(...presentation.args);
@@ -500,6 +558,7 @@ export class FFmpegRenderer {
         warnings,
         options.signal,
         project,
+        { override: lookOverride, clips: looks },
       );
       await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;
@@ -543,10 +602,7 @@ export async function renderComposition(
   assets: MediaAsset[],
   outputPath: string,
   settings?: RenderSettings,
-  options?: {
-    signal?: AbortSignal;
-    onProgress?: (progress: number) => void;
-  },
+  options?: RenderOptions,
 ): Promise<string> {
   return new FFmpegRenderer().render(
     composition,

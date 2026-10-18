@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   mkdtemp,
@@ -99,6 +101,25 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await rm(directory, { recursive: true, force: true });
+});
+
+it("refuses a same-folder playlist disguised as media before calling the speech runner", async () => {
+  await writeFile(
+    join(directory, "benign.wav"),
+    await readFile(fileURLToPath(asset.uri)),
+  );
+  const path = join(directory, "playlist.mp4");
+  await writeFile(path, "ffconcat version 1.0\nfile 'benign.wav'\n");
+  const source = {
+    ...asset,
+    uri: pathToFileURL(path).href,
+    name: "playlist.mp4",
+    contentHash: await hashFile(path),
+  };
+  await expect(
+    provider().transcribe(source, { language: "en" }),
+  ).rejects.toThrow(/(?:format.*whitelist|whitelist.*format)/i);
+  expect(await readdir(work)).toHaveLength(0);
 });
 
 describe("local Whisper provider protocol (not speech accuracy)", () => {

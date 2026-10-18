@@ -1,3 +1,6 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+import looks from "../modules/looks/en-US";
 import app from "../modules/app/en-US";
 import editor from "../modules/editor/en-US";
 import media from "../modules/media/en-US";
@@ -6,6 +9,7 @@ import transcript from "../modules/transcript/en-US";
 import system from "./system-en-US";
 
 export default {
+  ...looks,
   ...system,
   ...app,
   ...editor,

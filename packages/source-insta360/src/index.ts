@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import {
@@ -23,6 +25,7 @@ import {
   extractExif,
   FilesystemSource,
   inspectMedia,
+  localMediaInputOptions,
   localPath,
   runProcess,
   type MediaCandidate,
@@ -455,6 +458,7 @@ export async function inspectInsta360Raw(
       [
         "-v",
         "error",
+        ...(await localMediaInputOptions(candidate.path, signal)),
         "-probesize",
         "1048576",
         "-analyzeduration",

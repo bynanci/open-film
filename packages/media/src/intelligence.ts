@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat } from "node:fs/promises";
@@ -11,6 +13,7 @@ import {
 } from "@openfilm/core";
 import type { OperationOptions } from "@openfilm/plugin-sdk";
 import { abortError, checkAbort, localPath, runProcess } from "./index.js";
+import { localMediaInputOptions } from "./input-policy.js";
 
 const PCM_RATE = 8_000;
 const INITIAL_BUCKET_SAMPLES = PCM_RATE / 50;
@@ -134,8 +137,7 @@ async function probeSource(path: string, signal?: AbortSignal) {
     [
       "-v",
       "error",
-      "-protocol_whitelist",
-      "file,pipe",
+      ...(await localMediaInputOptions(path, signal)),
       "-show_entries",
       "format=duration,start_time:stream=index,codec_type,duration,start_time,channels:stream_disposition=attached_pic",
       "-of",
@@ -317,8 +319,7 @@ export async function generateWaveform(
         "-nostdin",
         "-threads",
         "1",
-        "-protocol_whitelist",
-        "file,pipe",
+        ...(await localMediaInputOptions(path, options.signal)),
         "-i",
         path,
         "-map",
@@ -495,8 +496,7 @@ export async function detectScenes(
         "-nostats",
         "-copyts",
         "-start_at_zero",
-        "-protocol_whitelist",
-        "file,pipe",
+        ...(await localMediaInputOptions(path, options.signal)),
         "-i",
         path,
         "-map",

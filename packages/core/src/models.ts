@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 /** All timeline and source durations use seconds. Source files remain immutable. */
 export type MediaType = "image" | "video" | "audio" | "360-video";
 
@@ -250,6 +252,23 @@ export interface AudioAutomation {
   }[];
 }
 
+/** Stable creative recipes; names shown in the product are translated separately. */
+export const FILM_LOOK_PRESET_IDS = [
+  "none",
+  "soft-film",
+  "americana",
+  "clean-camera",
+  "retro",
+  "natural",
+  "sport",
+] as const;
+export interface FilmLook {
+  version: 1;
+  preset: (typeof FILM_LOOK_PRESET_IDS)[number];
+  /** Recipe-strength interpolation on decoded, encoded-SDR RGB, not linear-light color management. */
+  strength: number;
+}
+
 export interface Clip {
   id: string;
   assetId: string;
@@ -264,6 +283,8 @@ export interface Clip {
   motion?: PhotoMotion;
   titleStyle?: TitleStyle;
   audioAutomation?: AudioAutomation;
+  /** Absent inherits the scene/film look; explicit `none` preserves original color. */
+  look?: FilmLook;
   /** Protect source selection and edits; ripple timeline positioning remains allowed. */
   locked?: boolean;
   transition?: { type: "crossfade"; duration: number };
@@ -282,6 +303,9 @@ export interface Composition {
   storyId: string;
   duration: number;
   tracks: Track[];
+  defaultLook?: FilmLook;
+  /** Stable scene IDs keep localized or user-authored titles out of lookup state. */
+  beatLooks?: { beatId: string; look: FilmLook }[];
 }
 
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;

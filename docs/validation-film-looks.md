@@ -1,0 +1,93 @@
+# Film looks validation
+
+Date: 2026-10-18. Base main:
+`90921dc4546ad58efc612b1c79f40ffa66ffb043`.
+Branch: `codex/film-look-presets`. Published exact-head CI and review outcomes are
+recorded with the candidate PR; local evidence below does not replace them.
+
+## Executed focused checks
+
+- Core/Solver: 631 tests across 21 files, including validation, inheritance,
+  explicit original versus inherit, strength, protected sources, undo-safe pure
+  commands, immutable registry metadata and a version-1 coefficient golden hash.
+- Exporters: 70 tests across four files, including 21 new look cases. Saved and
+  effective metadata, active versus no-op looks, audio/title exclusion and
+  unsupported-format failures are covered. These tests do not verify NLE rendering.
+- Application/HTTP/CLI: nine new tests across two files. Actual FFmpeg output
+  manifests verify immutable override snapshots, preserve/null behavior,
+  non-MP4 rejection, invalid requests before job creation, ordinary saving,
+  idempotent retry, Undo/Redo, reopen and unchanged source/timing/Story data.
+- Renderer: existing and new generated renders were exercised with FFmpeg 7.1.5;
+  the initial look/photo-quality group also passed 19 tests with FFmpeg 6.1.3.
+  Focused provenance plus look tests passed 11 tests after the manifest follow-up.
+  Actual channel fixtures include opacity/partial alpha and tagged PQ ordering.
+- Browser: nine new cases passed, including actual rendered output,
+  saved three-scope edits, Undo/Redo/reopen, protected edit rejection,
+  render-only override snapshots and editable-export isolation. The dedicated
+  native-video-controls regression also covers keyboard seek/input focus,
+  play/pause/Space, volume, trim and unfiltered title/transport rendering.
+
+Tests were observed failing before their implementations. Follow-up regressions
+also observed missing provenance metadata and lost protected-error identity
+before their fixes. The latter now preserves `timeline.lookLocked`, HTTP 409 and
+`{count}` through the application instead of replacing them with a generic 400.
+Independent Desktop review identified filtering of native video controls; the
+correction disables those controls only for an active look and retains labeled,
+unfiltered keyboard-accessible transport. Original/zero strength restores them.
+
+## Actual pixels and visual coverage
+
+Raw RGBA channel tests compare against an 8-bit rounded reference with maximum
+absolute error 1; encoded generated SDR color fixtures use error 3 per channel.
+Browser screenshots for all six actual SVG looks were compared with encoded
+FFmpeg PNG samples at the same error-3 bound. These are measured fixture limits,
+not a promise of matching arbitrary source decode, HDR transfer or display color.
+Thresholds were not loosened to make the tests pass.
+
+Edit and Export layout cases cover en-US, zh-TW, ja-JP and en-XA at 1280×720,
+1440×900 and 1920×1080, including long pseudo strings. The initial run retained
+24 layout screenshots and six parity screenshots outside the repository. The
+zh-TW small-desktop Edit and pseudo-locale Export images were visually inspected;
+source-control correctness is checked separately from layout/pixel assertions.
+
+## Full regression and published evidence
+
+Required candidate commands:
+`pnpm format:check`, `pnpm test:i18n`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+`pnpm build`, `pnpm test:e2e`, `pnpm test:interchange`, `pnpm test:native`, the
+locked Linux Tauri build and built-CLI smoke. Exact-head results are recorded in
+the candidate PR checks and verification comment, separately from these focused
+results. Unexecuted checks are not successes.
+
+The corrected local candidate passed format, 1,363-key i18n coverage, lint,
+TypeScript/Vue checks, 174 files / 2,586 Vitest tests, build, 18 official-parser
+tests, built-CLI smoke, seven Rust tests with Rustfmt/Clippy, and the locked Linux
+Tauri build. Its nine focused browser cases passed again on Vue 3.5.42 with the
+new input policy (48.3 seconds). Full browser results are recorded separately in
+the published verification ledger so that focused results are not substituted
+for full regression.
+
+The first full run exposed missing dependencies in three extracted-component
+test hosts (36 failures); their 118 focused tests passed after updating the hosts
+without removing assertions. Security input hardening then rejected PPM sources
+used only by new application/adapter tests. Those fixtures now generate genuine
+PNG files; all nine affected tests pass without expanding the public format
+allowlist. Earlier failing full runs do not validate the corrected candidate.
+
+The security follow-up and selected GPLv3 derivative license are described in
+[the security review](security-review-2026-10-18.md) and [licensing](licensing.md).
+The original Apache grants are retained. License metadata changed without changing
+recipe coefficients or their numeric version.
+
+## Manual boundaries
+
+The source editing monitor is approximate. Existing Hable HDR conversion ends
+in BT.709; SVG requests browser sRGB and this feature does not add transfer
+conversion. Rendered preview/output is authoritative. Real skin tones,
+camera/HDR clips, mixed color profiles, wide-gamut/display appearance, artistic
+preference and projection require viewing actual output on intended hardware.
+
+Windows/macOS installers, native first-open/one-hour memory, real Pixel/Insta360
+material and actual Resolve import/finishing remain separate workstation gates
+([issue #7](https://github.com/bynanci/open-film/issues/7)). No cloud fixture closes
+them. No performance benchmark was conducted for this creative-color feature.

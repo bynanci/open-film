@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   media: {
     card: {
@@ -213,6 +215,7 @@ export default {
         transform: "Scale, rotation and position",
         crossfade: "Crossfade",
         titles: "Titles and overlays",
+        look: "Film look",
         photoLayout: "Photo layout and protected regions",
         photoMotion: "Photo motion",
         titleStyle: "Title typography and layout",

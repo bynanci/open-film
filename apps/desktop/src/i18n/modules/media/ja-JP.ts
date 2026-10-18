@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   media: {
     card: {
@@ -204,6 +206,7 @@ export default {
         transform: "拡大率、回転、位置",
         crossfade: "クロスフェード",
         titles: "タイトルとオーバーレイ",
+        look: "映像のルック",
         photoLayout: "写真のレイアウトと保護領域",
         photoMotion: "写真のモーション",
         titleStyle: "タイトルの書体とレイアウト",

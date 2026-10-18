@@ -1,9 +1,11 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { describe, expect, it } from "vitest";
-import type { Job } from "@openfilm/core";
+import type { FilmLook, Job } from "@openfilm/core";
 import {
   ApiError,
   type AnalysisJobRecoveryState,
@@ -106,6 +108,7 @@ function host() {
     cancellingJobs: cancelling,
     flushPending: async () => true,
     activeComposition: ref({ id: "composition" }),
+    lookOverride: ref<FilmLook | undefined>(undefined),
     editSerial: 0,
     post: (path: string) => {
       if (!path.includes("/cancel")) return rendering.promise;

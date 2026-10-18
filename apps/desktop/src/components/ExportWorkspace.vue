@@ -1,12 +1,16 @@
 <script setup lang="ts">
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+
 import { computed, ref } from "vue";
-import type { Composition } from "@openfilm/core";
+import type { Composition, FilmLook } from "@openfilm/core";
 import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
 import { exportDownloadUrl, type ExportCompatibilityReport } from "../api";
 import ExportReport from "./ExportReport.vue";
 import Icon from "./Icon.vue";
+import FilmLookSelect from "./FilmLookSelect.vue";
 const props = defineProps<{
   busy: boolean;
   projectId: string;
@@ -16,8 +20,20 @@ const props = defineProps<{
   format: string;
   stale: boolean;
   report?: ExportCompatibilityReport;
+  lookOverride?: FilmLook;
 }>();
-const emit = defineEmits<{ export: [format: string] }>();
+const emit = defineEmits<{
+  export: [format: string];
+  look: [look: FilmLook | undefined];
+}>();
+function changeLookMode(event: Event) {
+  emit(
+    "look",
+    (event.target as HTMLSelectElement).value === "unify"
+      ? { version: 1, preset: "none", strength: 1 }
+      : undefined,
+  );
+}
 const { t } = useI18n();
 const goal = ref<"watch" | "edit">("watch");
 const destination = ref<"resolve" | "finalcut" | "premiere">("resolve");
@@ -73,6 +89,29 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
     <section v-if="goal === 'watch'" class="export-destination">
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
+      <fieldset class="export-look-options" :disabled="busy">
+        <legend>{{ t("looks.exportHeading") }}</legend>
+        <label class="field">
+          {{ t("looks.exportMode") }}
+          <select
+            :value="lookOverride ? 'unify' : 'preserve'"
+            :aria-label="t('looks.exportMode')"
+            @change="changeLookMode"
+          >
+            <option value="preserve">{{ t("looks.preserve") }}</option>
+            <option value="unify">{{ t("looks.unify") }}</option>
+          </select>
+        </label>
+        <FilmLookSelect
+          v-if="lookOverride"
+          :label="t('looks.exportPreset')"
+          :value="lookOverride"
+          :disabled="busy"
+          @change="emit('look', $event ?? undefined)"
+        />
+        <p v-if="lookOverride">{{ t("looks.uniformHint") }}</p>
+        <p>{{ t("looks.exportOnly") }}</p>
+      </fieldset>
       <button class="primary" :disabled="busy" @click="emit('export', 'mp4')">
         <Icon name="download" />{{ t("app.export.saveMp4") }}
       </button>
@@ -97,6 +136,7 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
         }}
       </p>
       <p>{{ t(`app.export.destinationHint.${destination}`) }}</p>
+      <p class="export-look-interchange">{{ t("looks.interchange") }}</p>
       <details v-if="destination === 'resolve'" class="compatibility-card">
         <summary>{{ t("media.compatibility.details") }}</summary>
         <ul class="compatibility-feature-list">
@@ -201,6 +241,32 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
 </template>
 
 <style scoped>
+.export-look-options {
+  display: grid;
+  gap: var(--of-space-3);
+  max-width: 42rem;
+  min-width: 0;
+  border: 0;
+  padding: var(--of-space-4) 0;
+  margin: 0 0 var(--of-space-4);
+}
+.export-look-options legend {
+  font-size: var(--of-font-small);
+  font-weight: 600;
+  padding: 0;
+}
+.export-look-options select {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+.export-look-options p,
+.export-look-interchange {
+  font-size: var(--of-font-caption);
+  color: var(--of-text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .export-goals {
   gap: var(--of-space-3);
 }

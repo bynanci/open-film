@@ -9,7 +9,10 @@ internet-facing service.
 
 The server binds to `127.0.0.1`, checks the request Host and allowed browser
 origins, requires JSON for write requests, limits request bodies, and streams only
-cataloged cached thumbnails and the active project's preview. Project/cache paths
+explicitly imported catalog sources, confined cached derivatives and validated
+active-project exports. These routes can expose originals to a trusted local
+client; they are not an authentication boundary between local OS processes.
+Project/cache paths
 reject unsafe symlink destinations. Media tools receive argument arrays rather
 than interpolated shell commands. These boundaries are covered by tests and
 should be retained in extensions.
@@ -20,6 +23,20 @@ sandboxed. Review a plugin before giving it filesystem access or media data.
 Keep Node, FFmpeg, FFprobe, ExifTool, the webview, and project dependencies current:
 media decoding and local process integration are part of the application's trust
 boundary.
+
+Imported media decoding uses a shared self-contained-container allowlist and
+local-file input protocol policy. Playlist/manifest containers and image-file
+sequences are unsupported, even if renamed to a supported extension. Original
+source hashes must describe the decoded source, rather than a document pointing
+at other media. This is a decoder input restriction, not a sandbox for FFmpeg,
+ExifTool, plugins or the operating system. Keep those tools patched.
+
+Dependency advisories run on manifest/lockfile PR changes and weekly in
+`.github/workflows/security.yml`; full JSON reports are retained as CI artifacts.
+Scanner results describe known advisories at the database revision used. They do
+not certify absence of vulnerabilities. Rust informational warnings are shown
+separately from the scanner's vulnerability count. See the
+[2026-10-18 review](docs/security-review-2026-10-18.md) for findings and limits.
 
 ## Reporting a vulnerability
 
@@ -44,3 +61,5 @@ Close OpenFilm before making a filesystem backup of a project, or use SQLite-awa
 backup tooling that also accounts for active WAL state. Back up source media
 separately. Corrupt projects should be rejected rather than repaired by silently
 rewriting or discarding data.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

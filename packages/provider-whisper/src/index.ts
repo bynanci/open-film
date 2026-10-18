@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,6 +22,7 @@ import {
   checkAbort,
   localPath,
   runProcess,
+  localMediaInputOptions,
   SOURCE_CLOCK_AUDIO_FILTER,
 } from "@openfilm/media";
 
@@ -458,6 +461,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
         [
           "-v",
           "error",
+          ...(await localMediaInputOptions(source, options.signal)),
           "-select_streams",
           "a:0",
           "-show_entries",
@@ -491,6 +495,7 @@ export class LocalWhisperProvider implements TranscriptionProvider {
           "-v",
           "error",
           "-nostdin",
+          ...(await localMediaInputOptions(source, options.signal)),
           "-i",
           source,
           "-map",

@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import {
   createServer,
   type IncomingMessage,
@@ -47,6 +49,7 @@ import {
 } from "@openfilm/application";
 import {
   validateProject,
+  validateFilmLook,
   migrateProject,
   validateStory,
   validateTranscriptSegmentId,
@@ -55,6 +58,7 @@ import {
   PROJECT_CONTENT_LOCALES,
   type ApplicationErrorCode,
   type Job,
+  type FilmLook,
   type MediaAsset,
   type Story,
   type GlossaryInput,
@@ -2418,6 +2422,29 @@ export async function startServer(options: ServerOptions = {}) {
           const data = await body(request);
           const exporting = route === "/api/export";
           errorContext = exporting ? "export.failed" : "render.failed";
+          const hasLookOverride = Object.hasOwn(data, "lookOverride");
+          let lookOverride: FilmLook | null | undefined;
+          if (hasLookOverride) {
+            if (exporting && data.format !== "mp4")
+              throw new ApplicationError(
+                "request.invalid",
+                "A temporary film look is available for MP4 output only; interchange retains saved looks as metadata.",
+              );
+            try {
+              lookOverride =
+                data.lookOverride === null
+                  ? null
+                  : validateFilmLook(data.lookOverride);
+            } catch (error) {
+              throw new ApplicationError(
+                "request.invalid",
+                "Choose a supported film look with strength between zero and one.",
+                400,
+                undefined,
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+          }
           if (exporting && data.format !== "mp4") {
             if (
               !["json", "otio", "fcpxml", "edl"].includes(String(data.format))
@@ -2453,7 +2480,11 @@ export async function startServer(options: ServerOptions = {}) {
             typeof data.compositionId === "string"
               ? data.compositionId
               : undefined;
-          const renderOptions = { signal: controller.signal, jobId };
+          const renderOptions = {
+            signal: controller.signal,
+            jobId,
+            lookOverride,
+          };
           const task = exporting
             ? application.exportMp4(compositionId, renderOptions)
             : application
