@@ -489,6 +489,14 @@ let poll: ReturnType<typeof setInterval> | undefined;
 let polling = false;
 let lastJobSignature = "";
 let jobsGeneration = 0;
+let pendingMediaRefresh:
+  { projectId: string; checkStatus: boolean } | undefined;
+let mediaRefreshOwner:
+  | {
+      pending: NonNullable<typeof pendingMediaRefresh>;
+      completion: Promise<void>;
+    }
+  | undefined;
 
 function cacheAssets(incoming: MediaAsset[], mutated = false) {
   const next = { ...assetCache.value };
@@ -514,24 +522,28 @@ function cacheFetchedAssets(
   cacheAssets(latest);
   return latest;
 }
-async function checkMediaStatus() {
+async function checkMediaStatus(): Promise<boolean> {
   const projectId = project.value?.id;
-  if (!projectId) return;
+  if (!projectId) return false;
   const generation = ++statusGeneration;
+  const owned = () =>
+    project.value?.id === projectId && generation === statusGeneration;
   checkingMedia.value = true;
   mediaStatusError.value = "";
   try {
     const result = await api.mediaStatus();
-    if (project.value?.id === projectId && generation === statusGeneration) {
-      mediaStatus.value = result;
-      if (libraryFilter.value === "missing") await reloadAssets();
-    }
+    if (!owned()) return false;
+    mediaStatus.value = result;
+    if (libraryFilter.value === "missing") await reloadAssets();
+    return owned();
   } catch (cause) {
-    if (generation === statusGeneration) mediaStatusError.value = cause;
+    if (owned()) mediaStatusError.value = cause;
+    return false;
   } finally {
     if (generation === statusGeneration) checkingMedia.value = false;
   }
 }
+
 async function openRelink(assetId?: string, libraryId?: string) {
   if (relinkBusy.value || busy.value || activeJobs.value.length) return;
   if (!(await flushEditor())) return;
@@ -565,11 +577,11 @@ async function mediaRelinked(updated: MediaAsset[]) {
     relinkRefreshing.value = false;
   }
 }
-async function refreshProject() {
+async function refreshProject(owned: () => boolean = () => true) {
   const mutationVersion = projectMutationVersion;
   const result = await api.project();
   // A pre-accept polling response must not erase a newly acknowledged plan.
-  if (mutationVersion !== projectMutationVersion) return;
+  if (mutationVersion !== projectMutationVersion || !owned()) return;
   project.value = result.project;
   projectPath.value = result.path;
   connected.value = true;
@@ -643,6 +655,10 @@ async function run(label: string, action: () => Promise<void>) {
   }
 }
 async function boot() {
+  resetJobView();
+  assets.value = [];
+  total.value = 0;
+  librarySummary.value = { total: 0, images: 0, videos: 0, audio: 0 };
   retryNativeBootReady = undefined;
   cancelNativeBootReady?.();
   cancelNativeBootReady = undefined;
@@ -663,10 +679,7 @@ async function boot() {
       targetDuration.value = project.value.filmSettings?.targetDuration ?? 120;
       maxDuration.value = project.value.filmSettings?.maxDuration ?? 180;
       rememberProject();
-      // Initial media reads below already cover terminal imports in this snapshot.
-      await refreshInitialJobs();
-      await reloadAssets();
-      await checkMediaStatus();
+      await refreshInitialMedia();
       restoreScriptReviewTarget();
     }
   });
@@ -787,7 +800,10 @@ function rememberProject() {
 }
 async function resetProjectView() {
   statusGeneration += 1;
-  jobsGeneration += 1;
+  resetJobView();
+  assets.value = [];
+  total.value = 0;
+  librarySummary.value = { total: 0, images: 0, videos: 0, audio: 0 };
   offset.value = 0;
   assetCache.value = {};
   mediaStatus.value = null;
@@ -818,11 +834,9 @@ async function resetProjectView() {
   storyTimingEdited.value = false;
   targetDuration.value = project.value?.filmSettings?.targetDuration ?? 120;
   maxDuration.value = project.value?.filmSettings?.maxDuration ?? 180;
-  await refreshInitialJobs();
-  await reloadAssets();
+  await refreshInitialMedia();
   tab.value = "library";
   restoreScriptReviewTarget();
-  await checkMediaStatus();
   rememberProject();
 }
 async function createFilm(value: FilmCreation) {
@@ -1006,13 +1020,69 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
     }
   } else await changeTab(id);
 }
+function resetJobView() {
+  jobsGeneration += 1;
+  jobs.value = [];
+  analysisRecovery.value = EMPTY_ANALYSIS_RECOVERY;
+  lastJobSignature = "";
+  pendingMediaRefresh = undefined;
+  mediaRefreshOwner = undefined;
+}
+function queueMediaRefresh(projectId: string, checkStatus: boolean) {
+  // Object identity is the refresh token. A new import cannot be acknowledged
+  // by an older in-flight scan; ordinary jobs polling does not invalidate it.
+  pendingMediaRefresh = {
+    projectId,
+    checkStatus:
+      checkStatus ||
+      (pendingMediaRefresh?.projectId === projectId &&
+        pendingMediaRefresh.checkStatus),
+  };
+}
+async function refreshPendingMedia(includeProject = true) {
+  const pending = pendingMediaRefresh;
+  if (
+    !pending ||
+    project.value?.id !== pending.projectId ||
+    mediaRefreshOwner?.pending.projectId === pending.projectId
+  )
+    return;
+  const owned = () =>
+    pendingMediaRefresh === pending && project.value?.id === pending.projectId;
+  // Reserve the owner before any injected I/O can run or throw synchronously.
+  const completion = Promise.resolve().then(async () => {
+    try {
+      await reloadAssets();
+      if (!owned()) return;
+      if (includeProject) await refreshProject(owned);
+      if (!owned()) return;
+      if (pending.checkStatus && !(await checkMediaStatus())) return;
+      if (owned()) pendingMediaRefresh = undefined;
+    } finally {
+      if (mediaRefreshOwner?.pending === pending) mediaRefreshOwner = undefined;
+    }
+  });
+  mediaRefreshOwner = { pending, completion };
+  await completion;
+}
 async function refreshInitialJobs() {
   try {
     await refreshJobs(false);
   } catch {
     // Activity is retried by polling; a transient failure must not prevent the
-    // initial media reads below from replacing another project's Library.
+    // initial media reads from replacing another project's Library.
   }
+}
+async function refreshInitialMedia() {
+  const projectId = project.value?.id;
+  if (!projectId) return;
+  // These are the normal startup reads, not a supplemental scan. Retain their
+  // token if even the inline media-status request fails, including with no jobs.
+  queueMediaRefresh(projectId, true);
+  await refreshInitialJobs();
+  const active = mediaRefreshOwner;
+  if (active?.pending.projectId === projectId) await active.completion;
+  if (project.value?.id === projectId) await refreshPendingMedia(false);
 }
 async function refreshJobs(refreshImportedMedia = true) {
   const generation = ++jobsGeneration;
@@ -1026,22 +1096,21 @@ async function refreshJobs(refreshImportedMedia = true) {
         jobs.value.find((previous) => previous.id === job.id)?.status !==
           job.status,
     );
-    // A small import can finish before its first jobs read. Publishing that
-    // terminal snapshot consumes the transition pollJobs uses to refresh media.
-    // Keep the transition pending if any required media refresh rejects.
-    if (newlyImported && refreshImportedMedia) {
-      await reloadAssets();
-      if (generation === jobsGeneration && project.value?.id === projectId)
-        await refreshProject();
-      if (generation === jobsGeneration && project.value?.id === projectId)
-        await checkMediaStatus();
-    }
-    if (generation === jobsGeneration && project.value?.id === projectId) {
-      jobs.value = result.jobs;
-      analysisRecovery.value =
-        result.analysisRecovery && Object.keys(result.analysisRecovery).length
-          ? result.analysisRecovery
-          : EMPTY_ANALYSIS_RECOVERY;
+    if (newlyImported && projectId) queueMediaRefresh(projectId, true);
+    // Activity and cancellation evidence are independent of derived reads.
+    // Keep failed refreshes pending rather than withholding fresh job status.
+    jobs.value = result.jobs;
+    analysisRecovery.value =
+      result.analysisRecovery && Object.keys(result.analysisRecovery).length
+        ? result.analysisRecovery
+        : EMPTY_ANALYSIS_RECOVERY;
+    if (refreshImportedMedia) {
+      try {
+        await refreshPendingMedia();
+      } catch {
+        // The valid jobs snapshot still belongs to this request; polling retries
+        // its pending media refresh without replacing a render/cancel result.
+      }
     }
   }
   return project.value?.id === projectId ? result.jobs : undefined;
@@ -1055,12 +1124,31 @@ async function pollJobs() {
     const result = await api.jobs();
     if (generation !== jobsGeneration || project.value?.id !== projectId)
       return;
+    const importChanged = result.jobs.some(
+      (job) =>
+        job.type === "import" &&
+        !jobs.value.some(
+          (previous) =>
+            previous.id === job.id &&
+            previous.status === job.status &&
+            previous.progress === job.progress,
+        ),
+    );
     const newlyImported = result.jobs.some(
       (job) =>
         job.type === "import" &&
         ["completed", "failed", "cancelled"].includes(job.status) &&
         jobs.value.find((previous) => previous.id === job.id)?.status !==
           job.status,
+    );
+    const renderChanged = result.jobs.some(
+      (job) =>
+        job.type === "render" &&
+        ["completed", "failed", "cancelled"].includes(job.status) &&
+        jobs.value.some(
+          (previous) =>
+            previous.id === job.id && previous.status !== job.status,
+        ),
     );
     const scriptReviewChanged = result.jobs.some(
       (job) =>
@@ -1072,60 +1160,30 @@ async function pollJobs() {
             previous.progress === job.progress,
         ),
     );
-    const workflowChanged = result.jobs.some((job) => {
-      if (job.type === "import")
-        return !jobs.value.some(
-          (previous) =>
-            previous.id === job.id &&
-            previous.status === job.status &&
-            previous.progress === job.progress,
-        );
-      if (
-        job.type !== "render" ||
-        !["completed", "failed", "cancelled"].includes(job.status)
-      )
-        return false;
-      return jobs.value.some(
-        (previous) => previous.id === job.id && previous.status !== job.status,
-      );
-    });
+    if (importChanged || renderChanged)
+      queueMediaRefresh(projectId, newlyImported);
+    jobs.value = result.jobs;
+    analysisRecovery.value =
+      result.analysisRecovery && Object.keys(result.analysisRecovery).length
+        ? result.analysisRecovery
+        : EMPTY_ANALYSIS_RECOVERY;
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
       .join("|");
     if (signature !== lastJobSignature) {
-      if (workflowChanged) {
-        await reloadAssets();
-        if (generation === jobsGeneration && project.value?.id === projectId)
-          await refreshProject();
-      }
-      if (
-        newlyImported &&
-        generation === jobsGeneration &&
-        project.value?.id === projectId
-      )
-        await checkMediaStatus();
-      if (
-        scriptReviewChanged &&
-        generation === jobsGeneration &&
-        project.value?.id === projectId
-      )
-        await storyScriptReview.value?.refresh();
-      if (generation === jobsGeneration && project.value?.id === projectId)
-        lastJobSignature = signature;
+      lastJobSignature = signature;
+      if (scriptReviewChanged) await storyScriptReview.value?.refresh();
     }
-    if (generation === jobsGeneration && project.value?.id === projectId) {
-      jobs.value = result.jobs;
-      analysisRecovery.value =
-        result.analysisRecovery && Object.keys(result.analysisRecovery).length
-          ? result.analysisRecovery
-          : EMPTY_ANALYSIS_RECOVERY;
-    }
+    // Pending derived reads survive unchanged jobs/signatures and own their
+    // project/token separately from publication of newer Activity snapshots.
+    await refreshPendingMedia();
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
   } finally {
     polling = false;
   }
 }
+
 function addCategory() {
   if (busy.value || relinkBusy.value) return;
   categoryDraft.value = [...categoryDraft.value, ""];
@@ -1723,7 +1781,12 @@ async function changeWorkspace() {
       return;
     await post("/project/close");
     statusGeneration += 1;
-    jobsGeneration += 1;
+    resetJobView();
+    assets.value = [];
+    total.value = 0;
+    librarySummary.value = { total: 0, images: 0, videos: 0, audio: 0 };
+    assetCache.value = {};
+    selectedAssetId.value = "";
     mediaStatus.value = null;
     checkingMedia.value = false;
     relinkOpen.value = false;

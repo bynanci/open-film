@@ -122,8 +122,9 @@ paths: an initial jobs error could abort media loading, and a failed assets refr
 could consume the completion transition without retaining a retry. Eight added
 unit cases reproduced premature publication, lost retries and stale ownership
 after an awaited refresh. The corrected 18 import cases and 23 cancellation cases
-passed together. Initial Activity reads are now best-effort before the guaranteed
-media load; required media refreshes commit jobs/signatures only after success.
+passed together. That intermediate correction made initial Activity reads
+best-effort and delayed jobs/signature publication until media reads succeeded;
+the final contract below supersedes that publication behavior.
 A separate browser case holds later polls and fails the initial jobs read: it
 failed against the first candidate, then passed with the correction (5.7 seconds).
 The new fast-import regression also waits for the first import's final status
@@ -140,6 +141,30 @@ readiness unit group passed 113 cases. One local full unit run overlapped the
 browser server on port 4310 and failed 13 native benchmark runner cases while
 2,591 others passed. Those suites must run sequentially; this failed run is not
 treated as a source regression fix or as a passing gate.
+
+Further review of `16c5ae0` identified three more failure paths: previous-project
+Activity could survive initial jobs failure, source-status errors were swallowed
+without retry, and delayed publication could keep a finished render looking busy
+when an unrelated asset read failed. Its local browser run was stopped at 52
+passes, one interruption and 95 unrun cases; matching remote runs were cancelled.
+
+The final implementation publishes owned jobs/cancellation evidence immediately
+and tracks required media refreshes separately with a project-owned token. Failed
+assets/project/source-status reads retain that token, so even an unchanged jobs
+snapshot retries. Only one media worker runs per project; an older completion
+cannot clear a newer token. Running import progress reloads the Library without
+scanning every source, and unchanged render progress does neither. Boot, close and
+project reset clear scoped jobs and previous media. Initial loading waits for its
+media read, uses one normal scan and retains failures without an infinite retry.
+An optional ownership predicate is checked inside `refreshProject()` before
+assigning a delayed result, preventing old-project responses from overwriting a
+new view. The tests exercise these actual helpers and the real status-read result.
+Final focused browser verification passed both failure-path regressions and the
+complete rendered/exported Proposal workflow (three tests, 45.8 seconds).
+Additional tests prove a synchronous read error releases the worker and persistent
+source-status failure leaves a bounded startup attempt plus a later background
+retry. Full regression results for this final implementation are recorded against
+its exact commit in PR #22.
 
 ## Manual boundaries
 

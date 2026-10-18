@@ -35,6 +35,9 @@ Evidence: [validation](docs/validation-film-looks.md) and
 - [x] Refresh imported media even when a small import completes before its first
       jobs acknowledgement; reproduce the missed transition in unit/browser
       regressions while preserving project ownership and render-progress isolation.
+- [x] Retry failed derived media reads independently of immediate Activity status,
+      clear prior-project views, and wait for bounded initial loading without
+      delaying terminal renders or adding source scans to import progress updates.
 - [ ] Manual: assess real camera/HDR material and intended display appearance;
       native installers and actual Resolve finishing remain separate gates.
 - [ ] Before Linux installer release: obtain a compatible upstream remedy for

@@ -25,6 +25,11 @@ if (emptyRecoveryStart < 0 || emptyRecoveryEnd < 0)
   throw new Error("Missing App empty analysis recovery state");
 const names = [
   "run",
+  "resetJobView",
+  "queueMediaRefresh",
+  "refreshPendingMedia",
+  "refreshInitialJobs",
+  "refreshInitialMedia",
   "refreshJobs",
   "pollJobs",
   "renderPreview",
@@ -36,9 +41,12 @@ const names = [
 const code = transformSync(
   [
     'let jobsGeneration = 0, polling = false, lastJobSignature = "";',
+    "let pendingMediaRefresh: { projectId: string; checkStatus: boolean } | undefined;",
+    "let mediaRefreshOwner: { pending: NonNullable<typeof pendingMediaRefresh>; completion: Promise<void> } | undefined;",
     source.slice(emptyRecoveryStart, emptyRecoveryEnd),
     ...names.map((name) => {
-      const start = source.indexOf(`async function ${name}(`);
+      const match = new RegExp(`(?:async )?function ${name}\\(`).exec(source);
+      const start = match?.index ?? -1;
       const end = source.indexOf("\n}", start) + 2;
       if (start < 0 || end < 2) throw new Error(`Missing App function ${name}`);
       return source.slice(start, end);
@@ -124,7 +132,7 @@ function host() {
     refreshProject: async () => {
       refreshes.project++;
     },
-    checkMediaStatus: async () => {},
+    checkMediaStatus: async () => true,
     previewVersion: ref(0),
     previewStale: ref(false),
     showRenderedPreview: ref(false),
