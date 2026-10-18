@@ -89,6 +89,9 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
     <section v-if="goal === 'watch'" class="export-destination">
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
+      <button class="primary" :disabled="busy" @click="emit('export', 'mp4')">
+        <Icon name="download" />{{ t("app.export.saveMp4") }}
+      </button>
       <fieldset class="export-look-options" :disabled="busy">
         <legend>{{ t("looks.exportHeading") }}</legend>
         <label class="field">
@@ -112,9 +115,6 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
         <p v-if="lookOverride">{{ t("looks.uniformHint") }}</p>
         <p>{{ t("looks.exportOnly") }}</p>
       </fieldset>
-      <button class="primary" :disabled="busy" @click="emit('export', 'mp4')">
-        <Icon name="download" />{{ t("app.export.saveMp4") }}
-      </button>
     </section>
     <section v-else class="export-destination">
       <label class="field"

@@ -67,6 +67,15 @@ new input policy (48.3 seconds). Full browser results are recorded separately in
 the published verification ledger so that focused results are not substituted
 for full regression.
 
+The first full browser run exposed an export-action layout regression in all
+four locale cases: the new controls pushed the primary MP4 action below the
+initial viewport. That run was stopped with 48 passes, four failures, one
+interruption and 93 unrun cases; it is not a passing full result. Moving the same
+action above the optional output-look controls preserves handlers and selectors.
+All 17 focused Desktop/film-look/global-visual cases then passed, retaining the
+original full-visibility assertion. New checks cover both preserve/unify modes
+at 1024, 1280, 1440 and 1920 widths without loosening layout or accessibility gates.
+
 The first full run exposed missing dependencies in three extracted-component
 test hosts (36 failures); their 118 focused tests passed after updating the hosts
 without removing assertions. Security input hardening then rejected PPM sources

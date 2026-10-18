@@ -414,46 +414,53 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
         contentType: "image/png",
       });
     }
-    if (locale !== "en-XA") {
-      await navigate(page, "export", locale);
-      await page
-        .getByLabel(uiText(locale, "looks.exportMode"), { exact: true })
-        .selectOption("unify");
-      await expect(
-        page.getByLabel(uiText(locale, "looks.exportPreset"), { exact: true }),
-      ).toBeVisible();
-      await page
-        .getByLabel(uiText(locale, "looks.exportPreset"), { exact: true })
-        .selectOption("soft-film");
-      await expect(
-        page.getByLabel(uiText(locale, "looks.exportPreset"), { exact: true }),
-      ).toHaveValue("soft-film");
-    } else {
-      await page.locator(".main-nav button").nth(3).click();
-      await page
-        .locator(".export-look-options select")
-        .first()
-        .selectOption("unify");
-    }
-    for (const size of [
-      { width: 1280, height: 720 },
-      { width: 1440, height: 900 },
-      { width: 1920, height: 1080 },
-    ]) {
-      await page.setViewportSize(size);
-      const panel = page.locator(".export-look-options");
-      await panel.scrollIntoViewIfNeeded();
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth + 2,
-        ),
-      ).toBe(true);
-      const screenshot = join(evidence, `export-${locale}-${size.width}.png`);
-      await page.screenshot({ path: screenshot });
-      await test.info().attach(`look-export-${locale}-${size.width}`, {
-        path: screenshot,
-        contentType: "image/png",
-      });
+    if (locale !== "en-XA") await navigate(page, "export", locale);
+    else await page.locator(".main-nav button").nth(3).click();
+    const mode = page.locator(".export-look-options select").first();
+    const action = page.locator(".export-destination > .primary");
+    for (const outputMode of ["preserve", "unify"]) {
+      await mode.selectOption(outputMode);
+      if (outputMode === "unify") {
+        const preset =
+          locale === "en-XA"
+            ? page.locator(".export-look-options select").nth(1)
+            : page.getByLabel(uiText(locale, "looks.exportPreset"), {
+                exact: true,
+              });
+        await preset.selectOption("soft-film");
+        await expect(preset).toHaveValue("soft-film");
+      }
+      for (const size of [
+        { width: 1280, height: 720 },
+        { width: 1440, height: 900 },
+        { width: 1920, height: 1080 },
+        { width: 1024, height: 768 },
+      ]) {
+        await page.setViewportSize(size);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect(
+          action,
+          `${locale} ${outputMode} ${size.width}`,
+        ).toBeInViewport({ ratio: 1 });
+        const panel = page.locator(".export-look-options");
+        await panel.scrollIntoViewIfNeeded();
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth + 2,
+          ),
+        ).toBe(true);
+        if (outputMode === "unify" && size.width !== 1024) {
+          const screenshot = join(
+            evidence,
+            `export-${locale}-${size.width}.png`,
+          );
+          await page.screenshot({ path: screenshot });
+          await test.info().attach(`look-export-${locale}-${size.width}`, {
+            path: screenshot,
+            contentType: "image/png",
+          });
+        }
+      }
     }
   });
 }
