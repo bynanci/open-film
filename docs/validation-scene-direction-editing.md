@@ -9,7 +9,8 @@
 - Working branch: `codex/scene-direction-review`.
 - Integration target: `main`, through [PR #20](https://github.com/bynanci/open-film/pull/20),
   retaining the audited #17 → #18 → #19 ancestor heads through a merge commit.
-- Corrected implementation: `ecedb64718f921f74e6c44e42e87a0a325573335`.
+- Corrected implementation: `8dd7cd48347efc643c1f4b82cecd4756d6c47336`.
+- Initial preview/source-lock correction: `ecedb64718f921f74e6c44e42e87a0a325573335`.
 - Initial feature: `ab6caac05c5112a4d97e87faddd63f6b6c43b1d0`;
   opaque CLI identity fix: `adeb996`;
   preceding FFmpeg compatibility fix:
@@ -47,19 +48,19 @@ performance measurement.
 
 ## Full regression gate
 
-Local corrected implementation `ecedb64718f921f74e6c44e42e87a0a325573335` results (2026-10-18, Asia/Taipei):
+Local corrected implementation `8dd7cd48347efc643c1f4b82cecd4756d6c47336` results (2026-10-18, Asia/Taipei):
 
 | Command                                                                  | Result                                                                       |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | `pnpm format:check`                                                      | Passed                                                                       |
-| `pnpm test:i18n`                                                         | Passed; 1,319 matching semantic keys and placeholders                        |
+| `pnpm test:i18n`                                                         | Passed; 1,320 matching semantic keys and placeholders                        |
 | `pnpm lint`                                                              | Passed                                                                       |
 | `pnpm typecheck`                                                         | Passed, including Vue                                                        |
 | `pnpm test`                                                              | Passed; 163 files, 2,505 tests                                               |
 | `pnpm build`                                                             | Passed; existing bundle-size advisory remains                                |
 | `pnpm test:interchange`                                                  | Passed; official OTIO 0.18.1, 18 tests, real source/hash/bounds checks       |
 | `node scripts/smoke-built-cli.mjs`                                       | Passed; real FFmpeg, CJK title raster, export/reopen                         |
-| `pnpm test:e2e`                                                          | 133-case full-run outcome tracked with candidate PR; 14 focused tests passed |
+| `pnpm test:e2e`                                                          | 137-case full-run outcome tracked with candidate PR; 41 focused tests passed |
 | `pnpm test:native`                                                       | Passed; Rustfmt, Clippy and 7 tests                                          |
 | `cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml` | Passed; Linux Tauri binary build                                             |
 
@@ -105,6 +106,29 @@ operations. The opaque-identity correction independently passed review and eight
 adapter tests. Runtime language examples are visible, and pseudo syntax examples
 use executable English phrases. No unresolved correctness finding is knowingly
 carried forward; the final published review/CI remain explicit merge gates.
+
+## Final lock-consistency follow-up
+
+The next GitHub review of `8ffd9c3` identified an enabled Soundtrack fieldset
+whose source-locked operations were rejected by the solver. The frozen
+`8dd7cd4` correction disables only those protected controls and explains how
+to unlock the source in Library. The re-review also checked two sibling paths:
+
+- A diptych protects both primary and existing secondary sources. Existing
+  secondary identity remains visible, and new defaults exclude locked sources.
+  Ordinary permitted clip-local edits remain available.
+- Source-locked timing-overlay media cannot be trimmed or split through
+  Precision. Seeking, playback and analysis remain available. Ordinary
+  source-locked Story trim remains available under its existing command rules.
+
+All four new lock regressions were observed failing before the fixes. The
+corrected photo-quality, scene-direction, Precision, Proposal and relink suites
+passed **41/41** browser cases. After removing an unused test initializer, the
+final affected overlay-Precision case passed again (**1/1**). Full non-browser
+gates above were rerun on the committed corrected source. The browser collection
+contains **137 cases in 22 files**; its final published-head outcome is tracked
+in PR #20 checks. The previous green CI at `8ffd9c3` does not validate these
+subsequent changes. Independent scoped review of all three lock paths passed.
 
 ## Remaining manual gates
 

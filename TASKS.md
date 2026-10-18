@@ -28,6 +28,9 @@ arbitrary prose or image contents and never calls a language provider.
 - [x] Fix reviewed prerequisite-preview, opaque CLI identity and source-lock
       regressions; prove selected recipe previews, valid photo/video edits and
       protected presentation/delete/replace behavior through focused tests.
+- [x] Align Soundtrack, paired-photo and overlay-Precision controls with shared
+      source-lock rules; retain paired identity, permitted ordinary Story edits,
+      playback and analysis, with four failing-then-passing browser regressions.
 - [x] Pass local non-browser gates and focused browser checks; include the new
       cases in existing full CI and independently review correctness. Full browser
       outcomes and exact-head merge readiness are tracked with the candidate PR.
