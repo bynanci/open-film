@@ -664,7 +664,7 @@ async function boot() {
       maxDuration.value = project.value.filmSettings?.maxDuration ?? 180;
       rememberProject();
       // Initial media reads below already cover terminal imports in this snapshot.
-      await refreshJobs(false);
+      await refreshInitialJobs();
       await reloadAssets();
       await checkMediaStatus();
       restoreScriptReviewTarget();
@@ -818,7 +818,7 @@ async function resetProjectView() {
   storyTimingEdited.value = false;
   targetDuration.value = project.value?.filmSettings?.targetDuration ?? 120;
   maxDuration.value = project.value?.filmSettings?.maxDuration ?? 180;
-  await refreshJobs(false);
+  await refreshInitialJobs();
   await reloadAssets();
   tab.value = "library";
   restoreScriptReviewTarget();
@@ -1006,6 +1006,14 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
     }
   } else await changeTab(id);
 }
+async function refreshInitialJobs() {
+  try {
+    await refreshJobs(false);
+  } catch {
+    // Activity is retried by polling; a transient failure must not prevent the
+    // initial media reads below from replacing another project's Library.
+  }
+}
 async function refreshJobs(refreshImportedMedia = true) {
   const generation = ++jobsGeneration;
   const projectId = project.value?.id;
@@ -1018,17 +1026,22 @@ async function refreshJobs(refreshImportedMedia = true) {
         jobs.value.find((previous) => previous.id === job.id)?.status !==
           job.status,
     );
-    jobs.value = result.jobs;
-    analysisRecovery.value =
-      result.analysisRecovery && Object.keys(result.analysisRecovery).length
-        ? result.analysisRecovery
-        : EMPTY_ANALYSIS_RECOVERY;
     // A small import can finish before its first jobs read. Publishing that
     // terminal snapshot consumes the transition pollJobs uses to refresh media.
+    // Keep the transition pending if any required media refresh rejects.
     if (newlyImported && refreshImportedMedia) {
       await reloadAssets();
-      if (project.value?.id === projectId) await refreshProject();
-      if (project.value?.id === projectId) await checkMediaStatus();
+      if (generation === jobsGeneration && project.value?.id === projectId)
+        await refreshProject();
+      if (generation === jobsGeneration && project.value?.id === projectId)
+        await checkMediaStatus();
+    }
+    if (generation === jobsGeneration && project.value?.id === projectId) {
+      jobs.value = result.jobs;
+      analysisRecovery.value =
+        result.analysisRecovery && Object.keys(result.analysisRecovery).length
+          ? result.analysisRecovery
+          : EMPTY_ANALYSIS_RECOVERY;
     }
   }
   return project.value?.id === projectId ? result.jobs : undefined;
@@ -1076,22 +1089,36 @@ async function pollJobs() {
         (previous) => previous.id === job.id && previous.status !== job.status,
       );
     });
-    jobs.value = result.jobs;
-    analysisRecovery.value =
-      result.analysisRecovery && Object.keys(result.analysisRecovery).length
-        ? result.analysisRecovery
-        : EMPTY_ANALYSIS_RECOVERY;
     const signature = result.jobs
       .map((job) => `${job.id}:${job.status}:${job.progress}`)
       .join("|");
     if (signature !== lastJobSignature) {
-      lastJobSignature = signature;
       if (workflowChanged) {
         await reloadAssets();
-        await refreshProject();
+        if (generation === jobsGeneration && project.value?.id === projectId)
+          await refreshProject();
       }
-      if (newlyImported) await checkMediaStatus();
-      if (scriptReviewChanged) await storyScriptReview.value?.refresh();
+      if (
+        newlyImported &&
+        generation === jobsGeneration &&
+        project.value?.id === projectId
+      )
+        await checkMediaStatus();
+      if (
+        scriptReviewChanged &&
+        generation === jobsGeneration &&
+        project.value?.id === projectId
+      )
+        await storyScriptReview.value?.refresh();
+      if (generation === jobsGeneration && project.value?.id === projectId)
+        lastJobSignature = signature;
+    }
+    if (generation === jobsGeneration && project.value?.id === projectId) {
+      jobs.value = result.jobs;
+      analysisRecovery.value =
+        result.analysisRecovery && Object.keys(result.analysisRecovery).length
+          ? result.analysisRecovery
+          : EMPTY_ANALYSIS_RECOVERY;
     }
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */

@@ -61,6 +61,13 @@ test("refreshes the library when an import finishes before its acknowledgement",
         exact: true,
       }),
     ).toBeVisible({ timeout: 60_000 });
+    // A running import can expose partial media before its final refresh. Hold
+    // polling only after the first import is fully acknowledged and settled.
+    await expect(
+      page.getByText("Import complete", { exact: true }),
+    ).toBeVisible({
+      timeout: 60_000,
+    });
 
     await page.route("**/api/jobs", holdOldPoll);
     await expect.poll(() => pollIntercepted).toBe(true);
@@ -83,6 +90,75 @@ test("refreshes the library when an import finishes before its acknowledgement",
     releaseOldPoll();
     await page.unroute("**/api/jobs", holdOldPoll);
     await page.unroute("**/api/import", finishBeforeAcknowledgement);
+    await request.post(`${base}/api/project/close`, { data: {} });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("loads the current project's media when its initial activity request fails", async ({
+  page,
+  request,
+}) => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-initial-jobs-"));
+  let failedJobsReads = 0;
+  let releaseRetries!: () => void;
+  const retriesHeld = new Promise<void>((resolve) => {
+    releaseRetries = resolve;
+  });
+  try {
+    const fixture = await generateProposalMedia(join(root, "originals"));
+    expect(
+      (
+        await request.post(`${base}/api/project/create`, {
+          data: {
+            path: join(root, "available.openfilm"),
+            title: "Available film",
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+    const imported = await request.post(`${base}/api/import`, {
+      data: { files: [fixture.byId["pixel-photo"]!] },
+    });
+    expect(imported.ok()).toBe(true);
+    const { jobId } = await imported.json();
+    await expect
+      .poll(
+        async () => {
+          const { jobs } = await (await request.get(`${base}/api/jobs`)).json();
+          return jobs.find((job: { id: string }) => job.id === jobId)?.status;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe("completed");
+    await page.route("**/api/jobs", async (route) => {
+      if (failedJobsReads === 0) {
+        failedJobsReads++;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "operation.failed" }),
+        });
+      } else {
+        await retriesHeld;
+        await route.continue();
+      }
+    });
+    await initialLocale(page);
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: "Available film", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Inspect 06-pixel-portrait.jpg",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(failedJobsReads).toBe(1);
+  } finally {
+    releaseRetries();
+    await page.unroute("**/api/jobs");
     await request.post(`${base}/api/project/close`, { data: {} });
     await rm(root, { recursive: true, force: true });
   }

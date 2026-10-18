@@ -117,6 +117,30 @@ scans for historical imports. The additional startup case plus cancellation and
 native-readiness regression group passed 104 tests; the deterministic import and
 complete Proposal browser workflows passed together (two tests, 43.8 seconds).
 
+The first follow-up candidate's automated review then identified two P2 failure
+paths: an initial jobs error could abort media loading, and a failed assets refresh
+could consume the completion transition without retaining a retry. Eight added
+unit cases reproduced premature publication, lost retries and stale ownership
+after an awaited refresh. The corrected 18 import cases and 23 cancellation cases
+passed together. Initial Activity reads are now best-effort before the guaranteed
+media load; required media refreshes commit jobs/signatures only after success.
+A separate browser case holds later polls and fails the initial jobs read: it
+failed against the first candidate, then passed with the correction (5.7 seconds).
+The new fast-import regression also waits for the first import's final status
+before blocking polling, because partial media can correctly appear earlier.
+No timeout or visibility threshold was relaxed.
+
+The obsolete full local browser run was stopped with 81 passes, one interruption
+and 65 unrun cases when those review blockers were found. Its matching remote
+candidate runs were cancelled. Neither is treated as a passing full regression;
+final exact-head results remain in the follow-up PR checks and verification record.
+Both final browser failure-path regressions plus the complete Proposal workflow
+passed (three tests, 43.2 seconds); the corresponding import/cancellation/native
+readiness unit group passed 113 cases. One local full unit run overlapped the
+browser server on port 4310 and failed 13 native benchmark runner cases while
+2,591 others passed. Those suites must run sequentially; this failed run is not
+treated as a source regression fix or as a passing gate.
+
 ## Manual boundaries
 
 The source editing monitor is approximate. Existing Hable HDR conversion ends

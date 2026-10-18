@@ -15,6 +15,7 @@ const names = [
   "run",
   "beginImport",
   "importStarted",
+  "refreshInitialJobs",
   "refreshJobs",
   "pollJobs",
 ];
@@ -36,10 +37,12 @@ const code = transformSync(
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => {
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes;
+    reject = no;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 type JobSnapshot = { jobs: Job[] };
 const imported = (status: Job["status"] = "completed"): Job => ({
@@ -51,7 +54,7 @@ const imported = (status: Job["status"] = "completed"): Job => ({
 async function turn() {
   for (let index = 0; index < 12; index++) await Promise.resolve();
 }
-function host() {
+function host(options: { onReload?: (attempt: number) => Promise<void> } = {}) {
   const reads: ReturnType<typeof deferred<JobSnapshot>>[] = [];
   const posts: { path: string; body: unknown }[] = [];
   const acknowledgement = deferred<void>();
@@ -85,6 +88,7 @@ function host() {
     message: (key: string) => key,
     reloadAssets: async () => {
       refreshes.assets++;
+      await options.onReload?.(refreshes.assets);
     },
     refreshProject: async () => {
       refreshes.project++;
@@ -98,6 +102,7 @@ function host() {
     `const {${Object.keys(dependencies).join(",")}} = dependencies;\n${code}\nreturn {${names.join(",")}};`,
   )(dependencies) as {
     beginImport: (folder: string) => Promise<void>;
+    refreshInitialJobs: () => Promise<void>;
     refreshJobs: (refreshImportedMedia?: boolean) => Promise<Job[] | undefined>;
     pollJobs: () => Promise<void>;
   };
@@ -171,6 +176,21 @@ describe("App import completion refresh", () => {
     expect(h.refreshes).toEqual({ assets: 0, project: 0, media: 0 });
   });
 
+  it("keeps initial media loading available when jobs temporarily fail and retries polling", async () => {
+    const h = host();
+    const initial = h.refreshInitialJobs();
+    h.reads[0]!.reject(new Error("Temporary jobs endpoint failure"));
+    await expect(initial).resolves.toBeUndefined();
+    expect(h.jobs.value[0]?.id).toBe("first-import");
+    expect(h.refreshes).toEqual({ assets: 0, project: 0, media: 0 });
+
+    const retry = h.pollJobs();
+    h.reads[1]!.resolve({ jobs: [imported()] });
+    await retry;
+    expect(h.jobs.value).toEqual([imported()]);
+    expect(h.refreshes).toEqual({ assets: 1, project: 1, media: 1 });
+  });
+
   it("does not refresh the catalog for a superseded jobs response", async () => {
     const h = host();
     const older = h.refreshJobs();
@@ -192,6 +212,89 @@ describe("App import completion refresh", () => {
     expect(h.jobs.value[0]?.id).toBe("first-import");
     expect(h.refreshes).toEqual({ assets: 0, project: 0, media: 0 });
   });
+
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s retries an import media refresh after the first assets read fails",
+    async (method) => {
+      const h = host({
+        onReload: async (attempt) => {
+          if (attempt === 1) throw new Error("Transient media disconnect");
+        },
+      });
+      h.jobs.value = [imported("running")];
+      const failedRead = h[method]().catch(() => undefined);
+      h.reads[0]!.resolve({ jobs: [imported()] });
+      await failedRead;
+      const afterFailure = h.jobs.value.map((job) => ({ ...job }));
+
+      const retry = h.pollJobs();
+      h.reads[1]!.resolve({ jobs: [imported()] });
+      await retry;
+      expect(h.refreshes).toEqual({ assets: 2, project: 1, media: 1 });
+      expect(afterFailure).toEqual([imported("running")]);
+      expect(h.jobs.value).toEqual([imported()]);
+
+      const settled = h.pollJobs();
+      h.reads[2]!.resolve({ jobs: [imported()] });
+      await settled;
+      expect(h.refreshes).toEqual({ assets: 2, project: 1, media: 1 });
+    },
+  );
+
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s publishes terminal import state only after its assets refresh succeeds",
+    async (method) => {
+      const loadingAssets = deferred<void>();
+      const h = host({ onReload: () => loadingAssets.promise });
+      h.jobs.value = [imported("running")];
+      const pending = h[method]();
+      h.reads[0]!.resolve({ jobs: [imported()] });
+      await turn();
+      const whileLoading = h.jobs.value.map((job) => ({ ...job }));
+      loadingAssets.resolve();
+      await pending;
+      expect(whileLoading).toEqual([imported("running")]);
+      expect(h.jobs.value).toEqual([imported()]);
+      expect(h.refreshes).toEqual({ assets: 1, project: 1, media: 1 });
+    },
+  );
+
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s does not publish completion after a project switch during media refresh",
+    async (method) => {
+      const loadingAssets = deferred<void>();
+      const h = host({ onReload: () => loadingAssets.promise });
+      h.jobs.value = [imported("running")];
+      const pending = h[method]();
+      h.reads[0]!.resolve({ jobs: [imported()] });
+      await turn();
+      h.project.value = { id: "another-film" };
+      loadingAssets.resolve();
+      await pending;
+      expect(h.jobs.value).toEqual([imported("running")]);
+      expect(h.refreshes).toEqual({ assets: 1, project: 0, media: 0 });
+    },
+  );
+
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s does not publish completion after a newer jobs read owns the refresh",
+    async (method) => {
+      const loadingAssets = deferred<void>();
+      const h = host({ onReload: () => loadingAssets.promise });
+      h.jobs.value = [imported("running")];
+      const pending = h[method]();
+      h.reads[0]!.resolve({ jobs: [imported()] });
+      await turn();
+      const newerJob = { ...imported("running"), progress: 0.8 };
+      const newer = h.refreshJobs(false);
+      h.reads[1]!.resolve({ jobs: [newerJob] });
+      await newer;
+      loadingAssets.resolve();
+      await pending;
+      expect(h.jobs.value).toEqual([newerJob]);
+      expect(h.refreshes).toEqual({ assets: 1, project: 0, media: 0 });
+    },
+  );
 
   it.each(["refreshJobs", "pollJobs"] as const)(
     "%s publishes render progress without catalog or project reloads",

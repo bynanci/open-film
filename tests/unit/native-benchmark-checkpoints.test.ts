@@ -686,7 +686,11 @@ describe("actual workspace readiness guards", () => {
       maxDuration: ref(0),
       rememberProject: () => {},
       reloadAssets: async () => {},
-      refreshJobs: async () => {},
+      refreshInitialJobs: actualFunction(
+        "apps/desktop/src/App.vue",
+        "refreshInitialJobs",
+        { refreshJobs: async () => {} },
+      ),
       checkMediaStatus: async () => {},
       nextTick,
       document: { querySelector: vi.fn(() => ({ getClientRects: () => [1] })) },
