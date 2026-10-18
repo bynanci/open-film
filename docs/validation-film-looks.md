@@ -88,6 +88,35 @@ The security follow-up and selected GPLv3 derivative license are described in
 The original Apache grants are retained. License metadata changed without changing
 recipe coefficients or their numeric version.
 
+## Post-merge import completion regression
+
+PR #21 was merged as `7eb9aaa0407a521c635a24b7b08a2e2d173e8523`, with the
+same tree as its reviewed candidate `c5eaba39559b8fff986a6aa2330251038a14f306`.
+The candidate's exact-head Verify run `39125515398` passed all 146 browser cases.
+The subsequent main run `39127501179` passed native and every non-browser gate,
+but finished with 145 browser passes and one Proposal workflow failure: the
+second import's raw Insta360 asset was absent from the Library despite completion.
+These are separate results; the passing candidate run does not erase the failure.
+
+The underlying race is now reproduced without relying on timing luck. A browser
+test holds an existing jobs poll, runs a real second import to completion before
+releasing its POST acknowledgement, then lets `refreshJobs()` see the terminal
+snapshot first. Previously that consumed the only transition used by `pollJobs()`
+to reload media. The test failed on the same missing asset, then passed after the
+fix (9.8 seconds). Four new unit cases also failed before the fix; all eight new
+cases and 23 existing cancellation/recovery cases passed afterward.
+
+The correction refreshes assets, project and media availability when a fresh,
+owned jobs snapshot first reports a terminal import, including partial failures
+and cancellations. Superseded responses and other projects cannot publish it;
+unchanged render progress still does not reload the catalog. Full follow-up CI
+outcomes are recorded in the follow-up PR rather than inferred from focused tests.
+Initial boot/reopen reads jobs before the existing initial asset/status load and
+explicitly skips this supplementary refresh, avoiding duplicate catalog/source
+scans for historical imports. The additional startup case plus cancellation and
+native-readiness regression group passed 104 tests; the deterministic import and
+complete Proposal browser workflows passed together (two tests, 43.8 seconds).
+
 ## Manual boundaries
 
 The source editing monitor is approximate. Existing Hable HDR conversion ends

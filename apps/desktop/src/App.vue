@@ -663,8 +663,9 @@ async function boot() {
       targetDuration.value = project.value.filmSettings?.targetDuration ?? 120;
       maxDuration.value = project.value.filmSettings?.maxDuration ?? 180;
       rememberProject();
+      // Initial media reads below already cover terminal imports in this snapshot.
+      await refreshJobs(false);
       await reloadAssets();
-      await refreshJobs();
       await checkMediaStatus();
       restoreScriptReviewTarget();
     }
@@ -817,8 +818,8 @@ async function resetProjectView() {
   storyTimingEdited.value = false;
   targetDuration.value = project.value?.filmSettings?.targetDuration ?? 120;
   maxDuration.value = project.value?.filmSettings?.maxDuration ?? 180;
+  await refreshJobs(false);
   await reloadAssets();
-  await refreshJobs();
   tab.value = "library";
   restoreScriptReviewTarget();
   await checkMediaStatus();
@@ -1005,16 +1006,30 @@ async function navigateWorkflow(id: WorkflowStep["id"]) {
     }
   } else await changeTab(id);
 }
-async function refreshJobs() {
+async function refreshJobs(refreshImportedMedia = true) {
   const generation = ++jobsGeneration;
   const projectId = project.value?.id;
   const result = await api.jobs();
   if (generation === jobsGeneration && project.value?.id === projectId) {
+    const newlyImported = result.jobs.some(
+      (job) =>
+        job.type === "import" &&
+        ["completed", "failed", "cancelled"].includes(job.status) &&
+        jobs.value.find((previous) => previous.id === job.id)?.status !==
+          job.status,
+    );
     jobs.value = result.jobs;
     analysisRecovery.value =
       result.analysisRecovery && Object.keys(result.analysisRecovery).length
         ? result.analysisRecovery
         : EMPTY_ANALYSIS_RECOVERY;
+    // A small import can finish before its first jobs read. Publishing that
+    // terminal snapshot consumes the transition pollJobs uses to refresh media.
+    if (newlyImported && refreshImportedMedia) {
+      await reloadAssets();
+      if (project.value?.id === projectId) await refreshProject();
+      if (project.value?.id === projectId) await checkMediaStatus();
+    }
   }
   return project.value?.id === projectId ? result.jobs : undefined;
 }

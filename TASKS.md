@@ -32,6 +32,9 @@ Evidence: [validation](docs/validation-film-looks.md) and
 - [x] Apply the selected GPL-3.0-only derivative distribution terms, preserve exact
       historical Apache text/notices and fixture CC0 grants, and document AGPL's
       alternative network-service scope in [licensing](docs/licensing.md).
+- [x] Refresh imported media even when a small import completes before its first
+      jobs acknowledgement; reproduce the missed transition in unit/browser
+      regressions while preserving project ownership and render-progress isolation.
 - [ ] Manual: assess real camera/HDR material and intended display appearance;
       native installers and actual Resolve finishing remain separate gates.
 - [ ] Before Linux installer release: obtain a compatible upstream remedy for
