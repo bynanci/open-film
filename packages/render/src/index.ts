@@ -227,8 +227,10 @@ export class FFmpegRenderer {
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
           const startFrame = Math.round(start * outputFrameRate);
-          // Keep the existing start-frame snap, but gate by integer output
-          // frames: a timestamp such as 111/30 can compare below literal 3.7.
+          // Gate by rounded output ticks: 111/30 can compare below literal 3.7.
+          // FFmpeg 6 evaluates enable on both inputs, whose n counters differ;
+          // their shifted timestamps share the same output timeline.
+          const outputFrame = `round(t*${number(settings.frameRate)})`;
           const endFrame = (length: number) =>
             startFrame + Math.ceil((length - 1e-9) * outputFrameRate);
           const duration = clip.timelineDuration;
@@ -264,7 +266,7 @@ export class FFmpegRenderer {
               `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
             );
             filters.push(
-              `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(n,${startFrame})*lt(n,${endFrame(duration)})'[${titleLabel}]`,
+              `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(duration)})'[${titleLabel}]`,
             );
             videoLabel = titleLabel;
           };
@@ -384,7 +386,7 @@ export class FFmpegRenderer {
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(n,${startFrame})*lt(n,${endFrame(displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }
