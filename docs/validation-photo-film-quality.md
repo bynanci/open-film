@@ -39,8 +39,8 @@ The fixed comparison checks these distinct design operations:
 
 ## Execution record
 
-Re-executed on 2026-10-18 at 00:05 UTC using FFmpeg 7.1.5 on Linux, with the
-corrected implementation frozen at `025bead76ce4303382a1bb785798776ccf24eb14` on
+Re-executed on 2026-10-18 at 00:31 UTC using FFmpeg 7.1.5 on Linux, with the
+corrected implementation frozen at `8baa2740eea22bcb2f33a29647839c12a7585b31` on
 `codex/photo-film-quality`. The run explicitly records `workingTreeDirty: false`.
 The local `implementation-sources.json` lists hashes of the actual core,
 renderer, fixture and runner source files. Its SHA-256 is
@@ -80,9 +80,13 @@ Output SHA-256:
 - B: `50efd58bb33accdf78d078c23d2918af02732921a6ad37760bfe3ba86f65a376`
 
 Both hashes and all listed audio measurements match the earlier clean
-`ae61376ee8e9413e0982c00075053a2fe297b7c1` run. The earlier MP4s, manifests,
+`025bead76ce4303382a1bb785798776ccf24eb14` and
+`ae61376ee8e9413e0982c00075053a2fe297b7c1` runs. Their MP4s, manifests,
 source identities, summaries and Python-environment failure trace were archived
-locally before rerunning. Its 2026-10-17 23:30 UTC source digest was
+locally before each rerun. The 2026-10-18 00:05 UTC `025bead` run used the same
+fingerprinted core/renderer/fixture source digest as this run; the newer fixes
+affect other application/editor paths. The initial `ae61376` run's
+2026-10-17 23:30 UTC source digest was
 `9ea26157c2343b9a01ecf93468628f11809e99c2bcde282f3ed1972f7cec5bcc`.
 Both regenerated 24-frame contact sheets were inspected after the corrected run;
 the requested framing, motion, title and transition samples remain present.
@@ -94,24 +98,35 @@ Actual aesthetic judgment, listening and projection are still manual gates.
 
 ## Corrected implementation regression ledger
 
-The frozen `025bead76ce4303382a1bb785798776ccf24eb14` implementation has these
+The frozen `8baa2740eea22bcb2f33a29647839c12a7585b31` implementation has these
 complete local non-browser results. Its browser/CI outcomes are recorded
 separately on [PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks);
-the initial implementation's browser history below is not substituted for them.
+earlier implementations' browser history below is not substituted for them.
 
 | Gate                         | Result                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------ |
 | `pnpm format:check`          | Passed                                                                         |
-| `pnpm test:i18n`             | Passed: 1,273 keys                                                             |
+| `pnpm test:i18n`             | Passed: 1,275 keys                                                             |
 | `pnpm lint`                  | Passed                                                                         |
 | `pnpm typecheck`             | Passed                                                                         |
-| `pnpm test`                  | Passed: 157 files, 2,251 tests in 109.42 seconds                               |
+| `pnpm test`                  | Passed: 158 files, 2,273 tests in 110.40 seconds                               |
 | `pnpm build`                 | Passed                                                                         |
 | `pnpm test:interchange`      | Passed: official OTIO 0.18.1 parser and compatibility harness                  |
-| Built CLI smoke              | Passed                                                                         |
+| Built CLI smoke              | Passed: real CJK/render/reopen workflow                                        |
+| Focused photo browser suite  | Passed: 11/11 in 1.1 minutes                                                   |
 | Corrected-head browser suite | Recorded separately on PR #18 checks; earlier-head browser counts do not apply |
 | `pnpm test:native`           | Not runnable locally: `cargo` is unavailable                                   |
 | Published-head CI            | Recorded separately on PR #18 checks; local results do not substitute          |
+
+## Historical `025bead` implementation checks
+
+The preceding `025bead76ce4303382a1bb785798776ccf24eb14` implementation passed
+157 files / 2,251 Vitest tests in 109.42 seconds and a complete 119/119 browser
+run in 16.4 minutes. The later validation-only head
+`df22ae18e5642a63b6fcf7a8db5e12f2af3ae1f8` also had successful CI. These results
+precede four additional correctness fixes and do not validate the newer
+`8baa274` implementation or its expanded 121-case full browser suite. Current
+browser/CI evidence remains linked to PR #18 checks.
 
 ## Historical initial implementation checks
 
@@ -192,22 +207,27 @@ human listening, photographic aesthetics or real Resolve import.
 
 ## PR #18 follow-up correctness review
 
-The corrected `025bead76ce4303382a1bb785798776ccf24eb14` implementation addresses
-eight unique P2 issues: five newly valid bot findings and three additional
-independent-review findings. Each has regression coverage. The corrected
-non-browser suite and browser scenarios are recorded separately from the
-historical seven-test result above.
+The corrected `8baa2740eea22bcb2f33a29647839c12a7585b31` implementation addresses
+twelve unique follow-up P2 issues: the preceding round's five newly valid bot
+findings and three independent-review findings, followed by three newly reviewed
+correctness issues and one historical-style recovery issue. Each has regression
+coverage. Current non-browser and focused browser results remain distinct from
+the historical complete browser runs above.
 
-| Finding                                                         | Correction and regression coverage                                                                                                                             |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unbounded new title/raster input                                | Bound new commands and rasterization at 8,000 UTF-16 code units while keeping legacy project reading compatible. Reject invalid new edits before mutation.     |
-| Sound controls offered ordinary Story audio as overlay-editable | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.                             |
-| One failed/stale photo layer corrupted the current presentation | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.                               |
-| Diptych gap could equal or exceed output width                  | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                                        |
-| Empty overlay tracks blocked restrictive interchange            | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                                                |
-| Incompatible media could replace/configure audio                | Remove automation when replacements have no audio; preserve/clamp compatible curves. Reject silent-video configuration; Undo restores the original automation. |
-| Sparse title defaults changed on editing/clearing               | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.                               |
-| Relinked Sound source reused stale playback/buffer              | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.                              |
+| Finding                                                            | Correction and regression coverage                                                                                                                                                                                  |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unbounded new title/raster input                                   | Bound new commands and rasterization at 8,000 UTF-16 code units while keeping legacy project reading compatible. Reject invalid new edits before mutation.                                                          |
+| Sound controls offered ordinary Story audio as overlay-editable    | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.                                                                                  |
+| One failed/stale photo layer corrupted the current presentation    | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.                                                                                    |
+| Diptych gap could equal or exceed output width                     | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                                                                                             |
+| Empty overlay tracks blocked restrictive interchange               | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                                                                                                     |
+| Incompatible media could replace/configure audio                   | Remove automation when replacements have no audio; preserve/clamp compatible curves. Reject silent-video configuration; Undo restores the original automation.                                                      |
+| Sparse title defaults changed on editing/clearing                  | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.                                                                                    |
+| Relinked Sound source reused stale playback/buffer                 | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.                                                                                   |
+| Effective title tracking failed only after save/render             | Preflight tracking against resolved role/default typography and project size before mutation; cover authored styles with omitted font size.                                                                         |
+| Replacing visual media discarded its graphic title style           | Preserve title styling across source replacement and cover replacement/history behavior.                                                                                                                            |
+| Visual overlay clips disappeared from selection controls           | Keep visual overlay clips selectable without offering audio overlays as visual clips; verify the available edit targets.                                                                                            |
+| A readable historical subtitle style crashed Inspector setup/watch | Display safe defaults and a localized inline warning without mutating saved style. An explicit Reset preserves text; Undo restores the old style while recovery, text correction and clear controls stay reachable. |
 
 One bot report repeated the already-corrected legacy-title rendering issue.
 The alleged P1 PNG selector failure was not reproduced with actual FFprobe:
@@ -223,8 +243,10 @@ real generated PNG/JPEG regression tests for dimensions and codec metadata.
 This is recorded as explicit selection and coverage, not as proof that the
 reported PNG failure existed on those versions.
 
-Fresh independent review of the frozen corrected source passed the reviewed
-correctness areas. Component regression helpers use the declared public
+Fresh independent review of the frozen corrected source passed all four latest
+findings. The focused photo browser suite passed 11/11 tests, including actual
+reopen/reset/Undo recovery for historical invalid title tracking. Component
+regression helpers use the declared public
 `vue/compiler-sfc` entry point rather than an undeclared transitive Node module.
 Neither that review nor generated-media tests establish hardware playback,
 private-film aesthetics, human audio listening or actual Resolve QA.

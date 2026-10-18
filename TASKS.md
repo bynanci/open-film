@@ -28,16 +28,19 @@ artistic quality or replace workstation gates.
 - [x] Generate public CC0 calibration assets and two actual 20-second MP4s, with
       composition diff, 24 sampled frames each, source hashes, font/encoding
       manifests and FFprobe/loudness/true-peak/RMS evidence.
-- [x] Pass corrected implementation `025bead` local format/i18n/lint/types,
-      157-file/2,251-test Vitest, build, official OTIO and built-CLI checks.
+- [x] Pass corrected implementation `8baa274` local format/i18n/lint/types,
+      158-file/2,273-test Vitest, build, official OTIO, real CJK built-CLI checks
+      and 11/11 focused photo browser tests.
       Track its full browser/CI outcomes separately on PR #18 checks.
 - [x] Fix independent Desktop review findings for motion-only preview, persisted
       diptych spacing and audio Undo/Redo playback, with focused browser regressions.
-- [x] Address eight unique follow-up P2 findings covering title bounds/defaults,
+- [x] Address twelve unique follow-up P2 findings covering title bounds/defaults,
       overlay/audio compatibility, layer/source recovery, diptych validation and
-      empty-track interchange; independently review the corrected frozen source.
+      empty-track interchange; preserve source-replacement title style, visual
+      overlay selection and recoverable historical typography. Independently
+      review the corrected frozen source.
 - [x] Re-run the A/B evidence against committed implementation
-      `025bead76ce4303382a1bb785798776ccf24eb14` with a clean working tree,
+      `8baa2740eea22bcb2f33a29647839c12a7585b31` with a clean working tree,
       review the extracted frames and verify unchanged 20-second output/source hashes.
 - [ ] Manual: judge real photo selection/layout, original speech/music and
       projection readability on intended playback hardware.
@@ -52,6 +55,9 @@ the focused measurements above.
 The initial `ae61376` implementation's 153-file/2,213-test and 116-pass browser
 run plus one configured environment retry remain historical evidence in the
 validation record. They do not describe the corrected head's full browser suite.
+The preceding `025bead` implementation passed 119/119 browser tests in 16.4
+minutes; that success precedes four further fixes and does not certify the
+expanded current full browser suite.
 Published-head browser/CI and merge readiness are tracked separately on
 [PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks); local results
 do not substitute for those checks or workstation QA.
