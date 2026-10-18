@@ -165,6 +165,13 @@ Additional tests prove a synchronous read error releases the worker and persiste
 source-status failure leaves a bounded startup attempt plus a later background
 retry. Full regression results for this final implementation are recorded against
 its exact commit in PR #22.
+The first ledger full run found six failures in the extracted foreign-analysis
+navigation host (2,617 passes): it did not provide the new reset helper or media
+summary refs, so the real close function could not finish. The host now executes
+the actual reset helper. Its immutability assertion still checks the captured
+foreign job/recovery objects and original project, while additionally checking
+that only the detached UI caches are cleared. All 35 navigation cases passed;
+foreign runtime analysis is still neither cancelled nor manually recovered.
 
 ## Manual boundaries
 
