@@ -182,10 +182,21 @@ export async function createNativeBenchmarkFixture(
       } catch (error) {
         // Filesystems may not implement hard links or can reach their per-file
         // link ceiling. Copies preserve the workload and recorded identity.
+        const code = (error as NodeJS.ErrnoException).code ?? "";
+        // Node/libuv can report the NTFS ceiling as UNKNOWN rather than EMLINK.
+        // Require the observed link count before treating that error as a limit.
+        const windowsLinkLimit =
+          process.platform === "win32" &&
+          code === "UNKNOWN" &&
+          (await stat(sourcePath).then(
+            (source) => source.nlink >= 1024,
+            () => false,
+          ));
         if (
           !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EMLINK"].includes(
-            (error as NodeJS.ErrnoException).code ?? "",
-          )
+            code,
+          ) &&
+          !windowsLinkLimit
         )
           throw error;
         await copyFile(sourcePath, path, constants.COPYFILE_EXCL);

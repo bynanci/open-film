@@ -7,7 +7,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { join, parse, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -54,7 +54,7 @@ async function file(path: string, content: string): Promise<string> {
   return destination;
 }
 
-// These tests validate string normalization on Linux; native Windows mounts remain a manual gate.
+// These tests validate host paths and portable strings; real remounted media remains a manual gate.
 describe("portable reference derivation", () => {
   it("chooses the longest library root, preserving opaque identity and legacy filesystem byte size", () => {
     const outer = join(directory, "original"),
@@ -84,11 +84,13 @@ describe("portable reference derivation", () => {
     const original = asset(join(directory, "archive-other", "a.jpg"));
     const reference = referenceFor(original, [
       library(join(directory, "archive")),
-      library("/", "root-volume"),
+      library(parse(directory).root, "root-volume"),
     ]);
     expect(reference.mediaLibraryId).toBe("root-volume");
     expect(reference.relativePath).toBe(
-      join(directory, "archive-other", "a.jpg").slice(1),
+      relative(parse(directory).root, join(directory, "archive-other", "a.jpg"))
+        .split(sep)
+        .join("/"),
     );
   });
   it.each([

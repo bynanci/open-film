@@ -133,7 +133,7 @@ try {
         process.execPath,
         [
           "--import",
-          require.resolve("tsx"),
+          pathToFileURL(require.resolve("tsx")).href,
           worker,
           context.directory,
           context.userDataDirectory,
@@ -164,6 +164,9 @@ try {
     } catch (error) {
       conflict = error;
     }
+    // Surface worker setup/assertion failures before reading its absent result.
+    expect(conflict).toBeInstanceOf(ApplicationError);
+    expect(committed).toBeDefined();
     const evidence = store.getSuggestion(context.suggestion.id)!;
     const current = await context.app.transcriptEditor.get("source");
     expect(evidence).toEqual(committed!.suggestion);

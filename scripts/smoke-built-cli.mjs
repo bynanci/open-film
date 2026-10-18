@@ -10,6 +10,7 @@ import { generateSampleMedia } from "../fixtures/sample-media/generate.mjs";
 const root = await mkdtemp(join(tmpdir(), "openfilm-built-cli-"));
 const project = join(root, "Jo's film.openfilm");
 const execute = promisify(execFile);
+const python = process.env.OPENFILM_TEST_PYTHON ?? "python3";
 const commandWithEnvironment = async (environment, ...args) => {
   const { stdout } = await execute(
     process.execPath,
@@ -86,7 +87,7 @@ try {
   await assert.rejects(
     commandWithEnvironment(
       {
-        OPENFILM_WHISPER_PYTHON: "python3",
+        OPENFILM_WHISPER_PYTHON: python,
         OPENFILM_WHISPER_RUNNER: resolve("dist/cli/whisper_runner.py"),
         OPENFILM_WHISPER_MODEL: join(root, "unavailable-model"),
       },
@@ -106,7 +107,7 @@ try {
   );
   const transcription = await commandWithEnvironment(
     {
-      OPENFILM_WHISPER_PYTHON: "python3",
+      OPENFILM_WHISPER_PYTHON: python,
       OPENFILM_WHISPER_RUNNER: resolve("tests/fixtures/whisper-protocol.py"),
       OPENFILM_WHISPER_MODEL: resolve("tests/fixtures/whisper-model"),
       OPENFILM_WHISPER_FIXTURE_DELAY: "0",
