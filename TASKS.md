@@ -32,6 +32,8 @@ see [combined evidence](docs/validation-quality-controls.md).
       frame-relative safe distance with defaults that preserve older projects.
 - [x] Offer local Regular/Bold text weight without silently replacing authored
       custom weights or changing older subtitle defaults.
+- [x] Adjust native text size in composition pixels and restore only its role
+      default while preserving the remaining style, history, audio and saved cut.
 - [x] Preserve authored fade/margin through command validation, all lock sources,
       exact retry, Undo/Redo, replacement, trim/speed/split and saved reopening;
       focused application/solver regressions pass (88 tests in two files).

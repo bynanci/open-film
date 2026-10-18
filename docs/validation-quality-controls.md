@@ -2,8 +2,9 @@
 
 Date: 2026-10-18. Integration base: main
 `7011c48e9e26a681357de64d5cf47b94cbf5884d` (PR #22).
-Source candidate: `6d2a1c7254a6712ce9722676dc3ef0e6e6e9f0e8`.
-The subsequent documentation update changes no program or test source.
+Initial integrated source candidate:
+`6d2a1c7254a6712ce9722676dc3ef0e6e6e9f0e8`.
+The additional PR #23 adaptations below follow that initial evidence.
 
 ## Executed combined checks
 
@@ -43,6 +44,32 @@ fixtures, source hashes and composition data. A quality choice cannot restore
 missing source detail or detail lost to existing photo-motion resampling.
 
 ## Final release gate
+
+### PR #23 convergence and intermediate verification
+
+PR #23 (`b3928dae8986e949bb36a23441c582aa50f137f6`) independently added overlapping
+native-caption and renderer controls. Its unreleased bottomInset, frame-normalized
+fade endpoints and renderer-only preview/high/lossless profiles conflict with
+this branch's single bottomSafeMargin, clip-local fade and end-to-end
+standard/high-detail contract. They are not wholesale cherry-picked.
+
+The integrating branch selectively adopts native text-size editing through the
+existing fontSize field and four portable fileURLToPath fixture corrections.
+Text-size development passed 60 focused unit/application cases and all seven
+native-text browser cases, with a dedicated visible-size screenshot and twelve
+locale/size screenshots. Existing authored fractional sizes and implicit
+role/frame defaults remain distinct. Top placement, fade-in and explicitly
+evidenced resampling are deferred; the source PR preserves those experiments.
+CRF 0 with yuv420p/AAC is not described as a fully lossless media pipeline.
+
+The preceding c4852c8 candidate passed the complete 180-file / 2,737-case unit
+gate, all format/i18n/lint/typecheck/build steps, official OTIO (18 cases), built
+CLI smoke, Rustfmt/Clippy and seven Rust tests. Its full browser run was stopped
+to integrate the newly discovered PR: **10 passed, one interrupted, 147 unrun**.
+That run is not a full browser success. Its exact-head Codex review had no
+findings; the final changed head requires fresh review and complete CI.
+
+### Final candidate reporting
 
 The integrating PR records the final exact head and complete serial results for
 format, i18n, lint, typecheck, all unit/integration cases (including the benchmark
