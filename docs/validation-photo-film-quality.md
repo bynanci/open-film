@@ -194,20 +194,20 @@ human listening, photographic aesthetics or real Resolve import.
 
 The corrected `025bead76ce4303382a1bb785798776ccf24eb14` implementation addresses
 eight unique P2 issues: five newly valid bot findings and three additional
-independent-review findings. Each has regression coverage in the corrected
-non-browser suite; browser scenarios for the corrected head are tracked
-separately from the historical seven-test result above.
+independent-review findings. Each has regression coverage. The corrected
+non-browser suite and browser scenarios are recorded separately from the
+historical seven-test result above.
 
-| Finding                                                         | Correction and regression coverage                                                                                                            |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unbounded new title/raster input                                | Bound new commands and rasterization at 8,000 characters while keeping legacy project reading compatible. Validate rejection before mutation. |
-| Sound controls offered ordinary Story audio as overlay-editable | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.            |
-| One failed/stale photo layer corrupted the current presentation | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.              |
-| Diptych gap could equal or exceed output width                  | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                       |
-| Empty overlay tracks blocked restrictive interchange            | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                               |
-| Incompatible media could replace/configure audio                | Reject incompatible replacement and silent-video automation before saved project or Undo state changes.                                       |
-| Sparse title defaults changed on editing/clearing               | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.              |
-| Relinked Sound source reused stale playback/buffer              | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.             |
+| Finding                                                         | Correction and regression coverage                                                                                                                             |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unbounded new title/raster input                                | Bound new commands and rasterization at 8,000 UTF-16 code units while keeping legacy project reading compatible. Reject invalid new edits before mutation.     |
+| Sound controls offered ordinary Story audio as overlay-editable | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.                             |
+| One failed/stale photo layer corrupted the current presentation | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.                               |
+| Diptych gap could equal or exceed output width                  | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                                        |
+| Empty overlay tracks blocked restrictive interchange            | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                                                |
+| Incompatible media could replace/configure audio                | Remove automation when replacements have no audio; preserve/clamp compatible curves. Reject silent-video configuration; Undo restores the original automation. |
+| Sparse title defaults changed on editing/clearing               | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.                               |
+| Relinked Sound source reused stale playback/buffer              | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.                              |
 
 One bot report repeated the already-corrected legacy-title rendering issue.
 The alleged P1 PNG selector failure was not reproduced with actual FFprobe:
