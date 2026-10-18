@@ -16,7 +16,7 @@ afterEach(async () => {
 const compositionId = "film # & 記憶";
 const beatId = "scene / 日本語";
 const clipId = "photo # & 一";
-async function fixture() {
+async function fixture(targetClipId = clipId) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-direction-adapters-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const directory = join(root, "Film # & 記憶.openfilm");
@@ -63,7 +63,7 @@ async function fixture() {
           type: "video",
           clips: [
             {
-              id: clipId,
+              id: targetClipId,
               assetId: "photo",
               beatId,
               timelineStart: 0,
@@ -257,4 +257,107 @@ describe("scene direction HTTP and CLI adapters", () => {
     );
     expect(saved.sceneDirectionReceipts).toHaveLength(1);
   });
+
+  it("preserves comma-bearing opaque identities in CLI target and action selections", async () => {
+    const opaqueId = "photo, # & 回憶 / [one]";
+    const { root, directory } = await fixture(opaqueId);
+    const command = (extra: string[]) =>
+      exec(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "apps/cli/src/index.ts",
+          "direction-review",
+          ...extra,
+          "--project",
+          directory,
+        ],
+        { cwd: process.cwd() },
+      );
+    const before = await readFile(join(directory, "project.json"), "utf8");
+    const preview = await command([
+      "preview",
+      compositionId,
+      "--beat",
+      beatId,
+      "--clips-json",
+      JSON.stringify([opaqueId]),
+    ]);
+    const plan = JSON.parse(preview.stdout).plan;
+    expect(plan.actions).toHaveLength(2);
+    expect(
+      plan.actions.every(
+        (action: { clipId: string }) => action.clipId === opaqueId,
+      ),
+    ).toBe(true);
+    expect(await readFile(join(directory, "project.json"), "utf8")).toBe(
+      before,
+    );
+    const file = join(root, "comma review.json");
+    await writeFile(file, JSON.stringify({ plan }));
+    const actionIds = plan.actions.map((action: { id: string }) => action.id);
+    const args = [
+      "accept",
+      compositionId,
+      "--plan",
+      file,
+      "--request-id",
+      "comma-direction",
+      "--actions-json",
+      JSON.stringify(actionIds),
+    ];
+    const accepted = JSON.parse((await command(args)).stdout);
+    expect(accepted.composition.tracks[0].clips[0].id).toBe(opaqueId);
+    expect(accepted.composition.tracks[0].clips[0].motion.preset).toBe(
+      "push-in",
+    );
+    expect(JSON.parse((await command(args)).stdout).composition).toEqual(
+      accepted.composition,
+    );
+    const saved = JSON.parse(
+      await readFile(join(directory, "project.json"), "utf8"),
+    );
+    expect(saved.sceneDirectionReceipts).toHaveLength(1);
+    expect(
+      saved.sceneDirectionReceipts[0].actions.map(
+        (action: { id: string }) => action.id,
+      ),
+    ).toEqual(actionIds);
+  });
+
+  it.each(["not-json", "{}", '["valid",4]', '[""]'])(
+    "rejects malformed identity arrays without changing the project: %s",
+    async (encoded) => {
+      const { directory } = await fixture();
+      const before = await readFile(join(directory, "project.json"), "utf8");
+      await expect(
+        exec(
+          process.execPath,
+          [
+            "--import",
+            "tsx",
+            "apps/cli/src/index.ts",
+            "direction-review",
+            "preview",
+            compositionId,
+            "--project",
+            directory,
+            "--beat",
+            beatId,
+            "--clips-json",
+            encoded,
+          ],
+          { cwd: process.cwd() },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "--clips-json must be a JSON array of nonempty identifiers",
+        ),
+      });
+      expect(await readFile(join(directory, "project.json"), "utf8")).toBe(
+        before,
+      );
+    },
+  );
 });

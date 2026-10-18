@@ -46,8 +46,8 @@ Usage:
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
   openfilm scene-plan preview --project <film.openfilm> --group-by category|chronology --target 270 --max 300 [--brief "Film intention" --transition cut|crossfade --assets id1,id2]
   openfilm scene-plan accept --project <film.openfilm> --plan <preview.json>
-  openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> --clips <clip-id,...> [--replace-existing]
-  openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...>]
+  openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
+  openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
@@ -133,7 +133,9 @@ function parse(args: string[]) {
     "index",
     "user-data-dir",
     "clips",
+    "clips-json",
     "actions",
+    "actions-json",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -163,6 +165,32 @@ function parse(args: string[]) {
 }
 const value = (options: Options, key: string) =>
   typeof options[key] === "string" ? (options[key] as string) : undefined;
+function directionIdentifiers(
+  options: Options,
+  key: "clips" | "actions",
+): string[] | undefined {
+  const commaSeparated = value(options, key);
+  const json = value(options, `${key}-json`);
+  if (commaSeparated !== undefined && json !== undefined)
+    throw new Error(`Choose either --${key} or --${key}-json.`);
+  if (json === undefined) return commaSeparated?.split(",");
+  const message = `--${key}-json must be a JSON array of nonempty identifiers.`;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error(message);
+  }
+  if (
+    !Array.isArray(decoded) ||
+    !decoded.length ||
+    !decoded.every(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    )
+  )
+    throw new Error(message);
+  return decoded;
+}
 function positive(options: Options, key: string): number | undefined {
   const input = value(options, key);
   if (input === undefined) return undefined;
@@ -701,13 +729,15 @@ async function main() {
       const editor = new TimelineEditor(app);
       if (positional[1] === "preview") {
         const beatId = value(options, "beat");
-        const clips = value(options, "clips");
+        const clips = directionIdentifiers(options, "clips");
         if (!beatId || !clips)
-          throw new Error("Specify --beat and --clips for the reviewed scene.");
+          throw new Error(
+            "Specify --beat and --clips or --clips-json for the reviewed scene.",
+          );
         print({
           plan: editor.previewDirection(compositionId, {
             beatId,
-            clipIds: clips.split(","),
+            clipIds: clips,
             replaceExisting: options["replace-existing"] === true,
           }),
         });
@@ -733,7 +763,7 @@ async function main() {
         const plan = input.plan;
         if (!plan || !Array.isArray(plan.actions))
           throw new Error("Provide a saved {plan} direction preview.");
-        const selected = value(options, "actions");
+        const selected = directionIdentifiers(options, "actions");
         print(
           await editor.acceptDirection(compositionId, {
             planId: plan.id,
@@ -743,7 +773,7 @@ async function main() {
             actionIds:
               selected === undefined
                 ? plan.actions.map((action) => action.id)
-                : selected.split(","),
+                : selected,
             requestId,
           }),
         );
