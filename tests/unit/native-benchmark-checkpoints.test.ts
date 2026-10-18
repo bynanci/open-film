@@ -1261,6 +1261,8 @@ describe("actual workspace readiness guards", () => {
       );
       await turn();
       expect(h.visibilityListeners.size).toBe(1);
+      const pictureCancel = vi.fn();
+      const trackCancel = vi.fn();
       const cleanup = actualFunction(
         workspace === "boot"
           ? "apps/desktop/src/App.vue"
@@ -1293,9 +1295,21 @@ describe("actual workspace readiness guards", () => {
           layoutObserver: undefined,
           layoutFrame: 0,
           cancelAnimationFrame: vi.fn(),
+          cancelDirectManipulation: actualFunction(
+            "apps/desktop/src/components/TimelineEditor.vue",
+            "cancelDirectManipulation",
+            {
+              pictureOverlay: ref({ cancel: pictureCancel }),
+              timeTrackEditor: ref({ cancel: trackCancel }),
+            },
+          ),
         },
       );
       cleanup();
+      expect(pictureCancel).toHaveBeenCalledTimes(
+        workspace === "editor" ? 1 : 0,
+      );
+      expect(trackCancel).toHaveBeenCalledTimes(workspace === "editor" ? 1 : 0);
       expect(h.visibilityListeners.size).toBe(0);
       h.visible();
       expect(h.frames).toHaveLength(0);

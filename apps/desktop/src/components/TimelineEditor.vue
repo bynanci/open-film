@@ -37,6 +37,9 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
+import PreviewTransformOverlay from "./PreviewTransformOverlay.vue";
+import TimeTrackEditor from "./TimeTrackEditor.vue";
+import type { PreviewTransform } from "../previewTransform";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
@@ -74,6 +77,8 @@ const {
   hasPending: compositionHasPending,
   historyBusy,
   command,
+  commitGesture,
+  gestureBusy,
   flush: flushComposition,
   history: compositionHistory,
   reapplyDraft,
@@ -90,17 +95,33 @@ const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
 const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
+const pictureOverlay = ref<InstanceType<typeof PreviewTransformOverlay> | null>(
+  null,
+);
+const timeTrackEditor = ref<InstanceType<typeof TimeTrackEditor> | null>(null);
+const pictureActive = ref(false);
+const trackActive = ref(false);
+const adjustPicture = ref(false);
+const trackView = ref(false);
+function cancelDirectManipulation() {
+  pictureOverlay.value?.cancel();
+  timeTrackEditor.value?.cancel();
+}
 const hasPending = computed(
   () =>
     compositionHasPending.value ||
     !!transcriptEditor.value?.hasPending ||
-    !!precisionEditor.value?.hasPending,
+    !!precisionEditor.value?.hasPending ||
+    pictureActive.value ||
+    trackActive.value,
 );
 async function history(direction: "undo" | "redo") {
   if (precisionEditor.value?.hasPending) return false;
+  cancelDirectManipulation();
   return compositionHistory(direction);
 }
 async function flush() {
+  cancelDirectManipulation();
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
     return false;
@@ -321,6 +342,7 @@ function chooseClip(clip: Clip, openInspector = true) {
   applyClipSelection(clip, openInspector);
 }
 function applyClipSelection(clip: Clip, openInspector = true) {
+  cancelDirectManipulation();
   fitPreview.value = null;
   if (openInspector) inspectorOpen.value = true;
   selectedClipId.value = clip.id;
@@ -355,6 +377,61 @@ function transform() {
   const { scale, rotation, x, y } = clipFields.value;
   editClip({ type: "transform", scale, rotation, x, y });
 }
+const directBusy = computed(
+  () =>
+    historyBusy.value ||
+    !!gestureBusy?.value ||
+    status.value !== "saved" ||
+    !!precisionEditor.value?.hasPending,
+);
+const pictureAvailable = computed(
+  () =>
+    !!selectedClip.value &&
+    !selectedClip.value.locked &&
+    controls.value.visual &&
+    !sourceUnavailable.value &&
+    !sourceError.value &&
+    selectedSourceInfo.value?.previewSupported !== false &&
+    !!sourcePreviewSize.value,
+);
+const pictureValue = computed<PreviewTransform>(() => {
+  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  return {
+    x: previewNumber(clipFields.value.x, committed.x),
+    y: previewNumber(clipFields.value.y, committed.y),
+    scale: previewNumber(clipFields.value.scale, committed.scale, true),
+    rotation: previewNumber(clipFields.value.rotation, committed.rotation),
+  };
+});
+function previewPicture(value: PreviewTransform) {
+  Object.assign(clipFields.value, value);
+}
+function commitPicture(value: PreviewTransform) {
+  if (!selectedClip.value || !pictureAvailable.value) return;
+  void commitGesture({
+    type: "transform",
+    clipId: selectedClip.value.id,
+    ...value,
+  });
+}
+function resetPicture(centerOnly = false) {
+  cancelDirectManipulation();
+  const value = {
+    ...pictureValue.value,
+    x: 0,
+    y: 0,
+    ...(centerOnly ? {} : { scale: 1, rotation: 0 }),
+  };
+  previewPicture(value);
+  commitPicture(value);
+}
+function commitTrack(input: TimelineCommand) {
+  void commitGesture(input);
+}
+function toggleTrackView() {
+  cancelDirectManipulation();
+  trackView.value = !trackView.value;
+}
 function previewNumber(
   value: unknown,
   fallback: number,
@@ -367,14 +444,8 @@ function previewNumber(
     : fallback;
 }
 const previewGeometry = computed(() => {
-  const committed = resolveClipGeometry(selectedClip.value?.transform);
   return resolvePreviewClipGeometry(
-    {
-      scale: previewNumber(clipFields.value.scale, committed.scale, true),
-      rotation: previewNumber(clipFields.value.rotation, committed.rotation),
-      x: previewNumber(clipFields.value.x, committed.x),
-      y: previewNumber(clipFields.value.y, committed.y),
-    },
+    pictureValue.value,
     sourcePreviewSize.value ??
       selectedAsset.value?.dimensions ??
       props.projectSettings,
@@ -613,6 +684,13 @@ watch(
 );
 
 const controls = computed(() => clipControls(selectedAsset.value?.mediaType));
+watch(
+  pictureAvailable,
+  (available) => {
+    if (!available) pictureOverlay.value?.cancel();
+  },
+  { flush: "sync" },
+);
 const durationState = computed(() =>
   durationStatus(
     state.value?.composition.duration ?? 0,
@@ -797,6 +875,11 @@ watch(selectedBeat, (beat, previous) => {
   }
 });
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
+  // Selecting a different source resets its preview after the selection event.
+  // A track edge may already have captured that same pointer by then; source
+  // preview hydration must not cancel the new, valid timeline gesture.
+  pictureOverlay.value?.cancel();
+  if (sourceUnavailable.value) timeTrackEditor.value?.cancel();
   sourceError.value = "";
   playing.value = false;
   sourcePreviewSize.value = undefined;
@@ -804,11 +887,14 @@ watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
 watch(
   () => props.active,
   (active) => {
-    if (!active) sourcePlayer.value?.pause();
-    else void nextTick(measureWorkspace);
+    if (!active) {
+      cancelDirectManipulation();
+      sourcePlayer.value?.pause();
+    } else void nextTick(measureWorkspace);
   },
 );
 watch(editMode, () => {
+  cancelDirectManipulation();
   sourcePlayer.value?.pause();
   fitPreview.value = null;
   void nextTick(measureWorkspace);
@@ -890,6 +976,7 @@ onMounted(() => {
   measureWorkspace();
 });
 onBeforeUnmount(() => {
+  cancelDirectManipulation();
   nativeEditDisposed = true;
   nativeEditGeneration++;
   cancelNativeEditReady?.();
@@ -974,6 +1061,15 @@ onBeforeUnmount(() => {
           @click="history('redo')"
         >
           {{ t("editor.redo") }}
+        </button>
+        <button
+          v-show="editMode === 'story'"
+          class="editor-button"
+          :aria-pressed="trackView"
+          :class="{ selected: trackView }"
+          @click="toggleTrackView"
+        >
+          {{ t("editor.timeTrack.toggle") }}
         </button>
         <button
           v-show="editMode === 'story'"
@@ -1107,7 +1203,13 @@ onBeforeUnmount(() => {
           </div>
           <button
             class="editor-button primary"
-            :disabled="!fitPlan?.commands.length || historyBusy"
+            :disabled="
+              !fitPlan?.commands.length ||
+              historyBusy ||
+              gestureBusy ||
+              pictureActive ||
+              trackActive
+            "
             @click="applyFit(fitPlan)"
           >
             {{ t("editor.fit.applyAll") }}
@@ -1157,7 +1259,9 @@ onBeforeUnmount(() => {
                 })
               "
               :aria-pressed="fitPreview?.id === suggestion.id"
-              :disabled="historyBusy"
+              :disabled="
+                historyBusy || gestureBusy || pictureActive || trackActive
+              "
               @click="previewFit(suggestion)"
             >
               {{ t("editor.fit.preview") }}
@@ -1169,7 +1273,9 @@ onBeforeUnmount(() => {
                   reason: suggestionDescription(suggestion),
                 })
               "
-              :disabled="historyBusy"
+              :disabled="
+                historyBusy || gestureBusy || pictureActive || trackActive
+              "
               @click="applyFit(suggestion)"
             >
               {{ t("editor.fit.apply") }}
@@ -1179,7 +1285,9 @@ onBeforeUnmount(() => {
               :aria-label="
                 t('editor.fit.skipLabel', { name: suggestionName(suggestion) })
               "
-              :disabled="historyBusy"
+              :disabled="
+                historyBusy || gestureBusy || pictureActive || trackActive
+              "
               @click="skipFit(suggestion)"
             >
               {{ t("editor.fit.skip") }}
@@ -1249,7 +1357,7 @@ onBeforeUnmount(() => {
           :asset="selectedAsset"
           :clip="selectedClip"
           :active="active && editMode === 'precision' && !draftAction"
-          :busy="historyBusy"
+          :busy="historyBusy || gestureBusy || pictureActive || trackActive"
           :analysis-recovery="analysisRecovery"
           :recovering-analysis-jobs="recoveringAnalysisJobs"
           :unavailable="
@@ -1412,7 +1520,7 @@ onBeforeUnmount(() => {
                         ? thumbnailUrl(selectedAsset.id)
                         : undefined
                     "
-                    controls
+                    :controls="!adjustPicture"
                     preload="metadata"
                     :aria-label="t('editor.source.preview')"
                     :style="previewMediaStyle"
@@ -1426,11 +1534,54 @@ onBeforeUnmount(() => {
                     @error="sourceError = 'playback'"
                   />
                 </div>
+                <PreviewTransformOverlay
+                  v-if="adjustPicture && pictureAvailable"
+                  ref="pictureOverlay"
+                  :value="pictureValue"
+                  :geometry="previewGeometry"
+                  :disabled="directBusy || trackActive"
+                  :session-key="selectedClipId + ':' + sourcePlaybackKey"
+                  @preview="previewPicture"
+                  @commit="commitPicture"
+                  @activity="pictureActive = $event"
+                />
               </template>
               <div v-else class="editor-source-empty">
                 <Icon name="film" :size="30" /><span>{{
                   t("editor.source.choose")
                 }}</span>
+              </div>
+              <div v-if="controls.visual" class="editor-picture-tools">
+                <button
+                  class="editor-button"
+                  :aria-pressed="adjustPicture"
+                  :class="{ selected: adjustPicture }"
+                  :title="t('editor.picture.hint')"
+                  :disabled="!pictureAvailable || directBusy"
+                  @click="
+                    cancelDirectManipulation();
+                    adjustPicture = !adjustPicture;
+                  "
+                >
+                  {{ t("editor.picture.toggle") }}
+                </button>
+                <template v-if="adjustPicture">
+                  <button
+                    class="editor-button"
+                    :disabled="!pictureAvailable || directBusy"
+                    @click="resetPicture(true)"
+                  >
+                    {{ t("editor.picture.center") }}
+                  </button>
+                  <button
+                    class="editor-button"
+                    :disabled="!pictureAvailable || directBusy"
+                    @click="resetPicture()"
+                  >
+                    {{ t("editor.picture.reset") }}
+                  </button>
+                  <span class="sr-only">{{ t("editor.picture.hint") }}</span>
+                </template>
               </div>
             </div>
             <div class="editor-source-caption">
@@ -1487,7 +1638,22 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
+          <TimeTrackEditor
+            v-if="trackView && state"
+            ref="timeTrackEditor"
+            class="editor-time-track-area"
+            :composition="state.composition"
+            :assets="state.assets"
+            :selected-clip-id="selectedClipId"
+            :frame-rate="projectSettings.frameRate"
+            :source-statuses="sourceStatuses"
+            :busy="directBusy || pictureActive"
+            @select="chooseClip"
+            @commit="commitTrack"
+            @activity="trackActive = $event"
+          />
           <div
+            v-show="!trackView"
             class="editor-beats editor-story-rail"
             role="region"
             tabindex="0"
@@ -1550,6 +1716,7 @@ onBeforeUnmount(() => {
                   "
                   :media-type="assetMap.get(clip.assetId)?.mediaType"
                   :source-status="sourceStatuses?.[clip.assetId]?.status"
+                  :busy="!!gestureBusy || pictureActive || trackActive"
                   @select="chooseClip"
                   @drag-start="startClipDrag"
                   @drag-end="endClipDrag"
@@ -1598,6 +1765,9 @@ onBeforeUnmount(() => {
                   )
                 "
                 :aria-pressed="!!selectedClip.locked"
+                :disabled="
+                  historyBusy || gestureBusy || pictureActive || trackActive
+                "
                 @click="
                   command({
                     type: 'lock',
@@ -1642,7 +1812,13 @@ onBeforeUnmount(() => {
             </p>
             <fieldset
               class="editor-fields"
-              :disabled="!!selectedClip.locked || historyBusy"
+              :disabled="
+                !!selectedClip.locked ||
+                historyBusy ||
+                gestureBusy ||
+                pictureActive ||
+                trackActive
+              "
             >
               <template v-if="controls.duration"
                 ><label class="editor-field"
@@ -1906,7 +2082,12 @@ onBeforeUnmount(() => {
             ><div class="editor-inspector-title">
               <h3>{{ selectedBeat.title }}</h3>
             </div>
-            <fieldset class="editor-fields" :disabled="historyBusy">
+            <fieldset
+              class="editor-fields"
+              :disabled="
+                historyBusy || gestureBusy || pictureActive || trackActive
+              "
+            >
               <label class="editor-field"
                 >{{ t("editor.beats.name")
                 }}<input

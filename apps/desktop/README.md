@@ -100,6 +100,27 @@ reopens the project. It does not substitute fixture screens or mock requests.
 
 ## Graphical editing
 
+Choose **Adjust picture** in the selected photo or video preview to move it directly
+in the preview. Drag inside the frame to reposition it, or pull a corner to resize
+proportionally while keeping the opposite corner fixed. Existing rotation is
+preserved. Focus the picture or a corner and use the arrow keys for fine control;
+Shift increases the step. Esc cancels the current drag. Center picture resets
+position; Reset picture also restores scale and rotation. Each completed gesture
+is saved as a separate Undo/Redo step, including gestures made in quick succession.
+The inspector's position and scale fields show the same values. The selected-source
+preview uses the film's frame geometry; render the film to inspect the full composition.
+
+Choose **Time tracks** in the Edit toolbar for a proportional timeline with a time
+ruler, separate track lanes, horizontal scrolling and a zoom control. Pull either
+edge to trim video/audio or change a photo's duration. Source bounds and a one-output-frame
+minimum protect the edit; speed is respected when mapping timeline time to the source.
+Focus an edge and press Left/Right to adjust one frame, or Shift for ten frames.
+Esc cancels a drag. Duration changes use the existing ripple rule: the selected
+clip keeps its timeline start, and clips beginning at or after its old end move
+by the duration difference, across tracks. This can move a later locked clip's
+timeline position while preserving its source and editing settings. The story
+card view remains available for ordering clips within a beat and track.
+
 The Edit workspace groups clips by story beat. Select a clip for source
 in/out, still duration, speed, volume/mute, Cut/Crossfade, and transform controls.
 Drag a clip inside its beat to reorder it, or use Earlier/Later in the inspector.

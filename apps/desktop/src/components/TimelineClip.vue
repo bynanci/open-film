@@ -13,6 +13,7 @@ const props = defineProps<{
   thumbnailSrc?: string;
   mediaType?: MediaAsset["mediaType"];
   sourceStatus?: SourceStatus["status"];
+  busy?: boolean;
 }>();
 const emit = defineEmits<{
   select: [clip: Clip];
@@ -40,7 +41,8 @@ const name = computed(
       })
     "
     :aria-pressed="selected"
-    :draggable="!clip.locked"
+    :draggable="!clip.locked && !busy"
+    :disabled="busy"
     @click="emit('select', clip)"
     @dragstart="emit('dragStart', clip.id)"
     @dragend="emit('dragEnd')"

@@ -13,6 +13,8 @@ type Draft = {
   state: EditorState;
   pending: TimelineCommand[];
   batch: Batch | null;
+  /** Pending command offsets that must each form their own history entry. */
+  gestures?: number[];
 };
 
 /** Keep the command queue until acknowledgement, including across a reload. */
@@ -49,8 +51,14 @@ export function useTimelineEditor(
   }
   const pendingCount = ref(0);
   const historyBusy = ref(false);
+  const gestureBusy = ref(false);
   const storageKey = `openfilm:editor:${projectId}:${compositionId}`;
   let pending: TimelineCommand[] = [];
+  let gestures: number[] = [];
+  let gestureRequests: {
+    offset: number;
+    resolve: (saved: boolean) => void;
+  }[] = [];
   let batch: Batch | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let saving: Promise<boolean> | null = null;
@@ -75,6 +83,7 @@ export function useTimelineEditor(
             state: state.value,
             pending,
             batch,
+            ...(gestures.length ? { gestures } : {}),
           } satisfies Draft),
         );
       } else localStorage.removeItem(storageKey);
@@ -87,6 +96,40 @@ export function useTimelineEditor(
       cause instanceof ApiError && cause.status === 409 ? "conflict" : "failed";
     reportError(cause);
     retainDraft();
+    // Keep failed commands and their boundaries for retry, but release callers
+    // waiting for this attempt. A later receipt must never resolve a new gesture.
+    for (const request of gestureRequests) request.resolve(false);
+    gestureRequests = [];
+    gestureBusy.value = false;
+  }
+  function recoveredGestures(draft: Draft): number[] {
+    return Array.isArray(draft.gestures)
+      ? [...new Set(draft.gestures)]
+          .filter(
+            (offset) =>
+              Number.isInteger(offset) &&
+              offset >= 0 &&
+              offset < draft.pending.length,
+          )
+          .sort((a, b) => a - b)
+      : [];
+  }
+  function acknowledge(count: number) {
+    pending = pending.slice(count);
+    gestures = gestures
+      .filter((offset) => offset >= count)
+      .map((offset) => offset - count);
+    const completed = gestureRequests.filter(
+      (request) => request.offset < count,
+    );
+    gestureRequests = gestureRequests
+      .filter((request) => request.offset >= count)
+      .map((request) => ({ ...request, offset: request.offset - count }));
+    gestureBusy.value =
+      gestureRequests.length > 0 || (saving !== null && gestures.length > 0);
+    return () => {
+      for (const request of completed) request.resolve(true);
+    };
   }
   function applyTo(next: EditorState, commands: TimelineCommand[]) {
     for (const command of commands)
@@ -114,13 +157,14 @@ export function useTimelineEditor(
     try {
       if (recovered) {
         pending = recovered.pending;
+        gestures = recoveredGestures(recovered);
         pendingCount.value = pending.length;
         batch = recovered.batch;
         if (batch) {
           const sending = batch;
           const acknowledged = await api.edit(compositionId, sending);
           if (disposed) return;
-          pending = pending.slice(sending.commands.length);
+          acknowledge(sending.commands.length)();
           batch = null;
           const saved = await api.editor(compositionId);
           if (disposed) return;
@@ -165,6 +209,7 @@ export function useTimelineEditor(
       if (disposed) return;
       if (recovered) {
         pending = recovered.pending;
+        gestures = recoveredGestures(recovered);
         batch = recovered.batch;
         publish(recovered.state);
       }
@@ -172,7 +217,12 @@ export function useTimelineEditor(
     }
   }
   function command(input: TimelineCommand | TimelineCommand[]): boolean {
-    if (!state.value || historyBusy.value || status.value === "loading")
+    if (
+      !state.value ||
+      historyBusy.value ||
+      gestureBusy.value ||
+      status.value === "loading"
+    )
       return false;
     const commands = Array.isArray(input) ? input : [input];
     try {
@@ -195,6 +245,36 @@ export function useTimelineEditor(
       return false;
     }
   }
+  function commitGesture(input: TimelineCommand): Promise<boolean> {
+    if (!state.value || historyBusy.value || status.value === "loading")
+      return Promise.resolve(false);
+    try {
+      const next = applyTo(state.value, [input]);
+      const offset = pending.length;
+      pending.push(input);
+      gestures.push(offset);
+      // Enqueue synchronously so flush, navigation and unload observe even a
+      // second gesture submitted before the first save has returned.
+      const result = new Promise<boolean>((resolve) => {
+        gestureRequests.push({ offset, resolve });
+      });
+      gestureBusy.value = true;
+      publish(next);
+      edited();
+      retainDraft();
+      reportNotice("");
+      void flush();
+      return result.then(async (saved) => {
+        // Make an explicit retry after `await commitGesture()` start a fresh
+        // attempt, rather than joining the promise that just failed.
+        if (!saved && saving) await saving;
+        return saved;
+      });
+    } catch (cause) {
+      reportError(cause);
+      return Promise.resolve(false);
+    }
+  }
   function flush(): Promise<boolean> {
     if (historyRequest)
       return historyRequest.then((ok) => (ok ? flushCommands() : false));
@@ -202,28 +282,33 @@ export function useTimelineEditor(
   }
   function flushCommands(): Promise<boolean> {
     if (timer) clearTimeout(timer);
-    if (saving) return saving;
+    if (saving) return saving.then(continueFlush);
     if (status.value === "loading" || !state.value)
       return Promise.resolve(false);
     if (!pending.length) return Promise.resolve(status.value !== "conflict");
+    if (gestures.length) gestureBusy.value = true;
     saving = (async () => {
       while (pending.length && state.value) {
+        const firstGesture = gestures[0];
+        const limit =
+          firstGesture === 0 ? 1 : Math.min(firstGesture ?? 100, 100);
         if (!batch)
           batch = {
             baseRevision: state.value.revision,
             requestId: crypto.randomUUID(),
-            commands: pending.slice(0, 100),
+            commands: pending.slice(0, limit),
           };
         const sending = batch;
         status.value = "saving";
         retainDraft();
         try {
           const saved = await api.edit(compositionId, sending);
-          pending = pending.slice(sending.commands.length);
+          const completeGestures = acknowledge(sending.commands.length);
           batch = null;
           publish(applyTo(saved, pending));
           retainDraft();
           reportNotice("");
+          completeGestures();
         } catch (cause) {
           fail(cause);
           return false;
@@ -233,8 +318,15 @@ export function useTimelineEditor(
       return true;
     })().finally(() => {
       saving = null;
+      if (!gestureRequests.length) gestureBusy.value = false;
     });
-    return saving;
+    return saving.then(continueFlush);
+  }
+  function continueFlush(saved: boolean): boolean | Promise<boolean> {
+    // Vue watchers and a fulfilled gesture may enqueue another command after
+    // the drain's last loop condition, before its finally callback has run.
+    // Navigation/render callers must wait for that pending work as well.
+    return saved && pending.length ? flushCommands() : saved;
   }
   async function reapplyDraft() {
     if (saving) await saving;
@@ -285,6 +377,7 @@ export function useTimelineEditor(
       const saved = await api.editor(compositionId);
       if (timer) clearTimeout(timer);
       pending = [];
+      gestures = [];
       batch = null;
       publish(saved);
       retainDraft();
@@ -300,7 +393,13 @@ export function useTimelineEditor(
   function downloadDraft() {
     if (!state.value || !pending.length) return;
     const blob = new Blob(
-      [JSON.stringify({ state: state.value, pending, batch }, null, 2)],
+      [
+        JSON.stringify(
+          { state: state.value, pending, batch, gestures },
+          null,
+          2,
+        ),
+      ],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -336,7 +435,9 @@ export function useTimelineEditor(
     reportNotice,
     hasPending,
     historyBusy,
+    gestureBusy,
     command,
+    commitGesture,
     flush,
     history,
     reapplyDraft,

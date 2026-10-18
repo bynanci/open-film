@@ -17,6 +17,8 @@ import {
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import * as previewTransform from "../../apps/desktop/src/previewTransform";
+import * as timelineInteraction from "../../apps/desktop/src/timelineInteraction";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -299,6 +301,8 @@ async function mountTimeline(
     },
     "../editorPresentation": { clipControls, shorteningAction },
     "../sourcePresentation": { sourcePresentation },
+    "../previewTransform": previewTransform,
+    "../timelineInteraction": timelineInteraction,
     "./Icon.vue": {
       __esModule: true,
       default: {

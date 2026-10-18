@@ -287,6 +287,7 @@
 }
 
 .editor-source-screen {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,6 +296,28 @@
   border: 1px solid var(--of-surface-3);
   border-radius: var(--of-radius-md);
   background: var(--of-bg);
+}
+
+.editor-picture-tools {
+  position: absolute;
+  z-index: 2;
+  inset: 8px auto auto 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+}
+
+.editor-picture-tools .editor-button {
+  background: var(--of-surface-2);
+}
+
+.editor-time-track-area {
+  grid-area: beats;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .editor-composition-frame {
