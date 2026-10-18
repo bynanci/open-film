@@ -8,6 +8,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  shallowRef,
   watch,
   useId,
 } from "vue";
@@ -45,6 +46,7 @@ import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
+import NativeTitlePreview from "./NativeTitlePreview.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
 import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
@@ -192,7 +194,9 @@ const workspaceHeight = ref<number>();
 let layoutObserver: ResizeObserver | undefined;
 let layoutFrame = 0;
 const skippedClipIds = ref<string[]>([]);
-const fitPreview = ref<ShorteningSuggestionPreview | null>(null);
+// Reviewed command plans must remain plain data: their validation clones the
+// exact commands, and a deep Vue ref would turn them into uncloneable proxies.
+const fitPreview = shallowRef<ShorteningSuggestionPreview | null>(null);
 const draftAction = ref<"discard" | "reapply" | null>(null);
 const draftConfirmation = ref<HTMLElement | null>(null);
 let draftTrigger: HTMLElement | null = null;
@@ -269,7 +273,11 @@ const playbackAsset = computed(
 const photoPresentationActive = computed(
   () =>
     playbackAsset.value?.mediaType === "image" &&
-    !!(playbackClip.value?.layout || playbackClip.value?.motion),
+    !!(
+      playbackClip.value?.layout ||
+      playbackClip.value?.motion ||
+      (playbackClip.value?.title && playbackClip.value.titleStyle?.fadeOut)
+    ),
 );
 const filmLookFilterId = `film-look-${useId().replaceAll(":", "")}`;
 const playbackLook = computed(() =>
@@ -1716,19 +1724,20 @@ onBeforeUnmount(() => {
                     @load="capturePreviewSize"
                     @error="sourceError = 'photo'"
                   />
-                  <img
-                    v-if="selectedClip?.title"
+                  <NativeTitlePreview
+                    v-if="playbackClip?.title"
                     :key="`title:${state.revision}:${titlePreviewRetry}`"
                     class="editor-title-overlay"
                     :src="
                       titlePreviewUrl(
                         compositionId,
-                        selectedClip.id,
+                        playbackClip.id,
                         state.revision,
                         projectId,
                       )
                     "
-                    :alt="selectedClip.title"
+                    :clip="playbackClip"
+                    :source-time="sourceTime"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />
@@ -1780,19 +1789,21 @@ onBeforeUnmount(() => {
                     @pause="playing = false"
                     @error="sourceError = 'playback'"
                   />
-                  <img
-                    v-if="selectedClip?.title"
+                  <NativeTitlePreview
+                    v-if="playbackClip?.title"
                     :key="`title:${state.revision}:${titlePreviewRetry}`"
                     class="editor-title-overlay"
                     :src="
                       titlePreviewUrl(
                         compositionId,
-                        selectedClip.id,
+                        playbackClip.id,
                         state.revision,
                         projectId,
                       )
                     "
-                    :alt="selectedClip.title"
+                    :clip="playbackClip"
+                    :source-time="sourceTime"
+                    :player="sourcePlayer"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />

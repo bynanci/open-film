@@ -14,6 +14,7 @@ import {
   OpenFilmApplication,
   TimelineEditor,
   resolveUserDataDirectory,
+  resolveRenderQuality,
   type ScenePlanAcceptance,
   type DirectionReviewPlan,
 } from "@openfilm/application";
@@ -57,8 +58,8 @@ Usage:
   openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
-  openfilm render --project <film.openfilm> [--composition <id>] [--look <preset> --look-strength 0..1]
-  openfilm export --project <film.openfilm> --format mp4 [--look <preset> --look-strength 0..1]
+  openfilm render --project <film.openfilm> [--composition <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format mp4 [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
@@ -72,6 +73,7 @@ Use --user-data-dir <folder> for trusted global glossary storage (or OPENFILM_US
 Film look presets: none, soft-film, americana, clean-camera, retro, natural, sport.
 Omit --look to preserve saved film/scene/clip choices. A look override changes only this MP4/preview.
 --commands reads a JSON object {baseRevision,requestId,commands} of at most 1 MiB.
+--quality changes compression only, not the saved frame, timing, audio or source detail.
 Review suggestions never change text until accepted. No language provider is configured by default.
 Transcript reads also accept transcript <asset-id> when the ID is not an action name.
 Use transcript get <asset-id> for all IDs, including edit, search, revisions, undo, redo, select and get.
@@ -149,6 +151,7 @@ function parse(args: string[]) {
     "actions-json",
     "look",
     "look-strength",
+    "quality",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -281,6 +284,14 @@ async function main() {
       "Film look overrides require render or export --format mp4; interchange keeps saved looks as metadata.",
     );
   const lookOverride = lookOutput ? renderLook(options) : undefined;
+  if (!lookOutput && Object.hasOwn(options, "quality"))
+    throw new ApplicationError(
+      "request.invalid",
+      "Compression quality requires render or export --format mp4.",
+    );
+  const quality = lookOutput
+    ? resolveRenderQuality(value(options, "quality")).quality
+    : undefined;
   const runtimeOptions = {
     userDataDirectory: resolveUserDataDirectory(
       value(options, "user-data-dir"),
@@ -882,6 +893,7 @@ async function main() {
         path: await app.render(value(options, "composition"), {
           signal: controller.signal,
           lookOverride,
+          quality,
         }),
       });
     else if (command === "export") {
@@ -891,6 +903,7 @@ async function main() {
           await app.exportMp4(value(options, "composition"), {
             signal: controller.signal,
             lookOverride,
+            quality,
           }),
         );
       else {

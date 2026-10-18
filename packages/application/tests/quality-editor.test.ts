@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MediaAsset, AudioAutomation } from "@openfilm/core";
+import type { MediaAsset, AudioAutomation, PhotoMotion } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import {
   OpenFilmApplication,
@@ -95,8 +95,466 @@ const automation: AudioAutomation = {
   ],
   ducking: [{ start: 4, end: 10, gain: 0.25, attack: 0.5, release: 1 }],
 };
+const pullOut: PhotoMotion = {
+  version: 1,
+  preset: "pull-out",
+  easing: "ease-in-out",
+  from: { scale: 1.06, x: 0, y: 0 },
+  to: { scale: 1, x: 0, y: 0 },
+};
 
 describe("durable quality editing", () => {
+  it("saves original-layout photo pull-out without rewriting layout, text, timing or soundtrack and restores it through history and reopen", async () => {
+    const { app, editor } = await fixture();
+    const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+    photo.title = "Together, one day at a time";
+    photo.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fadeOut: 1,
+      bottomSafeMargin: 0.12,
+    };
+    photo.transform = { scale: 1.1, x: 4, y: -2, rotation: 3 };
+    await app.save();
+    const before = await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [
+        addMusic,
+        { type: "audio.configure", clipId: "soundtrack", automation },
+      ],
+    });
+    const input: TimelineEditInput = {
+      baseRevision: before.revision,
+      requestId: "original-photo-pull-out",
+      commands: [{ type: "presentation", clipId: "photo", motion: pullOut }],
+    };
+    const expected = structuredClone(before.composition);
+    expected.tracks[0]!.clips[0]!.motion = pullOut;
+    const saved = await editor.edit("film", input);
+    expect(saved.composition).toEqual(expected);
+    expect(saved.composition.tracks[0]!.clips[0]).not.toHaveProperty("layout");
+    expect(saved.story).toEqual(before.story);
+    expect(saved.assets).toEqual(before.assets);
+    const retry = await editor.edit("film", structuredClone(input));
+    expect(retry.revision).toBe(saved.revision);
+    expect(retry.acknowledgedRevision).toBe(saved.revision);
+    const undone = await editor.undo("film", saved.revision);
+    expect(undone.composition).toEqual(before.composition);
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition).toEqual(expected);
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    const restored = new TimelineEditor(reopened).get("film");
+    expect(restored.composition).toEqual(expected);
+    expect(restored.story).toEqual(before.story);
+    expect(restored.assets).toEqual(before.assets);
+    expect(
+      JSON.parse(await readFile(join(directory, "project.json"), "utf8"))
+        .timelines[0],
+    ).toEqual(expected);
+  });
+
+  it.each(["clip", "source", "paired source"])(
+    "rejects pull-out changes protected by a %s lock without changing the saved cut or history",
+    async (locked) => {
+      const { app, editor } = await fixture();
+      const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+      if (locked === "clip") photo.locked = true;
+      else {
+        const assetId = locked === "source" ? "portrait" : "second-photo";
+        if (locked === "paired source")
+          photo.layout = {
+            version: 1,
+            preset: "diptych",
+            secondary: { assetId },
+          };
+        const source = app.catalog.getAsset(assetId)!;
+        app.catalog.upsertAsset({
+          ...source,
+          state: { ...source.state, locked: true },
+        });
+      }
+      await app.save();
+      const before = editor.get("film");
+      const disk = await readFile(join(app.directory, "project.json"), "utf8");
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            { type: "presentation", clipId: "photo", motion: pullOut },
+          ],
+        }),
+      ).rejects.toThrow(/locked|unlocked/i);
+      expect(editor.get("film")).toEqual(before);
+      expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+        disk,
+      );
+    },
+  );
+
+  it.each(["video", "audio"] as const)(
+    "rejects a still-photo pull-out on a %s source atomically",
+    async (mediaType) => {
+      const { app, editor } = await fixture();
+      app.catalog.upsertAsset({
+        id: "non-photo",
+        name: "Non photo",
+        uri: `file:///originals/non-photo.${mediaType === "video" ? "mp4" : "wav"}`,
+        mediaType,
+        duration: 20,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+      app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = "non-photo";
+      await app.save();
+      const before = editor.get("film");
+      const disk = await readFile(join(app.directory, "project.json"), "utf8");
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            { type: "presentation", clipId: "photo", motion: pullOut },
+          ],
+        }),
+      ).rejects.toThrow(/still|visual/i);
+      expect(editor.get("film")).toEqual(before);
+      expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+        disk,
+      );
+    },
+  );
+
+  it("saves explicit native text size, weight, fade and margin as one undo unit without changing the cut or audio and reopens all authored fields", async () => {
+    const { app, editor } = await fixture();
+    app.project.timelines[0]!.tracks.push({
+      id: "existing-music",
+      type: "music",
+      timing: "overlay",
+      clips: [
+        {
+          id: "soundtrack",
+          assetId: "music",
+          timelineStart: 0,
+          timelineDuration: 20,
+          sourceIn: 1,
+          sourceOut: 21,
+          transform: { volume: 0.5 },
+          audioAutomation: structuredClone(automation),
+        },
+      ],
+    });
+    await app.save();
+    const before = editor.get("film");
+    const input: TimelineEditInput = {
+      baseRevision: before.revision,
+      requestId: "native-text-style",
+      commands: [
+        {
+          type: "presentation",
+          clipId: "photo",
+          title: "我們一起走過的日子",
+          titleStyle: {
+            version: 1,
+            role: "subtitle",
+            position: "bottom",
+            background: "scrim",
+            fontSize: 64,
+            fontWeight: 700,
+            fadeOut: 1,
+            bottomSafeMargin: 0.12,
+          },
+        },
+      ],
+    };
+    const saved = await editor.edit("film", input);
+    const expected = saved.composition.tracks[0]!.clips[0]!;
+    expect(expected.titleStyle).toEqual({
+      version: 1,
+      role: "subtitle",
+      position: "bottom",
+      background: "scrim",
+      fontSize: 64,
+      fontWeight: 700,
+      fadeOut: 1,
+      bottomSafeMargin: 0.12,
+    });
+    expect(saved.story).toEqual(before.story);
+    expect(saved.composition.duration).toBe(before.composition.duration);
+    expect(saved.assets).toEqual(before.assets);
+    const expectedComposition = structuredClone(before.composition);
+    expectedComposition.tracks[0]!.clips[0]!.title = expected.title;
+    expectedComposition.tracks[0]!.clips[0]!.titleStyle = expected.titleStyle;
+    expect(saved.composition).toEqual(expectedComposition);
+    const retry = await editor.edit("film", structuredClone(input));
+    expect(retry.revision).toBe(saved.revision);
+    expect(retry.acknowledgedRevision).toBe(saved.revision);
+    await expect(
+      editor.edit("film", {
+        ...input,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "photo",
+            titleStyle: {
+              version: 1,
+              role: "subtitle",
+              fadeOut: 0.5,
+              bottomSafeMargin: 0.12,
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/requestId/);
+    expect(editor.get("film").composition).toEqual(saved.composition);
+    const undone = await editor.undo("film", saved.revision);
+    expect(undone.composition).toEqual(before.composition);
+    expect(undone.canUndo).toBe(false);
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition).toEqual(saved.composition);
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    const reopenedEditor = new TimelineEditor(reopened);
+    const restored = reopenedEditor.get("film");
+    expect(restored.composition).toEqual(saved.composition);
+    expect(restored.story).toEqual(saved.story);
+    expect(restored.assets).toEqual(saved.assets);
+    expect(
+      JSON.parse(await readFile(join(directory, "project.json"), "utf8"))
+        .timelines[0].tracks[0].clips[0],
+    ).toEqual(expected);
+    const roleDefault = { ...expected.titleStyle! };
+    delete roleDefault.fontSize;
+    const reset = await reopenedEditor.edit("film", {
+      baseRevision: restored.revision,
+      commands: [
+        { type: "presentation", clipId: "photo", titleStyle: roleDefault },
+      ],
+    });
+    expect(reset.composition.tracks[0]!.clips[0]!.titleStyle).toEqual({
+      version: 1,
+      role: "subtitle",
+      position: "bottom",
+      background: "scrim",
+      fontWeight: 700,
+      fadeOut: 1,
+      bottomSafeMargin: 0.12,
+    });
+    const resetExpected = structuredClone(saved.composition);
+    resetExpected.tracks[0]!.clips[0]!.titleStyle = roleDefault;
+    expect(reset.composition).toEqual(resetExpected);
+    const restoredSize = await reopenedEditor.undo("film", reset.revision);
+    expect(restoredSize.composition).toEqual(saved.composition);
+    expect(
+      (await reopenedEditor.redo("film", restoredSize.revision)).composition,
+    ).toEqual(resetExpected);
+  });
+
+  it.each(["clip", "source", "paired source"])(
+    "rejects native text size, fade and safe-margin edits protected by a %s lock without modifying history or disk",
+    async (locked) => {
+      const { app, editor } = await fixture();
+      const current = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+      current.title = "Original caption";
+      current.titleStyle = {
+        version: 1,
+        role: "subtitle",
+        fadeOut: 0,
+        bottomSafeMargin: 0.08,
+      };
+      if (locked === "clip") current.locked = true;
+      else {
+        const assetId = locked === "source" ? "portrait" : "second-photo";
+        if (locked === "paired source")
+          current.layout = {
+            version: 1,
+            preset: "diptych",
+            secondary: { assetId },
+          };
+        const source = app.catalog.getAsset(assetId)!;
+        app.catalog.upsertAsset({
+          ...source,
+          state: { ...source.state, locked: true },
+        });
+      }
+      await app.save();
+      const before = editor.get("film");
+      const disk = await readFile(join(app.directory, "project.json"), "utf8");
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            {
+              type: "presentation",
+              clipId: "photo",
+              titleStyle: {
+                version: 1,
+                role: "subtitle",
+                fontSize: 64,
+                fadeOut: 1,
+                bottomSafeMargin: 0.15,
+              },
+            },
+          ],
+        }),
+      ).rejects.toThrow(/locked|unlocked/i);
+      expect(editor.get("film")).toEqual(before);
+      expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+        disk,
+      );
+    },
+  );
+
+  it.each([
+    { fadeOut: -0.01 },
+    { fadeOut: 10.01 },
+    { fadeOut: Infinity },
+    { fadeOut: NaN },
+    { fadeOut: "1" },
+    { bottomSafeMargin: -0.01 },
+    { bottomSafeMargin: 0.30001 },
+    { bottomSafeMargin: Infinity },
+    { bottomSafeMargin: NaN },
+    { bottomSafeMargin: "0.08" },
+  ])("rejects invalid native text controls atomically: %j", async (style) => {
+    const { app, editor } = await fixture();
+    const before = editor.get("film");
+    const disk = await readFile(join(app.directory, "project.json"), "utf8");
+    await expect(
+      editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "photo",
+            title: "Must not partially save",
+          },
+          {
+            type: "presentation",
+            clipId: "photo",
+            titleStyle: { version: 1, role: "subtitle", ...style },
+          },
+        ],
+      } as TimelineEditInput),
+    ).rejects.toThrow();
+    expect(editor.get("film")).toEqual(before);
+    expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+      disk,
+    );
+  });
+
+  it("accepts native text control limits and removes overrides without removing the text", async () => {
+    const { editor } = await fixture();
+    let state = editor.get("film");
+    for (const [fadeOut, bottomSafeMargin] of [
+      [0, 0],
+      [10, 0.3],
+    ] as const) {
+      state = await editor.edit("film", {
+        baseRevision: state.revision,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "photo",
+            title: "Keep this caption",
+            titleStyle: {
+              version: 1,
+              role: "subtitle",
+              fadeOut,
+              bottomSafeMargin,
+            },
+          },
+        ],
+      });
+      expect(state.composition.tracks[0]!.clips[0]!.titleStyle).toMatchObject({
+        fadeOut,
+        bottomSafeMargin,
+      });
+    }
+    state = await editor.edit("film", {
+      baseRevision: state.revision,
+      commands: [{ type: "presentation", clipId: "photo", titleStyle: null }],
+    });
+    expect(state.composition.tracks[0]!.clips[0]!.title).toBe(
+      "Keep this caption",
+    );
+    expect(state.composition.tracks[0]!.clips[0]!.titleStyle).toBeUndefined();
+  });
+
+  it("persists authored native text controls through retimed trim and split without clamping the saved fade", async () => {
+    const { app, editor } = await fixture();
+    app.catalog.upsertAsset({
+      id: "caption-video",
+      name: "Caption video",
+      uri: "file:///originals/caption-video.mp4",
+      mediaType: "video",
+      duration: 20,
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = "caption-video";
+    await app.save();
+    const before = editor.get("film");
+    const titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fontWeight: 700,
+      fadeOut: 10,
+      bottomSafeMargin: 0.2,
+    } as const;
+    const saved = await editor.edit("film", {
+      baseRevision: before.revision,
+      commands: [
+        {
+          type: "presentation",
+          clipId: "photo",
+          title: "Retain the full authored style",
+          titleStyle,
+        },
+        { type: "speed", clipId: "photo", speed: 2 },
+        { type: "trim", clipId: "photo", sourceIn: 2, sourceOut: 8 },
+        { type: "clip.split", clipId: "photo", sourceTime: 4 },
+      ],
+    });
+    expect(saved.composition.duration).toBe(3);
+    expect(saved.story).toEqual(before.story);
+    expect(saved.composition.tracks[0]!.clips).toMatchObject([
+      {
+        id: "photo",
+        sourceIn: 2,
+        sourceOut: 4,
+        timelineDuration: 1,
+        titleStyle,
+      },
+      {
+        id: "photo-split-1",
+        sourceIn: 4,
+        sourceOut: 8,
+        timelineDuration: 2,
+        titleStyle,
+      },
+    ]);
+    const undone = await editor.undo("film", saved.revision);
+    expect(undone.composition).toEqual(before.composition);
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition).toEqual(saved.composition);
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+      saved.composition,
+    );
+  });
+
   it.each([
     ["portrait", "second-photo"],
     ["portrait", "title-video"],
@@ -138,6 +596,8 @@ describe("durable quality editing", () => {
               align: "center",
               background: "none",
               position: "center",
+              fadeOut: 1.25,
+              bottomSafeMargin: 0.12,
             },
           },
         ],

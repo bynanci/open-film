@@ -159,7 +159,7 @@ export interface PhotoMotionTransform {
 }
 export interface PhotoMotion {
   version: 1;
-  preset: "hold" | "push-in" | "pan";
+  preset: "hold" | "push-in" | "pull-out" | "pan";
   easing: "linear" | "ease-in-out";
   from: PhotoMotionTransform;
   to: PhotoMotionTransform;
@@ -234,6 +234,10 @@ export interface TitleStyle {
   align?: "left" | "center" | "right";
   background?: "none" | "scrim";
   position?: "center" | "bottom";
+  /** Fade the title and its scrim over the final local timeline seconds; 0..10. */
+  fadeOut?: number;
+  /** Visible title/scrim distance above the frame bottom as a fraction; 0..0.3. */
+  bottomSafeMargin?: number;
 }
 export interface AudioAutomation {
   version: 1;

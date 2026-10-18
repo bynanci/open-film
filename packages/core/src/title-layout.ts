@@ -33,6 +33,8 @@ export interface ResolvedTitleStyle {
   align: "left" | "center" | "right";
   background: "none" | "scrim";
   position: "center" | "bottom";
+  fadeOut: number;
+  bottomSafeMargin: number;
 }
 
 export interface TitleLine {
@@ -59,6 +61,36 @@ function positive(value: number, field: string): number {
   if (!Number.isFinite(value) || value <= 0)
     throw new Error(`Title ${field} must be positive and finite.`);
   return value;
+}
+
+function bounded(value: number, maximum: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0 || value > maximum)
+    throw new Error(
+      `Title ${field} must be finite and between 0 and ${maximum}.`,
+    );
+  return value;
+}
+
+/**
+ * Opacity of only the native text graphic (including its optional scrim).
+ * Time is local timeline time, independent of a source trim, speed or clip start.
+ */
+export function evaluateTitleOpacity(
+  style: TitleStyle | undefined,
+  localTime: number,
+  duration: number,
+): number {
+  if (!Number.isFinite(localTime))
+    throw new Error("Title local time must be finite.");
+  if (!Number.isFinite(duration) || duration < 0)
+    throw new Error("Title duration must be nonnegative and finite.");
+  const fadeOut = Math.min(
+    bounded(style?.fadeOut ?? 0, 10, "fade duration"),
+    duration,
+  );
+  if (localTime < 0 || localTime >= duration) return 0;
+  if (fadeOut === 0) return 1;
+  return Math.min(1, (duration - localTime) / fadeOut);
 }
 
 export function resolveTitleStyle(
@@ -115,6 +147,12 @@ export function resolveTitleStyle(
     align,
     background,
     position,
+    fadeOut: bounded(style?.fadeOut ?? 0, 10, "fade duration"),
+    bottomSafeMargin: bounded(
+      style?.bottomSafeMargin ?? 0.08,
+      0.3,
+      "bottom safe margin",
+    ),
   };
 }
 
@@ -156,7 +194,11 @@ export function layoutTitleText(
   const padding =
     resolved.background === "scrim" ? resolved.fontSize * 0.35 : 0;
   const safeX = frame.width * 0.08 + padding;
-  const safeY = frame.height * 0.08 + padding;
+  const safeTop = frame.height * 0.08 + padding;
+  const safeBottom =
+    frame.height *
+      (resolved.position === "bottom" ? resolved.bottomSafeMargin : 0.08) +
+    padding;
   const maxWidth = Math.min(resolved.maxWidth, frame.width - safeX * 2);
   if (maxWidth <= 0)
     throw new Error("The title cannot fit this frame. Reduce the font size.");
@@ -257,14 +299,18 @@ export function layoutTitleText(
     ascent + descent,
   );
   const textHeight = ascent + descent + pitch * Math.max(0, rows.length - 1);
-  if (textHeight > frame.height - safeY * 2)
+  if (textHeight > frame.height - safeTop - safeBottom)
     throw new Error(
       "Title text overflows the frame. Reduce its size or split it into shorter cues.",
     );
+  const bottomPosition = frame.height - safeBottom - textHeight;
   const top =
     resolved.position === "center"
-      ? (frame.height - textHeight) / 2
-      : frame.height - safeY - textHeight;
+      ? Math.max(
+          safeTop,
+          Math.min((frame.height - textHeight) / 2, bottomPosition),
+        )
+      : bottomPosition;
   const lines = rows.map((value, index): TitleLine => {
     const item = rowMetrics[index]!;
     const x =

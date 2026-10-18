@@ -6,6 +6,7 @@ import { computed, onBeforeUnmount, ref, watch, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   evaluateClipAtTime,
+  evaluateTitleOpacity,
   assetDisplayDimensions,
   resolveClipGeometry,
   type Clip,
@@ -39,6 +40,18 @@ const lookStyle = computed(() =>
     : {},
 );
 const time = ref(0);
+const titleOpacity = computed(() => {
+  try {
+    return evaluateTitleOpacity(
+      props.clip.titleStyle,
+      time.value,
+      props.clip.timelineDuration,
+    );
+  } catch {
+    // Legacy invalid styles retain their existing preview recovery state.
+    return 1;
+  }
+});
 const playing = ref(false);
 const failedSources = ref(new Set<string>());
 const titleFailed = ref(false);
@@ -213,6 +226,7 @@ defineExpose({ toggle, pause });
         class="photo-presentation-title"
         :src="titleUrl"
         :alt="clip.title"
+        :style="{ opacity: titleOpacity }"
         draggable="false"
         @load="titleFailed = false"
         @error="titleFailed = true"

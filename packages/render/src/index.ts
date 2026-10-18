@@ -7,6 +7,12 @@ import { photoPresentationFilters } from "./photo-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
 import { createTitleOverlay } from "./titles.js";
+import { resolveRenderQuality, type RenderQuality } from "./quality.js";
+export {
+  resolveRenderQuality,
+  type RenderQuality,
+  type RenderQualityProfile,
+} from "./quality.js";
 import {
   publishRenderPair,
   validateRenderTargets,
@@ -56,6 +62,8 @@ export interface RenderOptions {
   project?: RenderProjectEvidence;
   /** Null or omitted preserves each clip's saved film, scene and clip choices. */
   lookOverride?: FilmLook | null;
+  /** Omitted preserves the existing standard compression profile. */
+  quality?: RenderQuality;
 }
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
@@ -100,6 +108,7 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    const encoding = resolveRenderQuality(options.quality);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
@@ -307,8 +316,18 @@ export class FFmpegRenderer {
             );
             const titleInput = inputIndex++;
             const titleLabel = `title${suffix}`;
+            const fadeOut = Math.min(title.layout.style.fadeOut, duration);
+            const titleFilters = ["format=rgba"];
+            if (fadeOut > 0)
+              titleFilters.push(
+                `fade=t=out:st=${number(duration - fadeOut)}:d=${number(fadeOut)}:alpha=1`,
+              );
+            // The title raster contains only glyphs and its optional scrim.
+            // Fade in clip-local timeline time before shifting the input onto
+            // its rounded output start tick; source media remains untouched.
+            titleFilters.push(`setpts=PTS-STARTPTS+${startFrame}`);
             filters.push(
-              `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
+              `[${titleInput}:v]${titleFilters.join(",")}[title-source${suffix}]`,
             );
             filters.push(
               `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(duration)})'[${titleLabel}]`,
@@ -486,13 +505,13 @@ export class FFmpegRenderer {
         "-map",
         "[aout]",
         "-c:v",
-        "libx264",
+        encoding.video,
         "-threads",
         "1",
         "-preset",
-        "veryfast",
+        encoding.preset,
         "-crf",
-        "23",
+        String(encoding.crf),
         "-pix_fmt",
         "yuv420p",
         "-r",
@@ -559,6 +578,7 @@ export class FFmpegRenderer {
         options.signal,
         project,
         { override: lookOverride, clips: looks },
+        encoding,
       );
       await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;

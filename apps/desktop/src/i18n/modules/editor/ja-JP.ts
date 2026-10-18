@@ -99,6 +99,7 @@ export default {
       motionPresets: {
         hold: "静止",
         "push-in": "ゆっくり寄る",
+        "pull-out": "ゆっくり引く",
         pan: "ゆっくり横移動",
       },
       motionHint:
@@ -142,6 +143,16 @@ export default {
       center: "中央",
       bottom: "下部",
       titleBackground: "文字の背景",
+      titleFadeOut: "文字のフェードアウト（秒）",
+      titleFontWeight: "文字の太さ",
+      titleFontSize: "文字サイズ（動画の px）",
+      titleFontSizeDefault: "役割の標準サイズに戻す",
+      fontWeightRegular: "標準",
+      fontWeightBold: "太字",
+      currentFontWeight: "現在の太さ（{weight}）",
+      titleBottomSafeMargin: "下部の安全距離（%）",
+      titleTimingHint:
+        "0 はクリップの終わりまで表示します。フェードはクリップの長さまで、下部の距離には文字の背景も含まれます。",
       scrim: "柔らかな暗い背景",
       none: "なし",
       preview: "写真の構図と動きのプレビュー",

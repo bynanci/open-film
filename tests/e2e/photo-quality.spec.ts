@@ -593,7 +593,7 @@ test("persisted motion without a layout seeks and plays without changing the fil
   await openEditor(page);
   await expect(page.locator(".photo-presentation-frame")).toBeVisible();
   await expect(page.getByLabel("Photo layout", { exact: true })).toHaveValue(
-    "contain",
+    "original",
   );
   await expect(
     page.getByRole("button", { name: "Gentle push-in", exact: true }),

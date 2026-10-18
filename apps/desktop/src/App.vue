@@ -344,6 +344,7 @@ const clipCount = computed(
     ) ?? 0,
 );
 const lookOverride = ref<FilmLook>();
+const outputQuality = ref<"standard" | "high-detail">("standard");
 const previewVersion = ref(0);
 const previewStale = ref(false);
 const showRenderedPreview = ref(false);
@@ -365,6 +366,7 @@ watch(
     // previous eager behavior; only the editor interprets recovery contents.
     editorMountRequested.value = false;
     lookOverride.value = undefined;
+    outputQuality.value = "standard";
     if (!key) return;
     try {
       editorMountRequested.value = localStorage.getItem(key) !== null;
@@ -804,6 +806,7 @@ function rememberProject() {
   }
 }
 async function resetProjectView() {
+  outputQuality.value = "standard";
   statusGeneration += 1;
   resetJobView();
   assets.value = [];
@@ -1559,12 +1562,19 @@ function changeOutputLook(look: FilmLook | undefined) {
   lookOverride.value = look ? { ...look } : undefined;
   editorEdited();
 }
+function changeOutputQuality(quality: "standard" | "high-detail") {
+  if (busy.value || !["standard", "high-detail"].includes(quality)) return;
+  if (outputQuality.value === quality) return;
+  outputQuality.value = quality;
+  editorEdited();
+}
 async function renderPreview() {
   if (!(await flushPending())) return;
   const renderingLook = lookOverride.value
     ? { ...lookOverride.value }
     : undefined;
   const renderingEdit = editSerial;
+  const renderingQuality = outputQuality.value;
   const renderingProject = project.value?.id;
   const composition = activeComposition.value;
   if (!composition) return;
@@ -1574,6 +1584,7 @@ async function renderPreview() {
       await post<{ path: string }>("/render", {
         compositionId: composition.id,
         ...(renderingLook ? { lookOverride: renderingLook } : {}),
+        quality: renderingQuality,
       });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
@@ -1621,6 +1632,7 @@ async function exportFilm(format: string) {
       ? { ...lookOverride.value }
       : undefined;
   const exportingEdit = editSerial;
+  const exportingQuality = outputQuality.value;
   const exportingProject = project.value?.id;
   const composition = activeComposition.value;
   if (!composition) return;
@@ -1636,6 +1648,7 @@ async function exportFilm(format: string) {
         format,
         compositionId: composition.id,
         ...(exportingLook ? { lookOverride: exportingLook } : {}),
+        ...(format === "mp4" ? { quality: exportingQuality } : {}),
       });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
@@ -3357,7 +3370,10 @@ onUnmounted(() => {
             :stale="exportStale"
             :report="exportReport"
             :look-override="lookOverride"
+            :project-settings="project.settings"
+            :quality="outputQuality"
             @look="changeOutputLook"
+            @quality="changeOutputQuality"
             @export="exportFilm"
           />
           <button

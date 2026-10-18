@@ -38,6 +38,7 @@ interface HostNode {
   parent: HostNode | null;
   style: Record<string, unknown>;
   currentTime: number;
+  paused: boolean;
   clientWidth: number;
   clientHeight: number;
   value: unknown;
@@ -87,6 +88,7 @@ function node(tag: string, text = ""): HostNode {
     parent: null,
     style: {},
     currentTime: 0,
+    paused: true,
     clientWidth: 800,
     clientHeight: 450,
     value: "",
@@ -482,6 +484,76 @@ async function mountTimeline(
 }
 
 describe("Timeline clip render boundary", () => {
+  it("previews native text fade against the Fit candidate without changing the selected saved clip", async () => {
+    const state = fixture(1);
+    state.story.targetDuration = 2;
+    const clip = state.composition.tracks[0]!.clips[0]!;
+    clip.title = "Our first journey";
+    clip.titleStyle = { version: 1, role: "subtitle", fadeOut: 1 };
+    const before = JSON.stringify(state);
+    const suggestion = solver
+      .prepareShorteningPlan(state, state.assets, 2)
+      .suggestions.find((item) =>
+        item.commands.some((command) => command.type === "trim"),
+      )!;
+    expect(suggestion).toBeDefined();
+    expect(suggestion.afterDuration).toBe(2);
+    const view = await mountTimeline(state);
+    const overlay = () =>
+      flatten(view.root).find((item) =>
+        hasClass(item, "editor-title-overlay"),
+      )!;
+    const opacity = () =>
+      (overlay().props.style as { opacity: number }).opacity;
+    const seek = async () => {
+      const player = flatten(view.root).find((item) => item.tag === "video")!;
+      player.currentTime = 1.5;
+      (player.props.onTimeupdate as () => void)();
+      await settle();
+    };
+    await seek();
+    expect(opacity()).toBe(1);
+    const fit = flatten(view.root).find(
+      (item) =>
+        item.tag === "button" && text(item).includes("editor.fit.title"),
+    )!;
+    (fit.props.onClick as () => void)();
+    await settle();
+    const preview = flatten(view.root).find(
+      (item) =>
+        item.tag === "button" &&
+        String(item.props["aria-label"]).includes("editor.fit.previewLabel") &&
+        String(item.props["aria-label"]).includes(state.assets[0]!.name),
+    )!;
+    expect(preview).toBeDefined();
+    (preview.props.onClick as () => void)();
+    await settle();
+    expect(overlay().props.src).toBe("title:composition:instance-0");
+    expect(
+      text(
+        flatten(view.root).find((item) =>
+          hasClass(item, "editor-fit-preview"),
+        )!,
+      ),
+    ).toContain('"after":"00:02"');
+    expect(
+      text(
+        flatten(view.root).find((item) =>
+          hasClass(item, "editor-fit-preview"),
+        )!,
+      ),
+    ).toContain("editor.fit.clipComparison");
+    await seek();
+    expect(
+      flatten(view.root).some((item) => hasClass(item, "editor-fit-preview")),
+    ).toBe(true);
+    expect(opacity()).toBe(0.5);
+    expect(clip.timelineDuration).toBe(4);
+    expect(clip.sourceOut).toBe(4);
+    expect(JSON.stringify(state)).toBe(before);
+    view.assertReadOnly();
+  });
+
   it("preserves a one-frame-pixel transform in fractional monitor coordinates", async () => {
     const state = fixture(2);
     state.composition.tracks[0]!.clips[0]!.transform = { x: 1 };

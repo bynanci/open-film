@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import looks from "../modules/looks/ja-JP";
+import exportQuality from "../modules/export-quality/ja-JP";
 import app from "../modules/app/ja-JP";
 import editor from "../modules/editor/ja-JP";
 import media from "../modules/media/ja-JP";
@@ -9,6 +10,7 @@ import transcript from "../modules/transcript/ja-JP";
 import system from "./system-ja-JP";
 
 export default {
+  ...exportQuality,
   ...looks,
   ...system,
   ...app,

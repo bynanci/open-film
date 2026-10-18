@@ -101,6 +101,7 @@ export default {
       motionPresets: {
         hold: "Hold",
         "push-in": "Gentle push-in",
+        "pull-out": "Gentle pull-out",
         pan: "Slow pan",
       },
       motionHint:
@@ -145,6 +146,16 @@ export default {
       center: "Center",
       bottom: "Bottom",
       titleBackground: "Text background",
+      titleFadeOut: "Text fade out (seconds)",
+      titleFontWeight: "Text weight",
+      titleFontSize: "Text size (composition px)",
+      titleFontSizeDefault: "Use role default",
+      fontWeightRegular: "Regular",
+      fontWeightBold: "Bold",
+      currentFontWeight: "Current weight ({weight})",
+      titleBottomSafeMargin: "Bottom safe distance (%)",
+      titleTimingHint:
+        "Zero keeps text visible to the cut. Fade is limited to this clip's length; bottom distance includes the text background.",
       scrim: "Soft dark background",
       none: "None",
       preview: "Photo layout and motion preview",

@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import {
   evaluateClipAtTime,
+  validatePhotoMotion,
   type Clip,
   type Composition,
 } from "@openfilm/core";
@@ -85,6 +86,141 @@ async function allPixels(path: string) {
   ).stdout;
 }
 const settings = { width: 160, height: 90, frameRate: 30 };
+it("renders a pull-out from close to wide framing without changing film timing, soundtrack or original photo", async () => {
+  const { root, photo } = await fixture();
+  const source = await photo(
+    "pull-out-subject",
+    "color=blue:s=160x90,drawbox=x=10:y=30:w=20:h=30:color=white:t=fill",
+  );
+  const original = await readFile(join(root, "pull-out-subject.png"));
+  const musicPath = join(root, "pull-out-music.wav");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=2:sample_rate=48000",
+    "-y",
+    musicPath,
+  ]);
+  const music = await inspectMedia({
+    path: musicPath,
+    name: "pull-out-music.wav",
+    uri: pathToFileURL(musicPath).href,
+  });
+  const moving: Clip = {
+    id: "pull-out",
+    assetId: source.id,
+    timelineStart: 0,
+    timelineDuration: 2,
+    motion: validatePhotoMotion({
+      version: 1,
+      preset: "pull-out",
+      easing: "ease-in-out",
+      from: { scale: 1.06, x: 0, y: 0 },
+      to: { scale: 1, x: 0, y: 0 },
+    }),
+  };
+  const composition = film([moving]);
+  composition.tracks.push({
+    id: "music",
+    type: "music",
+    timing: "overlay",
+    clips: [
+      {
+        id: "sound",
+        assetId: music.id,
+        timelineStart: 0,
+        timelineDuration: 2,
+        sourceIn: 0,
+        sourceOut: 2,
+        audioAutomation: {
+          version: 1,
+          role: "music",
+          fadeIn: 0.1,
+          fadeOut: 0.1,
+        },
+      },
+    ],
+  });
+  const before = structuredClone(composition);
+  const output = join(root, "pull-out.mp4");
+  const held = join(root, "held.mp4");
+  const renderer = new FFmpegRenderer();
+  await renderer.render(composition, [source, music], output, settings);
+  const heldComposition = structuredClone(composition);
+  heldComposition.tracks[0]!.clips[0]!.motion = {
+    version: 1,
+    preset: "hold",
+    easing: "linear",
+    from: { scale: 1, x: 0, y: 0 },
+    to: { scale: 1, x: 0, y: 0 },
+  };
+  await renderer.render(heldComposition, [source, music], held, settings);
+  const decoded = await allPixels(output);
+  const frameBytes = settings.width * settings.height * 3;
+  expect(decoded.length).toBe(60 * frameBytes);
+  const subjectEdges: number[] = [];
+  for (const n of [0, 30, 59]) {
+    const rgb = decoded.subarray(n * frameBytes, (n + 1) * frameBytes);
+    const left = Array.from(
+      { length: settings.width },
+      (_, x) => rgb[(45 * settings.width + x) * 3]!,
+    ).findIndex((value) => value > 200);
+    const expected = evaluateClipAtTime(
+      moving,
+      n / settings.frameRate,
+      { [source.id]: { width: 160, height: 90 } },
+      settings,
+    );
+    expect(
+      Math.abs(left - (80 + (10 - 80) * expected.transform.scale)),
+    ).toBeLessThanOrEqual(1.5);
+    subjectEdges.push(left);
+    // The procedural blue photo fills the complete output throughout the
+    // decrease in scale. No black canvas is exposed at the visible corners.
+    for (const [x, y] of [
+      [2, 2],
+      [157, 2],
+      [2, 87],
+      [157, 87],
+    ])
+      expect(rgb[(y! * settings.width + x!) * 3 + 2]).toBeGreaterThan(200);
+  }
+  expect(subjectEdges[0]!).toBeLessThan(subjectEdges[1]!);
+  expect(subjectEdges[1]!).toBeLessThan(subjectEdges[2]!);
+  const audio = async (path: string) =>
+    (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        path,
+        "-vn",
+        "-f",
+        "f32le",
+        "-ac",
+        "1",
+        "-",
+      ])
+    ).stdout;
+  expect(await audio(output)).toEqual(await audio(held));
+  const probe = await runProcess("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "json",
+    output,
+  ]);
+  expect(
+    Number(JSON.parse(probe.stdout.toString()).format.duration),
+  ).toBeCloseTo(2, 3);
+  expect(composition).toEqual(before);
+  expect(await readFile(join(root, "pull-out-subject.png"))).toEqual(original);
+});
 it("shows the incoming photo on frame 111 at a 3.7-second hard cut", async () => {
   const start = 3.7;
   const firstFrame = 111;

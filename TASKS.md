@@ -5,7 +5,64 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Original film looks
+## Current — Photo pull-out preset follow-up
+
+Contract: [photo-film quality](docs/photo-film-quality.md#photo-pull-out).
+
+- [x] Let people choose a bounded pull-out movement on a still photo, including
+      Original layout, without silently replacing its layout or static transform.
+- [x] Preserve motion through validated commands, retry, Undo/Redo and reopen;
+      retain text, soundtrack, timing and protected clips during regeneration.
+      Focused application/solver regressions pass (101 tests in two files).
+- [x] Verify shared preview/render endpoints and localized motion controls with
+      generated output frames and the integrated 24-case browser regression.
+- [ ] Manual: real display/camera quality and downstream NLE motion recreation
+      remain workstation checks.
+
+## Current — Native on-screen text control follow-up
+
+Scope and development evidence: [native text controls](docs/native-text-controls.md).
+Checked entries require implementation, relevant tests and UI validation.
+Final full-gate and published exact-head results belong to the integrating PR;
+see [combined evidence](docs/validation-quality-controls.md).
+
+- [x] Let people fade native text and its scrim without fading the photo, video,
+      transport or audio, with clip-local preview/render timing.
+- [x] Keep native captions clear of the bottom edge using a measured,
+      frame-relative safe distance with defaults that preserve older projects.
+- [x] Offer local Regular/Bold text weight without silently replacing authored
+      custom weights or changing older subtitle defaults.
+- [x] Adjust native text size in composition pixels and restore only its role
+      default while preserving the remaining style, history, audio and saved cut.
+- [x] Preserve authored fade/margin through command validation, all lock sources,
+      exact retry, Undo/Redo, replacement, trim/speed/split and saved reopening;
+      focused application/solver regressions pass (88 tests in two files).
+- [x] Verify localized controls, decoded output pixels and browser behavior;
+      integrated focused browser and independent correctness reviews pass.
+- [ ] Manual: native display/projector readability and actual NLE title finishing
+      remain workstation gates; native text styling does not add SRT/VTT burn-in.
+
+## Current — MP4 output quality
+
+Scope: [output quality](docs/export-quality.md).
+Evidence: [focused validation](docs/validation-export-quality.md).
+
+- [x] Show the film's actual saved frame/fps and original-source policy rather
+      than implying every existing project has a newly selected HD preset.
+- [x] Choose validated Standard/High detail video compression as a transient
+      preview/MP4 snapshot without changing source, music, frame or edit data.
+- [x] Record actual encoder settings and verify generated x264 SEI, decoded audio,
+      original hashes, HTTP/CLI guards and localized accessible component behavior.
+- [x] Exercise combined controls in 24 browser cases, including four export
+      locales and saved-data isolation; preserve the source/output distinction.
+- [ ] Manual: judge private-film readability and camera/display/projection quality
+      on intended hardware; installer and actual Resolve gates remain open.
+
+Release gate: the integrating PR records the complete serial regression and
+exact-head CI results. Merge requires green checks and no correctness blocker;
+focused tests alone do not satisfy this gate.
+
+## Implemented — Original film looks
 
 Scope: [workflow and numerical contract](docs/film-looks.md).
 Evidence: [validation](docs/validation-film-looks.md) and

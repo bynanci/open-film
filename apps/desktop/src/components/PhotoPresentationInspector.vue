@@ -70,6 +70,14 @@ function titleStyleForDisplay(style: TitleStyle | undefined) {
     };
   }
 }
+function titleFontSizeForDisplay(style: TitleStyle | undefined) {
+  const resolved = titleStyleForDisplay(style);
+  // Avoid long binary tails for implicit percentages while retaining every
+  // explicitly authored fractional pixel value without rounding or saving it.
+  return !resolved.recovery && style?.fontSize !== undefined
+    ? resolved.style.fontSize
+    : Number(resolved.style.fontSize.toFixed(3));
+}
 const titleStyleRecovery = computed(
   () => titleStyleForDisplay(props.clip.titleStyle).recovery,
 );
@@ -77,6 +85,10 @@ const initialTitleStyle = titleStyleForDisplay(props.clip.titleStyle).style;
 const role = ref<TitleStyle["role"]>(initialTitleStyle.role);
 const position = ref<"center" | "bottom">(initialTitleStyle.position);
 const background = ref<"none" | "scrim">(initialTitleStyle.background);
+const fontWeight = ref(initialTitleStyle.fontWeight);
+const fontSize = ref(titleFontSizeForDisplay(props.clip.titleStyle));
+const fadeOut = ref(initialTitleStyle.fadeOut);
+const bottomSafeMargin = ref(initialTitleStyle.bottomSafeMargin * 100);
 const sources = computed(() =>
   Object.fromEntries(
     props.assets.flatMap((asset) => {
@@ -102,8 +114,7 @@ watch(
       clip.layout?.preset !== previous?.layout?.preset ||
       !!clip.motion !== !!previous?.motion
     )
-      layout.value =
-        clip.layout?.preset ?? (clip.motion ? "contain" : "original");
+      layout.value = clip.layout?.preset ?? "original";
     if (
       changedClip ||
       clip.layout?.secondary?.assetId !== previous?.layout?.secondary?.assetId
@@ -144,8 +155,28 @@ watch(
       nextTitleStyle.background !== previousTitleStyle?.background
     )
       background.value = nextTitleStyle.background;
+    if (changedClip || nextTitleStyle.fadeOut !== previousTitleStyle?.fadeOut)
+      fadeOut.value = nextTitleStyle.fadeOut;
+    if (
+      changedClip ||
+      nextTitleStyle.fontWeight !== previousTitleStyle?.fontWeight
+    )
+      fontWeight.value = nextTitleStyle.fontWeight;
+    if (changedClip || nextTitleStyle.fontSize !== previousTitleStyle?.fontSize)
+      fontSize.value = titleFontSizeForDisplay(clip.titleStyle);
+    if (
+      changedClip ||
+      nextTitleStyle.bottomSafeMargin !== previousTitleStyle?.bottomSafeMargin
+    )
+      bottomSafeMargin.value = nextTitleStyle.bottomSafeMargin * 100;
   },
   { immediate: true },
+);
+watch(
+  () => [props.frame.width, props.frame.height],
+  () => {
+    fontSize.value = titleFontSizeForDisplay(props.clip.titleStyle);
+  },
 );
 function setLayout() {
   if (layout.value === "original") {
@@ -186,15 +217,23 @@ function setLayout() {
   });
 }
 function setMotion(preset: PhotoMotion["preset"]) {
+  if (
+    props.clip.locked ||
+    props.asset.state.locked ||
+    savedSecondary.value?.state.locked
+  )
+    return;
   const identity = { scale: 1, x: 0, y: 0 };
   const motion: PhotoMotion = {
     version: 1,
     preset,
     easing: "ease-in-out",
     from:
-      preset === "pan"
-        ? { scale: 1.06, x: -props.frame.width * 0.02, y: 0 }
-        : identity,
+      preset === "pull-out"
+        ? { scale: 1.06, x: 0, y: 0 }
+        : preset === "pan"
+          ? { scale: 1.06, x: -props.frame.width * 0.02, y: 0 }
+          : identity,
     to:
       preset === "push-in"
         ? { scale: 1.06, x: 0, y: 0 }
@@ -205,11 +244,22 @@ function setMotion(preset: PhotoMotion["preset"]) {
   emit("command", {
     type: "presentation",
     clipId: props.clip.id,
-    layout: props.clip.layout ?? { version: 1, preset: "contain" },
     motion,
   });
 }
-function setTitle(field: "text" | "role" | "position" | "background") {
+function setTitle(
+  field:
+    | "text"
+    | "role"
+    | "position"
+    | "background"
+    | "fontWeight"
+    | "fontSize"
+    | "fontSizeDefault"
+    | "fadeOut"
+    | "bottomSafeMargin",
+) {
+  if (props.clip.locked || props.asset.state.locked) return;
   const titleStyle: TitleStyle = {
     ...props.clip.titleStyle,
     version: 1,
@@ -217,6 +267,12 @@ function setTitle(field: "text" | "role" | "position" | "background") {
   };
   if (field === "position") titleStyle.position = position.value;
   if (field === "background") titleStyle.background = background.value;
+  if (field === "fontWeight") titleStyle.fontWeight = Number(fontWeight.value);
+  if (field === "fontSize") titleStyle.fontSize = Number(fontSize.value);
+  if (field === "fontSizeDefault") delete titleStyle.fontSize;
+  if (field === "fadeOut") titleStyle.fadeOut = Number(fadeOut.value);
+  if (field === "bottomSafeMargin")
+    titleStyle.bottomSafeMargin = Number(bottomSafeMargin.value) / 100;
   emit("command", {
     type: "presentation",
     clipId: props.clip.id,
@@ -298,11 +354,11 @@ function resetTitleStyle() {
           </option>
         </select>
       </label>
-      <template v-if="layout !== 'original' || clip.motion">
+      <section class="editor-photo-motion">
         <h4>{{ t("editor.presentation.motion") }}</h4>
         <div class="editor-presets">
           <button
-            v-for="preset in ['hold', 'push-in', 'pan'] as const"
+            v-for="preset in ['hold', 'push-in', 'pull-out', 'pan'] as const"
             :key="preset"
             class="editor-button"
             :aria-pressed="(clip.motion?.preset ?? 'hold') === preset"
@@ -363,7 +419,7 @@ function resetTitleStyle() {
             /></label>
           </div>
         </details>
-      </template>
+      </section>
       <div
         v-if="plan?.warnings.length"
         class="editor-presentation-warnings"
@@ -401,6 +457,48 @@ function resetTitleStyle() {
       />
     </label>
     <template v-if="title">
+      <label class="editor-field">
+        {{ t("editor.presentation.titleFontSize") }}
+        <input
+          v-model.number="fontSize"
+          type="number"
+          min="0"
+          max="4096"
+          step="any"
+          :disabled="titleStyleRecovery"
+          :aria-label="t('editor.presentation.titleFontSize')"
+          @change="setTitle('fontSize')"
+        />
+      </label>
+      <button
+        v-if="clip.titleStyle?.fontSize !== undefined"
+        class="editor-button"
+        :disabled="titleStyleRecovery"
+        @click="setTitle('fontSizeDefault')"
+      >
+        {{ t("editor.presentation.titleFontSizeDefault") }}
+      </button>
+      <label class="editor-field">
+        {{ t("editor.presentation.titleFontWeight") }}
+        <select
+          v-model.number="fontWeight"
+          :disabled="titleStyleRecovery"
+          :aria-label="t('editor.presentation.titleFontWeight')"
+          @change="setTitle('fontWeight')"
+        >
+          <option v-if="![400, 700].includes(fontWeight)" :value="fontWeight">
+            {{
+              t("editor.presentation.currentFontWeight", { weight: fontWeight })
+            }}
+          </option>
+          <option :value="400">
+            {{ t("editor.presentation.fontWeightRegular") }}
+          </option>
+          <option :value="700">
+            {{ t("editor.presentation.fontWeightBold") }}
+          </option>
+        </select>
+      </label>
       <label class="editor-field"
         >{{ t("editor.presentation.titleRole") }}
         <select
@@ -452,6 +550,35 @@ function resetTitleStyle() {
           </select></label
         >
       </div>
+      <div class="editor-field-pair">
+        <label class="editor-field">
+          {{ t("editor.presentation.titleFadeOut") }}
+          <input
+            v-model.number="fadeOut"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+            :disabled="titleStyleRecovery"
+            :aria-label="t('editor.presentation.titleFadeOut')"
+            @change="setTitle('fadeOut')"
+          />
+        </label>
+        <label v-if="position === 'bottom'" class="editor-field">
+          {{ t("editor.presentation.titleBottomSafeMargin") }}
+          <input
+            v-model.number="bottomSafeMargin"
+            type="number"
+            min="0"
+            max="30"
+            step="1"
+            :disabled="titleStyleRecovery"
+            :aria-label="t('editor.presentation.titleBottomSafeMargin')"
+            @change="setTitle('bottomSafeMargin')"
+          />
+        </label>
+      </div>
+      <p class="editor-note">{{ t("editor.presentation.titleTimingHint") }}</p>
     </template>
   </section>
 </template>

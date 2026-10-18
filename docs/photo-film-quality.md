@@ -13,7 +13,7 @@ whose complete Verify runs passed. Main remains
 - Contain preserves source proportions; hero uses a manual focal point with a
   protected rectangle; diptych explicitly references two photos. Unsafe hero
   cropping falls back to contain with a reason. No automatic face claim.
-- Motion applies only to stills: hold, a bounded push-in, or pan. A pure shared
+- Motion applies only to stills: hold, a bounded push-in, pull-out, or pan. A pure shared
   evaluator clamps clip-local time, uses declared easing, and checks protection.
   Existing static transforms remain separate and user controlled.
 - Film title, scene statement and subtitle are graphic roles. Local font glyphs
@@ -44,6 +44,51 @@ whose complete Verify runs passed. Main remains
 - MP4 sidecars record the actual composition, source identities, renderer,
   fonts, timing, encoding and review warnings. They remain private local files.
 
+## Photo pull-out
+
+In the Edit clip inspector, select a photo and choose **Pull out** in the photo
+motion controls. The preset starts at 1.06× and ends at 1× with the existing
+ease-in-out interpolation. It runs over the photo's current timeline duration;
+changing that duration changes the motion speed rather than the authored
+endpoints. It is an editorial camera movement over a still image, not inferred
+depth or an AI-generated moving scene.
+
+Motion can be added when the photo's layout is **Original**. The motion-only
+presentation command leaves an absent `layout` property absent, preserving the
+existing default contain behavior without saving a different layout selection.
+Contain, hero and diptych layouts retain their saved geometry; static scale,
+rotation and position remain separate. Existing protected-region checks can
+hold an unsafe motion instead of cropping a protected subject.
+
+The portable `PhotoMotion` recipe remains version 1 and adds the `pull-out`
+preset. Preview and renderer use the same bounded endpoint evaluator. The
+command does not change source references, native title styling, source ranges,
+film duration or soundtrack envelopes. Clip, source and paired-photo locks
+remain enforced. Undo/Redo and reopening restore the recipe, and protected clips
+retain it when a beat is regenerated. No analysis provider or network service
+is required.
+
+An older project without this preset still opens normally. An older OpenFilm
+binary may reject a project using the new preset; this change does not promise
+forward compatibility with old readers. Native motion fidelity in editable NLE
+handoff still requires manual recreation where unsupported.
+
+The focused application/solver run passed **2 files / 101 tests** on 2026-10-18:
+
+```sh
+pnpm exec vitest run packages/application/tests/quality-editor.test.ts packages/solver/tests/editing.test.ts
+```
+
+The new pull-out cases cover motion-only Original layout, explicit contain/hero/
+diptych layout preservation, exact retry, Undo/Redo, reopening, soundtrack and
+title isolation, duration changes, clip/source/paired locks, unsupported video/
+audio targets and locked beat regeneration. They initially failed because the
+old validator rejected `pull-out`; they pass after the portable preset addition.
+These checks must be combined with decoded render frames and localized browser
+interaction coverage before the UI feature is marked complete. Source catalogs
+remaining unchanged do not by themselves prove original file bytes are intact;
+the render regressions separately verify generated source identities.
+
 ## Evidence ledger
 
 | ID  | Observation in reviewed source                          | Change and acceptance proof                                              |
@@ -55,6 +100,13 @@ whose complete Verify runs passed. Main remains
 | Q05 | Export has no complete rendering recipe                 | Private manifest and generated A/B composition diff                      |
 
 ## Boundaries
+
+Native on-screen graphic text now has optional clip-local fade-out and a
+frame-relative bottom safe distance. Defaults preserve the previous appearance:
+zero-second fade and an 8% bottom boundary. The style survives existing command
+history, replacement and reopen; duration changes preserve authored values and
+clamp only the evaluated fade. See [the native text controls contract](native-text-controls.md)
+for timing, measured layout, locks and the separate SRT/WebVTT export boundary.
 
 Audio automation uses clip-local timeline seconds. Changing source-in changes
 the audio under the same local envelope; it does not slice automation against

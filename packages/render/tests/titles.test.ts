@@ -148,5 +148,20 @@ describe("local CJK title raster", () => {
     expect(
       titleOverlayCacheKey({ ...input, frame: { width: 1920, height: 1080 } }),
     ).not.toBe(key);
+    expect(
+      titleOverlayCacheKey({
+        ...input,
+        style: { ...input.style, fadeOut: 0, bottomSafeMargin: 0.08 },
+      }),
+    ).toBe(key);
+    expect(
+      titleOverlayCacheKey({
+        ...input,
+        style: { ...input.style, bottomSafeMargin: 0.2 },
+      }),
+    ).not.toBe(key);
+    expect(
+      titleOverlayCacheKey({ ...input, style: { ...input.style, fadeOut: 1 } }),
+    ).not.toBe(key);
   });
 });

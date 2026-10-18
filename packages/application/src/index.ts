@@ -65,7 +65,10 @@ import {
   createTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
+  resolveRenderQuality,
+  type RenderQuality,
 } from "@openfilm/render";
+export { resolveRenderQuality, type RenderQuality } from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
 import {
   enrichInsta360Asset,
@@ -166,6 +169,7 @@ export interface FilmRenderOptions {
   jobId?: string;
   onProgress?: (progress: number) => void;
   lookOverride?: FilmLook | null;
+  quality?: RenderQuality;
 }
 export interface ImportResult {
   job: Job;
@@ -1473,6 +1477,7 @@ export class OpenFilmApplication {
     options: FilmRenderOptions,
     exportFile: boolean,
   ): Promise<string> {
+    const quality = resolveRenderQuality(options.quality).quality;
     let lookOverride: FilmLook | null | undefined;
     try {
       lookOverride =
@@ -1572,6 +1577,7 @@ export class OpenFilmApplication {
           signal: options.signal,
           project: projectEvidence,
           lookOverride,
+          quality,
           onProgress: (progress) => {
             const previous = job.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));

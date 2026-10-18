@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Clip, MediaAsset } from "@openfilm/core";
+import type { Clip, MediaAsset, PhotoMotion, TitleStyle } from "@openfilm/core";
 import {
   applyTimelineCommand,
   suggestShortening,
@@ -94,6 +94,213 @@ const clip = (doc: EditorDocument, id: string): Clip =>
   clips(doc).find((clip) => clip.id === id)!;
 const edit = (doc: EditorDocument, command: TimelineCommand): EditorDocument =>
   applyTimelineCommand(doc, assets, command);
+
+describe("photo pull-out commands", () => {
+  const motion: PhotoMotion = {
+    version: 1,
+    preset: "pull-out",
+    easing: "ease-in-out",
+    from: { scale: 1.06, x: 0, y: 0 },
+    to: { scale: 1, x: 0, y: 0 },
+  };
+
+  it.each(["original", "contain", "hero", "diptych"] as const)(
+    "adds pull-out to a %s photo without replacing layout, static transform, text, duration or audio",
+    (preset) => {
+      const before = document();
+      const photo = clip(before, "photo-clip");
+      if (preset !== "original")
+        photo.layout = {
+          version: 1,
+          preset,
+          ...(preset === "hero" ? { focalPoint: { x: 0.3, y: 0.6 } } : {}),
+          ...(preset === "diptych"
+            ? { secondary: { assetId: "alternate" } }
+            : {}),
+        };
+      photo.title = "Our photographs";
+      photo.titleStyle = {
+        version: 1,
+        role: "subtitle",
+        fadeOut: 1,
+        bottomSafeMargin: 0.12,
+      };
+      photo.transform = { scale: 1.1, x: 5, y: -4, rotation: 2 };
+      before.composition.tracks.push({
+        id: "soundtrack",
+        type: "music",
+        timing: "overlay",
+        clips: [
+          {
+            id: "music-bed",
+            assetId: "audio",
+            sourceIn: 1,
+            sourceOut: 15,
+            timelineStart: 0,
+            timelineDuration: 14,
+            transform: { volume: 0.4 },
+            audioAutomation: {
+              version: 1,
+              role: "music",
+              fadeIn: 1,
+              fadeOut: 2,
+            },
+          },
+        ],
+      });
+      const expected = structuredClone(before);
+      clip(expected, "photo-clip").motion = motion;
+      freezeDeep(before);
+      const after = edit(before, {
+        type: "presentation",
+        clipId: "photo-clip",
+        motion,
+      });
+      expect(after).toEqual(expected);
+      if (preset === "original")
+        expect(clip(after, "photo-clip")).not.toHaveProperty("layout");
+      expect(clip(before, "photo-clip")).not.toHaveProperty("motion");
+    },
+  );
+
+  it.each(["clip", "source"] as const)(
+    "retains a %s-locked pull-out clip when regenerating its beat",
+    (protection) => {
+      const before = edit(document(), {
+        type: "presentation",
+        clipId: "photo-clip",
+        motion,
+      });
+      if (protection === "clip") clip(before, "photo-clip").locked = true;
+      const protectedAssets = assets.map((asset) =>
+        asset.id === "photo" && protection === "source"
+          ? { ...asset, state: { ...asset.state, locked: true } }
+          : asset,
+      );
+      const after = applyTimelineCommand(before, protectedAssets, {
+        type: "regenerate-beat",
+        beatId: "intro",
+        mode: "regenerate",
+      });
+      expect(clip(after, "photo-clip")).toEqual(clip(before, "photo-clip"));
+      expect(withoutStart(clip(after, "next-clip"))).toEqual(
+        withoutStart(clip(before, "next-clip")),
+      );
+      expect(clip(after, "photo-clip").motion).toEqual(motion);
+    },
+  );
+
+  it("retains authored pull-out endpoints while the photo duration changes", () => {
+    const before = edit(document(), {
+      type: "presentation",
+      clipId: "photo-clip",
+      motion,
+    });
+    const after = edit(before, {
+      type: "duration",
+      clipId: "photo-clip",
+      duration: 0.5,
+    });
+    expect(clip(after, "photo-clip")).toMatchObject({
+      timelineDuration: 0.5,
+      motion,
+    });
+    expect(clip(after, "photo-clip")).not.toHaveProperty("layout");
+    expect(clip(before, "photo-clip").timelineDuration).toBe(4);
+  });
+});
+
+describe("native text controls through composition edits", () => {
+  const titleStyle: TitleStyle = {
+    version: 1,
+    role: "subtitle",
+    background: "scrim",
+    position: "bottom",
+    fontWeight: 700,
+    fadeOut: 10,
+    bottomSafeMargin: 0.15,
+  };
+
+  it("preserves authored fade and bottom margin when still duration becomes shorter than the fade", () => {
+    const original = document();
+    const authored = edit(original, {
+      type: "presentation",
+      clipId: "photo-clip",
+      title: "A native caption",
+      titleStyle,
+    });
+    const shortened = edit(authored, {
+      type: "duration",
+      clipId: "photo-clip",
+      duration: 0.5,
+    });
+    expect(clip(shortened, "photo-clip")).toMatchObject({
+      timelineDuration: 0.5,
+      title: "A native caption",
+      titleStyle,
+    });
+    expect(clip(authored, "photo-clip").timelineDuration).toBe(4);
+    expect(clip(original, "photo-clip").titleStyle).toBeUndefined();
+    expect(shortened.story).toEqual(authored.story);
+    expect(withoutStart(clip(shortened, "next-clip"))).toEqual(
+      withoutStart(clip(authored, "next-clip")),
+    );
+  });
+
+  it("retains clip-local authored fade and margin through nonzero source trim, speed and split", () => {
+    const original = edit(document(), {
+      type: "presentation",
+      clipId: "video-clip",
+      title: "一起前往十和田湖",
+      titleStyle,
+    });
+    const sped = edit(original, {
+      type: "speed",
+      clipId: "video-clip",
+      speed: 2,
+    });
+    const trimmed = edit(sped, {
+      type: "trim",
+      clipId: "video-clip",
+      sourceIn: 4,
+      sourceOut: 8,
+    });
+    expect(clip(trimmed, "video-clip")).toMatchObject({
+      timelineStart: 4,
+      timelineDuration: 2,
+      titleStyle,
+      transform: { speed: 2 },
+    });
+    freezeDeep(trimmed);
+    const split = edit(trimmed, {
+      type: "clip.split",
+      clipId: "video-clip",
+      sourceTime: 5,
+    });
+    expect(clip(split, "video-clip")).toMatchObject({
+      sourceIn: 4,
+      sourceOut: 5,
+      timelineStart: 4,
+      timelineDuration: 0.5,
+      titleStyle,
+      title: "一起前往十和田湖",
+    });
+    expect(clip(split, "video-clip-split-1")).toMatchObject({
+      sourceIn: 5,
+      sourceOut: 8,
+      timelineStart: 4.5,
+      timelineDuration: 1.5,
+      titleStyle,
+      title: "一起前往十和田湖",
+    });
+    expect(split.composition.duration).toBe(trimmed.composition.duration);
+    expect(split.story).toEqual(trimmed.story);
+    expect(clip(split, "next-clip")).toEqual(clip(trimmed, "next-clip"));
+    clip(split, "video-clip-split-1").titleStyle!.bottomSafeMargin = 0.2;
+    expect(clip(split, "video-clip").titleStyle).toEqual(titleStyle);
+    expect(clip(trimmed, "video-clip").titleStyle).toEqual(titleStyle);
+  });
+});
 
 describe("Fit skipped clips", () => {
   it("recomputes a feasible sequential plan without editing skipped clips", () => {

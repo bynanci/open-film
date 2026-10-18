@@ -17,6 +17,7 @@ interface HostNode {
   text: string;
   value: unknown;
   selected: boolean;
+  selectedIndex: number;
   props: Record<string, unknown>;
   children: HostNode[];
   parent: HostNode | null;
@@ -51,6 +52,7 @@ function node(tag: string, text = ""): HostNode {
     text,
     value: "",
     selected: false,
+    selectedIndex: -1,
     props: {},
     children: [],
     parent: null,
@@ -137,6 +139,7 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
       tags: [],
     } as core.MediaAsset,
     assets: [] as core.MediaAsset[],
+    allowPhotoPresentation: true,
     frame: { width: 1280, height: 720, frameRate: 30 },
   });
   props.assets = [props.asset];
@@ -211,6 +214,8 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
     props,
     commands,
     label,
+    control: (key: string) =>
+      flatten(root).find((item) => item.props["aria-label"] === label(key)),
     reset,
     editText,
     update: async (value: core.Clip) => {
@@ -238,14 +243,18 @@ describe("recoverable legacy title styles", () => {
       expect(mounted.props.clip).toEqual(legacy);
       const titleControls = flatten(mounted.root).filter(
         (item) =>
-          item.tag === "select" &&
+          ["select", "input"].includes(item.tag) &&
           [
             "editor.presentation.titleRole",
             "editor.presentation.titlePosition",
             "editor.presentation.titleBackground",
+            "editor.presentation.titleFontWeight",
+            "editor.presentation.titleFontSize",
+            "editor.presentation.titleFadeOut",
+            "editor.presentation.titleBottomSafeMargin",
           ].some((key) => item.props["aria-label"] === mounted.label(key)),
       );
-      expect(titleControls).toHaveLength(3);
+      expect(titleControls).toHaveLength(7);
       expect(titleControls.every((item) => item.props.disabled)).toBe(true);
     },
   );
@@ -312,6 +321,265 @@ describe("recoverable legacy title styles", () => {
       (mounted.reset()!.props.onClick as () => void)();
       expect(mounted.commands).toEqual([]);
       expect(mounted.props.clip.titleStyle).toEqual(legacy.titleStyle);
+    },
+  );
+});
+
+describe("native text timing and bottom placement", () => {
+  const valid: core.Clip = {
+    ...legacy,
+    titleStyle: { version: 1, role: "subtitle" },
+  };
+  it.each([
+    ["en-US", en],
+    ["zh-TW", zh],
+    ["ja-JP", ja],
+    ["en-XA", pseudoMessages(en)],
+  ] as const)(
+    "exposes defaults without persisting them in %s",
+    async (locale, messages) => {
+      const mounted = await mount(locale, messages, valid);
+      expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(
+        0,
+      );
+      expect(
+        mounted.control("editor.presentation.titleFontWeight")?.options[
+          mounted.control("editor.presentation.titleFontWeight")!.selectedIndex
+        ]?.value,
+      ).toBe(400);
+      expect(
+        mounted.control("editor.presentation.titleBottomSafeMargin")?.value,
+      ).toBe(8);
+      expect(mounted.control("editor.presentation.titleFontSize")?.value).toBe(
+        25.92,
+      );
+      expect(mounted.commands).toEqual([]);
+      expect(mounted.props.clip.titleStyle).toEqual(valid.titleStyle);
+    },
+  );
+  it("stores seconds and normalized margin independently, then follows history and clip changes", async () => {
+    const mounted = await mount("en-US", en, valid);
+    const set = async (key: string, value: number) => {
+      const control = mounted.control(key)!;
+      (control.props["onUpdate:modelValue"] as (value: number) => void)(value);
+      await vue.nextTick();
+      (control.props.onChange as () => void)();
+    };
+    await set("editor.presentation.titleFadeOut", 1.5);
+    expect(mounted.commands[0]).toMatchObject({
+      titleStyle: { version: 1, role: "subtitle", fadeOut: 1.5 },
+    });
+    expect(
+      (mounted.commands[0] as { titleStyle: object }).titleStyle,
+    ).not.toHaveProperty("bottomSafeMargin");
+    await mounted.update({
+      ...valid,
+      titleStyle: { ...valid.titleStyle!, fadeOut: 1.5 },
+    });
+    await set("editor.presentation.titleBottomSafeMargin", 12);
+    expect(mounted.commands[1]).toMatchObject({
+      titleStyle: {
+        version: 1,
+        role: "subtitle",
+        fadeOut: 1.5,
+        bottomSafeMargin: 0.12,
+      },
+    });
+    await mounted.update({
+      ...valid,
+      titleStyle: {
+        ...valid.titleStyle!,
+        fadeOut: 1.5,
+        bottomSafeMargin: 0.12,
+      },
+    });
+    await mounted.update(valid);
+    expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(0);
+    expect(
+      mounted.control("editor.presentation.titleBottomSafeMargin")?.value,
+    ).toBe(8);
+    await mounted.update({
+      ...valid,
+      id: "another",
+      titleStyle: {
+        version: 1,
+        role: "film-title",
+        position: "center",
+        fadeOut: 0.4,
+        bottomSafeMargin: 0.2,
+      },
+    });
+    expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(
+      0.4,
+    );
+    expect(
+      mounted.control("editor.presentation.titleBottomSafeMargin"),
+    ).toBeUndefined();
+    expect(mounted.commands).toHaveLength(2);
+  });
+  it("preserves a saved custom weight until the person explicitly chooses bold", async () => {
+    const custom = {
+      ...valid,
+      titleStyle: { ...valid.titleStyle!, fontWeight: 500 },
+    };
+    const mounted = await mount("en-US", en, custom);
+    const control = mounted.control("editor.presentation.titleFontWeight")!;
+    expect(control.options[control.selectedIndex]?.value).toBe(500);
+    expect(
+      control.options.some((option) => Number(option.props.value) === 500),
+    ).toBe(true);
+    expect(mounted.commands).toEqual([]);
+    (control.props["onUpdate:modelValue"] as (value: number) => void)(700);
+    await vue.nextTick();
+    (control.props.onChange as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: valid.id,
+        title: valid.title,
+        titleStyle: { ...custom.titleStyle, fontWeight: 700 },
+      },
+    ]);
+  });
+  it("follows implicit role/frame defaults but preserves authored fractional sizes until explicitly reset", async () => {
+    const mounted = await mount("en-US", en, valid);
+    const size = () => mounted.control("editor.presentation.titleFontSize")!;
+    expect(size().value).toBe(25.92);
+    await mounted.update({
+      ...valid,
+      titleStyle: { version: 1, role: "film-title" },
+    });
+    expect(size().value).toBe(54);
+    mounted.props.frame.height = 1080;
+    await vue.nextTick();
+    expect(size().value).toBe(81);
+    const custom = {
+      ...valid,
+      titleStyle: {
+        version: 1 as const,
+        role: "subtitle" as const,
+        fontSize: 53.125675,
+        fontWeight: 700,
+        fadeOut: 1,
+        bottomSafeMargin: 0.12,
+      },
+    };
+    await mounted.update(custom);
+    expect(size().value).toBe(53.125675);
+    await mounted.update({
+      ...custom,
+      titleStyle: { ...custom.titleStyle, role: "scene-statement" },
+    });
+    expect(size().value).toBe(53.125675);
+    mounted.props.frame.height = 720;
+    await vue.nextTick();
+    expect(size().value).toBe(53.125675);
+    expect(mounted.commands).toEqual([]);
+    const reset = flatten(mounted.root).find(
+      (item) =>
+        item.tag === "button" &&
+        text(item) ===
+          mounted.label("editor.presentation.titleFontSizeDefault"),
+    )!;
+    expect(reset).toBeDefined();
+    (reset.props.onClick as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: custom.id,
+        title: custom.title,
+        titleStyle: {
+          version: 1,
+          role: "scene-statement",
+          fontWeight: 700,
+          fadeOut: 1,
+          bottomSafeMargin: 0.12,
+        },
+      },
+    ]);
+    expect(mounted.props.clip.titleStyle?.fontSize).toBe(53.125675);
+  });
+  it("writes only an explicitly entered size and preserves other native text settings", async () => {
+    const custom = {
+      ...valid,
+      titleStyle: {
+        ...valid.titleStyle!,
+        fontWeight: 700,
+        fadeOut: 1,
+        bottomSafeMargin: 0.12,
+      },
+    };
+    const mounted = await mount("en-US", en, custom);
+    const input = mounted.control("editor.presentation.titleFontSize")!;
+    (input.props["onUpdate:modelValue"] as (value: number) => void)(64);
+    await vue.nextTick();
+    (input.props.onChange as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: custom.id,
+        title: custom.title,
+        titleStyle: { ...custom.titleStyle, fontSize: 64 },
+      },
+    ]);
+    expect(mounted.props.clip.titleStyle).toEqual(custom.titleStyle);
+  });
+});
+
+describe("photo movement without changing framing", () => {
+  it.each([
+    ["en-US", en],
+    ["zh-TW", zh],
+    ["ja-JP", ja],
+    ["en-XA", pseudoMessages(en)],
+  ] as const)(
+    "offers pull-out on original photos in %s",
+    async (locale, messages) => {
+      const clip: core.Clip = {
+        ...legacy,
+        titleStyle: { version: 1, role: "subtitle", fontWeight: 700 },
+      };
+      const mounted = await mount(locale, messages, clip);
+      const pullOut = flatten(mounted.root).find(
+        (item) =>
+          item.tag === "button" &&
+          text(item) ===
+            mounted.label("editor.presentation.motionPresets.pull-out"),
+      );
+      expect(pullOut).toBeDefined();
+      (pullOut!.props.onClick as () => void)();
+      expect(mounted.commands).toEqual([
+        {
+          type: "presentation",
+          clipId: clip.id,
+          motion: {
+            version: 1,
+            preset: "pull-out",
+            easing: "ease-in-out",
+            from: { scale: 1.06, x: 0, y: 0 },
+            to: { scale: 1, x: 0, y: 0 },
+          },
+        },
+      ]);
+      expect(mounted.commands[0]).not.toHaveProperty("layout");
+      expect(mounted.props.clip).toEqual(clip);
+      const motion = (
+        mounted.commands[0] as Extract<
+          TimelineCommand,
+          { type: "presentation" }
+        >
+      ).motion!;
+      await mounted.update({ ...clip, motion });
+      const layout = mounted.control("editor.presentation.layout")!;
+      expect(layout.options[layout.selectedIndex]?.value).toBe("original");
+      const selected = flatten(mounted.root).find(
+        (item) =>
+          item.tag === "button" &&
+          text(item) ===
+            mounted.label("editor.presentation.motionPresets.pull-out"),
+      );
+      expect(selected!.props["aria-pressed"]).toBe(true);
+      expect(mounted.props.clip.titleStyle).toEqual(clip.titleStyle);
     },
   );
 });

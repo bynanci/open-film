@@ -240,7 +240,7 @@ function photoMotion(value: unknown, path: string): PhotoMotion {
     "to",
   ]);
   versionOne(data, path);
-  choice(data.preset, `${path}.preset`, ["hold", "push-in", "pan"]);
+  choice(data.preset, `${path}.preset`, ["hold", "push-in", "pull-out", "pan"]);
   choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
   for (const endpoint of ["from", "to"]) {
     const transform = presentationObject(
@@ -273,6 +273,8 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "align",
     "background",
     "position",
+    "fadeOut",
+    "bottomSafeMargin",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -311,6 +313,8 @@ function titleStyle(value: unknown, path: string): TitleStyle {
   optional(data, "position", path, (v, p) =>
     choice(v, p, ["center", "bottom"]),
   );
+  optional(data, "fadeOut", path, (v, p) => number(v, p, 0, 10));
+  optional(data, "bottomSafeMargin", path, (v, p) => number(v, p, 0, 0.3));
   return data as unknown as TitleStyle;
 }
 
