@@ -227,8 +227,10 @@ export class FFmpegRenderer {
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
           const startFrame = Math.round(start * outputFrameRate);
-          const alignedStart =
-            Math.floor((startFrame / outputFrameRate) * 1e8) / 1e8;
+          // Keep the existing start-frame snap, but gate by integer output
+          // frames: a timestamp such as 111/30 can compare below literal 3.7.
+          const endFrame = (length: number) =>
+            startFrame + Math.ceil((length - 1e-9) * outputFrameRate);
           const duration = clip.timelineDuration;
           const suffix = sequence++;
           const addTitle = async () => {
@@ -262,7 +264,7 @@ export class FFmpegRenderer {
               `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
             );
             filters.push(
-              `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(t,${number(alignedStart)})*lt(t,${number(alignedStart + duration)})'[${titleLabel}]`,
+              `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(n,${startFrame})*lt(n,${endFrame(duration)})'[${titleLabel}]`,
             );
             videoLabel = titleLabel;
           };
@@ -382,7 +384,7 @@ export class FFmpegRenderer {
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(t,${number(alignedStart)})*lt(t,${number(alignedStart + displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(n,${startFrame})*lt(n,${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }

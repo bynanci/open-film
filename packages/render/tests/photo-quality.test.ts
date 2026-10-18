@@ -69,7 +69,116 @@ async function pixels(path: string, frame = 0) {
     ])
   ).stdout;
 }
+async function allPixels(path: string) {
+  return (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-pix_fmt",
+      "rgb24",
+      "-f",
+      "rawvideo",
+      "-",
+    ])
+  ).stdout;
+}
 const settings = { width: 160, height: 90, frameRate: 30 };
+it("shows the incoming photo on frame 111 at a 3.7-second hard cut", async () => {
+  const start = 3.7;
+  const firstFrame = 111;
+  const { root, photo } = await fixture();
+  const red = await photo("before-cut", "color=red:s=160x90");
+  const blue = await photo("after-cut", "color=blue:s=160x90");
+  const output = join(root, "fractional-cut.mp4");
+  const composition: Composition = {
+    ...film([
+      {
+        id: "before-cut",
+        assetId: red.id,
+        timelineStart: 0,
+        timelineDuration: start,
+      },
+      {
+        id: "after-cut",
+        assetId: blue.id,
+        timelineStart: start,
+        timelineDuration: 4 - start,
+      },
+    ]),
+    duration: 4,
+  };
+  await new FFmpegRenderer().render(composition, [red, blue], output, settings);
+  const decoded = await allPixels(output);
+  const frameBytes = settings.width * settings.height * 3;
+  expect(decoded.length).toBe(120 * frameBytes);
+  const center = (45 * settings.width + 80) * 3;
+  // Include the first/last frames and both sides of the cut. The exact 3.7s
+  // cut used to expose the black canvas for frame 111.
+  for (let frame = 0; frame < 120; frame++) {
+    const channel = frame < firstFrame ? 0 : 2;
+    expect(
+      decoded[frame * frameBytes + center + channel],
+      `frame ${frame}`,
+    ).toBeGreaterThan(200);
+  }
+});
+it("shows a 3.7-second title on its first frame without leaking outside its interval", async () => {
+  const start = 3.7;
+  const duration = 0.1;
+  const firstFrame = 111;
+  const { root } = await fixture();
+  const output = join(root, "fractional-title.mp4");
+  await new FFmpegRenderer().render(
+    {
+      id: "fractional-title",
+      storyId: "story",
+      duration: 4,
+      tracks: [
+        {
+          id: "titles",
+          type: "titles",
+          clips: [
+            {
+              id: "short-title",
+              assetId: "",
+              title: "FRAME",
+              titleStyle: {
+                version: 1,
+                role: "film-title",
+                fontSize: 20,
+                position: "center",
+                background: "none",
+              },
+              timelineStart: start,
+              timelineDuration: duration,
+            },
+          ],
+        },
+      ],
+    },
+    [],
+    output,
+    settings,
+  );
+  const decoded = await allPixels(output);
+  const frameBytes = settings.width * settings.height * 3;
+  expect(decoded.length).toBe(120 * frameBytes);
+  const brightPixels = (frame: number) =>
+    decoded
+      .subarray(frame * frameBytes, (frame + 1) * frameBytes)
+      .filter((value) => value > 200).length;
+  expect(brightPixels(112), "visible control frame").toBeGreaterThan(10);
+  for (let frame = 0; frame < 120; frame++) {
+    if (frame >= firstFrame && frame < 114)
+      expect(
+        brightPixels(frame),
+        `inside title at frame ${frame}`,
+      ).toBeGreaterThan(10);
+    else expect(brightPixels(frame), `outside title at frame ${frame}`).toBe(0);
+  }
+});
 it("starts photo motion at the authored first-frame position", async () => {
   const { root, photo } = await fixture();
   const source = await photo(

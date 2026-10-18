@@ -1,8 +1,10 @@
 # Windows recovery and photo motion validation
 
-Implementation: `78e1a956a8e0ad2e3c694467d9d51a3c6f498bfb`.
-The subsequent changes to benchmark scripts and portable test fixtures do not
-change the film renderer or recovery implementation.
+Primary motion/recovery implementation:
+`78e1a956a8e0ad2e3c694467d9d51a3c6f498bfb`. The movie's native batch receipts
+retain this frozen renderer identity. The final branch also corrects fractional
+visual/title overlay boundaries with integer output-frame gates while preserving
+the existing start-frame snap. Windows owner recovery is unchanged by that fix.
 
 ## Exercised behavior
 
@@ -26,6 +28,17 @@ Windows x64, Node 24.14.0, pnpm 11.11.0 and FFmpeg 9.0.2 were used. Tests requir
 `flite` use the Gyan FFmpeg full build; the film uses the essentials build.
 Python protocol tests use an explicit `OPENFILM_TEST_PYTHON` interpreter, avoiding
 the WindowsApps `python3` alias.
+
+Before the final overlay-boundary fix, the complete regression shards passed
+2,282 tests with six platform-dependent skips: 2,252 in the main shard and 30 in
+the native benchmark runner. The final boundary fix is checked separately with
+real decoded frames, including the authored first/last frames, total frame count,
+fractional photo cuts and title interval boundaries.
+
+After that fix, all 38 focused native photo/layout/orientation/general render
+checks passed, including both new decoded-frame regressions. The title fixture
+uses an explicit readable font size; its control frame is visible before judging
+the failing boundary frame. Both regressions fail with the original time gates.
 
 - Focused native photo/layout/orientation checks: 20 passed.
 - General FFmpeg rendering checks: 16 passed.
