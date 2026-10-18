@@ -99,6 +99,7 @@ export default {
       motionPresets: {
         hold: "静止",
         "push-in": "ゆっくり寄る",
+        "pull-out": "ゆっくり引く",
         pan: "ゆっくり横移動",
       },
       motionHint:

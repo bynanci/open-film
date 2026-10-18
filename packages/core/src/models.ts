@@ -159,7 +159,7 @@ export interface PhotoMotionTransform {
 }
 export interface PhotoMotion {
   version: 1;
-  preset: "hold" | "push-in" | "pan";
+  preset: "hold" | "push-in" | "pull-out" | "pan";
   easing: "linear" | "ease-in-out";
   from: PhotoMotionTransform;
   to: PhotoMotionTransform;

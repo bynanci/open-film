@@ -105,8 +105,7 @@ watch(
       clip.layout?.preset !== previous?.layout?.preset ||
       !!clip.motion !== !!previous?.motion
     )
-      layout.value =
-        clip.layout?.preset ?? (clip.motion ? "contain" : "original");
+      layout.value = clip.layout?.preset ?? "original";
     if (
       changedClip ||
       clip.layout?.secondary?.assetId !== previous?.layout?.secondary?.assetId
@@ -201,15 +200,23 @@ function setLayout() {
   });
 }
 function setMotion(preset: PhotoMotion["preset"]) {
+  if (
+    props.clip.locked ||
+    props.asset.state.locked ||
+    savedSecondary.value?.state.locked
+  )
+    return;
   const identity = { scale: 1, x: 0, y: 0 };
   const motion: PhotoMotion = {
     version: 1,
     preset,
     easing: "ease-in-out",
     from:
-      preset === "pan"
-        ? { scale: 1.06, x: -props.frame.width * 0.02, y: 0 }
-        : identity,
+      preset === "pull-out"
+        ? { scale: 1.06, x: 0, y: 0 }
+        : preset === "pan"
+          ? { scale: 1.06, x: -props.frame.width * 0.02, y: 0 }
+          : identity,
     to:
       preset === "push-in"
         ? { scale: 1.06, x: 0, y: 0 }
@@ -220,7 +227,6 @@ function setMotion(preset: PhotoMotion["preset"]) {
   emit("command", {
     type: "presentation",
     clipId: props.clip.id,
-    layout: props.clip.layout ?? { version: 1, preset: "contain" },
     motion,
   });
 }
@@ -327,11 +333,11 @@ function resetTitleStyle() {
           </option>
         </select>
       </label>
-      <template v-if="layout !== 'original' || clip.motion">
+      <section class="editor-photo-motion">
         <h4>{{ t("editor.presentation.motion") }}</h4>
         <div class="editor-presets">
           <button
-            v-for="preset in ['hold', 'push-in', 'pan'] as const"
+            v-for="preset in ['hold', 'push-in', 'pull-out', 'pan'] as const"
             :key="preset"
             class="editor-button"
             :aria-pressed="(clip.motion?.preset ?? 'hold') === preset"
@@ -392,7 +398,7 @@ function resetTitleStyle() {
             /></label>
           </div>
         </details>
-      </template>
+      </section>
       <div
         v-if="plan?.warnings.length"
         class="editor-presentation-warnings"

@@ -144,6 +144,87 @@ describe("photo presentation contract", () => {
     );
   });
 
+  it.each(["linear", "ease-in-out"])(
+    "validates a pull-out and deterministically eases from close framing to the whole photo (%s)",
+    (easing) => {
+      const motion = validatePhotoMotion({
+        version: 1,
+        preset: "pull-out",
+        easing,
+        from: { scale: 1.06, x: 0, y: 0 },
+        to: identity,
+      });
+      const moving: Clip = { ...clip, motion };
+      const before = structuredClone(moving);
+      expect(evaluateClipAtTime(moving, -1, sources, frame).transform).toEqual(
+        motion.from,
+      );
+      expect(evaluateClipAtTime(moving, 0, sources, frame).transform).toEqual(
+        motion.from,
+      );
+      expect(evaluateClipAtTime(moving, 2, sources, frame).transform).toEqual({
+        scale: 1.03,
+        x: 0,
+        y: 0,
+      });
+      expect(evaluateClipAtTime(moving, 4, sources, frame).transform).toEqual(
+        identity,
+      );
+      expect(evaluateClipAtTime(moving, 10, sources, frame).transform).toEqual(
+        identity,
+      );
+      expect(moving).toEqual(before);
+      expect(resolvePhotoPlan(moving, sources, frame).warnings).toEqual([]);
+    },
+  );
+
+  it("holds a pull-out if its initial close framing would crop a protected region", () => {
+    const motion = validatePhotoMotion({
+      version: 1,
+      preset: "pull-out",
+      easing: "ease-in-out",
+      from: { scale: 1.06, x: 0, y: 0 },
+      to: identity,
+    });
+    const result = resolvePhotoPlan(
+      {
+        ...clip,
+        motion,
+        layout: {
+          version: 1,
+          preset: "contain",
+          protectedRegion: { x: 0, y: 0, width: 1, height: 1 },
+        },
+      },
+      sources,
+      frame,
+    );
+    expect(result.motion).toEqual({
+      from: identity,
+      to: identity,
+      easing: "linear",
+    });
+    expect(result.warnings).toContain("PHOTO_MOTION_PROTECTED_REGION_HOLD");
+  });
+
+  it("keeps pull-out validation bounded rather than accepting unsupported presets or empty frame scales", () => {
+    const valid = {
+      version: 1,
+      preset: "pull-out",
+      easing: "linear",
+      from: { scale: 1.06, x: 0, y: 0 },
+      to: identity,
+    };
+    expect(validatePhotoMotion(valid)).toEqual(valid);
+    for (const invalid of [
+      { ...valid, preset: "zoom-magic" },
+      { ...valid, to: { ...identity, scale: 0.9 } },
+      { ...valid, from: { ...identity, scale: Infinity } },
+      { ...valid, to: { ...identity, x: NaN } },
+    ])
+      expect(() => validatePhotoMotion(invalid)).toThrow();
+  });
+
   it("holds unsafe motion instead of moving a protected subject out of frame", () => {
     const result = resolvePhotoPlan(
       {

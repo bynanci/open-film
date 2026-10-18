@@ -5,6 +5,20 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — Photo pull-out preset follow-up
+
+Contract: [photo-film quality](docs/photo-film-quality.md#photo-pull-out).
+
+- [ ] Let people choose a bounded pull-out movement on a still photo, including
+      Original layout, without silently replacing its layout or static transform.
+- [x] Preserve motion through validated commands, retry, Undo/Redo and reopen;
+      retain text, soundtrack, timing and protected clips during regeneration.
+      Focused application/solver regressions pass (101 tests in two files).
+- [ ] Verify shared preview/render endpoints, localized motion controls and
+      candidate regression gates before claiming the feature complete.
+- [ ] Manual: real display/camera quality and downstream NLE motion recreation
+      remain workstation checks.
+
 ## Current — Native on-screen text control follow-up
 
 Scope and development evidence: [native text controls](docs/native-text-controls.md).

@@ -240,7 +240,7 @@ function photoMotion(value: unknown, path: string): PhotoMotion {
     "to",
   ]);
   versionOne(data, path);
-  choice(data.preset, `${path}.preset`, ["hold", "push-in", "pan"]);
+  choice(data.preset, `${path}.preset`, ["hold", "push-in", "pull-out", "pan"]);
   choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
   for (const endpoint of ["from", "to"]) {
     const transform = presentationObject(

@@ -96,6 +96,7 @@ export default {
       motionPresets: {
         hold: "靜止停留",
         "push-in": "微微推近",
+        "pull-out": "緩慢拉遠",
         pan: "緩慢平移",
       },
       motionHint: "運鏡幅度為 6%；請檢查起點與終點的人物位置。",

@@ -387,6 +387,16 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
     await expect
       .poll(async () => (await clip(request)).titleStyle?.bottomSafeMargin)
       .toBe(0.12);
+    await page
+      .getByRole("button", {
+        name: text(locale, "editor.presentation.motionPresets.pull-out"),
+        exact: true,
+      })
+      .click();
+    await expect
+      .poll(async () => (await clip(request)).motion?.preset)
+      .toBe("pull-out");
+    expect((await clip(request)).layout).toBeUndefined();
     for (const size of [
       { width: 1280, height: 720 },
       { width: 1440, height: 900 },
@@ -439,3 +449,85 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
   });
 }
+
+test("pull-out works on original framing and survives history and reopening without changing film timing", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request);
+  await openEditor(page);
+  const before = (await editor(request)).composition;
+  await expect(control(page, "layout")).toHaveValue("original");
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.presentation.motionPresets.pull-out"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await clip(request)).motion?.preset)
+    .toBe("pull-out");
+  const saved = (await editor(request)).composition;
+  expect(saved.duration).toBe(before.duration);
+  const { motion: _motion, ...photo } = saved.tracks[0]!.clips[0]!;
+  expect(photo).toEqual(before.tracks[0]!.clips[0]);
+  expect(saved.tracks[0]!.clips.slice(1)).toEqual(
+    before.tracks[0]!.clips.slice(1),
+  );
+  await expect(control(page, "layout")).toHaveValue("original");
+  await seekPhoto(page, 0);
+  await expect(page.locator(".photo-presentation-layers")).toHaveAttribute(
+    "style",
+    /scale\(1\.06\)/,
+  );
+  await seekPhoto(page, 1);
+  await expect(page.locator(".photo-presentation-layers")).toHaveAttribute(
+    "style",
+    /scale\(1\.03\)/,
+  );
+  await seekPhoto(page, 2);
+  await expect(page.locator(".photo-presentation-layers")).toHaveAttribute(
+    "style",
+    /scale\(1\)/,
+  );
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.undoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect.poll(async () => (await clip(request)).motion).toBeUndefined();
+  await expect(control(page, "layout")).toHaveValue("original");
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.redoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await clip(request)).motion?.preset)
+    .toBe("pull-out");
+  expect((await clip(request)).layout).toBeUndefined();
+  expect(
+    (await request.post(`${base}/api/project/close`, { data: {} })).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.post(`${base}/api/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await page.locator("#clip-native-caption-photo").click();
+  expect((await editor(request)).composition).toEqual(saved);
+  await expect(control(page, "layout")).toHaveValue("original");
+  await expect(
+    page.getByRole("button", {
+      name: uiText("en-US", "editor.presentation.motionPresets.pull-out"),
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});

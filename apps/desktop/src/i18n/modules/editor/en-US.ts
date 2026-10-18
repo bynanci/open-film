@@ -101,6 +101,7 @@ export default {
       motionPresets: {
         hold: "Hold",
         "push-in": "Gentle push-in",
+        "pull-out": "Gentle pull-out",
         pan: "Slow pan",
       },
       motionHint:

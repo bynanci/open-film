@@ -139,6 +139,7 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
       tags: [],
     } as core.MediaAsset,
     assets: [] as core.MediaAsset[],
+    allowPhotoPresentation: true,
     frame: { width: 1280, height: 720, frameRate: 30 },
   });
   props.assets = [props.asset];
@@ -436,4 +437,62 @@ describe("native text timing and bottom placement", () => {
       },
     ]);
   });
+});
+
+describe("photo movement without changing framing", () => {
+  it.each([
+    ["en-US", en],
+    ["zh-TW", zh],
+    ["ja-JP", ja],
+    ["en-XA", pseudoMessages(en)],
+  ] as const)(
+    "offers pull-out on original photos in %s",
+    async (locale, messages) => {
+      const clip: core.Clip = {
+        ...legacy,
+        titleStyle: { version: 1, role: "subtitle", fontWeight: 700 },
+      };
+      const mounted = await mount(locale, messages, clip);
+      const pullOut = flatten(mounted.root).find(
+        (item) =>
+          item.tag === "button" &&
+          text(item) ===
+            mounted.label("editor.presentation.motionPresets.pull-out"),
+      );
+      expect(pullOut).toBeDefined();
+      (pullOut!.props.onClick as () => void)();
+      expect(mounted.commands).toEqual([
+        {
+          type: "presentation",
+          clipId: clip.id,
+          motion: {
+            version: 1,
+            preset: "pull-out",
+            easing: "ease-in-out",
+            from: { scale: 1.06, x: 0, y: 0 },
+            to: { scale: 1, x: 0, y: 0 },
+          },
+        },
+      ]);
+      expect(mounted.commands[0]).not.toHaveProperty("layout");
+      expect(mounted.props.clip).toEqual(clip);
+      const motion = (
+        mounted.commands[0] as Extract<
+          TimelineCommand,
+          { type: "presentation" }
+        >
+      ).motion!;
+      await mounted.update({ ...clip, motion });
+      const layout = mounted.control("editor.presentation.layout")!;
+      expect(layout.options[layout.selectedIndex]?.value).toBe("original");
+      const selected = flatten(mounted.root).find(
+        (item) =>
+          item.tag === "button" &&
+          text(item) ===
+            mounted.label("editor.presentation.motionPresets.pull-out"),
+      );
+      expect(selected!.props["aria-pressed"]).toBe(true);
+      expect(mounted.props.clip.titleStyle).toEqual(clip.titleStyle);
+    },
+  );
 });

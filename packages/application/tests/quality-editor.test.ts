@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MediaAsset, AudioAutomation } from "@openfilm/core";
+import type { MediaAsset, AudioAutomation, PhotoMotion } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import {
   OpenFilmApplication,
@@ -95,8 +95,139 @@ const automation: AudioAutomation = {
   ],
   ducking: [{ start: 4, end: 10, gain: 0.25, attack: 0.5, release: 1 }],
 };
+const pullOut: PhotoMotion = {
+  version: 1,
+  preset: "pull-out",
+  easing: "ease-in-out",
+  from: { scale: 1.06, x: 0, y: 0 },
+  to: { scale: 1, x: 0, y: 0 },
+};
 
 describe("durable quality editing", () => {
+  it("saves original-layout photo pull-out without rewriting layout, text, timing or soundtrack and restores it through history and reopen", async () => {
+    const { app, editor } = await fixture();
+    const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+    photo.title = "Together, one day at a time";
+    photo.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fadeOut: 1,
+      bottomSafeMargin: 0.12,
+    };
+    photo.transform = { scale: 1.1, x: 4, y: -2, rotation: 3 };
+    await app.save();
+    const before = await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [
+        addMusic,
+        { type: "audio.configure", clipId: "soundtrack", automation },
+      ],
+    });
+    const input: TimelineEditInput = {
+      baseRevision: before.revision,
+      requestId: "original-photo-pull-out",
+      commands: [{ type: "presentation", clipId: "photo", motion: pullOut }],
+    };
+    const expected = structuredClone(before.composition);
+    expected.tracks[0]!.clips[0]!.motion = pullOut;
+    const saved = await editor.edit("film", input);
+    expect(saved.composition).toEqual(expected);
+    expect(saved.composition.tracks[0]!.clips[0]).not.toHaveProperty("layout");
+    expect(saved.story).toEqual(before.story);
+    expect(saved.assets).toEqual(before.assets);
+    const retry = await editor.edit("film", structuredClone(input));
+    expect(retry.revision).toBe(saved.revision);
+    expect(retry.acknowledgedRevision).toBe(saved.revision);
+    const undone = await editor.undo("film", saved.revision);
+    expect(undone.composition).toEqual(before.composition);
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition).toEqual(expected);
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    const restored = new TimelineEditor(reopened).get("film");
+    expect(restored.composition).toEqual(expected);
+    expect(restored.story).toEqual(before.story);
+    expect(restored.assets).toEqual(before.assets);
+    expect(
+      JSON.parse(await readFile(join(directory, "project.json"), "utf8"))
+        .timelines[0],
+    ).toEqual(expected);
+  });
+
+  it.each(["clip", "source", "paired source"])(
+    "rejects pull-out changes protected by a %s lock without changing the saved cut or history",
+    async (locked) => {
+      const { app, editor } = await fixture();
+      const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+      if (locked === "clip") photo.locked = true;
+      else {
+        const assetId = locked === "source" ? "portrait" : "second-photo";
+        if (locked === "paired source")
+          photo.layout = {
+            version: 1,
+            preset: "diptych",
+            secondary: { assetId },
+          };
+        const source = app.catalog.getAsset(assetId)!;
+        app.catalog.upsertAsset({
+          ...source,
+          state: { ...source.state, locked: true },
+        });
+      }
+      await app.save();
+      const before = editor.get("film");
+      const disk = await readFile(join(app.directory, "project.json"), "utf8");
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            { type: "presentation", clipId: "photo", motion: pullOut },
+          ],
+        }),
+      ).rejects.toThrow(/locked|unlocked/i);
+      expect(editor.get("film")).toEqual(before);
+      expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+        disk,
+      );
+    },
+  );
+
+  it.each(["video", "audio"] as const)(
+    "rejects a still-photo pull-out on a %s source atomically",
+    async (mediaType) => {
+      const { app, editor } = await fixture();
+      app.catalog.upsertAsset({
+        id: "non-photo",
+        name: "Non photo",
+        uri: `file:///originals/non-photo.${mediaType === "video" ? "mp4" : "wav"}`,
+        mediaType,
+        duration: 20,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+      app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = "non-photo";
+      await app.save();
+      const before = editor.get("film");
+      const disk = await readFile(join(app.directory, "project.json"), "utf8");
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            { type: "presentation", clipId: "photo", motion: pullOut },
+          ],
+        }),
+      ).rejects.toThrow(/still|visual/i);
+      expect(editor.get("film")).toEqual(before);
+      expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+        disk,
+      );
+    },
+  );
+
   it("saves native text fade and safe margin as one undo unit, acknowledges exact retries and reopens all authored fields", async () => {
     const { app, editor } = await fixture();
     const before = editor.get("film");
