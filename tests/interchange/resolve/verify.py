@@ -6,13 +6,14 @@ import pathlib
 import subprocess
 import sys
 import urllib.parse
+from urllib.request import url2pathname
 import xml.etree.ElementTree as ET
 from fractions import Fraction
 
 import opentimelineio as otio
 
 root = pathlib.Path(sys.argv[1])
-manifest = json.loads((root / "manifest.json").read_text())
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
 assets = {asset["id"]: asset for asset in manifest["assets"]}
 
 
@@ -23,7 +24,7 @@ def close(actual, expected, context):
 def local_source(uri):
     parsed = urllib.parse.urlparse(uri)
     assert parsed.scheme == "file" and parsed.netloc in ("", "localhost"), f"nonlocal source: {uri}"
-    path = pathlib.Path(urllib.parse.unquote(parsed.path))
+    path = pathlib.Path(url2pathname(parsed.path))
     assert path.is_file(), f"missing source: {uri}"
     assert not path.is_symlink(), f"symlink source: {uri}"
     return path
@@ -34,7 +35,7 @@ probed = {}
 for asset in assets.values():
     path = local_source(asset["uri"])
     assert hashlib.sha256(path.read_bytes()).hexdigest() == asset["contentHash"], f"source hash changed: {path}"
-    probe = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)], check=True, capture_output=True, text=True).stdout)
+    probe = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)], check=True, capture_output=True, text=True, encoding="utf-8").stdout)
     assert probe.get("streams"), f"undecodable source: {path}"
     if asset["mediaType"] != "image":
         duration = float(probe["format"]["duration"])
@@ -115,7 +116,7 @@ def check_timeline(timeline, original, report, settings):
 
 for name, original in manifest["compositions"].items():
     path = root / f"{name}.otio"
-    report = json.loads((root / f"{name}.otio.report.json").read_text())
+    report = json.loads((root / f"{name}.otio.report.json").read_text(encoding="utf-8"))
     settings = manifest["settingsByComposition"][name]
     timeline = otio.adapters.read_from_file(str(path))
     check_timeline(timeline, original, report, settings)

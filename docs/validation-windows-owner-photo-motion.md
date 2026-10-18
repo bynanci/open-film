@@ -23,7 +23,7 @@ change the film renderer or recovery implementation.
 ## Local verification
 
 Windows x64, Node 24.14.0, pnpm 11.11.0 and FFmpeg 9.0.2 were used. Tests requiring
-`flite` use the official full FFmpeg build; the film uses the essentials build.
+`flite` use the Gyan FFmpeg full build; the film uses the essentials build.
 Python protocol tests use an explicit `OPENFILM_TEST_PYTHON` interpreter, avoiding
 the WindowsApps `python3` alias.
 
@@ -36,6 +36,10 @@ the WindowsApps `python3` alias.
 - Photo-film browser checks: 11 passed, including English, Traditional Chinese
   and Japanese, editable motion/titles/audio, history and reopening.
 - Production build and built-CLI import/render/export/reopen smoke passed.
+- Interchange checks: 18 Python harness checks, official OpenTimelineIO 0.18.1
+  read/write/read, four generated source hashes/bounds, missing-source rejection
+  and portable bundle relocation passed on Windows. Explicit UTF-8 and native
+  file-URL conversion avoid locale and drive-letter assumptions in the verifier.
 
 The browser and built-CLI checks do not substitute for a clean Windows installer
 test. Protocol fixtures do not establish speech or language-model accuracy.
