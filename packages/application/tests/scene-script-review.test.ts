@@ -10,6 +10,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LanguageProvider } from "@openfilm/plugin-sdk";
@@ -923,7 +924,7 @@ describe("scene script review application", () => {
     const context = await fixture();
     const { stdout } = await promisify(execFile)(process.execPath, [
       "--import",
-      createRequire(import.meta.url).resolve("tsx"),
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       "--input-type=module",
       "--eval",
       `import {createReviewOwner} from ${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)};console.log(JSON.stringify(createReviewOwner()));`,

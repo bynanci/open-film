@@ -260,8 +260,8 @@ export function resolvePhotoPlan(
         easing: recipe.easing,
       }
     : { from: identity(), to: identity(), easing: "linear" };
-  // FFmpeg zoompan cannot pan beyond the zoomed source bounds. Resolve this
-  // before either adapter sees the recipe so its internal clamp is never hidden.
+  // Keep the camera within the zoomed canvas in both adapters. Resolve this
+  // before either adapter sees the recipe so unsupported framing is explicit.
   const outOfBounds = [motion.from, motion.to].some(
     (transform) =>
       Math.abs(transform.x) >

@@ -145,7 +145,7 @@ async function worker(
     process.execPath,
     [
       "--import",
-      createRequire(import.meta.url).resolve("tsx"),
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       file,
       context.directory,
       context.runtime.userDataDirectory,
@@ -207,7 +207,14 @@ describe("review recovery respects durable execution ownership", () => {
       const ready = await child.ready();
       expect(ready.job.reviewOwner?.pid).toBe(child.child.pid);
       expect(ownsReviewOwner(ready.job.reviewOwner)).toBe(false);
-      if (process.platform === "linux")
+      // An old reservation naming a currently occupied PID cannot prove death.
+      const reusedPid = {
+        ...ready.job.reviewOwner!,
+        token: "retired-execution",
+      };
+      expect(ownsReviewOwner(reusedPid)).toBe(false);
+      expect(reviewOwnerState(reusedPid)).not.toBe("dead");
+      if (["linux", "win32"].includes(process.platform))
         expect(reviewOwnerState(ready.job.reviewOwner)).toBe("alive");
       const reopened = await context.open();
       expect(
@@ -237,7 +244,7 @@ describe("review recovery respects durable execution ownership", () => {
     },
   );
 
-  it.skipIf(process.platform !== "linux")(
+  it.skipIf(!["linux", "win32"].includes(process.platform))(
     "recovers only unfinished work from a killed and reaped actual child owner",
     async () => {
       const context = await fixture();
@@ -289,7 +296,7 @@ describe("review recovery respects durable execution ownership", () => {
     },
   );
 
-  it.skipIf(process.platform !== "linux")(
+  it.skipIf(!["linux", "win32"].includes(process.platform))(
     "a normal Open cannot overwrite a newer SQLite retry claim after observing a dead owner",
     async () => {
       const context = await fixture();

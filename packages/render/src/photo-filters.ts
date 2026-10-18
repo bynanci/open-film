@@ -70,18 +70,31 @@ export async function photoPresentationFilters(
     label = merged;
   }
   const { from, to, easing } = plan.motion;
-  const p = `min(1,max(0,on/${n(frame.frameRate)}/${n(clip.timelineDuration)}))`;
+  const stationary =
+    from.scale === to.scale && from.x === to.x && from.y === to.y;
+  if (stationary && from.scale === 1 && from.x === 0 && from.y === 0)
+    return { args, filters, addedInputs, label, warnings: plan.warnings };
+  // Perspective's output count starts at one; the shared timeline starts at zero.
+  const p = `min(1,max(0,(on-1)/${n(frame.frameRate)}/${n(clip.timelineDuration)}))`;
   const e = easing === "ease-in-out" ? `((${p})*(${p})*(3-2*(${p})))` : p;
   const interpolate = (key: "scale" | "x" | "y") =>
-    `(${n(from[key])}+(${n(to[key] - from[key])})*(${e}))`;
+    stationary
+      ? n(from[key])
+      : `(${n(from[key])}+(${n(to[key] - from[key])})*(${e}))`;
   const zoom = interpolate("scale"),
     x = interpolate("x"),
     y = interpolate("y");
   const output = `photo-motion${options.suffix}`;
-  // Twofold sampling keeps crop quantization below one output pixel. RGB input
-  // avoids a 2x2 chroma-grid offset before the final output conversion.
+  // A floating-point affine map preserves subpixel movement. Even twofold
+  // zoompan sampling rounds the crop and produces visible half-pixel steps
+  // during a slow camera move. Perspective evaluates these destination corners
+  // on each frame and interpolates pixels without rounding the camera position.
+  const left = `(W*(1-${zoom})/2+${x})`;
+  const right = `(W*(1+${zoom})/2+${x})`;
+  const top = `(H*(1-${zoom})/2+${y})`;
+  const bottom = `(H*(1+${zoom})/2+${y})`;
   filters.push(
-    `[${label}]scale=${frame.width * 2}:${frame.height * 2},format=gbrp,zoompan=z='${zoom}':x='(iw-iw/zoom)/2-2*${x}/zoom':y='(ih-ih/zoom)/2-2*${y}/zoom':d=1:s=${frame.width}x${frame.height}:fps=${n(frame.frameRate)},format=rgba[${output}]`,
+    `[${label}]format=gbrp,perspective=x0='${left}':y0='${top}':x1='${right}':y1='${top}':x2='${left}':y2='${bottom}':x3='${right}':y3='${bottom}':sense=destination:eval=${stationary ? "init" : "frame"}:interpolation=cubic,format=rgba[${output}]`,
   );
   return { args, filters, addedInputs, label: output, warnings: plan.warnings };
 }

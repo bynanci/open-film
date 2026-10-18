@@ -70,6 +70,113 @@ async function pixels(path: string, frame = 0) {
   ).stdout;
 }
 const settings = { width: 160, height: 90, frameRate: 30 };
+it("starts photo motion at the authored first-frame position", async () => {
+  const { root, photo } = await fixture();
+  const source = await photo(
+    "first-frame-subject",
+    "color=black:s=160x90,drawbox=x=60:y=20:w=20:h=40:color=white:t=fill",
+  );
+  const from = { scale: 1.2, x: -10, y: 0 };
+  const clip: Clip = {
+    id: "motion-start",
+    assetId: source.id,
+    timelineStart: 0,
+    timelineDuration: 2,
+    motion: {
+      version: 1,
+      preset: "pan",
+      easing: "linear",
+      from,
+      to: { ...from, x: 10 },
+    },
+  };
+  const renderer = new FFmpegRenderer();
+  const moving = join(root, "moving.mp4");
+  const held = join(root, "held.mp4");
+  await renderer.render(film([clip]), [source], moving, settings);
+  await renderer.render(
+    film([{ ...clip, motion: { ...clip.motion!, preset: "hold", to: from } }]),
+    [source],
+    held,
+    settings,
+  );
+  const center = (frame: Buffer) => {
+    let weighted = 0;
+    let total = 0;
+    for (let x = 30; x < 115; x++) {
+      const weight = frame[(45 * settings.width + x) * 3]!;
+      weighted += x * weight;
+      total += weight;
+    }
+    return weighted / total;
+  };
+  expect(
+    Math.abs(center(await pixels(moving)) - center(await pixels(held))),
+  ).toBeLessThan(0.12);
+});
+it.each(["x", "y"] as const)(
+  "keeps a slow %s pan continuous between adjacent output frames",
+  async (axis) => {
+    const { root, photo } = await fixture();
+    const source = await photo(
+      "slow-pan-subject",
+      "color=black:s=160x90,drawbox=x=60:y=30:w=20:h=20:color=white:t=fill",
+    );
+    const output = join(root, "slow-pan.mp4");
+    await new FFmpegRenderer().render(
+      film([
+        {
+          id: "slow-pan",
+          assetId: source.id,
+          timelineStart: 0,
+          timelineDuration: 2,
+          motion: {
+            version: 1,
+            preset: "pan",
+            easing: "linear",
+            from: { scale: 1.05, x: 0, y: 0, [axis]: -1 },
+            to: { scale: 1.05, x: 0, y: 0, [axis]: 1 },
+          },
+        },
+      ]),
+      [source],
+      output,
+      settings,
+    );
+    const decoded = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-pix_fmt",
+        "gray",
+        "-f",
+        "rawvideo",
+        "-",
+      ])
+    ).stdout;
+    const frameBytes = settings.width * settings.height;
+    expect(decoded.length).toBe(60 * frameBytes);
+    const centers = Array.from({ length: 60 }, (_, frame) => {
+      let weighted = 0;
+      let total = 0;
+      for (let y = 20; y < 65; y++) {
+        for (let x = 45; x < 95; x++) {
+          const weight = decoded[frame * frameBytes + y * settings.width + x]!;
+          weighted += (axis === "x" ? x : y) * weight;
+          total += weight;
+        }
+      }
+      return weighted / total;
+    });
+    expect(centers.at(-1)! - centers[0]!).toBeGreaterThan(1.5);
+    const steps = centers.slice(1).map((center, i) => center - centers[i]!);
+    // The authored camera advances only 1/30 px per frame. Crop rounding used
+    // to hold it in place, then jump by about half a pixel in either axis.
+    expect(Math.max(...steps.map(Math.abs))).toBeLessThan(0.18);
+  },
+);
 it("preserves an original when an output aliases it through a hard link", async () => {
   const { root, photo } = await fixture();
   const asset = await photo("original", "color=red:s=160x90");

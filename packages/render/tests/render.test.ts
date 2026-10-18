@@ -557,7 +557,13 @@ describe("real FFmpeg preview renderer", () => {
         },
       ],
     };
-    const output = join(directory, "Jo's:film\\[cut].openfilm", "preview.mp4");
+    // A colon is valid inside a POSIX name but not a Windows directory name.
+    // Native Windows separators and its drive colon still exercise escaping.
+    const specialPath =
+      process.platform === "win32"
+        ? "Jo's,film 中文\\[cut].openfilm"
+        : "Jo's:film\\[cut].openfilm";
+    const output = join(directory, specialPath, "preview.mp4");
     await expect(
       new FFmpegRenderer().render(composition, [], output, {
         width: 160,

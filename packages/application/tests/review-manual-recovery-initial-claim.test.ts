@@ -77,7 +77,7 @@ it.skipIf(process.platform !== "linux").each(["language", "glossary"] as const)(
       process.execPath,
       [
         "--import",
-        createRequire(import.meta.url).resolve("tsx"),
+        pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
         childFile,
         directory,
         runtime.userDataDirectory,

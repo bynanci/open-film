@@ -15,6 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlossaryEntry, GlossaryInput } from "@openfilm/core";
 import { GlobalGlossaryStore } from "../src/global-glossary.js";
@@ -122,7 +123,7 @@ function concurrentWriter(root: string, source: string, hold = false) {
     process.execPath,
     [
       "--import",
-      createRequire(import.meta.url).resolve("tsx"),
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       script,
       join(root, "user-data"),
       source,

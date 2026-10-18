@@ -148,8 +148,12 @@ Linux Tauri compilation does not certify this gate.
 ## Gate: cross-process review recovery
 
 Linux has automated proof for a dead owner only when boot/PID-namespace evidence
-matches. Windows/macOS automatic dead-owner proof remains unimplemented until an
-OS-specific identity/liveness strategy is verified.
+matches. Windows uses a hashed machine/OS-boot identity and a non-destructive PID
+probe; actual child-process regressions cover live preservation, death, recovery
+and stale-writer fencing. An occupied PID with an old execution token is kept
+conservatively live; these tests do not force the OS to recycle a PID. Missing OS
+evidence, denied probes and foreign scopes remain unknown. macOS automatic proof
+is still unimplemented and unverified.
 
 Workstation observations should distinguish:
 
@@ -159,9 +163,10 @@ Workstation observations should distinguish:
 - retry/skip/manual recovery behavior;
 - preserved completed suggestions and exact source/transcript revision.
 
-Until Windows/macOS automatic proof exists, record this gate as `blocked` or
-`failed`, not passed. A deliberate user-confirmed recovery path may reduce the
-operational impact but does not count as automatic recovery.
+The combined Windows/macOS gate remains `blocked` or `failed` until its required
+platform observations have candidate-bound evidence; a scoped Windows regression
+run does not complete it. A deliberate user-confirmed recovery path may reduce
+the operational impact but does not count as automatic recovery.
 
 ## Suggested evidence layout
 

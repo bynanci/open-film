@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenFilmApplication } from "../src/index.js";
@@ -122,7 +123,7 @@ async function writer(context: Awaited<ReturnType<typeof fixture>>) {
     process.execPath,
     [
       "--import",
-      createRequire(import.meta.url).resolve("tsx"),
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       "--input-type=module",
       "--eval",
       `

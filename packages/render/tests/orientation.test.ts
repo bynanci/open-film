@@ -1,4 +1,5 @@
 import {
+  copyFile,
   mkdtemp,
   mkdir,
   readFile,
@@ -114,8 +115,14 @@ it("persists first-frame display orientation when ExifTool and Perl are unavaila
   const { root, path } = await orientedJpeg();
   const bin = join(root, "bin");
   await mkdir(bin);
-  const which = await runProcess("which", ["ffprobe"]);
-  await symlink(which.stdout.toString().trim(), join(bin, "ffprobe"));
+  const which = await runProcess(
+    process.platform === "win32" ? "where.exe" : "which",
+    ["ffprobe"],
+  );
+  const executable = which.stdout.toString().trim().split(/\r?\n/u)[0]!;
+  if (process.platform === "win32")
+    await copyFile(executable, join(bin, "ffprobe.exe"));
+  else await symlink(executable, join(bin, "ffprobe"));
   const script = `import { inspectMedia } from ${JSON.stringify(pathToFileURL(resolve("packages/media/src/index.ts")).href)}; console.log(JSON.stringify(await inspectMedia(${JSON.stringify({ path, uri: pathToFileURL(path).href, name: "portrait.jpg" })})));`;
   const result = await promisify(execFile)(
     process.execPath,
