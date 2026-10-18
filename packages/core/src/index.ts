@@ -4,6 +4,7 @@ export * from "./models.js";
 export * from "./geometry.js";
 export * from "./presentation.js";
 export * from "./title-layout.js";
+export * from "./title-opacity.js";
 export * from "./validation.js";
 export * from "./migration.js";
 export * from "./errors.js";

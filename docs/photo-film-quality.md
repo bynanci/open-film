@@ -44,6 +44,30 @@ whose complete Verify runs passed. Main remains
 - MP4 sidecars record the actual composition, source identities, renderer,
   fonts, timing, encoding and review warnings. They remain private local files.
 
+## Native title timing and inset
+
+`TitleStyle.fadeIn` and `fadeOut` are optional local timeline seconds from 0 to 10. Both default to zero, preserving existing hard-cut titles. The shared
+`resolveTitleFadeFrames(style, duration, frameRate)` rounds each request to an
+integer frame count. Overlapping requests share the available `frameCount - 1`
+intervals proportionally: the incoming share is rounded first and the outgoing
+share receives the remainder. This leaves a fully visible peak; a single-frame
+title has no fade and remains visible.
+
+`titleOpacityAtTime(style, localTimelineTime, duration, frameRate)` evaluates
+linear opacity on the same frame grid. It returns zero outside the clip, starts
+an incoming fade at zero on the first frame, and finishes an outgoing fade at
+zero on the final live frame. Source trim and speed must be converted to local
+timeline time before evaluation. The helpers use a one-nanosecond boundary
+tolerance, matching the renderer's title frame range.
+
+`TitleStyle.bottomInset` is an optional fraction of frame height from 0 to 0.45,
+defaulting to the existing 0.08. For bottom-positioned titles it locates the
+bottom edge of the complete text and optional scrim; 0.15 leaves 15% of the
+frame below it. Raised titles still respect the existing top safety margin and
+report overflow instead of clipping. Centered and top-positioned titles ignore
+this inset. `position: "top"` uses the existing 8% top safety margin, including
+the scrim, and can combine with `align: "right"` to avoid a subject below.
+
 ## Evidence ledger
 
 | ID  | Observation in reviewed source                          | Change and acceptance proof                                              |

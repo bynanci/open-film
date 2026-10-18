@@ -72,7 +72,7 @@ const vue = desktopRequire("vue") as Record<string, unknown> & {
   reactive: <T extends object>(value: T) => T;
   h: (component: object | string, props?: object) => object;
 };
-const compiler = desktopRequire("@vue/compiler-sfc") as {
+const compiler = desktopRequire("vue/compiler-sfc") as {
   parse: (source: string, options: object) => { descriptor: unknown };
   compileScript: (descriptor: unknown, options: object) => { content: string };
 };
@@ -221,6 +221,7 @@ async function settle() {
 async function mountTimeline(
   initial = fixture(),
   statuses: Record<string, SourceStatus> = {},
+  realPhotoPreview = false,
 ) {
   const storage = new Map<string, string>();
   const local = {
@@ -238,6 +239,8 @@ async function mountTimeline(
   vi.stubGlobal("document", { activeElement: null, querySelector: () => null });
   vi.stubGlobal("Document", class {});
   vi.stubGlobal("ShadowRoot", class {});
+  vi.stubGlobal("HTMLImageElement", class {});
+  vi.stubGlobal("HTMLVideoElement", class {});
   vi.stubGlobal(
     "requestAnimationFrame",
     vi.fn((callback: FrameRequestCallback) => {
@@ -367,6 +370,7 @@ async function mountTimeline(
       default: { render: () => null },
     },
   };
+  if (realPhotoPreview) delete dependencies["./PhotoPresentationPreview.vue"];
   dependencies["../composables/useTimelineEditor"] = script(
     resolve("apps/desktop/src/composables/useTimelineEditor.ts"),
     dependencies,
@@ -377,6 +381,7 @@ async function mountTimeline(
     true,
   ).default as object;
   const renderer = vue.createRenderer({
+    querySelector: () => node("div"),
     createElement: (tag: string) => node(tag),
     createText: (value: string) => node("text", value),
     createComment: (value: string) => node("comment", value),
@@ -482,6 +487,112 @@ async function mountTimeline(
 }
 
 describe("Timeline clip render boundary", () => {
+  it("samples fading video titles between sparse media timeupdate events and stops on pause", async () => {
+    const state = fixture(1);
+    Object.assign(state.composition.tracks[0]!.clips[0]!, {
+      sourceIn: 10,
+      sourceOut: 18,
+      transform: { speed: 2 },
+      title: "A memory",
+      titleStyle: { version: 1, role: "subtitle", fadeIn: 1 },
+    });
+    const view = await mountTimeline(state);
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let handle = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callbacks.set(++handle, callback);
+      return handle;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => callbacks.delete(id));
+    const player = flatten(view.root).find((item) => item.tag === "video")!;
+    Object.assign(player, { currentTime: 10, paused: false });
+    (player.props.onPlay as () => void)();
+    await settle();
+    const tick = async (sourceTime: number) => {
+      const next = callbacks.entries().next().value;
+      expect(
+        next,
+        "Caption preview needs a clock between timeupdate events",
+      ).toBeDefined();
+      callbacks.delete(next![0]);
+      player.currentTime = sourceTime;
+      next![1](0);
+      await settle();
+      return flatten(view.root).find((item) =>
+        hasClass(item, "editor-title-overlay"),
+      )!.props.style;
+    };
+    expect(await tick(10.2)).toMatchObject({ opacity: 0.1 });
+    expect(await tick(10.4)).toMatchObject({ opacity: 0.2 });
+    Object.assign(player, { paused: true });
+    (player.props.onPause as () => void)();
+    await settle();
+    expect(callbacks.size).toBe(0);
+    view.assertReadOnly();
+  });
+
+  it("maps trimmed sped-up video text fades to timeline time", async () => {
+    const state = fixture(1);
+    Object.assign(state.composition.tracks[0]!.clips[0]!, {
+      sourceIn: 10,
+      sourceOut: 18,
+      transform: { speed: 2 },
+      title: "A memory",
+      titleStyle: { version: 1, role: "subtitle", fadeIn: 1, fadeOut: 1 },
+    });
+    const view = await mountTimeline(state);
+    const player = flatten(view.root).find((item) => item.tag === "video")!;
+    const title = () =>
+      flatten(view.root).find((item) =>
+        hasClass(item, "editor-title-overlay"),
+      )!;
+    const opacity = () => (title().props.style as { opacity: number })?.opacity;
+    (player.props.onLoadedmetadata as (event: unknown) => void)({
+      currentTarget: player,
+    });
+    await settle();
+    expect(opacity()).toBe(0);
+    player.currentTime = 11;
+    (player.props.onTimeupdate as () => void)();
+    await settle();
+    expect(opacity()).toBe(0.5);
+    player.currentTime = 17.8;
+    (player.props.onTimeupdate as () => void)();
+    await settle();
+    expect(opacity()).toBeCloseTo(2 / 30, 10);
+    view.assertReadOnly();
+  });
+
+  it("gives fading legacy still titles a playable photo clock while retaining static defaults", async () => {
+    const state = fixture(1);
+    state.assets[0]!.mediaType = "image";
+    state.composition.tracks[0]!.clips[0]!.title = "Still memory";
+    const view = await mountTimeline(state, {}, true);
+    expect(
+      flatten(view.root).some((item) =>
+        hasClass(item, "photo-presentation-preview"),
+      ),
+    ).toBe(false);
+    const saved = structuredClone(state);
+    saved.revision = "with-caption-fade";
+    saved.composition.tracks[0]!.clips[0]!.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fadeIn: 0.2,
+    };
+    await view.reload(saved);
+    expect(
+      flatten(view.root).some((item) =>
+        hasClass(item, "photo-presentation-preview"),
+      ),
+    ).toBe(true);
+    const title = flatten(view.root).find((item) =>
+      hasClass(item, "photo-presentation-title"),
+    )!;
+    expect(title.props.style).toMatchObject({ opacity: 0 });
+    view.assertReadOnly();
+  });
+
   it("preserves a one-frame-pixel transform in fractional monitor coordinates", async () => {
     const state = fixture(2);
     state.composition.tracks[0]!.clips[0]!.transform = { x: 1 };

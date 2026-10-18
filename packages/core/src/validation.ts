@@ -273,6 +273,9 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "align",
     "background",
     "position",
+    "fadeIn",
+    "fadeOut",
+    "bottomInset",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -309,8 +312,11 @@ function titleStyle(value: unknown, path: string): TitleStyle {
   );
   optional(data, "background", path, (v, p) => choice(v, p, ["none", "scrim"]));
   optional(data, "position", path, (v, p) =>
-    choice(v, p, ["center", "bottom"]),
+    choice(v, p, ["top", "center", "bottom"]),
   );
+  for (const field of ["fadeIn", "fadeOut"])
+    optional(data, field, path, (v, p) => number(v, p, 0, 10));
+  optional(data, "bottomInset", path, (v, p) => number(v, p, 0, 0.45));
   return data as unknown as TitleStyle;
 }
 

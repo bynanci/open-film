@@ -233,7 +233,12 @@ export interface TitleStyle {
   maxWidth?: number;
   align?: "left" | "center" | "right";
   background?: "none" | "scrim";
-  position?: "center" | "bottom";
+  position?: "top" | "center" | "bottom";
+  /** Timeline seconds, rounded to output frames; absent preserves a hard cut. */
+  fadeIn?: number;
+  fadeOut?: number;
+  /** Bottom edge inset as a fraction of frame height, including the scrim. */
+  bottomInset?: number;
 }
 export interface AudioAutomation {
   version: 1;

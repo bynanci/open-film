@@ -32,7 +32,10 @@ export interface ResolvedTitleStyle {
   maxWidth: number;
   align: "left" | "center" | "right";
   background: "none" | "scrim";
-  position: "center" | "bottom";
+  position: "top" | "center" | "bottom";
+  fadeIn: number;
+  fadeOut: number;
+  bottomInset: number;
 }
 
 export interface TitleLine {
@@ -95,10 +98,18 @@ export function resolveTitleStyle(
     style?.background ?? (role === "film-title" ? "none" : "scrim");
   const position =
     style?.position ?? (role === "film-title" ? "center" : "bottom");
+  const fadeIn = style?.fadeIn ?? 0;
+  const fadeOut = style?.fadeOut ?? 0;
+  for (const value of [fadeIn, fadeOut])
+    if (!Number.isFinite(value) || value < 0 || value > 10)
+      throw new Error("Title fades must be between zero and ten seconds.");
+  const bottomInset = style?.bottomInset ?? 0.08;
+  if (!Number.isFinite(bottomInset) || bottomInset < 0 || bottomInset > 0.45)
+    throw new Error("Title bottom inset must be between zero and 0.45.");
   if (
     !["left", "center", "right"].includes(align) ||
     !["none", "scrim"].includes(background) ||
-    !["center", "bottom"].includes(position)
+    !["top", "center", "bottom"].includes(position)
   )
     throw new Error(
       "Choose a supported title alignment, background and position.",
@@ -115,6 +126,9 @@ export function resolveTitleStyle(
     align,
     background,
     position,
+    fadeIn,
+    fadeOut,
+    bottomInset,
   };
 }
 
@@ -157,6 +171,7 @@ export function layoutTitleText(
     resolved.background === "scrim" ? resolved.fontSize * 0.35 : 0;
   const safeX = frame.width * 0.08 + padding;
   const safeY = frame.height * 0.08 + padding;
+  const bottomSafeY = frame.height * resolved.bottomInset + padding;
   const maxWidth = Math.min(resolved.maxWidth, frame.width - safeX * 2);
   if (maxWidth <= 0)
     throw new Error("The title cannot fit this frame. Reduce the font size.");
@@ -257,14 +272,20 @@ export function layoutTitleText(
     ascent + descent,
   );
   const textHeight = ascent + descent + pitch * Math.max(0, rows.length - 1);
-  if (textHeight > frame.height - safeY * 2)
+  const availableHeight =
+    frame.height -
+    safeY -
+    (resolved.position === "bottom" ? bottomSafeY : safeY);
+  if (textHeight > availableHeight)
     throw new Error(
       "Title text overflows the frame. Reduce its size or split it into shorter cues.",
     );
   const top =
-    resolved.position === "center"
-      ? (frame.height - textHeight) / 2
-      : frame.height - safeY - textHeight;
+    resolved.position === "top"
+      ? safeY
+      : resolved.position === "center"
+        ? (frame.height - textHeight) / 2
+        : frame.height - bottomSafeY - textHeight;
   const lines = rows.map((value, index): TitleLine => {
     const item = rowMetrics[index]!;
     const x =

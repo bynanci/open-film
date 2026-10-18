@@ -221,6 +221,100 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
 }
 
 describe("recoverable legacy title styles", () => {
+  it("places a title above faces without losing its typography or fades", async () => {
+    const clip: core.Clip = {
+      ...legacy,
+      titleStyle: {
+        version: 1,
+        role: "subtitle",
+        fontSize: 44,
+        fontWeight: 700,
+        fadeIn: 0.2,
+        fadeOut: 0.3,
+        bottomInset: 0.15,
+      },
+    };
+    const mounted = await mount("en-US", en, clip);
+    const select = flatten(mounted.root).find(
+      (item) =>
+        item.props["aria-label"] ===
+        mounted.label("editor.presentation.titlePosition"),
+    )!;
+    const top = select.options.find((option) => option.value === "top");
+    expect(
+      top,
+      "Top placement must be available to avoid covering faces",
+    ).toBeDefined();
+    (select.props["onUpdate:modelValue"] as (value: string) => void)("top");
+    await vue.nextTick();
+    (select.props.onChange as () => void)();
+    expect(mounted.commands.at(-1)).toMatchObject({
+      type: "presentation",
+      titleStyle: { ...clip.titleStyle, position: "top" },
+    });
+  });
+
+  it("edits typography, fades and percent inset without dropping other authored fields", async () => {
+    const clip: core.Clip = {
+      ...legacy,
+      titleStyle: {
+        version: 1,
+        role: "subtitle",
+        fontFamily: "Microsoft JhengHei",
+        fontSize: 40,
+        fontWeight: 700,
+        tracking: 1,
+        lineHeight: 1.25,
+        maxWidth: 900,
+        position: "center",
+        background: "none",
+        fadeIn: 0.2,
+        fadeOut: 0.3,
+        bottomInset: 0.15,
+      },
+    };
+    const mounted = await mount("en-US", en, clip);
+    const edits = [
+      ["titleFontSize", "fontSize", 44, 44],
+      ["titleFontWeight", "fontWeight", 600, 600],
+      ["titleFadeIn", "fadeIn", 0.4, 0.4],
+      ["titleFadeOut", "fadeOut", 0.5, 0.5],
+      ["titleBottomInset", "bottomInset", 20, 0.2],
+    ] as const;
+    let acknowledged = clip;
+    for (const [label, field, entered, expected] of edits) {
+      const input = flatten(mounted.root).find(
+        (item) =>
+          item.props["aria-label"] ===
+          mounted.label(`editor.presentation.${label}`),
+      );
+      expect(input, `Missing editable ${field} control`).toBeDefined();
+      (input!.props["onUpdate:modelValue"] as (value: number) => void)(entered);
+      await vue.nextTick();
+      (input!.props.onChange as () => void)();
+      const command = mounted.commands.at(-1);
+      expect(command).toEqual({
+        type: "presentation",
+        clipId: clip.id,
+        title: clip.title,
+        titleStyle: { ...acknowledged.titleStyle, [field]: expected },
+      });
+      acknowledged = {
+        ...acknowledged,
+        titleStyle: { ...acknowledged.titleStyle!, [field]: expected },
+      };
+      await mounted.update(acknowledged);
+    }
+    // Undo/Redo delivers saved immutable clip snapshots, not stale local fields.
+    await mounted.update(clip);
+    const inset = flatten(mounted.root).find(
+      (item) =>
+        item.props["aria-label"] ===
+        mounted.label("editor.presentation.titleBottomInset"),
+    )!;
+    expect(inset.value).toBe(15);
+  });
+
   it.each([
     ["en-US", en],
     ["zh-TW", zh],

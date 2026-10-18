@@ -8,6 +8,7 @@ import {
   evaluateClipAtTime,
   assetDisplayDimensions,
   resolveClipGeometry,
+  titleOpacityAtTime,
   type Clip,
   type FilmLook,
   type MediaAsset,
@@ -39,6 +40,14 @@ const lookStyle = computed(() =>
     : {},
 );
 const time = ref(0);
+const titleOpacity = computed(() =>
+  titleOpacityAtTime(
+    props.clip.titleStyle,
+    time.value,
+    props.clip.timelineDuration,
+    props.frame.frameRate,
+  ),
+);
 const playing = ref(false);
 const failedSources = ref(new Set<string>());
 const titleFailed = ref(false);
@@ -213,6 +222,7 @@ defineExpose({ toggle, pause });
         class="photo-presentation-title"
         :src="titleUrl"
         :alt="clip.title"
+        :style="{ opacity: titleOpacity }"
         draggable="false"
         @load="titleFailed = false"
         @error="titleFailed = true"

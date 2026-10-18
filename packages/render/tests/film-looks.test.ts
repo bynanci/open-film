@@ -2,7 +2,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import {
   FILM_LOOK_PRESETS,
@@ -144,7 +144,7 @@ function closeChannels(actual: number[], expected: number[], tolerance = 3) {
 }
 it("renders all six shared matrices with distinct pixels and correct strength", async () => {
   const { asset, composition, render } = await fixture();
-  const source = sample(await decode(new URL(asset.uri).pathname));
+  const source = sample(await decode(fileURLToPath(asset.uri)));
   const signatures: string[] = [];
   for (const preset of FILM_LOOK_PRESETS.filter(({ id }) => id !== "none")) {
     const recipe = look(preset.id);
@@ -190,7 +190,7 @@ it("preserves legacy decoded pixels exactly for none, strength zero and omitted 
 });
 it("resolves film, beat, clip, explicit none and zero strength on actual frames", async () => {
   const { asset, composition, render } = await fixture();
-  const source = sample(await decode(new URL(asset.uri).pathname));
+  const source = sample(await decode(fileURLToPath(asset.uri)));
   const clips: Clip[] = [
     { ...composition.tracks[0]!.clips[0]!, id: "film" },
     { ...composition.tracks[0]!.clips[0]!, id: "beat", beatId: "scene" },
@@ -299,7 +299,7 @@ it("grades both diptych sources while leaving the gap, letterbox and title color
     ],
   };
   const result = await render(film, "diptych-title");
-  const source = sample(await decode(new URL(asset.uri).pathname));
+  const source = sample(await decode(fileURLToPath(asset.uri)));
   closeChannels(
     sample(result.pixels, 30, 45),
     transformed(source, look("retro")),
@@ -325,7 +325,7 @@ it("grades video sources and keeps different looks through a crossfade", async (
     "-loop",
     "1",
     "-i",
-    new URL(asset.uri).pathname,
+    fileURLToPath(asset.uri),
     "-t",
     "1",
     "-c:v",

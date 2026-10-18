@@ -14,6 +14,7 @@ import {
 } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "@openfilm/media";
 import type { RenderSettings } from "./index.js";
+import { resolveRenderQuality } from "./quality.js";
 
 export interface RenderLookEvidence {
   clipId: string;
@@ -127,6 +128,7 @@ export async function writeRenderManifest(
   signal?: AbortSignal,
   project?: RenderProjectEvidence,
   looks: RenderLookConfiguration = { override: null, clips: [] },
+  encoding = resolveRenderQuality(),
 ): Promise<void> {
   const json = JSON.stringify(composition);
   const registry = FILM_LOOK_PRESETS.map(({ id, matrix }) => ({ id, matrix }));
@@ -186,8 +188,8 @@ export async function writeRenderManifest(
     },
     encoding: {
       video: "libx264",
-      preset: "veryfast",
-      crf: 23,
+      preset: encoding.preset,
+      crf: encoding.crf,
       pixelFormat: "yuv420p",
       audio: "aac",
       sampleRate: 48000,

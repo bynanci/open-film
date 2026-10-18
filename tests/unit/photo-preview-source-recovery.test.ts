@@ -21,7 +21,7 @@ async function settle() {
   await vue.nextTick();
   await vue.nextTick();
 }
-async function mountPhoto(diptych = false) {
+async function mountPhoto(diptych = false, titled = false) {
   vi.stubGlobal("cancelAnimationFrame", () => {});
   const component = loadComponent(
     "apps/desktop/src/components/PhotoPresentationPreview.vue",
@@ -41,6 +41,17 @@ async function mountPhoto(diptych = false) {
     assetId: "primary",
     timelineStart: 0,
     timelineDuration: 5,
+    ...(titled
+      ? {
+          title: "A shared memory",
+          titleStyle: {
+            version: 1 as const,
+            role: "subtitle" as const,
+            fadeIn: 1,
+            fadeOut: 1,
+          },
+        }
+      : {}),
     layout: diptych
       ? { version: 1, preset: "diptych", secondary: { assetId: "secondary" } }
       : { version: 1, preset: "contain" },
@@ -67,8 +78,9 @@ async function mountPhoto(diptych = false) {
     active: true,
     sourceVersion: 1,
   });
+  const controls = hostNode("div");
   const { root, unmount } = mountComponent(component, props, {
-    "#photo-controls": hostNode("div"),
+    "#photo-controls": controls,
   });
   cleanup.push(unmount);
   await settle();
@@ -87,8 +99,30 @@ async function mountPhoto(diptych = false) {
     (image.props.onLoad as (() => void) | undefined)?.();
     await settle();
   };
-  return { props, images, failed, error, load };
+  const seek = async (time: number) => {
+    const slider = flatten(controls).find((item) => item.tag === "input")!;
+    (slider.props.onInput as (event: unknown) => void)({
+      target: { value: time },
+    });
+    await settle();
+  };
+  return { props, images, failed, error, load, seek };
 }
+
+it("fades attached photo text on the shared frame clock without fading the photo", async () => {
+  const photo = await mountPhoto(false, true);
+  const title = () =>
+    photo.images().find((image) => image.props.src === "/title.png")!;
+  const opacity = () => (title().props.style as { opacity: number })?.opacity;
+  expect(opacity()).toBe(0);
+  await photo.seek(0.5);
+  expect(opacity()).toBe(0.5);
+  await photo.seek(2);
+  expect(opacity()).toBe(1);
+  await photo.seek(5 - 1 / 24);
+  expect(opacity()).toBe(0);
+  expect(photo.images()[0]!.props.style).not.toHaveProperty("opacity");
+});
 
 it("reloads a failed photo after a same-ID URI relink and ignores the removed source error", async () => {
   const photo = await mountPhoto();

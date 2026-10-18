@@ -5,6 +5,7 @@ import {
   resolveTitleStyle,
   type TitleTextMeasure,
 } from "../src/title-layout.js";
+import { validateTitleStyle } from "../src/validation.js";
 
 const frame = { width: 640, height: 360 };
 // Deliberately proportional metrics prove wrapping uses the selected face's
@@ -20,6 +21,71 @@ const measure: TitleTextMeasure = (text, size, tracking) => ({
 });
 
 describe("measured title layout", () => {
+  it("supports a safe top-right title without changing the bottom inset", () => {
+    const style = {
+      version: 1 as const,
+      role: "subtitle" as const,
+      fontSize: 20,
+      position: "top" as const,
+      align: "right" as const,
+      background: "scrim" as const,
+      bottomInset: 0.45,
+    };
+    expect(validateTitleStyle(style).position).toBe("top");
+    const layout = layoutTitleText("字幕", style, frame, measure);
+    expect(layout.bounds.y).toBeCloseTo(28.8);
+    expect(layout.bounds.x + layout.bounds.width).toBeCloseTo(588.8);
+    expect(layout.bounds.height).toBe(34);
+    expect(
+      layoutTitleText("字幕", { ...style, bottomInset: 0 }, frame, measure)
+        .bounds,
+    ).toEqual(layout.bounds);
+    expect(resolveTitleStyle(undefined, frame).position).toBe("bottom");
+  });
+
+  it("places the complete bottom scrim at the authored inset", () => {
+    const style = {
+      version: 1 as const,
+      role: "subtitle" as const,
+      fontSize: 20,
+      background: "scrim" as const,
+    };
+    const original = layoutTitleText("字幕", style, frame, measure);
+    const raised = layoutTitleText(
+      "字幕",
+      { ...style, bottomInset: 0.15 },
+      frame,
+      measure,
+    );
+    expect(original.bounds.y + original.bounds.height).toBeCloseTo(331.2);
+    expect(raised.bounds.y + raised.bounds.height).toBeCloseTo(306);
+    expect(raised.bounds.height).toBe(original.bounds.height);
+    const edge = layoutTitleText(
+      "字幕",
+      { ...style, bottomInset: 0 },
+      frame,
+      measure,
+    );
+    expect(edge.bounds.y + edge.bounds.height).toBe(360);
+  });
+
+  it("reserves top safety space for raised multiline titles but leaves centered titles unchanged", () => {
+    const style = {
+      version: 1 as const,
+      role: "subtitle" as const,
+      fontSize: 20,
+    };
+    const text = "字幕\n".repeat(7) + "字幕";
+    expect(() =>
+      layoutTitleText(text, { ...style, bottomInset: 0.45 }, frame, measure),
+    ).toThrow(/overflow/iu);
+    const centered = { ...style, position: "center" as const };
+    expect(
+      layoutTitleText(text, { ...centered, bottomInset: 0.45 }, frame, measure)
+        .bounds,
+    ).toEqual(layoutTitleText(text, centered, frame, measure).bounds);
+  });
+
   it("rejects input above the shared mutation bound before font measurement", () => {
     let measured = false;
     expect(() =>

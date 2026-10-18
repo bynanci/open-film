@@ -16,6 +16,7 @@ import {
   resolveFilmLook,
   resolvePreviewClipGeometry,
   evaluateAudioGain,
+  titleOpacityAtTime,
   type Clip,
   type FrameSize,
   type Job,
@@ -269,8 +270,28 @@ const playbackAsset = computed(
 const photoPresentationActive = computed(
   () =>
     playbackAsset.value?.mediaType === "image" &&
-    !!(playbackClip.value?.layout || playbackClip.value?.motion),
+    !!(
+      playbackClip.value?.layout ||
+      playbackClip.value?.motion ||
+      (playbackClip.value?.title &&
+        ((playbackClip.value.titleStyle?.fadeIn ?? 0) > 0 ||
+          (playbackClip.value.titleStyle?.fadeOut ?? 0) > 0))
+    ),
 );
+const playbackTitleOpacity = computed(() => {
+  const clip = playbackClip.value;
+  if (!clip) return 0;
+  const localTime =
+    playbackAsset.value?.mediaType === "video"
+      ? (sourceTime.value - (clip.sourceIn ?? 0)) / (clip.transform?.speed ?? 1)
+      : 0;
+  return titleOpacityAtTime(
+    clip.titleStyle,
+    localTime,
+    clip.timelineDuration,
+    props.projectSettings.frameRate,
+  );
+});
 const filmLookFilterId = `film-look-${useId().replaceAll(":", "")}`;
 const playbackLook = computed(() =>
   state.value && playbackClip.value && lookEligible.value
@@ -957,6 +978,40 @@ const fitPreviewAfter = computed(() => {
 const playbackClip = computed(
   () => directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value,
 );
+// Media timeupdate events can be too sparse for short fades. Read the actual
+// player clock between events; captions still use the shared timeline evaluator.
+const titleClockNeeded = computed(
+  () =>
+    playing.value &&
+    props.active &&
+    editMode.value === "story" &&
+    playbackAsset.value?.mediaType === "video" &&
+    !!playbackClip.value?.title &&
+    ((playbackClip.value.titleStyle?.fadeIn ?? 0) > 0 ||
+      (playbackClip.value.titleStyle?.fadeOut ?? 0) > 0),
+);
+let titleAnimation = 0;
+function stopTitleClock() {
+  if (titleAnimation) cancelAnimationFrame(titleAnimation);
+  titleAnimation = 0;
+}
+function tickTitleClock() {
+  titleAnimation = 0;
+  if (
+    !titleClockNeeded.value ||
+    !sourcePlayer.value ||
+    sourcePlayer.value.paused
+  )
+    return;
+  updateSourceTime();
+  if (titleClockNeeded.value && !sourcePlayer.value?.paused)
+    titleAnimation = requestAnimationFrame(tickTitleClock);
+}
+watch(titleClockNeeded, (needed) => {
+  stopTitleClock();
+  if (needed) titleAnimation = requestAnimationFrame(tickTitleClock);
+});
+onBeforeUnmount(stopTitleClock);
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -1729,6 +1784,7 @@ onBeforeUnmount(() => {
                       )
                     "
                     :alt="selectedClip.title"
+                    :style="{ opacity: playbackTitleOpacity }"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />
@@ -1793,6 +1849,7 @@ onBeforeUnmount(() => {
                       )
                     "
                     :alt="selectedClip.title"
+                    :style="{ opacity: playbackTitleOpacity }"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />

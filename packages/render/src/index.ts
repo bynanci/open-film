@@ -7,6 +7,8 @@ import { photoPresentationFilters } from "./photo-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
 import { createTitleOverlay } from "./titles.js";
+import { resolveRenderQuality, type RenderQuality } from "./quality.js";
+export type { RenderQuality } from "./quality.js";
 import {
   publishRenderPair,
   validateRenderTargets,
@@ -28,6 +30,7 @@ export {
 import {
   resolveClipGeometry,
   resolveFilmLook,
+  resolveTitleFadeFrames,
   validateFilmLook,
   filmLookMatrix,
   type FilmLook,
@@ -56,6 +59,8 @@ export interface RenderOptions {
   project?: RenderProjectEvidence;
   /** Null or omitted preserves each clip's saved film, scene and clip choices. */
   lookOverride?: FilmLook | null;
+  /** Preview preserves the existing encoder; lossless is intended for intermediates. */
+  quality?: RenderQuality;
 }
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
@@ -100,6 +105,8 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    const encoding = resolveRenderQuality(options.quality);
+    const scaling = encoding.lanczos ? ":flags=lanczos" : "";
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
@@ -307,8 +314,23 @@ export class FFmpegRenderer {
             );
             const titleInput = inputIndex++;
             const titleLabel = `title${suffix}`;
+            const { fadeInFrames, fadeOutFrames, frameCount } =
+              resolveTitleFadeFrames(
+                clip.titleStyle,
+                duration,
+                outputFrameRate,
+              );
+            const alpha = ["format=rgba"];
+            if (fadeInFrames)
+              alpha.push(`fade=t=in:s=0:n=${fadeInFrames}:alpha=1`);
+            if (fadeOutFrames)
+              alpha.push(
+                `fade=t=out:s=${frameCount - 1 - fadeOutFrames}:n=${fadeOutFrames}:alpha=1`,
+              );
+            // Count local raster frames before moving the title onto the timeline.
+            // Media trim/speed must not alter an attached caption's fade clock.
             filters.push(
-              `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
+              `[${titleInput}:v]${alpha.join(",")},setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
             );
             filters.push(
               `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(duration)})'[${titleLabel}]`,
@@ -385,11 +407,11 @@ export class FFmpegRenderer {
             // avoid version-specific scale reset_sar and an intermediate resize.
             const displayAspect = "iw/ih*if(gt(sar,0),sar,1)";
             transform.push(
-              `scale=w='min(${settings.width},${settings.height}*(${displayAspect}))':h='min(${settings.height},${settings.width}/(${displayAspect}))'`,
+              `scale=w='min(${settings.width},${settings.height}*(${displayAspect}))':h='min(${settings.height},${settings.width}/(${displayAspect}))'${scaling}`,
             );
             if (geometry.scale !== 1)
               transform.push(
-                `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})`,
+                `scale=ceil(iw*${number(geometry.scale)}):ceil(ih*${number(geometry.scale)})${scaling}`,
               );
             // Rotation must happen in an alpha-capable format. Otherwise transparent
             // rotated corners become black and diverge from the browser preview.
@@ -425,6 +447,7 @@ export class FFmpegRenderer {
                   duration: displayedDuration,
                   signal: options.signal,
                   look: resolvedLooks.get(clip),
+                  lanczos: encoding.lanczos,
                 },
               );
               args.push(...presentation.args);
@@ -490,9 +513,9 @@ export class FFmpegRenderer {
         "-threads",
         "1",
         "-preset",
-        "veryfast",
+        encoding.preset,
         "-crf",
-        "23",
+        String(encoding.crf),
         "-pix_fmt",
         "yuv420p",
         "-r",
@@ -559,6 +582,7 @@ export class FFmpegRenderer {
         options.signal,
         project,
         { override: lookOverride, clips: looks },
+        encoding,
       );
       await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;
