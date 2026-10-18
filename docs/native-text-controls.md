@@ -94,13 +94,16 @@ pixels/bytes. Bottom distances include the complete visible scrim bounds at 0%,
 8%, 20% and 30%; centered text ignores the stored bottom distance. These are
 generated SDR fixtures, not display/HDR quality evidence.
 
-The candidate's non-port unit/integration gate passed **175 files / 2,613 tests**
+The earlier isolated native-text non-port gate passed **175 files / 2,613 tests**
 using `pnpm exec vitest run --exclude tests/unit/native-benchmark-runner.test.ts`.
 The benchmark runner was intentionally queued separately because another task
 owned its fixed service port. The build, TypeScript/Vue checks, lint, i18n coverage
-(1,370 semantic keys) and official OTIO validation (18 tests) also passed. Local
-browser/native-runner execution, final source revision and exact-head CI remain
-pending and must be recorded before merge readiness is claimed.
+(1,370 semantic keys) and official OTIO validation (18 tests) also passed.
+Those development results precede integration. The combined source candidate
+passed **179 files / 2,707 non-port tests** and **24 browser cases**, including
+native text, photo pull-out and export quality. See
+[combined verification](validation-quality-controls.md) for source identity,
+screenshots and the final full-gate / CI reporting contract.
 
 Correctness review also exercises a real **Fit to Duration → Preview** action.
 Reviewed plans remain plain data in a shallow Vue ref so their command arrays

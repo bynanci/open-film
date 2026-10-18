@@ -9,21 +9,22 @@ system or downstream NLE. Commands and test responsibilities are in
 
 Contract: [photo-film quality](docs/photo-film-quality.md#photo-pull-out).
 
-- [ ] Let people choose a bounded pull-out movement on a still photo, including
+- [x] Let people choose a bounded pull-out movement on a still photo, including
       Original layout, without silently replacing its layout or static transform.
 - [x] Preserve motion through validated commands, retry, Undo/Redo and reopen;
       retain text, soundtrack, timing and protected clips during regeneration.
       Focused application/solver regressions pass (101 tests in two files).
-- [ ] Verify shared preview/render endpoints, localized motion controls and
-      candidate regression gates before claiming the feature complete.
+- [x] Verify shared preview/render endpoints and localized motion controls with
+      generated output frames and the integrated 24-case browser regression.
 - [ ] Manual: real display/camera quality and downstream NLE motion recreation
       remain workstation checks.
 
 ## Current — Native on-screen text control follow-up
 
 Scope and development evidence: [native text controls](docs/native-text-controls.md).
-The full feature remains under candidate verification; these entries must be
-checked only after implementation, relevant tests and UI validation agree.
+Checked entries require implementation, relevant tests and UI validation.
+Final full-gate and published exact-head results belong to the integrating PR;
+see [combined evidence](docs/validation-quality-controls.md).
 
 - [x] Let people fade native text and its scrim without fading the photo, video,
       transport or audio, with clip-local preview/render timing.
@@ -34,8 +35,8 @@ checked only after implementation, relevant tests and UI validation agree.
 - [x] Preserve authored fade/margin through command validation, all lock sources,
       exact retry, Undo/Redo, replacement, trim/speed/split and saved reopening;
       focused application/solver regressions pass (88 tests in two files).
-- [ ] Verify localized controls, decoded output pixels and browser behavior,
-      then pass the candidate regression gates and correctness review.
+- [x] Verify localized controls, decoded output pixels and browser behavior;
+      integrated focused browser and independent correctness reviews pass.
 - [ ] Manual: native display/projector readability and actual NLE title finishing
       remain workstation gates; native text styling does not add SRT/VTT burn-in.
 
@@ -50,10 +51,14 @@ Evidence: [focused validation](docs/validation-export-quality.md).
       preview/MP4 snapshot without changing source, music, frame or edit data.
 - [x] Record actual encoder settings and verify generated x264 SEI, decoded audio,
       original hashes, HTTP/CLI guards and localized accessible component behavior.
-- [ ] Complete combined-candidate browser/full regression and published CI gates;
-      the added browser scenarios remain separate from executed focused tests.
+- [x] Exercise combined controls in 24 browser cases, including four export
+      locales and saved-data isolation; preserve the source/output distinction.
 - [ ] Manual: judge private-film readability and camera/display/projection quality
       on intended hardware; installer and actual Resolve gates remain open.
+
+Release gate: the integrating PR records the complete serial regression and
+exact-head CI results. Merge requires green checks and no correctness blocker;
+focused tests alone do not satisfy this gate.
 
 ## Implemented — Original film looks
 

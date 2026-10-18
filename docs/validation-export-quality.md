@@ -46,14 +46,17 @@ belong to the integrating PR.
 - Repository format check, i18n coverage, lint and TypeScript/Vue type checking
   pass in this isolated worktree. No dependency or schema migration is needed.
 
-## Integration gate pending
+## Integration record
 
 The four-locale browser spec covers 1024, 1280, 1440 and 1920 widths, original
 action visibility, overflow, accessibility and saved-data isolation. It has been
-added for the integrating PR and has not yet been run in this isolated worktree.
-Full format/i18n/lint/typecheck/unit/build/browser/interchange/native and remote
-CI results must be recorded for that combined candidate. Focused success does
-not substitute for those gates.
+added in the isolated worktree, then executed in the combined candidate:
+all four locale cases pass as part of **24 browser cases**, alongside **179
+files / 2,707 non-port unit/integration cases**. See
+[combined verification](validation-quality-controls.md). Full
+format/i18n/lint/typecheck/unit/build/browser/interchange/native and remote CI
+results are recorded on the integrating PR. Focused success does not substitute
+for those gates.
 
 No speed, size or subjective-image benchmark is claimed. Native Windows/macOS,
 actual camera/HDR, intended-display/projection and real Resolve gates remain open.
