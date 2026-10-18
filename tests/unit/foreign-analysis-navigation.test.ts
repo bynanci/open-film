@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -25,12 +27,15 @@ const functions = [
   "cacheAssets",
   "protectDrafts",
   "changeWorkspace",
+  "resetJobView",
 ];
 // Execute App's actual reactive job state, close operation and draft flush.
 // The headless host supplies only external I/O and the editor's public flush.
 const code = transformSync(
   [
     "let statusGeneration = 0, jobsGeneration = 0, analysisRecoveryGeneration = 0;",
+    'let lastJobSignature = "", pendingMediaRefresh, mediaRefreshOwner;',
+    "const EMPTY_ANALYSIS_RECOVERY = Object.freeze({});",
     source.slice(activeStart, activeEnd),
     ...functions.map((name) => {
       let start = source.indexOf(`function ${name}(`);
@@ -109,6 +114,8 @@ function host(
     assetCache,
     assetMutations: new Map<string, number>(),
     assets: vue.ref(Object.values(assetCache.value)),
+    total: vue.ref(Object.keys(assetCache.value).length),
+    librarySummary: vue.ref({ total: 1, images: 1, videos: 0, audio: 0 }),
     patch: vi.fn(async (_path: string, body: { tags: string[] }) => ({
       asset: { id: "memory", tags: body.tags },
     })),
@@ -164,6 +171,8 @@ describe("project navigation during analysis owned by another process", () => {
     "can leave a foreign $status $type without cancelling or recovering it",
     async ({ type, status }) => {
       const h = host([analysisJob(type, status)]);
+      const originalJobs = h.jobs.value;
+      const originalRecovery = h.analysisRecovery.value;
       const before = JSON.stringify({
         job: h.jobs.value,
         recovery: h.analysisRecovery.value,
@@ -176,11 +185,17 @@ describe("project navigation during analysis owned by another process", () => {
       expect(h.flush).toHaveBeenCalledOnce();
       expect(
         JSON.stringify({
-          job: h.jobs.value,
-          recovery: h.analysisRecovery.value,
+          job: originalJobs,
+          recovery: originalRecovery,
           project: h.originalProject,
         }),
       ).toBe(before);
+      expect(h.jobs.value).toEqual([]);
+      expect(h.analysisRecovery.value).toEqual({});
+      expect(h.assets.value).toEqual([]);
+      expect(h.assetCache.value).toEqual({});
+      expect(h.selectedAssetId.value).toBe("");
+      expect(h.total.value).toBe(0);
     },
   );
 
@@ -206,13 +221,16 @@ describe("project navigation during analysis owned by another process", () => {
         ownerState,
         manualRecoveryAllowed: true,
       });
+      const originalJob = h.jobs.value[0]!;
+      const originalRecovery = h.analysisRecovery.value["foreign-analysis"]!;
       expect(h.buttonDisabled()).toBe(false);
       await h.changeWorkspace();
       expect(h.post).toHaveBeenCalledExactlyOnceWith("/project/close");
-      expect(h.jobs.value[0]!.status).toBe("running");
-      expect(h.analysisRecovery.value["foreign-analysis"]!.ownerState).toBe(
-        ownerState,
-      );
+      expect(originalJob.status).toBe("running");
+      expect(originalRecovery.ownerState).toBe(ownerState);
+      expect(h.project.value).toBeNull();
+      expect(h.jobs.value).toEqual([]);
+      expect(h.analysisRecovery.value).toEqual({});
     },
   );
 
