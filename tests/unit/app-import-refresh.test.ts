@@ -54,6 +54,11 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 type JobSnapshot = { jobs: Job[] };
+type AssetSnapshot = { assets: { id: string }[]; total: number };
+const assetsCode = transformSync(
+  `let assetsGeneration = 0;\n${appFunction("reloadAssets")}`,
+  { loader: "ts", format: "esm" },
+).code;
 const imported = (status: Job["status"] = "completed"): Job => ({
   id: "second-import",
   type: "import",
@@ -65,9 +70,10 @@ async function turn() {
 }
 function host(
   options: {
-    onReload?: (attempt: number) => Promise<void> | void;
-    onProject?: (attempt: number) => Promise<void>;
+    onReload?: (attempt: number) => Promise<void | boolean> | void | boolean;
+    onProject?: (attempt: number) => Promise<void | boolean>;
     onMediaStatus?: (attempt: number) => Promise<boolean>;
+    realAssets?: boolean;
   } = {},
 ) {
   const reads: ReturnType<typeof deferred<JobSnapshot>>[] = [];
@@ -80,11 +86,20 @@ function host(
   const busy = ref("");
   const error = ref<unknown>("");
   const analysisRecovery = ref<Record<string, unknown>>({});
+  const assetReads: ReturnType<typeof deferred<AssetSnapshot>>[] = [];
+  const assets = ref<{ id: string }[]>([]);
+  const search = ref("");
   const dependencies = {
     api: {
       jobs: () => {
         const read = deferred<JobSnapshot>();
         reads.push(read);
+        return read.promise;
+      },
+      assets: () => {
+        refreshes.assets++;
+        const read = deferred<AssetSnapshot>();
+        assetReads.push(read);
         return read.promise;
       },
     },
@@ -96,6 +111,19 @@ function host(
     notice: ref<unknown>(null),
     relinkBusy: ref(false),
     analysisRecovery,
+    assets,
+    search,
+    assetMutations: new Map(),
+    offset: ref(0),
+    pageSize: 60,
+    libraryFilter: ref("all"),
+    sourceStatuses: ref({}),
+    groupSelection: ref(null),
+    stateFilter: ref(""),
+    mediaFilter: ref(""),
+    total: ref(0),
+    librarySummary: ref({ total: 0, images: 0, videos: 0, audio: 0 }),
+    cacheFetchedAssets: (incoming: { id: string }[]) => incoming,
     storyScriptReview: ref(null),
     post: (path: string, body: unknown) => {
       posts.push({ path, body });
@@ -104,17 +132,26 @@ function host(
     message: (key: string) => key,
     reloadAssets: () => {
       refreshes.assets++;
-      return options.onReload?.(refreshes.assets) ?? Promise.resolve();
+      const result = options.onReload?.(refreshes.assets);
+      return Promise.resolve(result).then((applied) => applied ?? true);
     },
     refreshProject: async () => {
       refreshes.project++;
-      await options.onProject?.(refreshes.project);
+      return (await options.onProject?.(refreshes.project)) ?? true;
     },
     checkMediaStatus: async () => {
       refreshes.media++;
       return (await options.onMediaStatus?.(refreshes.media)) ?? true;
     },
   };
+  if (options.realAssets) {
+    dependencies.reloadAssets = new Function(
+      "dependencies",
+      `const {${Object.keys(dependencies)
+        .filter((name) => name !== "reloadAssets")
+        .join(",")}} = dependencies;\n${assetsCode}\nreturn reloadAssets;`,
+    )(dependencies) as () => Promise<boolean>;
+  }
   const app = new Function(
     "dependencies",
     `const {${Object.keys(dependencies).join(",")}} = dependencies;\n${code}\nreturn {${names.join(",")}};`,
@@ -128,6 +165,11 @@ function host(
   };
   return {
     ...app,
+    reloadAssets: dependencies.reloadAssets,
+    assetReads,
+    assets,
+    search,
+    libraryFilter: dependencies.libraryFilter,
     analysisRecovery,
     acknowledgement,
     reads,
@@ -142,6 +184,46 @@ function host(
 }
 
 describe("App import completion refresh", () => {
+  it("retains pending import refresh when its actual asset read is superseded and the newer query fails", async () => {
+    const h = host({ realAssets: true });
+    h.jobs.value = [imported("running")];
+    const initial = h.refreshJobs();
+    h.reads[0]!.resolve({ jobs: [imported()] });
+    await turn();
+    expect(h.assetReads).toHaveLength(1);
+    h.search.value = "updated filter";
+    const filtered = h.reloadAssets();
+    h.assetReads[1]!.reject(new Error("Filtered media request failed"));
+    await expect(filtered).rejects.toThrow("Filtered media request failed");
+    h.assetReads[0]!.resolve({ assets: [{ id: "superseded" }], total: 1 });
+    await initial;
+    expect(h.assets.value).toEqual([]);
+    const retry = h.pollJobs();
+    h.reads[1]!.resolve({ jobs: [imported()] });
+    await turn();
+    expect(h.assetReads).toHaveLength(3);
+    h.assetReads[2]!.resolve({ assets: [{ id: "current-filter" }], total: 1 });
+    await retry;
+    expect(h.assets.value).toEqual([{ id: "current-filter" }]);
+    expect(h.refreshes).toEqual({ assets: 3, project: 1, media: 1 });
+  });
+
+  it("does not acknowledge an actual asset response owned by an older project", async () => {
+    const h = host({ realAssets: true });
+    const read = h.reloadAssets();
+    h.project.value = { id: "another-film" };
+    h.assetReads[0]!.resolve({ assets: [{ id: "old-project" }], total: 1 });
+    expect(await read).toBe(false);
+    expect(h.assets.value).toEqual([]);
+  });
+
+  it("acknowledges a current empty missing-media view without requesting assets", async () => {
+    const h = host({ realAssets: true });
+    h.libraryFilter.value = "missing";
+    expect(await h.reloadAssets()).toBe(true);
+    expect(h.assetReads).toHaveLength(0);
+  });
+
   it.each(["completed", "failed", "cancelled"] as const)(
     "refreshes media when import already %s before its first jobs read",
     async (status) => {
@@ -447,6 +529,21 @@ describe("App import completion refresh", () => {
     },
   );
 
+  it.each(["refreshJobs", "pollJobs"] as const)(
+    "%s retains pending work when a project read was discarded without throwing",
+    async (method) => {
+      const h = host({ onProject: async (attempt) => attempt > 1 });
+      h.jobs.value = [imported("running")];
+      const read = h[method]();
+      h.reads[0]!.resolve({ jobs: [imported()] });
+      await read;
+      const retry = h.pollJobs();
+      h.reads[1]!.resolve({ jobs: [imported()] });
+      await retry;
+      expect(h.refreshes).toEqual({ assets: 2, project: 2, media: 1 });
+    },
+  );
+
   it("an old project's worker cannot release or clear the new project's worker", async () => {
     const oldAssets = deferred<void>();
     const newAssets = deferred<void>();
@@ -556,7 +653,7 @@ const statusCode = transformSync(appFunction("checkMediaStatus"), {
   loader: "ts",
   format: "esm",
 }).code;
-function statusHost(reloadAssets: () => Promise<void> = async () => {}) {
+function statusHost(reloadAssets: () => Promise<boolean> = async () => true) {
   const reads: ReturnType<typeof deferred<unknown>>[] = [];
   const project = ref<{ id: string } | null>({ id: "our-film" });
   const mediaStatus = ref<unknown>({ prior: true });
@@ -643,6 +740,14 @@ describe("App media-status success contract", () => {
     expect(h.mediaStatusError.value).toBe(error);
   });
 
+  it("does not acknowledge a superseded missing-media Library refresh", async () => {
+    const h = statusHost(async () => false);
+    h.dependencies.libraryFilter.value = "missing";
+    const pending = h.checkMediaStatus();
+    h.reads[0]!.resolve({ missing: 2 });
+    expect(await pending).toBe(false);
+  });
+
   it("returns false without reading when no project is open", async () => {
     const h = statusHost();
     h.project.value = null;
@@ -669,12 +774,12 @@ it("checks pending refresh ownership inside the actual delayed project assignmen
   const refreshProject = new Function(
     "dependencies",
     `const {${Object.keys(dependencies).join(",")}} = dependencies;\nlet projectMutationVersion = 0;\n${projectCode}\nreturn refreshProject;`,
-  )(dependencies) as (owned: () => boolean) => Promise<void>;
+  )(dependencies) as (owned: () => boolean) => Promise<boolean>;
   const oldRead = refreshProject(() => project.value.id === "our-film");
   project.value = { id: "another-film" };
   projectPath.value = "/another-film.openfilm";
   response.resolve({ project: { id: "our-film" }, path: "/our-film.openfilm" });
-  await oldRead;
+  expect(await oldRead).toBe(false);
   expect(project.value.id).toBe("another-film");
   expect(projectPath.value).toBe("/another-film.openfilm");
   expect(connected.value).toBe(false);

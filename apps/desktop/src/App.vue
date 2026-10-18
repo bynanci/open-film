@@ -534,7 +534,8 @@ async function checkMediaStatus(): Promise<boolean> {
     const result = await api.mediaStatus();
     if (!owned()) return false;
     mediaStatus.value = result;
-    if (libraryFilter.value === "missing") await reloadAssets();
+    if (libraryFilter.value === "missing" && (await reloadAssets()) !== true)
+      return false;
     return owned();
   } catch (cause) {
     if (owned()) mediaStatusError.value = cause;
@@ -577,17 +578,20 @@ async function mediaRelinked(updated: MediaAsset[]) {
     relinkRefreshing.value = false;
   }
 }
-async function refreshProject(owned: () => boolean = () => true) {
+async function refreshProject(
+  owned: () => boolean = () => true,
+): Promise<boolean> {
   const mutationVersion = projectMutationVersion;
   const result = await api.project();
   // A pre-accept polling response must not erase a newly acknowledged plan.
-  if (mutationVersion !== projectMutationVersion || !owned()) return;
+  if (mutationVersion !== projectMutationVersion || !owned()) return false;
   project.value = result.project;
   projectPath.value = result.path;
   connected.value = true;
+  return true;
 }
-async function reloadAssets() {
-  if (!project.value) return;
+async function reloadAssets(): Promise<boolean> {
+  if (!project.value) return false;
   const projectId = project.value.id;
   const generation = ++assetsGeneration;
   const cachedBefore = new Map(assetMutations);
@@ -603,7 +607,7 @@ async function reloadAssets() {
       assets.value = [];
       total.value = 0;
       offset.value = 0;
-      return;
+      return true;
     }
     offset.value = Math.min(
       offset.value,
@@ -629,7 +633,7 @@ async function reloadAssets() {
   }
   const result = await api.assets(params);
   if (project.value?.id !== projectId || generation !== assetsGeneration)
-    return;
+    return false;
   assets.value = cacheFetchedAssets(result.assets, cachedBefore);
   if (result.summary) librarySummary.value = result.summary;
   total.value =
@@ -638,6 +642,7 @@ async function reloadAssets() {
           (status) => status.status !== "available",
         ).length
       : (groupSelection.value?.assetIds.length ?? result.total);
+  return true;
 }
 async function run(label: string, action: () => Promise<void>) {
   if (busy.value) return false;
@@ -974,7 +979,10 @@ async function selectLibraryFilter(value: typeof libraryFilter.value) {
   stateFilter.value = value === "favorite" || value === "rejected" ? value : "";
   if (value === "events" || value === "duplicates") {
     if (!analyzed.value) await analyze();
-  } else await run("findingMedia", reloadAssets);
+  } else
+    await run("findingMedia", async () => {
+      await reloadAssets();
+    });
 }
 const workflowSteps = computed<WorkflowStep[]>(() => {
   const hasMedia = (mediaStatus.value?.assets.length ?? total.value) > 0;
@@ -1052,9 +1060,9 @@ async function refreshPendingMedia(includeProject = true) {
   // Reserve the owner before any injected I/O can run or throw synchronously.
   const completion = Promise.resolve().then(async () => {
     try {
-      await reloadAssets();
+      if ((await reloadAssets()) !== true) return;
       if (!owned()) return;
-      if (includeProject) await refreshProject(owned);
+      if (includeProject && (await refreshProject(owned)) !== true) return;
       if (!owned()) return;
       if (pending.checkStatus && !(await checkMediaStatus())) return;
       if (owned()) pendingMediaRefresh = undefined;
@@ -1263,11 +1271,15 @@ async function rateAsset(asset: MediaAsset, rating: number) {
 async function applyFilters() {
   offset.value = 0;
   groupSelection.value = null;
-  await run("findingMedia", reloadAssets);
+  await run("findingMedia", async () => {
+    await reloadAssets();
+  });
 }
 async function changePage(direction: number) {
   offset.value = Math.max(0, offset.value + direction * pageSize);
-  await run("loadingMedia", reloadAssets);
+  await run("loadingMedia", async () => {
+    await reloadAssets();
+  });
 }
 async function analyze() {
   await run("findingMoments", async () => {
@@ -1286,7 +1298,9 @@ async function openGroup(group: {
 }) {
   groupSelection.value = group;
   offset.value = 0;
-  await run("openingMoment", reloadAssets);
+  await run("openingMoment", async () => {
+    await reloadAssets();
+  });
 }
 async function createStory() {
   if (!(await flushPending())) return;

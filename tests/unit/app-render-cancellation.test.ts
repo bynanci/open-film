@@ -128,9 +128,11 @@ function host() {
     message: (key: string) => key,
     reloadAssets: async () => {
       refreshes.assets++;
+      return true;
     },
     refreshProject: async () => {
       refreshes.project++;
+      return true;
     },
     checkMediaStatus: async () => true,
     previewVersion: ref(0),

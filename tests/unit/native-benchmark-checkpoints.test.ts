@@ -680,7 +680,7 @@ describe("actual workspace readiness guards", () => {
       workspaceInfo: ref(null),
       api: { workspace: async () => ({ systemLocale: "en-US" }) },
       initializeLocale: async () => {},
-      refreshProject: async () => {},
+      refreshProject: async () => true,
       refreshRecents: async () => {},
       restoreScriptReviewTarget: () => {},
       storyTitle: ref(""),
@@ -688,7 +688,7 @@ describe("actual workspace readiness guards", () => {
       targetDuration: ref(0),
       maxDuration: ref(0),
       rememberProject: () => {},
-      reloadAssets: async () => {},
+      reloadAssets: async () => true,
       // Initial media loading is separate from the native receipt/readiness
       // guards exercised here; its real helper has its own failure-path tests.
       refreshInitialMedia: async () => {},
@@ -1384,7 +1384,7 @@ describe("actual workspace readiness guards", () => {
         await action();
         return true;
       },
-      refreshProject: async () => {},
+      refreshProject: async () => true,
       refreshRecents: async () => {},
       restoreScriptReviewTarget: () => {},
       document: { querySelector: () => ({ getClientRects: () => [1] }) },

@@ -173,6 +173,17 @@ foreign job/recovery objects and original project, while additionally checking
 that only the detached UI caches are cleared. All 35 navigation cases passed;
 foreign runtime analysis is still neither cancelled nor manually recovered.
 
+The next review caught a superseded-read acknowledgement: a pending worker's
+assets request could be discarded by a newer Library search whose own request
+then failed. Void return values incorrectly allowed the worker to clear its
+retry. `reloadAssets()` and `refreshProject()` now explicitly return whether their
+response was applied, including guarded/discarded and empty-Missing-view cases.
+The worker requires actual success from both, and the Missing Media status path
+propagates a discarded nested asset read. Seven failing-before-fix cases include
+real overlapping requests and require a third read on an unchanged jobs poll.
+The corresponding obsolete local browser run was interrupted after 47 passes,
+one interruption and 100 unrun cases; matching candidate CI runs were cancelled.
+
 ## Manual boundaries
 
 The source editing monitor is approximate. Existing Hable HDR conversion ends
