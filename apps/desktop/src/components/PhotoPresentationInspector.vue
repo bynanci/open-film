@@ -77,6 +77,9 @@ const initialTitleStyle = titleStyleForDisplay(props.clip.titleStyle).style;
 const role = ref<TitleStyle["role"]>(initialTitleStyle.role);
 const position = ref<"center" | "bottom">(initialTitleStyle.position);
 const background = ref<"none" | "scrim">(initialTitleStyle.background);
+const fontWeight = ref(initialTitleStyle.fontWeight);
+const fadeOut = ref(initialTitleStyle.fadeOut);
+const bottomSafeMargin = ref(initialTitleStyle.bottomSafeMargin * 100);
 const sources = computed(() =>
   Object.fromEntries(
     props.assets.flatMap((asset) => {
@@ -144,6 +147,18 @@ watch(
       nextTitleStyle.background !== previousTitleStyle?.background
     )
       background.value = nextTitleStyle.background;
+    if (changedClip || nextTitleStyle.fadeOut !== previousTitleStyle?.fadeOut)
+      fadeOut.value = nextTitleStyle.fadeOut;
+    if (
+      changedClip ||
+      nextTitleStyle.fontWeight !== previousTitleStyle?.fontWeight
+    )
+      fontWeight.value = nextTitleStyle.fontWeight;
+    if (
+      changedClip ||
+      nextTitleStyle.bottomSafeMargin !== previousTitleStyle?.bottomSafeMargin
+    )
+      bottomSafeMargin.value = nextTitleStyle.bottomSafeMargin * 100;
   },
   { immediate: true },
 );
@@ -209,7 +224,17 @@ function setMotion(preset: PhotoMotion["preset"]) {
     motion,
   });
 }
-function setTitle(field: "text" | "role" | "position" | "background") {
+function setTitle(
+  field:
+    | "text"
+    | "role"
+    | "position"
+    | "background"
+    | "fontWeight"
+    | "fadeOut"
+    | "bottomSafeMargin",
+) {
+  if (props.clip.locked || props.asset.state.locked) return;
   const titleStyle: TitleStyle = {
     ...props.clip.titleStyle,
     version: 1,
@@ -217,6 +242,10 @@ function setTitle(field: "text" | "role" | "position" | "background") {
   };
   if (field === "position") titleStyle.position = position.value;
   if (field === "background") titleStyle.background = background.value;
+  if (field === "fontWeight") titleStyle.fontWeight = Number(fontWeight.value);
+  if (field === "fadeOut") titleStyle.fadeOut = Number(fadeOut.value);
+  if (field === "bottomSafeMargin")
+    titleStyle.bottomSafeMargin = Number(bottomSafeMargin.value) / 100;
   emit("command", {
     type: "presentation",
     clipId: props.clip.id,
@@ -401,6 +430,27 @@ function resetTitleStyle() {
       />
     </label>
     <template v-if="title">
+      <label class="editor-field">
+        {{ t("editor.presentation.titleFontWeight") }}
+        <select
+          v-model.number="fontWeight"
+          :disabled="titleStyleRecovery"
+          :aria-label="t('editor.presentation.titleFontWeight')"
+          @change="setTitle('fontWeight')"
+        >
+          <option v-if="![400, 700].includes(fontWeight)" :value="fontWeight">
+            {{
+              t("editor.presentation.currentFontWeight", { weight: fontWeight })
+            }}
+          </option>
+          <option :value="400">
+            {{ t("editor.presentation.fontWeightRegular") }}
+          </option>
+          <option :value="700">
+            {{ t("editor.presentation.fontWeightBold") }}
+          </option>
+        </select>
+      </label>
       <label class="editor-field"
         >{{ t("editor.presentation.titleRole") }}
         <select
@@ -452,6 +502,35 @@ function resetTitleStyle() {
           </select></label
         >
       </div>
+      <div class="editor-field-pair">
+        <label class="editor-field">
+          {{ t("editor.presentation.titleFadeOut") }}
+          <input
+            v-model.number="fadeOut"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+            :disabled="titleStyleRecovery"
+            :aria-label="t('editor.presentation.titleFadeOut')"
+            @change="setTitle('fadeOut')"
+          />
+        </label>
+        <label v-if="position === 'bottom'" class="editor-field">
+          {{ t("editor.presentation.titleBottomSafeMargin") }}
+          <input
+            v-model.number="bottomSafeMargin"
+            type="number"
+            min="0"
+            max="30"
+            step="1"
+            :disabled="titleStyleRecovery"
+            :aria-label="t('editor.presentation.titleBottomSafeMargin')"
+            @change="setTitle('bottomSafeMargin')"
+          />
+        </label>
+      </div>
+      <p class="editor-note">{{ t("editor.presentation.titleTimingHint") }}</p>
     </template>
   </section>
 </template>

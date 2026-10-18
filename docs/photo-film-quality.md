@@ -56,6 +56,13 @@ whose complete Verify runs passed. Main remains
 
 ## Boundaries
 
+Native on-screen graphic text now has optional clip-local fade-out and a
+frame-relative bottom safe distance. Defaults preserve the previous appearance:
+zero-second fade and an 8% bottom boundary. The style survives existing command
+history, replacement and reopen; duration changes preserve authored values and
+clamp only the evaluated fade. See [the native text controls contract](native-text-controls.md)
+for timing, measured layout, locks and the separate SRT/WebVTT export boundary.
+
 Audio automation uses clip-local timeline seconds. Changing source-in changes
 the audio under the same local envelope; it does not slice automation against
 original source timestamps. Shortening clips clamps automation at their new end.

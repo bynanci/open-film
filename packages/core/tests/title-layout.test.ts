@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   layoutTitleText,
+  evaluateTitleOpacity,
   MAX_TITLE_LENGTH,
   resolveTitleStyle,
   type TitleTextMeasure,
 } from "../src/title-layout.js";
+import { validateTitleStyle } from "../src/validation.js";
 
 const frame = { width: 640, height: 360 };
 // Deliberately proportional metrics prove wrapping uses the selected face's
@@ -19,7 +21,126 @@ const measure: TitleTextMeasure = (text, size, tracking) => ({
   left: 0,
 });
 
+describe("native title opacity", () => {
+  const style = { version: 1 as const, role: "subtitle" as const, fadeOut: 1 };
+  it("fades only over the end of the timeline duration and gates outside the clip", () => {
+    expect(evaluateTitleOpacity(style, -0.01, 3)).toBe(0);
+    expect(evaluateTitleOpacity(style, 0, 3)).toBe(1);
+    expect(evaluateTitleOpacity(style, 1.99, 3)).toBe(1);
+    expect(evaluateTitleOpacity(style, 2.5, 3)).toBe(0.5);
+    expect(evaluateTitleOpacity(style, 3, 3)).toBe(0);
+    expect(evaluateTitleOpacity(style, 4, 3)).toBe(0);
+  });
+  it("keeps legacy and zero-fade subtitles solid and clamps overlong fade to the clip", () => {
+    expect(evaluateTitleOpacity(undefined, 2.99, 3)).toBe(1);
+    expect(evaluateTitleOpacity({ ...style, fadeOut: 0 }, 2.99, 3)).toBe(1);
+    expect(evaluateTitleOpacity({ ...style, fadeOut: 10 }, 0.5, 2)).toBe(0.75);
+    expect(evaluateTitleOpacity(style, 0, 0)).toBe(0);
+  });
+  it.each([
+    [NaN, 2],
+    [Infinity, 2],
+    [0, NaN],
+    [0, Infinity],
+    [0, -1],
+  ])("rejects invalid local time or duration (%s, %s)", (time, duration) => {
+    expect(() => evaluateTitleOpacity(style, time, duration)).toThrow(
+      /finite|duration/iu,
+    );
+  });
+  it("rejects invalid fade without silently coercing it", () => {
+    expect(() => evaluateTitleOpacity({ ...style, fadeOut: -1 }, 0, 2)).toThrow(
+      /fade/iu,
+    );
+    expect(() =>
+      evaluateTitleOpacity({ ...style, fadeOut: Infinity }, 0, 2),
+    ).toThrow(/fade/iu);
+  });
+});
+
 describe("measured title layout", () => {
+  it("preserves the complete subtitle scrim's existing eight-percent bottom safety by default", () => {
+    const layout = layoutTitleText("Our story", undefined, frame, measure);
+    expect(layout.style.fadeOut).toBe(0);
+    expect(layout.style.bottomSafeMargin).toBe(0.08);
+    expect(layout.bounds.y + layout.bounds.height).toBeCloseTo(
+      frame.height * 0.92,
+    );
+  });
+
+  it.each([0, 0.08, 0.15, 0.3])(
+    "places the complete visible scrim above a %s bottom margin",
+    (bottomSafeMargin) => {
+      const layout = layoutTitleText(
+        "Our story",
+        { version: 1, role: "subtitle", bottomSafeMargin },
+        frame,
+        measure,
+      );
+      expect(layout.bounds.y + layout.bounds.height).toBeCloseTo(
+        frame.height * (1 - bottomSafeMargin),
+      );
+      expect(layout.bounds.y).toBeGreaterThanOrEqual(frame.height * 0.08);
+    },
+  );
+
+  it("keeps centered titles on historical safety regardless of a stored bottom setting", () => {
+    const style = {
+      version: 1 as const,
+      role: "film-title" as const,
+      fontSize: 100,
+      background: "scrim" as const,
+      bottomSafeMargin: 0.3,
+    };
+    const layout = layoutTitleText("A", style, frame, measure);
+    expect(layout.bounds).toEqual(
+      layoutTitleText("A", { ...style, bottomSafeMargin: 0 }, frame, measure)
+        .bounds,
+    );
+    expect(layout.bounds.y + layout.bounds.height / 2).toBeCloseTo(
+      frame.height / 2,
+    );
+    expect(layout.bounds.y).toBeGreaterThanOrEqual(frame.height * 0.08);
+    expect(layout.bounds.y + layout.bounds.height).toBeLessThanOrEqual(
+      frame.height * 0.92,
+    );
+    expect(() => layoutTitleText("A\nB", style, frame, measure)).toThrow(
+      /overflow/iu,
+    );
+  });
+
+  it.each([
+    ["fadeOut", -1],
+    ["fadeOut", 10.01],
+    ["fadeOut", NaN],
+    ["fadeOut", Infinity],
+    ["bottomSafeMargin", -0.01],
+    ["bottomSafeMargin", 0.31],
+    ["bottomSafeMargin", NaN],
+    ["bottomSafeMargin", Infinity],
+  ])(
+    "rejects invalid %s %s in persisted data and direct layout",
+    (field, value) => {
+      const style = {
+        version: 1 as const,
+        role: "subtitle" as const,
+        [field]: value,
+      };
+      expect(() => validateTitleStyle(style)).toThrow(
+        new RegExp(String(field), "u"),
+      );
+      expect(() => resolveTitleStyle(style, frame)).toThrow(/fade|margin/iu);
+    },
+  );
+
+  it("validates both optional controls while accepting legacy styles without mutation", () => {
+    const legacy = { version: 1 as const, role: "subtitle" as const };
+    expect(validateTitleStyle(legacy)).toEqual(legacy);
+    expect(
+      validateTitleStyle({ ...legacy, fadeOut: 10, bottomSafeMargin: 0.3 }),
+    ).toEqual({ ...legacy, fadeOut: 10, bottomSafeMargin: 0.3 });
+  });
+
   it("rejects input above the shared mutation bound before font measurement", () => {
     let measured = false;
     expect(() =>

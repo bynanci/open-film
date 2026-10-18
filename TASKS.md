@@ -5,6 +5,26 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — Native on-screen text control follow-up
+
+Scope and development evidence: [native text controls](docs/native-text-controls.md).
+The full feature remains under candidate verification; these entries must be
+checked only after implementation, relevant tests and UI validation agree.
+
+- [x] Let people fade native text and its scrim without fading the photo, video,
+      transport or audio, with clip-local preview/render timing.
+- [x] Keep native captions clear of the bottom edge using a measured,
+      frame-relative safe distance with defaults that preserve older projects.
+- [x] Offer local Regular/Bold text weight without silently replacing authored
+      custom weights or changing older subtitle defaults.
+- [x] Preserve authored fade/margin through command validation, all lock sources,
+      exact retry, Undo/Redo, replacement, trim/speed/split and saved reopening;
+      focused application/solver regressions pass (88 tests in two files).
+- [ ] Verify localized controls, decoded output pixels and browser behavior,
+      then pass the candidate regression gates and correctness review.
+- [ ] Manual: native display/projector readability and actual NLE title finishing
+      remain workstation gates; native text styling does not add SRT/VTT burn-in.
+
 ## Current — Original film looks
 
 Scope: [workflow and numerical contract](docs/film-looks.md).

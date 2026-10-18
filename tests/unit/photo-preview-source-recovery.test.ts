@@ -21,7 +21,7 @@ async function settle() {
   await vue.nextTick();
   await vue.nextTick();
 }
-async function mountPhoto(diptych = false) {
+async function mountPhoto(diptych = false, text = false) {
   vi.stubGlobal("cancelAnimationFrame", () => {});
   const component = loadComponent(
     "apps/desktop/src/components/PhotoPresentationPreview.vue",
@@ -55,6 +55,16 @@ async function mountPhoto(diptych = false) {
     state: {},
     metadata: {},
   }));
+  if (text) {
+    delete clip.layout;
+    clip.title = "粗體字幕";
+    clip.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fadeOut: 2,
+      fontWeight: 700,
+    };
+  }
   const props = vue.reactive({
     clip,
     assets,
@@ -67,8 +77,9 @@ async function mountPhoto(diptych = false) {
     active: true,
     sourceVersion: 1,
   });
+  const controls = hostNode("div");
   const { root, unmount } = mountComponent(component, props, {
-    "#photo-controls": hostNode("div"),
+    "#photo-controls": controls,
   });
   cleanup.push(unmount);
   await settle();
@@ -87,8 +98,29 @@ async function mountPhoto(diptych = false) {
     (image.props.onLoad as (() => void) | undefined)?.();
     await settle();
   };
-  return { props, images, failed, error, load };
+  return { props, images, failed, error, load, controls };
 }
+
+it("fades a plain photo's native bold text using the existing local seek clock without fading its source", async () => {
+  const photo = await mountPhoto(false, true);
+  const title = () =>
+    photo
+      .images()
+      .find((image) => image.props.class === "photo-presentation-title")!;
+  expect((title().props.style as { opacity: number }).opacity).toBe(1);
+  const seek = flatten(photo.controls).find(
+    (element) => element.tag === "input",
+  )!;
+  (seek.props.onInput as (event: { target: { value: string } }) => void)({
+    target: { value: "4" },
+  });
+  await settle();
+  expect((title().props.style as { opacity: number }).opacity).toBe(0.5);
+  expect(photo.images()[0]!.props.style).not.toHaveProperty("opacity");
+  photo.props.clip = { ...photo.props.clip, timelineDuration: 3 };
+  await settle();
+  expect((title().props.style as { opacity: number }).opacity).toBe(0);
+});
 
 it("reloads a failed photo after a same-ID URI relink and ignores the removed source error", async () => {
   const photo = await mountPhoto();

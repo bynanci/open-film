@@ -307,8 +307,18 @@ export class FFmpegRenderer {
             );
             const titleInput = inputIndex++;
             const titleLabel = `title${suffix}`;
+            const fadeOut = Math.min(title.layout.style.fadeOut, duration);
+            const titleFilters = ["format=rgba"];
+            if (fadeOut > 0)
+              titleFilters.push(
+                `fade=t=out:st=${number(duration - fadeOut)}:d=${number(fadeOut)}:alpha=1`,
+              );
+            // The title raster contains only glyphs and its optional scrim.
+            // Fade in clip-local timeline time before shifting the input onto
+            // its rounded output start tick; source media remains untouched.
+            titleFilters.push(`setpts=PTS-STARTPTS+${startFrame}`);
             filters.push(
-              `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
+              `[${titleInput}:v]${titleFilters.join(",")}[title-source${suffix}]`,
             );
             filters.push(
               `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(duration)})'[${titleLabel}]`,

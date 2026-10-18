@@ -355,6 +355,13 @@ transparent PNG using `@resvg/resvg-js`. Preview and FFmpeg use that same raster
 including its resolved font, wrapping and placement. Font files stay local;
 missing or unsupported glyphs produce explicit diagnostics. These graphic roles
 do not rewrite transcript revisions, ASR word timing or derived SRT/WebVTT.
+Optional `TitleStyle.fadeOut` and `bottomSafeMargin` extend the same version-1
+style: Core owns clip-local opacity and visible text/scrim bounds. FFmpeg fades
+only the RGBA title input before its timeline offset. Moving-photo previews use
+their existing local clock; video title previews keep their animation clock in
+a small overlay component, avoiding a new frame-by-frame timeline-parent render.
+The inspector exposes the existing 400/700 weights and retains authored custom
+weights. See [native text controls](native-text-controls.md).
 `fontkit` and the platform-specific resvg native runtime are local Node/service
 dependencies. The build keeps the resvg loader external so it can resolve its
 installed platform package; Desktop receives the PNG and browser-safe layout

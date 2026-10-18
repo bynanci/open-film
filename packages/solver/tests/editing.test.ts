@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Clip, MediaAsset } from "@openfilm/core";
+import type { Clip, MediaAsset, TitleStyle } from "@openfilm/core";
 import {
   applyTimelineCommand,
   suggestShortening,
@@ -94,6 +94,98 @@ const clip = (doc: EditorDocument, id: string): Clip =>
   clips(doc).find((clip) => clip.id === id)!;
 const edit = (doc: EditorDocument, command: TimelineCommand): EditorDocument =>
   applyTimelineCommand(doc, assets, command);
+
+describe("native text controls through composition edits", () => {
+  const titleStyle: TitleStyle = {
+    version: 1,
+    role: "subtitle",
+    background: "scrim",
+    position: "bottom",
+    fontWeight: 700,
+    fadeOut: 10,
+    bottomSafeMargin: 0.15,
+  };
+
+  it("preserves authored fade and bottom margin when still duration becomes shorter than the fade", () => {
+    const original = document();
+    const authored = edit(original, {
+      type: "presentation",
+      clipId: "photo-clip",
+      title: "A native caption",
+      titleStyle,
+    });
+    const shortened = edit(authored, {
+      type: "duration",
+      clipId: "photo-clip",
+      duration: 0.5,
+    });
+    expect(clip(shortened, "photo-clip")).toMatchObject({
+      timelineDuration: 0.5,
+      title: "A native caption",
+      titleStyle,
+    });
+    expect(clip(authored, "photo-clip").timelineDuration).toBe(4);
+    expect(clip(original, "photo-clip").titleStyle).toBeUndefined();
+    expect(shortened.story).toEqual(authored.story);
+    expect(withoutStart(clip(shortened, "next-clip"))).toEqual(
+      withoutStart(clip(authored, "next-clip")),
+    );
+  });
+
+  it("retains clip-local authored fade and margin through nonzero source trim, speed and split", () => {
+    const original = edit(document(), {
+      type: "presentation",
+      clipId: "video-clip",
+      title: "一起前往十和田湖",
+      titleStyle,
+    });
+    const sped = edit(original, {
+      type: "speed",
+      clipId: "video-clip",
+      speed: 2,
+    });
+    const trimmed = edit(sped, {
+      type: "trim",
+      clipId: "video-clip",
+      sourceIn: 4,
+      sourceOut: 8,
+    });
+    expect(clip(trimmed, "video-clip")).toMatchObject({
+      timelineStart: 4,
+      timelineDuration: 2,
+      titleStyle,
+      transform: { speed: 2 },
+    });
+    freezeDeep(trimmed);
+    const split = edit(trimmed, {
+      type: "clip.split",
+      clipId: "video-clip",
+      sourceTime: 5,
+    });
+    expect(clip(split, "video-clip")).toMatchObject({
+      sourceIn: 4,
+      sourceOut: 5,
+      timelineStart: 4,
+      timelineDuration: 0.5,
+      titleStyle,
+      title: "一起前往十和田湖",
+    });
+    expect(clip(split, "video-clip-split-1")).toMatchObject({
+      sourceIn: 5,
+      sourceOut: 8,
+      timelineStart: 4.5,
+      timelineDuration: 1.5,
+      titleStyle,
+      title: "一起前往十和田湖",
+    });
+    expect(split.composition.duration).toBe(trimmed.composition.duration);
+    expect(split.story).toEqual(trimmed.story);
+    expect(clip(split, "next-clip")).toEqual(clip(trimmed, "next-clip"));
+    clip(split, "video-clip-split-1").titleStyle!.bottomSafeMargin = 0.2;
+    expect(clip(split, "video-clip").titleStyle).toEqual(titleStyle);
+    expect(clip(trimmed, "video-clip").titleStyle).toEqual(titleStyle);
+  });
+});
 
 describe("Fit skipped clips", () => {
   it("recomputes a feasible sequential plan without editing skipped clips", () => {

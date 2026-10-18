@@ -21,6 +21,14 @@ instead of silently dropping a second action. The current creative priority is
 the bounded film-look slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
+## Current — Native text readability controls
+
+The native-text follow-up exposes existing Regular/Bold typography and adds
+clip-local end fades and a measured bottom safe distance through the current
+presentation commands. Older defaults, Undo/Redo, locks and persistence remain
+part of the contract. See [native text controls](docs/native-text-controls.md)
+for verification and the separate SRT/WebVTT boundary.
+
 ## Current — Original film looks
 
 Six original, versioned creative looks support strength and saved whole-film,

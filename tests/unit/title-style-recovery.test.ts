@@ -17,6 +17,7 @@ interface HostNode {
   text: string;
   value: unknown;
   selected: boolean;
+  selectedIndex: number;
   props: Record<string, unknown>;
   children: HostNode[];
   parent: HostNode | null;
@@ -51,6 +52,7 @@ function node(tag: string, text = ""): HostNode {
     text,
     value: "",
     selected: false,
+    selectedIndex: -1,
     props: {},
     children: [],
     parent: null,
@@ -211,6 +213,8 @@ async function mount(locale = "en-US", messages: object = en, clip = legacy) {
     props,
     commands,
     label,
+    control: (key: string) =>
+      flatten(root).find((item) => item.props["aria-label"] === label(key)),
     reset,
     editText,
     update: async (value: core.Clip) => {
@@ -238,14 +242,17 @@ describe("recoverable legacy title styles", () => {
       expect(mounted.props.clip).toEqual(legacy);
       const titleControls = flatten(mounted.root).filter(
         (item) =>
-          item.tag === "select" &&
+          ["select", "input"].includes(item.tag) &&
           [
             "editor.presentation.titleRole",
             "editor.presentation.titlePosition",
             "editor.presentation.titleBackground",
+            "editor.presentation.titleFontWeight",
+            "editor.presentation.titleFadeOut",
+            "editor.presentation.titleBottomSafeMargin",
           ].some((key) => item.props["aria-label"] === mounted.label(key)),
       );
-      expect(titleControls).toHaveLength(3);
+      expect(titleControls).toHaveLength(6);
       expect(titleControls.every((item) => item.props.disabled)).toBe(true);
     },
   );
@@ -314,4 +321,119 @@ describe("recoverable legacy title styles", () => {
       expect(mounted.props.clip.titleStyle).toEqual(legacy.titleStyle);
     },
   );
+});
+
+describe("native text timing and bottom placement", () => {
+  const valid: core.Clip = {
+    ...legacy,
+    titleStyle: { version: 1, role: "subtitle" },
+  };
+  it.each([
+    ["en-US", en],
+    ["zh-TW", zh],
+    ["ja-JP", ja],
+    ["en-XA", pseudoMessages(en)],
+  ] as const)(
+    "exposes defaults without persisting them in %s",
+    async (locale, messages) => {
+      const mounted = await mount(locale, messages, valid);
+      expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(
+        0,
+      );
+      expect(
+        mounted.control("editor.presentation.titleFontWeight")?.options[
+          mounted.control("editor.presentation.titleFontWeight")!.selectedIndex
+        ]?.value,
+      ).toBe(400);
+      expect(
+        mounted.control("editor.presentation.titleBottomSafeMargin")?.value,
+      ).toBe(8);
+      expect(mounted.commands).toEqual([]);
+      expect(mounted.props.clip.titleStyle).toEqual(valid.titleStyle);
+    },
+  );
+  it("stores seconds and normalized margin independently, then follows history and clip changes", async () => {
+    const mounted = await mount("en-US", en, valid);
+    const set = async (key: string, value: number) => {
+      const control = mounted.control(key)!;
+      (control.props["onUpdate:modelValue"] as (value: number) => void)(value);
+      await vue.nextTick();
+      (control.props.onChange as () => void)();
+    };
+    await set("editor.presentation.titleFadeOut", 1.5);
+    expect(mounted.commands[0]).toMatchObject({
+      titleStyle: { version: 1, role: "subtitle", fadeOut: 1.5 },
+    });
+    expect(
+      (mounted.commands[0] as { titleStyle: object }).titleStyle,
+    ).not.toHaveProperty("bottomSafeMargin");
+    await mounted.update({
+      ...valid,
+      titleStyle: { ...valid.titleStyle!, fadeOut: 1.5 },
+    });
+    await set("editor.presentation.titleBottomSafeMargin", 12);
+    expect(mounted.commands[1]).toMatchObject({
+      titleStyle: {
+        version: 1,
+        role: "subtitle",
+        fadeOut: 1.5,
+        bottomSafeMargin: 0.12,
+      },
+    });
+    await mounted.update({
+      ...valid,
+      titleStyle: {
+        ...valid.titleStyle!,
+        fadeOut: 1.5,
+        bottomSafeMargin: 0.12,
+      },
+    });
+    await mounted.update(valid);
+    expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(0);
+    expect(
+      mounted.control("editor.presentation.titleBottomSafeMargin")?.value,
+    ).toBe(8);
+    await mounted.update({
+      ...valid,
+      id: "another",
+      titleStyle: {
+        version: 1,
+        role: "film-title",
+        position: "center",
+        fadeOut: 0.4,
+        bottomSafeMargin: 0.2,
+      },
+    });
+    expect(mounted.control("editor.presentation.titleFadeOut")?.value).toBe(
+      0.4,
+    );
+    expect(
+      mounted.control("editor.presentation.titleBottomSafeMargin"),
+    ).toBeUndefined();
+    expect(mounted.commands).toHaveLength(2);
+  });
+  it("preserves a saved custom weight until the person explicitly chooses bold", async () => {
+    const custom = {
+      ...valid,
+      titleStyle: { ...valid.titleStyle!, fontWeight: 500 },
+    };
+    const mounted = await mount("en-US", en, custom);
+    const control = mounted.control("editor.presentation.titleFontWeight")!;
+    expect(control.options[control.selectedIndex]?.value).toBe(500);
+    expect(
+      control.options.some((option) => Number(option.props.value) === 500),
+    ).toBe(true);
+    expect(mounted.commands).toEqual([]);
+    (control.props["onUpdate:modelValue"] as (value: number) => void)(700);
+    await vue.nextTick();
+    (control.props.onChange as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: valid.id,
+        title: valid.title,
+        titleStyle: { ...custom.titleStyle, fontWeight: 700 },
+      },
+    ]);
+  });
 });
