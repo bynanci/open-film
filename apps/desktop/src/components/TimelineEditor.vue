@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+
 import {
   computed,
   nextTick,
@@ -6,9 +9,11 @@ import {
   onMounted,
   ref,
   watch,
+  useId,
 } from "vue";
 import {
   resolveClipGeometry,
+  resolveFilmLook,
   resolvePreviewClipGeometry,
   evaluateAudioGain,
   type Clip,
@@ -41,6 +46,8 @@ import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
+import FilmLookInspector from "./FilmLookInspector.vue";
+import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import { sourcePresentation } from "../sourcePresentation";
@@ -263,6 +270,28 @@ const photoPresentationActive = computed(
   () =>
     playbackAsset.value?.mediaType === "image" &&
     !!(playbackClip.value?.layout || playbackClip.value?.motion),
+);
+const filmLookFilterId = `film-look-${useId().replaceAll(":", "")}`;
+const playbackLook = computed(() =>
+  state.value && playbackClip.value && lookEligible.value
+    ? resolveFilmLook(state.value.composition, playbackClip.value).look
+    : { version: 1 as const, preset: "none" as const, strength: 1 },
+);
+const playbackLookActive = computed(
+  () => playbackLook.value.preset !== "none" && playbackLook.value.strength > 0,
+);
+const playbackLookStyle = computed(() =>
+  playbackLookActive.value ? { filter: `url(#${filmLookFilterId})` } : {},
+);
+const lookEligible = computed(
+  () =>
+    !!selectedAsset.value &&
+    ["image", "video"].includes(selectedAsset.value.mediaType) &&
+    !!state.value?.composition.tracks.some(
+      (track) =>
+        ["video", "overlay"].includes(track.type) &&
+        track.clips.some((clip) => clip.id === selectedClipId.value),
+    ),
 );
 const playbackSourceInfo = computed(() =>
   playbackAsset.value
@@ -736,6 +765,18 @@ function stepSourceFrame(direction: -1 | 1) {
   playbackBoundaryHandled = false;
   player.currentTime = next;
   sourceTime.value = next;
+}
+function seekSource(event: Event) {
+  const player = sourcePlayer.value;
+  const clip = playbackClip.value;
+  const requested = Number((event.target as HTMLInputElement).value);
+  if (!player || !clip || !Number.isFinite(requested)) return;
+  const minimum = clip.sourceIn ?? 0;
+  const maximum = clip.sourceOut ?? playbackAsset.value?.duration ?? minimum;
+  player.pause();
+  playbackBoundaryHandled = false;
+  player.currentTime = Math.max(minimum, Math.min(maximum, requested));
+  sourceTime.value = player.currentTime;
 }
 function toggleMonitorGuides() {
   const next = !(showRuleOfThirds.value && showSafeFrame.value);
@@ -1599,6 +1640,7 @@ onBeforeUnmount(() => {
         <div class="editor-stage editor-main">
           <div class="editor-player-region">
             <div ref="sourceScreenElement" class="editor-source-screen">
+              <FilmLookFilter :id="filmLookFilterId" :look="playbackLook" />
               <template v-if="playbackAsset">
                 <div v-if="playbackUnavailable" class="editor-missing-source">
                   <img
@@ -1659,6 +1701,7 @@ onBeforeUnmount(() => {
                   :project-id="projectId"
                   :source-version="sourceVersion"
                   :active="active && editMode === 'story'"
+                  :look="playbackLook"
                 />
                 <div
                   v-else-if="playbackAsset.mediaType === 'image'"
@@ -1669,7 +1712,7 @@ onBeforeUnmount(() => {
                     :key="sourcePlaybackKey"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :alt="playbackAsset.name"
-                    :style="previewMediaStyle"
+                    :style="[previewMediaStyle, playbackLookStyle]"
                     @load="capturePreviewSize"
                     @error="sourceError = 'photo'"
                   />
@@ -1723,10 +1766,10 @@ onBeforeUnmount(() => {
                         ? thumbnailUrl(playbackAsset.id)
                         : undefined
                     "
-                    controls
+                    :controls="!playbackLookActive"
                     preload="metadata"
                     :aria-label="t('editor.source.preview')"
-                    :style="previewMediaStyle"
+                    :style="[previewMediaStyle, playbackLookStyle]"
                     @loadedmetadata="
                       capturePreviewSize($event);
                       configurePlayer();
@@ -1863,6 +1906,19 @@ onBeforeUnmount(() => {
                   formatTimecode(sourceTime, monitorFrameRate)
                 }}</time>
                 <template v-if="playbackAsset.mediaType === 'video'">
+                  <input
+                    v-if="playbackLookActive"
+                    class="editor-source-seek"
+                    type="range"
+                    :aria-label="t('editor.source.seek')"
+                    :min="playbackClip?.sourceIn ?? 0"
+                    :max="
+                      playbackClip?.sourceOut ?? playbackAsset.duration ?? 0
+                    "
+                    :step="1 / monitorFrameRate"
+                    :value="sourceTime"
+                    @input="seekSource"
+                  />
                   <button
                     class="editor-button"
                     :aria-label="t('editor.monitor.previousFrame')"
@@ -2112,6 +2168,14 @@ onBeforeUnmount(() => {
             <p v-if="selectedClip.locked" class="editor-note">
               {{ t("editor.clip.protected") }}
             </p>
+            <FilmLookInspector
+              :composition="state.composition"
+              :clip="selectedClip"
+              :clip-eligible="lookEligible"
+              :clip-protected="!!selectedClip.locked || clipSourceLocked"
+              :disabled="historyBusy || directionBlocked"
+              @command="command"
+            />
             <fieldset
               class="editor-fields"
               :disabled="

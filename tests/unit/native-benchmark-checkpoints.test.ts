@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -994,8 +996,8 @@ describe("actual workspace readiness guards", () => {
     }).code;
     const { activeComposition, clipCount } = new Function(
       "dependencies",
-      `const {project,activeCompositionId,computed} = dependencies;\n${code}\nreturn {activeComposition,clipCount};`,
-    )({ project, activeCompositionId, computed }) as {
+      `const {project,activeCompositionId,computed,ref} = dependencies;\n${code}\nreturn {activeComposition,clipCount};`,
+    )({ project, activeCompositionId, computed, ref }) as {
       activeComposition: { readonly value: { id: string } };
       clipCount: { readonly value: number };
     };

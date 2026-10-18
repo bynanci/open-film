@@ -1,5 +1,14 @@
 # OpenFilm desktop
 
+**Edit → Film look** offers six original styles and strength for the whole film,
+selected scene or clip. Inherit follows the parent; Original keeps source colors.
+Saved changes use normal autosave, Undo/Redo and lock protection. **Export → MP4
+look** keeps these settings or explicitly unifies this output, including locked
+clips, without modifying the saved edit. Render preview uses the same output
+choice; use it to judge final color, especially with video/HDR. Editable exports
+retain saved metadata and require manual look recreation in the destination app.
+See [film looks](../../docs/film-looks.md).
+
 In Story, saved scene narration and visual direction can request optional
 language-provider suggestions. The panel shows original/proposed text and a
 reason, with individual Accept/Skip and reviewed history. Manual drafts save
@@ -209,3 +218,5 @@ capabilities in an expandable section. Transfer the original media along with th
 OTIO file; the interchange file does not embed source media. For a reproducible
 generated-media check on another computer, use the
 [portable workstation QA guide](../../docs/resolve-workstation-qa.md).
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

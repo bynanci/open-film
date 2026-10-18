@@ -1,3 +1,4 @@
+/* Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE. */
 .film-workspace.editing-room {
   min-height: 100vh;
   color: var(--ink);
@@ -413,6 +414,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--of-space-1);
+}
+
+.editor-source-seek {
+  width: 140px;
+  max-width: 100%;
+  min-width: 80px;
 }
 
 .editor-monitor-transport time {

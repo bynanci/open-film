@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -23,6 +25,11 @@ import type {
 } from "@openfilm/plugin-sdk";
 import { resolveTimestamp } from "@openfilm/metadata";
 import { probeColor, previewIssue, hdrToneMapFilter } from "./color.js";
+import { localMediaInputOptions } from "./input-policy.js";
+export {
+  LOCAL_MEDIA_DEMUXERS,
+  localMediaInputOptions,
+} from "./input-policy.js";
 
 export interface MediaCandidate extends SourceCandidate {
   path: string;
@@ -315,6 +322,7 @@ export async function inspectMedia(
     [
       "-v",
       "error",
+      ...(await localMediaInputOptions(path, signal)),
       "-show_format",
       "-show_streams",
       ...(inspectImageFrame
@@ -483,6 +491,7 @@ export async function perceptualHash(
       "1",
       "-filter_threads",
       "1",
+      ...(await localMediaInputOptions(path, signal)),
       "-i",
       path,
       "-frames:v",
@@ -584,6 +593,7 @@ export async function createThumbnail(
       "1",
       "-filter_threads",
       "1",
+      ...(await localMediaInputOptions(localPath(asset.uri), signal)),
       "-i",
       localPath(asset.uri),
       "-frames:v",
@@ -620,6 +630,7 @@ export async function createProxy(
         "-nostdin",
         "-threads",
         "1",
+        ...(await localMediaInputOptions(localPath(asset.uri), signal)),
         "-i",
         localPath(asset.uri),
         "-map",
@@ -652,6 +663,7 @@ export async function createProxy(
       "1",
       "-filter_threads",
       "1",
+      ...(await localMediaInputOptions(localPath(asset.uri), signal)),
       "-i",
       localPath(asset.uri),
       "-map",

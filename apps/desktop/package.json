@@ -9,15 +9,17 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@openfilm/analysis": "workspace:*",
     "@openfilm/exporters": "workspace:*",
     "@openfilm/solver": "workspace:*",
     "@tauri-apps/api": "2.12.1",
     "@tauri-apps/plugin-dialog": "2.8.1",
-    "vue": "3.5.41",
-    "vue-i18n": "11.4.13",
-    "@openfilm/analysis": "workspace:*"
+    "vue": "3.5.42",
+    "vue-i18n": "11.4.13"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1"
-  }
+  },
+  "license": "GPL-3.0-only",
+  "openfilmModificationNotice": "Modified by OpenFilm contributors on 2026-10-18; preexisting Apache-2.0 grants retained. See LICENSE and NOTICE."
 }

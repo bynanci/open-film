@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,6 +11,7 @@ import {
   validateTitleStyle,
   resolveTitleStyle,
   validateAudioAutomation,
+  validateFilmLook,
   MAX_TITLE_LENGTH,
   MAX_SCENE_DIRECTION_RECEIPTS,
   assetDisplayDimensions,
@@ -140,6 +143,20 @@ function command(value: unknown, index: number): TimelineCommand {
   const path = `commands[${index}]`;
   const data = record(value, path);
   const type = nonempty(data.type, `${path}.type`);
+  if (type === "look") {
+    const scope = data.scope;
+    if (scope !== "film" && scope !== "beat" && scope !== "clip")
+      invalid(`${path}.scope`, "expected film, beat or clip");
+    const allowed = ["type", "scope", "look"];
+    if (scope === "beat" || scope === "clip") {
+      const identity = scope === "beat" ? "beatId" : "clipId";
+      nonempty(data[identity], `${path}.${identity}`);
+      allowed.push(identity);
+    }
+    keys(data, allowed, path);
+    if (data.look !== null) nested(data.look, `${path}.look`, validateFilmLook);
+    return structuredClone(data) as TimelineCommand;
+  }
   if (type === "beat" || type === "regenerate-beat")
     nonempty(data.beatId, `${path}.beatId`);
   else nonempty(data.clipId, `${path}.clipId`);
@@ -917,6 +934,7 @@ export class TimelineEditor {
         for (const item of parsed.commands)
           next = applyTimelineCommand(next, assets, item);
       } catch (error) {
+        if (error instanceof ApplicationError) throw error;
         throw new TimelineEditorError(
           error instanceof Error ? error.message : String(error),
         );

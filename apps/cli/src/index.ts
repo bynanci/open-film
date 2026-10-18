@@ -1,6 +1,14 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { resolve } from "node:path";
 import { readFile, stat } from "node:fs/promises";
-import { errorInfo, type GlossaryInput } from "@openfilm/core";
+import {
+  ApplicationError,
+  errorInfo,
+  validateFilmLook,
+  type FilmLook,
+  type GlossaryInput,
+} from "@openfilm/core";
 import type { TranscriptMutationInput } from "@openfilm/catalog";
 import {
   OpenFilmApplication,
@@ -49,7 +57,8 @@ Usage:
   openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
-  openfilm render --project <film.openfilm> [--composition <id>]
+  openfilm render --project <film.openfilm> [--composition <id>] [--look <preset> --look-strength 0..1]
+  openfilm export --project <film.openfilm> --format mp4 [--look <preset> --look-strength 0..1]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
@@ -60,6 +69,8 @@ Original media stays unchanged. No network service or AI account is required.
 Use --unfavorite, --unreject, --unlock to clear state. Use --assets id1,id2
 for an explicit story scope in large libraries. Outputs are JSON.
 Use --user-data-dir <folder> for trusted global glossary storage (or OPENFILM_USER_DATA_DIR).
+Film look presets: none, soft-film, americana, clean-camera, retro, natural, sport.
+Omit --look to preserve saved film/scene/clip choices. A look override changes only this MP4/preview.
 --commands reads a JSON object {baseRevision,requestId,commands} of at most 1 MiB.
 Review suggestions never change text until accepted. No language provider is configured by default.
 Transcript reads also accept transcript <asset-id> when the ID is not an action name.
@@ -136,6 +147,8 @@ function parse(args: string[]) {
     "clips-json",
     "actions",
     "actions-json",
+    "look",
+    "look-strength",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -201,6 +214,34 @@ function positive(options: Options, key: string): number | undefined {
 }
 const print = (result: unknown) => console.log(JSON.stringify(result, null, 2));
 
+function renderLook(options: Options): FilmLook | undefined {
+  const preset = value(options, "look");
+  const rawStrength = value(options, "look-strength");
+  if (preset === undefined && rawStrength === undefined) return undefined;
+  if (preset === undefined)
+    throw new ApplicationError(
+      "request.invalid",
+      "--look-strength requires --look <preset>.",
+    );
+  try {
+    if (rawStrength !== undefined && !rawStrength.trim())
+      throw new Error("Look strength cannot be empty.");
+    return validateFilmLook({
+      version: 1,
+      preset,
+      strength: rawStrength === undefined ? 1 : Number(rawStrength),
+    });
+  } catch (error) {
+    throw new ApplicationError(
+      "request.invalid",
+      "Choose a supported --look preset and a --look-strength between 0 and 1.",
+      400,
+      undefined,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 async function commandFile(
   path: string | undefined,
 ): Promise<TranscriptMutationInput> {
@@ -228,6 +269,18 @@ async function main() {
     console.log(usage);
     return;
   }
+  const lookOutput =
+    command === "render" ||
+    (command === "export" && value(options, "format") === "mp4");
+  if (
+    !lookOutput &&
+    (Object.hasOwn(options, "look") || Object.hasOwn(options, "look-strength"))
+  )
+    throw new ApplicationError(
+      "request.invalid",
+      "Film look overrides require render or export --format mp4; interchange keeps saved looks as metadata.",
+    );
+  const lookOverride = lookOutput ? renderLook(options) : undefined;
   const runtimeOptions = {
     userDataDirectory: resolveUserDataDirectory(
       value(options, "user-data-dir"),
@@ -828,18 +881,28 @@ async function main() {
       print({
         path: await app.render(value(options, "composition"), {
           signal: controller.signal,
+          lookOverride,
         }),
       });
     else if (command === "export") {
       const format = value(options, "format") ?? "json";
-      if (!["json", "otio", "fcpxml", "edl"].includes(format))
-        throw new Error("Choose json, otio, fcpxml, or edl.");
-      print(
-        await app.exportWithReport(
-          format as "json" | "otio" | "fcpxml" | "edl",
-          value(options, "composition"),
-        ),
-      );
+      if (format === "mp4")
+        print(
+          await app.exportMp4(value(options, "composition"), {
+            signal: controller.signal,
+            lookOverride,
+          }),
+        );
+      else {
+        if (!["json", "otio", "fcpxml", "edl"].includes(format))
+          throw new Error("Choose mp4, json, otio, fcpxml, or edl.");
+        print(
+          await app.exportWithReport(
+            format as "json" | "otio" | "fcpxml" | "edl",
+            value(options, "composition"),
+          ),
+        );
+      }
     } else throw new Error(`Unknown command ${command}. Run openfilm --help.`);
   } finally {
     process.removeListener("SIGINT", stop);

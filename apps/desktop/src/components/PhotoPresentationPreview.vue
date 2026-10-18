@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+
+import { computed, onBeforeUnmount, ref, watch, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   evaluateClipAtTime,
   assetDisplayDimensions,
   resolveClipGeometry,
   type Clip,
+  type FilmLook,
   type MediaAsset,
   type ProjectSettings,
   type FrameSize,
 } from "@openfilm/core";
 import { sourceUrl, titlePreviewUrl } from "../api";
+import FilmLookFilter from "./FilmLookFilter.vue";
 import { formatDuration } from "../i18n";
 
 const props = defineProps<{
@@ -24,8 +29,15 @@ const props = defineProps<{
   revision: string;
   active: boolean;
   sourceVersion?: number;
+  look?: FilmLook;
 }>();
 const { t } = useI18n();
+const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
+const lookStyle = computed(() =>
+  props.look && props.look.preset !== "none" && props.look.strength > 0
+    ? { filter: `url(#${lookFilterId})` }
+    : {},
+);
 const time = ref(0);
 const playing = ref(false);
 const failedSources = ref(new Set<string>());
@@ -169,6 +181,7 @@ defineExpose({ toggle, pause });
 
 <template>
   <div class="photo-presentation-preview">
+    <FilmLookFilter v-if="look" :id="lookFilterId" :look="look" />
     <div
       class="photo-presentation-frame"
       :style="frameStyle"
@@ -183,6 +196,7 @@ defineExpose({ toggle, pause });
             :alt="layer.name"
             draggable="false"
             :style="{
+              ...lookStyle,
               left: `${(layer.x / frame.width) * 100}%`,
               top: `${(layer.y / frame.height) * 100}%`,
               width: `${(layer.width / frame.width) * 100}%`,

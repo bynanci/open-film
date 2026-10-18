@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
@@ -48,6 +51,7 @@ const manualFeatures = computed(() => {
     "title style": "titleStyle",
     "audio automation": "audioAutomation",
     "overlay timing": "overlayTiming",
+    look: "look",
   };
   const required = new Set(
     edits.flatMap((edit) =>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -29,6 +32,7 @@ import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
 import type {
   MediaAsset,
+  FilmLook,
   OpenFilmProject,
   Story,
   StoryBeat,
@@ -339,6 +343,7 @@ const clipCount = computed(
       0,
     ) ?? 0,
 );
+const lookOverride = ref<FilmLook>();
 const previewVersion = ref(0);
 const previewStale = ref(false);
 const showRenderedPreview = ref(false);
@@ -359,6 +364,7 @@ watch(
     // Any stored bytes (even malformed/empty), or an unreadable store, keep the
     // previous eager behavior; only the editor interprets recovery contents.
     editorMountRequested.value = false;
+    lookOverride.value = undefined;
     if (!key) return;
     try {
       editorMountRequested.value = localStorage.getItem(key) !== null;
@@ -1434,8 +1440,16 @@ async function compose() {
     else await changeTab("edit");
   }
 }
+function changeOutputLook(look: FilmLook | undefined) {
+  if (busy.value) return;
+  lookOverride.value = look ? { ...look } : undefined;
+  editorEdited();
+}
 async function renderPreview() {
   if (!(await flushPending())) return;
+  const renderingLook = lookOverride.value
+    ? { ...lookOverride.value }
+    : undefined;
   const renderingEdit = editSerial;
   const renderingProject = project.value?.id;
   const composition = activeComposition.value;
@@ -1445,6 +1459,7 @@ async function renderPreview() {
     try {
       await post<{ path: string }>("/render", {
         compositionId: composition.id,
+        ...(renderingLook ? { lookOverride: renderingLook } : {}),
       });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
@@ -1474,6 +1489,11 @@ async function renderPreview() {
         /* Polling will retry without replacing the render result. */
       }
     }
+    if (
+      project.value?.id !== renderingProject ||
+      activeComposition.value?.id !== composition.id
+    )
+      return;
     previewVersion.value = Date.now();
     previewStale.value = renderingEdit !== editSerial;
     showRenderedPreview.value = true;
@@ -1482,6 +1502,10 @@ async function renderPreview() {
 }
 async function exportFilm(format: string) {
   if (!(await flushPending())) return;
+  const exportingLook =
+    format === "mp4" && lookOverride.value
+      ? { ...lookOverride.value }
+      : undefined;
   const exportingEdit = editSerial;
   const exportingProject = project.value?.id;
   const composition = activeComposition.value;
@@ -1494,7 +1518,11 @@ async function exportFilm(format: string) {
       report?: ExportCompatibilityReport;
     };
     try {
-      result = await post("/export", { format, compositionId: composition.id });
+      result = await post("/export", {
+        format,
+        compositionId: composition.id,
+        ...(exportingLook ? { lookOverride: exportingLook } : {}),
+      });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
       try {
@@ -3185,6 +3213,13 @@ onUnmounted(() => {
               }}
             </button>
           </div>
+          <p v-if="lookOverride" class="preview-stale" role="status">
+            {{
+              t("looks.previewOverride", {
+                preset: t(`looks.presets.${lookOverride.preset}`),
+              })
+            }}
+          </p>
           <p
             v-if="previewVersion && previewStale"
             class="preview-stale"
@@ -3202,6 +3237,8 @@ onUnmounted(() => {
             :format="exportFormat"
             :stale="exportStale"
             :report="exportReport"
+            :look-override="lookOverride"
+            @look="changeOutputLook"
             @export="exportFilm"
           />
           <button

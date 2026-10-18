@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   media: {
     card: {
@@ -192,6 +194,7 @@ export default {
         transform: "縮放、旋轉與位置",
         crossfade: "交叉淡化",
         titles: "標題與疊加畫面",
+        look: "影片風格",
         photoLayout: "照片版面與保護區域",
         photoMotion: "照片運鏡",
         titleStyle: "字卡字體與版面",

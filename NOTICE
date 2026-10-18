@@ -1,3 +1,12 @@
+OpenFilm modified distribution — 2026-10-18
+
+This derivative work as a whole and new OpenFilm contributions are licensed
+under GPL-3.0-only. Preexisting portions retain their Apache-2.0 grants.
+This transition does not revoke previously granted rights. See LICENSE,
+LICENSES/Apache-2.0.txt and docs/licensing.md. Third-party terms remain applicable.
+
+Original attribution notice, retained verbatim:
+--------------------------------------------
 OpenFilm
 Copyright 2026 OpenFilm contributors
 
@@ -9,3 +18,4 @@ upstream copyright and license notices retained in the installed packages.
 Noto CJK fonts, when installed separately, are SIL Open Font License 1.1.
 No operating-system fonts or private photographic material are redistributed
 as part of this implementation.
+--------------------------------------------

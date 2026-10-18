@@ -18,10 +18,25 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. The current creative priority is
-the bounded scene-direction editing slice below; merging development source is not a **Released** installer or
+the bounded film-look slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
-## Current — Reviewable scene directions to edits
+## Current — Original film looks
+
+Six original, versioned creative looks support strength and saved whole-film,
+scene and clip overrides. Shared commands preserve locks, Undo/Redo and recovery;
+an explicit render-only option can unify one MP4 without changing the project.
+Browser source preview and FFmpeg share coefficients with a documented
+encoded-SDR RGB boundary, rather than claiming universal color parity. Private
+render manifests retain recipe/source/build provenance. See
+[the contract](docs/film-looks.md), [open-source reference decisions](docs/film-look-open-source-reference.md)
+and [validation](docs/validation-film-looks.md).
+
+Full color management, external LUT admission, physical film/camera simulation
+and automatic grading remain later work. Real camera/HDR/display and Resolve
+finishing remain workstation gates.
+
+## Implemented slice — Reviewable scene directions to edits
 
 Connect saved Story directions to supported photo presentation through an offline,
 finite compiler. People review the exact source phrase, reason and before/after
@@ -32,7 +47,7 @@ The first vocabulary covers contain/hero and hold/gentle push-in/horizontal pan;
 unknown prose is shown rather than guessed. Film timing stays unchanged and the
 configured maximum remains enforced. See [the contract](docs/scene-direction-editing.md),
 [validation](docs/validation-scene-direction-editing.md) and
-[acceptance tasks](TASKS.md#current--reviewable-scene-directions-to-edits).
+[acceptance tasks](TASKS.md#implemented-slice--reviewable-scene-directions-to-edits).
 
 Source-range/rhythm and duration changes require a later, separately reviewed
 slice. Arbitrary prose/image understanding, generated voice and automatic grading
@@ -320,3 +335,5 @@ queries and revision-bound proposals. Further keyframes and compositor work requ
 specific editing limitation and shared preview/render semantics. None of these
 broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

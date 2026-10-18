@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
@@ -15,6 +17,7 @@ import {
   extractExif,
   FilesystemSource,
   inspectMedia,
+  localMediaInputOptions,
   localPath,
   runProcess,
   type MediaCandidate,
@@ -325,6 +328,7 @@ export async function inspectPixelDng(
         "-v",
         "error",
         "-xerror",
+        ...(await localMediaInputOptions(path, signal)),
         "-i",
         path,
         "-map",

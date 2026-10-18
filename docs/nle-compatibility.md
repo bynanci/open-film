@@ -28,7 +28,7 @@ to record each capability independently when application testing is performed.
 
 Advanced edits are **metadata only**, a known implementation limit. Speed,
 volume/mute, scale, rotation, position, incoming crossfades, titles, photo layouts,
-protected regions, photo motion, title styles, audio automation, non-ripple track
+protected regions, photo motion, title styles, film looks, audio automation, non-ripple track
 editing and clip locks are retained exactly in OpenFilm metadata and must be
 recreated manually in the NLE. They are not native OTIO effects. In particular,
 a diptych exports a native cut using its primary photo; the second photo's URI,
@@ -55,6 +55,7 @@ also embedded in the OTIO document so it remains available with the file.
 | Photo layout, focal point and protected region       | Metadata only; diptych retains both source identities while native cut uses primary photo               | Metadata yes; native photo composition not implemented | Exact fields and secondary source identities preserved        | Manual recreation required                                   |
 | Hold, push-in and pan recipes                        | Metadata only; no native motion/keyframe effect                                                         | Metadata yes; native motion not implemented            | Recipe start/end and easing preserved                         | Manual recreation required                                   |
 | Title roles, typography and layout                   | Metadata only                                                                                           | Metadata yes; native typography not implemented        | Exact style fields preserved                                  | Manual recreation required                                   |
+| Film, scene and clip color looks                     | Exact versioned recipes and resolved per-clip look in metadata; no native color effect                  | Metadata yes; native color not implemented             | Color metadata fixture not yet checked by official parser     | Manual recreation required; actual Resolve QA remains open   |
 | Audio fades, gain envelopes and ducking              | Metadata only; native cut has no automation                                                             | Metadata yes; native automation not implemented        | Exact local-time envelope and ducking regions preserved       | Manual recreation required                                   |
 | Non-ripple soundtrack editing                        | Native Audio track timing; OpenFilm editing policy in metadata                                          | Metadata yes; editing policy not implemented by NLE    | Track timing policy preserved                                 | Recreate editing policy manually                             |
 | Clip lock and beat identity                          | Metadata only                                                                                           | Yes                                                    | Preserved                                                     | Reapply locks/organization manually                          |
@@ -89,8 +90,22 @@ Original data locations are:
 
 - Timeline `metadata.openfilm.composition`: the complete original composition.
 - Each Clip's `metadata.openfilm.clip`: exact original source/timeline fields,
-  transform, transition, title, layout, motion, titleStyle, audioAutomation, lock
+  transform, transition, title, layout, motion, titleStyle, look, audioAutomation, lock
   and beat ID.
+- Visual Clip `metadata.openfilm.effectiveLook`: resolved versioned recipe and
+  scope (`clip`, `beat`, `film` or `original`) when any look configuration is
+  authored. The full composition retains exact `defaultLook`, `beatLooks` and
+  clip `look` values. Portable JSON also records resolved visual clips in
+  `metadata.openfilm.effectiveLooks`. These are color reconstruction evidence;
+  an NLE does not automatically apply the look. Clip overrides take precedence
+  over scene and film settings; explicit `none` or zero strength stops
+  inheritance. Only active effective visual looks request manual recreation;
+  unused or overridden settings do not cause color warnings. Titles, audio and
+  music tracks do not inherit a visual color look. A photo/video caption retains
+  its source image's look; its text remains separate. An MP4 export override is a
+  render option and is not applied to NLE interchange. FCPXML and EDL reject
+  active effective looks rather than silently dropping color edits. Old
+  compositions keep their existing schema and exports without added defaults.
 - Diptych Clip `metadata.openfilm.secondaryMediaReferences`: second photo's
   source URL, name, asset ID, content hash and portable reference. The exporter
   rejects a missing secondary catalog source or empty URI just as it rejects a
@@ -179,3 +194,5 @@ files` folder if the bundle moved between machines.
    compatibility reports and the Resolve project to the QA record. Mark each
    feature verified only after this procedure succeeds. No such result is claimed
    by the automated gate.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

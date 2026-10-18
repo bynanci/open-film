@@ -1,6 +1,6 @@
 # Third-party components
 
-OpenFilm source is Apache-2.0. Dependencies and external programs retain their
+OpenFilm's current derivative distribution as a whole is GPL-3.0-only. Preexisting Apache-2.0 portions retain their grants; see [licensing](licensing.md) and the preserved [Apache text](../LICENSES/Apache-2.0.txt). Dependencies and external programs retain their
 own licenses; the project license does not replace them. The lockfiles identify
 exact versions, including transitive packages.
 
@@ -53,7 +53,7 @@ package rather than bundling the font files in OpenFilm. If an installer later
 redistributes Noto, retain the upstream copyright and complete OFL notice;
 modified fonts must also meet reserved-name and other OFL conditions. Fontkit's
 MIT notice and resvg's MPL-2.0 notice remain with their installed packages;
-OpenFilm's Apache-2.0 source license is unchanged.
+OpenFilm's current distribution terms are described in [licensing](licensing.md); dependency terms are unchanged.
 
 ## Optional transcription and capability reference
 
@@ -66,6 +66,26 @@ adapter loads a supplied directory with networking disabled during recognition.
 VidScribe is a capability reference, pinned in [the adaptation record](vidscribe-reference.md).
 Its upstream source is MIT, copyright 2026 VidScribe contributors. This foundation
 independently implements its adapted concepts; no substantial source, model or
-UI asset was copied. OpenFilm's Apache-2.0 license remains unchanged. If future
+UI asset was copied. Historical OpenFilm portions retain Apache-2.0 grants; the current derivative distribution uses GPL-3.0-only. If future
 work copies substantial upstream code, retain the upstream copyright and full
 MIT notice with that code and update NOTICE and this record.
+
+## Original film looks and design references
+
+The six creative film-look matrices and `none` are original OpenFilm work under
+GPL-3.0-only. Their provenance is `openfilm-original`; they are aesthetic RGB
+treatments without camera-response or measured film-stock claims. The
+[pinned reference record](film-look-open-source-reference.md) documents FFmpeg,
+OpenColorIO, ACES configurations, Filmulator, and RawTherapee as design inputs.
+No reference code or LUT was copied; OCIO, ACES, Filmulator, and RawTherapee are
+not application dependencies. No new third-party payload or NOTICE entry is
+introduced by this source review.
+
+FFmpeg licensing still depends on the actual binary configuration. Its upstream
+license identifies the existing `perspective` filter and `libx264` integration
+as GPL components; the channel-matrix feature does not establish an LGPL-only
+runtime. Any future external LUT must have its own traceable license and source
+provenance before inclusion; a collection's repository license alone is
+insufficient evidence for every contributed asset.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

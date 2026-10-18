@@ -1,9 +1,15 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
   validateAudioAutomation,
+  validateFilmLook,
+  filmLookMatrix,
+  resolveFilmLook,
+  ApplicationError,
   type AudioAutomation,
   type PhotoLayout,
   type PhotoMotion,
@@ -14,11 +20,15 @@ import {
   type Story,
   type StoryBeat,
   type Track,
+  type FilmLook,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
+  | { type: "look"; scope: "film"; look: FilmLook | null }
+  | { type: "look"; scope: "beat"; beatId: string; look: FilmLook | null }
+  | { type: "look"; scope: "clip"; clipId: string; look: FilmLook | null }
   | {
       type: "presentation";
       clipId: string;
@@ -450,6 +460,110 @@ function durationCommand(
       };
 }
 
+type LookCommand = Extract<TimelineCommand, { type: "look" }>;
+function visualLookClip(track: Track, asset: MediaAsset): boolean {
+  return (
+    track.type !== "audio" &&
+    track.type !== "music" &&
+    track.type !== "titles" &&
+    (asset.mediaType === "image" || asset.mediaType === "video")
+  );
+}
+function lookSources(clip: Clip, assets: MediaAsset[]): MediaAsset[] {
+  return clipAssetIds(clip).map((id) => findAsset(assets, id));
+}
+
+/** Parent edits never change a protected clip indirectly through inheritance. */
+function applyLookCommand(
+  next: EditorDocument,
+  assets: MediaAsset[],
+  command: LookCommand,
+): EditorDocument {
+  if (!["film", "beat", "clip"].includes(command.scope))
+    fail("Unknown look scope.");
+  const allowed = [
+    "type",
+    "scope",
+    "look",
+    ...(command.scope === "beat"
+      ? ["beatId"]
+      : command.scope === "clip"
+        ? ["clipId"]
+        : []),
+  ];
+  if (Object.keys(command).some((field) => !allowed.includes(field)))
+    fail("A look edit contains an unsupported field for its scope.");
+  const look = command.look === null ? null : validateFilmLook(command.look);
+  if (command.scope === "clip") {
+    const { clip, track } = findClip(next, command.clipId);
+    const sources = lookSources(clip, assets);
+    if (!visualLookClip(track, sources[0]!))
+      fail(
+        "Creative looks require a flat photo or video clip; audio and titles keep their original color.",
+      );
+    if (clip.locked || sources.some((source) => source.state.locked))
+      throw new ApplicationError(
+        "timeline.lookLocked",
+        "Unlock the clip and its source media before changing its look.",
+        409,
+        { count: 1 },
+      );
+    if (sources.some((source) => source.state.rejected || !renderable(source)))
+      fail("Look edits require supported, non-rejected visual sources.");
+    if (look === null) delete clip.look;
+    else clip.look = look;
+    return next;
+  }
+
+  if (command.scope === "beat") findBeat(next, command.beatId);
+  const before = structuredClone(next.composition);
+  if (command.scope === "film") {
+    if (look === null) delete next.composition.defaultLook;
+    else next.composition.defaultLook = look;
+  } else {
+    const other = (next.composition.beatLooks ?? []).filter(
+      (entry) => entry.beatId !== command.beatId,
+    );
+    if (look !== null) other.push({ beatId: command.beatId, look });
+    if (other.length > 1000)
+      fail("A film supports at most 1000 scene look overrides.");
+    if (other.length) next.composition.beatLooks = other;
+    else delete next.composition.beatLooks;
+  }
+  let affectedLocked = 0;
+  for (const track of next.composition.tracks) {
+    if (
+      track.type === "audio" ||
+      track.type === "music" ||
+      track.type === "titles"
+    )
+      continue;
+    for (const clip of track.clips) {
+      if (command.scope === "beat" && clip.beatId !== command.beatId) continue;
+      const sources = lookSources(clip, assets);
+      if (
+        !visualLookClip(track, sources[0]!) ||
+        !(clip.locked || sources.some((source) => source.state.locked))
+      )
+        continue;
+      const previous = filmLookMatrix(resolveFilmLook(before, clip).look);
+      const changed = filmLookMatrix(
+        resolveFilmLook(next.composition, clip).look,
+      );
+      if (previous.some((value, index) => value !== changed[index]))
+        affectedLocked++;
+    }
+  }
+  if (affectedLocked)
+    throw new ApplicationError(
+      "timeline.lookLocked",
+      "This look would change protected clips. Unlock them or keep their current clip look before changing the film or scene look.",
+      409,
+      { count: affectedLocked },
+    );
+  return next;
+}
+
 /** Applies one edit to a detached snapshot; undo history can retain either input. */
 export function applyTimelineCommand(
   document: EditorDocument,
@@ -457,6 +571,7 @@ export function applyTimelineCommand(
   command: TimelineCommand,
 ): EditorDocument {
   const next = structuredClone(document);
+  if (command.type === "look") return applyLookCommand(next, assets, command);
   if (command.type === "audio.add") {
     if (
       !command.clipId.trim() ||

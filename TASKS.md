@@ -5,7 +5,40 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Reviewable scene directions to edits
+## Current — Original film looks
+
+Scope: [workflow and numerical contract](docs/film-looks.md).
+Evidence: [validation](docs/validation-film-looks.md) and
+[pinned open-source decisions](docs/film-look-open-source-reference.md).
+
+- [x] Choose six original looks and strength without changing source files,
+      timing, titles or audio; retain an explicit original-color option.
+- [x] Save whole-film, scene and clip settings through shared validated commands,
+      with inheritance, locks, Undo/Redo, idempotent retry and reopen coverage.
+- [x] Preserve segmented looks or explicitly unify one preview/MP4, including
+      protected clips, without changing saved settings or editable exports.
+- [x] Compare actual source SVG screenshots with encoded SDR fixtures and record
+      the bounded numerical/color contract, immutable recipes and provenance.
+- [x] Expose localized controls in English, Traditional Chinese and Japanese,
+      including pseudo-locale and three desktop-size browser coverage.
+- [x] Preserve authored/effective look metadata in JSON/OTIO and report manual
+      recreation; reject unsupported active-look FCPXML/EDL exports.
+- [x] Integrate regression coverage and independent correctness/UX follow-up;
+      174 files / 2,586 unit/integration tests and nine focused browser cases pass.
+      Full browser and published exact-head outcomes remain tracked in PR checks.
+- [x] Correct known Vue SSR dependency behavior, verify local API trust guards and
+      reject non-self-contained media inputs while preserving supported formats.
+      Record remaining native transitive notices in the [security review](docs/security-review-2026-10-18.md).
+- [x] Apply the selected GPL-3.0-only derivative distribution terms, preserve exact
+      historical Apache text/notices and fixture CC0 grants, and document AGPL's
+      alternative network-service scope in [licensing](docs/licensing.md).
+- [ ] Manual: assess real camera/HDR material and intended display appearance;
+      native installers and actual Resolve finishing remain separate gates.
+- [ ] Before Linux installer release: obtain a compatible upstream remedy for
+      GLib's `RUSTSEC-2024-0429`, investigate transitive reachability and re-audit;
+      track the unmaintained `proc-macro-error` dependency without hiding notices.
+
+## Implemented slice — Reviewable scene directions to edits
 
 Scope: [scene-direction editing](docs/scene-direction-editing.md).
 Evidence: [validation record](docs/validation-scene-direction-editing.md).
@@ -184,7 +217,7 @@ slice. Optional text-based script assistance is tracked in the current slice abo
       workflow pass without weakening rejected/unsupported-media checks.
 
 - [x] pnpm monorepo, strict TypeScript, lint/format/typecheck/test/build scripts.
-- [x] Apache-2.0 LICENSE/NOTICE and license decision record.
+- [x] Preserve the historical Apache-2.0 LICENSE/NOTICE and decision record; current derivative terms are in [licensing](docs/licensing.md).
 - [x] CI workflow configured for TypeScript, media, interchange, browser, and
       native checks; execution results remain separate from configuration.
 - [x] Portable media/project/story/composition/event/job models.
@@ -464,3 +497,5 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 - [x] Share the validated flow across Export, HTTP and CLI with atomic output and project-scoped recovery.
 - [x] Validate actual downloaded files with independent parsers and localized, bounded browser screens.
 - [ ] Manual: subtitle playback in a real NLE/player remains separate from format-parser validation.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

@@ -14,6 +14,12 @@ twenty-second A/B film records actual rendered differences and audio automation;
 local regression and UI results are recorded separately from candidate CI and
 workstation verification.
 
+**Film looks** add six original creative presets with adjustable strength, saved
+whole-film/scene/clip overrides and an explicit MP4-only uniform output choice.
+Source files stay untouched. Preview and rendering share versioned coefficients;
+rendered output remains the color reference. See [the workflow and numerical
+contract](docs/film-looks.md) and [open-source reference decisions](docs/film-look-open-source-reference.md).
+
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
@@ -210,6 +216,7 @@ pnpm cli analyze --project /tmp/demo.openfilm
 pnpm cli story generate --project /tmp/demo.openfilm --template proposal-film --target 12 --max 20
 pnpm cli compose --project /tmp/demo.openfilm
 pnpm cli render --project /tmp/demo.openfilm
+pnpm cli export --project /tmp/demo.openfilm --format mp4 --look soft-film --look-strength 0.7
 pnpm cli export --project /tmp/demo.openfilm --format otio
 ```
 
@@ -337,5 +344,7 @@ See [architecture](docs/architecture.md), [project format](docs/project-format.m
 [roadmap](ROADMAP.md), and [task status](TASKS.md).
 Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md) and our
 [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues as described in
-[SECURITY.md](SECURITY.md). Code is licensed under [Apache-2.0](LICENSE); generated
+[SECURITY.md](SECURITY.md). The current derivative distribution is [GPL-3.0-only](LICENSE), with prior Apache grants preserved in [the licensing record](docs/licensing.md); generated
 sample media is dedicated to the public domain under CC0 1.0.
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

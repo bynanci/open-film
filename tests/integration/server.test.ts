@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,6 +11,91 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 describe("loopback application boundary", () => {
+  async function healthRequest(port: number, headers: Record<string, string>) {
+    return new Promise<{ status: number; allowedOrigin: string }>(
+      (accept, reject) => {
+        const outgoing = request(
+          `http://127.0.0.1:${port}/api/health`,
+          { headers },
+          (response) => {
+            response.resume();
+            response.on("error", reject);
+            response.on("end", () =>
+              accept({
+                status: response.statusCode!,
+                allowedOrigin: String(
+                  response.headers["access-control-allow-origin"] ?? "",
+                ),
+              }),
+            );
+          },
+        );
+        outgoing.on("error", reject);
+        outgoing.end();
+      },
+    );
+  }
+
+  it("requires an exact loopback Host even when forwarding headers claim a trusted host", async () => {
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    const trustedHost = `127.0.0.1:${runtime.port}`;
+    const rebindingHost = `attacker.example:${runtime.port}`;
+    const rejected: Record<string, string>[] = [
+      { Host: rebindingHost },
+      { Host: `localhost.attacker.example:${runtime.port}` },
+      { Host: `127.0.0.1.attacker.example:${runtime.port}` },
+      { Host: "127.0.0.1" },
+      { Host: rebindingHost, "X-Forwarded-Host": trustedHost },
+      { Host: rebindingHost, Forwarded: `host="${trustedHost}"` },
+    ];
+    for (const headers of rejected) {
+      const response = await healthRequest(runtime.port, {
+        ...headers,
+        Origin: "http://127.0.0.1:1420",
+      });
+      expect(response.status, JSON.stringify(headers)).toBe(403);
+      expect(response.allowedOrigin).toBe("");
+    }
+  });
+
+  it("rejects null origins before handling requests or CORS preflights", async () => {
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    for (const method of ["GET", "POST", "OPTIONS"]) {
+      const response = await fetch(
+        `http://127.0.0.1:${runtime.port}/api/health`,
+        { method, headers: { Origin: "null" } },
+      );
+      expect(response.status, method).toBe(403);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+      expect(await response.json()).toMatchObject({
+        code: "request.forbidden",
+      });
+    }
+  });
+
+  it("accepts both exact loopback hosts and the configured desktop origins", async () => {
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    for (const host of ["localhost", "127.0.0.1"]) {
+      for (const origin of [
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+        "http://tauri.localhost",
+        "tauri://localhost",
+      ]) {
+        const response = await healthRequest(runtime.port, {
+          Host: `${host}:${runtime.port}`,
+          Origin: origin,
+          "Sec-Fetch-Site": "cross-site",
+        });
+        expect(response.status, `${host} ${origin}`).toBe(200);
+        expect(response.allowedOrigin).toBe(origin);
+      }
+    }
+  });
+
   it("creates, reopens and reads a real SQLite project while rejecting cross-site requests", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-api-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));

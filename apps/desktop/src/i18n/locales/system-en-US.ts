@@ -1,3 +1,5 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 export default {
   common: {
     unknownDate: "Capture date unknown",
@@ -66,6 +68,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      lookLocked:
+        "Changing this look would affect {count} protected clips. Unlock those clips or sources first, or adjust an unlocked clip.",
       notFound:
         "This edit is no longer available. Open the latest version of your film.",
       conflict:

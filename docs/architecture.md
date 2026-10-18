@@ -37,6 +37,17 @@ flowchart TD
 
 ## Packages and boundaries
 
+Film looks extend existing optional composition/clip content in schema 1.0.0.
+Core owns immutable original recipes, validation and pure hierarchy resolution;
+Solver owns protected look commands. Application persists them through ordinary
+editing/retry/history contracts. The browser source adapter and FFmpeg renderer
+share coefficients, with their distinct decode/transfer assumptions documented.
+Render-only overrides are validated/copied before asynchronous work and stay
+outside project history. Exporters retain look evidence rather than claiming NLE
+color execution. The renderer records recipe checksums, actual build identity and
+nullable catalog color metadata; Core gains no native dependency. See
+[film looks](film-looks.md) and [source decisions](film-look-open-source-reference.md).
+
 Scene-script review extends the existing generic `ReviewSuggestion` with a real
 Story/beat/field target. `SceneScriptReviewService` in application owns the
 whitelisted prompt, source binding, field-only mutation and retry; it calls the
@@ -402,3 +413,5 @@ client are never trusted. Desktop retains pending acceptance identity locally an
 uses a temporary monitor override for preview, outside autosave/history. See
 [the contract](scene-direction-editing.md) and
 [validation](validation-scene-direction-editing.md).
+
+_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._

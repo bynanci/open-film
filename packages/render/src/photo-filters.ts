@@ -1,11 +1,19 @@
+// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
+// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import {
   assetDisplayDimensions,
   resolvePhotoPlan,
   type Clip,
+  type FilmLook,
   type FrameSize,
   type MediaAsset,
 } from "@openfilm/core";
-import { localPath, previewVideoFilters } from "@openfilm/media";
+import {
+  localMediaInputOptions,
+  localPath,
+  previewVideoFilters,
+} from "@openfilm/media";
+import { filmLookFilters } from "./look-filters.js";
 
 const n = (value: number) => String(Number(value.toFixed(8)));
 /** Adapter expressions use the endpoints and safety decisions of the shared plan. */
@@ -19,6 +27,7 @@ export async function photoPresentationFilters(
     suffix: number;
     duration: number;
     signal?: AbortSignal;
+    look?: FilmLook;
   },
 ): Promise<{
   args: string[];
@@ -54,6 +63,7 @@ export async function photoPresentationFilters(
         n(frame.frameRate),
         "-threads",
         "1",
+        ...(await localMediaInputOptions(localPath(asset.uri), options.signal)),
         "-i",
         localPath(asset.uri),
       );
@@ -62,7 +72,7 @@ export async function photoPresentationFilters(
     const merged = `photo-merged${options.suffix}-${index}`;
     const decode = await previewVideoFilters(asset, options.signal);
     filters.push(
-      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
+      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...filmLookFilters(options.look), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
     );
     filters.push(
       `[${label}][${source}]overlay=x=${Math.round(layer.x)}:y=${Math.round(layer.y)}:format=rgb:eval=init:shortest=1[${merged}]`,
