@@ -4,6 +4,7 @@ import {
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
+  resolveTitleStyle,
   validateAudioAutomation,
   MAX_TITLE_LENGTH,
   type MediaAsset,
@@ -456,6 +457,21 @@ export class TimelineEditor {
       const assets = [...before.assets];
       // Explicit edits may reference source media outside this story's candidate pool.
       for (const item of parsed.commands) {
+        // Implicit font size depends on this composition's actual frame and
+        // title role. Reject styles the shared resolver cannot consume before
+        // applying any command in the batch; no font loading is necessary.
+        if (item.type === "presentation" && item.titleStyle) {
+          try {
+            resolveTitleStyle(
+              item.titleStyle,
+              this.application.project.settings,
+            );
+          } catch (error) {
+            throw new TimelineEditorError(
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
         // PhotoLayout's portable shape has no output dimensions. Validate its
         // effective gap against this project before any command is applied.
         if (

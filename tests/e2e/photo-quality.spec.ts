@@ -12,7 +12,7 @@ import {
   type ProjectContentLocale,
 } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, uiText } from "./ui-helpers.js";
 
 const base = "http://127.0.0.1:4310";
 const cleanup: (() => Promise<void>)[] = [];
@@ -27,8 +27,10 @@ async function createFilm(
     | "diptych-gap"
     | "title-only"
     | "title-defaults"
+    | "title-invalid"
     | "audio-rate"
-    | "audio-unsupported",
+    | "audio-unsupported"
+    | "visual-overlays",
 ) {
   const fixture = await createDesktopFixture(0);
   cleanup.push(fixture.cleanup);
@@ -116,7 +118,88 @@ async function createFilm(
     first.titleStyle = { version: 1, role: "film-title" };
     app.project.timelines[0]!.tracks[0]!.clips[1]!.title = "原始字幕";
   }
+  if (preset === "title-invalid") {
+    first.title = "保留這句重要的話。";
+    first.titleStyle = { version: 1, role: "film-title", tracking: 20 };
+  }
   const audioId = id("05-tone.wav");
+  if (preset === "visual-overlays")
+    app.project.timelines[0]!.tracks.push(
+      {
+        id: "overlay-video-track",
+        type: "video",
+        timing: "overlay",
+        clips: [
+          {
+            id: "overlay-video",
+            assetId: id("04-motion.mp4"),
+            sourceIn: 0.5,
+            sourceOut: 2.5,
+            timelineStart: 1,
+            timelineDuration: 2,
+            transform: { volume: 0.5 },
+          },
+        ],
+      },
+      {
+        id: "overlay-title-track",
+        type: "titles",
+        timing: "overlay",
+        clips: [
+          {
+            id: "overlay-title",
+            assetId: id("01-photo.png"),
+            title: "Together",
+            timelineStart: 2,
+            timelineDuration: 2,
+          },
+        ],
+      },
+      {
+        id: "overlay-photo-track",
+        type: "overlay",
+        timing: "overlay",
+        clips: [
+          {
+            id: "overlay-photo",
+            assetId: id("03-evening.png"),
+            timelineStart: 3,
+            timelineDuration: 3,
+          },
+        ],
+      },
+      {
+        id: "ordinary-audio-track",
+        type: "audio",
+        clips: [
+          {
+            id: "ordinary-audio",
+            assetId: audioId,
+            beatId: "memories",
+            sourceIn: 0,
+            sourceOut: 1,
+            timelineStart: 0,
+            timelineDuration: 1,
+          },
+        ],
+      },
+      {
+        id: "overlay-music-track",
+        type: "music",
+        timing: "overlay",
+        clips: [
+          {
+            id: "sound-only",
+            assetId: audioId,
+            sourceIn: 0,
+            sourceOut: 2,
+            timelineStart: 0,
+            timelineDuration: 2,
+            audioAutomation: { version: 1, role: "music" },
+          },
+        ],
+      },
+    );
   if (preset === "audio-rate" || preset === "audio-unsupported")
     app.project.timelines[0]!.tracks.push({
       id: "music",
@@ -178,6 +261,168 @@ async function openEditor(page: Page) {
   await expect(page.locator("#clip-photo-one")).toBeVisible();
   await page.locator("#clip-photo-one").click();
 }
+
+test("visual overlay clips stay selectable with source controls, keyboard navigation and track-scoped history", async ({
+  page,
+  request,
+}) => {
+  await createFilm(request, "visual-overlays");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openEditor(page);
+  const before = await editor(request);
+  await expect(page.locator(".editor-story-rail .editor-clip")).toHaveCount(6);
+  await expect(page.locator("#clip-sound-only")).toHaveCount(0);
+  await expect(page.locator("#clip-ordinary-audio")).toBeVisible();
+  const video = page.locator("#clip-overlay-video");
+  await video.click();
+  await expect(video).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Source in", { exact: true })).toHaveValue(
+    "0.5",
+  );
+  await expect(page.getByLabel("Source out", { exact: true })).toHaveValue(
+    "2.5",
+  );
+  await expect(page.getByLabel("Clip volume", { exact: true })).toHaveValue(
+    "0.5",
+  );
+  const player = page.locator(".editor-source-screen video");
+  await expect
+    .poll(() =>
+      player.evaluate((element) => (element as HTMLVideoElement).readyState),
+    )
+    .toBeGreaterThanOrEqual(1);
+  await expect
+    .poll(() =>
+      player.evaluate((element) => (element as HTMLVideoElement).currentTime),
+    )
+    .toBeCloseTo(0.5, 2);
+  await video.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#clip-overlay-title")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.getByLabel("Text shown in the film", { exact: true }),
+  ).toHaveValue("Together");
+  await expect(page.getByLabel("Photo layout", { exact: true })).toHaveCount(0);
+  await page.locator("#clip-overlay-photo").click();
+  await expect(page.locator("#clip-overlay-photo")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.locator(".editor-composition-frame > img:not(.editor-title-overlay)"),
+  ).toHaveAttribute("alt", "03-evening.png");
+  await video.dragTo(page.locator("#clip-overlay-title"));
+  await expect(page.locator(".editor-message")).toContainText(
+    "Move a clip within its story beat and track.",
+  );
+  expect((await editor(request)).composition).toEqual(before.composition);
+  await video.click();
+  await expect(
+    page.getByRole("button", { name: "Move clip earlier", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Move clip later", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("Clip volume", { exact: true }).press("Home");
+  await expect
+    .poll(async () => (await clip(request, "overlay-video")).transform?.volume)
+    .toBe(0);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request, "overlay-video")).transform?.volume)
+    .toBe(0.5);
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request, "overlay-video")).transform?.volume)
+    .toBe(0);
+  expect(
+    (await editor(request)).composition.tracks
+      .slice(1)
+      .filter((track) => track.id !== "overlay-video-track"),
+  ).toEqual(
+    before.composition.tracks
+      .slice(1)
+      .filter((track) => track.id !== "overlay-video-track"),
+  );
+  await page.locator("#clip-ordinary-audio").click();
+  await expect(page.getByLabel("Source in", { exact: true })).toHaveValue("0");
+  await page.getByRole("button", { name: "Sound", exact: true }).click();
+  await expect(page.locator(".editor-soundtrack-list button")).toHaveCount(1);
+});
+
+test("legacy invalid title styles open without mutation and recover through reset, history and reopen", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "title-invalid");
+  const before = await editor(request);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openEditor(page);
+  const warning = page.getByText(
+    uiText("en-US", "editor.presentation.titleStyleRecoveryWarning"),
+    { exact: true },
+  );
+  const reset = page.getByRole("button", {
+    name: uiText("en-US", "editor.presentation.resetTitleStyle"),
+    exact: true,
+  });
+  await expect(warning).toBeVisible();
+  await expect(reset).toBeVisible();
+  await expect(
+    page.getByLabel("Text shown in the film", { exact: true }),
+  ).toHaveValue("保留這句重要的話。");
+  await expect(page.getByLabel("Text role", { exact: true })).toBeDisabled();
+  expect((await editor(request)).composition).toEqual(before.composition);
+  expect(errors).toEqual([]);
+  await reset.click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle)
+    .toBeUndefined();
+  expect((await clip(request)).title).toBe("保留這句重要的話。");
+  await expect(warning).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page
+        .locator(".editor-title-overlay")
+        .evaluate((image) => (image as HTMLImageElement).naturalWidth),
+    )
+    .toBe(320);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.tracking)
+    .toBe(20);
+  await expect(warning).toBeVisible();
+  await expect(
+    page.getByLabel("Text shown in the film", { exact: true }),
+  ).toHaveValue("保留這句重要的話。");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle)
+    .toBeUndefined();
+  await expect(warning).toHaveCount(0);
+  expect(
+    (await request.post(`${base}/api/project/close`, { data: {} })).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.post(`${base}/api/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await expect(
+    page.getByLabel("Text shown in the film", { exact: true }),
+  ).toHaveValue("保留這句重要的話。");
+  await expect(warning).toHaveCount(0);
+  expect((await clip(request)).titleStyle).toBeUndefined();
+  expect(errors).toEqual([]);
+});
 
 test("sparse and legacy title styles keep their rendered defaults after text edits and reopen", async ({
   page,

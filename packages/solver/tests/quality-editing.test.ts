@@ -677,6 +677,8 @@ describe("non-destructive photo presentation", () => {
         from: { scale: 1, x: 0, y: 0 },
         to: { scale: 1, x: 0, y: 0 },
       },
+      title: "一起走過的日子",
+      titleStyle: { version: 1, role: "scene-statement", fontSize: 42 },
     });
     const next = edit(before, {
       type: "replace",
@@ -685,7 +687,59 @@ describe("non-destructive photo presentation", () => {
     });
     expect(clip(next, "first").layout).toBeUndefined();
     expect(clip(next, "first").motion).toBeUndefined();
+    expect(clip(next, "first").title).toBe("一起走過的日子");
+    expect(clip(next, "first").titleStyle).toEqual(
+      clip(before, "first").titleStyle,
+    );
   });
+
+  it.each([
+    ["portrait", "landscape"],
+    ["portrait", "audible"],
+    ["audible", "landscape"],
+  ])(
+    "preserves authored title and exact typography when replacing %s with %s",
+    (sourceId, replacementId) => {
+      const initial = document();
+      clip(initial, "first").assetId = sourceId;
+      const pool = [...assets, ...videoSources];
+      const before = edit(
+        initial,
+        {
+          type: "presentation",
+          clipId: "first",
+          title: "我們一起，看過不同的風景",
+          titleStyle: {
+            version: 1,
+            role: "scene-statement",
+            fontFamily: "Noto Serif CJK TC",
+            fontSize: 42,
+            fontWeight: 500,
+            lineHeight: 1.6,
+            tracking: 1,
+            maxWidth: 700,
+            align: "left",
+            background: "scrim",
+            position: "bottom",
+          },
+        },
+        pool,
+      );
+      const snapshot = structuredClone(before);
+      const next = edit(
+        before,
+        { type: "replace", clipId: "first", assetId: replacementId },
+        pool,
+      );
+      expect(clip(next, "first").assetId).toBe(replacementId);
+      expect(clip(next, "first").title).toBe(clip(before, "first").title);
+      expect(clip(next, "first").titleStyle).toEqual(
+        clip(before, "first").titleStyle,
+      );
+      expect(() => validateComposition(next.composition)).not.toThrow();
+      expect(before).toEqual(snapshot);
+    },
+  );
 
   it("rejects pairing a photo excluded from the beat", () => {
     const before = document();

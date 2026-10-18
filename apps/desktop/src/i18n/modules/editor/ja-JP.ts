@@ -61,6 +61,9 @@ export default {
       titleFailed:
         "文字のプレビューを更新できませんでした。編集が保存されてから、もう一度お試しください。",
       retryTitle: "文字のプレビューを再試行",
+      titleStyleRecoveryWarning:
+        "保存済みのタイトルスタイルは現在の動画設定に対応していません。文章は保持されています。スタイルをリセットすると見た目を編集できます。",
+      resetTitleStyle: "タイトルスタイルをリセット",
       titleHeading: "画面の文字",
       titleText: "映像に表示する文字",
       titleRole: "文字の役割",

@@ -38,7 +38,30 @@ const focalY = ref(0.5);
 const protectedEnabled = ref(false);
 const region = ref({ x: 0.25, y: 0.2, width: 0.5, height: 0.6 });
 const title = ref("");
-const initialTitleStyle = resolveTitleStyle(props.clip.titleStyle, props.frame);
+function titleStyleForDisplay(style: TitleStyle | undefined) {
+  try {
+    return { style: resolveTitleStyle(style, props.frame), recovery: false };
+  } catch {
+    // Legacy readers preserve authored overrides for recovery. Display only
+    // supported role/placement defaults; do not rewrite the saved style.
+    return {
+      style: resolveTitleStyle(
+        {
+          version: 1,
+          role: style?.role ?? "subtitle",
+          position: style?.position,
+          background: style?.background,
+        },
+        props.frame,
+      ),
+      recovery: true,
+    };
+  }
+}
+const titleStyleRecovery = computed(
+  () => titleStyleForDisplay(props.clip.titleStyle).recovery,
+);
+const initialTitleStyle = titleStyleForDisplay(props.clip.titleStyle).style;
 const role = ref<TitleStyle["role"]>(initialTitleStyle.role);
 const position = ref<"center" | "bottom">(initialTitleStyle.position);
 const background = ref<"none" | "scrim">(initialTitleStyle.background);
@@ -96,9 +119,9 @@ watch(
     }
     if (changedClip || clip.title !== previous?.title)
       title.value = clip.title ?? "";
-    const nextTitleStyle = resolveTitleStyle(clip.titleStyle, props.frame);
+    const nextTitleStyle = titleStyleForDisplay(clip.titleStyle).style;
     const previousTitleStyle = previous
-      ? resolveTitleStyle(previous.titleStyle, props.frame)
+      ? titleStyleForDisplay(previous.titleStyle).style
       : undefined;
     if (changedClip || nextTitleStyle.role !== previousTitleStyle?.role)
       role.value = nextTitleStyle.role;
@@ -207,6 +230,14 @@ function warningMessage(warning: unknown) {
   if (code.includes("secondary") || code.includes("source"))
     return t("editor.presentation.sourceWarning");
   return t("editor.presentation.geometryWarning");
+}
+function resetTitleStyle() {
+  if (props.clip.locked || props.asset.state.locked) return;
+  emit("command", {
+    type: "presentation",
+    clipId: props.clip.id,
+    titleStyle: null,
+  });
 }
 </script>
 
@@ -326,6 +357,21 @@ function warningMessage(warning: unknown) {
       <div class="editor-divider" />
     </template>
     <h3>{{ t("editor.presentation.titleHeading") }}</h3>
+    <div
+      v-if="titleStyleRecovery"
+      class="editor-presentation-warnings"
+      role="status"
+    >
+      <p>{{ t("editor.presentation.titleStyleRecoveryWarning") }}</p>
+      <button
+        type="button"
+        class="editor-button"
+        :disabled="clip.locked || asset.state.locked"
+        @click="resetTitleStyle"
+      >
+        {{ t("editor.presentation.resetTitleStyle") }}
+      </button>
+    </div>
     <label class="editor-field"
       >{{ t("editor.presentation.titleText")
       }}<textarea
@@ -340,6 +386,7 @@ function warningMessage(warning: unknown) {
         >{{ t("editor.presentation.titleRole") }}
         <select
           v-model="role"
+          :disabled="titleStyleRecovery"
           :aria-label="t('editor.presentation.titleRole')"
           @change="setTitle('role')"
         >
@@ -361,6 +408,7 @@ function warningMessage(warning: unknown) {
           >{{ t("editor.presentation.titlePosition")
           }}<select
             v-model="position"
+            :disabled="titleStyleRecovery"
             :aria-label="t('editor.presentation.titlePosition')"
             @change="setTitle('position')"
           >
@@ -376,6 +424,7 @@ function warningMessage(warning: unknown) {
           >{{ t("editor.presentation.titleBackground")
           }}<select
             v-model="background"
+            :disabled="titleStyleRecovery"
             :aria-label="t('editor.presentation.titleBackground')"
             @change="setTitle('background')"
           >

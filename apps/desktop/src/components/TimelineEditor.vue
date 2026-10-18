@@ -254,7 +254,13 @@ const groups = computed(() => {
   const beats = state.value?.story.beats ?? [];
   const storyClips =
     state.value?.composition.tracks
-      .filter((track) => track.timing !== "overlay")
+      .filter(
+        (track) =>
+          !(
+            track.timing === "overlay" &&
+            (track.type === "audio" || track.type === "music")
+          ),
+      )
       .flatMap((track) => track.clips) ?? [];
   const list = beats.map((beat) => ({
     id: beat.id,

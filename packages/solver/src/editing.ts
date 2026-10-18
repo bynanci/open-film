@@ -420,7 +420,7 @@ function replace(
   clip.assetId = assetId;
   delete clip.layout;
   delete clip.motion;
-  delete clip.titleStyle;
+  // Authored text and its typography belong to the clip, independent of source.
   // Automation belongs to playable sound; retain its local curve only when the
   // replacement still has an audio stream. Undo keeps the original snapshot.
   if (!hasAudioStream(asset)) delete clip.audioAutomation;

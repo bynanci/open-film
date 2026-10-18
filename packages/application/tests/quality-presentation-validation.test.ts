@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_TITLE_LENGTH, resolvePhotoPlan } from "@openfilm/core";
+import {
+  MAX_TITLE_LENGTH,
+  resolvePhotoPlan,
+  type TitleStyle,
+} from "@openfilm/core";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 
 const applications = new Set<OpenFilmApplication>();
@@ -80,6 +84,132 @@ async function stateWithRedo(editor: TimelineEditor) {
 }
 
 describe("presentation validation before mutation", () => {
+  it("rejects tracking larger than the frame's implicit subtitle size without creating history or changing saved data", async () => {
+    const { app, editor } = await fixture();
+    app.project.settings.height = 720;
+    await app.save();
+    const before = editor.get("film");
+    const project = structuredClone(app.project);
+    const disk = await readFile(join(app.directory, "project.json"), "utf8");
+    await expect(
+      editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "clip",
+            title: "Story",
+            titleStyle: {
+              version: 1,
+              role: "subtitle",
+              tracking: 50,
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/tracking.*font size/iu);
+    expect(editor.get("film")).toEqual(before);
+    expect(app.project).toEqual(project);
+    expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+      disk,
+    );
+  });
+
+  it("rejects an invalid later style before applying any batch edit or clearing redo", async () => {
+    const { app, editor } = await fixture();
+    app.project.settings.height = 360;
+    await app.save();
+    const before = await stateWithRedo(editor);
+    const project = structuredClone(app.project);
+    const disk = await readFile(join(app.directory, "project.json"), "utf8");
+    await expect(
+      editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [
+          { type: "duration", clipId: "clip", duration: 4 },
+          {
+            type: "presentation",
+            clipId: "clip",
+            title: "Story",
+            titleStyle: {
+              version: 1,
+              role: "film-title",
+              tracking: 50,
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/tracking.*font size/iu);
+    expect(editor.get("film")).toEqual(before);
+    expect(app.project).toEqual(project);
+    expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+      disk,
+    );
+    expect((await editor.redo("film", before.revision)).canUndo).toBe(true);
+  });
+
+  it.each([
+    { height: 720, style: { version: 1, role: "subtitle", tracking: 1 } },
+    { height: 720, style: { version: 1, role: "film-title", tracking: 50 } },
+    {
+      height: 1080,
+      style: { version: 1, role: "scene-statement", tracking: 50 },
+    },
+    { height: 1440, style: { version: 1, role: "subtitle", tracking: 50 } },
+    {
+      height: 720,
+      style: { version: 1, role: "subtitle", fontSize: 50, tracking: 50 },
+    },
+  ] satisfies { height: number; style: TitleStyle }[])(
+    "accepts tracking valid for the actual frame or explicit font size: %j",
+    async ({ height, style }) => {
+      const { app, editor } = await fixture();
+      app.project.settings.height = height;
+      await app.save();
+      const saved = await editor.edit("film", {
+        baseRevision: editor.get("film").revision,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "clip",
+            title: "Story",
+            titleStyle: style,
+          },
+        ],
+      });
+      expect(saved.composition.tracks[0]!.clips[0]!.titleStyle).toEqual(style);
+      expect(saved.canUndo).toBe(true);
+    },
+  );
+
+  it("keeps frame-independent legacy styles readable for a corrective edit", async () => {
+    const { app } = await fixture();
+    app.project.settings.height = 720;
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.title = "Story";
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      tracking: 50,
+    };
+    await app.save();
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    const editor = new TimelineEditor(reopened);
+    const saved = await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [
+        {
+          type: "presentation",
+          clipId: "clip",
+          titleStyle: { version: 1, role: "subtitle", tracking: 1 },
+        },
+      ],
+    });
+    expect(saved.composition.tracks[0]!.clips[0]!.titleStyle?.tracking).toBe(1);
+  });
   it("rejects excessive title text at the request boundary before revision resolution", async () => {
     const { editor } = await fixture();
     await expect(

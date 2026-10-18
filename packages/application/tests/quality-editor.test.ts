@@ -97,6 +97,76 @@ const automation: AudioAutomation = {
 };
 
 describe("durable quality editing", () => {
+  it.each([
+    ["portrait", "second-photo"],
+    ["portrait", "title-video"],
+    ["title-video", "second-photo"],
+  ])(
+    "preserves authored title design on %s to %s replacement, undo, redo and reopen",
+    async (sourceId, replacementId) => {
+      const { app, editor } = await fixture();
+      app.catalog.upsertAsset({
+        id: "title-video",
+        name: "Title video",
+        uri: "file:///originals/title-video.mp4",
+        mediaType: "video",
+        duration: 20,
+        tags: [],
+        state: {},
+        metadata: {
+          "openfilm.ffprobe": { streams: [{ codec_type: "video" }] },
+        },
+      });
+      app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = sourceId;
+      await app.save();
+      const before = await editor.edit("film", {
+        baseRevision: editor.get("film").revision,
+        commands: [
+          {
+            type: "presentation",
+            clipId: "photo",
+            title: "下一段故事，也和你一起",
+            titleStyle: {
+              version: 1,
+              role: "film-title",
+              fontFamily: "Noto Serif CJK TC",
+              fontSize: 58,
+              fontWeight: 600,
+              lineHeight: 1.4,
+              tracking: 1,
+              maxWidth: 900,
+              align: "center",
+              background: "none",
+              position: "center",
+            },
+          },
+        ],
+      });
+      const originalClip = before.composition.tracks[0]!.clips[0]!;
+      const replaced = await editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [
+          { type: "replace", clipId: "photo", assetId: replacementId },
+        ],
+      });
+      const replacement = replaced.composition.tracks[0]!.clips[0]!;
+      expect(replacement.title).toBe(originalClip.title);
+      expect(replacement.titleStyle).toEqual(originalClip.titleStyle);
+      const undone = await editor.undo("film", replaced.revision);
+      expect(undone.composition).toEqual(before.composition);
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition).toEqual(replaced.composition);
+      const directory = app.directory;
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+        replaced.composition,
+      );
+    },
+  );
+
   it("deletes an empty soundtrack track and preserves that cleanup through undo, redo and reopen", async () => {
     const { app, editor } = await fixture();
     const initial = editor.get("film");

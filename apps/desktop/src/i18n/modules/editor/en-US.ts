@@ -63,6 +63,9 @@ export default {
       titleFailed:
         "The text preview could not be updated. Wait until the edit is saved, then retry.",
       retryTitle: "Retry text preview",
+      titleStyleRecoveryWarning:
+        "This saved title style does not fit the current film settings. Your text is safe. Reset the style to continue editing its appearance.",
+      resetTitleStyle: "Reset title style",
       titleHeading: "On-screen text",
       titleText: "Text shown in the film",
       titleRole: "Text role",

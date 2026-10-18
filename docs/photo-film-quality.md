@@ -23,7 +23,15 @@ whose complete Verify runs passed. Main remains
   UTF-16 code units). This storage/work bound does not guarantee text fits the
   selected font and frame: measured layout still reports overflow. Existing
   project readers remain permissive so an older longer title can be opened,
-  shortened or removed. Frame-independent layout validation accepts portable
+  shortened or removed. New title-style edits also resolve role defaults against
+  the actual project frame before saving, so tracking cannot exceed an implicit
+  font size; this check performs no font I/O. Frame-independent readers preserve
+  older styles for corrective edits. If an older style cannot resolve, the
+  inspector shows a localized recovery message and display defaults without
+  saving changes. **Reset title style** removes only the style through the
+  existing undoable command; the authored text remains. Text correction and
+  clearing stay available, and Undo can restore the older style safely.
+  Layout validation accepts portable
   geometry; saving a new diptych edit additionally requires its effective gap
   (32 pixels by default) to be smaller than the actual project width.
 - Added music/narration use explicit overlay tracks. Their add, move, trim,

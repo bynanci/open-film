@@ -55,6 +55,9 @@ export default {
       geometryWarning: "此構圖需要確認，請檢查人物位置與照片邊界。",
       titleFailed: "畫面文字預覽無法更新，請等候編輯儲存後重試。",
       retryTitle: "重試文字預覽",
+      titleStyleRecoveryWarning:
+        "已儲存的字卡樣式不適用於目前的影片設定。文字已保留；請重設樣式，再調整外觀。",
+      resetTitleStyle: "重設字卡樣式",
       titleHeading: "畫面文字",
       titleText: "影片中顯示的文字",
       titleRole: "文字角色",
