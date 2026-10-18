@@ -28,7 +28,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const time = ref(0);
 const playing = ref(false);
-const sourceFailed = ref(false);
+const failedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
 let animation = 0;
@@ -54,6 +54,44 @@ const plan = computed(() => {
     return null;
   }
 });
+const assetMap = computed(
+  () => new Map(props.assets.map((asset) => [asset.id, asset])),
+);
+const renderLayers = computed(() =>
+  (plan.value?.layers ?? []).map((layer, index) => {
+    const asset = assetMap.value.get(layer.assetId);
+    const identity = `${layer.assetId}:${asset?.uri}:${props.sourceVersion ?? 0}`;
+    return {
+      ...layer,
+      key: `${props.clip.id}:${index}:${identity}`,
+      src: sourceUrl(layer.assetId, identity),
+      name: asset?.name ?? "",
+    };
+  }),
+);
+const sourceFailed = computed(() =>
+  renderLayers.value.some((layer) => failedSources.value.has(layer.key)),
+);
+watch(
+  () => JSON.stringify(renderLayers.value.map((layer) => layer.key)),
+  () => {
+    const current = new Set(renderLayers.value.map((layer) => layer.key));
+    failedSources.value = new Set(
+      [...failedSources.value].filter((key) => current.has(key)),
+    );
+  },
+);
+function layerFailed(key: string) {
+  if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  failedSources.value = new Set([...failedSources.value, key]);
+}
+function layerLoaded(key: string) {
+  if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  if (!failedSources.value.has(key)) return;
+  const remaining = new Set(failedSources.value);
+  remaining.delete(key);
+  failedSources.value = remaining;
+}
 const titleUrl = computed(() =>
   titlePreviewUrl(
     props.compositionId,
@@ -111,7 +149,6 @@ watch(
   () => {
     pause();
     time.value = 0;
-    sourceFailed.value = false;
   },
 );
 watch(
@@ -140,12 +177,10 @@ defineExpose({ toggle, pause });
       <div class="photo-presentation-static" :style="staticStyle">
         <div class="photo-presentation-layers" :style="transformStyle">
           <img
-            v-for="(layer, index) in plan?.layers ?? []"
-            :key="`${layer.assetId}:${index}`"
-            :src="sourceUrl(layer.assetId, sourceVersion)"
-            :alt="
-              assets.find((asset) => asset.id === layer.assetId)?.name ?? ''
-            "
+            v-for="layer in renderLayers"
+            :key="layer.key"
+            :src="layer.src"
+            :alt="layer.name"
             draggable="false"
             :style="{
               left: `${(layer.x / frame.width) * 100}%`,
@@ -153,7 +188,8 @@ defineExpose({ toggle, pause });
               width: `${(layer.width / frame.width) * 100}%`,
               height: `${(layer.height / frame.height) * 100}%`,
             }"
-            @error="sourceFailed = true"
+            @load="layerLoaded(layer.key)"
+            @error="layerFailed(layer.key)"
           />
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   layoutTitleText,
+  MAX_TITLE_LENGTH,
   resolveTitleStyle,
   type TitleTextMeasure,
 } from "../src/title-layout.js";
@@ -19,6 +20,21 @@ const measure: TitleTextMeasure = (text, size, tracking) => ({
 });
 
 describe("measured title layout", () => {
+  it("rejects input above the shared mutation bound before font measurement", () => {
+    let measured = false;
+    expect(() =>
+      layoutTitleText(
+        "字".repeat(MAX_TITLE_LENGTH + 1),
+        undefined,
+        frame,
+        () => {
+          measured = true;
+          return { width: 1, ascent: 1, descent: 0 };
+        },
+      ),
+    ).toThrow(/too long/iu);
+    expect(measured).toBe(false);
+  });
   it("gives film titles, scene statements and subtitles distinct roles", () => {
     const styles = ["film-title", "scene-statement", "subtitle"].map((role) =>
       resolveTitleStyle({ version: 1, role: role as "film-title" }, frame),

@@ -37,6 +37,33 @@ const composition: Composition = {
 };
 
 describe("editable timeline exports", () => {
+  it.each(["fcpxml", "edl"] as const)(
+    "ignores saved empty overlay tracks when producing %s output",
+    (format) => {
+      const baseline = exportTimeline(format, composition, assets);
+      const saved = structuredClone(composition);
+      saved.tracks.unshift({
+        id: "deleted-music",
+        type: "music",
+        timing: "overlay",
+        clips: [],
+      });
+      saved.tracks.push({
+        id: "deleted-narration",
+        type: "audio",
+        timing: "overlay",
+        clips: [],
+      });
+      const snapshot = structuredClone(saved);
+      const result = exportTimeline(format, saved, assets);
+      expect(result).toEqual(baseline);
+      expect(result.content).toContain(
+        format === "fcpxml" ? "<asset-clip" : "00:00:05:00 00:00:09:00",
+      );
+      expect(saved).toEqual(snapshot);
+    },
+  );
+
   it("writes OTIO rational source ranges, media references, and timeline gaps", () => {
     const result = JSON.parse(
       exportTimeline("otio", composition, assets).content,

@@ -1,4 +1,5 @@
 import {
+  MAX_TITLE_LENGTH,
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
@@ -222,6 +223,16 @@ function renderable(asset: MediaAsset): boolean {
       ?.supported !== false
   );
 }
+/** Match the renderer's audio evidence; a video filename alone proves no stream. */
+function hasAudioStream(asset: MediaAsset): boolean {
+  if (asset.mediaType === "audio") return true;
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    { streams?: { codec_type?: string }[] } | undefined;
+  return (
+    Array.isArray(probe?.streams) &&
+    probe.streams.some((stream) => stream?.codec_type === "audio")
+  );
+}
 function sourceBounds(
   clip: Clip,
   asset: MediaAsset,
@@ -359,7 +370,13 @@ function remove(
   const { track } = findClip(document, clip.id);
   const end = clip.timelineStart + clip.timelineDuration;
   track.clips = track.clips.filter((item) => item.id !== clip.id);
-  if (track.timing === "overlay") return;
+  if (track.timing === "overlay") {
+    if (!track.clips.length)
+      document.composition.tracks = document.composition.tracks.filter(
+        (item) => item !== track,
+      );
+    return;
+  }
   for (const other of filmClips(document))
     if (other.timelineStart >= end - EPSILON)
       other.timelineStart = Math.max(
@@ -404,6 +421,9 @@ function replace(
   delete clip.layout;
   delete clip.motion;
   delete clip.titleStyle;
+  // Automation belongs to playable sound; retain its local curve only when the
+  // replacement still has an audio stream. Undo keeps the original snapshot.
+  if (!hasAudioStream(asset)) delete clip.audioAutomation;
   clip.sourceIn = 0;
   clip.sourceOut = duration * speed;
   finite(clip.sourceOut, "Resulting source out", 0, true);
@@ -626,9 +646,11 @@ export function applyTimelineCommand(
           if (
             typeof command.title !== "string" ||
             !command.title.trim() ||
-            command.title.length > 10000
+            command.title.length > MAX_TITLE_LENGTH
           )
-            fail("Title must be text of at most 10000 characters.");
+            fail(
+              `Title must be text of at most ${MAX_TITLE_LENGTH} characters.`,
+            );
           clip.title = command.title;
         }
       }
@@ -642,6 +664,10 @@ export function applyTimelineCommand(
     case "audio.configure":
       if (asset.mediaType !== "audio" && asset.mediaType !== "video")
         fail("Audio automation requires an audio or video source.");
+      if (!hasAudioStream(asset))
+        fail(
+          "Audio automation requires a detected audio stream. Analyze or relink this video, or choose an audio source before configuring fades, envelopes or ducking.",
+        );
       if (asset.state.locked)
         fail(
           `Source "${asset.name}" is locked. Unlock it before editing audio.`,

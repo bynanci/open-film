@@ -2,6 +2,8 @@ import type { FrameSize } from "./geometry.js";
 import type { TitleStyle } from "./models.js";
 
 export const TITLE_LAYOUT_VERSION = 1 as const;
+/** New graphic-title edits and raster input share this UTF-16 storage bound. */
+export const MAX_TITLE_LENGTH = 8_000;
 
 export interface TitleTextMetrics {
   /** Includes advance width and ink overhang, measured in composition pixels. */
@@ -134,7 +136,7 @@ export function layoutTitleText(
 ): TitleLayout {
   if (typeof text !== "string" || !text.trim())
     throw new Error("Enter title text before rendering.");
-  if (text.length > 8_000)
+  if (text.length > MAX_TITLE_LENGTH)
     throw new Error(
       "Title text is too long. Split it into shorter title cues.",
     );

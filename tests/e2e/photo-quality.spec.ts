@@ -5,7 +5,12 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
-import type { Clip, Composition, ProjectContentLocale } from "@openfilm/core";
+import {
+  resolveTitleStyle,
+  type Clip,
+  type Composition,
+  type ProjectContentLocale,
+} from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
 import { initialLocale, navigate } from "./ui-helpers.js";
 
@@ -21,6 +26,7 @@ async function createFilm(
     | "motion-only"
     | "diptych-gap"
     | "title-only"
+    | "title-defaults"
     | "audio-rate"
     | "audio-unsupported",
 ) {
@@ -105,6 +111,11 @@ async function createFilm(
     second.title = "一段真實的回憶";
     second.titleStyle = { version: 1, role: "scene-statement" };
   }
+  if (preset === "title-defaults") {
+    first.title = "原始片名";
+    first.titleStyle = { version: 1, role: "film-title" };
+    app.project.timelines[0]!.tracks[0]!.clips[1]!.title = "原始字幕";
+  }
   const audioId = id("05-tone.wav");
   if (preset === "audio-rate" || preset === "audio-unsupported")
     app.project.timelines[0]!.tracks.push({
@@ -167,6 +178,126 @@ async function openEditor(page: Page) {
   await expect(page.locator("#clip-photo-one")).toBeVisible();
   await page.locator("#clip-photo-one").click();
 }
+
+test("sparse and legacy title styles keep their rendered defaults after text edits and reopen", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "title-defaults");
+  const frame = { width: 320, height: 180 };
+  const originalFilm = resolveTitleStyle(
+    (await clip(request)).titleStyle,
+    frame,
+  );
+  const originalSubtitle = resolveTitleStyle(
+    (await clip(request, "photo-two")).titleStyle,
+    frame,
+  );
+  await openEditor(page);
+  const position = page.getByLabel("Text position", { exact: true });
+  const background = page.getByLabel("Text background", { exact: true });
+  await expect(page.getByLabel("Text role", { exact: true })).toHaveValue(
+    "film-title",
+  );
+  await expect(position).toHaveValue("center");
+  await expect(background).toHaveValue("none");
+  await field(page, "Text shown in the film", "更新後的片名");
+  await expect
+    .poll(async () => (await clip(request)).title)
+    .toBe("更新後的片名");
+  expect((await clip(request)).titleStyle).toEqual({
+    version: 1,
+    role: "film-title",
+  });
+  expect(resolveTitleStyle((await clip(request)).titleStyle, frame)).toEqual(
+    originalFilm,
+  );
+  await page.locator("#clip-photo-two").click();
+  await expect(page.getByLabel("Text role", { exact: true })).toHaveValue(
+    "subtitle",
+  );
+  await expect(position).toHaveValue("bottom");
+  await expect(background).toHaveValue("scrim");
+  await field(page, "Text shown in the film", "更新後的字幕");
+  await expect
+    .poll(async () => (await clip(request, "photo-two")).title)
+    .toBe("更新後的字幕");
+  expect((await clip(request, "photo-two")).titleStyle).toBeUndefined();
+  expect(
+    resolveTitleStyle((await clip(request, "photo-two")).titleStyle, frame),
+  ).toEqual(originalSubtitle);
+  expect(
+    (await request.post(`${base}/api/project/close`, { data: {} })).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.post(`${base}/api/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await expect(position).toHaveValue("center");
+  await expect(background).toHaveValue("none");
+  await page.locator("#clip-photo-two").click();
+  await expect(page.getByLabel("Text role", { exact: true })).toHaveValue(
+    "subtitle",
+  );
+  await expect(position).toHaveValue("bottom");
+  await expect(background).toHaveValue("scrim");
+  await page.locator("#clip-photo-one").click();
+  await field(page, "Text shown in the film", "");
+  await expect
+    .poll(async () => ({
+      title: (await clip(request)).title,
+      style: (await clip(request)).titleStyle,
+    }))
+    .toEqual({ title: undefined, style: undefined });
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle)
+    .toEqual({ version: 1, role: "film-title" });
+  await expect(position).toHaveValue("center");
+  await expect(background).toHaveValue("none");
+});
+
+test("title role defaults follow Undo and Redo while explicit position and background win", async ({
+  page,
+  request,
+}) => {
+  await createFilm(request, "title-defaults");
+  await openEditor(page);
+  const role = page.getByLabel("Text role", { exact: true });
+  const position = page.getByLabel("Text position", { exact: true });
+  const background = page.getByLabel("Text background", { exact: true });
+  await role.selectOption("scene-statement");
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.role)
+    .toBe("scene-statement");
+  await expect(position).toHaveValue("bottom");
+  await expect(background).toHaveValue("scrim");
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect(role).toHaveValue("film-title");
+  await expect(position).toHaveValue("center");
+  await expect(background).toHaveValue("none");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect(role).toHaveValue("scene-statement");
+  await expect(position).toHaveValue("bottom");
+  await expect(background).toHaveValue("scrim");
+  await position.selectOption("center");
+  await background.selectOption("none");
+  await role.selectOption("subtitle");
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.role)
+    .toBe("subtitle");
+  await expect(position).toHaveValue("center");
+  await expect(background).toHaveValue("none");
+  expect((await clip(request)).titleStyle).toMatchObject({
+    position: "center",
+    background: "none",
+  });
+});
 
 test("persisted motion without a layout seeks and plays without changing the film", async ({
   page,
@@ -410,7 +541,10 @@ test("photo direction, CJK titles and overlay sound survive history and reopen",
   await page.getByRole("button", { name: "Undo edit", exact: true }).click();
   await expect
     .poll(async () => (await clip(request)).titleStyle?.role)
-    .toBe("scene-statement");
+    .toBeUndefined();
+  await expect(page.getByLabel("Text role", { exact: true })).toHaveValue(
+    "subtitle",
+  );
   await page.getByRole("button", { name: "Redo edit", exact: true }).click();
   await expect
     .poll(async () => (await clip(request)).titleStyle?.role)

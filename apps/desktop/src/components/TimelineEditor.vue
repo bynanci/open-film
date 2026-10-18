@@ -2319,6 +2319,7 @@ onBeforeUnmount(() => {
             :selected-clip="selectedClip"
             :busy="historyBusy"
             :active="active && editMode === 'story'"
+            :source-version="sourceVersion"
             @command="command"
             @select="
               (clip) => {

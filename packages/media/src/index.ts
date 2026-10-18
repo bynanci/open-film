@@ -323,7 +323,9 @@ export async function inspectMedia(
             "-read_intervals",
             "%+#1",
             "-show_entries",
-            "frame=width,height,sample_aspect_ratio:frame_tags=Orientation:frame_side_data=rotation",
+            // Keep stream/format sections explicit alongside the bounded frame
+            // projection; import needs their media type, dimensions and tags.
+            "format:stream:frame=width,height,sample_aspect_ratio:frame_tags=Orientation:frame_side_data=rotation",
           ]
         : []),
       "-of",

@@ -5,6 +5,7 @@ import {
   validatePhotoMotion,
   validateTitleStyle,
   validateAudioAutomation,
+  MAX_TITLE_LENGTH,
   type MediaAsset,
 } from "@openfilm/core";
 import {
@@ -142,11 +143,11 @@ function command(value: unknown, index: number): TimelineCommand {
         data.title !== null &&
         (typeof data.title !== "string" ||
           !data.title.trim() ||
-          data.title.length > 10000)
+          data.title.length > MAX_TITLE_LENGTH)
       )
         invalid(
           `${path}.title`,
-          "expected nonempty text of at most 10000 characters, or null to remove",
+          `expected nonempty text of at most ${MAX_TITLE_LENGTH} UTF-16 code units, or null to remove`,
         );
       break;
     }
@@ -455,6 +456,16 @@ export class TimelineEditor {
       const assets = [...before.assets];
       // Explicit edits may reference source media outside this story's candidate pool.
       for (const item of parsed.commands) {
+        // PhotoLayout's portable shape has no output dimensions. Validate its
+        // effective gap against this project before any command is applied.
+        if (
+          item.type === "presentation" &&
+          item.layout?.preset === "diptych" &&
+          (item.layout.gap ?? 32) >= this.application.project.settings.width
+        )
+          throw new TimelineEditorError(
+            "Photo diptych gap must be smaller than the composition width",
+          );
         const referenced =
           item.type === "replace" || item.type === "audio.add"
             ? [item.assetId]

@@ -97,6 +97,129 @@ const automation: AudioAutomation = {
 };
 
 describe("durable quality editing", () => {
+  it("deletes an empty soundtrack track and preserves that cleanup through undo, redo and reopen", async () => {
+    const { app, editor } = await fixture();
+    const initial = editor.get("film");
+    const added = await editor.edit("film", {
+      baseRevision: initial.revision,
+      commands: [
+        addMusic,
+        { type: "audio.configure", clipId: "soundtrack", automation },
+      ],
+    });
+    const deleted = await editor.edit("film", {
+      baseRevision: added.revision,
+      commands: [{ type: "delete", clipId: "soundtrack" }],
+    });
+    expect(deleted.composition).toEqual(initial.composition);
+    const undone = await editor.undo("film", deleted.revision);
+    expect(undone.composition).toEqual(added.composition);
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition).toEqual(initial.composition);
+    const directory = app.directory;
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    applications.add(reopened);
+    expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+      initial.composition,
+    );
+  });
+
+  it.each(["portrait", "silent-video", "audible-next"])(
+    "replaces an automated audible video with %s across undo, redo and reopen",
+    async (replacementId) => {
+      const { app, editor } = await fixture();
+      for (const [id, duration, audible] of [
+        ["audible-video", 20, true],
+        ["silent-video", 20, false],
+        ["audible-next", 12, true],
+      ] as const) {
+        app.catalog.upsertAsset({
+          id,
+          name: id,
+          uri: `file:///originals/${id}.mp4`,
+          mediaType: "video",
+          duration,
+          tags: [],
+          state: {},
+          metadata: {
+            "openfilm.ffprobe": {
+              streams: [
+                { codec_type: "video" },
+                ...(audible ? [{ codec_type: "audio" }] : []),
+              ],
+            },
+          },
+        });
+      }
+      app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = "audible-video";
+      await app.save();
+      const before = await editor.edit("film", {
+        baseRevision: editor.get("film").revision,
+        commands: [{ type: "audio.configure", clipId: "photo", automation }],
+      });
+      const replaced = await editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [
+          { type: "replace", clipId: "photo", assetId: replacementId },
+        ],
+      });
+      const replacement = replaced.composition.tracks[0]!.clips[0]!;
+      if (replacementId === "audible-next") {
+        expect(replacement.audioAutomation).toMatchObject({
+          role: "music",
+          fadeIn: 1,
+          fadeOut: 2,
+        });
+        expect(replacement.audioAutomation!.points!.at(-1)!.time).toBe(12);
+      } else expect(replacement.audioAutomation).toBeUndefined();
+      const undone = await editor.undo("film", replaced.revision);
+      expect(undone.composition).toEqual(before.composition);
+      expect(undone.composition.tracks[0]!.clips[0]!.audioAutomation).toEqual(
+        automation,
+      );
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition).toEqual(replaced.composition);
+      const directory = app.directory;
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+        replaced.composition,
+      );
+    },
+  );
+
+  it("rejects silent-video automation without changing saved project or undo state", async () => {
+    const { app, editor } = await fixture();
+    app.catalog.upsertAsset({
+      id: "silent-video",
+      name: "Silent video",
+      uri: "file:///originals/silent.mp4",
+      mediaType: "video",
+      duration: 20,
+      tags: [],
+      state: {},
+      metadata: { "openfilm.ffprobe": { streams: [{ codec_type: "video" }] } },
+    });
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = "silent-video";
+    await app.save();
+    const before = editor.get("film");
+    const disk = await readFile(join(app.directory, "project.json"), "utf8");
+    await expect(
+      editor.edit("film", {
+        baseRevision: before.revision,
+        commands: [{ type: "audio.configure", clipId: "photo", automation }],
+      }),
+    ).rejects.toThrow(/audio/i);
+    expect(editor.get("film")).toEqual(before);
+    expect(await readFile(join(app.directory, "project.json"), "utf8")).toBe(
+      disk,
+    );
+  });
+
   it("adds soundtrack and narration as one undo unit, deduplicates retries and restores all fields after reopening", async () => {
     const { app, editor } = await fixture();
     const before = editor.get("film");

@@ -17,6 +17,7 @@ const props = defineProps<{
   selectedClip?: Clip;
   busy: boolean;
   active: boolean;
+  sourceVersion?: number;
 }>();
 const emit = defineEmits<{
   command: [command: TimelineCommand];
@@ -30,7 +31,11 @@ const audioAssets = computed(() =>
 );
 const audioClips = computed(() =>
   props.composition.tracks
-    .filter((track) => track.type === "audio" || track.type === "music")
+    .filter(
+      (track) =>
+        track.timing === "overlay" &&
+        (track.type === "audio" || track.type === "music"),
+    )
     .flatMap((track) => track.clips),
 );
 const selectedAudio = computed(() =>
@@ -41,6 +46,10 @@ const selectedAudio = computed(() =>
 );
 const selectedAsset = computed(() =>
   props.assets.find((asset) => asset.id === selectedAudio.value?.assetId),
+);
+const sourceIdentity = computed(
+  () =>
+    `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
 const assetId = ref("");
 const role = ref<AudioAutomation["role"]>("music");
@@ -59,6 +68,11 @@ const fields = ref({
 const player = ref<HTMLAudioElement | null>(null);
 const previewFailed = ref(false);
 const speedFailed = ref(false);
+watch(sourceIdentity, () => {
+  player.value?.pause();
+  previewFailed.value = false;
+  speedFailed.value = false;
+});
 watch(
   () => props.active,
   (active) => {
@@ -122,6 +136,7 @@ watch(
     () => selectedAudio.value?.assetId,
     () => selectedAudio.value?.sourceIn,
     () => selectedAudio.value?.transform?.speed,
+    sourceIdentity,
   ],
   () =>
     void nextTick(() => {
@@ -189,8 +204,10 @@ function updateVolume() {
   );
   if (audio.currentTime >= (clip.sourceOut ?? Infinity)) audio.pause();
 }
-function configurePlayer() {
+function configurePlayer(event?: Event) {
+  if (event && event.currentTarget !== player.value) return;
   if (!player.value || !selectedAudio.value) return;
+  if (event) previewFailed.value = false;
   player.value.currentTime = selectedAudio.value.sourceIn ?? 0;
   try {
     player.value.playbackRate = selectedAudio.value.transform?.speed ?? 1;
@@ -200,6 +217,10 @@ function configurePlayer() {
     speedFailed.value = true;
   }
   updateVolume();
+}
+function failPreview(event?: Event) {
+  if (event && event.currentTarget !== player.value) return;
+  previewFailed.value = true;
 }
 function startPlayback() {
   const clip = selectedAudio.value;
@@ -324,16 +345,16 @@ function startPlayback() {
     <template v-if="selectedAudio">
       <audio
         v-if="selectedAsset"
-        :key="selectedAudio.id"
+        :key="`${selectedAudio.id}:${sourceIdentity}`"
         ref="player"
-        :src="sourceUrl(selectedAsset.id)"
+        :src="sourceUrl(selectedAsset.id, sourceIdentity)"
         controls
         preload="metadata"
         :aria-label="t('editor.sound.preview')"
         @loadedmetadata="configurePlayer"
         @timeupdate="updateVolume"
         @play="startPlayback"
-        @error="previewFailed = true"
+        @error="failPreview"
       />
       <p
         v-if="previewFailed || speedFailed"

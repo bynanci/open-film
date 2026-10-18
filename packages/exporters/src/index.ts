@@ -296,6 +296,7 @@ export function exportTimeline(
     };
   }
   for (const track of composition.tracks) {
+    if (!track.clips.length) continue;
     if (track.timing === "overlay")
       throw new Error(
         `${format} export cannot represent overlay timing on track ${track.id}. Use JSON or OTIO metadata to preserve the track's non-ripple editing behavior.`,
@@ -521,10 +522,13 @@ function fcpxml(
     const audio = asset.mediaType === "audio";
     return `      <asset id="${refs.get(id)!}" name="${xml(asset.name)}" start="0s" duration="${rational(available)}" hasVideo="${audio ? 0 : 1}" hasAudio="${audio ? 1 : 0}"${audio ? ' audioSources="1" audioChannels="2"' : ' format="r1"'}><media-rep kind="original-media" src="${xml(asset.uri)}"/></asset>`;
   });
+  const populatedTracks = composition.tracks.filter(
+    (track) => track.clips.length,
+  );
   const primary =
-    composition.tracks.find((track) => track.type === "video") ??
-    composition.tracks[0];
-  const secondary = composition.tracks.filter((track) => track !== primary);
+    populatedTracks.find((track) => track.type === "video") ??
+    populatedTracks[0];
+  const secondary = populatedTracks.filter((track) => track !== primary);
   const clipXml = (clip: Clip, lane?: number): string =>
     `            <asset-clip name="${xml(assets.get(clip.assetId)!.name)}" ref="${refs.get(clip.assetId)!}" offset="${rational(clip.timelineStart)}" start="${rational(clip.sourceIn ?? 0)}" duration="${rational(clip.timelineDuration)}"${lane === undefined ? "" : ` lane="${lane}"`}/>`;
   let end = 0;

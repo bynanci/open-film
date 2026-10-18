@@ -19,6 +19,13 @@ whose complete Verify runs passed. Main remains
 - Film title, scene statement and subtitle are graphic roles. Local font glyphs
   are measured and rasterized once; monitor and renderer consume the same PNG.
   Graphic titles do not change transcript/caption evidence or timing.
+  New graphic-title mutations and raster input share `MAX_TITLE_LENGTH` (8,000
+  UTF-16 code units). This storage/work bound does not guarantee text fits the
+  selected font and frame: measured layout still reports overflow. Existing
+  project readers remain permissive so an older longer title can be opened,
+  shortened or removed. Frame-independent layout validation accepts portable
+  geometry; saving a new diptych edit additionally requires its effective gap
+  (32 pixels by default) to be smaller than the actual project width.
 - Added music/narration use explicit overlay tracks. Their add, move, trim,
   speed and deletion do not ripple pictures or extend the film. Gain points,
   fades and manually declared ducking use clip-local timeline seconds.

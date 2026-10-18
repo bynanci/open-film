@@ -136,6 +136,10 @@ and uses existing remote consent. No provider is configured by default. See
 **Photo-film quality:** manual composition controls now reach both the selected
 photo monitor and FFmpeg output through shared geometry/time contracts. Local
 font measurement produces the same graphic-title PNG for preview and rendering.
+New graphic-title edits share the renderer's 8,000 UTF-16 code-unit input limit;
+older longer titles remain readable for correction. Actual font/layout bounds
+are checked separately before rasterization. Diptych edits check the gap against
+the current composition width before saving.
 Rendered MP4 sidecars retain the composition, source hashes, font identity,
 encoding and warnings. [The contract](docs/photo-film-quality.md) and
 [generated A/B validation](docs/validation-photo-film-quality.md) describe what

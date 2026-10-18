@@ -90,7 +90,144 @@ const addMusic: TimelineCommand = {
   volume: 0.5,
 };
 
+const videoSources: MediaAsset[] = [
+  ["audible", 20, true],
+  ["audible-next", 6, true],
+  ["silent", 8, false],
+].map(([id, duration, audio]) => ({
+  id: String(id),
+  name: String(id),
+  uri: `file:///${id}.mp4`,
+  mediaType: "video",
+  duration: Number(duration),
+  tags: [],
+  state: {},
+  metadata: {
+    "openfilm.ffprobe": {
+      streams: [
+        { codec_type: "video" },
+        ...(audio ? [{ codec_type: "audio" }] : []),
+      ],
+    },
+  },
+}));
+
+describe("source-bound audio automation", () => {
+  it.each(["portrait", "silent", "audible-next"])(
+    "retains role-only automation on replacement %s only when it has audio",
+    (assetId) => {
+      const pool = [...assets, ...videoSources];
+      const before = document();
+      clip(before, "first").assetId = "audible";
+      clip(before, "first").audioAutomation = { version: 1, role: "dialogue" };
+      const next = edit(
+        before,
+        { type: "replace", clipId: "first", assetId },
+        pool,
+      );
+      expect(clip(next, "first").audioAutomation).toEqual(
+        assetId === "audible-next"
+          ? { version: 1, role: "dialogue" }
+          : undefined,
+      );
+    },
+  );
+
+  it.each([
+    ["portrait", false, 10],
+    ["silent", false, 8],
+    ["audible-next", true, 6],
+  ] as const)(
+    "replaces an audible video with %s and retains automation only on audio-bearing sources",
+    (assetId, retainsAudio, duration) => {
+      const pool = [...assets, ...videoSources];
+      const initial = document();
+      clip(initial, "first").assetId = "audible";
+      const before = edit(
+        initial,
+        {
+          type: "audio.configure",
+          clipId: "first",
+          automation: {
+            version: 1,
+            role: "dialogue",
+            fadeIn: 1,
+            fadeOut: 2,
+            points: [
+              { time: 0, gain: 1 },
+              { time: 10, gain: 0.5 },
+            ],
+            ducking: [{ start: 2, end: 8, gain: 0.4, attack: 1, release: 1 }],
+          },
+        },
+        pool,
+      );
+      const snapshot = structuredClone(before);
+      const next = edit(
+        before,
+        { type: "replace", clipId: "first", assetId },
+        pool,
+      );
+      expect(clip(next, "first").assetId).toBe(assetId);
+      expect(clip(next, "first").timelineDuration).toBe(duration);
+      if (retainsAudio) {
+        expect(clip(next, "first").audioAutomation).toMatchObject({
+          version: 1,
+          role: "dialogue",
+          fadeIn: 1,
+          fadeOut: 2,
+        });
+        expect(clip(next, "first").audioAutomation!.points!.at(-1)).toEqual({
+          time: 6,
+          gain: 0.7,
+        });
+      } else expect(clip(next, "first").audioAutomation).toBeUndefined();
+      expect(() => validateComposition(next.composition)).not.toThrow();
+      expect(before).toEqual(snapshot);
+    },
+  );
+
+  it("rejects configuring a silent video without changing the document", () => {
+    const before = document();
+    clip(before, "first").assetId = "silent";
+    const snapshot = structuredClone(before);
+    expect(() =>
+      edit(
+        before,
+        {
+          type: "audio.configure",
+          clipId: "first",
+          automation: { version: 1, role: "dialogue", fadeIn: 1 },
+        },
+        [...assets, ...videoSources],
+      ),
+    ).toThrow(/audio/i);
+    expect(before).toEqual(snapshot);
+  });
+});
+
 describe("photo film audio overlays", () => {
+  it("removes a dedicated overlay track only after its final clip is deleted", () => {
+    let current = edit(document(), addMusic);
+    current = edit(current, {
+      type: "clip.split",
+      clipId: "soundtrack",
+      sourceTime: 12,
+    });
+    const overlayId = current.composition.tracks[1]!.id;
+    current = edit(current, { type: "delete", clipId: "soundtrack" });
+    expect(
+      current.composition.tracks.find((track) => track.id === overlayId)!.clips,
+    ).toHaveLength(1);
+    current = edit(current, { type: "delete", clipId: "soundtrack-split-1" });
+    expect(current.composition).toEqual(document().composition);
+    for (let index = 0; index < 5; index++) {
+      current = edit(current, addMusic);
+      current = edit(current, { type: "delete", clipId: "soundtrack" });
+    }
+    expect(current.composition.tracks).toHaveLength(1);
+  });
+
   it("adds soundtrack and narration without modifying visuals, story or film length", () => {
     const before = document();
     let next = edit(before, addMusic);
@@ -383,6 +520,29 @@ describe("photo film audio overlays", () => {
 });
 
 describe("non-destructive photo presentation", () => {
+  it("accepts the renderer title length limit and rejects longer titles before editing", () => {
+    const before = document();
+    const snapshot = structuredClone(before);
+    expect(
+      clip(
+        edit(before, {
+          type: "presentation",
+          clipId: "first",
+          title: "日".repeat(8000),
+        }),
+        "first",
+      ).title,
+    ).toHaveLength(8000);
+    expect(() =>
+      edit(before, {
+        type: "presentation",
+        clipId: "first",
+        title: "日".repeat(8001),
+      }),
+    ).toThrow(/8000/);
+    expect(before).toEqual(snapshot);
+  });
+
   it.each(["overlay", "titles", "audio", "music"] as const)(
     "rejects full-frame photo presentation on %s tracks without changing the document",
     (trackType) => {

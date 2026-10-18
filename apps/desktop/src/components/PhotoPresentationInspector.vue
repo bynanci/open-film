@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   resolvePhotoPlan,
+  resolveTitleStyle,
   assetDisplayDimensions,
   type Clip,
   type MediaAsset,
@@ -37,9 +38,10 @@ const focalY = ref(0.5);
 const protectedEnabled = ref(false);
 const region = ref({ x: 0.25, y: 0.2, width: 0.5, height: 0.6 });
 const title = ref("");
-const role = ref<TitleStyle["role"]>("scene-statement");
-const position = ref<"center" | "bottom">("bottom");
-const background = ref<"none" | "scrim">("scrim");
+const initialTitleStyle = resolveTitleStyle(props.clip.titleStyle, props.frame);
+const role = ref<TitleStyle["role"]>(initialTitleStyle.role);
+const position = ref<"center" | "bottom">(initialTitleStyle.position);
+const background = ref<"none" | "scrim">(initialTitleStyle.background);
 const sources = computed(() =>
   Object.fromEntries(
     props.assets.flatMap((asset) => {
@@ -94,18 +96,19 @@ watch(
     }
     if (changedClip || clip.title !== previous?.title)
       title.value = clip.title ?? "";
-    if (changedClip || clip.titleStyle?.role !== previous?.titleStyle?.role)
-      role.value = clip.titleStyle?.role ?? "scene-statement";
+    const nextTitleStyle = resolveTitleStyle(clip.titleStyle, props.frame);
+    const previousTitleStyle = previous
+      ? resolveTitleStyle(previous.titleStyle, props.frame)
+      : undefined;
+    if (changedClip || nextTitleStyle.role !== previousTitleStyle?.role)
+      role.value = nextTitleStyle.role;
+    if (changedClip || nextTitleStyle.position !== previousTitleStyle?.position)
+      position.value = nextTitleStyle.position;
     if (
       changedClip ||
-      clip.titleStyle?.position !== previous?.titleStyle?.position
+      nextTitleStyle.background !== previousTitleStyle?.background
     )
-      position.value = clip.titleStyle?.position ?? "bottom";
-    if (
-      changedClip ||
-      clip.titleStyle?.background !== previous?.titleStyle?.background
-    )
-      background.value = clip.titleStyle?.background ?? "scrim";
+      background.value = nextTitleStyle.background;
   },
   { immediate: true },
 );
@@ -171,20 +174,23 @@ function setMotion(preset: PhotoMotion["preset"]) {
     motion,
   });
 }
-function setTitle() {
+function setTitle(field: "text" | "role" | "position" | "background") {
+  const titleStyle: TitleStyle = {
+    ...props.clip.titleStyle,
+    version: 1,
+    role: role.value,
+  };
+  if (field === "position") titleStyle.position = position.value;
+  if (field === "background") titleStyle.background = background.value;
   emit("command", {
     type: "presentation",
     clipId: props.clip.id,
     title: title.value || null,
-    titleStyle: title.value
-      ? {
-          ...props.clip.titleStyle,
-          version: 1,
-          role: role.value,
-          position: position.value,
-          background: background.value,
-        }
-      : null,
+    ...(field === "text"
+      ? title.value
+        ? {}
+        : { titleStyle: null }
+      : { titleStyle }),
   });
 }
 function warningMessage(warning: unknown) {
@@ -326,7 +332,7 @@ function warningMessage(warning: unknown) {
         v-model="title"
         :aria-label="t('editor.presentation.titleText')"
         rows="3"
-        @change="setTitle"
+        @change="setTitle('text')"
       />
     </label>
     <template v-if="title">
@@ -335,7 +341,7 @@ function warningMessage(warning: unknown) {
         <select
           v-model="role"
           :aria-label="t('editor.presentation.titleRole')"
-          @change="setTitle"
+          @change="setTitle('role')"
         >
           <option
             v-for="value in [
@@ -356,7 +362,7 @@ function warningMessage(warning: unknown) {
           }}<select
             v-model="position"
             :aria-label="t('editor.presentation.titlePosition')"
-            @change="setTitle"
+            @change="setTitle('position')"
           >
             <option value="center">
               {{ t("editor.presentation.center") }}
@@ -371,7 +377,7 @@ function warningMessage(warning: unknown) {
           }}<select
             v-model="background"
             :aria-label="t('editor.presentation.titleBackground')"
-            @change="setTitle"
+            @change="setTitle('background')"
           >
             <option value="scrim">{{ t("editor.presentation.scrim") }}</option>
             <option value="none">{{ t("editor.presentation.none") }}</option>
