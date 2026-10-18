@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
-// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+// Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";

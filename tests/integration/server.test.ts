@@ -1,5 +1,5 @@
-// Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
-// Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+// Modified by OpenFilm contributors on 2026-10-18. Current license: Apache-2.0.
+// Historical Apache-2.0 and GPL-3.0-only grants remain; see LICENSE and NOTICE.
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";

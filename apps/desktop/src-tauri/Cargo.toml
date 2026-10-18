@@ -1,11 +1,11 @@
 # Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
-# Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
+# Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 [package]
 name = "openfilm-desktop"
 version = "0.1.0"
 description = "OpenFilm local media storytelling workspace"
 authors = ["OpenFilm contributors"]
-license = "GPL-3.0-only"
+license = "Apache-2.0"
 edition = "2021"
 rust-version = "1.77.2"
 

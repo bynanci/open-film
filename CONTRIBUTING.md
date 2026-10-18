@@ -68,8 +68,11 @@ helps reviewers. Do not claim benchmarks or NLE compatibility without reproducib
 evidence. Follow [the Code of Conduct](CODE_OF_CONDUCT.md), and use the private
 reporting guidance in [SECURITY.md](SECURITY.md) for vulnerabilities.
 
-Unless explicitly stated otherwise, contributions are submitted under the
-repository's GPL-3.0-only license for new contributions. Existing Apache-2.0 portions retain their grants; see [licensing](docs/licensing.md). Confirm that you have the right to contribute
-the code and any included media.
+Unless explicitly stated otherwise, contributions intentionally submitted for
+inclusion are under the repository's Apache-2.0 license. Confirm that you have
+the right to contribute the code and any included media. Identify third-party
+material and retain its required license and attribution; contributing does not
+transfer copyright ownership. See [licensing](docs/licensing.md) for current
+terms and the preserved historical grants.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current first-party terms are Apache-2.0; historical grants and third-party terms remain applicable. See LICENSE and NOTICE._

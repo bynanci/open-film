@@ -164,4 +164,4 @@ Real Windows/macOS presentation, display-safe placement, projector readability,
 camera/HDR/4K sources and actual Resolve import remain the existing
 [workstation QA gates](workstation-qa.md). Generated fixtures do not close them.
 
-_New document by OpenFilm contributors, 2026-10-18. GPL-3.0-only; see LICENSE and NOTICE._
+_New document by OpenFilm contributors, 2026-10-18. Apache-2.0; see LICENSE and NOTICE._

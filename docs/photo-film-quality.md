@@ -3,8 +3,8 @@
 This slice implements the supplied 2026-10-17 review's first visible outcome:
 an editable, recoverable twenty-second A/B film made from generated public
 fixtures. Its base is `f9ad717d8c70db61fb4f9863a350e807f15643c0` (PR #17),
-whose complete Verify runs passed. Main remains
-`c1b198f3a8a413a5500453f34127c1b6a5850be9` until that dependency merges.
+whose complete Verify runs passed. At that development stage, main was
+`c1b198f3a8a413a5500453f34127c1b6a5850be9`, before that dependency merged.
 
 ## Contract
 

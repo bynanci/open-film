@@ -421,4 +421,4 @@ uses a temporary monitor override for preview, outside autosave/history. See
 [the contract](scene-direction-editing.md) and
 [validation](validation-scene-direction-editing.md).
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

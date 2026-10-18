@@ -21,6 +21,15 @@ instead of silently dropping a second action. The current creative priority is
 the bounded film-look slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
+## Current — Apache-2.0 distribution policy
+
+The maintainer requested Apache-2.0 again for greater downstream freedom,
+including commercial use and proprietary derivatives subject to its terms.
+The restoration preserves earlier Apache/GPL grants and applicable attribution;
+third-party components keep their own licenses. AGPL was considered but never
+adopted. No media rights, runtime behavior or security checks change. See
+[licensing](docs/licensing.md) and [ADR 010](docs/adr/010-apache-license-restoration.md).
+
 ## Current — Native text readability controls
 
 The native-text follow-up exposes existing Regular/Bold typography and adds
@@ -354,4 +363,4 @@ specific editing limitation and shared preview/render semantics. None of these
 broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

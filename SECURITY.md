@@ -62,4 +62,4 @@ backup tooling that also accounts for active WAL state. Back up source media
 separately. Corrupt projects should be rejected rather than repaired by silently
 rewriting or discarding data.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._

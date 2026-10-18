@@ -106,7 +106,7 @@ They describe a reproducible recipe, not hardware appearance certification.
 
 ## Open-source boundaries
 
-The recipes are original OpenFilm work under GPL-3.0-only. No third-party LUT,
+The recipes are original OpenFilm work under Apache-2.0. No third-party LUT,
 camera profile, model, remote font or online translation is needed. OpenColorIO
 and other upstream projects inform the documented processing boundaries; they
 are not imported as runtime engines. External LUT import, film simulation,

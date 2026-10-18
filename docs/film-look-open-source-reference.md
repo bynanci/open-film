@@ -1,7 +1,7 @@
 # Film look open-source reference
 
 This source review informs the bounded film-look implementation. OpenFilm's six
-creative presets and `none` use original GPL-3.0-only matrices; no upstream code,
+creative presets and `none` use original Apache-2.0 matrices; no upstream code,
 LUT, model, or UI asset was copied. OpenColorIO, ACES configurations, Filmulator,
 and RawTherapee are references, not installed dependencies or active processors.
 

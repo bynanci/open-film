@@ -1,6 +1,9 @@
 # ADR 007: Apache-2.0 for code and CC0 for generated media
 
-Status: Superseded by [ADR 009](009-copyleft-license.md) for the current derivative distribution. The historical Apache grants remain in effect.
+Status: Original permissive-license decision, temporarily superseded by
+[ADR 009](009-copyleft-license.md). Apache-2.0 is restored for the current
+first-party distribution by [ADR 010](010-apache-license-restoration.md).
+Previously granted rights remain available.
 
 ## Context
 
@@ -21,4 +24,4 @@ requirements. This ADR explains the choice and does not replace the license text
 or grant rights to private/user-imported media. New fixture media needs documented
 redistribution rights; no personal media is committed.
 
-_Modified by OpenFilm contributors on 2026-10-18. Preexisting Apache-2.0 grants remain available; the current derivative distribution is GPL-3.0-only. See LICENSE and NOTICE._
+_Modified by OpenFilm contributors on 2026-10-18 to record the license decision history. See LICENSE and NOTICE for current terms._

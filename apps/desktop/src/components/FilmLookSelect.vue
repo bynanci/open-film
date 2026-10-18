@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 
 import { FILM_LOOK_PRESETS, type FilmLook } from "@openfilm/core";
 import { useI18n } from "vue-i18n";

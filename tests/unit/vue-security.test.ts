@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";

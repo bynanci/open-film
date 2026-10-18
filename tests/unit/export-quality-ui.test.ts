@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it } from "vitest";
 import type { Composition, ProjectSettings } from "@openfilm/core";
 import { resolveCompatibility } from "@openfilm/exporters";
