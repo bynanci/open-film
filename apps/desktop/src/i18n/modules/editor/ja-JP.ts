@@ -355,6 +355,8 @@ export default {
       timeline: "タイムライン",
       protected:
         "このクリップは保護されています。調整、移動、置換、削除するにはロックを解除してください。",
+      sourceProtected:
+        "このクリップで使用しているソースがロックされています。これらの設定を変更するには、ライブラリでロックを解除してください。",
       photoDuration: "写真の表示時間（秒）",
       photoDurationLabel: "写真の表示時間",
       photoPreset: "写真の表示時間を {seconds} 秒に設定",

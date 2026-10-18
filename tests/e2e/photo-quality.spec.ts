@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   test,
   expect,
@@ -25,11 +27,14 @@ async function createFilm(
   preset?:
     | "motion-only"
     | "diptych-gap"
+    | "diptych-secondary-locked"
+    | "diptych-locked-choice"
     | "title-only"
     | "title-defaults"
     | "title-invalid"
     | "audio-rate"
     | "audio-unsupported"
+    | "audio-source-locked"
     | "visual-overlays",
 ) {
   const fixture = await createDesktopFixture(0);
@@ -94,13 +99,41 @@ async function createFilm(
       from: { scale: 1, x: 0, y: 0 },
       to: { scale: 1.06, x: 0, y: 0 },
     };
-  if (preset === "diptych-gap")
+  if (preset === "diptych-gap" || preset === "diptych-secondary-locked")
     first.layout = {
       version: 1,
       preset: "diptych",
       gap: 16,
       secondary: { assetId: id("03-evening.png") },
     };
+  let lockedSecondaryId: string | undefined;
+  let unlockedSecondaryId: string | undefined;
+  if (
+    preset === "diptych-secondary-locked" ||
+    preset === "diptych-locked-choice"
+  ) {
+    const candidates = assets
+      .filter(
+        (asset) => asset.mediaType === "image" && asset.id !== first.assetId,
+      )
+      .sort((left, right) => (left.id < right.id ? -1 : 1));
+    lockedSecondaryId =
+      preset === "diptych-secondary-locked"
+        ? id("03-evening.png")
+        : candidates[0]!.id;
+    unlockedSecondaryId = candidates.find(
+      (asset) => asset.id !== lockedSecondaryId,
+    )!.id;
+    app.catalog.updateAsset(lockedSecondaryId, { state: { locked: true } });
+    app.project.stories[0]!.beats[0]!.script = {
+      narration: "",
+      visualDirection: "Keep proportions; Gentle push-in",
+    };
+    if (preset === "diptych-secondary-locked") {
+      first.title = "Our saved two-photo memory";
+      first.titleStyle = { version: 1, role: "scene-statement" };
+    }
+  }
   if (preset === "title-only") {
     first.title = "重要的是，我們一起。";
     first.titleStyle = { version: 1, role: "film-title", position: "center" };
@@ -200,7 +233,11 @@ async function createFilm(
         ],
       },
     );
-  if (preset === "audio-rate" || preset === "audio-unsupported")
+  if (
+    preset === "audio-rate" ||
+    preset === "audio-unsupported" ||
+    preset === "audio-source-locked"
+  )
     app.project.timelines[0]!.tracks.push({
       id: "music",
       type: "music",
@@ -221,6 +258,8 @@ async function createFilm(
         },
       ],
     });
+  if (preset === "audio-source-locked")
+    app.catalog.updateAsset(audioId, { state: { locked: true } });
   app.close();
   expect(
     (
@@ -229,7 +268,7 @@ async function createFilm(
       })
     ).ok(),
   ).toBe(true);
-  return { ...fixture, audioId };
+  return { ...fixture, audioId, lockedSecondaryId, unlockedSecondaryId };
 }
 async function editor(
   request: APIRequestContext,
@@ -683,6 +722,244 @@ test("sound preview reloads restored trim and speed on Undo and Redo", async ({
       player.evaluate((audio) => (audio as HTMLAudioElement).currentTime),
     )
     .toBeCloseTo(0.5, 2);
+});
+
+test("a locked diptych secondary protects presentation and replacement while ordinary photo edits remain available", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "diptych-secondary-locked");
+  const before = await editor(request);
+  const savedPath = join(fixture.project, "project.json");
+  const bytesBefore = await readFile(savedPath, "utf8");
+  await openEditor(page);
+  const layout = page.getByLabel("Photo layout", { exact: true });
+  const secondary = page.getByLabel("Second photo", { exact: true });
+  const title = page.getByLabel("Text shown in the film", { exact: true });
+  const replacement = page.getByLabel(
+    uiText("en-US", "editor.clip.replacementLabel"),
+    { exact: true },
+  );
+  const remove = page.getByRole("button", { name: "Delete clip", exact: true });
+  await expect(layout).toBeDisabled();
+  await expect(layout).toHaveValue("diptych");
+  await expect(secondary).toBeDisabled();
+  await expect(secondary).toHaveValue(fixture.lockedSecondaryId!);
+  const savedSecondary = secondary.locator(
+    `option[value="${fixture.lockedSecondaryId}"]`,
+  );
+  await expect(savedSecondary).toHaveText("03-evening.png");
+  await expect(savedSecondary).toBeDisabled();
+  await expect(title).toBeDisabled();
+  await expect(title).toHaveValue("Our saved two-photo memory");
+  await expect(
+    page.getByRole("button", { name: "Gentle push-in", exact: true }),
+  ).toBeDisabled();
+  const review = page.getByTestId("scene-direction-review");
+  await review.locator("summary").click();
+  await expect(page.getByTestId("direction-generate")).toBeDisabled();
+  await expect(replacement).toBeDisabled();
+  await expect(remove).toBeDisabled();
+  await expect(
+    page.getByText(uiText("en-US", "editor.clip.sourceProtected"), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Photo duration", { exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByLabel("Clip rotation", { exact: true })).toBeEnabled();
+  expect(await editor(request)).toEqual(before);
+  expect(await readFile(savedPath, "utf8")).toBe(bytesBefore);
+  await field(page, "Photo duration", "8");
+  await expect.poll(async () => (await clip(request)).timelineDuration).toBe(8);
+  await field(page, "Clip rotation", "7");
+  await expect
+    .poll(async () => (await clip(request)).transform?.rotation)
+    .toBe(7);
+  expect((await clip(request)).layout).toEqual(
+    before.composition.tracks[0]!.clips[0]!.layout,
+  );
+  expect((await clip(request)).title).toBe("Our saved two-photo memory");
+
+  const unlocked = await request.patch(
+    `${base}/api/assets/${fixture.lockedSecondaryId}`,
+    {
+      data: { state: { locked: false } },
+    },
+  );
+  expect(unlocked.ok(), await unlocked.text()).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await page.locator("#clip-photo-one").click();
+  await expect(layout).toBeEnabled();
+  await expect(secondary).toBeEnabled();
+  await expect(secondary).toHaveValue(fixture.lockedSecondaryId!);
+  await expect(savedSecondary).toBeEnabled();
+  await expect(title).toBeEnabled();
+  await expect(replacement).toBeEnabled();
+  await expect(remove).toBeEnabled();
+  await review.locator("summary").click();
+  await expect(page.getByTestId("direction-generate")).toBeEnabled();
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("a new diptych excludes locked secondary choices and defaults to an unlocked source", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "diptych-locked-choice");
+  const before = await editor(request);
+  await openEditor(page);
+  await page
+    .getByLabel("Photo layout", { exact: true })
+    .selectOption("diptych");
+  await expect
+    .poll(async () => (await clip(request)).layout?.secondary?.assetId)
+    .toBe(fixture.unlockedSecondaryId);
+  const secondary = page.getByLabel("Second photo", { exact: true });
+  await expect(secondary).toHaveValue(fixture.unlockedSecondaryId!);
+  await expect(
+    secondary.locator(`option[value="${fixture.lockedSecondaryId}"]:enabled`),
+  ).toHaveCount(0);
+  expect((await clip(request)).assetId).toBe(
+    before.composition.tracks[0]!.clips[0]!.assetId,
+  );
+  expect((await editor(request)).composition.duration).toBe(
+    before.composition.duration,
+  );
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
+test("source-locked overlay sound protects timing, envelopes, ducking and volume until the source is unlocked", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "audio-source-locked");
+  const before = await editor(request);
+  const savedPath = join(fixture.project, "project.json");
+  const bytesBefore = await readFile(savedPath, "utf8");
+  await openEditor(page);
+  const panel = page.locator(".editor-soundtrack-panel");
+  const selected = panel.locator("fieldset");
+  const soundField = (key: string) =>
+    selected.getByLabel(uiText("en-US", `editor.sound.${key}`), {
+      exact: true,
+    });
+  const soundFields = () =>
+    [
+      "start",
+      "fadeIn",
+      "fadeOut",
+      "duckStart",
+      "duckEnd",
+      "duckGain",
+      "attack",
+      "release",
+    ].map(soundField);
+  const openSound = async () => {
+    await page.getByRole("button", { name: "Sound", exact: true }).click();
+    await panel.locator(".editor-soundtrack-list button").first().click();
+    await selected
+      .getByText(uiText("en-US", "editor.sound.ducking"), {
+        exact: true,
+      })
+      .click();
+  };
+  await openSound();
+  await expect(soundField("start")).toBeDisabled();
+  for (const input of soundFields()) await expect(input).toBeDisabled();
+  await expect(
+    selected.getByRole("button", {
+      name: uiText("en-US", "editor.sound.applyDuck"),
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(
+    panel.getByText(uiText("en-US", "editor.clip.sourceProtected"), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  const volume = page.getByLabel("Clip volume", { exact: true });
+  await expect(volume).toBeDisabled();
+  expect(await editor(request)).toEqual(before);
+  expect(await readFile(savedPath, "utf8")).toBe(bytesBefore);
+
+  const unlocked = await request.patch(
+    `${base}/api/assets/${fixture.audioId}`,
+    {
+      data: { state: { locked: false } },
+    },
+  );
+  expect(unlocked.ok(), await unlocked.text()).toBe(true);
+  expect((await unlocked.json()).asset.state.locked).toBe(false);
+  await page.reload();
+  await navigate(page, "edit");
+  await openSound();
+  for (const input of soundFields()) await expect(input).toBeEnabled();
+  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  await expect(volume).toBeEnabled();
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request, "seeded-sound")).locked)
+    .toBe(true);
+  await expect(volume).toBeDisabled();
+  await openSound();
+  for (const input of soundFields()) await expect(input).toBeDisabled();
+  await expect(
+    panel.getByText(uiText("en-US", "editor.clip.protected"), { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clip", exact: true }).click();
+  await page.getByRole("button", { name: "Unlock clip", exact: true }).click();
+  await expect
+    .poll(async () => (await clip(request, "seeded-sound")).locked)
+    .toBe(false);
+  await expect(volume).toBeEnabled();
+  await volume.press("Home");
+  await expect
+    .poll(async () => (await clip(request, "seeded-sound")).transform?.volume)
+    .toBe(0);
+  await openSound();
+  for (const input of soundFields()) await expect(input).toBeEnabled();
+  for (const [key, value] of [
+    ["start", "2"],
+    ["fadeIn", "0.1"],
+    ["fadeOut", "0.1"],
+    ["duckStart", "0.1"],
+    ["duckEnd", "0.6"],
+    ["duckGain", "0.25"],
+    ["attack", "0.1"],
+    ["release", "0.1"],
+  ]) {
+    await soundField(key!).fill(value!);
+    await soundField(key!).press("Tab");
+  }
+  await selected
+    .getByRole("button", {
+      name: uiText("en-US", "editor.sound.applyDuck"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => await clip(request, "seeded-sound"))
+    .toMatchObject({
+      timelineStart: 2,
+      transform: { speed: 2, volume: 0 },
+      audioAutomation: {
+        version: 1,
+        role: "music",
+        fadeIn: 0.1,
+        fadeOut: 0.1,
+        ducking: [
+          { start: 0.1, end: 0.6, gain: 0.25, attack: 0.1, release: 0.1 },
+        ],
+      },
+    });
+  expect((await editor(request)).composition.tracks[0]).toEqual(
+    before.composition.tracks[0],
+  );
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
 test("unsupported sound speed stays paused when native playback is requested", async ({

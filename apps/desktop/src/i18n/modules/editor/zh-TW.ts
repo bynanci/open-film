@@ -327,6 +327,8 @@ export default {
       selected: "選取範圍",
       timeline: "時間軸",
       protected: "此片段受到保護。請先解鎖，再調整、移動、替換或刪除。",
+      sourceProtected:
+        "此片段使用的來源已鎖定。請先在「媒體庫」解鎖來源，再編輯這些控制項。",
       photoDuration: "照片時長（秒）",
       photoDurationLabel: "照片時長",
       photoPreset: "將照片時長設為 {seconds} 秒",

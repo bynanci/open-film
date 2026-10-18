@@ -355,6 +355,8 @@ export default {
       timeline: "Timeline",
       protected:
         "This clip is protected. Unlock it to adjust, move, replace, or delete it.",
+      sourceProtected:
+        "A source used by this clip is locked. Unlock it in Library to edit these controls.",
       photoDuration: "Photo duration (seconds)",
       photoDurationLabel: "Photo duration",
       photoPreset: "Set photo duration to {seconds} seconds",

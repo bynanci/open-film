@@ -33,6 +33,7 @@ const props = defineProps<{
   clip?: Clip;
   active: boolean;
   busy: boolean;
+  sourceEditsLocked?: boolean;
   analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
   recoveringAnalysisJobs?: Record<string, boolean>;
   unavailable?: boolean;
@@ -143,6 +144,7 @@ const editable = computed(
     hasSourceDuration.value &&
     sourceVerified.value &&
     !props.clip?.locked &&
+    !props.sourceEditsLocked &&
     !props.busy,
 );
 const crossfadeBlocksSplit = computed(
@@ -172,6 +174,7 @@ const clipSnapshot = computed(() =>
     props.clip?.sourceOut,
     props.clip?.transform?.speed,
     props.clip?.locked,
+    props.sourceEditsLocked,
   ]),
 );
 const frameStep = computed(() =>
@@ -1426,6 +1429,9 @@ onBeforeUnmount(() => {
           </p>
           <p v-if="clip?.locked" class="editor-note">
             {{ t("precision.locked") }}
+          </p>
+          <p v-else-if="sourceEditsLocked" class="editor-note">
+            {{ t("editor.clip.sourceProtected") }}
           </p>
           <p
             v-else-if="hasSourceDuration && asset?.state.locked"

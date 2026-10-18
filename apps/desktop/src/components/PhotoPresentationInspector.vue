@@ -28,8 +28,20 @@ const photos = computed(() =>
     (asset) =>
       asset.mediaType === "image" &&
       asset.id !== props.asset.id &&
-      !asset.state.rejected,
+      !asset.state.rejected &&
+      !asset.state.locked,
   ),
+);
+const savedSecondary = computed(() =>
+  props.assets.find(
+    (asset) => asset.id === props.clip.layout?.secondary?.assetId,
+  ),
+);
+const unavailableSecondary = computed(() =>
+  savedSecondary.value &&
+  !photos.value.some((asset) => asset.id === savedSecondary.value?.id)
+    ? savedSecondary.value
+    : undefined,
 );
 const layout = ref<PhotoLayout["preset"] | "original">("original");
 const secondary = ref("");
@@ -274,6 +286,13 @@ function resetTitleStyle() {
           :aria-label="t('editor.presentation.secondPhoto')"
           @change="setLayout"
         >
+          <option
+            v-if="unavailableSecondary"
+            :value="unavailableSecondary.id"
+            disabled
+          >
+            {{ unavailableSecondary.name }}
+          </option>
           <option v-for="photo in photos" :key="photo.id" :value="photo.id">
             {{ photo.name }}
           </option>

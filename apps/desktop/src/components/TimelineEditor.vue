@@ -241,6 +241,12 @@ const assetMap = computed(
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
 );
+const clipSourceLocked = computed(
+  () =>
+    !!selectedAsset.value?.state.locked ||
+    !!assetMap.value.get(selectedClip.value?.layout?.secondary?.assetId ?? "")
+      ?.state.locked,
+);
 const lockedOverlaySource = computed(
   () =>
     !!selectedAsset.value?.state.locked &&
@@ -1524,6 +1530,7 @@ onBeforeUnmount(() => {
           :clip="selectedClip"
           :active="active && editMode === 'precision' && !draftAction"
           :busy="historyBusy"
+          :source-edits-locked="lockedOverlaySource"
           :analysis-recovery="analysisRecovery"
           :recovering-analysis-jobs="recoveringAnalysisJobs"
           :unavailable="
@@ -2330,8 +2337,11 @@ onBeforeUnmount(() => {
               <fieldset
                 v-if="controls.visual"
                 class="editor-fields"
-                :disabled="!!selectedAsset.state.locked"
+                :disabled="clipSourceLocked"
               >
+                <p v-if="clipSourceLocked" class="editor-note">
+                  {{ t("editor.clip.sourceProtected") }}
+                </p>
                 <PhotoPresentationInspector
                   :clip="selectedClip"
                   :asset="selectedAsset"
@@ -2355,7 +2365,7 @@ onBeforeUnmount(() => {
               :source-version="sourceVersion"
               :disabled="
                 !!selectedClip.locked ||
-                !!selectedAsset.state.locked ||
+                clipSourceLocked ||
                 !!sourceUnavailable ||
                 compositionHistoryBusy
               "
@@ -2393,7 +2403,7 @@ onBeforeUnmount(() => {
                 }}<select
                   v-model="replacementId"
                   :aria-label="t('editor.clip.replacementLabel')"
-                  :disabled="!!selectedAsset.state.locked"
+                  :disabled="clipSourceLocked"
                 >
                   <option value="">
                     {{ t("editor.clip.chooseReplacement") }}
@@ -2410,13 +2420,13 @@ onBeforeUnmount(() => {
               <div class="editor-actions">
                 <button
                   class="editor-button"
-                  :disabled="!replacementId || !!selectedAsset.state.locked"
+                  :disabled="!replacementId || clipSourceLocked"
                   @click="replace"
                 >
                   {{ t("editor.clip.replace") }}</button
                 ><button
                   class="editor-button danger"
-                  :disabled="!!selectedAsset.state.locked"
+                  :disabled="clipSourceLocked"
                   @click="deleteSelected"
                 >
                   {{ t("editor.clip.delete") }}

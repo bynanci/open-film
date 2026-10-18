@@ -370,9 +370,15 @@ function startPlayback() {
         }}
       </p>
       <p class="editor-note">{{ t("editor.sound.previewHint") }}</p>
-      <fieldset class="editor-fields" :disabled="busy || selectedAudio.locked">
+      <fieldset
+        class="editor-fields"
+        :disabled="busy || selectedAudio.locked || selectedAsset?.state.locked"
+      >
         <p v-if="selectedAudio.locked" class="editor-note">
           {{ t("editor.clip.protected") }}
+        </p>
+        <p v-else-if="selectedAsset?.state.locked" class="editor-note">
+          {{ t("editor.clip.sourceProtected") }}
         </p>
         <label class="editor-field"
           >{{ t("editor.sound.start")
