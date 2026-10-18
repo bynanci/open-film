@@ -42,6 +42,7 @@ import {
   type CreateFilmOptions,
   resolveUserDataDirectory,
   createReviewOwner,
+  resolveRenderQuality,
   type ReviewOptions,
   type ScenePlanAcceptance,
   type ScenePlanOptions,
@@ -2422,6 +2423,15 @@ export async function startServer(options: ServerOptions = {}) {
           const data = await body(request);
           const exporting = route === "/api/export";
           errorContext = exporting ? "export.failed" : "render.failed";
+          const hasQuality = Object.hasOwn(data, "quality");
+          if (hasQuality && exporting && data.format !== "mp4")
+            throw new ApplicationError(
+              "request.invalid",
+              "Compression quality applies to MP4 output only.",
+            );
+          const quality = hasQuality
+            ? resolveRenderQuality(data.quality).quality
+            : undefined;
           const hasLookOverride = Object.hasOwn(data, "lookOverride");
           let lookOverride: FilmLook | null | undefined;
           if (hasLookOverride) {
@@ -2484,6 +2494,7 @@ export async function startServer(options: ServerOptions = {}) {
             signal: controller.signal,
             jobId,
             lookOverride,
+            quality,
           };
           const task = exporting
             ? application.exportMp4(compositionId, renderOptions)

@@ -39,7 +39,23 @@ checked only after implementation, relevant tests and UI validation agree.
 - [ ] Manual: native display/projector readability and actual NLE title finishing
       remain workstation gates; native text styling does not add SRT/VTT burn-in.
 
-## Current — Original film looks
+## Current — MP4 output quality
+
+Scope: [output quality](docs/export-quality.md).
+Evidence: [focused validation](docs/validation-export-quality.md).
+
+- [x] Show the film's actual saved frame/fps and original-source policy rather
+      than implying every existing project has a newly selected HD preset.
+- [x] Choose validated Standard/High detail video compression as a transient
+      preview/MP4 snapshot without changing source, music, frame or edit data.
+- [x] Record actual encoder settings and verify generated x264 SEI, decoded audio,
+      original hashes, HTTP/CLI guards and localized accessible component behavior.
+- [ ] Complete combined-candidate browser/full regression and published CI gates;
+      the added browser scenarios remain separate from executed focused tests.
+- [ ] Manual: judge private-film readability and camera/display/projection quality
+      on intended hardware; installer and actual Resolve gates remain open.
+
+## Implemented — Original film looks
 
 Scope: [workflow and numerical contract](docs/film-looks.md).
 Evidence: [validation](docs/validation-film-looks.md) and

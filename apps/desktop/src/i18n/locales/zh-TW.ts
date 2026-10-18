@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 import looks from "../modules/looks/zh-TW";
+import exportQuality from "../modules/export-quality/zh-TW";
 import app from "../modules/app/zh-TW";
 import editor from "../modules/editor/zh-TW";
 import media from "../modules/media/zh-TW";
@@ -9,6 +10,7 @@ import transcript from "../modules/transcript/zh-TW";
 import system from "./system-zh-TW";
 
 export default {
+  ...exportQuality,
   ...looks,
   ...system,
   ...app,

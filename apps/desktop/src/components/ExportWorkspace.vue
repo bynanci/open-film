@@ -2,8 +2,8 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; this derivative as a whole is GPL-3.0-only. See LICENSE/NOTICE.
 
-import { computed, ref } from "vue";
-import type { Composition, FilmLook } from "@openfilm/core";
+import { computed, ref, useId } from "vue";
+import type { Composition, FilmLook, ProjectSettings } from "@openfilm/core";
 import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
@@ -14,6 +14,7 @@ import FilmLookSelect from "./FilmLookSelect.vue";
 const props = defineProps<{
   busy: boolean;
   projectId: string;
+  projectSettings: ProjectSettings;
   composition: Composition;
   path: string;
   filename?: string;
@@ -21,11 +22,19 @@ const props = defineProps<{
   stale: boolean;
   report?: ExportCompatibilityReport;
   lookOverride?: FilmLook;
+  quality?: "standard" | "high-detail";
 }>();
 const emit = defineEmits<{
   export: [format: string];
   look: [look: FilmLook | undefined];
+  quality: [value: "standard" | "high-detail"];
 }>();
+const qualityId = useId();
+function changeQuality(event: Event) {
+  if (props.busy) return;
+  const value = (event.target as HTMLSelectElement).value;
+  if (value === "standard" || value === "high-detail") emit("quality", value);
+}
 function changeLookMode(event: Event) {
   emit(
     "look",
@@ -34,7 +43,12 @@ function changeLookMode(event: Event) {
       : undefined,
   );
 }
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const displayFrameRate = computed(() =>
+  new Intl.NumberFormat(locale.value, { maximumFractionDigits: 3 }).format(
+    props.projectSettings.frameRate,
+  ),
+);
 const goal = ref<"watch" | "edit">("watch");
 const destination = ref<"resolve" | "finalcut" | "premiere">("resolve");
 const resolveStatus = computed(() =>
@@ -92,6 +106,58 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
       <button class="primary" :disabled="busy" @click="emit('export', 'mp4')">
         <Icon name="download" />{{ t("app.export.saveMp4") }}
       </button>
+      <section
+        class="export-quality-options"
+        :aria-label="t('exportQuality.heading')"
+      >
+        <dl class="export-picture-summary">
+          <div>
+            <dt>{{ t("exportQuality.savedFrame") }}</dt>
+            <dd data-testid="export-frame">
+              {{
+                t("exportQuality.frame", {
+                  width: projectSettings.width,
+                  height: projectSettings.height,
+                  frameRate: displayFrameRate,
+                })
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t("exportQuality.source") }}</dt>
+            <dd>{{ t("exportQuality.originals") }}</dd>
+          </div>
+        </dl>
+        <div class="field">
+          <label :for="qualityId">{{ t("exportQuality.quality") }}</label>
+          <select
+            :id="qualityId"
+            data-testid="export-quality"
+            :value="quality ?? 'standard'"
+            :disabled="busy"
+            :aria-describedby="`${qualityId}-hint ${qualityId}-frame ${qualityId}-limits`"
+            @change="changeQuality"
+          >
+            <option value="standard">{{ t("exportQuality.standard") }}</option>
+            <option value="high-detail">
+              {{ t("exportQuality.highDetail") }}
+            </option>
+          </select>
+        </div>
+        <p :id="`${qualityId}-hint`">
+          {{
+            t(
+              quality === "high-detail"
+                ? "exportQuality.highDetailHint"
+                : "exportQuality.standardHint",
+            )
+          }}
+        </p>
+        <p :id="`${qualityId}-frame`">
+          {{ t("exportQuality.frameUnchanged") }}
+        </p>
+        <p :id="`${qualityId}-limits`">{{ t("exportQuality.limits") }}</p>
+      </section>
       <fieldset class="export-look-options" :disabled="busy">
         <legend>{{ t("looks.exportHeading") }}</legend>
         <label class="field">
@@ -241,6 +307,42 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
 </template>
 
 <style scoped>
+.export-quality-options {
+  display: grid;
+  gap: var(--of-space-2);
+  max-width: 42rem;
+  min-width: 0;
+  margin-bottom: var(--of-space-4);
+}
+.export-picture-summary {
+  display: grid;
+  gap: var(--of-space-2);
+  margin: 0 0 var(--of-space-2);
+  font-size: var(--of-font-small);
+}
+.export-picture-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--of-space-2) var(--of-space-4);
+}
+.export-picture-summary dt {
+  color: var(--of-text-secondary);
+}
+.export-picture-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.export-quality-options select {
+  width: 100%;
+  min-width: 0;
+}
+.export-quality-options p {
+  margin: 0;
+  font-size: var(--of-font-caption);
+  color: var(--of-text-secondary);
+  overflow-wrap: anywhere;
+}
 .export-look-options {
   display: grid;
   gap: var(--of-space-3);

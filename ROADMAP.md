@@ -29,7 +29,17 @@ presentation commands. Older defaults, Undo/Redo, locks and persistence remain
 part of the contract. See [native text controls](docs/native-text-controls.md)
 for verification and the separate SRT/WebVTT boundary.
 
-## Current — Original film looks
+## Current — MP4 output quality
+
+Expose the saved output frame and original-source policy, then choose Standard
+or High detail compression through a shared validated render option. Preserve
+timing, geometry, source media and existing music. Actual encoder settings belong
+in render evidence. This is a compression choice, not source-detail restoration,
+photo-motion supersampling or a frame-size migration. See
+[the contract](docs/export-quality.md) and [focused evidence](docs/validation-export-quality.md).
+Combined browser/full regression and hardware gates remain distinct.
+
+## Implemented — Original film looks
 
 Six original, versioned creative looks support strength and saved whole-film,
 scene and clip overrides. Shared commands preserve locks, Undo/Redo and recovery;

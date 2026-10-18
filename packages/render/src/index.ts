@@ -7,6 +7,12 @@ import { photoPresentationFilters } from "./photo-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
 import { createTitleOverlay } from "./titles.js";
+import { resolveRenderQuality, type RenderQuality } from "./quality.js";
+export {
+  resolveRenderQuality,
+  type RenderQuality,
+  type RenderQualityProfile,
+} from "./quality.js";
 import {
   publishRenderPair,
   validateRenderTargets,
@@ -56,6 +62,8 @@ export interface RenderOptions {
   project?: RenderProjectEvidence;
   /** Null or omitted preserves each clip's saved film, scene and clip choices. */
   lookOverride?: FilmLook | null;
+  /** Omitted preserves the existing standard compression profile. */
+  quality?: RenderQuality;
 }
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
@@ -100,6 +108,7 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    const encoding = resolveRenderQuality(options.quality);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
@@ -496,13 +505,13 @@ export class FFmpegRenderer {
         "-map",
         "[aout]",
         "-c:v",
-        "libx264",
+        encoding.video,
         "-threads",
         "1",
         "-preset",
-        "veryfast",
+        encoding.preset,
         "-crf",
-        "23",
+        String(encoding.crf),
         "-pix_fmt",
         "yuv420p",
         "-r",
@@ -569,6 +578,7 @@ export class FFmpegRenderer {
         options.signal,
         project,
         { override: lookOverride, clips: looks },
+        encoding,
       );
       await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;

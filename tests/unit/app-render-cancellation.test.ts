@@ -98,6 +98,8 @@ function host() {
   const busy = ref("");
   const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
   const refreshes = { assets: 0, project: 0 };
+  const outputQuality = ref<"standard" | "high-detail">("standard");
+  const submissions: { path: string; body: unknown }[] = [];
   const dependencies = {
     api: {
       jobs: () => {
@@ -117,8 +119,10 @@ function host() {
     flushPending: async () => true,
     activeComposition: ref({ id: "composition" }),
     lookOverride: ref<FilmLook | undefined>(undefined),
+    outputQuality,
     editSerial: 0,
-    post: (path: string) => {
+    post: (path: string, body: unknown) => {
+      submissions.push({ path, body });
       if (!path.includes("/cancel")) return rendering.promise;
       if (cancellationCalls++ === 0) return cancellation.promise;
       const response = deferred<void>();
@@ -156,6 +160,8 @@ function host() {
   };
   return {
     ...app,
+    outputQuality,
+    submissions,
     analysisRecovery,
     reads,
     rendering,
@@ -459,6 +465,40 @@ describe("App analysis recovery polling preserves evidence without empty prop ch
       expect(h.jobs.value).toBe(currentJobs);
     },
   );
+});
+
+describe("App output compression quality snapshots", () => {
+  it.each<Mode>(["render", "export"])(
+    "%s captures selected quality for its output request",
+    async (mode) => {
+      const h = host();
+      h.outputQuality.value = "high-detail";
+      const action = start(h, mode);
+      await turn();
+      const submitted = h.submissions[0];
+      h.outputQuality.value = "standard";
+      h.rendering.resolve({ path: "/tmp/film.mp4" });
+      await turn();
+      h.reads[0]!.resolve({ jobs: [current("completed")] });
+      await action;
+      expect(submitted?.body).toMatchObject({
+        compositionId: "composition",
+        quality: "high-detail",
+      });
+    },
+  );
+
+  it("does not send MP4 compression options to editable exports", async () => {
+    const h = host();
+    h.outputQuality.value = "high-detail";
+    const action = h.exportFilm("json");
+    await turn();
+    h.rendering.resolve({ path: "/tmp/film.json" });
+    await turn();
+    h.reads[0]!.resolve({ jobs: [current("completed")] });
+    await action;
+    expect(h.submissions[0]?.body).not.toHaveProperty("quality");
+  });
 });
 
 describe("render job progress polling", () => {

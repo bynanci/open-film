@@ -24,6 +24,11 @@ contract](docs/film-looks.md) and [open-source reference decisions](docs/film-lo
 safe distance in Edit. The text and its background fade together while media
 stays unchanged; defaults preserve older projects. See [native text controls](docs/native-text-controls.md).
 
+**MP4 output quality** shows the actual saved frame and original-source policy.
+Choose Standard or High detail compression without changing timing, geometry or
+music. High detail takes longer and usually produces a larger file; it does not
+restore missing source detail. See [output quality](docs/export-quality.md).
+
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
