@@ -145,6 +145,8 @@ export default {
       titleBackground: "文字の背景",
       titleFadeOut: "文字のフェードアウト（秒）",
       titleFontWeight: "文字の太さ",
+      titleFontSize: "文字サイズ（動画の px）",
+      titleFontSizeDefault: "役割の標準サイズに戻す",
       fontWeightRegular: "標準",
       fontWeightBold: "太字",
       currentFontWeight: "現在の太さ（{weight}）",

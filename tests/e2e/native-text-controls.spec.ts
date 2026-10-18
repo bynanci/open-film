@@ -375,6 +375,10 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
   }, testInfo) => {
     const fixture = await createFilm(request);
     await openEditor(page, locale);
+    await field(page, "titleFontSize", "14", locale);
+    await expect
+      .poll(async () => (await clip(request)).titleStyle?.fontSize)
+      .toBe(14);
     await control(page, "titleFontWeight", locale).selectOption("700");
     await expect
       .poll(async () => (await clip(request)).titleStyle?.fontWeight)
@@ -405,6 +409,7 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
       await page.setViewportSize(size);
       const panel = page.locator(".editor-presentation-inspector");
       for (const key of [
+        "titleFontSize",
         "titleFontWeight",
         "titleFadeOut",
         "titleBottomSafeMargin",
@@ -449,6 +454,117 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
     expect(await fixture.assertOriginalsUnchanged()).toBe(true);
   });
 }
+
+test("composition-pixel text size is readable, undoable and resettable without discarding native styles", async ({
+  page,
+  request,
+}, testInfo) => {
+  const locale = "zh-TW" as const;
+  const fixture = await createFilm(request);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openEditor(page, locale);
+  const title = page.locator(".editor-title-overlay");
+  await expect(control(page, "titleFontSize", locale)).toHaveValue("6.48");
+  expect((await clip(request)).titleStyle).toBeUndefined();
+  const ink = () =>
+    title.evaluate((element) => {
+      const image = element as HTMLImageElement;
+      if (!image.complete || !image.naturalWidth) return 0;
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      ).data;
+      let visible = 0;
+      for (let index = 3; index < pixels.length; index += 4)
+        if (pixels[index]) visible++;
+      return visible;
+    });
+  await expect(title).toHaveJSProperty("naturalWidth", 320);
+  const beforeInk = await ink();
+  expect(beforeInk).toBeGreaterThan(0);
+  await control(page, "titleFontWeight", locale).selectOption("700");
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontWeight)
+    .toBe(700);
+  await field(page, "titleFontSize", "14", locale);
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontSize)
+    .toBe(14);
+  await expect.poll(ink).toBeGreaterThan(beforeInk * 2);
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "editor.undoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect(control(page, "titleFontSize", locale)).toHaveValue("6.48");
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontSize)
+    .toBeUndefined();
+  expect((await clip(request)).titleStyle?.fontWeight).toBe(700);
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "editor.redoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontSize)
+    .toBe(14);
+  const saved = (await editor(request)).composition;
+  expect(
+    (await request.post(`${base}/api/project/close`, { data: {} })).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.post(`${base}/api/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigateToEdit(page, locale);
+  await page.locator("#clip-native-caption-photo").click();
+  await expect(control(page, "titleFontSize", locale)).toHaveValue("14");
+  expect((await editor(request)).composition).toEqual(saved);
+  await control(page, "titleFontSize", locale).scrollIntoViewIfNeeded();
+  await control(page, "titleFontSize", locale).focus();
+  const path = testInfo.outputPath("native-text-font-size-zh-TW.png");
+  await page.screenshot({ path });
+  await testInfo.attach("native-text-font-size-zh-TW", {
+    path,
+    contentType: "image/png",
+  });
+  await page
+    .getByRole("button", {
+      name: text(locale, "editor.presentation.titleFontSizeDefault"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontSize)
+    .toBeUndefined();
+  await expect(control(page, "titleFontSize", locale)).toHaveValue("6.48");
+  expect((await clip(request)).titleStyle?.fontWeight).toBe(700);
+  await page
+    .getByRole("button", {
+      name: uiText(locale, "editor.undoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await clip(request)).titleStyle?.fontSize)
+    .toBe(14);
+  expect((await editor(request)).composition).toEqual(saved);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
 
 test("pull-out works on original framing and survives history and reopening without changing film timing", async ({
   page,

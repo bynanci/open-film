@@ -148,6 +148,8 @@ export default {
       titleBackground: "Text background",
       titleFadeOut: "Text fade out (seconds)",
       titleFontWeight: "Text weight",
+      titleFontSize: "Text size (composition px)",
+      titleFontSizeDefault: "Use role default",
       fontWeightRegular: "Regular",
       fontWeightBold: "Bold",
       currentFontWeight: "Current weight ({weight})",

@@ -249,11 +249,12 @@ describe("recoverable legacy title styles", () => {
             "editor.presentation.titlePosition",
             "editor.presentation.titleBackground",
             "editor.presentation.titleFontWeight",
+            "editor.presentation.titleFontSize",
             "editor.presentation.titleFadeOut",
             "editor.presentation.titleBottomSafeMargin",
           ].some((key) => item.props["aria-label"] === mounted.label(key)),
       );
-      expect(titleControls).toHaveLength(6);
+      expect(titleControls).toHaveLength(7);
       expect(titleControls.every((item) => item.props.disabled)).toBe(true);
     },
   );
@@ -349,6 +350,9 @@ describe("native text timing and bottom placement", () => {
       expect(
         mounted.control("editor.presentation.titleBottomSafeMargin")?.value,
       ).toBe(8);
+      expect(mounted.control("editor.presentation.titleFontSize")?.value).toBe(
+        25.92,
+      );
       expect(mounted.commands).toEqual([]);
       expect(mounted.props.clip.titleStyle).toEqual(valid.titleStyle);
     },
@@ -436,6 +440,89 @@ describe("native text timing and bottom placement", () => {
         titleStyle: { ...custom.titleStyle, fontWeight: 700 },
       },
     ]);
+  });
+  it("follows implicit role/frame defaults but preserves authored fractional sizes until explicitly reset", async () => {
+    const mounted = await mount("en-US", en, valid);
+    const size = () => mounted.control("editor.presentation.titleFontSize")!;
+    expect(size().value).toBe(25.92);
+    await mounted.update({
+      ...valid,
+      titleStyle: { version: 1, role: "film-title" },
+    });
+    expect(size().value).toBe(54);
+    mounted.props.frame.height = 1080;
+    await vue.nextTick();
+    expect(size().value).toBe(81);
+    const custom = {
+      ...valid,
+      titleStyle: {
+        version: 1 as const,
+        role: "subtitle" as const,
+        fontSize: 53.125675,
+        fontWeight: 700,
+        fadeOut: 1,
+        bottomSafeMargin: 0.12,
+      },
+    };
+    await mounted.update(custom);
+    expect(size().value).toBe(53.125675);
+    await mounted.update({
+      ...custom,
+      titleStyle: { ...custom.titleStyle, role: "scene-statement" },
+    });
+    expect(size().value).toBe(53.125675);
+    mounted.props.frame.height = 720;
+    await vue.nextTick();
+    expect(size().value).toBe(53.125675);
+    expect(mounted.commands).toEqual([]);
+    const reset = flatten(mounted.root).find(
+      (item) =>
+        item.tag === "button" &&
+        text(item) ===
+          mounted.label("editor.presentation.titleFontSizeDefault"),
+    )!;
+    expect(reset).toBeDefined();
+    (reset.props.onClick as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: custom.id,
+        title: custom.title,
+        titleStyle: {
+          version: 1,
+          role: "scene-statement",
+          fontWeight: 700,
+          fadeOut: 1,
+          bottomSafeMargin: 0.12,
+        },
+      },
+    ]);
+    expect(mounted.props.clip.titleStyle?.fontSize).toBe(53.125675);
+  });
+  it("writes only an explicitly entered size and preserves other native text settings", async () => {
+    const custom = {
+      ...valid,
+      titleStyle: {
+        ...valid.titleStyle!,
+        fontWeight: 700,
+        fadeOut: 1,
+        bottomSafeMargin: 0.12,
+      },
+    };
+    const mounted = await mount("en-US", en, custom);
+    const input = mounted.control("editor.presentation.titleFontSize")!;
+    (input.props["onUpdate:modelValue"] as (value: number) => void)(64);
+    await vue.nextTick();
+    (input.props.onChange as () => void)();
+    expect(mounted.commands).toEqual([
+      {
+        type: "presentation",
+        clipId: custom.id,
+        title: custom.title,
+        titleStyle: { ...custom.titleStyle, fontSize: 64 },
+      },
+    ]);
+    expect(mounted.props.clip.titleStyle).toEqual(custom.titleStyle);
   });
 });
 

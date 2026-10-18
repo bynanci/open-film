@@ -70,6 +70,14 @@ function titleStyleForDisplay(style: TitleStyle | undefined) {
     };
   }
 }
+function titleFontSizeForDisplay(style: TitleStyle | undefined) {
+  const resolved = titleStyleForDisplay(style);
+  // Avoid long binary tails for implicit percentages while retaining every
+  // explicitly authored fractional pixel value without rounding or saving it.
+  return !resolved.recovery && style?.fontSize !== undefined
+    ? resolved.style.fontSize
+    : Number(resolved.style.fontSize.toFixed(3));
+}
 const titleStyleRecovery = computed(
   () => titleStyleForDisplay(props.clip.titleStyle).recovery,
 );
@@ -78,6 +86,7 @@ const role = ref<TitleStyle["role"]>(initialTitleStyle.role);
 const position = ref<"center" | "bottom">(initialTitleStyle.position);
 const background = ref<"none" | "scrim">(initialTitleStyle.background);
 const fontWeight = ref(initialTitleStyle.fontWeight);
+const fontSize = ref(titleFontSizeForDisplay(props.clip.titleStyle));
 const fadeOut = ref(initialTitleStyle.fadeOut);
 const bottomSafeMargin = ref(initialTitleStyle.bottomSafeMargin * 100);
 const sources = computed(() =>
@@ -153,6 +162,8 @@ watch(
       nextTitleStyle.fontWeight !== previousTitleStyle?.fontWeight
     )
       fontWeight.value = nextTitleStyle.fontWeight;
+    if (changedClip || nextTitleStyle.fontSize !== previousTitleStyle?.fontSize)
+      fontSize.value = titleFontSizeForDisplay(clip.titleStyle);
     if (
       changedClip ||
       nextTitleStyle.bottomSafeMargin !== previousTitleStyle?.bottomSafeMargin
@@ -160,6 +171,12 @@ watch(
       bottomSafeMargin.value = nextTitleStyle.bottomSafeMargin * 100;
   },
   { immediate: true },
+);
+watch(
+  () => [props.frame.width, props.frame.height],
+  () => {
+    fontSize.value = titleFontSizeForDisplay(props.clip.titleStyle);
+  },
 );
 function setLayout() {
   if (layout.value === "original") {
@@ -237,6 +254,8 @@ function setTitle(
     | "position"
     | "background"
     | "fontWeight"
+    | "fontSize"
+    | "fontSizeDefault"
     | "fadeOut"
     | "bottomSafeMargin",
 ) {
@@ -249,6 +268,8 @@ function setTitle(
   if (field === "position") titleStyle.position = position.value;
   if (field === "background") titleStyle.background = background.value;
   if (field === "fontWeight") titleStyle.fontWeight = Number(fontWeight.value);
+  if (field === "fontSize") titleStyle.fontSize = Number(fontSize.value);
+  if (field === "fontSizeDefault") delete titleStyle.fontSize;
   if (field === "fadeOut") titleStyle.fadeOut = Number(fadeOut.value);
   if (field === "bottomSafeMargin")
     titleStyle.bottomSafeMargin = Number(bottomSafeMargin.value) / 100;
@@ -436,6 +457,27 @@ function resetTitleStyle() {
       />
     </label>
     <template v-if="title">
+      <label class="editor-field">
+        {{ t("editor.presentation.titleFontSize") }}
+        <input
+          v-model.number="fontSize"
+          type="number"
+          min="0"
+          max="4096"
+          step="any"
+          :disabled="titleStyleRecovery"
+          :aria-label="t('editor.presentation.titleFontSize')"
+          @change="setTitle('fontSize')"
+        />
+      </label>
+      <button
+        v-if="clip.titleStyle?.fontSize !== undefined"
+        class="editor-button"
+        :disabled="titleStyleRecovery"
+        @click="setTitle('fontSizeDefault')"
+      >
+        {{ t("editor.presentation.titleFontSizeDefault") }}
+      </button>
       <label class="editor-field">
         {{ t("editor.presentation.titleFontWeight") }}
         <select

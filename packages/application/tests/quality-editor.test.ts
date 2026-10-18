@@ -228,8 +228,26 @@ describe("durable quality editing", () => {
     },
   );
 
-  it("saves native text fade and safe margin as one undo unit, acknowledges exact retries and reopens all authored fields", async () => {
+  it("saves explicit native text size, weight, fade and margin as one undo unit without changing the cut or audio and reopens all authored fields", async () => {
     const { app, editor } = await fixture();
+    app.project.timelines[0]!.tracks.push({
+      id: "existing-music",
+      type: "music",
+      timing: "overlay",
+      clips: [
+        {
+          id: "soundtrack",
+          assetId: "music",
+          timelineStart: 0,
+          timelineDuration: 20,
+          sourceIn: 1,
+          sourceOut: 21,
+          transform: { volume: 0.5 },
+          audioAutomation: structuredClone(automation),
+        },
+      ],
+    });
+    await app.save();
     const before = editor.get("film");
     const input: TimelineEditInput = {
       baseRevision: before.revision,
@@ -244,8 +262,9 @@ describe("durable quality editing", () => {
             role: "subtitle",
             position: "bottom",
             background: "scrim",
+            fontSize: 64,
             fontWeight: 700,
-            fadeOut: 1.25,
+            fadeOut: 1,
             bottomSafeMargin: 0.12,
           },
         },
@@ -258,13 +277,18 @@ describe("durable quality editing", () => {
       role: "subtitle",
       position: "bottom",
       background: "scrim",
+      fontSize: 64,
       fontWeight: 700,
-      fadeOut: 1.25,
+      fadeOut: 1,
       bottomSafeMargin: 0.12,
     });
     expect(saved.story).toEqual(before.story);
     expect(saved.composition.duration).toBe(before.composition.duration);
     expect(saved.assets).toEqual(before.assets);
+    const expectedComposition = structuredClone(before.composition);
+    expectedComposition.tracks[0]!.clips[0]!.title = expected.title;
+    expectedComposition.tracks[0]!.clips[0]!.titleStyle = expected.titleStyle;
+    expect(saved.composition).toEqual(expectedComposition);
     const retry = await editor.edit("film", structuredClone(input));
     expect(retry.revision).toBe(saved.revision);
     expect(retry.acknowledgedRevision).toBe(saved.revision);
@@ -296,7 +320,8 @@ describe("durable quality editing", () => {
     applications.delete(app);
     const reopened = await OpenFilmApplication.open(directory);
     applications.add(reopened);
-    const restored = new TimelineEditor(reopened).get("film");
+    const reopenedEditor = new TimelineEditor(reopened);
+    const restored = reopenedEditor.get("film");
     expect(restored.composition).toEqual(saved.composition);
     expect(restored.story).toEqual(saved.story);
     expect(restored.assets).toEqual(saved.assets);
@@ -304,10 +329,35 @@ describe("durable quality editing", () => {
       JSON.parse(await readFile(join(directory, "project.json"), "utf8"))
         .timelines[0].tracks[0].clips[0],
     ).toEqual(expected);
+    const roleDefault = { ...expected.titleStyle! };
+    delete roleDefault.fontSize;
+    const reset = await reopenedEditor.edit("film", {
+      baseRevision: restored.revision,
+      commands: [
+        { type: "presentation", clipId: "photo", titleStyle: roleDefault },
+      ],
+    });
+    expect(reset.composition.tracks[0]!.clips[0]!.titleStyle).toEqual({
+      version: 1,
+      role: "subtitle",
+      position: "bottom",
+      background: "scrim",
+      fontWeight: 700,
+      fadeOut: 1,
+      bottomSafeMargin: 0.12,
+    });
+    const resetExpected = structuredClone(saved.composition);
+    resetExpected.tracks[0]!.clips[0]!.titleStyle = roleDefault;
+    expect(reset.composition).toEqual(resetExpected);
+    const restoredSize = await reopenedEditor.undo("film", reset.revision);
+    expect(restoredSize.composition).toEqual(saved.composition);
+    expect(
+      (await reopenedEditor.redo("film", restoredSize.revision)).composition,
+    ).toEqual(resetExpected);
   });
 
   it.each(["clip", "source", "paired source"])(
-    "rejects native text fade and safe-margin edits protected by a %s lock without modifying history or disk",
+    "rejects native text size, fade and safe-margin edits protected by a %s lock without modifying history or disk",
     async (locked) => {
       const { app, editor } = await fixture();
       const current = app.project.timelines[0]!.tracks[0]!.clips[0]!;
@@ -346,6 +396,7 @@ describe("durable quality editing", () => {
               titleStyle: {
                 version: 1,
                 role: "subtitle",
+                fontSize: 64,
                 fadeOut: 1,
                 bottomSafeMargin: 0.15,
               },

@@ -136,6 +136,8 @@ export default {
       titleBackground: "文字背景",
       titleFadeOut: "文字淡出（秒）",
       titleFontWeight: "文字粗細",
+      titleFontSize: "文字大小（影片畫布 px）",
+      titleFontSizeDefault: "使用角色預設大小",
       fontWeightRegular: "標準",
       fontWeightBold: "粗體",
       currentFontWeight: "目前字重（{weight}）",

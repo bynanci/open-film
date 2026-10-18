@@ -1,4 +1,4 @@
-# Native on-screen text: fade and bottom safe distance
+# Native on-screen text: size, fade and bottom safe distance
 
 ## Use the controls
 
@@ -6,6 +6,14 @@ In **Edit**, select a photo or video, then open **Clip inspector → On-screen
 text**. Enter the text and choose its role and position. The additional controls
 are:
 
+- **Text size**: composition pixels, independent of monitor/window zoom. With no
+  saved override, the displayed value follows the text role and project frame
+  height; opening the inspector does not save that calculated default. Editing
+  the value saves an explicit size, preserved through later role/frame changes.
+  **Use role default** removes only `fontSize`, retaining weight, fade, margin
+  and the other authored style properties. The existing domain accepts positive,
+  finite sizes up to 4,096 pixels, including fractional values; a valid size does
+  not guarantee that the complete text fits the frame.
 - **Text weight**: **Regular (400)** or **Bold (700)**, using available local font
   faces. An existing custom weight is preserved and shown as the current weight;
   opening the inspector does not reset it. Older subtitle defaults remain
@@ -41,13 +49,16 @@ the existing project schema without a catalog migration:
   role: "subtitle",
   position: "bottom",
   background: "scrim",
+  fontSize: 64,       // composition pixels; omit for the current role's default
   fontWeight: 700,
   fadeOut: 1.25,       // seconds; default 0
   bottomSafeMargin: 0.12 // frame-height fraction; default 0.08
 }
 ```
 
-Both fields must be finite numbers within their documented ranges. Invalid
+The size control exposes the existing optional `TitleStyle.fontSize` field;
+it adds no schema field or catalog migration. Numeric fields must be finite
+numbers within their documented ranges. Invalid
 commands reject the whole batch before saving or adding history. A client must
 convert the displayed percentage to a fraction: **12% → 0.12**.
 
@@ -84,6 +95,19 @@ styling. This change does not add transcript-caption burn-in. Editable NLE
 handoff still requires manual recreation of native title styling/effects where
 the target format or editor does not support them.
 
+## Text-size reference boundary
+
+This additive follow-up adapts the visible text-size control concept discussed in
+[PR #23](https://github.com/bynanci/open-film/pull/23), inspected at
+`b3928dae8986e949bb36a23441c582aa50f137f6`. It uses OpenFilm's existing
+`TitleStyle`, measured local raster, presentation command and history contracts;
+no implementation source was copied from that candidate.
+
+Top positioning, fade-in and Lanczos resizing are deferred. They need separate
+layout/timing/sampling contracts, preview/render parity and regression evidence;
+the text-size control does not imply that those behaviors are implemented or
+verified. Existing native display and NLE manual gates remain open.
+
 ## Verification
 
 Core and render checks passed **25 files / 511 tests**, including actual decoded
@@ -112,6 +136,14 @@ clip instead of presenting the shorter candidate. The native text overlay uses
 the same candidate clip as the player, so its fade follows the proposed duration.
 The regression checks actual overlay opacity and proves that the saved cut and
 history remain untouched while previewing.
+
+The text-size follow-up extends the application regression to save explicit
+64-pixel text with weight 700, one-second fade and 12% bottom distance, then
+Undo/Redo and reopen it. The assertion compares the whole composition, including
+an existing automated soundtrack and unchanged source ranges. A size-only reset
+preserves all other style fields and remains undoable. Existing clip, source and
+paired-source lock cases now include an explicit size edit. These are
+application/persistence assertions; browser appearance remains separate evidence.
 
 Focused application and solver regression command:
 
