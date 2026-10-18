@@ -18,10 +18,27 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. The current creative priority is
-the bounded photo-film quality slice below; merging development source is not a **Released** installer or
+the bounded scene-direction editing slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
-## Current — Photo-film quality
+## Current — Reviewable scene directions to edits
+
+Connect saved Story directions to supported photo presentation through an offline,
+finite compiler. People review the exact source phrase, reason and before/after
+value, preview temporarily, then explicitly adopt selected safe actions. Existing
+commands own saving, Undo and rendering. Context bindings and durable request
+receipts preserve manual work through stale reviews, lost responses and reopening.
+The first vocabulary covers contain/hero and hold/gentle push-in/horizontal pan;
+unknown prose is shown rather than guessed. Film timing stays unchanged and the
+configured maximum remains enforced. See [the contract](docs/scene-direction-editing.md),
+[validation](docs/validation-scene-direction-editing.md) and
+[acceptance tasks](TASKS.md#current--reviewable-scene-directions-to-edits).
+
+Source-range/rhythm and duration changes require a later, separately reviewed
+slice. Arbitrary prose/image understanding, generated voice and automatic grading
+remain deferred. Real Windows/camera/Resolve and private-film quality gates continue.
+
+## Implemented slice — Photo-film quality
 
 Turn manual design decisions into actual output using the existing composition,
 commands and renderer: protected focal layouts, diptychs, bounded still motion,
@@ -45,10 +62,10 @@ Its full browser/CI outcomes are tracked on
 119/119 browser run, remain historical evidence; they do not validate the newer
 expanded full suite. See [the contract](docs/photo-film-quality.md),
 [validation](docs/validation-photo-film-quality.md) and
-[acceptance tasks](TASKS.md#current--photo-film-quality).
+[acceptance tasks](TASKS.md#implemented-slice--photo-film-quality).
 
-Next creative increments should bind reviewed scene directions to these
-supported primitives and improve source-range/rhythm choices. Semantic image
+The scene-direction slice above binds reviewed phrases to these supported
+primitives. Later increments can improve source-range/rhythm choices. Semantic image
 understanding, grading, generated narration and automatic audio analysis remain
 later work. Audio automation currently stays clip-local when trimming or changing
 source-in; splitting configured envelopes requires explicit removal and manual

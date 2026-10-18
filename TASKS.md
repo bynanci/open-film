@@ -5,7 +5,38 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Photo-film quality
+## Current — Reviewable scene directions to edits
+
+Scope: [scene-direction editing](docs/scene-direction-editing.md).
+Evidence: [validation record](docs/validation-scene-direction-editing.md).
+This bounded offline compiler extends existing photo commands. It does not infer
+arbitrary prose or image contents and never calls a language provider.
+
+- [x] Turn supported saved scene phrases into explained photo-layout/motion
+      actions, showing exact source evidence and explicit unsupported/conflict notes.
+- [x] Preserve locks, required media, paired photos, manual presentation and all
+      other scenes; keep film timing unchanged and enforce its configured maximum.
+- [x] Preview each action without saving, select a safe subset and adopt it as
+      one ordinary saved command batch with one-step Undo/Redo.
+- [x] Bind reviews to current scene/assets/settings; reject stale or unsafe subsets
+      and retain durable receipts for lost responses, reopening and fresh adoption
+      after Undo without applying an old retry again.
+- [x] Share preview/adoption through the application, HTTP and CLI; test moved
+      managed media, external writers and publication/commit failures.
+- [x] Integrate the existing Edit inspector in English, Traditional Chinese and
+      Japanese with pseudo-locale, keyboard and bounded desktop layout coverage.
+- [x] Pass local non-browser gates and focused browser checks; include the new
+      cases in existing full CI and independently review correctness. Full browser
+      outcomes and exact-head merge readiness are tracked with the candidate PR.
+- [ ] Manual: assess intended movement/layout on private films and workstation
+      playback; Windows installer, camera hardware and Resolve gates remain separate.
+
+The candidate starts from PR #19 head
+`298077fdfe4937b0c9d9e11f272d409b18fb3960`, preserving its Windows recovery work.
+It also fixes that base's FFmpeg 6 overlay-visibility regression, with the same
+actual render tests on FFmpeg 6.1.3 and 7.1.5. This does not certify workstation QA.
+
+## Implemented slice — Photo-film quality
 
 Scope: [photo-film quality contract](docs/photo-film-quality.md).
 Evidence: [actual generated A/B validation](docs/validation-photo-film-quality.md).

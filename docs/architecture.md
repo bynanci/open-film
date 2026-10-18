@@ -375,3 +375,30 @@ specific pipeline behavior and preserve private paths in local manifests; they
 do not establish artistic quality or real speech clarity. See [the contract](photo-film-quality.md)
 and [the execution record](validation-photo-film-quality.md) for scoped automated
 results, candidate regression attempts and independent workstation gates.
+
+## Scene directions to reviewed commands
+
+`@openfilm/solver` compiles a small, exact clause vocabulary in a saved Story
+scene's visual direction into existing photo layout/motion commands. The pure
+proposal retains reasons, original evidence, before/after values and explicit
+unsupported/conflict/unsafe notes. It never mutates the input, infers source
+selection or calls a provider. Shared photo geometry validates effective movement.
+
+The application's existing `TimelineEditor` binds a proposal to current scene,
+composition, assets, project identity/directory, settings and recipe version.
+Acceptance recompiles, validates the selected subset and persists the command
+batch and versioned audit receipt together. Only request identity deduplicates an
+uncertain retry; a new explicit request can re-adopt the same regenerated plan
+after Undo. Saved-project checks under the catalog writer lock prevent stale
+receipt acknowledgments after an external write. No generic save-baseline reset
+or additional timeline engine is introduced.
+
+Optional `sceneDirectionReceipts` live with Composition content in schema-1.0.0
+project JSON, bounded to 100 with fail-closed capacity and runtime validation.
+No SQLite migration is required. The passive preview normalizes already-moved
+managed-source bookkeeping locally, without writing or weakening source freshness.
+HTTP and CLI expose the same application boundary; executable commands from a
+client are never trusted. Desktop retains pending acceptance identity locally and
+uses a temporary monitor override for preview, outside autosave/history. See
+[the contract](scene-direction-editing.md) and
+[validation](validation-scene-direction-editing.md).

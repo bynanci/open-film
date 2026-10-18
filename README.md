@@ -146,6 +146,16 @@ encoding and warnings. [The contract](docs/photo-film-quality.md) and
 was actually measured. The fixture establishes rendered behavior; judging a
 private film, listening to real audio and testing projection remain manual.
 
+**Scene directions to edits:** save a supported direction such as
+`保留比例；緩慢推近`, then select a photo in Edit and review the proposed
+layout/motion with its reason and original phrase. Preview or skip individual
+actions; adopt the safe selection as one saved, undoable batch. Unsupported prose,
+conflicts, locks and existing manual presentation stay visible. Timing is unchanged;
+stale reviews require regeneration. This is a bounded offline vocabulary, with no
+image-understanding or arbitrary-language claim. The same review is available via
+HTTP and CLI. See [the workflow and recovery contract](docs/scene-direction-editing.md)
+and [validation](docs/validation-scene-direction-editing.md).
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`
