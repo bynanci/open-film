@@ -28,14 +28,16 @@ artistic quality or replace workstation gates.
 - [x] Generate public CC0 calibration assets and two actual 20-second MP4s, with
       composition diff, 24 sampled frames each, source hashes, font/encoding
       manifests and FFprobe/loudness/true-peak/RMS evidence.
-- [x] Pass local format/i18n/lint/types, 153-file/2,213-test Vitest, build,
-      official OTIO and built-CLI checks. Exercise all 117 browser cases through
-      116 passes in the complete run and one correctly configured retry; retain
-      the original Python-environment failure separately in the validation record.
+- [x] Pass corrected implementation `025bead` local format/i18n/lint/types,
+      157-file/2,251-test Vitest, build, official OTIO and built-CLI checks.
+      Track its full browser/CI outcomes separately on PR #18 checks.
 - [x] Fix independent Desktop review findings for motion-only preview, persisted
       diptych spacing and audio Undo/Redo playback, with focused browser regressions.
+- [x] Address eight unique follow-up P2 findings covering title bounds/defaults,
+      overlay/audio compatibility, layer/source recovery, diptych validation and
+      empty-track interchange; independently review the corrected frozen source.
 - [x] Re-run the A/B evidence against committed implementation
-      `ae61376ee8e9413e0982c00075053a2fe297b7c1` with a clean working tree,
+      `025bead76ce4303382a1bb785798776ccf24eb14` with a clean working tree,
       review the extracted frames and verify unchanged 20-second output/source hashes.
 - [ ] Manual: judge real photo selection/layout, original speech/music and
       projection readability on intended playback hardware.
@@ -47,8 +49,12 @@ under that envelope; shortening clamps its end to the remaining duration.
 Splitting audio with active automation is rejected until envelope partitioning
 is implemented. Complete local/remote regression evidence remains distinct from
 the focused measurements above.
-Published-head CI and merge readiness are tracked separately on the candidate
-PR checks; local results do not substitute for those checks or workstation QA.
+The initial `ae61376` implementation's 153-file/2,213-test and 116-pass browser
+run plus one configured environment retry remain historical evidence in the
+validation record. They do not describe the corrected head's full browser suite.
+Published-head browser/CI and merge readiness are tracked separately on
+[PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks); local results
+do not substitute for those checks or workstation QA.
 
 ## Implemented slice — Reviewable scene-script suggestions
 

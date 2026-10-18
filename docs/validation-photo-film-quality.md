@@ -39,12 +39,12 @@ The fixed comparison checks these distinct design operations:
 
 ## Execution record
 
-Re-executed on 2026-10-17 at 23:30 UTC using FFmpeg 7.1.5 on Linux, with the
-implementation frozen at `ae61376ee8e9413e0982c00075053a2fe297b7c1` on
+Re-executed on 2026-10-18 at 00:05 UTC using FFmpeg 7.1.5 on Linux, with the
+corrected implementation frozen at `025bead76ce4303382a1bb785798776ccf24eb14` on
 `codex/photo-film-quality`. The run explicitly records `workingTreeDirty: false`.
 The local `implementation-sources.json` lists hashes of the actual core,
 renderer, fixture and runner source files. Its SHA-256 is
-`9ea26157c2343b9a01ecf93468628f11809e99c2bcde282f3ed1972f7cec5bcc`.
+`6a10222797e296f6f28792bd41667f05a64045c96c20501a76b7f1f6fed2aadf`.
 This is local execution evidence for that committed implementation, rather than
 CI, human listening or workstation evidence. Later validation/CI-configuration
 commits do not change that implementation identity.
@@ -79,14 +79,45 @@ Output SHA-256:
 - A: `3161b86cc6071f6b34249a7ddbc5cbe4d25a7289ffef9466e5772fab625e6ad4`
 - B: `50efd58bb33accdf78d078c23d2918af02732921a6ad37760bfe3ba86f65a376`
 
+Both hashes and all listed audio measurements match the earlier clean
+`ae61376ee8e9413e0982c00075053a2fe297b7c1` run. The earlier MP4s, manifests,
+source identities, summaries and Python-environment failure trace were archived
+locally before rerunning. Its 2026-10-17 23:30 UTC source digest was
+`9ea26157c2343b9a01ecf93468628f11809e99c2bcde282f3ed1972f7cec5bcc`.
+Both regenerated 24-frame contact sheets were inspected after the corrected run;
+the requested framing, motion, title and transition samples remain present.
+
 The fixture scenario regression tests pass (3 tests): unchanged 20-second
 timing and source library, rejection of an incomplete library, and safe active
 motion with intentional crop fallback. Scoped ESLint and Prettier checks pass.
 Actual aesthetic judgment, listening and projection are still manual gates.
 
-## Candidate regression ledger
+## Corrected implementation regression ledger
 
-The committed implementation has these complete local results:
+The frozen `025bead76ce4303382a1bb785798776ccf24eb14` implementation has these
+complete local non-browser results. Its browser/CI outcomes are recorded
+separately on [PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks);
+the initial implementation's browser history below is not substituted for them.
+
+| Gate                         | Result                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `pnpm format:check`          | Passed                                                                         |
+| `pnpm test:i18n`             | Passed: 1,273 keys                                                             |
+| `pnpm lint`                  | Passed                                                                         |
+| `pnpm typecheck`             | Passed                                                                         |
+| `pnpm test`                  | Passed: 157 files, 2,251 tests in 109.42 seconds                               |
+| `pnpm build`                 | Passed                                                                         |
+| `pnpm test:interchange`      | Passed: official OTIO 0.18.1 parser and compatibility harness                  |
+| Built CLI smoke              | Passed                                                                         |
+| Corrected-head browser suite | Recorded separately on PR #18 checks; earlier-head browser counts do not apply |
+| `pnpm test:native`           | Not runnable locally: `cargo` is unavailable                                   |
+| Published-head CI            | Recorded separately on PR #18 checks; local results do not substitute          |
+
+## Historical initial implementation checks
+
+The following results belong to
+`ae61376ee8e9413e0982c00075053a2fe297b7c1`, before the follow-up review fixes.
+They do not describe the corrected implementation's larger test suite.
 
 | Gate                    | Result                                                                                                   |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -134,7 +165,7 @@ a 20-minute job limit. The expanded photo-film suite raises that job budget to
 30 minutes while retaining every gate and the existing per-test timeouts. This
 is CI capacity headroom, not a runtime performance improvement.
 
-## Focused correctness review
+## Initial implementation correctness review
 
 Independent final review reproduced and corrected three Desktop issues before
 the implementation was frozen:
@@ -158,6 +189,45 @@ link, missing-font/glyph errors and source-bound export manifests. HTTP coverage
 rejects titles requested for another project or stale revision. These checks
 exercise implementation correctness; they do not establish hardware playback,
 human listening, photographic aesthetics or real Resolve import.
+
+## PR #18 follow-up correctness review
+
+The corrected `025bead76ce4303382a1bb785798776ccf24eb14` implementation addresses
+eight unique P2 issues: five newly valid bot findings and three additional
+independent-review findings. Each has regression coverage in the corrected
+non-browser suite; browser scenarios for the corrected head are tracked
+separately from the historical seven-test result above.
+
+| Finding                                                         | Correction and regression coverage                                                                                                            |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unbounded new title/raster input                                | Bound new commands and rasterization at 8,000 characters while keeping legacy project reading compatible. Validate rejection before mutation. |
+| Sound controls offered ordinary Story audio as overlay-editable | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.            |
+| One failed/stale photo layer corrupted the current presentation | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.              |
+| Diptych gap could equal or exceed output width                  | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                       |
+| Empty overlay tracks blocked restrictive interchange            | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                               |
+| Incompatible media could replace/configure audio                | Reject incompatible replacement and silent-video automation before saved project or Undo state changes.                                       |
+| Sparse title defaults changed on editing/clearing               | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.              |
+| Relinked Sound source reused stale playback/buffer              | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.             |
+
+One bot report repeated the already-corrected legacy-title rendering issue.
+The alleged P1 PNG selector failure was not reproduced with actual FFprobe:
+
+| FFprobe version | Actual PNG selector result      |
+| --------------- | ------------------------------- |
+| 6.0             | Reported failure not reproduced |
+| 7.0.2           | Reported failure not reproduced |
+| 7.1.5           | Reported failure not reproduced |
+
+The probe now nevertheless declares `format:stream` sections explicitly, with
+real generated PNG/JPEG regression tests for dimensions and codec metadata.
+This is recorded as explicit selection and coverage, not as proof that the
+reported PNG failure existed on those versions.
+
+Fresh independent review of the frozen corrected source passed the reviewed
+correctness areas. Component regression helpers use the declared public
+`vue/compiler-sfc` entry point rather than an undeclared transitive Node module.
+Neither that review nor generated-media tests establish hardware playback,
+private-film aesthetics, human audio listening or actual Resolve QA.
 
 ## Manual gates
 

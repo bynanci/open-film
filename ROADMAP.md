@@ -34,10 +34,13 @@ encoding and explicit fallback warnings.
 A public generated 20-second A/B fixture has produced two real MP4s with equal
 duration, sampled frame comparisons and measured fades/ducking. The evidence
 does not establish private-film improvement, real narration quality or projector
-readability. Local regression and localized browser checks have completed;
-the browser ledger separates a missing-parser-environment failure from its
-successful configured retry. Independent correctness review is complete, while
-exact published-head CI is tracked separately on the candidate PR. See [the contract](docs/photo-film-quality.md),
+readability. Corrected implementation `025bead` passes local non-browser gates,
+including 157 files / 2,251 tests, and has a fresh clean-tree A/B render with
+unchanged output hashes. Independent follow-up review covers eight corrected
+P2 issues. Its full browser/CI outcomes are tracked on
+[PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks). The initial
+`ae61376` browser run and Python-environment retry remain historical evidence,
+not validation of the corrected head. See [the contract](docs/photo-film-quality.md),
 [validation](docs/validation-photo-film-quality.md) and
 [acceptance tasks](TASKS.md#current--photo-film-quality).
 
