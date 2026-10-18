@@ -7,6 +7,7 @@ import {
   TimelineEditor,
   resolveUserDataDirectory,
   type ScenePlanAcceptance,
+  type DirectionReviewPlan,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -45,6 +46,8 @@ Usage:
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
   openfilm scene-plan preview --project <film.openfilm> --group-by category|chronology --target 270 --max 300 [--brief "Film intention" --transition cut|crossfade --assets id1,id2]
   openfilm scene-plan accept --project <film.openfilm> --plan <preview.json>
+  openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> --clips <clip-id,...> [--replace-existing]
+  openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
@@ -83,6 +86,7 @@ function parse(args: string[]) {
     "enable",
     "disable",
     "confirm-stopped",
+    "replace-existing",
   ]);
   const values = new Set([
     "project",
@@ -128,6 +132,8 @@ function parse(args: string[]) {
     "field",
     "index",
     "user-data-dir",
+    "clips",
+    "actions",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -234,7 +240,8 @@ async function main() {
     throw new Error("Use --project <film.openfilm> to select a project.");
   const app =
     command === "captions" ||
-    (command === "scene-plan" && positional[1] === "preview")
+    ((command === "scene-plan" || command === "direction-review") &&
+      positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
           resolve(project),
           runtimeOptions,
@@ -687,6 +694,60 @@ async function main() {
           assetIds: value(options, "assets")?.split(",").filter(Boolean),
         }),
       });
+    } else if (command === "direction-review") {
+      const compositionId = positional[2];
+      if (!compositionId)
+        throw new Error("Specify the composition ID to review.");
+      const editor = new TimelineEditor(app);
+      if (positional[1] === "preview") {
+        const beatId = value(options, "beat");
+        const clips = value(options, "clips");
+        if (!beatId || !clips)
+          throw new Error("Specify --beat and --clips for the reviewed scene.");
+        print({
+          plan: editor.previewDirection(compositionId, {
+            beatId,
+            clipIds: clips.split(","),
+            replaceExisting: options["replace-existing"] === true,
+          }),
+        });
+      } else if (positional[1] === "accept") {
+        const path = value(options, "plan");
+        const requestId = value(options, "request-id");
+        if (!path || !requestId)
+          throw new Error(
+            "Specify --plan <preview.json> and one stable --request-id for retries.",
+          );
+        const file = resolve(path);
+        const info = await stat(file);
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error(
+            "Direction review JSON must be a regular file of at most 16 MiB.",
+          );
+        const bytes = await readFile(file);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Direction review JSON exceeds 16 MiB.");
+        const input = JSON.parse(bytes.toString("utf8")) as {
+          plan?: DirectionReviewPlan;
+        };
+        const plan = input.plan;
+        if (!plan || !Array.isArray(plan.actions))
+          throw new Error("Provide a saved {plan} direction preview.");
+        const selected = value(options, "actions");
+        print(
+          await editor.acceptDirection(compositionId, {
+            planId: plan.id,
+            baseRevision: plan.baseRevision,
+            contextSignature: plan.contextSignature,
+            options: plan.options,
+            actionIds:
+              selected === undefined
+                ? plan.actions.map((action) => action.id)
+                : selected.split(","),
+            requestId,
+          }),
+        );
+      } else throw new Error("Choose direction-review preview or accept.");
     } else if (command === "scene-plan") {
       if (positional[1] === "preview") {
         print({

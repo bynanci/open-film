@@ -43,6 +43,7 @@ import {
   type ReviewOptions,
   type ScenePlanAcceptance,
   type ScenePlanOptions,
+  type DirectionReviewAcceptance,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -1996,6 +1997,32 @@ export async function startServer(options: ServerOptions = {}) {
             json(response, 200, state);
             return;
           }
+        }
+        const directionMatch =
+          /^\/api\/compositions\/([^/]+)\/direction\/(preview|accept)$/.exec(
+            route,
+          );
+        if (method === "POST" && directionMatch) {
+          errorContext = "story.invalid";
+          const compositionId = decodeURIComponent(directionMatch[1]!);
+          const data = await body(request);
+          const editor = editorFor(application);
+          json(
+            response,
+            200,
+            directionMatch[2] === "preview"
+              ? editor.previewDirection(
+                  compositionId,
+                  data as unknown as Parameters<
+                    TimelineEditor["previewDirection"]
+                  >[1],
+                )
+              : await editor.acceptDirection(
+                  compositionId,
+                  data as unknown as DirectionReviewAcceptance,
+                ),
+          );
+          return;
         }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
         if (method === "GET" && thumbnail) {

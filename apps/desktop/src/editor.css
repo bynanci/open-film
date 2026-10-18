@@ -2162,3 +2162,106 @@ button.editor-beat-heading:hover {
     max-height: 24rem;
   }
 }
+
+.editor-direction-review {
+  min-width: 0;
+  margin-block: var(--of-space-3);
+  border-block: 1px solid var(--editor-border);
+}
+
+.editor-direction-review > summary {
+  padding-block: var(--of-space-3);
+  color: var(--editor-text);
+  cursor: pointer;
+  font-size: var(--of-font-body);
+  font-weight: 600;
+}
+
+.editor-direction-review > summary:focus-visible {
+  outline: 2px solid var(--of-accent);
+  outline-offset: 3px;
+}
+
+.editor-direction-content,
+.editor-direction-options,
+.editor-direction-action {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-3);
+}
+
+.editor-direction-content {
+  padding-block: 0 var(--of-space-3);
+}
+
+.editor-direction-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.editor-direction-review :is(p, blockquote, ul, dl) {
+  margin: 0;
+}
+
+.editor-direction-review :is(p, label, blockquote, li, dd, button, small) {
+  overflow-wrap: anywhere;
+}
+
+.editor-direction-review :is(select, textarea, button) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.editor-direction-review textarea[readonly] {
+  color: var(--editor-muted);
+}
+
+.editor-direction-action {
+  padding-block: var(--of-space-3);
+  border-top: 1px solid var(--editor-border);
+}
+
+.editor-direction-action .editor-presentation-check span {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-1);
+}
+
+.editor-direction-action small,
+.editor-direction-comparison dt,
+.editor-direction-timing,
+.editor-direction-notes {
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+}
+
+.editor-direction-action blockquote {
+  padding-inline-start: var(--of-space-3);
+  border-inline-start: 2px solid var(--editor-border);
+  font-size: var(--of-font-body);
+  white-space: pre-wrap;
+}
+
+.editor-direction-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-space-3);
+}
+
+.editor-direction-comparison dd {
+  margin: var(--of-space-1) 0 0;
+  font-size: var(--of-font-body);
+}
+
+.editor-direction-notes {
+  display: grid;
+  gap: var(--of-space-2);
+  padding-inline-start: var(--of-space-4);
+}
+
+.editor-direction-notes q {
+  display: block;
+  color: var(--editor-text);
+  white-space: pre-wrap;
+}

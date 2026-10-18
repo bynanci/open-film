@@ -25,7 +25,15 @@ import type {
 import type {
   CaptionPublication,
   CaptionSnapshotPage,
+  DirectionReviewPlan,
+  DirectionReviewAcceptance,
 } from "@openfilm/application";
+export type {
+  DirectionReviewPlan,
+  DirectionReviewAcceptance,
+} from "@openfilm/application";
+export type { SceneDirectionOptions } from "@openfilm/solver";
+import type { SceneDirectionOptions } from "@openfilm/solver";
 import type { EditorDocument, TimelineCommand } from "@openfilm/solver";
 import type {
   AnalysisRecoveryState,
@@ -749,6 +757,16 @@ export const api = {
     post<{ composition: Composition }>("/compose", { storyId }),
   editor: (id: string) =>
     request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`),
+  previewDirection: (id: string, body: SceneDirectionOptions) =>
+    post<DirectionReviewPlan>(
+      `/compositions/${encodeURIComponent(id)}/direction/preview`,
+      body,
+    ),
+  acceptDirection: (id: string, body: DirectionReviewAcceptance) =>
+    post<EditorState>(
+      `/compositions/${encodeURIComponent(id)}/direction/accept`,
+      body,
+    ),
   edit: (
     id: string,
     body: {

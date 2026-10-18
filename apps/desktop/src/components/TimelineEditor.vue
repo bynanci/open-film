@@ -41,6 +41,7 @@ import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
+import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
@@ -88,8 +89,8 @@ const {
   reportError,
   reportNotice,
   hasPending: compositionHasPending,
-  historyBusy,
-  command,
+  historyBusy: compositionHistoryBusy,
+  command: compositionCommand,
   flush: flushComposition,
   history: compositionHistory,
   reapplyDraft,
@@ -106,21 +107,45 @@ const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
 const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
+const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
+  null,
+);
+const directionPending = computed(() => !!directionReview.value?.hasPending);
+const directionBlocked = computed(() => !!directionReview.value?.blocksEdits);
+const historyBusy = computed(
+  () => compositionHistoryBusy.value || directionBlocked.value,
+);
+const directionPreview = ref<Clip | null>(null);
+function command(input: TimelineCommand | TimelineCommand[]) {
+  if (directionBlocked.value) return false;
+  directionPreview.value = null;
+  return compositionCommand(input);
+}
 const hasPending = computed(
   () =>
     compositionHasPending.value ||
     !!transcriptEditor.value?.hasPending ||
-    !!precisionEditor.value?.hasPending,
+    !!precisionEditor.value?.hasPending ||
+    directionPending.value,
 );
 async function history(direction: "undo" | "redo") {
-  if (precisionEditor.value?.hasPending) return false;
+  if (precisionEditor.value?.hasPending || directionBlocked.value) return false;
   return compositionHistory(direction);
 }
-async function flush() {
+async function flushInputs() {
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
     return false;
   return (await precisionEditor.value?.flush()) ?? true;
+}
+async function flush() {
+  if (directionPending.value) return false;
+  if (!(await flushInputs())) return false;
+  return (await directionReview.value?.flush()) ?? true;
+}
+async function reloadDirectionState() {
+  await load();
+  return status.value === "saved";
 }
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
@@ -143,7 +168,7 @@ const sourceViewport = ref<FrameSize>({ width: 1, height: 1 });
 const sourcePreviewSize = ref<FrameSize>();
 const sourceTime = ref(0);
 const monitorFrameRate = computed(
-  () => selectedAsset.value?.frameRate ?? props.projectSettings.frameRate,
+  () => playbackAsset.value?.frameRate ?? props.projectSettings.frameRate,
 );
 const loopClip = ref(false);
 const showRuleOfThirds = ref(false);
@@ -216,10 +241,32 @@ const assetMap = computed(
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
 );
+const playbackAsset = computed(
+  () => playbackClip.value && assetMap.value.get(playbackClip.value.assetId),
+);
 const photoPresentationActive = computed(
   () =>
-    selectedAsset.value?.mediaType === "image" &&
-    !!(selectedClip.value?.layout || selectedClip.value?.motion),
+    playbackAsset.value?.mediaType === "image" &&
+    !!(playbackClip.value?.layout || playbackClip.value?.motion),
+);
+const playbackSourceInfo = computed(() =>
+  playbackAsset.value
+    ? sourcePresentation(playbackAsset.value, {
+        translate: t,
+        formatNumber,
+        formatDate,
+      })
+    : undefined,
+);
+const playbackSourceStatus = computed(() =>
+  playbackAsset.value
+    ? props.sourceStatuses?.[playbackAsset.value.id]
+    : undefined,
+);
+const playbackUnavailable = computed(
+  () =>
+    playbackSourceStatus.value &&
+    playbackSourceStatus.value.status !== "available",
 );
 const selectedSourceInfo = computed(() =>
   selectedAsset.value
@@ -242,11 +289,15 @@ const sourceUnavailable = computed(
 );
 const sourcePlaybackKey = computed(
   () =>
-    `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${props.sourceVersion ?? 0}`,
+    `${playbackAsset.value?.id}:${playbackAsset.value?.uri}:${props.sourceVersion ?? 0}`,
 );
-watch([selectedClipId, () => state.value?.revision], () => {
-  titlePreviewFailed.value = false;
-});
+watch(
+  [selectedClipId, () => state.value?.revision, () => props.sourceVersion],
+  () => {
+    directionPreview.value = null;
+    titlePreviewFailed.value = false;
+  },
+);
 const selectedBeat = computed(() =>
   state.value?.story.beats.find((beat) => beat.id === selectedBeatId.value),
 );
@@ -372,7 +423,7 @@ function beatDuration(clips: Clip[]) {
     : 0;
 }
 function chooseClip(clip: Clip, openInspector = true) {
-  if (precisionEditor.value?.hasPending) return;
+  if (precisionEditor.value?.hasPending || directionBlocked.value) return;
   if (editMode.value === "transcript" && transcriptEditor.value) {
     void transcriptEditor.value.flush().then((saved) => {
       if (saved) applyClipSelection(clip, openInspector);
@@ -383,12 +434,14 @@ function chooseClip(clip: Clip, openInspector = true) {
 }
 function applyClipSelection(clip: Clip, openInspector = true) {
   fitPreview.value = null;
+  directionPreview.value = null;
   if (openInspector) inspectorOpen.value = true;
   selectedClipId.value = clip.id;
   selectedBeatId.value = clip.beatId ?? "";
   inspector.value = "clip";
 }
 function chooseBeat(beatId: string) {
+  if (directionBlocked.value) return;
   inspectorOpen.value = true;
   selectedBeatId.value = beatId;
   inspector.value = "beat";
@@ -704,6 +757,7 @@ function togglePlayback() {
   } else player.pause();
 }
 function keyboard(event: KeyboardEvent) {
+  if (directionBlocked.value) return;
   if (editMode.value === "transcript") return;
   if (!props.active || event.defaultPrevented) return;
   if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
@@ -845,7 +899,7 @@ const fitPreviewAfter = computed(() => {
   }
 });
 const playbackClip = computed(
-  () => fitPreviewAfter.value ?? selectedClip.value,
+  () => directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value,
 );
 function toggleFit() {
   showFit.value = !showFit.value;
@@ -1022,6 +1076,7 @@ watch(
   () => void nextTick(measureWorkspace),
 );
 watch(editMode, () => {
+  directionPreview.value = null;
   sourcePlayer.value?.pause();
   fitPreview.value = null;
   void nextTick(measureWorkspace);
@@ -1128,6 +1183,7 @@ onBeforeUnmount(() => {
           v-for="mode in ['story', 'precision', 'transcript'] as const"
           :key="mode"
           class="editor-button"
+          :disabled="directionBlocked"
           :aria-pressed="editMode === mode"
           :class="{ selected: editMode === mode }"
           @click="setEditMode(mode)"
@@ -1197,6 +1253,7 @@ onBeforeUnmount(() => {
           class="editor-button"
           :aria-expanded="inspectorOpen"
           aria-controls="timeline-inspector"
+          :disabled="directionBlocked"
           @click="inspectorOpen = !inspectorOpen"
         >
           {{
@@ -1526,17 +1583,17 @@ onBeforeUnmount(() => {
         <div class="editor-stage editor-main">
           <div class="editor-player-region">
             <div ref="sourceScreenElement" class="editor-source-screen">
-              <template v-if="selectedAsset">
-                <div v-if="sourceUnavailable" class="editor-missing-source">
+              <template v-if="playbackAsset">
+                <div v-if="playbackUnavailable" class="editor-missing-source">
                   <img
-                    v-if="selectedAsset.thumbnailUri"
-                    :src="thumbnailUrl(selectedAsset.id)"
+                    v-if="playbackAsset.thumbnailUri"
+                    :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
                   <div>
                     <Icon name="folder" :size="24" /><strong>{{
                       t(
-                        selectedSourceStatus?.status === "inaccessible"
+                        playbackSourceStatus?.status === "inaccessible"
                           ? "editor.source.inaccessible"
                           : "editor.source.missing",
                       )
@@ -1545,27 +1602,27 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div
-                  v-else-if="selectedSourceInfo?.previewSupported === false"
+                  v-else-if="playbackSourceInfo?.previewSupported === false"
                   class="editor-unsupported-source"
                 >
                   <img
-                    v-if="selectedAsset.thumbnailUri"
-                    :src="thumbnailUrl(selectedAsset.id)"
+                    v-if="playbackAsset.thumbnailUri"
+                    :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
                   <div>
                     <Icon name="film" :size="28" /><strong>{{
                       t(
-                        selectedSourceInfo.requiresReframedExport
+                        playbackSourceInfo.requiresReframedExport
                           ? "editor.source.spherical"
                           : "editor.source.unavailable",
                       )
                     }}</strong
-                    ><span>{{ selectedSourceInfo.kindLabel }}</span>
+                    ><span>{{ playbackSourceInfo.kindLabel }}</span>
                     <p>
                       {{
                         t(
-                          selectedSourceInfo.requiresReframedExport
+                          playbackSourceInfo.requiresReframedExport
                             ? "editor.source.reframe"
                             : "editor.source.convert",
                         )
@@ -1574,9 +1631,9 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <PhotoPresentationPreview
-                  v-else-if="selectedClip && photoPresentationActive"
+                  v-else-if="playbackClip && photoPresentationActive"
                   ref="photoPlayer"
-                  :clip="selectedClip"
+                  :clip="playbackClip"
                   :assets="state.assets"
                   :frame="projectSettings"
                   :viewport="sourceViewport"
@@ -1588,14 +1645,14 @@ onBeforeUnmount(() => {
                   :active="active && editMode === 'story'"
                 />
                 <div
-                  v-else-if="selectedAsset.mediaType === 'image'"
+                  v-else-if="playbackAsset.mediaType === 'image'"
                   class="editor-composition-frame"
                   :style="previewFrameStyle"
                 >
                   <img
                     :key="sourcePlaybackKey"
-                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
-                    :alt="selectedAsset.name"
+                    :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
+                    :alt="playbackAsset.name"
                     :style="previewMediaStyle"
                     @load="capturePreviewSize"
                     @error="sourceError = 'photo'"
@@ -1618,14 +1675,14 @@ onBeforeUnmount(() => {
                   />
                 </div>
                 <div
-                  v-else-if="selectedAsset.mediaType === 'audio'"
+                  v-else-if="playbackAsset.mediaType === 'audio'"
                   class="editor-audio-preview"
                 >
                   <Icon name="volume" :size="40" /><audio
                     v-if="active && editMode === 'story'"
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
-                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     controls
                     preload="metadata"
                     :aria-label="t('editor.source.preview')"
@@ -1644,10 +1701,10 @@ onBeforeUnmount(() => {
                   <video
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
-                    :src="sourceUrl(selectedAsset.id, sourcePlaybackKey)"
+                    :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :poster="
-                      selectedAsset.thumbnailUri
-                        ? thumbnailUrl(selectedAsset.id)
+                      playbackAsset.thumbnailUri
+                        ? thumbnailUrl(playbackAsset.id)
                         : undefined
                     "
                     controls
@@ -1689,10 +1746,10 @@ onBeforeUnmount(() => {
               </div>
               <template
                 v-if="
-                  selectedAsset &&
-                  !sourceUnavailable &&
-                  selectedSourceInfo?.previewSupported !== false &&
-                  selectedAsset.mediaType !== 'audio'
+                  playbackAsset &&
+                  !playbackUnavailable &&
+                  playbackSourceInfo?.previewSupported !== false &&
+                  playbackAsset.mediaType !== 'audio'
                 "
               >
                 <div
@@ -1757,13 +1814,13 @@ onBeforeUnmount(() => {
               </template>
             </div>
             <div class="editor-source-caption">
-              <span :title="selectedAsset?.name"
-                >{{ selectedAsset?.name ?? t("editor.yourStory") }}
+              <span :title="playbackAsset?.name"
+                >{{ playbackAsset?.name ?? t("editor.yourStory") }}
                 <small
                   >·
                   {{
                     t(
-                      fitPreview
+                      fitPreview || directionPreview
                         ? "editor.fit.preview"
                         : "editor.source.selected",
                     )
@@ -1777,10 +1834,10 @@ onBeforeUnmount(() => {
               />
               <div
                 v-if="
-                  selectedAsset &&
-                  selectedAsset.mediaType !== 'image' &&
-                  !sourceUnavailable &&
-                  selectedSourceInfo?.previewSupported !== false
+                  playbackAsset &&
+                  playbackAsset.mediaType !== 'image' &&
+                  !playbackUnavailable &&
+                  playbackSourceInfo?.previewSupported !== false
                 "
                 class="editor-monitor-transport"
                 role="group"
@@ -1789,7 +1846,7 @@ onBeforeUnmount(() => {
                 <time :aria-label="t('editor.monitor.timecode')">{{
                   formatTimecode(sourceTime, monitorFrameRate)
                 }}</time>
-                <template v-if="selectedAsset.mediaType === 'video'">
+                <template v-if="playbackAsset.mediaType === 'video'">
                   <button
                     class="editor-button"
                     :aria-label="t('editor.monitor.previousFrame')"
@@ -1821,10 +1878,10 @@ onBeforeUnmount(() => {
               </div>
               <button
                 v-if="
-                  selectedAsset &&
-                  !sourceUnavailable &&
-                  selectedSourceInfo?.previewSupported !== false &&
-                  selectedAsset.mediaType !== 'image'
+                  playbackAsset &&
+                  !playbackUnavailable &&
+                  playbackSourceInfo?.previewSupported !== false &&
+                  playbackAsset.mediaType !== 'image'
                 "
                 class="editor-button"
                 @click="togglePlayback"
@@ -1849,28 +1906,28 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <div
-              v-if="sourceUnavailable || sourceError"
+              v-if="playbackUnavailable || sourceError"
               class="editor-source-warning"
               role="status"
             >
               <p>
                 {{
                   t(
-                    sourceUnavailable
+                    playbackUnavailable
                       ? "editor.source.reconnect"
                       : `editor.source.error.${sourceError}`,
                   )
                 }}
               </p>
-              <details v-if="selectedSourceStatus?.message">
+              <details v-if="playbackSourceStatus?.message">
                 <summary>{{ t("editor.technicalDetails") }}</summary>
-                <p>{{ selectedSourceStatus.message }}</p>
+                <p>{{ playbackSourceStatus.message }}</p>
               </details>
               <button
-                v-if="selectedAsset && sourceError !== unsupportedSpeedMessage"
+                v-if="playbackAsset && sourceError !== unsupportedSpeedMessage"
                 class="editor-button"
                 :aria-label="t('editor.source.relinkLabel')"
-                @click="emit('relink', selectedAsset.id)"
+                @click="emit('relink', playbackAsset.id)"
               >
                 {{ t("editor.source.locate") }}<Icon name="arrow" :size="14" />
               </button>
@@ -1961,12 +2018,14 @@ onBeforeUnmount(() => {
             <button
               :class="{ selected: inspector === 'clip' }"
               :aria-pressed="inspector === 'clip'"
+              :disabled="directionBlocked"
               @click="inspector = 'clip'"
             >
               {{ t("editor.clip.title") }}</button
             ><button
               :class="{ selected: inspector === 'beat' }"
               :aria-pressed="inspector === 'beat'"
+              :disabled="directionBlocked"
               @click="inspector = 'beat'"
             >
               {{ t("editor.beats.title") }}
@@ -1974,6 +2033,7 @@ onBeforeUnmount(() => {
             <button
               :class="{ selected: inspector === 'sound' }"
               :aria-pressed="inspector === 'sound'"
+              :disabled="directionBlocked"
               @click="inspector = 'sound'"
             >
               {{ t("editor.sound.tab") }}
@@ -2038,7 +2098,11 @@ onBeforeUnmount(() => {
             </p>
             <fieldset
               class="editor-fields"
-              :disabled="!!selectedClip.locked || historyBusy"
+              :disabled="
+                !!selectedClip.locked ||
+                !!selectedAsset.state.locked ||
+                historyBusy
+              "
             >
               <template v-if="controls.duration"
                 ><label class="editor-field"
@@ -2265,6 +2329,37 @@ onBeforeUnmount(() => {
                 :allow-photo-presentation="photoPresentationAllowed"
                 @command="command"
               />
+            </fieldset>
+            <SceneDirectionReview
+              v-if="
+                selectedAsset.mediaType === 'image' && photoPresentationAllowed
+              "
+              ref="directionReview"
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :state="state"
+              :clip="selectedClip"
+              :frame="projectSettings"
+              :source-version="sourceVersion"
+              :disabled="
+                !!selectedClip.locked ||
+                !!selectedAsset.state.locked ||
+                !!sourceUnavailable ||
+                compositionHistoryBusy
+              "
+              :flush-inputs="flushInputs"
+              :reload-saved="reloadDirectionState"
+              @preview="directionPreview = $event"
+              @edited="emit('edited')"
+            />
+            <fieldset
+              class="editor-fields"
+              :disabled="
+                !!selectedClip.locked ||
+                !!selectedAsset.state.locked ||
+                historyBusy
+              "
+            >
               <div class="editor-divider" />
               <div class="editor-actions">
                 <button

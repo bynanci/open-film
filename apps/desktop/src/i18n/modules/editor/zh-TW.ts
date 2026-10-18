@@ -20,6 +20,65 @@ export default {
     media: "媒體",
     storyMoment: "故事片刻",
     yourStory: "你的故事",
+    direction: {
+      selectionNeedsReview:
+        "預覽或接受前需要重新檢視此選擇。請包含所需的構圖剪輯，或略過運鏡。",
+      heading: "將場景指示轉為剪輯",
+      help: "檢視從「故事」已儲存的畫面指示產生的剪輯。請先在「故事」更新文字，再重新產生檢視。",
+      source: "已儲存的場景指示",
+      limit:
+        "僅將支援的完整指示轉為構圖或運鏡剪輯。此功能不會辨識或理解影像內容。",
+      scope: "檢視照片範圍",
+      selectedPhoto: "所選照片",
+      scenePhotos: "此場景的照片（{count} 張，最多 50 張）",
+      replace: "取代現有構圖與運鏡",
+      preserve: "預設保留現有的手動構圖與運鏡。",
+      generate: "產生剪輯檢視",
+      preparing: "正在準備檢視…",
+      emptySource: "請先在「故事」為此場景加入畫面指示。",
+      timing: "影片時間維持不變：{before} → {after}。",
+      noActions: "所選範圍沒有可套用的支援剪輯。請查看註記或修改已儲存的指示。",
+      existing: "現有設定",
+      noMotion: "尚未設定運鏡",
+      before: "變更前",
+      after: "變更後",
+      preview: "預覽",
+      skip: "略過",
+      accept: "接受所選剪輯（{count}）",
+      retry: "重試已儲存的接受操作",
+      kinds: {
+        layout: "構圖",
+        motion: "運鏡",
+      },
+      reasons: {
+        contain: "保留比例",
+        hero: "主視覺構圖",
+        hold: "保持靜止",
+        "push-in": "緩慢推近",
+        pan: "水平平移",
+      },
+      notes: {
+        unsupported: "此指示需要手動剪輯。",
+        conflict: "互相衝突的指示需要手動選擇。",
+        locked: "此照片或來源已鎖定。",
+        manual: "已保留現有的手動構圖或運鏡。",
+        unsupportedMedia: "此媒體不支援照片指示剪輯。",
+        unchanged: "此指示已符合儲存的剪輯。",
+        unsafe: "無法安全地將此指示套用至照片。",
+      },
+      errors: {
+        reopen:
+          "需要重新開啟專案才能確認此接受操作。請關閉並重新開啟專案，再重試已儲存的接受操作。已保留此次操作的完整內容。",
+        failed: "無法完成指示檢視，請重新產生。",
+        stale: "已儲存的場景或影片已變更。接受剪輯前請重新產生檢視。",
+        uncertain:
+          "回應已中斷。已儲存此次接受操作的完整內容，請重試以確認結果後再繼續。",
+        storage:
+          "無法在此瀏覽器安全地儲存接受操作。請檢查瀏覽器儲存空間後再試。",
+        reload:
+          "已送出接受操作，但無法重新載入已儲存的影片。請重試已儲存的接受操作以確認結果。",
+      },
+    },
     presentation: {
       heading: "照片敘事",
       description: "為這段回憶選擇構圖與節奏。所有調整都能再修改。",

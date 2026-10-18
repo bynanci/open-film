@@ -162,6 +162,63 @@ export interface PhotoMotion {
   from: PhotoMotionTransform;
   to: PhotoMotionTransform;
 }
+
+/** Accepted direction evidence is retained in a bounded project history. */
+export const MAX_SCENE_DIRECTION_RECEIPTS = 100;
+
+interface SceneDirectionReceiptActionBase {
+  id: string;
+  clipId: string;
+  evidence: string;
+}
+
+/** Each action stores one presentation change and its exact before/after evidence. */
+export type SceneDirectionReceiptAction = SceneDirectionReceiptActionBase &
+  (
+    | {
+        kind: "layout";
+        reason: "contain" | "hero";
+        before: PhotoLayout | null;
+        after: PhotoLayout;
+        command: {
+          type: "presentation";
+          clipId: string;
+          layout: PhotoLayout;
+          motion?: never;
+        };
+      }
+    | {
+        kind: "motion";
+        reason: "hold" | "push-in" | "pan";
+        before: PhotoMotion | null;
+        after: PhotoMotion;
+        command: {
+          type: "presentation";
+          clipId: string;
+          layout?: never;
+          motion: PhotoMotion;
+        };
+      }
+  );
+
+/** A durable acceptance receipt also reconciles retries after ambiguous catalog writes. */
+export interface SceneDirectionReceipt {
+  version: 1;
+  /** A deterministic preview may be accepted again through a new request after Undo. */
+  planId: string;
+  requestId: string;
+  fingerprint: string;
+  compositionId: string;
+  storyId: string;
+  beatId: string;
+  baseRevision: string;
+  contextSignature: string;
+  acceptedAt: string;
+  acceptedRevision: string;
+  sourceText: string;
+  actions: SceneDirectionReceiptAction[];
+}
+
 export interface TitleStyle {
   version: 1;
   role: "film-title" | "scene-statement" | "subtitle";
@@ -243,6 +300,7 @@ export interface OpenFilmProject {
   projectContentLocale?: ProjectContentLocale;
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
+  sceneDirectionReceipts?: SceneDirectionReceipt[];
 }
 
 export interface Event {

@@ -20,6 +20,69 @@ export default {
     media: "Media",
     storyMoment: "Story moment",
     yourStory: "Your story",
+    direction: {
+      selectionNeedsReview:
+        "This selection needs review before preview or acceptance. Include any required framing action, or skip the movement.",
+      heading: "Scene directions to edits",
+      help: "Review edits from the visual direction saved in Story. Update that text in Story, then generate a new review.",
+      source: "Saved scene direction",
+      limit:
+        "Exact supported directions become framing or movement edits. This does not inspect or understand your images.",
+      scope: "Photos to review",
+      selectedPhoto: "Selected photo",
+      scenePhotos: "This scene’s photos ({count}, up to 50)",
+      replace: "Replace existing framing and movement",
+      preserve:
+        "Existing manual framing and movement are preserved by default.",
+      generate: "Generate review",
+      preparing: "Preparing review…",
+      emptySource: "Add a visual direction to this scene in Story first.",
+      timing: "Film timing stays unchanged: {before} → {after}.",
+      noActions:
+        "No supported edits are available for this selection. Review the notes or change the saved direction.",
+      existing: "Existing setting",
+      noMotion: "No authored movement",
+      before: "Before",
+      after: "After",
+      preview: "Preview",
+      skip: "Skip",
+      accept: "Accept selected ({count})",
+      retry: "Retry saved acceptance",
+      kinds: {
+        layout: "Framing",
+        motion: "Movement",
+      },
+      reasons: {
+        contain: "Keep proportions",
+        hero: "Hero framing",
+        hold: "Keep still",
+        "push-in": "Gentle push-in",
+        pan: "Horizontal pan",
+      },
+      notes: {
+        unsupported: "This direction needs a manual edit.",
+        conflict: "Conflicting directions need a manual choice.",
+        locked: "This photo or source is locked.",
+        manual: "Existing manual framing or movement is preserved.",
+        unsupportedMedia: "This media does not support photo direction edits.",
+        unchanged: "This direction already matches the saved edit.",
+        unsafe: "This direction cannot be applied safely to this photo.",
+      },
+      errors: {
+        reopen:
+          "The project needs to be reopened to confirm this saved acceptance. Close and reopen the project, then retry the saved acceptance. Your exact request is retained.",
+        failed:
+          "The direction review could not be completed. Try generating it again.",
+        stale:
+          "The saved scene or film changed. Generate a new review before accepting edits.",
+        uncertain:
+          "The response was lost. Your exact acceptance is saved. Retry it to confirm the result before continuing.",
+        storage:
+          "The acceptance could not be saved safely in this browser. Check browser storage before trying again.",
+        reload:
+          "The acceptance was sent, but the saved film could not be reloaded. Retry the saved acceptance to confirm the result.",
+      },
+    },
     presentation: {
       heading: "Photo direction",
       description:

@@ -1659,6 +1659,10 @@ export {
   TimelineEditorError,
   type TimelineEditorState,
   type TimelineEditInput,
+  type DirectionReviewPlan,
+  type DirectionAcceptanceInput,
+  type DirectionReviewAcceptance,
+  type SceneDirectionOptions,
 } from "./editor.js";
 
 export {

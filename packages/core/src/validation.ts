@@ -1,6 +1,7 @@
 import {
   PROJECT_SCHEMA_VERSION,
   PROJECT_CONTENT_LOCALES,
+  MAX_SCENE_DIRECTION_RECEIPTS,
   type Composition,
   type Job,
   type MediaAsset,
@@ -411,6 +412,157 @@ function timestamp(value: unknown, path: string): string {
   return result;
 }
 
+function directionText(value: unknown, path: string): void {
+  const text = string(value, path);
+  if ([...text].length > 8000)
+    fail(path, "expected at most 8000 Unicode code points");
+  for (const character of text) {
+    const point = character.codePointAt(0)!;
+    if (
+      (point < 32 && ![9, 10, 13].includes(point)) ||
+      (point >= 127 && point <= 159) ||
+      (point >= 0xd800 && point <= 0xdfff)
+    )
+      fail(
+        path,
+        "expected well-formed Unicode text without control characters",
+      );
+  }
+}
+
+function directionDigest(value: unknown, path: string): void {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/i.test(value))
+    fail(path, "expected a 64-character hexadecimal digest");
+}
+
+/** Compare validated snapshots by fields so JSON property order has no meaning. */
+function sameDirectionSnapshot(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  )
+    return false;
+  const leftObject = left as ObjectValue;
+  const rightObject = right as ObjectValue;
+  const leftKeys = Object.keys(leftObject).filter(
+    (key) => leftObject[key] !== undefined,
+  );
+  const rightKeys = Object.keys(rightObject).filter(
+    (key) => rightObject[key] !== undefined,
+  );
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(rightObject, key) &&
+        sameDirectionSnapshot(leftObject[key], rightObject[key]),
+    )
+  );
+}
+
+function sceneDirectionReceipts(value: unknown, path: string): void {
+  const receipts = array(value, path);
+  if (receipts.length > MAX_SCENE_DIRECTION_RECEIPTS)
+    fail(
+      path,
+      `at most ${MAX_SCENE_DIRECTION_RECEIPTS} scene direction receipts are supported`,
+    );
+  const requests = new Set<string>();
+  receipts.forEach((entry, index) => {
+    const receiptPath = `${path}[${index}]`;
+    const receipt = presentationObject(entry, receiptPath, [
+      "version",
+      "planId",
+      "requestId",
+      "fingerprint",
+      "compositionId",
+      "storyId",
+      "beatId",
+      "baseRevision",
+      "contextSignature",
+      "acceptedAt",
+      "acceptedRevision",
+      "sourceText",
+      "actions",
+    ]);
+    versionOne(receipt, receiptPath);
+    for (const key of [
+      "planId",
+      "fingerprint",
+      "baseRevision",
+      "contextSignature",
+      "acceptedRevision",
+    ])
+      directionDigest(receipt[key], `${receiptPath}.${key}`);
+    receiptIdentifier(receipt.requestId, `${receiptPath}.requestId`);
+    if (/[\u0080-\u009f]/u.test(String(receipt.requestId)))
+      fail(
+        `${receiptPath}.requestId`,
+        "expected an ID without control characters",
+      );
+    for (const key of ["compositionId", "storyId", "beatId"])
+      string(receipt[key], `${receiptPath}.${key}`);
+    const requestId = String(receipt.requestId);
+    if (requests.has(requestId))
+      fail(`${receiptPath}.requestId`, "duplicate acceptance request receipt");
+    requests.add(requestId);
+    timestamp(receipt.acceptedAt, `${receiptPath}.acceptedAt`);
+    directionText(receipt.sourceText, `${receiptPath}.sourceText`);
+    const actionPath = `${receiptPath}.actions`;
+    const actions = array(receipt.actions, actionPath);
+    if (actions.length < 1 || actions.length > 100)
+      fail(actionPath, "expected between 1 and 100 scene direction actions");
+    ids(actions, actionPath);
+    actions.forEach((entry, index) => {
+      const itemPath = `${actionPath}[${index}]`;
+      const action = presentationObject(entry, itemPath, [
+        "id",
+        "clipId",
+        "kind",
+        "reason",
+        "evidence",
+        "before",
+        "after",
+        "command",
+      ]);
+      const clipId = string(action.clipId, `${itemPath}.clipId`);
+      const kind = choice(action.kind, `${itemPath}.kind`, [
+        "layout",
+        "motion",
+      ]);
+      const reason = choice(
+        action.reason,
+        `${itemPath}.reason`,
+        kind === "layout" ? ["contain", "hero"] : ["hold", "push-in", "pan"],
+      );
+      directionText(action.evidence, `${itemPath}.evidence`);
+      const check = kind === "layout" ? photoLayout : photoMotion;
+      if (action.before !== null) check(action.before, `${itemPath}.before`);
+      const after = check(action.after, `${itemPath}.after`);
+      if (after.preset !== reason)
+        fail(`${itemPath}.reason`, "reason must match the accepted preset");
+      const commandPath = `${itemPath}.command`;
+      const command = presentationObject(action.command, commandPath, [
+        "type",
+        "clipId",
+        kind,
+      ]);
+      choice(command.type, `${commandPath}.type`, ["presentation"]);
+      if (string(command.clipId, `${commandPath}.clipId`) !== clipId)
+        fail(`${commandPath}.clipId`, "command must target the action clip");
+      check(command[kind], `${commandPath}.${kind}`);
+      if (!sameDirectionSnapshot(action.after, command[kind]))
+        fail(
+          `${commandPath}.${kind}`,
+          "command must match the accepted snapshot",
+        );
+    });
+  });
+}
+
 function strings(value: unknown, path: string, unique = false): string[] {
   const values = array(value, path).map((item, i) =>
     string(item, `${path}[${i}]`),
@@ -808,6 +960,7 @@ export function validateProject(
       timestamp(receipt.acceptedAt, `${itemPath}.acceptedAt`);
     });
   });
+  optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
