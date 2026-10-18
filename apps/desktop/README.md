@@ -8,6 +8,15 @@ retains an exact Retry receipt through reopening. Text-only providers work with
 the existing descriptor-bound consent flow. No provider is installed by default.
 See [scene-script review](../../docs/scene-script-review.md).
 
+In **Edit → Story**, the photo Inspector's **Scene directions to edits** panel
+compiles supported phrases from the saved scene direction into explained photo
+layout/motion actions. Preview changes only the monitor; adopt selected safe
+actions as one saved Undo unit. Existing manual presentation is preserved unless
+explicitly reviewed for replacement. Uncertain adoption retains its exact request
+for Retry/reopen; a stale proposal must be regenerated. The panel supports all UI
+locales, does not call a provider and leaves film duration unchanged. See the
+[vocabulary, limits and recovery contract](../../docs/scene-direction-editing.md).
+
 For native first-open and one-hour memory collection, use the
 [workstation runner](../../docs/native-performance.md). Its checkpoints are
 opt-in and local. Browser performance and Linux build/static tests do not replace

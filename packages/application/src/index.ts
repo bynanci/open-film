@@ -56,7 +56,12 @@ import {
 import { compose as solve } from "@openfilm/solver";
 import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
-import { FFmpegRenderer } from "@openfilm/render";
+import {
+  FFmpegRenderer,
+  createTitleOverlay,
+  resolveTitleFont,
+  titleOverlayCacheKey,
+} from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
 import {
   enrichInsta360Asset,
@@ -1339,7 +1344,14 @@ export class OpenFilmApplication {
       ...new Set(
         composition.tracks
           .filter((track) => includeTitleAssets || track.type !== "titles")
-          .flatMap((track) => track.clips.map((clip) => clip.assetId)),
+          .flatMap((track) =>
+            track.clips.flatMap((clip) => [
+              clip.assetId,
+              ...(clip.layout?.secondary
+                ? [clip.layout.secondary.assetId]
+                : []),
+            ]),
+          ),
       ),
     ].map((id) => {
       const asset = this.catalog.getAsset(id);
@@ -1355,25 +1367,122 @@ export class OpenFilmApplication {
 
   async render(
     compositionId?: string,
-    options: { signal?: AbortSignal; jobId?: string } = {},
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    } = {},
   ): Promise<string> {
     return this.renderFilm(compositionId, options, false);
   }
 
+  /** A shared, locally measured title raster; no project/content mutation. */
+  async titleOverlay(compositionId: string, clipId: string): Promise<string> {
+    const clip = structuredClone(
+      this.composition(compositionId)
+        .tracks.flatMap((track) => track.clips)
+        .find((item) => item.id === clipId),
+    );
+    if (!clip?.title)
+      throw new ApplicationError(
+        "timeline.notFound",
+        "This clip has no title to preview.",
+        404,
+      );
+    const settings = { ...this.project.settings };
+    const { font } = await resolveTitleFont(clip.titleStyle);
+    const key = titleOverlayCacheKey({
+      text: clip.title,
+      style: clip.titleStyle,
+      frame: settings,
+      fontSha256: font.sha256,
+      postscriptName: font.postscriptName,
+    });
+    const path = await safeProjectCachePath(
+      this.directory,
+      "titles",
+      `${key}.png`,
+    );
+    try {
+      if ((await lstat(path)).isFile()) return path;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const temporary = await safeProjectCachePath(
+      this.directory,
+      "titles",
+      `${key}-${randomUUID()}.tmp.png`,
+    );
+    try {
+      await createTitleOverlay(
+        clip.title,
+        clip.titleStyle,
+        settings,
+        temporary,
+      );
+      await rename(temporary, path);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    // A typing session must not leave an unbounded number of full-frame PNGs.
+    const directory = dirname(path);
+    const files = await readdir(directory);
+    const entries = await Promise.all(
+      files
+        .filter(
+          (name) =>
+            /^[a-f0-9]{64}\.png$/u.test(name) && name !== basename(path),
+        )
+        .map(async (name) => {
+          const target = join(directory, name);
+          try {
+            return { target, modified: (await lstat(target)).mtimeMs };
+          } catch {
+            return undefined;
+          }
+        }),
+    );
+    const stale = entries
+      .filter((entry): entry is { target: string; modified: number } => !!entry)
+      .sort((a, b) => b.modified - a.modified)
+      .slice(63);
+    await Promise.all(stale.map((entry) => rm(entry.target, { force: true })));
+    return path;
+  }
+
   async exportMp4(
     compositionId?: string,
-    options: { signal?: AbortSignal; jobId?: string } = {},
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    } = {},
   ): Promise<{ path: string; report: ExportReport }> {
     const path = await this.renderFilm(compositionId, options, true);
-    return { path, report: { format: "mp4", warnings: [] } };
+    const manifest = JSON.parse(
+      await readFile(`${path}.manifest.json`, "utf8"),
+    ) as { warnings: string[] };
+    return { path, report: { format: "mp4", warnings: manifest.warnings } };
   }
 
   private async renderFilm(
     compositionId: string | undefined,
-    options: { signal?: AbortSignal; jobId?: string },
+    options: {
+      signal?: AbortSignal;
+      jobId?: string;
+      onProgress?: (progress: number) => void;
+    },
     exportFile: boolean,
   ): Promise<string> {
-    const composition = this.composition(compositionId);
+    const composition = structuredClone(this.composition(compositionId));
+    const renderSettings = { ...this.project.settings };
+    const projectEvidence = {
+      id: this.project.id,
+      schemaVersion: this.project.schemaVersion,
+      revision: createHash("sha256")
+        .update(JSON.stringify(this.project))
+        .digest("hex"),
+    };
     const story = this.project.stories.find(
       (item) => item.id === composition.storyId,
     );
@@ -1444,8 +1553,24 @@ export class OpenFilmApplication {
         composition,
         assets,
         output,
-        this.project.settings,
-        options,
+        renderSettings,
+        {
+          signal: options.signal,
+          project: projectEvidence,
+          onProgress: (progress) => {
+            const previous = job.progress ?? 0;
+            const next = Math.min(0.99, Math.max(previous, progress));
+            if (next - previous < 0.01) return;
+            job.progress = next;
+            job.updatedAt = new Date().toISOString();
+            this.catalog.saveJob(job);
+            try {
+              options.onProgress?.(next);
+            } catch {
+              /* A progress observer is not a render stage. */
+            }
+          },
+        },
       );
       job.status = "completed";
       job.progress = 1;
@@ -1534,6 +1659,10 @@ export {
   TimelineEditorError,
   type TimelineEditorState,
   type TimelineEditInput,
+  type DirectionReviewPlan,
+  type DirectionAcceptanceInput,
+  type DirectionReviewAcceptance,
+  type SceneDirectionOptions,
 } from "./editor.js";
 
 export {

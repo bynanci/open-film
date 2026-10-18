@@ -9,6 +9,9 @@ for (const app of ["cli", "server"]) {
     outfile: `dist/${app}/index.mjs`,
     bundle: true,
     platform: "node",
+    // Keep the platform native loader intact. The root runtime dependency
+    // makes it resolvable from both dist/cli and dist/server after installation.
+    external: ["@resvg/resvg-js"],
     format: "esm",
     target: "node24",
     sourcemap: true,

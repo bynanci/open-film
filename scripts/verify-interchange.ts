@@ -160,6 +160,28 @@ try {
   Object.assign(edited.tracks[0]!.clips[0]!, {
     transform: { scale: 1.2, rotation: 5, x: 12, y: -8 },
     title: "A generated moment — 我们",
+    layout: {
+      version: 1,
+      preset: "diptych",
+      focalPoint: { x: 0.5, y: 0.5 },
+      protectedRegion: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 },
+      secondary: { assetId: "evening" },
+      gap: 8,
+    },
+    motion: {
+      version: 1,
+      preset: "push-in",
+      easing: "ease-in-out",
+      from: { scale: 1, x: 0, y: 0 },
+      to: { scale: 1.05, x: 2, y: -1 },
+    },
+    titleStyle: {
+      version: 1,
+      role: "scene-statement",
+      fontFamily: "Noto Sans CJK TC",
+      fontSize: 16,
+      maxWidth: 280,
+    },
     locked: true,
   });
   Object.assign(edited.tracks[0]!.clips[1]!, {
@@ -173,6 +195,15 @@ try {
     transform: { speed: 0.5 },
   });
   edited.tracks[2]!.clips[0]!.transform = { volume: 0 };
+  edited.tracks[3]!.timing = "overlay";
+  edited.tracks[3]!.clips[0]!.audioAutomation = {
+    version: 1,
+    role: "music",
+    fadeIn: 0.2,
+    fadeOut: 0.3,
+    points: [{ time: 0, gain: 0.8 }],
+    ducking: [{ start: 0.25, end: 1.25, gain: 0.3, attack: 0.1, release: 0.1 }],
+  };
   const compositions = {
     cuts,
     edited,

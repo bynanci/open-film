@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MediaAsset } from "@openfilm/core";
@@ -107,7 +107,9 @@ async function sibling(
   try {
     const info = await lstat(possible);
     return info.isFile() && !info.isSymbolicLink()
-      ? pathToFileURL(possible).href
+      ? // Case-insensitive filesystems can resolve .mp4 and .MP4 to one file.
+        // Count its canonical URI once instead of reporting an ambiguous pair.
+        pathToFileURL(await realpath(possible)).href
       : undefined;
   } catch {
     return undefined;

@@ -8,6 +8,12 @@ editable film. Original files are never modified.
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
+The current **photo-film quality** slice adds manual focal layouts, bounded still
+motion, measured CJK graphic titles and music/narration overlays. A generated
+twenty-second A/B film records actual rendered differences and audio automation;
+local regression and UI results are recorded separately from candidate CI and
+workstation verification.
+
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
@@ -37,6 +43,10 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   export SRT/WebVTT with a source-revision receipt in **Export → Subtitles**.
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
+- Give photos contain, protected hero or explicit diptych layouts; use hold,
+  gentle push-in or pan, and choose distinct film-title, scene and subtitle roles.
+- Add imported music or narration over the existing cut, with clip-local fades,
+  gain points and manual ducking, without moving pictures or extending the film.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
   target suggestions, and recover autosave failures without dropping the draft.
 - Keep editing missing media, reconnect a moved folder or single file, and move
@@ -92,6 +102,11 @@ drafts, and isolates waveform hover from read-only transcript rendering. Synthet
 browser fixtures measure work for 2,000 library assets, 500 clips and 10,000
 transcript segments; these are UI measurements, not real-media throughput claims.
 
+**Monitor stability and frame transport** keep FFmpeg overlays aligned to output
+pixels/frame ticks and provide preview-only composition guides, frame stepping,
+clip looping and quick transform controls in Edit. These controls reuse existing
+composition commands; see the [validation record](docs/validation-monitor-stability.md).
+
 **Composition-aware subtitles** reuse saved transcript revisions and one selected
 dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
 instances use film time. Partial boundary segments are omitted with warnings;
@@ -118,13 +133,41 @@ and uses existing remote consent. No provider is configured by default. See
 [the workflow, privacy and recovery contract](docs/scene-script-review.md) and
 [validation](docs/validation-scene-script-review.md).
 
+**Photo-film quality:** manual composition controls now reach both the selected
+photo monitor and FFmpeg output through shared geometry/time contracts. Local
+font measurement produces the same graphic-title PNG for preview and rendering.
+New graphic-title edits share the renderer's 8,000 UTF-16 code-unit input limit;
+older longer titles remain readable for correction. Actual font/layout bounds
+are checked separately before rasterization. Diptych edits check the gap against
+the current composition width before saving.
+Rendered MP4 sidecars retain the composition, source hashes, font identity,
+encoding and warnings. [The contract](docs/photo-film-quality.md) and
+[generated A/B validation](docs/validation-photo-film-quality.md) describe what
+was actually measured. The fixture establishes rendered behavior; judging a
+private film, listening to real audio and testing projection remain manual.
+
+**Scene directions to edits:** save a supported direction such as
+`保留比例；緩慢推近`, then select a photo in Edit and review the proposed
+layout/motion with its reason and original phrase. Preview or skip individual
+actions; adopt the safe selection as one saved, undoable batch. Unsupported prose,
+conflicts, locks and existing manual presentation stay visible. Timing is unchanged;
+stale reviews require regeneration. This is a bounded offline vocabulary, with no
+image-understanding or arbitrary-language claim. The same review is available via
+HTTP and CLI. See [the workflow and recovery contract](docs/scene-direction-editing.md)
+and [validation](docs/validation-scene-direction-editing.md).
+
 ## Requirements
 
 Use **Node 24.14.0 or newer** and **pnpm 11.11.0**. Node's built-in `node:sqlite`
 is used directly and can emit an experimental API warning on Node 24.
 
-Install FFmpeg and FFprobe on `PATH`; the sample workflow needs H.264/AAC encoding
-and the renderer's title support needs FFmpeg's `drawtext` filter. For richer
+Install FFmpeg and FFprobe on `PATH`; the sample workflow needs H.264/AAC encoding.
+Graphic titles use locally installed fonts, measured by `fontkit` and rasterized
+by `@resvg/resvg-js` in the local Node service. These are installed runtime
+dependencies; the native font/raster loader does not enter the Desktop browser
+bundle. Install a CJK font such as Noto Sans CJK for Traditional Chinese/Japanese
+text, or explicitly configure `OPENFILM_TITLE_FONT` with a local font file.
+No runtime font download is required. For richer
 camera metadata, OpenFilm first tries `exiftool` on `PATH`, then its installed
 `exiftool-vendored.pl` distribution through **Perl**. If both are unavailable,
 FFprobe and filesystem timestamps provide a fallback recorded in metadata.

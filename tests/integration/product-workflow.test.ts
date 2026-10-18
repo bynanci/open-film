@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
@@ -88,7 +88,7 @@ it("creates films without paths, preserves locale defaults, and inspects recent 
     maxDuration: 300,
   });
   const first = await test.create();
-  expect(first.path.startsWith(`${test.projectRoot}/`)).toBe(true);
+  expect(dirname(first.path)).toBe(test.projectRoot);
   expect(basename(first.path)).toContain("我們の映画 # &");
   const before = await readFile(join(first.path, "project.json"));
   const database = await readFile(join(first.path, "database.sqlite"));
@@ -407,7 +407,7 @@ it("finishes a real MP4 and downloads its bytes from the current project", async
   expect(response.status).toBe(200);
   const exported = await response.json();
   expect(exported.report).toEqual({ format: "mp4", warnings: [] });
-  expect(exported.path).toContain("/exports/");
+  expect(basename(dirname(exported.path))).toBe("exports");
   const probe = await runProcess("ffprobe", [
     "-v",
     "error",

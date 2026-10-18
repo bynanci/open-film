@@ -46,6 +46,7 @@ const faults = vi.hoisted(() => ({
       }
     | undefined,
   manifestInjectionHits: 0,
+  afterManifestPublished: undefined as ((contents: string) => void) | undefined,
   afterSample: undefined as
     ((snapshot: ProcessMemorySnapshot) => Promise<void>) | undefined,
 }));
@@ -156,10 +157,12 @@ vi.mock(
     const filesystem = await import("node:fs/promises");
     return {
       ...actual,
-      replaceBenchmarkManifest: (path: string, contents: string) =>
-        process.env.OPENFILM_TEST_LEGACY_MANIFEST_WRITE === "1"
+      replaceBenchmarkManifest: async (path: string, contents: string) => {
+        await (process.env.OPENFILM_TEST_LEGACY_MANIFEST_WRITE === "1"
           ? filesystem.writeFile(path, contents)
-          : actual.replaceBenchmarkManifest(path, contents),
+          : actual.replaceBenchmarkManifest(path, contents));
+        faults.afterManifestPublished?.(contents);
+      },
     };
   },
 );
@@ -458,7 +461,10 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
         serverScript: service,
         fixtureManifest: manifest,
         outputDirectory: join(root, "evidence"),
-        durationSeconds: 5,
+        // Windows process sampling can consume its entire five-second bound.
+        // The child exits after the first saved sample; leave the collection
+        // deadline beyond that handshake instead of racing the sampler.
+        durationSeconds: 30,
         intervalSeconds: 0.1,
         startupTimeoutSeconds: 2,
       };
@@ -589,7 +595,6 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
   it("cancels during service readiness without launching native or losing owner evidence", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-benchmark-abort-"));
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const service = join(root, "server.mjs");
       const emitter = join(root, "emitter.mjs");
@@ -607,16 +612,14 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
         `import{writeFileSync}from'node:fs';writeFileSync(${JSON.stringify(sentinel)},'unexpected native launch');`,
       );
       const outputDirectory = join(root, "evidence");
-      timer = setInterval(async () => {
-        try {
-          const observed = JSON.parse(
-            await readFile(join(outputDirectory, "manifest.json"), "utf8"),
-          ) as { ownership?: { serverPid?: number } };
-          if (observed.ownership?.serverPid) controller.abort();
-        } catch {
-          /* Wait for the first complete owned-service publication. */
-        }
-      }, 10);
+      // Cancel after the actual atomic publication completes. Polling an open
+      // destination races NTFS rename and tests sharing violations instead.
+      faults.afterManifestPublished = (contents) => {
+        const observed = JSON.parse(contents) as {
+          ownership?: { serverPid?: number };
+        };
+        if (observed.ownership?.serverPid) controller.abort();
+      };
       const result = await runNativeBenchmark(
         {
           ...config,
@@ -637,7 +640,7 @@ await writeFile(${JSON.stringify(audit)},JSON.stringify(result));`,
       expect(manifest.ownership.nativePid).toBeUndefined();
       expect(() => process.kill(manifest.ownership.serverPid, 0)).toThrow();
     } finally {
-      if (timer) clearTimeout(timer);
+      faults.afterManifestPublished = undefined;
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -867,14 +870,25 @@ describe("native benchmark asynchronous failure paths", () => {
     // Model an operator: keep the native window open until collection has
     // actually ended. A sample or evidence write can outlast the native timer.
     faults.afterSample = undefined;
+    // Hashing inputs and starting a copied Node binary can precede collection
+    // by several seconds. Give setup its own bound, then observe the report
+    // from the actual native-owner publication rather than from API entry.
+    let deadline = Date.now() + 30000;
+    let nativePublished = false;
+    const priorPublicationObserver = faults.afterManifestPublished;
+    faults.afterManifestPublished = (contents) => {
+      priorPublicationObserver?.(contents);
+      const manifest = JSON.parse(contents) as { ownership?: Owners };
+      if (!nativePublished && manifest.ownership?.nativePid) {
+        nativePublished = true;
+        deadline = Date.now() + 10000;
+      }
+    };
     const pending = runNativeBenchmark(config, { signal }).then(
       (result) => ({ result, error: undefined }),
       (error: unknown) => ({ result: undefined, error }),
     );
     try {
-      // Use the same report-publication budget as the existing supervision
-      // regression; native collection/readiness/close timings are unchanged.
-      const deadline = Date.now() + 10000;
       let terminalObserved = false;
       while (Date.now() < deadline) {
         try {
@@ -896,6 +910,7 @@ describe("native benchmark asynchronous failure paths", () => {
         );
       await beforeNormalClose?.();
     } finally {
+      faults.afterManifestPublished = priorPublicationObserver;
       await closeNormally();
       await pending;
     }
@@ -1114,12 +1129,27 @@ describe("native benchmark asynchronous failure paths", () => {
               cli.stdout!.destroy();
             }
           });
+          const waitForOutput = async (marker: string) => {
+            const deadline = Date.now() + 30000;
+            while (
+              !stdout.includes(marker) &&
+              !cliClosed &&
+              Date.now() < deadline
+            )
+              await delay(10);
+            expect(stdout, stderr).toContain(marker);
+          };
           try {
             let actualEpipe: { code: string } | undefined;
             try {
+              // Cold TSX startup, input verification and service startup precede
+              // the pipe experiment. Start its observation at the actual phase,
+              // not at launcher spawn; Windows CIM sampling can also take 5s.
+              await waitForOutput('"event":"native-benchmark.started"');
               if (when === "after cleanup") {
-                const deadline = Date.now() + 10000;
-                while (!pipeClosed && Date.now() < deadline) await delay(10);
+                await waitForOutput(
+                  "Close the OpenFilm window normally to release its owned service.",
+                );
                 expect(pipeClosed).toBe(true);
                 const owned = await owners();
                 expect.soft(alive(owned.nativePid)).toBe(true);

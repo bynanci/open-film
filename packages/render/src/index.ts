@@ -1,6 +1,26 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { photoPresentationFilters } from "./photo-filters.js";
+import { audioAutomationFilters } from "./audio-filters.js";
+import { createTitleOverlay } from "./titles.js";
+import {
+  publishRenderPair,
+  validateRenderTargets,
+  RenderPublicationRecoveryError,
+} from "./publication.js";
+import {
+  captureRenderSources,
+  verifyRenderSources,
+  writeRenderManifest,
+  type RenderFontEvidence,
+  type RenderProjectEvidence,
+} from "./manifest.js";
+export {
+  createTitleOverlay,
+  resolveTitleFont,
+  titleOverlayCacheKey,
+} from "./titles.js";
 import {
   resolveClipGeometry,
   frameAlignedDuration,
@@ -61,9 +81,17 @@ export class FFmpegRenderer {
     assets: MediaAsset[],
     outputPath: string,
     settings: RenderSettings = defaults,
-    options: { signal?: AbortSignal } = {},
+    options: {
+      signal?: AbortSignal;
+      onProgress?: (progress: number) => void;
+      project?: RenderProjectEvidence;
+    } = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    composition = structuredClone(composition);
+    assets = structuredClone(assets);
+    settings = { ...settings };
+    const project = options.project ? { ...options.project } : undefined;
     finite(composition.duration, "Composition duration", true);
     for (const [key, value] of Object.entries(settings))
       finite(value, key, true);
@@ -78,33 +106,117 @@ export class FFmpegRenderer {
       composition.duration,
       settings.frameRate,
     );
+    const outputFrameRate = Number(number(settings.frameRate));
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+    const usedIds = new Set(
+      composition.tracks
+        .filter((track) => track.type !== "titles")
+        .flatMap((track) =>
+          track.clips.flatMap((clip) => [
+            clip.assetId,
+            ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+          ]),
+        ),
+    );
+    const fonts: RenderFontEvidence[] = [];
+    const warnings: string[] = [];
     const output = resolve(outputPath);
     for (const asset of assets) {
-      if (resolve(localPath(asset.uri)) === output)
+      if (
+        [output, `${output}.manifest.json`].includes(
+          resolve(localPath(asset.uri)),
+        )
+      )
         throw new Error("Render output cannot overwrite original media");
     }
+    // Capability checks precede source IO, preserving actionable unsupported-360
+    // errors even when the original source has not been mounted.
+    for (const track of composition.tracks)
+      for (const clip of track.clips) {
+        if (track.type === "titles") {
+          if (clip.layout || clip.motion || clip.audioAutomation)
+            throw new Error(
+              `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
+            );
+          continue;
+        }
+        const asset = assetMap.get(clip.assetId);
+        if (!asset)
+          throw new Error(
+            `Clip ${clip.id} references missing asset ${clip.assetId}`,
+          );
+        const issue = previewIssue(asset);
+        if (issue) throw new Error(`${asset.name}: ${issue}`);
+        if (
+          (clip.layout || clip.motion) &&
+          (asset.mediaType !== "image" || track.type !== "video")
+        )
+          throw new Error(
+            `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
+          );
+        if (clip.audioAutomation && !hasAudio(asset))
+          throw new Error(
+            `Clip ${clip.id}: audio automation requires an audio stream.`,
+          );
+      }
+    const sources = await captureRenderSources(
+      assets.filter((asset) => usedIds.has(asset.id)),
+      options.signal,
+    );
     await mkdir(dirname(output), { recursive: true });
-    try {
-      const target = await lstat(output);
-      if (target.isSymbolicLink() || !target.isFile())
-        throw new Error("Render output must be a regular file");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await validateRenderTargets(output);
+    // Different paths can still name one original file (hard links or a parent
+    // directory alias). Check file identity before publishing either output.
+    for (const target of [output, `${output}.manifest.json`]) {
+      let destination;
+      try {
+        destination = await stat(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      for (const asset of assets) {
+        const source = localPath(asset.uri);
+        try {
+          const original = await stat(source);
+          if (
+            (destination.ino !== 0 &&
+              destination.dev === original.dev &&
+              destination.ino === original.ino) ||
+            (await realpath(target)) === (await realpath(source))
+          )
+            throw new Error(
+              "Render output cannot overwrite original media through a filesystem alias",
+            );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
     }
     const work = join(dirname(output), `.render-${randomUUID()}`);
     await mkdir(work);
     const temporaryOutput = join(work, "preview.mp4");
-    const args: string[] = ["-v", "error", "-nostdin", "-threads", "1"];
+    const args: string[] = [
+      "-v",
+      "error",
+      "-nostdin",
+      "-threads",
+      "1",
+      "-progress",
+      "pipe:1",
+      "-nostats",
+    ];
     const filters: string[] = [
-      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)}[base]`,
+      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
     ];
     const audioLabels: string[] = [];
     let videoLabel = "base";
     let inputIndex = 0;
     let sequence = 0;
+    let retainWork = false;
+    const pendingTitles: Array<() => Promise<void>> = [];
     try {
       for (const track of composition.tracks) {
         const clips = [...track.clips].sort(
@@ -114,18 +226,57 @@ export class FFmpegRenderer {
           const clip = clips[clipIndex]!;
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
+          const startFrame = Math.round(start * outputFrameRate);
+          // Gate by rounded output ticks: 111/30 can compare below literal 3.7.
+          // FFmpeg 6 evaluates enable on both inputs, whose n counters differ;
+          // their shifted timestamps share the same output timeline.
+          const outputFrame = `round(t*${number(settings.frameRate)})`;
+          const endFrame = (length: number) =>
+            startFrame + Math.ceil((length - 1e-9) * outputFrameRate);
           const duration = clip.timelineDuration;
           const suffix = sequence++;
-          if (track.type === "titles" || clip.title !== undefined) {
-            if (!clip.title) continue;
-            const titleFile = join(work, `title-${suffix}.txt`);
-            await writeFile(titleFile, clip.title, "utf8");
+          const addTitle = async () => {
+            if (!clip.title) return;
+            const titleFile = join(work, `title-${suffix}.png`);
+            const title = await createTitleOverlay(
+              clip.title,
+              clip.titleStyle,
+              settings,
+              titleFile,
+            );
+            fonts.push({
+              family: title.font.family,
+              postscriptName: title.font.postscriptName,
+              sha256: title.font.sha256,
+            });
+            warnings.push(...title.warnings);
+            args.push(
+              "-loop",
+              "1",
+              "-framerate",
+              number(settings.frameRate),
+              "-threads",
+              "1",
+              "-i",
+              titleFile,
+            );
+            const titleInput = inputIndex++;
             const titleLabel = `title${suffix}`;
             filters.push(
-              `[${videoLabel}]drawtext=textfile=title-${suffix}.txt:expansion=none:fontcolor=white:fontsize=${Math.round(settings.height / 16)}:x=(w-text_w)/2:y=h*0.8-text_h/2:box=1:boxcolor=black@0.55:boxborderw=16:enable='gte(t,${number(start)})*lt(t,${number(start + duration)})'[${titleLabel}]`,
+              `[${titleInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[title-source${suffix}]`,
+            );
+            filters.push(
+              `[${videoLabel}][title-source${suffix}]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(duration)})'[${titleLabel}]`,
             );
             videoLabel = titleLabel;
-            if (track.type === "titles") continue;
+          };
+          if (track.type === "titles") {
+            if (clip.layout || clip.motion || clip.audioAutomation)
+              throw new Error(
+                `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
+              );
+            pendingTitles.push(addTitle);
+            continue;
           }
           const asset = assetMap.get(clip.assetId);
           if (!asset)
@@ -149,6 +300,17 @@ export class FFmpegRenderer {
             track.type !== "audio" &&
             track.type !== "music" &&
             asset.mediaType !== "audio";
+          if (
+            (clip.layout || clip.motion) &&
+            (track.type !== "video" || asset.mediaType !== "image")
+          )
+            throw new Error(
+              `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
+            );
+          if (clip.audioAutomation && !hasAudio(asset))
+            throw new Error(
+              `Clip ${clip.id}: audio automation requires an audio stream.`,
+            );
           if (asset.mediaType === "image")
             args.push("-loop", "1", "-framerate", number(settings.frameRate));
           args.push("-threads", "1", "-i", localPath(asset.uri));
@@ -156,10 +318,11 @@ export class FFmpegRenderer {
           if (visual) {
             const label = `visual${suffix}`;
             const geometry = resolveClipGeometry(clip.transform);
-            const transform: string[] = await previewVideoFilters(
-              asset,
-              options.signal,
-            );
+            const presentedPhoto =
+              asset.mediaType === "image" && !!(clip.layout || clip.motion);
+            const transform: string[] = presentedPhoto
+              ? []
+              : await previewVideoFilters(asset, options.signal);
             // Contain-fit the decoded display aspect, including non-square pixels.
             // Missing SAR means square pixels. Explicit dimensions + setsar=1
             // avoid version-specific scale reset_sar and an intermediate resize.
@@ -178,7 +341,7 @@ export class FFmpegRenderer {
               transform.push(
                 `rotate=${number((geometry.rotation * Math.PI) / 180)}:ow=rotw(${number((geometry.rotation * Math.PI) / 180)}):oh=roth(${number((geometry.rotation * Math.PI) / 180)}):c=none`,
               );
-            transform.push(`fps=${number(settings.frameRate)}`);
+            transform.push(`fps=${number(settings.frameRate)}:round=near`);
             const fade = clip.transition?.duration ?? 0;
             // Extending the outgoing frame through the next fade creates a real overlap
             // without shifting the editable timeline or changing its duration.
@@ -192,6 +355,26 @@ export class FFmpegRenderer {
                   )
                 : 0;
             const displayedDuration = duration + outgoingTail;
+            let visualInput = `${input}:v`;
+            if (presentedPhoto) {
+              const presentation = await photoPresentationFilters(
+                clip,
+                assetMap,
+                settings,
+                {
+                  primaryInput: input,
+                  nextInput: inputIndex,
+                  suffix,
+                  duration: displayedDuration,
+                  signal: options.signal,
+                },
+              );
+              args.push(...presentation.args);
+              inputIndex += presentation.addedInputs;
+              filters.push(...presentation.filters);
+              warnings.push(...presentation.warnings);
+              visualInput = presentation.label;
+            }
             if (fade > 0)
               transform.push(`fade=t=in:st=0:d=${number(fade)}:alpha=1`);
             const trim =
@@ -199,14 +382,15 @@ export class FFmpegRenderer {
                 ? `trim=duration=${number(displayedDuration)}`
                 : `trim=start=${number(sourceIn)}:end=${number(sourceOut)}`;
             filters.push(
-              `[${input}:v]${trim},setpts=(PTS-STARTPTS)/${number(speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS+${number(start)}/TB[${label}]`,
+              `[${visualInput}]${trim},setpts=(PTS-STARTPTS)/${number(presentedPhoto ? 1 : speed)},${transform.join(",")},tpad=stop_mode=clone:stop_duration=${number(displayedDuration)},trim=duration=${number(displayedDuration)},setpts=PTS-STARTPTS+${startFrame}[${label}]`,
             );
             const merged = `merged${suffix}`;
             filters.push(
-              `[${videoLabel}][${label}]overlay=x=(W-w)/2+${number(geometry.x)}:y=(H-h)/2+${number(geometry.y)}:eof_action=pass:repeatlast=0:enable='gte(t,${number(start)})*lt(t,${number(start + displayedDuration)})'[${merged}]`,
+              `[${videoLabel}][${label}]overlay=x=round((W-w)/2+${number(geometry.x)}):y=round((H-h)/2+${number(geometry.y)}):eval=init:format=rgb:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame(displayedDuration)})'[${merged}]`,
             );
             videoLabel = merged;
           }
+          pendingTitles.push(addTitle);
           if (hasAudio(asset)) {
             const label = `audio${suffix}`;
             const audioFilters = [
@@ -216,6 +400,7 @@ export class FFmpegRenderer {
               `volume=${number(clip.transform?.volume ?? 1)}`,
               "apad",
               `atrim=duration=${number(duration)}`,
+              ...audioAutomationFilters(clip.audioAutomation, duration),
               `adelay=${Math.round(start * 1000)}:all=1`,
             ];
             filters.push(`[${input}:a]${audioFilters.join(",")}[${label}]`);
@@ -223,6 +408,7 @@ export class FFmpegRenderer {
           }
         }
       }
+      for (const addTitle of pendingTitles) await addTitle();
       filters.push(`[${videoLabel}]format=yuv420p[vout]`);
       if (audioLabels.length)
         filters.push(
@@ -264,16 +450,64 @@ export class FFmpegRenderer {
         "-y",
         temporaryOutput,
       );
+      let progressBuffer = "";
+      let lastProgress = -1;
+      const publishProgress = (value: number) => {
+        const bounded = Math.min(1, Math.max(0, value));
+        if (bounded < 1 && bounded - lastProgress < 0.01) return;
+        lastProgress = bounded;
+        try {
+          options.onProgress?.(bounded);
+        } catch {
+          /* Progress observers do not own the render operation. */
+        }
+      };
       await runProcess("ffmpeg", args, {
         signal: options.signal,
         timeoutMs: 1800000,
         cwd: work,
+        onStdout: (chunk) => {
+          progressBuffer += chunk.toString("utf8");
+          const lines = progressBuffer.split(/\r?\n/u);
+          progressBuffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const separator = line.indexOf("=");
+            if (separator < 0) continue;
+            const key = line.slice(0, separator);
+            const value = line.slice(separator + 1);
+            if (key === "progress" && value === "end") {
+              publishProgress(1);
+              continue;
+            }
+            if (key === "out_time_us" || key === "out_time_ms") {
+              const microseconds = Number(value);
+              if (Number.isFinite(microseconds) && microseconds >= 0)
+                publishProgress(microseconds / 1_000_000 / outputDuration);
+            }
+          }
+        },
       });
       checkAbort(options.signal);
-      await rename(temporaryOutput, output);
+      await verifyRenderSources(sources);
+      const manifestPath = join(work, "manifest.json");
+      await writeRenderManifest(
+        manifestPath,
+        temporaryOutput,
+        composition,
+        settings,
+        sources,
+        fonts,
+        warnings,
+        options.signal,
+        project,
+      );
+      await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;
+    } catch (error) {
+      retainWork = error instanceof RenderPublicationRecoveryError;
+      throw error;
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainWork) await rm(work, { recursive: true, force: true });
     }
   }
 }
@@ -309,7 +543,10 @@ export async function renderComposition(
   assets: MediaAsset[],
   outputPath: string,
   settings?: RenderSettings,
-  options?: { signal?: AbortSignal },
+  options?: {
+    signal?: AbortSignal;
+    onProgress?: (progress: number) => void;
+  },
 ): Promise<string> {
   return new FFmpegRenderer().render(
     composition,

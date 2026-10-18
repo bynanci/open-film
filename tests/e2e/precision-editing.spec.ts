@@ -20,6 +20,7 @@ import type {
   WaveformData,
 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
+import { OpenFilmApplication } from "@openfilm/application";
 import { formatDuration } from "../../apps/desktop/src/i18n/format";
 import axe from "axe-core";
 import {
@@ -1251,6 +1252,218 @@ test("missing source duration preserves playback but disables duration-dependent
   await saved(page, locale);
   expect(allClips(await composition(request))).toHaveLength(
     allClips(repaired).length + 1,
+  );
+});
+
+test("source-locked video and audio overlays disable Precision mutations while playback and analysis remain available, then unlocking restores trims", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const path = join(root, "precision-overlay-source-lock.openfilm");
+  const app = await OpenFilmApplication.create(path, "Protected overlays", {
+    projectContentLocale: locale,
+  });
+  let overlays: { clipId: string; asset: MediaAsset }[];
+  try {
+    await app.importFolder(mediaDirectory);
+    const assets = app.catalog.listAssets({ limit: 100 });
+    const video = assets.find((asset) => asset.mediaType === "video")!;
+    const audio = assets.find((asset) => asset.mediaType === "audio")!;
+    overlays = [
+      { clipId: "protected-video-overlay", asset: video },
+      { clipId: "protected-audio-overlay", asset: audio },
+    ];
+    app.project.stories.push({
+      id: "overlay-story",
+      title: "Overlays",
+      beats: [],
+    });
+    app.project.timelines.push({
+      id: "overlay-cut",
+      storyId: "overlay-story",
+      duration: 4,
+      tracks: [
+        {
+          id: "primary-video",
+          type: "video",
+          clips: [
+            {
+              id: "locked-primary-clip",
+              assetId: video.id,
+              sourceIn: 0.5,
+              sourceOut: 4.5,
+              timelineStart: 0,
+              timelineDuration: 4,
+              locked: true,
+            },
+          ],
+        },
+        ...overlays.map(({ clipId, asset }) => ({
+          id: `${clipId}-track`,
+          type:
+            asset.mediaType === "video"
+              ? ("video" as const)
+              : ("music" as const),
+          timing: "overlay" as const,
+          clips: [
+            {
+              id: clipId,
+              assetId: asset.id,
+              sourceIn: 0.5,
+              sourceOut: 3.5,
+              timelineStart: 0.5,
+              timelineDuration: 3,
+            },
+          ],
+        })),
+      ],
+    });
+    for (const { asset } of overlays)
+      app.catalog.updateAsset(asset.id, { state: { locked: true } });
+    await app.save();
+  } finally {
+    app.close();
+  }
+  const opened = await request.post(`${base}/project/open`, { data: { path } });
+  expect(opened.ok(), await opened.text()).toBe(true);
+  await initialLocale(page, locale);
+  await page.goto("/");
+  await navigate(page, "edit", locale);
+  await mode(page, locale, "precision");
+  const picker = page
+    .locator(".precision-source-picker")
+    .getByLabel(text(locale, "precision.selectedClip"));
+  const preview = page.getByLabel(text(locale, "precision.sourcePreview"), {
+    exact: true,
+  });
+  const trimIn = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  const waveform = page.locator(".precision-waveform");
+  const sourceNotice = page
+    .locator(".precision-editor")
+    .getByText(text(locale, "editor.clip.sourceProtected"), { exact: true });
+  const selectClip = async (clipId: string) => {
+    await picker.selectOption(clipId);
+    await expect
+      .poll(() =>
+        preview.evaluate((node) => (node as HTMLMediaElement).readyState),
+      )
+      .toBeGreaterThanOrEqual(1);
+    // Source verification must finish before testing the protection state.
+    await expect(
+      page.getByLabel(text(locale, "precision.snap"), { exact: true }),
+    ).toBeEnabled();
+  };
+  const expectMutationControlsDisabled = async () => {
+    for (const edge of ["trimIn", "trimOut"]) {
+      for (const role of ["spinbutton", "slider"] as const)
+        await expect(
+          page.getByRole(role, {
+            name: text(locale, `precision.${edge}`),
+            exact: true,
+          }),
+        ).toBeDisabled();
+    }
+    for (const action of ["setIn", "setOut", "split"])
+      await expect(
+        page.getByRole("button", {
+          name: text(locale, `precision.${action}`),
+          exact: true,
+        }),
+      ).toBeDisabled();
+  };
+  const before = await composition(request);
+  for (const { clipId, asset } of overlays) {
+    expect(clipById(before, clipId).locked).not.toBe(true);
+    await selectClip(clipId);
+    await expectMutationControlsDisabled();
+    await expect(sourceNotice).toBeVisible();
+    await expect(sourceNotice).toContainText("Library");
+    const bounds = (await waveform.boundingBox())!;
+    await waveform.click({
+      position: {
+        x: (2 / asset.duration!) * bounds.width,
+        y: bounds.height / 2,
+      },
+    });
+    await expect
+      .poll(() =>
+        preview.evaluate((node) => (node as HTMLMediaElement).currentTime),
+      )
+      .toBeCloseTo(2, 1);
+    const beforeStep = await preview.evaluate(
+      (node) => (node as HTMLMediaElement).currentTime,
+    );
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.frameForward"),
+        exact: true,
+      })
+      .click();
+    await expect
+      .poll(() =>
+        preview.evaluate((node) => (node as HTMLMediaElement).currentTime),
+      )
+      .toBeGreaterThan(beforeStep);
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.play"),
+        exact: true,
+      })
+      .click();
+    await expect
+      .poll(() => preview.evaluate((node) => (node as HTMLMediaElement).paused))
+      .toBe(false);
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.pause"),
+        exact: true,
+      })
+      .click();
+    await waveform.press("b");
+    await analysisPanel(page, locale);
+    await expect(
+      page.getByRole("button", {
+        name: text(locale, "precision.analyzeWaveform"),
+        exact: true,
+      }),
+    ).toBeEnabled();
+  }
+  expect(await composition(request)).toEqual(before);
+  await expect(page.locator(".editor-message.error")).toHaveCount(0);
+  await selectClip("locked-primary-clip");
+  await expectMutationControlsDisabled();
+  await expect(
+    page.getByText(text(locale, "precision.locked"), { exact: true }),
+  ).toBeVisible();
+  await expect(sourceNotice).toHaveCount(0);
+
+  for (const { clipId, asset } of overlays) {
+    const unlocked = await request.patch(`${base}/assets/${asset.id}`, {
+      data: { state: { locked: false } },
+    });
+    expect(unlocked.ok(), await unlocked.text()).toBe(true);
+    expect((await unlocked.json()).asset.state.locked).toBe(false);
+    await page.reload();
+    await navigate(page, "edit", locale);
+    await mode(page, locale, "precision");
+    await selectClip(clipId);
+    await expect(sourceNotice).toHaveCount(0);
+    await expect(trimIn).toBeEnabled();
+    await trimIn.fill("0.75");
+    await trimIn.press("Tab");
+    await saved(page, locale);
+    await expect
+      .poll(async () => clipById(await composition(request), clipId).sourceIn)
+      .toBe(0.75);
+  }
+  await selectClip("locked-primary-clip");
+  await expectMutationControlsDisabled();
+  expect(clipById(await composition(request), "locked-primary-clip")).toEqual(
+    clipById(before, "locked-primary-clip"),
   );
 });
 

@@ -35,10 +35,15 @@ Recovery never signals a foreign PID or forcibly terminates an arbitrary provide
 ## Conservative owner evidence
 
 The same owner helper used for language/glossary review binds Linux evidence to
-the host, boot and PID namespace. A matching scope and live PID are preserved.
+the host, boot and PID namespace. On Windows it hashes the machine identity and
+OS boot time with the host; the raw machine identifier is not stored in a project.
+The bounded, read-only OS query uses the system PowerShell without profiles or a
+visible window. Missing, malformed or unavailable evidence leaves that execution
+unverifiable. A matching scope and live PID are preserved.
 Only `ESRCH` proves a stopped owner; permission failures, foreign scopes, old boots,
 legacy missing identities and PID reuse are not evidence that a process stopped.
-Windows/macOS do not yet have verified automatic dead-owner detection and retain
+An occupied reused PID remains conservatively live and cannot grant local token
+ownership. macOS still has no verified automatic dead-owner detection and retains
 the explicit workstation confirmation gate.
 
 Opening or starting analysis recovers only proven-dead work. Alive or unknown

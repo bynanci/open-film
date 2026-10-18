@@ -126,6 +126,130 @@ export interface ClipTransform {
   volume?: number;
 }
 
+/** Coordinates are normalized against the decoded display-oriented source. */
+export interface PhotoFocalPoint {
+  x: number;
+  y: number;
+}
+export interface PhotoProtectedRegion extends PhotoFocalPoint {
+  width: number;
+  height: number;
+}
+export interface PhotoLayout {
+  version: 1;
+  preset: "contain" | "hero" | "diptych";
+  focalPoint?: PhotoFocalPoint;
+  protectedRegion?: PhotoProtectedRegion;
+  secondary?: {
+    assetId: string;
+    focalPoint?: PhotoFocalPoint;
+    protectedRegion?: PhotoProtectedRegion;
+  };
+  /** Space between diptych cells, in composition pixels. */
+  gap?: number;
+}
+export interface PhotoMotionTransform {
+  /** Supported zoom range is 1–10, matching the deterministic renderer adapter. */
+  scale: number;
+  /** Composition-frame pixels, applied around the frame center. */
+  x: number;
+  y: number;
+}
+export interface PhotoMotion {
+  version: 1;
+  preset: "hold" | "push-in" | "pan";
+  easing: "linear" | "ease-in-out";
+  from: PhotoMotionTransform;
+  to: PhotoMotionTransform;
+}
+
+/** Accepted direction evidence is retained in a bounded project history. */
+export const MAX_SCENE_DIRECTION_RECEIPTS = 100;
+
+interface SceneDirectionReceiptActionBase {
+  id: string;
+  clipId: string;
+  evidence: string;
+}
+
+/** Each action stores one presentation change and its exact before/after evidence. */
+export type SceneDirectionReceiptAction = SceneDirectionReceiptActionBase &
+  (
+    | {
+        kind: "layout";
+        reason: "contain" | "hero";
+        before: PhotoLayout | null;
+        after: PhotoLayout;
+        command: {
+          type: "presentation";
+          clipId: string;
+          layout: PhotoLayout;
+          motion?: never;
+        };
+      }
+    | {
+        kind: "motion";
+        reason: "hold" | "push-in" | "pan";
+        before: PhotoMotion | null;
+        after: PhotoMotion;
+        command: {
+          type: "presentation";
+          clipId: string;
+          layout?: never;
+          motion: PhotoMotion;
+        };
+      }
+  );
+
+/** A durable acceptance receipt also reconciles retries after ambiguous catalog writes. */
+export interface SceneDirectionReceipt {
+  version: 1;
+  /** A deterministic preview may be accepted again through a new request after Undo. */
+  planId: string;
+  requestId: string;
+  fingerprint: string;
+  compositionId: string;
+  storyId: string;
+  beatId: string;
+  baseRevision: string;
+  contextSignature: string;
+  acceptedAt: string;
+  acceptedRevision: string;
+  sourceText: string;
+  actions: SceneDirectionReceiptAction[];
+}
+
+export interface TitleStyle {
+  version: 1;
+  role: "film-title" | "scene-statement" | "subtitle";
+  fontFamily?: string;
+  /** Font dimensions, tracking and maximum width use composition pixels. */
+  fontSize?: number;
+  fontWeight?: number;
+  lineHeight?: number;
+  tracking?: number;
+  maxWidth?: number;
+  align?: "left" | "center" | "right";
+  background?: "none" | "scrim";
+  position?: "center" | "bottom";
+}
+export interface AudioAutomation {
+  version: 1;
+  role: "music" | "narration" | "ambience" | "dialogue";
+  /** Times use local timeline seconds; all gains are linear values from 0 to 1. */
+  fadeIn?: number;
+  fadeOut?: number;
+  points?: { time: number; gain: number }[];
+  /** Attack and release are included inside each ducking region. */
+  ducking?: {
+    start: number;
+    end: number;
+    gain: number;
+    attack: number;
+    release: number;
+  }[];
+}
+
 export interface Clip {
   id: string;
   assetId: string;
@@ -136,6 +260,10 @@ export interface Clip {
   timelineDuration: number;
   transform?: ClipTransform;
   title?: string;
+  layout?: PhotoLayout;
+  motion?: PhotoMotion;
+  titleStyle?: TitleStyle;
+  audioAutomation?: AudioAutomation;
   /** Protect source selection and edits; ripple timeline positioning remains allowed. */
   locked?: boolean;
   transition?: { type: "crossfade"; duration: number };
@@ -144,6 +272,8 @@ export interface Clip {
 export interface Track {
   id: string;
   type: "video" | "audio" | "music" | "titles" | "overlay";
+  /** Overlay tracks never ripple the visual story when their clips change. */
+  timing?: "overlay";
   clips: Clip[];
 }
 
@@ -170,6 +300,7 @@ export interface OpenFilmProject {
   projectContentLocale?: ProjectContentLocale;
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
+  sceneDirectionReceipts?: SceneDirectionReceipt[];
 }
 
 export interface Event {

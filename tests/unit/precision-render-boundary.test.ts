@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { candidatesFromIntelligence, snapTime } from "@openfilm/analysis";
 import type { TranscriptSegment } from "@openfilm/core";
 import { waveformPath } from "../../apps/desktop/src/waveform";
+import { shouldSeekHover } from "../../apps/desktop/src/monitor";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -145,6 +146,7 @@ async function mountPrecision(
         localizeError: String,
       },
       "../waveform": { waveformPath },
+      "../monitor": { shouldSeekHover },
     },
   );
   const renderer = vue.createRenderer({

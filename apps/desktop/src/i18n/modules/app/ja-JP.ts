@@ -173,6 +173,8 @@ export default {
       },
       saved: "プロジェクトに保存しました",
       downloadMp4: "MP4 をダウンロード",
+      renderDetails: "使用したバージョンと確認事項",
+      downloadRecipe: "非公開の出力記録をダウンロード",
       downloadFile: "{format} をダウンロード",
       resolveGuide: {
         title: "次に DaVinci Resolve で",

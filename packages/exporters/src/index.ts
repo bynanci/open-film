@@ -41,6 +41,11 @@ export function otioCompatibilityReport(
         .map(([key]) => key);
       if (clip.title !== undefined || track.type === "titles")
         features.push("title");
+      if (clip.layout !== undefined) features.push("photo layout");
+      if (clip.motion !== undefined) features.push("photo motion");
+      if (clip.titleStyle !== undefined) features.push("title style");
+      if (clip.audioAutomation !== undefined) features.push("audio automation");
+      if (track.timing === "overlay") features.push("overlay timing");
       if (track.type === "overlay") features.push("overlay");
       if (clip.transition) features.push(clip.transition.type);
       if (clip.locked) features.push("clip lock");
@@ -49,6 +54,10 @@ export function otioCompatibilityReport(
       warnings.push(
         `Clip ${clip.id}: ${features.join(", ")} are METADATA ONLY and must be recreated manually in the NLE. Exact original source/timeline ranges and effects are preserved in metadata.openfilm.clip and the full composition metadata.`,
       );
+      if (clip.layout?.preset === "diptych")
+        warnings.push(
+          `Clip ${clip.id}: the native OTIO cut displays primary photo ${clip.assetId} only. Recreate the diptych using the second photo's source identity in metadata.openfilm.secondaryMediaReferences; the second photo is not a native composited layer.`,
+        );
       const speed = clip.transform?.speed ?? 1;
       if (speed !== 1) {
         const sourceIn = clip.sourceIn ?? 0;
@@ -107,6 +116,16 @@ function rateFraction(rate: number): [number, number] {
 }
 
 function rejectEdits(clip: Clip, format: string): void {
+  for (const field of [
+    "layout",
+    "motion",
+    "titleStyle",
+    "audioAutomation",
+  ] as const)
+    if (clip[field] !== undefined)
+      throw new Error(
+        `${format} export cannot represent ${field} on clip ${clip.id}, including explicit contain/hold/default recipes. Use JSON or OTIO metadata to preserve this edit.`,
+      );
   const defaults = { scale: 1, rotation: 0, x: 0, y: 0, speed: 1, volume: 1 };
   for (const [key, value] of Object.entries(clip.transform ?? {}))
     if (value !== defaults[key as keyof typeof defaults])
@@ -129,6 +148,11 @@ function sortedClips(track: Track): Clip[] {
   );
 }
 
+function clipSourceIds(clip: Clip): string[] {
+  const secondary = clip.layout?.secondary?.assetId;
+  return secondary !== undefined ? [clip.assetId, secondary] : [clip.assetId];
+}
+
 function validate(
   composition: Composition,
   assets: MediaAsset[],
@@ -147,15 +171,18 @@ function validate(
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
   for (const track of composition.tracks)
     for (const clip of track.clips) {
-      const asset = byId.get(clip.assetId);
-      if (!asset)
-        throw new Error(
-          `Clip ${clip.id} references missing media ${clip.assetId}; relink it before export.`,
-        );
-      if (!asset.uri)
-        throw new Error(
-          `Media ${asset.name} has no URI; relink it before export.`,
-        );
+      for (const sourceId of clipSourceIds(clip)) {
+        const source = byId.get(sourceId);
+        if (!source)
+          throw new Error(
+            `Clip ${clip.id} references missing media ${sourceId}; relink it before export.`,
+          );
+        if (!source.uri)
+          throw new Error(
+            `Media ${source.name} has no URI; relink it before export.`,
+          );
+      }
+      const asset = byId.get(clip.assetId)!;
       if (
         !Object.values(clip.transform ?? {}).every((value) =>
           Number.isFinite(value),
@@ -206,9 +233,7 @@ export function exportTimeline(
   const byId = validate(composition, assets, settings);
   if (format === "json") {
     const used = new Set(
-      composition.tracks.flatMap((track) =>
-        track.clips.map((clip) => clip.assetId),
-      ),
+      composition.tracks.flatMap((track) => track.clips.flatMap(clipSourceIds)),
     );
     return {
       extension: "json",
@@ -271,6 +296,11 @@ export function exportTimeline(
     };
   }
   for (const track of composition.tracks) {
+    if (!track.clips.length) continue;
+    if (track.timing === "overlay")
+      throw new Error(
+        `${format} export cannot represent overlay timing on track ${track.id}. Use JSON or OTIO metadata to preserve the track's non-ripple editing behavior.`,
+      );
     if (track.type === "titles" || track.type === "overlay")
       throw new Error(
         `${format} export does not support ${track.type} tracks. Use JSON to retain all edits.`,
@@ -301,6 +331,17 @@ export function exportTimeline(
       content: fcpxml(composition, byId, settings),
     };
   return { extension: "edl", content: edl(composition, byId, settings) };
+}
+
+function sourceIdentity(asset: MediaAsset): Record<string, unknown> {
+  return {
+    assetId: asset.id,
+    name: asset.name,
+    target_url: asset.uri,
+    mediaType: asset.mediaType,
+    contentHash: asset.contentHash,
+    portableReference: asset.metadata["openfilm.reference"],
+  };
 }
 
 function otio(
@@ -355,6 +396,13 @@ function otio(
             assetId: asset.id,
             beatId: clip.beatId,
             clip,
+            ...(clip.layout?.secondary
+              ? {
+                  secondaryMediaReferences: [
+                    sourceIdentity(assets.get(clip.layout.secondary.assetId)!),
+                  ],
+                }
+              : {}),
             nativeCutDuration: cutDuration,
             advancedEdits: "metadata-only",
           },
@@ -417,7 +465,9 @@ function otio(
       children,
       effects: [],
       markers: [],
-      metadata: { openfilm: { trackType: track.type } },
+      metadata: {
+        openfilm: { trackType: track.type, timing: track.timing },
+      },
       source_range: null,
     };
   });
@@ -472,10 +522,13 @@ function fcpxml(
     const audio = asset.mediaType === "audio";
     return `      <asset id="${refs.get(id)!}" name="${xml(asset.name)}" start="0s" duration="${rational(available)}" hasVideo="${audio ? 0 : 1}" hasAudio="${audio ? 1 : 0}"${audio ? ' audioSources="1" audioChannels="2"' : ' format="r1"'}><media-rep kind="original-media" src="${xml(asset.uri)}"/></asset>`;
   });
+  const populatedTracks = composition.tracks.filter(
+    (track) => track.clips.length,
+  );
   const primary =
-    composition.tracks.find((track) => track.type === "video") ??
-    composition.tracks[0];
-  const secondary = composition.tracks.filter((track) => track !== primary);
+    populatedTracks.find((track) => track.type === "video") ??
+    populatedTracks[0];
+  const secondary = populatedTracks.filter((track) => track !== primary);
   const clipXml = (clip: Clip, lane?: number): string =>
     `            <asset-clip name="${xml(assets.get(clip.assetId)!.name)}" ref="${refs.get(clip.assetId)!}" offset="${rational(clip.timelineStart)}" start="${rational(clip.sourceIn ?? 0)}" duration="${rational(clip.timelineDuration)}"${lane === undefined ? "" : ` lane="${lane}"`}/>`;
   let end = 0;

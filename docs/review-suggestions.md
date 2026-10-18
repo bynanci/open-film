@@ -112,9 +112,12 @@ rebases evidence onto a newer transcript revision.
 Opening a project recovers an unfinished review only when its execution owner is
 proven dead. The job becomes failed and its unfinished batches become cancelled;
 completed suggestions remain available. Linux verifies the same kernel boot and
-PID namespace before probing the owner process. Live owners and unverified,
-foreign or legacy ownership are preserved. Unknown-owner jobs may need manual
-support; automatic recovery across processes is not claimed on Windows or macOS.
+PID namespace before probing the owner process. Windows uses a hashed machine/OS
+boot scope and a non-destructive PID probe; occupied PIDs stay protected. Live
+owners and unverified, foreign or legacy ownership are preserved. Unknown-owner
+jobs may need manual recovery. macOS automatic proof remains unimplemented;
+Windows/macOS workstation evidence remains a separate
+[manual gate](workstation-qa.md#gate-cross-process-review-recovery).
 
 Batch Retry first saves any manual draft. If that changes the revision, the old
 batch is rejected before provider invocation; create a new review for the edited
@@ -184,6 +187,7 @@ CLI example:
 openfilm review recover <job-id> --project <film.openfilm> --confirm-stopped
 ```
 
-This manual escape hatch does **not** claim Windows/macOS automatic dead-owner
-detection. It prevents an unverifiable stale job from becoming permanently
-unrecoverable without weakening the automatic safety rule.
+This manual escape hatch does **not** itself prove an owner dead or complete
+Windows/macOS workstation verification. It prevents an unverifiable stale job
+from becoming permanently unrecoverable without weakening the automatic safety
+rule.

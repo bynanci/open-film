@@ -5,7 +5,101 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — Reviewable scene-script suggestions
+## Current — Reviewable scene directions to edits
+
+Scope: [scene-direction editing](docs/scene-direction-editing.md).
+Evidence: [validation record](docs/validation-scene-direction-editing.md).
+This bounded offline compiler extends existing photo commands. It does not infer
+arbitrary prose or image contents and never calls a language provider.
+
+- [x] Turn supported saved scene phrases into explained photo-layout/motion
+      actions, showing exact source evidence and explicit unsupported/conflict notes.
+- [x] Preserve locks, required media, paired photos, manual presentation and all
+      other scenes; keep film timing unchanged and enforce its configured maximum.
+- [x] Preview each action without saving, select a safe subset and adopt it as
+      one ordinary saved command batch with one-step Undo/Redo.
+- [x] Bind reviews to current scene/assets/settings; reject stale or unsafe subsets
+      and retain durable receipts for lost responses, reopening and fresh adoption
+      after Undo without applying an old retry again.
+- [x] Share preview/adoption through the application, HTTP and CLI; test moved
+      managed media, external writers and publication/commit failures.
+- [x] Integrate the existing Edit inspector in English, Traditional Chinese and
+      Japanese with pseudo-locale, keyboard and bounded desktop layout coverage.
+- [x] Fix reviewed prerequisite-preview, opaque CLI identity and source-lock
+      regressions; prove selected recipe previews, valid photo/video edits and
+      protected presentation/delete/replace behavior through focused tests.
+- [x] Align Soundtrack, paired-photo and overlay-Precision controls with shared
+      source-lock rules; retain paired identity, permitted ordinary Story edits,
+      playback and analysis, with four failing-then-passing browser regressions.
+- [x] Pass local non-browser gates and focused browser checks; include the new
+      cases in existing full CI and independently review correctness. Full browser
+      outcomes and exact-head merge readiness are tracked with the candidate PR.
+- [ ] Manual: assess intended movement/layout on private films and workstation
+      playback; Windows installer, camera hardware and Resolve gates remain separate.
+
+The candidate starts from PR #19 head
+`298077fdfe4937b0c9d9e11f272d409b18fb3960`, preserving its Windows recovery work.
+It also fixes that base's FFmpeg 6 overlay-visibility regression, with the same
+actual render tests on FFmpeg 6.1.3 and 7.1.5. This does not certify workstation QA.
+
+## Implemented slice — Photo-film quality
+
+Scope: [photo-film quality contract](docs/photo-film-quality.md).
+Evidence: [actual generated A/B validation](docs/validation-photo-film-quality.md).
+This is a rendering/editing slice over the existing project and composition
+engine. Generated fixture success does not certify the supplied private film's
+artistic quality or replace workstation gates.
+
+- [x] Preserve old projects while adding validated, optional version-1 photo
+      layouts, bounded motion, graphic title roles and audio automation.
+- [x] Render manual focal/protected hero framing and explicit two-source diptychs
+      through a shared frame-space plan; report safe fallback instead of hiding crop loss.
+- [x] Render clip-local hold, push-in and pan with shared arbitrary-seek timing;
+      keep the comparison's push-in/pan active and protected subjects visible.
+- [x] Measure local CJK glyphs and line breaks and reuse the graphic-title raster
+      for preview/render, with actual font identity in private output evidence.
+- [x] Add imported music/narration on explicit overlay tracks through existing
+      commands, without extending the film or rippling the visual story.
+- [x] Render clip-local fades, gain envelopes and manual ducking; verify the
+      actual exported synthetic audio instead of only testing filter strings.
+- [x] Generate public CC0 calibration assets and two actual 20-second MP4s, with
+      composition diff, 24 sampled frames each, source hashes, font/encoding
+      manifests and FFprobe/loudness/true-peak/RMS evidence.
+- [x] Pass corrected implementation `8baa274` local format/i18n/lint/types,
+      158-file/2,273-test Vitest, build, official OTIO, real CJK built-CLI checks
+      and 11/11 focused photo browser tests.
+      Track its full browser/CI outcomes separately on PR #18 checks.
+- [x] Fix independent Desktop review findings for motion-only preview, persisted
+      diptych spacing and audio Undo/Redo playback, with focused browser regressions.
+- [x] Address twelve unique follow-up P2 findings covering title bounds/defaults,
+      overlay/audio compatibility, layer/source recovery, diptych validation and
+      empty-track interchange; preserve source-replacement title style, visual
+      overlay selection and recoverable historical typography. Independently
+      review the corrected frozen source.
+- [x] Re-run the A/B evidence against committed implementation
+      `8baa2740eea22bcb2f33a29647839c12a7585b31` with a clean working tree,
+      review the extracted frames and verify unchanged 20-second output/source hashes.
+- [ ] Manual: judge real photo selection/layout, original speech/music and
+      projection readability on intended playback hardware.
+- [ ] Manual: real Windows/native installation, Pixel/Insta360 sources and
+      Resolve import/finishing remain independent workstation gates.
+
+Configured audio envelopes are clip-local. Moving source-in changes the content
+under that envelope; shortening clamps its end to the remaining duration.
+Splitting audio with active automation is rejected until envelope partitioning
+is implemented. Complete local/remote regression evidence remains distinct from
+the focused measurements above.
+The initial `ae61376` implementation's 153-file/2,213-test and 116-pass browser
+run plus one configured environment retry remain historical evidence in the
+validation record. They do not describe the corrected head's full browser suite.
+The preceding `025bead` implementation passed 119/119 browser tests in 16.4
+minutes; that success precedes four further fixes and does not certify the
+expanded current full browser suite.
+Published-head browser/CI and merge readiness are tracked separately on
+[PR #18 checks](https://github.com/bynanci/open-film/pull/18/checks); local results
+do not substitute for those checks or workstation QA.
+
+## Implemented slice — Reviewable scene-script suggestions
 
 Scope: [scene-script review](docs/scene-script-review.md).
 Evidence: [validation record](docs/validation-scene-script-review.md).
@@ -347,6 +441,17 @@ Evidence: [measurement and validation record](docs/performance-interaction.md).
 - [x] Limit 500-clip selection rendering to the old/new clip while preserving source/status/locale updates, drag validation, history and recovery.
 - [x] Compare three baseline/candidate repetitions, expose first-mount cost and preserve real relink/Precision presentation with full regression coverage.
 - [ ] Manual: real-media/4K/GPU/native-window performance remains a workstation check.
+
+## Monitor stability and frame-accurate preview
+
+Evidence: [validation record](docs/validation-monitor-stability.md).
+
+- [x] Keep rendered overlays on integer output pixels and clip starts on output-frame ticks; cover odd offsets with decoded FFmpeg frames.
+- [x] Publish bounded, monotonic FFmpeg render progress without catalog/project reloads on every poll.
+- [x] Keep monitor sizing stable and expose preview-only composition guides, aspect presets, frame transport and loop controls.
+- [x] Route quick 90-degree rotation and transform reset through the existing composition command/history path.
+- [x] Verify real browser interactions and a 500-clip monitor layout; retain responsive sizing and composition persistence.
+- [ ] Manual: verify physical monitor presentation and resize behavior on native Windows/macOS workstations.
 
 ## Composition-aware subtitle handoff
 

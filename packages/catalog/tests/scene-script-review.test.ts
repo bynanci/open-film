@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Job, type SceneScriptReviewSuggestion } from "@openfilm/core";
 import { CATALOG_SCHEMA_VERSION, ProjectCatalog } from "../src/index.js";
@@ -209,7 +209,7 @@ finally { catalog.close(); }`;
           process.execPath,
           [
             "--import",
-            require.resolve("tsx"),
+            pathToFileURL(require.resolve("tsx")).href,
             "--input-type=module",
             "-e",
             script,

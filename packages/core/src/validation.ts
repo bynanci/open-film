@@ -1,11 +1,16 @@
 import {
   PROJECT_SCHEMA_VERSION,
   PROJECT_CONTENT_LOCALES,
+  MAX_SCENE_DIRECTION_RECEIPTS,
   type Composition,
   type Job,
   type MediaAsset,
   type OpenFilmProject,
   type Story,
+  type PhotoLayout,
+  type PhotoMotion,
+  type TitleStyle,
+  type AudioAutomation,
 } from "./models.js";
 
 export interface ValidationIssue {
@@ -126,6 +131,258 @@ function choice(
   return result;
 }
 
+function presentationObject(
+  value: unknown,
+  path: string,
+  keys: string[],
+): ObjectValue {
+  const data = object(value, path);
+  for (const key of Object.keys(data))
+    if (!keys.includes(key))
+      fail(`${path}.${key}`, "unsupported presentation field");
+  return data;
+}
+
+function versionOne(value: ObjectValue, path: string): void {
+  if (value.version !== 1)
+    fail(`${path}.version`, "expected supported presentation version 1");
+}
+
+function focalPoint(value: unknown, path: string): void {
+  const data = presentationObject(value, path, ["x", "y"]);
+  number(data.x, `${path}.x`, 0, 1);
+  number(data.y, `${path}.y`, 0, 1);
+}
+
+function protectedRegion(value: unknown, path: string): void {
+  const data = presentationObject(value, path, ["x", "y", "width", "height"]);
+  const x = number(data.x, `${path}.x`, 0, 1);
+  const y = number(data.y, `${path}.y`, 0, 1);
+  const width = positive(data.width, `${path}.width`);
+  const height = positive(data.height, `${path}.height`);
+  if (x + width > 1 + 1e-9 || y + height > 1 + 1e-9)
+    fail(path, "protected region must fit inside the normalized source");
+}
+
+function photoLayout(value: unknown, path: string): PhotoLayout {
+  const data = presentationObject(value, path, [
+    "version",
+    "preset",
+    "focalPoint",
+    "protectedRegion",
+    "secondary",
+    "gap",
+  ]);
+  versionOne(data, path);
+  const preset = choice(data.preset, `${path}.preset`, [
+    "contain",
+    "hero",
+    "diptych",
+  ]);
+  optional(data, "focalPoint", path, focalPoint);
+  optional(data, "protectedRegion", path, protectedRegion);
+  optional(data, "gap", path, (v, p) => number(v, p, 0));
+  optional(data, "secondary", path, (v, p) => {
+    const secondary = presentationObject(v, p, [
+      "assetId",
+      "focalPoint",
+      "protectedRegion",
+    ]);
+    string(secondary.assetId, `${p}.assetId`);
+    optional(secondary, "focalPoint", p, focalPoint);
+    optional(secondary, "protectedRegion", p, protectedRegion);
+  });
+  if (preset === "diptych" && data.secondary === undefined)
+    fail(`${path}.secondary`, "diptych requires a second image");
+  if (
+    preset !== "diptych" &&
+    (data.secondary !== undefined || data.gap !== undefined)
+  )
+    fail(path, "secondary image and gap apply only to diptych");
+  return data as unknown as PhotoLayout;
+}
+
+export function validatePhotoLayout(value: unknown): PhotoLayout {
+  photoLayout(value, "layout");
+  return copyJson(value, "layout") as PhotoLayout;
+}
+
+function photoMotion(value: unknown, path: string): PhotoMotion {
+  const data = presentationObject(value, path, [
+    "version",
+    "preset",
+    "easing",
+    "from",
+    "to",
+  ]);
+  versionOne(data, path);
+  choice(data.preset, `${path}.preset`, ["hold", "push-in", "pan"]);
+  choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
+  for (const endpoint of ["from", "to"]) {
+    const transform = presentationObject(
+      data[endpoint],
+      `${path}.${endpoint}`,
+      ["scale", "x", "y"],
+    );
+    number(transform.scale, `${path}.${endpoint}.scale`, 1, 10);
+    number(transform.x, `${path}.${endpoint}.x`);
+    number(transform.y, `${path}.${endpoint}.y`);
+  }
+  return data as unknown as PhotoMotion;
+}
+
+export function validatePhotoMotion(value: unknown): PhotoMotion {
+  photoMotion(value, "motion");
+  return copyJson(value, "motion") as PhotoMotion;
+}
+
+function titleStyle(value: unknown, path: string): TitleStyle {
+  const data = presentationObject(value, path, [
+    "version",
+    "role",
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "lineHeight",
+    "tracking",
+    "maxWidth",
+    "align",
+    "background",
+    "position",
+  ]);
+  versionOne(data, path);
+  choice(data.role, `${path}.role`, [
+    "film-title",
+    "scene-statement",
+    "subtitle",
+  ]);
+  optional(data, "fontFamily", path, (v, p) => {
+    const family = string(v, p);
+    if (
+      family.length > 256 ||
+      [...family].some((character) => {
+        const code = character.codePointAt(0)!;
+        return code < 32 || code === 127;
+      })
+    )
+      fail(p, "expected a font family without control characters");
+  });
+  optional(data, "fontSize", path, (v, p) => {
+    positive(v, p);
+    number(v, p, 0, 4096);
+  });
+  optional(data, "maxWidth", path, positive);
+  optional(data, "fontWeight", path, (v, p) => {
+    if (!Number.isInteger(number(v, p, 100, 900)))
+      fail(p, "expected an integer font weight");
+  });
+  optional(data, "lineHeight", path, (v, p) => number(v, p, 1, 4));
+  optional(data, "tracking", path, (v, p) =>
+    number(v, p, 0, Math.min(100, Number(data.fontSize ?? 100))),
+  );
+  optional(data, "align", path, (v, p) =>
+    choice(v, p, ["left", "center", "right"]),
+  );
+  optional(data, "background", path, (v, p) => choice(v, p, ["none", "scrim"]));
+  optional(data, "position", path, (v, p) =>
+    choice(v, p, ["center", "bottom"]),
+  );
+  return data as unknown as TitleStyle;
+}
+
+export function validateTitleStyle(value: unknown): TitleStyle {
+  titleStyle(value, "titleStyle");
+  return copyJson(value, "titleStyle") as TitleStyle;
+}
+
+function audioAutomation(
+  value: unknown,
+  path: string,
+  duration = Infinity,
+): AudioAutomation {
+  const data = presentationObject(value, path, [
+    "version",
+    "role",
+    "fadeIn",
+    "fadeOut",
+    "points",
+    "ducking",
+  ]);
+  versionOne(data, path);
+  choice(data.role, `${path}.role`, [
+    "music",
+    "narration",
+    "ambience",
+    "dialogue",
+  ]);
+  for (const key of ["fadeIn", "fadeOut"])
+    optional(data, key, path, (v, p) => number(v, p, 0, duration));
+  optional(data, "points", path, (v, p) => {
+    const points = array(v, p);
+    if (points.length > 1000) fail(p, "at most 1000 gain points are supported");
+    let previous = -1;
+    points.forEach((entry, index) => {
+      const pointPath = `${p}[${index}]`;
+      const point = presentationObject(entry, pointPath, ["time", "gain"]);
+      const time = number(point.time, `${pointPath}.time`, 0, duration);
+      if (time <= previous)
+        fail(
+          `${pointPath}.time`,
+          "gain points must have strictly increasing times",
+        );
+      previous = time;
+      number(point.gain, `${pointPath}.gain`, 0, 1);
+    });
+  });
+  optional(data, "ducking", path, (v, p) => {
+    const regions = array(v, p);
+    if (regions.length > 1000)
+      fail(p, "at most 1000 ducking regions are supported");
+    regions.forEach((entry, index) => {
+      const regionPath = `${p}[${index}]`;
+      const region = presentationObject(entry, regionPath, [
+        "start",
+        "end",
+        "gain",
+        "attack",
+        "release",
+      ]);
+      const start = number(region.start, `${regionPath}.start`, 0, duration);
+      const end = number(region.end, `${regionPath}.end`, 0, duration);
+      if (end <= start)
+        fail(`${regionPath}.end`, "ducking end must follow its start");
+      number(region.gain, `${regionPath}.gain`, 0, 1);
+      const attack = number(
+        region.attack,
+        `${regionPath}.attack`,
+        0,
+        end - start,
+      );
+      const release = number(
+        region.release,
+        `${regionPath}.release`,
+        0,
+        end - start,
+      );
+      if (attack + release > end - start + 1e-9)
+        fail(
+          regionPath,
+          "ducking attack and release must fit within the region",
+        );
+    });
+  });
+  return data as unknown as AudioAutomation;
+}
+
+export function validateAudioAutomation(
+  value: unknown,
+  duration?: number,
+): AudioAutomation {
+  if (duration !== undefined) positive(duration, "audioAutomation.duration");
+  audioAutomation(value, "audioAutomation", duration);
+  return copyJson(value, "audioAutomation") as AudioAutomation;
+}
+
 /** Persist timestamps with a timezone; a date-only or ambiguous local time is invalid. */
 function timestamp(value: unknown, path: string): string {
   const result = string(value, path);
@@ -153,6 +410,157 @@ function timestamp(value: unknown, path: string): string {
   )
     fail(path, "timestamp contains an invalid calendar date or time");
   return result;
+}
+
+function directionText(value: unknown, path: string): void {
+  const text = string(value, path);
+  if ([...text].length > 8000)
+    fail(path, "expected at most 8000 Unicode code points");
+  for (const character of text) {
+    const point = character.codePointAt(0)!;
+    if (
+      (point < 32 && ![9, 10, 13].includes(point)) ||
+      (point >= 127 && point <= 159) ||
+      (point >= 0xd800 && point <= 0xdfff)
+    )
+      fail(
+        path,
+        "expected well-formed Unicode text without control characters",
+      );
+  }
+}
+
+function directionDigest(value: unknown, path: string): void {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/i.test(value))
+    fail(path, "expected a 64-character hexadecimal digest");
+}
+
+/** Compare validated snapshots by fields so JSON property order has no meaning. */
+function sameDirectionSnapshot(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  )
+    return false;
+  const leftObject = left as ObjectValue;
+  const rightObject = right as ObjectValue;
+  const leftKeys = Object.keys(leftObject).filter(
+    (key) => leftObject[key] !== undefined,
+  );
+  const rightKeys = Object.keys(rightObject).filter(
+    (key) => rightObject[key] !== undefined,
+  );
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(rightObject, key) &&
+        sameDirectionSnapshot(leftObject[key], rightObject[key]),
+    )
+  );
+}
+
+function sceneDirectionReceipts(value: unknown, path: string): void {
+  const receipts = array(value, path);
+  if (receipts.length > MAX_SCENE_DIRECTION_RECEIPTS)
+    fail(
+      path,
+      `at most ${MAX_SCENE_DIRECTION_RECEIPTS} scene direction receipts are supported`,
+    );
+  const requests = new Set<string>();
+  receipts.forEach((entry, index) => {
+    const receiptPath = `${path}[${index}]`;
+    const receipt = presentationObject(entry, receiptPath, [
+      "version",
+      "planId",
+      "requestId",
+      "fingerprint",
+      "compositionId",
+      "storyId",
+      "beatId",
+      "baseRevision",
+      "contextSignature",
+      "acceptedAt",
+      "acceptedRevision",
+      "sourceText",
+      "actions",
+    ]);
+    versionOne(receipt, receiptPath);
+    for (const key of [
+      "planId",
+      "fingerprint",
+      "baseRevision",
+      "contextSignature",
+      "acceptedRevision",
+    ])
+      directionDigest(receipt[key], `${receiptPath}.${key}`);
+    receiptIdentifier(receipt.requestId, `${receiptPath}.requestId`);
+    if (/[\u0080-\u009f]/u.test(String(receipt.requestId)))
+      fail(
+        `${receiptPath}.requestId`,
+        "expected an ID without control characters",
+      );
+    for (const key of ["compositionId", "storyId", "beatId"])
+      string(receipt[key], `${receiptPath}.${key}`);
+    const requestId = String(receipt.requestId);
+    if (requests.has(requestId))
+      fail(`${receiptPath}.requestId`, "duplicate acceptance request receipt");
+    requests.add(requestId);
+    timestamp(receipt.acceptedAt, `${receiptPath}.acceptedAt`);
+    directionText(receipt.sourceText, `${receiptPath}.sourceText`);
+    const actionPath = `${receiptPath}.actions`;
+    const actions = array(receipt.actions, actionPath);
+    if (actions.length < 1 || actions.length > 100)
+      fail(actionPath, "expected between 1 and 100 scene direction actions");
+    ids(actions, actionPath);
+    actions.forEach((entry, index) => {
+      const itemPath = `${actionPath}[${index}]`;
+      const action = presentationObject(entry, itemPath, [
+        "id",
+        "clipId",
+        "kind",
+        "reason",
+        "evidence",
+        "before",
+        "after",
+        "command",
+      ]);
+      const clipId = string(action.clipId, `${itemPath}.clipId`);
+      const kind = choice(action.kind, `${itemPath}.kind`, [
+        "layout",
+        "motion",
+      ]);
+      const reason = choice(
+        action.reason,
+        `${itemPath}.reason`,
+        kind === "layout" ? ["contain", "hero"] : ["hold", "push-in", "pan"],
+      );
+      directionText(action.evidence, `${itemPath}.evidence`);
+      const check = kind === "layout" ? photoLayout : photoMotion;
+      if (action.before !== null) check(action.before, `${itemPath}.before`);
+      const after = check(action.after, `${itemPath}.after`);
+      if (after.preset !== reason)
+        fail(`${itemPath}.reason`, "reason must match the accepted preset");
+      const commandPath = `${itemPath}.command`;
+      const command = presentationObject(action.command, commandPath, [
+        "type",
+        "clipId",
+        kind,
+      ]);
+      choice(command.type, `${commandPath}.type`, ["presentation"]);
+      if (string(command.clipId, `${commandPath}.clipId`) !== clipId)
+        fail(`${commandPath}.clipId`, "command must target the action clip");
+      check(command[kind], `${commandPath}.${kind}`);
+      if (!sameDirectionSnapshot(action.after, command[kind]))
+        fail(
+          `${commandPath}.${kind}`,
+          "command must match the accepted snapshot",
+        );
+    });
+  });
 }
 
 function strings(value: unknown, path: string, unique = false): string[] {
@@ -399,6 +807,7 @@ function composition(
       "titles",
       "overlay",
     ]);
+    optional(track, "timing", trackPath, (v, p) => choice(v, p, ["overlay"]));
     array(track.clips, `${trackPath}.clips`).forEach((clipEntry, j) => {
       const clipPath = `${trackPath}.clips[${j}]`;
       const clip = object(clipEntry, clipPath);
@@ -434,6 +843,17 @@ function composition(
           "source out must be greater than source in",
         );
       optional(clip, "title", clipPath, string);
+      optional(clip, "layout", clipPath, (v, p) => {
+        const layout = photoLayout(v, p);
+        const secondary = layout.secondary?.assetId;
+        if (secondary && knownAssets && !knownAssets.has(secondary))
+          fail(`${p}.secondary.assetId`, `unknown asset ID ${secondary}`);
+      });
+      optional(clip, "motion", clipPath, photoMotion);
+      optional(clip, "titleStyle", clipPath, titleStyle);
+      optional(clip, "audioAutomation", clipPath, (v, p) =>
+        audioAutomation(v, p, length),
+      );
       optional(clip, "locked", clipPath, boolean);
       optional(clip, "transform", clipPath, (v, p) => {
         const transform = object(v, p);
@@ -540,6 +960,7 @@ export function validateProject(
       timestamp(receipt.acceptedAt, `${itemPath}.acceptedAt`);
     });
   });
+  optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();

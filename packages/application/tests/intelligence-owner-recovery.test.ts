@@ -184,7 +184,7 @@ async function worker(
     process.execPath,
     [
       "--import",
-      createRequire(import.meta.url).resolve("tsx"),
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
       file,
       context.directory,
       context.runtime.userDataDirectory,
@@ -248,7 +248,7 @@ describe("media analysis execution ownership and recovery", () => {
       const ready = await child.ready();
       expect(() => process.kill(child.child.pid!, 0)).not.toThrow();
       expect(ready.job?.analysisOwner?.pid).toBe(child.child.pid);
-      if (process.platform === "linux")
+      if (["linux", "win32"].includes(process.platform))
         expect(reviewOwnerState(ready.job?.analysisOwner)).toBe("alive");
       const app = await OpenFilmApplication.open(
         context.directory,
@@ -486,7 +486,7 @@ it("an unpermitted local PID probe is unknown and cannot authorize automatic rec
   probe.mockRestore();
 });
 
-it.skipIf(process.platform !== "linux")(
+it.skipIf(!["linux", "win32"].includes(process.platform))(
   "Open recovers a killed and reaped child owner while preserving prior analysis and permitting retry",
   async () => {
     const context = await fixture();
@@ -928,7 +928,7 @@ it("a queued observer recovery revokes the reservation before its exact consume 
   await expectPreserved(app, context);
 });
 
-it.skipIf(process.platform !== "linux")(
+it.skipIf(!["linux", "win32"].includes(process.platform))(
   "an owner killed after the observer already opened has an actionable confirmed recovery without reopen",
   async () => {
     const context = await fixture();
@@ -981,7 +981,7 @@ it.skipIf(process.platform !== "linux")(
   },
 );
 
-it.skipIf(process.platform !== "linux")(
+it.skipIf(!["linux", "win32"].includes(process.platform))(
   "jobId-only reuse cannot mutate an existing proven-dead reservation; a fresh retry recovers it normally",
   async () => {
     const context = await fixture();

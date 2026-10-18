@@ -13,6 +13,11 @@ export type NleFeatureId =
   | "transform"
   | "crossfade"
   | "titles"
+  | "photoLayout"
+  | "photoMotion"
+  | "titleStyle"
+  | "audioAutomation"
+  | "overlayTiming"
   | "clipLocks"
   | "overlappingClips";
 
@@ -50,6 +55,11 @@ const metadataFeatures: NleFeatureId[] = [
   "transform",
   "crossfade",
   "titles",
+  "photoLayout",
+  "photoMotion",
+  "titleStyle",
+  "audioAutomation",
+  "overlayTiming",
   "clipLocks",
 ];
 const realNle: NleVerificationEvidence[] = [];

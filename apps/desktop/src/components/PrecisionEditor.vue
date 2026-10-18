@@ -23,6 +23,7 @@ import {
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
+import { shouldSeekHover } from "../monitor";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
 import PrecisionTranscript from "./PrecisionTranscript.vue";
 
@@ -32,6 +33,7 @@ const props = defineProps<{
   clip?: Clip;
   active: boolean;
   busy: boolean;
+  sourceEditsLocked?: boolean;
   analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
   recoveringAnalysisJobs?: Record<string, boolean>;
   unavailable?: boolean;
@@ -109,6 +111,7 @@ let jobRead = 0;
 let controller = new AbortController();
 let polling: ReturnType<typeof setTimeout> | undefined;
 let hoverFrame = 0;
+let lastHoverSeek: number | undefined;
 let disposed = false;
 let drag: { side: "in" | "out"; snapshot: string; pointerId: number } | null =
   null;
@@ -141,6 +144,7 @@ const editable = computed(
     hasSourceDuration.value &&
     sourceVerified.value &&
     !props.clip?.locked &&
+    !props.sourceEditsLocked &&
     !props.busy,
 );
 const crossfadeBlocksSplit = computed(
@@ -170,6 +174,7 @@ const clipSnapshot = computed(() =>
     props.clip?.sourceOut,
     props.clip?.transform?.speed,
     props.clip?.locked,
+    props.sourceEditsLocked,
   ]),
 );
 const frameStep = computed(() =>
@@ -628,6 +633,9 @@ function movePointer(event: PointerEvent) {
       trimOut.value = snapped(at, trimIn.value + epsilon, sourceDuration.value);
     seek(drag.side === "in" ? trimIn.value : trimOut.value);
   } else if (hoverPreview.value && !playing.value) {
+    if (!shouldSeekHover(lastHoverSeek, at, props.asset?.frameRate ?? 30))
+      return;
+    lastHoverSeek = at;
     cancelAnimationFrame(hoverFrame);
     hoverFrame = requestAnimationFrame(() => seek(at));
   }
@@ -1267,7 +1275,10 @@ onBeforeUnmount(() => {
             :aria-label="t('precision.waveform')"
             @pointerdown="seek(snapped(pointerTime($event)))"
             @pointermove="movePointer"
-            @pointerleave="hoverTime = undefined"
+            @pointerleave="
+              hoverTime = undefined;
+              lastHoverSeek = undefined;
+            "
             @pointerup="finishDrag"
             @pointercancel="cancelDrag"
             @dblclick="addMarker(pointerTime($event))"
@@ -1418,6 +1429,9 @@ onBeforeUnmount(() => {
           </p>
           <p v-if="clip?.locked" class="editor-note">
             {{ t("precision.locked") }}
+          </p>
+          <p v-else-if="sourceEditsLocked" class="editor-note">
+            {{ t("editor.clip.sourceProtected") }}
           </p>
           <p
             v-else-if="hasSourceDuration && asset?.state.locked"

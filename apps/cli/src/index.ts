@@ -7,6 +7,7 @@ import {
   TimelineEditor,
   resolveUserDataDirectory,
   type ScenePlanAcceptance,
+  type DirectionReviewPlan,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -45,6 +46,8 @@ Usage:
   openfilm story generate --project <film.openfilm> --template proposal-film --target 270 --max 300
   openfilm scene-plan preview --project <film.openfilm> --group-by category|chronology --target 270 --max 300 [--brief "Film intention" --transition cut|crossfade --assets id1,id2]
   openfilm scene-plan accept --project <film.openfilm> --plan <preview.json>
+  openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
+  openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format otio
@@ -83,6 +86,7 @@ function parse(args: string[]) {
     "enable",
     "disable",
     "confirm-stopped",
+    "replace-existing",
   ]);
   const values = new Set([
     "project",
@@ -128,6 +132,10 @@ function parse(args: string[]) {
     "field",
     "index",
     "user-data-dir",
+    "clips",
+    "clips-json",
+    "actions",
+    "actions-json",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -157,6 +165,32 @@ function parse(args: string[]) {
 }
 const value = (options: Options, key: string) =>
   typeof options[key] === "string" ? (options[key] as string) : undefined;
+function directionIdentifiers(
+  options: Options,
+  key: "clips" | "actions",
+): string[] | undefined {
+  const commaSeparated = value(options, key);
+  const json = value(options, `${key}-json`);
+  if (commaSeparated !== undefined && json !== undefined)
+    throw new Error(`Choose either --${key} or --${key}-json.`);
+  if (json === undefined) return commaSeparated?.split(",");
+  const message = `--${key}-json must be a JSON array of nonempty identifiers.`;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(json);
+  } catch {
+    throw new Error(message);
+  }
+  if (
+    !Array.isArray(decoded) ||
+    !decoded.length ||
+    !decoded.every(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    )
+  )
+    throw new Error(message);
+  return decoded;
+}
 function positive(options: Options, key: string): number | undefined {
   const input = value(options, key);
   if (input === undefined) return undefined;
@@ -234,7 +268,8 @@ async function main() {
     throw new Error("Use --project <film.openfilm> to select a project.");
   const app =
     command === "captions" ||
-    (command === "scene-plan" && positional[1] === "preview")
+    ((command === "scene-plan" || command === "direction-review") &&
+      positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
           resolve(project),
           runtimeOptions,
@@ -687,6 +722,62 @@ async function main() {
           assetIds: value(options, "assets")?.split(",").filter(Boolean),
         }),
       });
+    } else if (command === "direction-review") {
+      const compositionId = positional[2];
+      if (!compositionId)
+        throw new Error("Specify the composition ID to review.");
+      const editor = new TimelineEditor(app);
+      if (positional[1] === "preview") {
+        const beatId = value(options, "beat");
+        const clips = directionIdentifiers(options, "clips");
+        if (!beatId || !clips)
+          throw new Error(
+            "Specify --beat and --clips or --clips-json for the reviewed scene.",
+          );
+        print({
+          plan: editor.previewDirection(compositionId, {
+            beatId,
+            clipIds: clips,
+            replaceExisting: options["replace-existing"] === true,
+          }),
+        });
+      } else if (positional[1] === "accept") {
+        const path = value(options, "plan");
+        const requestId = value(options, "request-id");
+        if (!path || !requestId)
+          throw new Error(
+            "Specify --plan <preview.json> and one stable --request-id for retries.",
+          );
+        const file = resolve(path);
+        const info = await stat(file);
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error(
+            "Direction review JSON must be a regular file of at most 16 MiB.",
+          );
+        const bytes = await readFile(file);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Direction review JSON exceeds 16 MiB.");
+        const input = JSON.parse(bytes.toString("utf8")) as {
+          plan?: DirectionReviewPlan;
+        };
+        const plan = input.plan;
+        if (!plan || !Array.isArray(plan.actions))
+          throw new Error("Provide a saved {plan} direction preview.");
+        const selected = directionIdentifiers(options, "actions");
+        print(
+          await editor.acceptDirection(compositionId, {
+            planId: plan.id,
+            baseRevision: plan.baseRevision,
+            contextSignature: plan.contextSignature,
+            options: plan.options,
+            actionIds:
+              selected === undefined
+                ? plan.actions.map((action) => action.id)
+                : selected,
+            requestId,
+          }),
+        );
+      } else throw new Error("Choose direction-review preview or accept.");
     } else if (command === "scene-plan") {
       if (positional[1] === "preview") {
         print({

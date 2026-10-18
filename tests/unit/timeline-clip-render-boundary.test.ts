@@ -17,6 +17,16 @@ import {
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import {
+  clampFrameStep,
+  formatTimecode,
+  frameGuideRect,
+  mapFramePixelOffsetToViewport,
+  nextStableWorkspaceHeight,
+  playbackBoundaryAction,
+  restartTimeAtClipBoundary,
+  roundFrameDimensions,
+} from "../../apps/desktop/src/monitor";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -28,6 +38,8 @@ interface HostNode {
   parent: HostNode | null;
   style: Record<string, unknown>;
   currentTime: number;
+  clientWidth: number;
+  clientHeight: number;
   value: unknown;
   selected: boolean;
   options: HostNode[];
@@ -75,6 +87,8 @@ function node(tag: string, text = ""): HostNode {
     parent: null,
     style: {},
     currentTime: 0,
+    clientWidth: 800,
+    clientHeight: 450,
     value: "",
     selected: false,
     get options() {
@@ -226,7 +240,10 @@ async function mountTimeline(
   vi.stubGlobal("ShadowRoot", class {});
   vi.stubGlobal(
     "requestAnimationFrame",
-    vi.fn(() => 1),
+    vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }),
   );
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   vi.stubGlobal(
@@ -268,6 +285,8 @@ async function mountTimeline(
     api,
     ApiError,
     sourceUrl: (id: string) => `source:${id}`,
+    titlePreviewUrl: (compositionId: string, clipId: string) =>
+      `title:${compositionId}:${clipId}`,
     thumbnailUrl: (id: string) => `thumbnail:${id}`,
   };
   const i18n = {
@@ -297,6 +316,16 @@ async function mountTimeline(
         onVisibilityChange: () => () => {},
       }),
     },
+    "../monitor": {
+      clampFrameStep,
+      formatTimecode,
+      frameGuideRect,
+      mapFramePixelOffsetToViewport,
+      nextStableWorkspaceHeight,
+      playbackBoundaryAction,
+      restartTimeAtClipBoundary,
+      roundFrameDimensions,
+    },
     "../editorPresentation": { clipControls, shorteningAction },
     "../sourcePresentation": { sourcePresentation },
     "./Icon.vue": {
@@ -322,6 +351,18 @@ async function mountTimeline(
       },
     },
     "./TranscriptEditor.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./PhotoPresentationPreview.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./PhotoPresentationInspector.vue": {
+      __esModule: true,
+      default: { render: () => null },
+    },
+    "./SoundtrackPanel.vue": {
       __esModule: true,
       default: { render: () => null },
     },
@@ -441,6 +482,18 @@ async function mountTimeline(
 }
 
 describe("Timeline clip render boundary", () => {
+  it("preserves a one-frame-pixel transform in fractional monitor coordinates", async () => {
+    const state = fixture(2);
+    state.composition.tracks[0]!.clips[0]!.transform = { x: 1 };
+    const view = await mountTimeline(state);
+    const player = flatten(view.root).find((item) => item.tag === "video");
+    expect(player?.props.style).toMatchObject({
+      transform: expect.stringMatching(
+        /translate3d\(0\.4166666666666667px, 0px, 0\)/,
+      ),
+    });
+  });
+
   it("records actual clip body work and keeps selection read-only", async () => {
     const state = fixture();
     const before = JSON.stringify(state);

@@ -24,6 +24,7 @@
     "test:integration": "vitest run packages/application/tests packages/media/tests packages/render/tests packages/catalog/tests tests/integration",
     "test:e2e": "playwright test",
     "test:i18n": "tsx scripts/check-i18n.ts",
+    "quality:photo-film": "tsx scripts/photo-film-quality.ts",
     "build": "node scripts/build.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "test:interchange": "tsx scripts/verify-interchange.ts",
@@ -39,13 +40,15 @@
     "@openfilm/media": "workspace:*",
     "@openfilm/metadata": "workspace:*",
     "@openfilm/plugin-sdk": "workspace:*",
+    "@openfilm/provider-whisper": "workspace:*",
     "@openfilm/render": "workspace:*",
     "@openfilm/solver": "workspace:*",
     "@openfilm/source-insta360": "workspace:*",
     "@openfilm/source-pixel": "workspace:*",
     "@openfilm/story": "workspace:*",
+    "@resvg/resvg-js": "2.6.2",
     "exiftool-vendored.pl": "13.59.3",
-    "@openfilm/provider-whisper": "workspace:*"
+    "fontkit": "2.0.4"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

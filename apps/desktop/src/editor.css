@@ -287,6 +287,7 @@
 }
 
 .editor-source-screen {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -298,12 +299,126 @@
 }
 
 .editor-composition-frame {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   background: var(--of-player);
+  contain: layout paint;
+}
+
+.editor-monitor-tools {
+  position: absolute;
+  z-index: 3;
+  top: var(--of-space-2);
+  left: var(--of-space-2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--of-space-1);
+  max-width: calc(100% - 2 * var(--of-space-2));
+  padding: var(--of-space-1);
+  border-radius: var(--of-radius-sm);
+  color: var(--of-on-media);
+  background: var(--of-media-scrim);
+}
+
+.editor-monitor-tools select {
+  min-height: 1.8rem;
+  max-width: 8rem;
+  padding: 0 var(--of-space-1);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-sm);
+  color: var(--of-on-media);
+  background: var(--of-surface-2);
+  font-size: var(--of-font-caption);
+}
+
+.editor-monitor-tools .editor-button {
+  min-height: 1.8rem;
+  padding: var(--of-space-1);
+  font-size: var(--of-font-caption);
+}
+
+.editor-monitor-tools kbd,
+.editor-monitor-guide-note {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+}
+
+.editor-monitor-guide-note {
+  padding-inline: var(--of-space-1);
+}
+
+.editor-monitor-guide-layer {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.editor-monitor-guide-frame {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid rgb(255 255 255 / 72%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
+}
+
+.editor-monitor-thirds,
+.editor-monitor-safe {
+  position: absolute;
+  pointer-events: none;
+}
+
+.editor-monitor-thirds {
+  inset: 0;
+}
+
+.editor-monitor-thirds::before {
+  position: absolute;
+  inset: 0 33.333%;
+  border-right: 1px solid rgb(255 255 255 / 65%);
+  border-left: 1px solid rgb(255 255 255 / 65%);
+  content: "";
+}
+
+.editor-monitor-thirds::after {
+  position: absolute;
+  inset: 33.333% 0;
+  border-top: 1px solid rgb(255 255 255 / 65%);
+  border-bottom: 1px solid rgb(255 255 255 / 65%);
+  content: "";
+}
+
+.editor-monitor-safe-action {
+  inset: 5%;
+  border: 1px dashed rgb(255 255 255 / 70%);
+}
+
+.editor-monitor-safe-title {
+  inset: 10%;
+  border: 1px solid rgb(255 224 125 / 88%);
+}
+
+.editor-monitor-transport {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--of-space-1);
+}
+
+.editor-monitor-transport time {
+  color: var(--of-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .editor-composition-frame > :is(img, video) {
@@ -646,6 +761,156 @@ button.editor-beat-heading:hover {
   border: 1px solid var(--editor-border);
   border-radius: var(--of-radius-md);
   background: var(--editor-inset);
+}
+
+.editor-presentation-inspector,
+.editor-soundtrack-panel {
+  display: grid;
+  gap: var(--of-space-3);
+  min-width: 0;
+}
+
+.editor-presentation-inspector h3,
+.editor-soundtrack-panel h3 {
+  margin: 0;
+  font-size: var(--of-font-body);
+  font-weight: 600;
+}
+
+.editor-presentation-inspector h4 {
+  margin: var(--of-space-2) 0 0;
+  font-size: var(--of-font-caption);
+  font-weight: 550;
+}
+
+.editor-presentation-details summary {
+  cursor: pointer;
+  color: var(--editor-text);
+  padding-block: var(--of-space-2);
+}
+
+.editor-presentation-check {
+  display: flex;
+  gap: var(--of-space-2);
+  align-items: start;
+}
+
+.editor-presentation-check input {
+  width: auto;
+  margin-top: 0.25em;
+}
+
+.editor-presentation-warnings {
+  padding: var(--of-space-3);
+  border-left: 2px solid var(--of-warning);
+  color: var(--editor-text);
+  background: var(--of-warning-soft);
+}
+
+.editor-presentation-warnings p {
+  margin: 0;
+}
+
+.editor-soundtrack-list {
+  display: grid;
+  gap: var(--of-space-2);
+}
+
+.editor-soundtrack-list > button {
+  display: grid;
+  justify-items: start;
+  gap: var(--of-space-1);
+  text-align: start;
+  min-width: 0;
+}
+
+.editor-soundtrack-list span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.editor-soundtrack-list small {
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+}
+
+.editor-soundtrack-panel audio {
+  width: 100%;
+  min-width: 0;
+}
+
+.photo-presentation-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--of-space-2);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--of-space-2);
+}
+
+.photo-presentation-frame {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.photo-presentation-static,
+.photo-presentation-layers {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
+.editor-source-screen .photo-presentation-layers > img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  border: 0;
+}
+
+.editor-source-screen .photo-presentation-title,
+.editor-composition-frame > .editor-title-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  transform: none;
+  pointer-events: none;
+}
+
+.photo-presentation-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--of-space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.photo-presentation-transport input {
+  flex: 1 1 auto;
+  min-width: 2rem;
+}
+
+.photo-presentation-transport time {
+  flex: 0 0 auto;
+  color: var(--editor-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.photo-presentation-target {
+  flex: 1 1 260px;
+  max-width: 480px;
+  min-width: 0;
 }
 
 .editor-inspector-tabs button {
@@ -1896,4 +2161,107 @@ button.editor-beat-heading:hover {
   .precision-panel {
     max-height: 24rem;
   }
+}
+
+.editor-direction-review {
+  min-width: 0;
+  margin-block: var(--of-space-3);
+  border-block: 1px solid var(--editor-border);
+}
+
+.editor-direction-review > summary {
+  padding-block: var(--of-space-3);
+  color: var(--editor-text);
+  cursor: pointer;
+  font-size: var(--of-font-body);
+  font-weight: 600;
+}
+
+.editor-direction-review > summary:focus-visible {
+  outline: 2px solid var(--of-accent);
+  outline-offset: 3px;
+}
+
+.editor-direction-content,
+.editor-direction-options,
+.editor-direction-action {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-3);
+}
+
+.editor-direction-content {
+  padding-block: 0 var(--of-space-3);
+}
+
+.editor-direction-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.editor-direction-review :is(p, blockquote, ul, dl) {
+  margin: 0;
+}
+
+.editor-direction-review :is(p, label, blockquote, li, dd, button, small) {
+  overflow-wrap: anywhere;
+}
+
+.editor-direction-review :is(select, textarea, button) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.editor-direction-review textarea[readonly] {
+  color: var(--editor-muted);
+}
+
+.editor-direction-action {
+  padding-block: var(--of-space-3);
+  border-top: 1px solid var(--editor-border);
+}
+
+.editor-direction-action .editor-presentation-check span {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-1);
+}
+
+.editor-direction-action small,
+.editor-direction-comparison dt,
+.editor-direction-timing,
+.editor-direction-notes {
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+}
+
+.editor-direction-action blockquote {
+  padding-inline-start: var(--of-space-3);
+  border-inline-start: 2px solid var(--editor-border);
+  font-size: var(--of-font-body);
+  white-space: pre-wrap;
+}
+
+.editor-direction-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-space-3);
+}
+
+.editor-direction-comparison dd {
+  margin: var(--of-space-1) 0 0;
+  font-size: var(--of-font-body);
+}
+
+.editor-direction-notes {
+  display: grid;
+  gap: var(--of-space-2);
+  padding-inline-start: var(--of-space-4);
+}
+
+.editor-direction-notes q {
+  display: block;
+  color: var(--editor-text);
+  white-space: pre-wrap;
 }

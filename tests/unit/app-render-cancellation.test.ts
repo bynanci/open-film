@@ -87,6 +87,7 @@ function host() {
   const requested = ref<string | null>(null);
   const busy = ref("");
   const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
+  const refreshes = { assets: 0, project: 0 };
   const dependencies = {
     api: {
       jobs: () => {
@@ -114,8 +115,12 @@ function host() {
       return response.promise;
     },
     message: (key: string) => key,
-    reloadAssets: async () => {},
-    refreshProject: async () => {},
+    reloadAssets: async () => {
+      refreshes.assets++;
+    },
+    refreshProject: async () => {
+      refreshes.project++;
+    },
     checkMediaStatus: async () => {},
     previewVersion: ref(0),
     previewStale: ref(false),
@@ -150,6 +155,7 @@ function host() {
     notice,
     requested,
     busy,
+    refreshes,
   };
 }
 async function requestedCancellation(h: ReturnType<typeof host>) {
@@ -438,6 +444,29 @@ describe("App analysis recovery polling preserves evidence without empty prop ch
       expect(h.analysisRecovery.value).toBe(currentRecovery);
       expect(h.analysisRecovery.value[newer.jobId]).toEqual(newer);
       expect(h.jobs.value).toBe(currentJobs);
+    },
+  );
+});
+
+describe("render job progress polling", () => {
+  it("publishes render progress without reloading the media catalog or project", async () => {
+    const h = host();
+    const updated = { ...current("running"), progress: 0.42 };
+    const poll = h.pollJobs();
+    h.reads[0]!.resolve({ jobs: [updated, oldCancelled] });
+    await poll;
+    expect(h.jobs.value[0]?.progress).toBe(0.42);
+    expect(h.refreshes).toEqual({ assets: 0, project: 0 });
+  });
+
+  it.each(["completed", "failed", "cancelled"] as const)(
+    "refreshes project state once when a render becomes %s",
+    async (status) => {
+      const h = host();
+      const poll = h.pollJobs();
+      h.reads[0]!.resolve({ jobs: [current(status), oldCancelled] });
+      await poll;
+      expect(h.refreshes).toEqual({ assets: 1, project: 1 });
     },
   );
 });

@@ -1,15 +1,44 @@
-import type {
-  Clip,
-  Composition,
-  MediaAsset,
-  Story,
-  StoryBeat,
-  Track,
+import {
+  MAX_TITLE_LENGTH,
+  validatePhotoLayout,
+  validatePhotoMotion,
+  validateTitleStyle,
+  validateAudioAutomation,
+  type AudioAutomation,
+  type PhotoLayout,
+  type PhotoMotion,
+  type TitleStyle,
+  type Clip,
+  type Composition,
+  type MediaAsset,
+  type Story,
+  type StoryBeat,
+  type Track,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
+  | {
+      type: "presentation";
+      clipId: string;
+      layout?: PhotoLayout | null;
+      motion?: PhotoMotion | null;
+      title?: string | null;
+      titleStyle?: TitleStyle | null;
+    }
+  | {
+      type: "audio.add";
+      clipId: string;
+      assetId: string;
+      role: AudioAutomation["role"];
+      timelineStart: number;
+      sourceIn: number;
+      sourceOut: number;
+      volume?: number;
+    }
+  | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
+  | { type: "audio.move"; clipId: string; timelineStart: number }
   | { type: "trim"; clipId: string; sourceIn: number; sourceOut: number }
   | { type: "clip.split"; clipId: string; sourceTime: number }
   | { type: "duration"; clipId: string; duration: number }
@@ -114,6 +143,12 @@ function finite(
 function allClips(document: EditorDocument): Clip[] {
   return document.composition.tracks.flatMap((track) => track.clips);
 }
+function clipAssetIds(clip: Clip): string[] {
+  return [
+    clip.assetId,
+    ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+  ];
+}
 function findClip(
   document: EditorDocument,
   id: string,
@@ -154,9 +189,19 @@ function protectedClip(
   return (
     !!clip.locked ||
     !!findAsset(assets, clip.assetId).state.locked ||
+    !!(
+      clip.layout?.secondary &&
+      findAsset(assets, clip.layout.secondary.assetId).state.locked
+    ) ||
     requiredIds(
       document.story.beats.find((beat) => beat.id === clip.beatId),
-    ).has(clip.assetId)
+    ).has(clip.assetId) ||
+    !!(
+      clip.layout?.secondary &&
+      requiredIds(
+        document.story.beats.find((beat) => beat.id === clip.beatId),
+      ).has(clip.layout.secondary.assetId)
+    )
   );
 }
 function sourceDuration(asset: MediaAsset): number {
@@ -178,6 +223,16 @@ function renderable(asset: MediaAsset): boolean {
       ?.supported !== false
   );
 }
+/** Match the renderer's audio evidence; a video filename alone proves no stream. */
+function hasAudioStream(asset: MediaAsset): boolean {
+  if (asset.mediaType === "audio") return true;
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    { streams?: { codec_type?: string }[] } | undefined;
+  return (
+    Array.isArray(probe?.streams) &&
+    probe.streams.some((stream) => stream?.codec_type === "audio")
+  );
+}
 function sourceBounds(
   clip: Clip,
   asset: MediaAsset,
@@ -194,39 +249,141 @@ function sourceBounds(
     );
   return { sourceIn, sourceOut };
 }
-function updateDuration(document: EditorDocument): void {
+function filmClips(document: EditorDocument): Clip[] {
+  return document.composition.tracks
+    .filter((track) => track.timing !== "overlay")
+    .flatMap((track) => track.clips);
+}
+/** Automation stays in clip-local timeline seconds after source trims/speed changes.
+ * Keep the retained gain curve, interpolate its new endpoint, and bound fades and
+ * manual duck regions to the edited clip. Source-relative realignment is explicit.
+ */
+function constrainAudioAutomation(clip: Clip, duration: number): void {
+  const automation = clip.audioAutomation;
+  if (!automation) return;
+  const next = structuredClone(automation);
+  if (next.fadeIn !== undefined) next.fadeIn = Math.min(next.fadeIn, duration);
+  if (next.fadeOut !== undefined)
+    next.fadeOut = Math.min(next.fadeOut, duration);
+  if (
+    next.points?.length &&
+    next.points.some((point) => point.time > duration)
+  ) {
+    const points = next.points;
+    let gain = points[0]!.gain;
+    for (let index = 1; index < points.length; index++) {
+      const previous = points[index - 1]!,
+        point = points[index]!;
+      if (duration < previous.time) break;
+      if (duration <= point.time) {
+        gain =
+          previous.gain +
+          ((point.gain - previous.gain) * (duration - previous.time)) /
+            (point.time - previous.time);
+        break;
+      }
+      gain = point.gain;
+    }
+    next.points = points.filter((point) => point.time < duration);
+    next.points.push({ time: duration, gain });
+  }
+  if (next.ducking)
+    next.ducking = next.ducking.flatMap((region) => {
+      if (region.start >= duration) return [];
+      const end = Math.min(region.end, duration);
+      const attack = Math.min(region.attack, end - region.start);
+      const release = Math.min(
+        region.release,
+        Math.max(0, end - region.start - attack),
+      );
+      return [{ ...region, end, attack, release }];
+    });
+  clip.audioAutomation = validateAudioAutomation(next, duration);
+}
+function updateDuration(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  reconcileOverlays = true,
+): void {
   document.composition.duration = Math.max(
     0,
-    ...allClips(document).map(
+    ...filmClips(document).map(
       (clip) => clip.timelineStart + clip.timelineDuration,
     ),
   );
   finite(document.composition.duration, "Resulting timeline duration", 0);
+  if (!reconcileOverlays) return;
+  for (const track of document.composition.tracks) {
+    if (track.timing !== "overlay") continue;
+    const retained: Clip[] = [];
+    for (const clip of track.clips) {
+      const remaining = document.composition.duration - clip.timelineStart;
+      if (remaining < clip.timelineDuration - EPSILON) {
+        if (clip.locked || findAsset(assets, clip.assetId).state.locked)
+          fail(
+            `Shortening the film would truncate locked audio "${clip.id}". Unlock or trim it explicitly first.`,
+          );
+        if (remaining <= EPSILON) continue;
+        constrainAudioAutomation(clip, remaining);
+        clip.timelineDuration = remaining;
+        clip.sourceOut =
+          (clip.sourceIn ?? 0) + remaining * (clip.transform?.speed ?? 1);
+      }
+      retained.push(clip);
+    }
+    track.clips = retained;
+  }
 }
 /** Ripple at the old end preserves gaps and clips that overlap the edited source. */
-function resize(document: EditorDocument, clip: Clip, duration: number): void {
+function resize(
+  document: EditorDocument,
+  clip: Clip,
+  duration: number,
+  assets: MediaAsset[],
+  reconcileOverlays = true,
+): void {
   finite(duration, "Clip duration", 0, true);
+  const { track } = findClip(document, clip.id);
+  constrainAudioAutomation(clip, duration);
+  if (track.timing === "overlay") {
+    if (clip.timelineStart + duration > document.composition.duration + EPSILON)
+      fail("Audio overlay must fit within the existing film duration.");
+    clip.timelineDuration = duration;
+    return;
+  }
   const end = clip.timelineStart + clip.timelineDuration;
   const delta = duration - clip.timelineDuration;
   clip.timelineDuration = duration;
   if (clip.transition && clip.transition.duration > duration)
     clip.transition.duration = duration;
-  for (const other of allClips(document))
+  for (const other of filmClips(document))
     if (other.id !== clip.id && other.timelineStart >= end - EPSILON)
       other.timelineStart = Math.max(0, other.timelineStart + delta);
-  updateDuration(document);
+  updateDuration(document, assets, reconcileOverlays);
 }
-function remove(document: EditorDocument, clip: Clip): void {
+function remove(
+  document: EditorDocument,
+  clip: Clip,
+  assets: MediaAsset[],
+  reconcileOverlays = true,
+): void {
   const { track } = findClip(document, clip.id);
   const end = clip.timelineStart + clip.timelineDuration;
   track.clips = track.clips.filter((item) => item.id !== clip.id);
-  for (const other of allClips(document))
+  if (track.timing === "overlay") {
+    if (!track.clips.length)
+      document.composition.tracks = document.composition.tracks.filter(
+        (item) => item !== track,
+      );
+    return;
+  }
+  for (const other of filmClips(document))
     if (other.timelineStart >= end - EPSILON)
       other.timelineStart = Math.max(
         0,
         other.timelineStart - clip.timelineDuration,
       );
-  updateDuration(document);
+  updateDuration(document, assets, reconcileOverlays);
 }
 function replace(
   document: EditorDocument,
@@ -261,10 +418,16 @@ function replace(
     sourceDuration(asset) / speed,
   );
   clip.assetId = assetId;
+  delete clip.layout;
+  delete clip.motion;
+  // Authored text and its typography belong to the clip, independent of source.
+  // Automation belongs to playable sound; retain its local curve only when the
+  // replacement still has an audio stream. Undo keeps the original snapshot.
+  if (!hasAudioStream(asset)) delete clip.audioAutomation;
   clip.sourceIn = 0;
   clip.sourceOut = duration * speed;
   finite(clip.sourceOut, "Resulting source out", 0, true);
-  resize(document, clip, duration);
+  resize(document, clip, duration, assets);
 }
 function beatLength(document: EditorDocument, beatId: string): number {
   return allClips(document)
@@ -294,6 +457,63 @@ export function applyTimelineCommand(
   command: TimelineCommand,
 ): EditorDocument {
   const next = structuredClone(document);
+  if (command.type === "audio.add") {
+    if (
+      !command.clipId.trim() ||
+      command.clipId.length > 256 ||
+      allClips(next).some((clip) => clip.id === command.clipId)
+    )
+      fail("Audio clip ID must be nonempty and unique within the composition.");
+    const asset = findAsset(assets, command.assetId);
+    if (
+      asset.mediaType !== "audio" ||
+      !renderable(asset) ||
+      asset.state.rejected
+    )
+      fail(`Source "${asset.name}" must be supported, non-rejected audio.`);
+    if (!filmClips(next).length || next.composition.duration <= 0)
+      fail("Create a film before adding an audio overlay.");
+    finite(command.timelineStart, "Audio start", 0);
+    finite(command.sourceIn, "Source in", 0);
+    finite(command.sourceOut, "Source out", command.sourceIn, true);
+    if (command.sourceOut > sourceDuration(asset))
+      fail(`Source out exceeds the actual duration of "${asset.name}".`);
+    const duration = command.sourceOut - command.sourceIn;
+    if (command.timelineStart + duration > next.composition.duration + EPSILON)
+      fail("Audio overlay must fit within the existing film duration.");
+    const automation = validateAudioAutomation({
+      version: 1,
+      role: command.role,
+    });
+    if (command.volume !== undefined) {
+      finite(command.volume, "Volume", 0);
+      if (command.volume > 1) fail("Volume must be between 0 and 1.");
+    }
+    let trackId = `${next.composition.id}:overlay:${command.role}`,
+      suffix = 1;
+    while (next.composition.tracks.some((track) => track.id === trackId))
+      trackId = `${next.composition.id}:overlay:${command.role}:${suffix++}`;
+    next.composition.tracks.push({
+      id: trackId,
+      type: command.role === "music" ? "music" : "audio",
+      timing: "overlay",
+      clips: [
+        {
+          id: command.clipId,
+          assetId: command.assetId,
+          timelineStart: command.timelineStart,
+          timelineDuration: duration,
+          sourceIn: command.sourceIn,
+          sourceOut: command.sourceOut,
+          audioAutomation: automation,
+          ...(command.volume === undefined
+            ? {}
+            : { transform: { volume: command.volume } }),
+        },
+      ],
+    });
+    return next;
+  }
   if (command.type === "beat") {
     const beat = findBeat(next, command.beatId);
     const previousBeat = structuredClone(beat);
@@ -335,8 +555,155 @@ export function applyTimelineCommand(
   if (clip.locked)
     fail(`Clip "${clip.id}" is locked. Unlock it before editing.`);
   const asset = findAsset(assets, clip.assetId);
+  if (track.timing === "overlay" && asset.state.locked)
+    fail(`Source "${asset.name}" is locked. Unlock it before editing audio.`);
   switch (command.type) {
+    case "presentation": {
+      if (
+        track.type === "audio" ||
+        track.type === "music" ||
+        asset.mediaType === "audio"
+      )
+        fail("Photo presentation and titles require a visual clip.");
+      if (asset.state.locked || asset.state.rejected || !renderable(asset))
+        fail(
+          `Source "${asset.name}" must be unlocked, non-rejected and supported before presentation edits.`,
+        );
+      const beat = next.story.beats.find((beat) => beat.id === clip.beatId);
+      const required = requiredIds(beat);
+      const previousSecondary = clip.layout?.secondary;
+      if (
+        previousSecondary &&
+        required.has(previousSecondary.assetId) &&
+        Object.hasOwn(command, "layout") &&
+        command.layout?.secondary?.assetId !== previousSecondary.assetId
+      )
+        fail(
+          "This layout would remove selected or required paired media. Remove its selection or constraint before changing it.",
+        );
+      if (
+        previousSecondary &&
+        findAsset(assets, previousSecondary.assetId).state.locked
+      )
+        fail(
+          "The paired photo is locked. Unlock it before changing presentation.",
+        );
+      const fields = ["layout", "motion", "title", "titleStyle"] as const;
+      if (!fields.some((key) => Object.hasOwn(command, key)))
+        fail("Provide a presentation field to change.");
+      if (
+        ((command.layout !== undefined && command.layout !== null) ||
+          (command.motion !== undefined && command.motion !== null)) &&
+        track.type !== "video"
+      )
+        fail(
+          "Photo layout and motion require a story picture video track. Visual overlays support styled titles and their existing transforms.",
+        );
+      if (
+        ((command.layout !== undefined && command.layout !== null) ||
+          (command.motion !== undefined && command.motion !== null)) &&
+        asset.mediaType !== "image"
+      )
+        fail("Photo layout and motion require a still image source.");
+      if (command.layout !== undefined) {
+        if (command.layout === null) delete clip.layout;
+        else {
+          const layout = validatePhotoLayout(command.layout);
+          if (layout.secondary) {
+            const secondary = findAsset(assets, layout.secondary.assetId);
+            if (
+              secondary.mediaType !== "image" ||
+              secondary.state.locked ||
+              secondary.state.rejected ||
+              !renderable(secondary)
+            )
+              fail(
+                `Paired source "${secondary.name}" must be a supported, unlocked, non-rejected photo.`,
+              );
+            if (
+              beat?.constraints?.some(
+                (constraint) =>
+                  constraint.type === "must-exclude" &&
+                  constraint.assetIds.includes(secondary.id),
+              )
+            )
+              fail(
+                `Paired source "${secondary.name}" is excluded from this beat.`,
+              );
+            if (secondary.id === asset.id)
+              fail("Choose a different photo for the second panel.");
+          }
+          clip.layout = layout;
+        }
+      }
+      if (command.motion !== undefined) {
+        if (command.motion === null) delete clip.motion;
+        else clip.motion = validatePhotoMotion(command.motion);
+      }
+      if (command.title !== undefined) {
+        if (command.title === null) delete clip.title;
+        else {
+          if (
+            typeof command.title !== "string" ||
+            !command.title.trim() ||
+            command.title.length > MAX_TITLE_LENGTH
+          )
+            fail(
+              `Title must be text of at most ${MAX_TITLE_LENGTH} characters.`,
+            );
+          clip.title = command.title;
+        }
+      }
+      if (command.titleStyle !== undefined) {
+        if (command.titleStyle === null) delete clip.titleStyle;
+        else clip.titleStyle = validateTitleStyle(command.titleStyle);
+      }
+      break;
+    }
+
+    case "audio.configure":
+      if (asset.mediaType !== "audio" && asset.mediaType !== "video")
+        fail("Audio automation requires an audio or video source.");
+      if (!hasAudioStream(asset))
+        fail(
+          "Audio automation requires a detected audio stream. Analyze or relink this video, or choose an audio source before configuring fades, envelopes or ducking.",
+        );
+      if (asset.state.locked)
+        fail(
+          `Source "${asset.name}" is locked. Unlock it before editing audio.`,
+        );
+      clip.audioAutomation = validateAudioAutomation(
+        command.automation,
+        clip.timelineDuration,
+      );
+      break;
+    case "audio.move":
+      if (track.timing !== "overlay")
+        fail("Move audio overlays on their explicit overlay track.");
+      if (asset.state.locked)
+        fail(
+          `Source "${asset.name}" is locked. Unlock it before moving audio.`,
+        );
+      finite(command.timelineStart, "Audio start", 0);
+      if (
+        command.timelineStart + clip.timelineDuration >
+        next.composition.duration + EPSILON
+      )
+        fail("Audio overlay must fit within the existing film duration.");
+      clip.timelineStart = command.timelineStart;
+      break;
+
     case "clip.split": {
+      if (
+        clip.audioAutomation &&
+        (clip.audioAutomation.fadeIn ||
+          clip.audioAutomation.fadeOut ||
+          clip.audioAutomation.points?.length ||
+          clip.audioAutomation.ducking?.length)
+      )
+        fail(
+          "Splitting configured audio automation is not supported. Remove its fades, envelope and ducking before splitting, then configure each half explicitly.",
+        );
       if (asset.mediaType !== "video" && asset.mediaType !== "audio")
         fail(
           "Split requires a flat video or audio source. Use photo duration for still images.",
@@ -415,6 +782,7 @@ export function applyTimelineCommand(
         next,
         clip,
         (command.sourceOut - command.sourceIn) / (clip.transform?.speed ?? 1),
+        assets,
       );
       break;
     }
@@ -427,7 +795,7 @@ export function applyTimelineCommand(
       clip.sourceOut =
         (clip.sourceIn ?? 0) + command.duration * (clip.transform?.speed ?? 1);
       finite(clip.sourceOut, "Resulting source out", clip.sourceIn ?? 0, true);
-      resize(next, clip, command.duration);
+      resize(next, clip, command.duration, assets);
       break;
     case "speed": {
       finite(command.speed, "Speed", 0, true);
@@ -435,7 +803,12 @@ export function applyTimelineCommand(
       clip.transform = { ...clip.transform, speed: command.speed };
       clip.sourceIn = bounds.sourceIn;
       clip.sourceOut = bounds.sourceOut;
-      resize(next, clip, (bounds.sourceOut - bounds.sourceIn) / command.speed);
+      resize(
+        next,
+        clip,
+        (bounds.sourceOut - bounds.sourceIn) / command.speed,
+        assets,
+      );
       break;
     }
     case "volume":
@@ -494,7 +867,7 @@ export function applyTimelineCommand(
             .reduce((sum, clip) => sum + clip.timelineDuration, 0);
         item.timelineStart = slot.timelineStart + shift;
       }
-      for (const other of allClips(next)) {
+      for (const other of filmClips(next)) {
         if (group.includes(other)) continue;
         const shift = original.reduce(
           (sum, slot, index) =>
@@ -510,7 +883,7 @@ export function applyTimelineCommand(
       track.clips = track.clips.map((item) =>
         group.includes(item) ? reordered[index++]! : item,
       );
-      updateDuration(next);
+      updateDuration(next, assets);
       break;
     }
     case "delete":
@@ -522,12 +895,24 @@ export function applyTimelineCommand(
             constraint.type === "asset-order") &&
           constraint.assetIds.includes(clip.assetId),
       );
-      if (asset.state.locked || required)
+      if (
+        clip.layout?.secondary &&
+        requiredIds(beat).has(clip.layout.secondary.assetId)
+      )
+        fail(
+          `Clip "${clip.id}" uses selected or required paired media. Remove its selection or constraint before ${command.type === "delete" ? "deleting" : "replacing"} it.`,
+        );
+      if (
+        asset.state.locked ||
+        (clip.layout?.secondary &&
+          findAsset(assets, clip.layout.secondary.assetId).state.locked) ||
+        required
+      )
         fail(
           `Clip "${clip.id}" uses locked or required media. Remove the selection/constraint or unlock the asset before ${command.type === "delete" ? "deleting" : "replacing"} it.`,
         );
       const oldAssetId = clip.assetId;
-      if (command.type === "delete") remove(next, clip);
+      if (command.type === "delete") remove(next, clip, assets);
       else replace(next, assets, clip, command.assetId);
       if (
         beat?.selectedAssetIds?.includes(oldAssetId) &&
@@ -738,6 +1123,7 @@ function shorteningPlan(
   const snapshots: EditorDocument[] = [];
   const editable = allClips(document).filter(
     (clip) =>
+      findClip(document, clip.id).track.timing !== "overlay" &&
       (!onlyBeat || clip.beatId === onlyBeat) &&
       !excludedClipIds.includes(clip.id) &&
       !protectedClip(document, assets, clip),
@@ -750,7 +1136,13 @@ function shorteningPlan(
       a.id.localeCompare(b.id),
   );
   function offer(command: TimelineCommand, reason: string): boolean {
-    const next = applyTimelineCommand(current, assets, command);
+    let next: EditorDocument;
+    try {
+      next = applyTimelineCommand(current, assets, command);
+    } catch (error) {
+      if (error instanceof TimelineEditingError) return false;
+      throw error;
+    }
     const secondsSaved =
       current.composition.duration - next.composition.duration;
     if (secondsSaved < -EPSILON) return false;
@@ -884,7 +1276,7 @@ function regenerate(
     ) ?? [],
   );
   const unavailable = new Set(
-    [...outside, ...protectedClips].map((clip) => clip.assetId),
+    [...outside, ...protectedClips].flatMap(clipAssetIds),
   );
   const pool = assets.filter(
     (asset) =>
@@ -911,13 +1303,13 @@ function regenerate(
         beatLength(document, beatId) - clip.timelineDuration >=
           (beat.minDuration ?? 0) - EPSILON
       )
-        remove(document, findClip(document, clip.id).clip);
+        remove(document, findClip(document, clip.id).clip, assets);
       else retained.push(asset);
     }
     return document;
   }
   if (mode === "replace-similar") {
-    const used = new Set(allClips(document).map((clip) => clip.assetId));
+    const used = new Set(allClips(document).flatMap(clipAssetIds));
     for (const originalClip of editable) {
       const source = findAsset(assets, originalClip.assetId);
       const candidates = pool.filter(
@@ -963,7 +1355,9 @@ function regenerate(
       "Locked and required clips exceed this beat's maximum. Increase the maximum or remove their protection before regeneration.",
     );
   const required = requiredIds(beat);
-  protectedClips.forEach((clip) => required.delete(clip.assetId));
+  protectedClips.forEach((clip) =>
+    clipAssetIds(clip).forEach((id) => required.delete(id)),
+  );
   const preferred =
     mode === "more-photos"
       ? pool.filter((asset) => asset.mediaType === "image")
@@ -1047,7 +1441,9 @@ function regenerate(
     start: clip.timelineStart,
   }));
   const trackForType = (type: "audio" | "video") => {
-    let track = document.composition.tracks.find((item) => item.type === type);
+    let track = document.composition.tracks.find(
+      (item) => item.type === type && item.timing !== "overlay",
+    );
     if (!track) {
       let id = `${document.composition.id}:${type}`,
         suffix = 1;
@@ -1067,11 +1463,13 @@ function regenerate(
     );
     track.clips.splice(index < 0 ? track.clips.length : index, 0, clip);
   };
+  // Regeneration may temporarily shorten the visual timeline while replacing
+  // slots, then append more clips. Reconcile soundtrack only at the final end.
   for (const assignment of assignments.sort((a, b) => b.start - a.start)) {
     const { clip, track } = findClip(document, assignment.oldId);
-    if (!assignment.next) remove(document, clip);
+    if (!assignment.next) remove(document, clip, assets, false);
     else {
-      resize(document, clip, assignment.next.timelineDuration);
+      resize(document, clip, assignment.next.timelineDuration, assets, false);
       assignment.next.timelineStart = clip.timelineStart;
       const index = track.clips.indexOf(clip);
       const type =
@@ -1106,7 +1504,7 @@ function regenerate(
   } else if (!insertion && original.length)
     insertion = Math.min(...original.map((clip) => clip.timelineStart));
   for (const clip of remaining) {
-    for (const other of allClips(document))
+    for (const other of filmClips(document))
       if (other.timelineStart >= insertion - EPSILON)
         other.timelineStart += clip.timelineDuration;
     const type =
@@ -1116,6 +1514,6 @@ function regenerate(
     insertSorted(track, clip);
     insertion += clip.timelineDuration;
   }
-  updateDuration(document);
+  updateDuration(document, assets);
   return document;
 }

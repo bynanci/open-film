@@ -556,3 +556,12 @@ export type {
   ShorteningSuggestionPreview,
   PreparedShorteningPlan,
 } from "./editing.js";
+
+export { prepareSceneDirection } from "./scene-direction.js";
+export type {
+  SceneDirectionOptions,
+  SceneDirectionContext,
+  SceneDirectionAction,
+  SceneDirectionNote,
+  SceneDirectionProposal,
+} from "./scene-direction.js";

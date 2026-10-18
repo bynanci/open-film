@@ -201,6 +201,10 @@ test("clip instances sharing an asset retain selection identity without changing
     );
   const initialDraft = await draft();
   const readsAndWrites: string[] = [];
+  const sourcePlayer = page.getByLabel("Selected clip source preview", {
+    exact: true,
+  });
+  let changedPlayerState = false;
   page.on("request", (entry) => {
     const path = new URL(entry.url()).pathname;
     if (/\/compositions\/.+\/(?:editor|edit|undo|redo)$/.test(path))
@@ -223,6 +227,39 @@ test("clip instances sharing an asset retain selection identity without changing
     await expect(page.getByLabel("Source out", { exact: true })).toHaveValue(
       "3",
     );
+    if (id === "opening-motion" && !changedPlayerState) {
+      await expect
+        .poll(() =>
+          sourcePlayer.evaluate(
+            (player) => (player as HTMLVideoElement).readyState,
+          ),
+        )
+        .toBeGreaterThanOrEqual(1);
+      await sourcePlayer.evaluate((element) => {
+        const player = element as HTMLVideoElement;
+        player.currentTime = 1;
+        player.playbackRate = 0.5;
+        player.volume = 0.25;
+      });
+      await expect
+        .poll(() =>
+          sourcePlayer.evaluate(
+            (player) => (player as HTMLVideoElement).currentTime,
+          ),
+        )
+        .toBeGreaterThan(0.8);
+      changedPlayerState = true;
+    } else if (id === "ending-motion" && changedPlayerState) {
+      await expect
+        .poll(() =>
+          sourcePlayer.evaluate(
+            (player) => (player as HTMLVideoElement).currentTime,
+          ),
+        )
+        .toBeLessThan(0.1);
+      await expect(sourcePlayer).toHaveJSProperty("playbackRate", 1);
+      await expect(sourcePlayer).toHaveJSProperty("volume", 1);
+    }
   }
   expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
     true,
@@ -835,6 +872,23 @@ test("saves photo rotation through reopening and keeps visual controls absent fo
   const fixture = await fixtureForEditing(request, true);
   await openTimeline(page);
   await page.locator("#clip-opening-photo").click();
+  await page.getByRole("button", { name: "↻ +90°" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(90);
+  await page.getByRole("button", { name: "↺ −90°" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(0);
+  await page.getByRole("button", { name: "↻ +90°" }).click();
+  await saved(page);
+  await page.getByRole("button", { name: "Reset transform" }).click();
+  await saved(page);
+  expect(
+    clipById(await editorState(request), "opening-photo").transform?.rotation,
+  ).toBe(0);
   await field(page, "Clip rotation", "90");
   await saved(page);
   expect(

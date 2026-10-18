@@ -93,7 +93,19 @@ describe("offline application workflow", () => {
     });
     const composition = app.compose(story.id);
     expect(composition.duration).toBeLessThanOrEqual(4);
-    const preview = await app.render(composition.id);
+    const renderProgress: number[] = [];
+    const preview = await app.render(composition.id, {
+      onProgress: (progress) => renderProgress.push(progress),
+    });
+    expect(renderProgress.length).toBeGreaterThan(0);
+    expect(
+      renderProgress.every(
+        (progress, index) =>
+          progress >= 0 &&
+          progress <= 0.99 &&
+          (index === 0 || progress >= renderProgress[index - 1]!),
+      ),
+    ).toBe(true);
     const probe = await runProcess("ffprobe", [
       "-v",
       "error",
@@ -125,6 +137,12 @@ describe("offline application workflow", () => {
         .listJobs()
         .some((job) => job.status === "completed" && job.type === "render"),
     ).toBe(true);
+    expect(
+      app.catalog
+        .listJobs()
+        .find((job) => job.status === "completed" && job.type === "render")
+        ?.progress,
+    ).toBe(1);
     app.close();
   }, 60000);
 

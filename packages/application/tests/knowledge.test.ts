@@ -62,7 +62,7 @@ async function provenDeadReviewOwner() {
   // owner-less legacy checkpoint nor a made-up PID proves an interrupted run.
   const { stdout } = await promisify(execFile)(process.execPath, [
     "--import",
-    createRequire(import.meta.url).resolve("tsx"),
+    pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
     "--input-type=module",
     "--eval",
     `import {createReviewOwner} from ${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)};console.log(JSON.stringify(createReviewOwner()));`,
@@ -1160,7 +1160,9 @@ describe("optional provider review, privacy and recoverable batches", () => {
         .segmentId,
     ).toBe(id);
   });
-  it.skipIf(process.platform !== "linux").each(["queued", "running"] as const)(
+  it
+    .skipIf(!["linux", "win32"].includes(process.platform))
+    .each(["queued", "running"] as const)(
     "recovers an actual reopened catalog containing an interrupted %s review and preserves completed suggestions",
     async (status) => {
       const context = await fixture();
@@ -1551,7 +1553,7 @@ describe("optional provider review, privacy and recoverable batches", () => {
     expect((await work).errors?.[0]?.code).toBe("review.suggestionStale");
     expect((await knowledge.suggestionsList("source")).total).toBe(0);
   });
-  it.skipIf(process.platform !== "linux")(
+  it.skipIf(!["linux", "win32"].includes(process.platform))(
     "durably skips failed batches and marks interrupted pending batches retryable after restart",
     async () => {
       const context = await fixture();

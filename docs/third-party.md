@@ -4,16 +4,18 @@ OpenFilm source is Apache-2.0. Dependencies and external programs retain their
 own licenses; the project license does not replace them. The lockfiles identify
 exact versions, including transitive packages.
 
-| Component                     | Role                                           | Upstream license                                                                |
-| ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| Vue, Vite, TypeScript tooling | Desktop UI and builds                          | MIT (Vue/Vite); Apache-2.0 (TypeScript)                                         |
-| Tauri                         | Native shell                                   | MIT OR Apache-2.0                                                               |
-| Node.js                       | Local application runtime                      | MIT and bundled component notices                                               |
-| SQLite                        | Embedded project catalog                       | Public domain                                                                   |
-| exiftool-vendored.pl          | Perl ExifTool packaging wrapper                | MIT wrapper; ExifTool's own terms apply to the bundled tool                     |
-| ExifTool                      | Read media metadata                            | Same terms as Perl: Artistic License or GNU GPL                                 |
-| FFmpeg / FFprobe              | Decode, cache and render media                 | LGPL-2.1-or-later normally; GPL-enabled builds and codecs have additional terms |
-| OpenTimelineIO                | Independent development-time export validation | Apache-2.0                                                                      |
+| Component                     | Role                                                            | Upstream license                                                                |
+| ----------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Vue, Vite, TypeScript tooling | Desktop UI and builds                                           | MIT (Vue/Vite); Apache-2.0 (TypeScript)                                         |
+| Tauri                         | Native shell                                                    | MIT OR Apache-2.0                                                               |
+| Node.js                       | Local application runtime                                       | MIT and bundled component notices                                               |
+| SQLite                        | Embedded project catalog                                        | Public domain                                                                   |
+| exiftool-vendored.pl          | Perl ExifTool packaging wrapper                                 | MIT wrapper; ExifTool's own terms apply to the bundled tool                     |
+| ExifTool                      | Read media metadata                                             | Same terms as Perl: Artistic License or GNU GPL                                 |
+| FFmpeg / FFprobe              | Decode, cache and render media                                  | LGPL-2.1-or-later normally; GPL-enabled builds and codecs have additional terms |
+| OpenTimelineIO                | Independent development-time export validation                  | Apache-2.0                                                                      |
+| fontkit                       | Local font shaping, measured title layout and glyph outlines    | MIT                                                                             |
+| resvg (`@resvg/resvg-js`)     | Rasterize local title outlines into a shared preview/render PNG | MPL-2.0                                                                         |
 
 FFmpeg/FFprobe and Perl are system prerequisites, not redistributed OpenFilm
 binaries. Do not assume that every locally installed FFmpeg build has the same
@@ -27,6 +29,31 @@ synthesized tones. No personal photographs, recordings or commercial music are
 included. The fixture generator dedicates its generated media to the public
 domain under CC0-1.0. The application icon is original OpenFilm contributor work
 and is covered by this repository's license.
+
+## Local title fonts and rasterization
+
+Title rendering uses fontkit and resvg locally. Their exact versions and
+platform-specific native rasterizer dependencies are recorded in `pnpm-lock.yaml`.
+The rasterizer receives numerical glyph paths; it does not fetch fonts, contact
+font services or embed remote images. The same resulting PNG is used for the
+editor preview and FFmpeg render.
+
+OpenFilm does not copy operating-system fonts into its repository or export
+them with projects. Its default font lookup prefers the installed Noto Sans CJK
+Traditional Chinese face, then documented local platform fallbacks; exports
+record the resolved face and font-file SHA-256. `OPENFILM_TITLE_FONT` can select
+an explicitly installed OTF, TTF or TTC. Missing glyphs are reported before
+rendering. Font availability and redistribution permission are separate:
+Windows/macOS fonts may be used locally according to their licenses but must
+not be copied into installers without the required rights.
+
+[Noto CJK](https://github.com/notofonts/noto-cjk) is SIL Open Font License 1.1.
+The Linux development/CI environment installs the distribution's `fonts-noto-cjk`
+package rather than bundling the font files in OpenFilm. If an installer later
+redistributes Noto, retain the upstream copyright and complete OFL notice;
+modified fonts must also meet reserved-name and other OFL conditions. Fontkit's
+MIT notice and resvg's MPL-2.0 notice remain with their installed packages;
+OpenFilm's Apache-2.0 source license is unchanged.
 
 ## Optional transcription and capability reference
 

@@ -177,6 +177,8 @@ export default {
       },
       saved: "Saved to your project",
       downloadMp4: "Download MP4",
+      renderDetails: "Versions and checks",
+      downloadRecipe: "Download private render details",
       downloadFile: "Download {format}",
       resolveGuide: {
         title: "Next, in DaVinci Resolve",
