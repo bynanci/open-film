@@ -25,6 +25,9 @@ arbitrary prose or image contents and never calls a language provider.
       managed media, external writers and publication/commit failures.
 - [x] Integrate the existing Edit inspector in English, Traditional Chinese and
       Japanese with pseudo-locale, keyboard and bounded desktop layout coverage.
+- [x] Fix reviewed prerequisite-preview, opaque CLI identity and source-lock
+      regressions; prove selected recipe previews, valid photo/video edits and
+      protected presentation/delete/replace behavior through focused tests.
 - [x] Pass local non-browser gates and focused browser checks; include the new
       cases in existing full CI and independently review correctness. Full browser
       outcomes and exact-head merge readiness are tracked with the candidate PR.

@@ -120,9 +120,19 @@ pnpm cli direction-review preview FILM_ID --project ./film.openfilm --beat BEAT_
 pnpm cli direction-review accept FILM_ID --project ./film.openfilm --plan direction.json --request-id my-stable-review-request
 ```
 
-Use `--replace-existing` only when previewing explicit replacements, or
-`--actions ACTION_ID,...` to adopt a subset. Preview opens passively without
-writing the project. The reviewed JSON file is bounded to 16 MiB. The CLI extracts
+Use `--replace-existing` only when previewing explicit replacements. For ordinary
+IDs, `--clips CLIP_ID,...` and `--actions ACTION_ID,...` remain convenient. For
+opaque IDs containing commas or other delimiters, use JSON arrays instead:
+
+```sh
+pnpm cli direction-review preview FILM_ID --project ./film.openfilm --beat BEAT_ID --clips-json '["photo, # & 回憶"]' > direction.json
+pnpm cli direction-review accept FILM_ID --project ./film.openfilm --plan direction.json --request-id stable-request --actions-json '["photo, # & 回憶:layout"]'
+```
+
+Do not combine the CSV and JSON form of the same option. JSON arrays preserve
+identities exactly and must contain nonempty strings; normal application scope,
+uniqueness and size checks still apply. Omit action options to adopt all reviewed
+actions. Preview opens passively without writing the project. The reviewed JSON file is bounded to 16 MiB. The CLI extracts
 identities/selection from that file; supplied command snapshots cannot bypass
 server-side compilation. Unicode, spaces, `#` and `&` in project paths and IDs
 are covered by adapter regression tests.
