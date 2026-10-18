@@ -21,6 +21,8 @@ export default {
     storyMoment: "ストーリーの瞬間",
     yourStory: "あなたのストーリー",
     direction: {
+      examples:
+        "例：「縦横比を保持; ゆっくりズームイン」。ほかに「主役」「静止」「水平パン」に対応しています。",
       selectionNeedsReview:
         "プレビューまたは採用の前に選択内容を確認してください。必要な構図の編集を含めるか、動きをスキップしてください。",
       heading: "シーンの指示を編集に変換",

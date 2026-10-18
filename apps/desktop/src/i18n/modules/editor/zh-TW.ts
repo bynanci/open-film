@@ -21,6 +21,8 @@ export default {
     storyMoment: "故事片刻",
     yourStory: "你的故事",
     direction: {
+      examples:
+        "範例：「保留比例; 緩慢推近」。也支援「主視覺」、「保持靜止」和「水平平移」。",
       selectionNeedsReview:
         "預覽或接受前需要重新檢視此選擇。請包含所需的構圖剪輯，或略過運鏡。",
       heading: "將場景指示轉為剪輯",

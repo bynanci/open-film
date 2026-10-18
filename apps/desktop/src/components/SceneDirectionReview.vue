@@ -30,7 +30,7 @@ const props = defineProps<{
   reloadSaved: () => Promise<boolean>;
 }>();
 const emit = defineEmits<{ preview: [clip: Clip | null]; edited: [] }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const plan = ref<DirectionReviewPlan | null>(null);
 const included = ref<string[]>([]);
 const scope = ref<"selected" | "scene">("selected");
@@ -122,8 +122,8 @@ function clearPreview() {
   previewId.value = "";
   emit("preview", null);
 }
-watch(included, (ids) => {
-  if (previewId.value && !ids.includes(previewId.value)) clearPreview();
+watch(included, () => {
+  if (previewId.value) clearPreview();
   if (error.value === "selection") error.value = "";
 });
 function resetReview() {
@@ -220,12 +220,15 @@ function preview(action: DirectionReviewPlan["actions"][number]) {
     busy.value ||
     pending.value ||
     stale.value ||
+    !included.value.includes(action.id) ||
     props.disabled
   )
     return;
   if (previewId.value === action.id) return clearPreview();
   try {
-    const next = simulate([action]);
+    const next = simulate(
+      selectedActions.value.filter((item) => item.clipId === action.clipId),
+    );
     const clip = next.composition.tracks
       .flatMap((track) => track.clips)
       .find((item) => item.id === action.clipId);
@@ -413,6 +416,14 @@ onBeforeUnmount(() => {
         />
       </label>
       <p class="editor-note">{{ t("editor.direction.limit") }}</p>
+      <!-- Compiler phrases must stay executable in the expanded pseudo locale. -->
+      <p class="editor-note" data-testid="direction-examples">
+        {{
+          locale === "en-XA"
+            ? t("editor.direction.examples", {}, { locale: "en-US" })
+            : t("editor.direction.examples")
+        }}
+      </p>
       <fieldset
         class="editor-direction-options"
         :disabled="busy || !!pending || disabled"
@@ -530,7 +541,13 @@ onBeforeUnmount(() => {
               class="editor-button"
               type="button"
               data-testid="direction-preview"
-              :disabled="busy || !!pending || stale || disabled"
+              :disabled="
+                busy ||
+                !!pending ||
+                stale ||
+                disabled ||
+                !included.includes(action.id)
+              "
               :aria-pressed="previewId === action.id"
               @click="preview(action)"
             >

@@ -21,6 +21,8 @@ export default {
     storyMoment: "Story moment",
     yourStory: "Your story",
     direction: {
+      examples:
+        "Example: “Keep proportions; Gentle push-in”. Also supported: “Hero framing”, “Keep still”, “Horizontal pan”.",
       selectionNeedsReview:
         "This selection needs review before preview or acceptance. Include any required framing action, or skip the movement.",
       heading: "Scene directions to edits",

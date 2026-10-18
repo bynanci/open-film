@@ -54,6 +54,7 @@ async function createFilm(
   request: APIRequestContext,
   locale: ProjectContentLocale = "en-US",
   dependentMotion = false,
+  sourceLocked = false,
 ) {
   const fixture = await createDesktopFixture(0);
   cleanup.push(fixture.cleanup);
@@ -181,6 +182,10 @@ async function createFilm(
         protectedRegion: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 },
       };
       delete selected.transform;
+    }
+    if (sourceLocked) {
+      for (const name of ["01-photo.png", "04-motion.mp4"])
+        app.catalog.updateAsset(id(name), { state: { locked: true } });
     }
     await app.save();
   } finally {
@@ -489,13 +494,28 @@ test("skipping a prerequisite layout prevents unsafe motion preview and acceptan
   const layout = page.locator(
     '[data-testid="direction-action"][data-kind="layout"]',
   );
+  const motionPreview = page
+    .locator('[data-testid="direction-action"][data-kind="motion"]')
+    .getByTestId("direction-preview");
+  await motionPreview.click();
+  await expect(motionPreview).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("direction-error")).toHaveCount(0);
+  const seek = page.getByRole("slider", {
+    name: uiText("en-US", "editor.presentation.seek"),
+    exact: true,
+  });
+  await seek.focus();
+  await seek.press("End");
+  await expect(
+    page.locator(".editor-source-screen .photo-presentation-layers"),
+  ).toHaveAttribute("style", /scale\(1\.06\)/);
+  expect(await project(request)).toEqual(before);
   await layout.getByTestId("direction-select").uncheck();
+  await expect(motionPreview).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("direction-selection-warning")).toBeVisible();
   await expect(page.getByTestId("direction-accept")).toBeDisabled();
-  await page
-    .locator('[data-testid="direction-action"][data-kind="motion"]')
-    .getByTestId("direction-preview")
-    .click();
+  await motionPreview.click();
+  await expect(motionPreview).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("direction-error")).toHaveText(
     uiText("en-US", "editor.direction.selectionNeedsReview"),
   );
@@ -503,11 +523,145 @@ test("skipping a prerequisite layout prevents unsafe motion preview and acceptan
   await layout.getByTestId("direction-select").check();
   await expect(page.getByTestId("direction-selection-warning")).toHaveCount(0);
   await expect(page.getByTestId("direction-accept")).toBeEnabled();
+  await motionPreview.click();
+  await expect(motionPreview).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("direction-error")).toHaveCount(0);
+  await seek.press("End");
+  await expect(page.locator(".photo-presentation-layers")).toHaveAttribute(
+    "style",
+    /scale\(1\.06\)/u,
+  );
   await page.getByTestId("direction-accept").click();
   await expect
     .poll(async () => clip(await editor(request)).layout?.preset)
     .toBe("contain");
   expect(clip(await editor(request)).motion?.preset).toBe("push-in");
+});
+
+test("source-locked regular photo and video keep clip-local edits available while presentation and source replacement stay protected", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request, "en-US", false, true);
+  const before = await editor(request);
+  const catalogBefore = await request.get(`${api}/assets?limit=100`);
+  expect(catalogBefore.ok()).toBe(true);
+  const assetsBefore: unknown = (await catalogBefore.json()).assets;
+  await openEditor(page);
+  const input = (key: string) =>
+    page.getByLabel(uiText("en-US", `editor.clip.${key}`), { exact: true });
+  const fill = async (key: string, value: string) => {
+    await input(key).fill(value);
+    await input(key).press("Tab");
+  };
+  const lockedFields = () => [
+    input("photoDurationLabel"),
+    input("rotationLabel"),
+    input("transitionLabel"),
+  ];
+  for (const field of lockedFields()) await expect(field).toBeEnabled();
+  await expect(
+    page.getByLabel(uiText("en-US", "editor.presentation.layout"), {
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByLabel(uiText("en-US", "editor.presentation.titleText"), {
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("direction-generate")).toBeDisabled();
+  const replacement = input("replacementLabel");
+  const remove = page.getByRole("button", {
+    name: uiText("en-US", "editor.clip.delete"),
+    exact: true,
+  });
+  await expect(replacement).toBeDisabled();
+  await expect(remove).toBeDisabled();
+  await fill("photoDurationLabel", "4");
+  await expect
+    .poll(async () => clip(await editor(request)).timelineDuration)
+    .toBe(4);
+  await fill("rotationLabel", "7");
+  await expect
+    .poll(async () => clip(await editor(request)).transform?.rotation)
+    .toBe(7);
+  await input("transitionLabel").selectOption("crossfade");
+  await expect
+    .poll(async () => clip(await editor(request)).transition?.type)
+    .toBe("crossfade");
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await expect.poll(async () => clip(await editor(request)).locked).toBe(true);
+  for (const field of lockedFields()) await expect(field).toBeDisabled();
+  await page.getByRole("button", { name: "Unlock clip", exact: true }).click();
+  await expect.poll(async () => clip(await editor(request)).locked).toBe(false);
+  for (const field of lockedFields()) await expect(field).toBeEnabled();
+  await expect(page.getByTestId("direction-generate")).toBeDisabled();
+
+  await page.locator("#clip-direction-video").click();
+  const videoFields = () => [
+    input("sourceInLabel"),
+    input("sourceOutLabel"),
+    input("speed"),
+    input("volumeLabel"),
+  ];
+  for (const field of videoFields()) await expect(field).toBeEnabled();
+  await expect(replacement).toBeDisabled();
+  await expect(remove).toBeDisabled();
+  await fill("sourceInLabel", "0.5");
+  await expect
+    .poll(async () => clip(await editor(request), "direction-video").sourceIn)
+    .toBe(0.5);
+  await fill("sourceOutLabel", "1.75");
+  await expect
+    .poll(async () => clip(await editor(request), "direction-video").sourceOut)
+    .toBe(1.75);
+  await fill("speed", "1");
+  await expect
+    .poll(
+      async () =>
+        clip(await editor(request), "direction-video").transform?.speed,
+    )
+    .toBe(1);
+  await input("volumeLabel").press("End");
+  await expect
+    .poll(
+      async () =>
+        clip(await editor(request), "direction-video").transform?.volume,
+    )
+    .toBe(1);
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await expect
+    .poll(async () => clip(await editor(request), "direction-video").locked)
+    .toBe(true);
+  for (const field of videoFields()) await expect(field).toBeDisabled();
+  await page.getByRole("button", { name: "Unlock clip", exact: true }).click();
+  await expect
+    .poll(async () => clip(await editor(request), "direction-video").locked)
+    .toBe(false);
+  for (const field of videoFields()) await expect(field).toBeEnabled();
+
+  const after = await editor(request);
+  expect(clip(after).title).toBe(clip(before).title);
+  expect(clip(after).titleStyle).toEqual(clip(before).titleStyle);
+  expect(clip(after).layout).toEqual(clip(before).layout);
+  expect(clip(after).motion).toEqual(clip(before).motion);
+  const { timelineStart: _beforeStart, ...untouchedBefore } = clip(
+    before,
+    "direction-second-photo",
+  );
+  const { timelineStart: _afterStart, ...untouchedAfter } = clip(
+    after,
+    "direction-second-photo",
+  );
+  expect(untouchedAfter).toEqual(untouchedBefore);
+  expect(after.composition.tracks.slice(1)).toEqual(
+    before.composition.tracks.slice(1),
+  );
+  const catalogAfter = await request.get(`${api}/assets?limit=100`);
+  expect(catalogAfter.ok()).toBe(true);
+  expect((await catalogAfter.json()).assets).toEqual(assetsBefore);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
 test("browser storage failure prevents acceptance from being sent", async ({
@@ -615,7 +769,7 @@ async function assertLayout(page: Page, name: string) {
       );
     for (const element of Array.from(
       document.querySelectorAll<HTMLElement>(
-        '[data-testid="scene-direction-review"] button, [data-testid="scene-direction-review"] summary, [data-testid="scene-direction-review"] label, [data-testid="direction-action"]',
+        '[data-testid="scene-direction-review"] button, [data-testid="scene-direction-review"] summary, [data-testid="scene-direction-review"] label, [data-testid="direction-action"], [data-testid="direction-examples"]',
       ),
     )) {
       if (!element.getClientRects().length) continue;
@@ -682,6 +836,9 @@ for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
       ).toBe("en-XA");
     }
     const review = page.getByTestId("scene-direction-review");
+    await expect(page.getByTestId("direction-examples")).toHaveText(
+      uiText(contentLocale, "editor.direction.examples"),
+    );
     await expect(review.locator("summary")).toHaveText(
       directionText(locale, "heading"),
     );

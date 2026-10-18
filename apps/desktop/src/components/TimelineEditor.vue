@@ -241,6 +241,15 @@ const assetMap = computed(
 const selectedAsset = computed(
   () => selectedClip.value && assetMap.value.get(selectedClip.value.assetId),
 );
+const lockedOverlaySource = computed(
+  () =>
+    !!selectedAsset.value?.state.locked &&
+    !!state.value?.composition.tracks.some(
+      (track) =>
+        track.timing === "overlay" &&
+        track.clips.some((clip) => clip.id === selectedClipId.value),
+    ),
+);
 const playbackAsset = computed(
   () => playbackClip.value && assetMap.value.get(playbackClip.value.assetId),
 );
@@ -2099,9 +2108,7 @@ onBeforeUnmount(() => {
             <fieldset
               class="editor-fields"
               :disabled="
-                !!selectedClip.locked ||
-                !!selectedAsset.state.locked ||
-                historyBusy
+                !!selectedClip.locked || lockedOverlaySource || historyBusy
               "
             >
               <template v-if="controls.duration"
@@ -2320,15 +2327,20 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </template>
-              <PhotoPresentationInspector
+              <fieldset
                 v-if="controls.visual"
-                :clip="selectedClip"
-                :asset="selectedAsset"
-                :assets="state.assets"
-                :frame="projectSettings"
-                :allow-photo-presentation="photoPresentationAllowed"
-                @command="command"
-              />
+                class="editor-fields"
+                :disabled="!!selectedAsset.state.locked"
+              >
+                <PhotoPresentationInspector
+                  :clip="selectedClip"
+                  :asset="selectedAsset"
+                  :assets="state.assets"
+                  :frame="projectSettings"
+                  :allow-photo-presentation="photoPresentationAllowed"
+                  @command="command"
+                />
+              </fieldset>
             </fieldset>
             <SceneDirectionReview
               v-if="
@@ -2355,9 +2367,7 @@ onBeforeUnmount(() => {
             <fieldset
               class="editor-fields"
               :disabled="
-                !!selectedClip.locked ||
-                !!selectedAsset.state.locked ||
-                historyBusy
+                !!selectedClip.locked || lockedOverlaySource || historyBusy
               "
             >
               <div class="editor-divider" />
@@ -2383,6 +2393,7 @@ onBeforeUnmount(() => {
                 }}<select
                   v-model="replacementId"
                   :aria-label="t('editor.clip.replacementLabel')"
+                  :disabled="!!selectedAsset.state.locked"
                 >
                   <option value="">
                     {{ t("editor.clip.chooseReplacement") }}
@@ -2399,11 +2410,15 @@ onBeforeUnmount(() => {
               <div class="editor-actions">
                 <button
                   class="editor-button"
-                  :disabled="!replacementId"
+                  :disabled="!replacementId || !!selectedAsset.state.locked"
                   @click="replace"
                 >
                   {{ t("editor.clip.replace") }}</button
-                ><button class="editor-button danger" @click="deleteSelected">
+                ><button
+                  class="editor-button danger"
+                  :disabled="!!selectedAsset.state.locked"
+                  @click="deleteSelected"
+                >
                   {{ t("editor.clip.delete") }}
                 </button>
               </div>
