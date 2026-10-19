@@ -466,6 +466,10 @@ describe("durable GraphicScene editing", () => {
 
   it("fits long Latin and Traditional Chinese card text to the actual title renderer", async () => {
     const samples = ["W".repeat(512), "繁體中文長訊息".repeat(64)];
+    const outputDirectory = await mkdtemp(
+      join(tmpdir(), "openfilm-long-text-fit-"),
+    );
+    roots.push(outputDirectory);
     for (const [sampleIndex, text] of samples.entries()) {
       const { scene } = createConversationCard({
         sceneId: `long-fit-${sampleIndex}`,
@@ -485,7 +489,9 @@ describe("durable GraphicScene editing", () => {
       expect(nodes).toHaveLength(4);
       for (const node of nodes) {
         if (node.type !== "text") continue;
-        const inspection = await render.inspectTitleOverlay(
+        const width = Math.ceil(node.width);
+        const height = Math.ceil(node.height);
+        const overlay = await render.createTitleOverlay(
           node.text,
           {
             version: 1,
@@ -498,12 +504,19 @@ describe("durable GraphicScene editing", () => {
             maxWidth: node.width,
             safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
           },
-          { width: Math.ceil(node.width), height: Math.ceil(node.height) },
+          { width, height },
+          join(outputDirectory, `${sampleIndex}-${node.id}.png`),
         );
         expect(
-          inspection.status,
+          overlay.layout.bounds.x + overlay.layout.bounds.width,
           `${text.slice(0, 8)} at ${node.fontSize}px`,
-        ).toBe("measured");
+        ).toBeLessThanOrEqual(width);
+        expect(
+          overlay.layout.bounds.y + overlay.layout.bounds.height,
+        ).toBeLessThanOrEqual(height);
+        expect(
+          (await readFile(overlay.path)).subarray(0, 8).toString("hex"),
+        ).toBe("89504e470d0a1a0a");
       }
     }
   });
