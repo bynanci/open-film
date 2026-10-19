@@ -20,6 +20,17 @@ ordinary native imports continue referencing originals. MP4 export renders the
 current composition into an atomic finished output rather than reusing a stale
 preview. No new remote service or alternate composition engine is introduced.
 
+Visual QA uses the same `OpenFilmApplication` and FFmpeg renderer as Desktop and
+CLI. It snapshots the saved Composition revision, writes a unique MP4, manifest,
+report and decoded sample PNGs under a mode-restricted project cache, and omits
+source paths from the report. FFprobe and fresh SHA-256 comparisons bind the
+samples to that render and its referenced sources. HTTP serves frames only by a
+validated report/sample index; report polling is read-only and never creates a
+cache directory. Cancellation removes partial artifacts, retry receives a new
+identity, and revision/source changes cannot publish a current-looking result.
+This workflow does not change project schema or execute project-authored code.
+See [Visual QA validation](validation-visual-qa.md).
+
 ```mermaid
 flowchart TD
   Desktop[Vue workspace / Tauri shell] --> API[Loopback HTTP API]

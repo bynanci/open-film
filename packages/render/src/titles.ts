@@ -27,6 +27,20 @@ export interface TitleOverlay {
   warnings: string[];
 }
 
+export type TitleOverlayInspection =
+  | {
+      status: "measured";
+      layout: TitleLayout;
+      font: TitleFontIdentity;
+      warnings: string[];
+    }
+  | {
+      status: "failed";
+      kind: "font.load-failed" | "title.overflow";
+      detail: "unavailable" | "missing-glyph" | "overflow";
+      message: string;
+    };
+
 interface LoadedFont {
   font: Font;
   identity: TitleFontIdentity;
@@ -212,6 +226,64 @@ export function titleOverlayCacheKey(input: {
   );
 }
 
+/** Measure a title with its real local face without creating a raster artifact. */
+export async function inspectTitleOverlay(
+  text: string,
+  style: TitleStyle | undefined,
+  frame: FrameSize,
+  options: { fontPath?: string } = {},
+): Promise<TitleOverlayInspection> {
+  let loaded: LoadedFont;
+  try {
+    loaded = await loadFont(resolveTitleStyle(style, frame), options);
+  } catch (error) {
+    return {
+      status: "failed",
+      kind: "font.load-failed",
+      detail: "unavailable",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  for (const character of text) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      /\s/u.test(character) ||
+      codePoint === 0x200c ||
+      codePoint === 0x200d ||
+      (codePoint >= 0xfe00 && codePoint <= 0xfe0f)
+    )
+      continue;
+    if (!loaded.font.hasGlyphForCodePoint(codePoint))
+      return {
+        status: "failed",
+        kind: "font.load-failed",
+        detail: "missing-glyph",
+        message: `Title font "${loaded.font.fullName}" has no glyph for U+${codePoint.toString(16).toUpperCase()}. Choose a CJK font covering this text or edit the unsupported character.`,
+      };
+  }
+  try {
+    const layout = layoutTitleText(
+      text,
+      style,
+      frame,
+      (value, size, tracking) => measure(loaded.font, value, size, tracking),
+    );
+    return {
+      status: "measured",
+      layout,
+      font: loaded.identity,
+      warnings: loaded.warnings,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      kind: "title.overflow",
+      detail: "overflow",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 interface PositionedRun {
   run: GlyphRun;
   x: number;
@@ -305,25 +377,11 @@ export async function createTitleOverlay(
     throw new Error(
       "Title output dimensions must be positive integers no larger than an 8K frame.",
     );
+  const inspection = await inspectTitleOverlay(text, style, frame, options);
+  if (inspection.status === "failed") throw new Error(inspection.message);
   const resolved = resolveTitleStyle(style, frame);
   const loaded = await loadFont(resolved, options);
-  for (const character of text) {
-    const codePoint = character.codePointAt(0)!;
-    if (
-      /\s/u.test(character) ||
-      codePoint === 0x200c ||
-      codePoint === 0x200d ||
-      (codePoint >= 0xfe00 && codePoint <= 0xfe0f)
-    )
-      continue;
-    if (!loaded.font.hasGlyphForCodePoint(codePoint))
-      throw new Error(
-        `Title font "${loaded.font.fullName}" has no glyph for U+${codePoint.toString(16).toUpperCase()}. Choose a CJK font covering this text or edit the unsupported character.`,
-      );
-  }
-  const layout = layoutTitleText(text, style, frame, (value, size, tracking) =>
-    measure(loaded.font, value, size, tracking),
-  );
+  const layout = inspection.layout;
   const bounds = layout.bounds;
   const scrim =
     resolved.background === "scrim"
@@ -340,7 +398,7 @@ export async function createTitleOverlay(
   return {
     path: outputPath,
     layout,
-    font: loaded.identity,
-    warnings: loaded.warnings,
+    font: inspection.font,
+    warnings: inspection.warnings,
   };
 }

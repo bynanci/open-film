@@ -28,6 +28,7 @@ import {
 } from "./manifest.js";
 export {
   createTitleOverlay,
+  inspectTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
 } from "./titles.js";

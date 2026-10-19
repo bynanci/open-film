@@ -54,6 +54,7 @@ import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
+import VisualQaPanel from "./VisualQaPanel.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import {
@@ -133,6 +134,23 @@ const historyBusy = computed(
   () => compositionHistoryBusy.value || directionBlocked.value,
 );
 const directionPreview = ref<Clip | null>(null);
+const visualQaOpen = ref(false);
+const visualQaToggle = ref<HTMLButtonElement | null>(null);
+const visualQaPopover = ref<HTMLElement | null>(null);
+async function toggleVisualQa() {
+  visualQaOpen.value = !visualQaOpen.value;
+  if (visualQaOpen.value) {
+    await nextTick();
+    visualQaPopover.value?.focus();
+  } else {
+    visualQaToggle.value?.focus();
+  }
+}
+async function closeVisualQa() {
+  visualQaOpen.value = false;
+  await nextTick();
+  visualQaToggle.value?.focus();
+}
 function command(input: TimelineCommand | TimelineCommand[]) {
   if (directionBlocked.value) return false;
   directionPreview.value = null;
@@ -164,7 +182,6 @@ async function reloadDirectionState() {
   await load();
   return status.value === "saved";
 }
-defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
 const inspector = ref<"clip" | "beat" | "sound" | "captions">("clip");
@@ -218,6 +235,7 @@ let draftTrigger: HTMLElement | null = null;
 const draggedClipId = ref("");
 const replacementId = ref("");
 const sourcePlayer = ref<HTMLMediaElement | null>(null);
+const pendingSourceSeek = ref<number>();
 const sourceError = ref("");
 const titlePreviewFailed = ref(false);
 const titlePreviewRetry = ref(0);
@@ -934,8 +952,17 @@ function configurePlayer() {
   const player = sourcePlayer.value;
   const clip = playbackClip.value;
   if (!player || !clip) return;
-  player.currentTime = clip.sourceIn ?? 0;
-  sourceTime.value = clip.sourceIn ?? 0;
+  const sourceIn = clip.sourceIn ?? 0;
+  const sourceOut =
+    clip.sourceOut ?? assetMap.value.get(clip.assetId)?.duration ?? Infinity;
+  const requested = pendingSourceSeek.value;
+  const nextTime = Math.max(
+    sourceIn,
+    Math.min(sourceOut, requested ?? sourceIn),
+  );
+  player.currentTime = nextTime;
+  sourceTime.value = nextTime;
+  pendingSourceSeek.value = undefined;
   playbackBoundaryHandled = false;
   try {
     player.playbackRate = clip.transform?.speed ?? 1;
@@ -947,6 +974,59 @@ function configurePlayer() {
   player.volume =
     (clip.transform?.volume ?? 1) *
     evaluateAudioGain(clip.audioAutomation, 0, clip.timelineDuration);
+}
+
+async function navigateToTime(time: number): Promise<boolean> {
+  if (!Number.isFinite(time) || time < 0 || !(await flush())) return false;
+  const composition = state.value?.composition;
+  if (!composition) return false;
+  const visualClips = composition.tracks
+    .filter((track) => track.type === "video" || track.type === "overlay")
+    .flatMap((track) => track.clips);
+  if (!visualClips.length) return false;
+  const clip =
+    visualClips.find(
+      (item) =>
+        time >= item.timelineStart &&
+        time < item.timelineStart + item.timelineDuration,
+    ) ??
+    [...visualClips].sort((left, right) => {
+      const distance = (candidate: Clip) =>
+        time < candidate.timelineStart
+          ? candidate.timelineStart - time
+          : time - (candidate.timelineStart + candidate.timelineDuration);
+      return distance(left) - distance(right);
+    })[0]!;
+  const localTime = Math.max(
+    0,
+    Math.min(clip.timelineDuration, time - clip.timelineStart),
+  );
+  const sourceIn = clip.sourceIn ?? 0;
+  const sourceOut =
+    clip.sourceOut ?? assetMap.value.get(clip.assetId)?.duration ?? Infinity;
+  const sourceTimeAtEdit = Math.max(
+    sourceIn,
+    Math.min(sourceOut, sourceIn + localTime * (clip.transform?.speed ?? 1)),
+  );
+  sourcePlayer.value?.pause();
+  fitPreview.value = null;
+  directionPreview.value = null;
+  editMode.value = "story";
+  inspectorOpen.value = true;
+  inspector.value = "clip";
+  selectedBeatId.value = clip.beatId ?? "";
+  pendingSourceSeek.value = sourceTimeAtEdit;
+  selectedClipId.value = clip.id;
+  await nextTick();
+  if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
+  const player = sourcePlayer.value;
+  if (player) {
+    player.pause();
+    player.currentTime = sourceTimeAtEdit;
+    sourceTime.value = sourceTimeAtEdit;
+    pendingSourceSeek.value = undefined;
+  } else sourceTime.value = sourceTimeAtEdit;
+  return true;
 }
 function stopAtOut() {
   const player = sourcePlayer.value;
@@ -1378,6 +1458,7 @@ watch(selectedBeat, (beat, previous) => {
     beatFields.value = { ...beatFields.value, ...changed };
   }
 });
+defineExpose({ flush, hasPending, reload: load, navigateToTime });
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
   playing.value = false;
@@ -1572,6 +1653,17 @@ onBeforeUnmount(() => {
           {{ t("editor.fit.title") }}
         </button>
         <button
+          ref="visualQaToggle"
+          class="editor-button"
+          :aria-label="t('editor.visualQa.openPanel')"
+          :title="t('editor.visualQa.openPanel')"
+          aria-controls="visual-qa-review-panel"
+          :aria-expanded="visualQaOpen"
+          @click="toggleVisualQa"
+        >
+          <Icon name="grid" :size="15" />
+        </button>
+        <button
           v-show="editMode === 'story'"
           class="editor-button"
           :aria-expanded="inspectorOpen"
@@ -1585,6 +1677,25 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
+    <div
+      v-show="visualQaOpen"
+      id="visual-qa-review-panel"
+      ref="visualQaPopover"
+      class="visual-qa-popover"
+      role="dialog"
+      aria-modal="false"
+      :aria-label="t('editor.visualQa.region')"
+      tabindex="-1"
+      @keydown.esc="closeVisualQa"
+    >
+      <VisualQaPanel
+        :project-id="projectId"
+        :composition-id="compositionId"
+        :revision="state?.revision ?? ''"
+        @navigate="navigateToTime"
+        @close="closeVisualQa"
+      />
+    </div>
     <div
       v-if="message || status === 'failed' || status === 'conflict'"
       class="editor-message error"
