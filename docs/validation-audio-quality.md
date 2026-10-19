@@ -17,7 +17,7 @@ real four-second synthetic mix, auditions the candidate and accepts/undoes it.
 - `pnpm test:interchange`: 18 official OpenTimelineIO checks passed.
 - New targeted regressions: 4 files / 6 tests passed, including actual one-hour
   stereo 48 kHz meter output bounded below 16 MiB; editor requestId retry test passed.
-- `pnpm test:e2e`: full 164-test run in progress at PR creation; merge requires its result.
+- `pnpm test:e2e`: all 164 tests passed (16.4 minutes).
 - Independent review found and corrected acceptance evidence fencing, bounded
   meter metadata and mutation lifecycle reuse; no remaining review blocker.
 

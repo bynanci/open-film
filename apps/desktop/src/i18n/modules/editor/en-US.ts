@@ -2,6 +2,28 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioGeneration: {
+      title: "Generate audio",
+      disclosure:
+        "Generate only from text you enter. No project media is uploaded. Preview, accept, then explicitly import.",
+      provider: "Provider",
+      mock: "Local tone mock ($0; not speech)",
+      remoteCost:
+        "BYOK provider billing is unknown; confirm current provider prices.",
+      text: "Text to speak",
+      consent: "I consent to processing only this entered text",
+      costConsent:
+        "I acknowledge unknown provider billing and possible charges after cancellation",
+      generate: "Generate preview",
+      cancel: "Cancel generation",
+      failed:
+        "Audio operation failed or is stale. Save, check provider and retry.",
+      preview: "Generated audio preview",
+      receipt: "Source receipt hashes",
+      accept: "Accept audio",
+      start: "Timeline start (seconds)",
+      import: "Import Timeline",
+    },
     audioQuality: {
       title: "Audio quality",
       help: "Select an unlocked sound clip with an audio role. Measure the saved MP4 mix and review a constant gain change while preserving fades, curves and ducking.",

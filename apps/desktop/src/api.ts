@@ -1,3 +1,4 @@
+import type { AudioGenerationReceipt } from "@openfilm/application";
 import type {
   MediaAsset,
   OpenFilmProject,
@@ -728,6 +729,44 @@ export const api = {
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: () => request<JobsState>("/jobs"),
+  audioGenerationProviders: () =>
+    request<
+      { id: string; name: string; execution: string; endpoint?: string }[]
+    >("/audio-generation/providers"),
+  generateAudio: (
+    id: string,
+    input: {
+      baseRevision: string;
+      providerId: string;
+      text: string;
+      consent: boolean;
+      acknowledgeUnknownCost: boolean;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<AudioGenerationReceipt>(
+      `/compositions/${encodeURIComponent(id)}/audio-generation`,
+      input,
+      signal,
+    ),
+  acceptGeneratedAudio: (id: string, projectId: string) =>
+    post<AudioGenerationReceipt>(
+      `/audio-generation/${encodeURIComponent(id)}/accept`,
+      { projectId },
+    ),
+  importGeneratedAudio: (
+    id: string,
+    projectId: string,
+    timelineStart: number,
+  ) =>
+    post<{
+      baseRevision: string;
+      command: TimelineCommand;
+      assets: MediaAsset[];
+    }>(`/audio-generation/${encodeURIComponent(id)}/import`, {
+      projectId,
+      timelineStart,
+    }),
   audioQuality: (
     compositionId: string,
     clipId: string,

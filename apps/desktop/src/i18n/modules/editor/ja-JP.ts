@@ -2,6 +2,27 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioGeneration: {
+      title: "音声を生成",
+      disclosure:
+        "入力したテキストのみを処理します。プロジェクト素材は送信しません。試聴、承認後に明示的に配置します。",
+      provider: "プロバイダー",
+      mock: "ローカルテスト音（無料・音声ではありません）",
+      remoteCost:
+        "BYOK の料金は不明です。プロバイダーの最新料金を確認してください。",
+      text: "読み上げテキスト",
+      consent: "この入力テキストのみの処理に同意します",
+      costConsent: "料金が不明で、キャンセル後も課金される可能性を理解しました",
+      generate: "試聴用に生成",
+      cancel: "生成をキャンセル",
+      failed:
+        "音声操作が失敗したか古くなりました。保存と設定を確認して再試行してください。",
+      preview: "生成音声の試聴",
+      receipt: "ソースレシートのハッシュ",
+      accept: "音声を承認",
+      start: "タイムライン開始位置（秒）",
+      import: "タイムラインに配置",
+    },
     audioQuality: {
       title: "音声品質",
       help: "役割を設定した未ロックの音声を選択します。保存済み MP4 を測定し、フェードやカーブを保った固定ゲインの提案を確認できます。",

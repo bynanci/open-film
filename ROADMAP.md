@@ -1,9 +1,12 @@
-## Active — M6 Audio Quality and Provider Generation
+## M6 Audio Quality and Provider Generation
 
-PR 6A adds real-output MP4 loudness/peak measurement, sampled meters and reviewed
+PR 6A (#32) adds real-output MP4 loudness/peak measurement, sampled meters and reviewed
 role normalization without replacing AudioAutomation. PR 6B follows as a separate
 TTS generation PR with local mock, optional BYOK, explicit consent/cost and
-preview/accept/import. Existing local editing remains usable without a provider.
+preview/accept/import, managed-source history handoff and durable pending-edit
+recovery. See [provider generation](docs/provider-generation.md) and its
+[validation](docs/validation-provider-generation.md). Live paid TTS and hardware
+listening remain manual gates. Existing local editing remains usable without a provider.
 See [audio quality contract](docs/audio-quality.md) and [validation](docs/validation-audio-quality.md).
 The earlier F05 photo-framing work remains deferred.
 

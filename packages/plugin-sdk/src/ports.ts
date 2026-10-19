@@ -255,8 +255,25 @@ export interface LanguageProvider extends AIProviderDescriptor {
   generate(prompt: string, options?: OperationOptions): Promise<string>;
 }
 
+export interface AudioGenerationResult {
+  bytes: Uint8Array;
+  model: string;
+  mock: boolean;
+}
+export interface AudioGenerationProvider extends AIProviderDescriptor {
+  kind: "audio-generation";
+  generateAudio(
+    text: string,
+    options?: OperationOptions,
+  ): Promise<AudioGenerationResult>;
+}
+
 export type AIProvider =
-  VisionProvider | EmbeddingProvider | TranscriptionProvider | LanguageProvider;
+  | VisionProvider
+  | EmbeddingProvider
+  | TranscriptionProvider
+  | LanguageProvider
+  | AudioGenerationProvider;
 
 /** Consent is scoped to a named provider and its disclosed data classes. */
 export interface RemoteProviderConsent {

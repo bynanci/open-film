@@ -2062,6 +2062,114 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        if (method === "GET" && route === "/api/audio-generation/providers") {
+          json(response, 200, application.audioGeneration.list());
+          return;
+        }
+        const generationMatch =
+          /^\/api\/compositions\/([^/]+)\/audio-generation$/.exec(route);
+        if (method === "POST" && generationMatch) {
+          if (active.size)
+            throw new HttpError(409, "Wait for the active project job.");
+          const data = await body(request);
+          keys(data, [
+            "baseRevision",
+            "providerId",
+            "text",
+            "consent",
+            "acknowledgeUnknownCost",
+          ]);
+          const compositionId = decodeURIComponent(generationMatch[1]!);
+          const revision = text(data, "baseRevision");
+          const input = {
+            compositionId,
+            baseRevision: revision,
+            providerId: text(data, "providerId"),
+            text: text(data, "text"),
+            consent: data.consent === true,
+            acknowledgeUnknownCost: data.acknowledgeUnknownCost === true,
+          };
+          const controller = new AbortController();
+          const jobId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          active.set(jobId, controller);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const receipt = await application.runAudioGeneration(
+              input,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(
+                409,
+                "Generated audio is stale or cancelled.",
+              );
+            json(response, 200, receipt);
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const generationAction =
+          /^\/api\/audio-generation\/([a-f0-9-]{36})\/(media|accept|import)$/.exec(
+            route,
+          );
+        if (generationAction) {
+          const id = generationAction[1]!;
+          const action = generationAction[2]!;
+          if (method === "GET" && action === "media") {
+            if (url.searchParams.get("projectId") !== application.project.id)
+              throw new HttpError(
+                409,
+                "Generated audio belongs to another project.",
+              );
+            const path = await application.audioGeneration.media(id);
+            await streamFile(
+              request,
+              response,
+              path,
+              join(application.directory, "cache"),
+              "audio/wav",
+            );
+            return;
+          }
+          if (method === "POST" && action !== "media") {
+            const data = await body(request);
+            keys(
+              data,
+              action === "import"
+                ? ["projectId", "timelineStart"]
+                : ["projectId"],
+            );
+            if (text(data, "projectId") !== application.project.id)
+              throw new HttpError(
+                409,
+                "Generated audio belongs to another project.",
+              );
+            json(
+              response,
+              200,
+              action === "accept"
+                ? await application.audioGeneration.accept(id)
+                : await application.audioGeneration.importTimeline(
+                    id,
+                    Number(data.timelineStart),
+                    editorFor(application),
+                  ),
+            );
+            return;
+          }
+        }
         const audioQualityMatch =
           /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
         if (method === "POST" && audioQualityMatch) {
