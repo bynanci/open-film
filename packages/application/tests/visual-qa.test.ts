@@ -1,15 +1,25 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import * as media from "@openfilm/media";
 import { OpenFilmApplication } from "../src/index.js";
 
 const projects: string[] = [];
 const applications: OpenFilmApplication[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const app of applications.splice(0)) app.close();
   await Promise.all(
@@ -64,6 +74,111 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it("withholds cached frames after an original changes, even when its mtime is restored", async () => {
+    const { app, composition, source } = await fixture("0x27a6c8");
+    const replacement = await fixture("red");
+    const replacementBytes = await readFile(replacement.source);
+    await utimes(source, 1_700_000_000, 1_700_000_000);
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("complete");
+    const reportPath = join(
+      app.directory,
+      "cache",
+      "visual-qa",
+      report.id,
+      "report.json",
+    );
+    const saved = await readFile(reportPath);
+    expect(await app.visualQaFramePath(report.id, 0)).toBeDefined();
+    const before = await stat(source);
+    await writeFile(source, replacementBytes);
+    await utimes(source, before.atime, before.mtime);
+    expect((await stat(source)).mtimeMs).toBe(before.mtimeMs);
+    expect(await app.readVisualQaReport(report.id)).toMatchObject({
+      status: "stale",
+      samples: [],
+    });
+    expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
+    expect(await readFile(reportPath)).toEqual(saved);
+  });
+
+  it("checks the current catalog reference instead of an old source snapshot", async () => {
+    const { app, composition, asset } = await fixture("0x27a6c8");
+    const replacement = await fixture("red");
+    const report = await app.runVisualQa(composition.id);
+    app.catalog.upsertAsset({
+      ...asset,
+      uri: replacement.asset.uri,
+      contentHash: replacement.asset.contentHash,
+    });
+    expect(await app.readVisualQaReport(report.id)).toMatchObject({
+      status: "stale",
+      samples: [],
+    });
+    expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
+  });
+
+  it("fences source replacement during real FFprobe before publishing samples", async () => {
+    const { app, composition, source } = await fixture("0x27a6c8");
+    const replacement = await fixture("red");
+    const replacementBytes = await readFile(replacement.source);
+    const actual = media.runProcess;
+    let changed = false;
+    // Delegate the real probe, then reproduce an out-of-process source write.
+    vi.spyOn(media, "runProcess").mockImplementation(
+      async (command, args, options) => {
+        const result = await actual(command, args, options);
+        if (command === "ffprobe" && args.includes("-count_frames")) {
+          changed = true;
+          await writeFile(source, replacementBytes);
+        }
+        return result;
+      },
+    );
+    const report = await app.runVisualQa(composition.id);
+    expect(changed).toBe(true);
+    expect(report).toMatchObject({
+      status: "stale",
+      samples: [],
+      output: undefined,
+    });
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "revision.stale" }),
+    );
+    expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
+  });
+
+  it.each(["preflight", "final"] as const)(
+    "honors cancellation after the %s asynchronous fence",
+    async (phase) => {
+      const { app, composition, source } = await fixture("0x27a6c8");
+      if (phase === "preflight") await rm(source);
+      const controller = new AbortController();
+      const jobId = randomUUID();
+      // Scheduling hook only: all validation executes normally. Assert observable
+      // cancellation, job status and cleanup rather than the helper's call count.
+      const fence = app.visualQa as unknown as {
+        assertCurrent(...args: unknown[]): Promise<void>;
+      };
+      const actual = fence.assertCurrent.bind(fence);
+      let calls = 0;
+      vi.spyOn(fence, "assertCurrent").mockImplementation(async (...args) => {
+        await actual(...args);
+        if (++calls === (phase === "preflight" ? 1 : 2)) controller.abort();
+      });
+      await expect(
+        app.runVisualQa(composition.id, { jobId, signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(controller.signal.aborted).toBe(true);
+      expect(
+        app.catalog.listJobs().find((job) => job.id === jobId)?.status,
+      ).toBe("cancelled");
+      await expect(
+        access(join(app.directory, "cache", "visual-qa", jobId)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("marks preflight findings stale when the edit changes before publication", async () => {
     const { app, composition, source } = await fixture("0x27a6c8");
     await rm(source);

@@ -116,6 +116,29 @@ OpenTimelineIO, then passed with the existing dedicated OTIO 0.18.1 interpreter.
 These were execution/setup failures, not waived gates. Local Rust/Cargo remain
 unavailable; native checks run in CI. The build's large-chunk advisory remains.
 
+## Merge-review corrections
+
+Independent integration review reproduced two publication/read races: an original
+could change after the render-time hash check while its old contact sheet remained
+readable, and cancellation during the final asynchronous revision fence could be
+published as completed. Five additional regressions were observed failing before
+the fixes and passing afterward (16 Visual QA application cases total).
+
+Publication now rehashes current catalog sources after probe/extraction. Reads
+validate current catalog references and file identity/change metadata before
+reusing a bounded hash cache; inode, size and nanosecond mtime/ctime changes force
+rehashing, including replacements that restore mtime. Hashing checks source
+identity again afterward, and revision validation runs on both sides of source
+I/O. Stale views withhold frames without rewriting historical report evidence.
+Cancellation is checked immediately after asynchronous fences and report writes,
+with job cancellation and private-cache cleanup verified for both preflight and
+final publication. Real FFprobe and generated PNG/MP4 fixtures exercise the
+source-write race; no personal media is used.
+
+Lint and TypeScript/Vue checks pass on this correction. Full-suite and exact-head
+CI results are recorded in the PR before merge; earlier integration counts above
+remain labeled separately.
+
 ## Manual gates
 
 - Review a representative private film locally without copying its media or

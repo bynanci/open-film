@@ -7,6 +7,7 @@ import {
   readFile,
   realpath,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -287,10 +288,79 @@ function sampleIndexes(frameCount: number, duration: number): number[] {
 
 /** Shared saved-revision QA used by Desktop, HTTP and CLI adapters. */
 export class VisualQaService {
+  private readonly sourceHashes = new Map<
+    string,
+    { signature: string; hash: Promise<string> }
+  >();
+
   constructor(private readonly host: VisualQaHost) {}
 
+  /** Reuse hashes only while inode, size and nanosecond change times agree. */
+  private async currentSourceHash(
+    assetId: string,
+    options: { signal?: AbortSignal; rehash?: boolean },
+  ): Promise<string> {
+    checkAbort(options.signal);
+    const asset = this.host.getSourceAsset(assetId);
+    if (!asset) throw new StaleVisualQaError();
+    const path = localPath(asset.uri);
+    const signature = async () => {
+      const info = await stat(path, { bigint: true });
+      if (!info.isFile()) throw new StaleVisualQaError();
+      return `${asset.uri}:${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+    };
+    const before = await signature();
+    let entry = this.sourceHashes.get(assetId);
+    if (options.rehash || entry?.signature !== before) {
+      entry = { signature: before, hash: hashFile(path, options.signal) };
+      this.sourceHashes.delete(assetId);
+      this.sourceHashes.set(assetId, entry);
+      // Bound per-project memory; concurrent frame requests share hash work.
+      if (this.sourceHashes.size > 4096)
+        this.sourceHashes.delete(this.sourceHashes.keys().next().value!);
+    }
+    try {
+      const hash = await entry.hash;
+      checkAbort(options.signal);
+      if (
+        (await signature()) !== before ||
+        this.host.getSourceAsset(assetId)?.uri !== asset.uri
+      )
+        throw new StaleVisualQaError();
+      return hash;
+    } catch (error) {
+      if (this.sourceHashes.get(assetId) === entry)
+        this.sourceHashes.delete(assetId);
+      throw error;
+    }
+  }
+
   /** Every publication/read uses the same saved and in-memory revision fence. */
-  private async assertCurrent(report: VisualQaReport): Promise<void> {
+  private async assertCurrent(
+    report: VisualQaReport,
+    options: { signal?: AbortSignal; rehash?: boolean } = {},
+  ): Promise<void> {
+    checkAbort(options.signal);
+    await this.assertRevision(report);
+    try {
+      for (const source of report.sources) {
+        if (
+          (await this.currentSourceHash(source.assetId, options)) !==
+          source.sha256
+        )
+          throw new StaleVisualQaError();
+      }
+    } catch (error) {
+      checkAbort(options.signal);
+      if ((error as Error)?.name === "AbortError") throw error;
+      throw new StaleVisualQaError();
+    }
+    // Source hashing yields to edits, saves and project lifecycle changes.
+    await this.assertRevision(report);
+    checkAbort(options.signal);
+  }
+
+  private async assertRevision(report: VisualQaReport): Promise<void> {
     const disk = await savedProject(this.host.directory);
     const saved = disk.timelines.find(
       (item) => item.id === report.compositionId,
@@ -540,10 +610,15 @@ export class VisualQaService {
       }
 
       update(0.1, "preflight");
-      await this.assertCurrent(report);
+      await this.assertCurrent(report, {
+        signal: options.signal,
+        rehash: true,
+      });
+      checkAbort(options.signal);
       if (report.issues.some((entry) => entry.severity === "error")) {
         report.status = "incomplete";
         await save();
+        checkAbort(options.signal);
         finish("completed", 1);
         return structuredClone(report);
       }
@@ -704,9 +779,14 @@ export class VisualQaService {
           return sample;
         }),
       );
-      await this.assertCurrent(report);
+      await this.assertCurrent(report, {
+        signal: options.signal,
+        rehash: true,
+      });
+      checkAbort(options.signal);
       report.status = "complete";
       await save();
+      checkAbort(options.signal);
       finish("completed", 1);
       return structuredClone(report);
     } catch (error) {
