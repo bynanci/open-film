@@ -8,7 +8,11 @@ import {
   prepareGraphicScenes,
   writeGraphicSequences,
 } from "./graphic-scenes.js";
-export { prepareGraphicScenes, graphicFrameRanges } from "./graphic-scenes.js";
+export {
+  inspectGraphicImage,
+  prepareGraphicScenes,
+  graphicFrameRanges,
+} from "./graphic-scenes.js";
 import { photoPresentationFilters } from "./photo-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";

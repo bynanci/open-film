@@ -116,6 +116,52 @@ describe("GraphicScene commands", () => {
     ).toBe(3);
   });
 
+  it.each([6, 8])(
+    "preserves graphics while complete beat regeneration builds a %ss cut",
+    (target) => {
+      const photos = ["first", "second"].map((id) => ({
+        ...assets[0]!,
+        id,
+        uri: `file:///synthetic/${id}.png`,
+        mediaType: "image" as const,
+        duration: undefined,
+      }));
+      const original = document();
+      original.story.beats[0] = {
+        id: "beat",
+        title: "Scene",
+        candidateAssetIds: photos.map((asset) => asset.id),
+        minDuration: target,
+        targetDuration: target,
+        maxDuration: target,
+      };
+      original.composition.tracks[0]!.clips = photos.map((asset, index) => ({
+        id: asset.id,
+        assetId: asset.id,
+        beatId: "beat",
+        timelineStart: index * 3,
+        timelineDuration: 3,
+      }));
+      original.composition.graphicScenes = [graphicScene()];
+      const next = applyTimelineCommand(original, photos, {
+        type: "regenerate-beat",
+        beatId: "beat",
+        mode: "regenerate",
+      });
+      expect(next.composition.duration).toBeCloseTo(target, 6);
+      expect(next.composition.graphicScenes).toEqual(
+        original.composition.graphicScenes,
+      );
+      expect(
+        new Set(
+          next.composition.tracks.flatMap((track) =>
+            track.clips.map((clip) => clip.assetId),
+          ),
+        ),
+      ).toEqual(new Set(photos.map((asset) => asset.id)));
+    },
+  );
+
   it("rejects missing image identities without changing existing required selections", () => {
     const scene = graphicScene();
     const {

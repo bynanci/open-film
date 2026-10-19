@@ -433,3 +433,14 @@ uses a temporary monitor override for preview, outside autosave/history. See
 [validation](validation-scene-direction-editing.md).
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## Declarative GraphicScene
+
+Optional version-1 `Composition.graphicScenes` uses core validation and a pure
+Composition-time evaluator. Existing solver commands and application receipts own
+history and persistence. A bounded Node raster adapter admits local still-image
+byte snapshots and measured CJK text, then generates trusted numeric SVG/PNG.
+Monitor requests current project/revision/output-frame PNGs through the application;
+FFmpeg consumes the identical producer before native captions. There is no project
+script/page execution or additional timeline. See the [contract](graphic-scenes.md)
+and [threat model](security/graphic-scene-threat-model.md).

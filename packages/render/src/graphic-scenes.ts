@@ -1,7 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-19. See LICENSE and NOTICE.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { open, readFile, stat, writeFile } from "node:fs/promises";
+import { open, readFile, stat, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ApplicationError,
@@ -137,6 +137,79 @@ export interface PreparedGraphicScenes {
   assertSourceIdentities(): Promise<void>;
 }
 
+/** Shared byte/codec admission for rendering and measurable Visual QA findings. */
+export async function inspectGraphicImage(
+  asset: MediaAsset,
+  work: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  checkAbort(options.signal);
+  if (asset.mediaType !== "image" || !asset.uri.startsWith("file:"))
+    fail("Graphic images require a local catalog still image.");
+  const sourcePath = localPath(asset.uri);
+  const path = join(work, `graphic-source-${randomUUID()}.image`);
+  try {
+    const info = await stat(sourcePath);
+    if (!info.isFile() || info.size > limits.sourceBytes)
+      fail("Graphic image exceeds its source byte limit.", true);
+    const bytes = await readSourceBytes(sourcePath, info.size);
+    const imageFormat = format(bytes);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (asset.contentHash && sha256 !== asset.contentHash)
+      fail("Graphic image changed; restore or relink its source.");
+    // Probe/decode only the exact admitted bytes, never a subsequently replaced input.
+    await writeFile(path, bytes, { mode: 0o600 });
+    const probe = await runProcess(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-protocol_whitelist",
+        "file,pipe",
+        "-f",
+        imageFormat,
+        "-show_entries",
+        "stream=width,height,codec_name",
+        "-of",
+        "json",
+        path,
+      ],
+      { signal: options.signal, timeoutMs: 15000 },
+    );
+    const streams = JSON.parse(probe.stdout.toString()).streams as Array<{
+      width?: number;
+      height?: number;
+      codec_name?: string;
+    }>;
+    const image = streams?.[0];
+    if (
+      !image?.width ||
+      !image.height ||
+      image.width * image.height > limits.sourcePixels ||
+      !["png", "mjpeg", "webp"].includes(image.codec_name ?? "")
+    )
+      fail(
+        "Graphic image exceeds the decoded budget or uses an unsupported codec.",
+        true,
+      );
+    checkAbort(options.signal);
+    return {
+      path,
+      sourcePath,
+      format: imageFormat,
+      sha256,
+      byteLength: bytes.length,
+    };
+  } catch (error) {
+    await rm(path, { force: true });
+    checkAbort(options.signal);
+    if (error instanceof ApplicationError) throw error;
+    return fail(
+      "Graphic image source is unavailable, malformed or unsupported.",
+    );
+  }
+}
+
 /** One pure evaluator and raster producer for Monitor and output, never project code. */
 export async function prepareGraphicScenes(
   composition: Composition,
@@ -181,69 +254,13 @@ export async function prepareGraphicScenes(
   for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
     checkAbort(options.signal);
     const asset = assetMap.get(id);
-    if (!asset || asset.mediaType !== "image")
-      fail("Graphic image is unavailable in the local catalog.");
-    if (!asset.uri.startsWith("file:"))
-      fail("Graphic images require a local catalog file.");
-    const path = localPath(asset.uri);
-    let info;
-    try {
-      info = await stat(path);
-    } catch {
-      fail("Graphic image source is unavailable.");
-    }
-    if (!info.isFile() || info.size > limits.sourceBytes)
-      fail("Graphic image exceeds the source byte limit.", true);
-    const bytes = await readSourceBytes(path, info.size);
-    if (bytes.length > limits.sourceBytes)
-      fail("Graphic image exceeds the source byte limit.", true);
-    sourceBytes += bytes.length;
+    if (!asset) fail("Graphic image is unavailable in the local catalog.");
+    const image = await inspectGraphicImage(asset, work, options);
+    sourceBytes += image.byteLength;
     if (sourceBytes > limits.sourceBytes * 2)
       fail("Graphic sources exceed the combined byte budget.", true);
-    const imageFormat = format(bytes);
-    const hash = createHash("sha256").update(bytes).digest("hex");
-    // Decode exactly the admitted bytes, so an external source write cannot
-    // replace the input between signature checks and image decoding.
-    const snapshot = join(work, `graphic-source-${admitted.size}.image`);
-    await writeFile(snapshot, bytes, { mode: 0o600 });
-    if (asset.contentHash && hash !== asset.contentHash)
-      fail("Graphic image changed; relink or restore its source.");
-    const probe = await runProcess(
-      "ffprobe",
-      [
-        "-v",
-        "error",
-        "-protocol_whitelist",
-        "file,pipe",
-        "-f",
-        imageFormat,
-        "-show_entries",
-        "stream=width,height,codec_name",
-        "-of",
-        "json",
-        snapshot,
-      ],
-      { signal: options.signal, timeoutMs: 15000 },
-    );
-    const streams = JSON.parse(probe.stdout.toString()).streams as Array<{
-      width?: number;
-      height?: number;
-      codec_name?: string;
-    }>;
-    const image = streams?.[0];
-    if (
-      !image ||
-      !image.width ||
-      !image.height ||
-      image.width * image.height > limits.sourcePixels ||
-      !["png", "mjpeg", "webp"].includes(image.codec_name ?? "")
-    )
-      fail(
-        "Graphic image exceeds the decoded image budget or uses an unsupported codec.",
-        true,
-      );
-    admitted.set(id, { path: snapshot, format: imageFormat });
-    sources.push({ assetId: id, path, hash });
+    admitted.set(id, { path: image.path, format: image.format });
+    sources.push({ assetId: id, path: image.sourcePath, hash: image.sha256 });
   }
   const visit = async (
     sceneId: string,

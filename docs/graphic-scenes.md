@@ -67,14 +67,32 @@ possible: 8 scenes, 64 nodes total, nesting depth 4, 30 seconds per scene,
 dimensions 1–4,096, node boxes at most 8,294,400 pixels, opacity
 0–1 and integer zIndex within ±1,000. Rendering supports at most 8,294,400 output
 pixels, 60 fps, 1,800 active scene frames and 2,000,000,000 frame-pixels per render.
-Source images are at most 64 MiB each and 32 million decoded pixels. Prepared
+Source images are at most 64 MiB each, 128 MiB combined and 32 million decoded
+pixels each. Reads are bounded even if a file grows during admission. Only the
+admitted private byte snapshots are probed and decoded. Prepared
 textures total at most 33,177,600 pixels and 64 MiB PNG bytes. Generated sequence
 PNGs total at most 256 MiB; rendering is cancellable and private temporary work
 is removed on success, error and cancellation. Font identities and source hashes
-enter the existing private render manifest.
+enter the existing private render manifest. Manifest hashes are checked against
+actual admitted image bytes; source identity is rechecked after asynchronous work
+and cleanup without claiming an atomic filesystem snapshot.
 
 See [threat model](security/graphic-scene-threat-model.md) and
 [validation](validation-graphic-scene.md).
+
+## Shared preview API and QA
+
+GET `/api/compositions/:id/graphics.png?projectId=…&revision=…&frame=…`
+returns PNG bytes with `Cache-Control: no-store`. Project/revision/complete-frame
+bounds are required. One request owns private textures until its final fence;
+abort, close, stale state and failure release them. Retry is bounded in Monitor,
+and a visible error offers explicit retry. Playback is sampled; paused seeks
+quantize Composition seconds to the integer output grid.
+
+Visual QA includes nested scene-only images in source hashes/fences and identifies
+missing sources by scene/node ID. It measures graphic text in the same local box
+and font style as rendering; font failures and overflow are typed findings at
+Composition time. Aesthetic clipping/placement remains manual review.
 
 ## Upstream reference
 

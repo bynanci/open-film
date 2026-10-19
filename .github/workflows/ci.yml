@@ -34,6 +34,13 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test:i18n
       - run: pnpm verify
+        env:
+          OPENFILM_GRAPHIC_QA_OUTPUT: ${{ runner.temp }}/graphic-scene-qa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-graphic-scene-${{ github.sha }}
+          path: ${{ runner.temp }}/graphic-scene-qa/
+          if-no-files-found: error
       - name: Validate interchange and prepare portable Resolve QA
         run: pnpm test:interchange --output "${{ runner.temp }}/resolve-qa-reference"
         env:

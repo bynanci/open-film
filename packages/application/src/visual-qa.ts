@@ -13,6 +13,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   migrateProject,
+  type GraphicNode,
   type Composition,
   type Job,
   type MediaAsset,
@@ -29,7 +30,7 @@ import {
   safeProjectCachePath,
   sourceStatus,
 } from "@openfilm/media";
-import { inspectTitleOverlay } from "@openfilm/render";
+import { inspectGraphicImage, inspectTitleOverlay } from "@openfilm/render";
 import { isInside } from "./path-safety.js";
 
 export type VisualQaIssueCode =
@@ -51,6 +52,8 @@ export interface VisualQaIssue {
   assetId?: string;
   captionTrackId?: string;
   cueId?: string;
+  graphicSceneId?: string;
+  nodeId?: string;
   /** Stable detail key; user-authored title text and filesystem paths are omitted. */
   detail?: "unavailable" | "fallback-used" | "missing-glyph" | "changed";
   manualReview: boolean;
@@ -126,7 +129,13 @@ function issue(
   frameRate: number,
   extra: Pick<
     VisualQaIssue,
-    "clipId" | "assetId" | "captionTrackId" | "cueId" | "detail"
+    | "clipId"
+    | "assetId"
+    | "captionTrackId"
+    | "cueId"
+    | "graphicSceneId"
+    | "nodeId"
+    | "detail"
   > = {},
 ): VisualQaIssue {
   return {
@@ -138,10 +147,16 @@ function issue(
   };
 }
 
+type SourceOccurrence = {
+  at: number;
+  clipId?: string;
+  graphicSceneId?: string;
+  nodeId?: string;
+};
 function uniqueSources(
   composition: Composition,
-): Map<string, { at: number; clipId: string }[]> {
-  const times = new Map<string, { at: number; clipId: string }[]>();
+): Map<string, SourceOccurrence[]> {
+  const times = new Map<string, SourceOccurrence[]>();
   for (const track of composition.tracks) {
     if (track.type === "titles") continue;
     for (const clip of track.clips) {
@@ -154,6 +169,23 @@ function uniqueSources(
         times.set(assetId, list);
       }
     }
+  }
+  for (const scene of composition.graphicScenes ?? []) {
+    const visit = (nodes: readonly GraphicNode[], parentStart = 0) => {
+      for (const node of nodes) {
+        const at = Math.max(parentStart, node.start);
+        if (node.type === "image") {
+          const list = times.get(node.assetId) ?? [];
+          list.push({
+            at: scene.start + at,
+            graphicSceneId: scene.id,
+            nodeId: node.id,
+          });
+          times.set(node.assetId, list);
+        } else if (node.type === "group") visit(node.children, at);
+      }
+    };
+    visit(scene.nodes);
   }
   return times;
 }
@@ -512,6 +544,8 @@ export class VisualQaService {
                 assetId,
                 detail: "unavailable",
                 clipId: time.clipId,
+                graphicSceneId: time.graphicSceneId,
+                nodeId: time.nodeId,
               }),
             );
           continue;
@@ -526,6 +560,8 @@ export class VisualQaService {
                 assetId,
                 detail: "unavailable",
                 clipId: time.clipId,
+                graphicSceneId: time.graphicSceneId,
+                nodeId: time.nodeId,
               }),
             );
           continue;
@@ -537,6 +573,8 @@ export class VisualQaService {
                 assetId,
                 detail: "unavailable",
                 clipId: time.clipId,
+                graphicSceneId: time.graphicSceneId,
+                nodeId: time.nodeId,
               }),
             );
           continue;
@@ -549,19 +587,52 @@ export class VisualQaService {
                 assetId,
                 detail: "changed",
                 clipId: time.clipId,
+                graphicSceneId: time.graphicSceneId,
+                nodeId: time.nodeId,
               }),
             );
           continue;
         }
         originalHashes.set(assetId, sha256);
         report.sources.push({ assetId, sha256 });
+        const graphicTimes = times.filter((time) => time.graphicSceneId);
+        if (graphicTimes.length) {
+          try {
+            const image = await inspectGraphicImage(asset, reportDirectory, {
+              signal: options.signal,
+            });
+            await rm(image.path, { force: true });
+            if (image.sha256 !== sha256) throw new StaleVisualQaError();
+          } catch (error) {
+            checkAbort(options.signal);
+            const code = (error as { code?: string }).code;
+            if (
+              code !== "graphics.unavailable" &&
+              code !== "graphics.resourceLimit"
+            )
+              throw error;
+            for (const time of graphicTimes)
+              report.issues.push(
+                issue("asset.unsupported", "error", time.at, frameRate, {
+                  assetId,
+                  graphicSceneId: time.graphicSceneId,
+                  nodeId: time.nodeId,
+                  detail: "unavailable",
+                }),
+              );
+          }
+        }
       }
 
       const textOverlays: Array<{
         text: string;
         style: TitleStyle | undefined;
+        frame?: { width: number; height: number };
         at: number;
-        identity: Pick<VisualQaIssue, "clipId" | "captionTrackId" | "cueId">;
+        identity: Pick<
+          VisualQaIssue,
+          "clipId" | "captionTrackId" | "cueId" | "graphicSceneId" | "nodeId"
+        >;
       }> = [];
       for (const track of composition.tracks)
         for (const clip of track.clips)
@@ -581,12 +652,44 @@ export class VisualQaService {
           at: cue.startMs / 1000,
           identity: { captionTrackId: nativeCaptions!.id, cueId: cue.id },
         });
+      for (const scene of composition.graphicScenes ?? []) {
+        const visit = (nodes: readonly GraphicNode[], parentStart = 0) => {
+          for (const node of nodes) {
+            const at = Math.max(parentStart, node.start);
+            if (node.type === "group") visit(node.children, at);
+            else if (node.type === "text") {
+              const frame = {
+                width: Math.ceil(node.width),
+                height: Math.ceil(node.height),
+              };
+              textOverlays.push({
+                text: node.text,
+                frame,
+                style: {
+                  version: 1,
+                  role: "scene-statement",
+                  fontSize: node.fontSize,
+                  fontFamily: node.fontFamily,
+                  fontWeight: node.fontWeight,
+                  background: "none",
+                  position: "center",
+                  maxWidth: frame.width,
+                  safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
+                },
+                at: scene.start + at,
+                identity: { graphicSceneId: scene.id, nodeId: node.id },
+              });
+            }
+          }
+        };
+        visit(scene.nodes);
+      }
       for (const overlay of textOverlays) {
         checkAbort(options.signal);
         const inspection = await inspectTitleOverlay(
           overlay.text,
           overlay.style,
-          report.settings,
+          overlay.frame ?? report.settings,
         );
         if (inspection.status === "failed") {
           report.issues.push(

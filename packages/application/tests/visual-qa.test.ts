@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import * as media from "@openfilm/media";
+import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
 import { OpenFilmApplication } from "../src/index.js";
 
 const projects: string[] = [];
@@ -74,6 +75,159 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it("keeps ordinary BMP clips supported while diagnosing graphic BMP bytes", async () => {
+    const { app, composition } = await fixture("0x27a6c8");
+    const path = join(app.directory, "synthetic.bmp");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=96x54",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      path,
+    ]);
+    const asset = await inspectMedia({
+      path,
+      uri: pathToFileURL(path).href,
+      name: "synthetic.bmp",
+    });
+    app.catalog.upsertAsset(asset);
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.assetId = asset.id;
+    await app.save();
+    expect((await app.runVisualQa(composition.id)).status).toBe("complete");
+    const scene = graphicScene({
+      duration: 1,
+      nodes: [
+        {
+          id: "bmp",
+          type: "image",
+          assetId: asset.id,
+          x: 0,
+          y: 0,
+          width: 32,
+          height: 24,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 1,
+        },
+      ],
+    });
+    app.project.timelines[0]!.graphicScenes = [scene];
+    await app.save();
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("incomplete");
+    expect(
+      report.issues.filter((issue) => issue.code === "asset.unsupported"),
+    ).toEqual([
+      expect.objectContaining({
+        assetId: asset.id,
+        graphicSceneId: scene.id,
+        nodeId: "bmp",
+        severity: "error",
+      }),
+    ]);
+    expect(
+      report.issues.some(
+        (issue) => issue.code === "asset.unsupported" && issue.clipId,
+      ),
+    ).toBe(false);
+    expect(report.samples).toEqual([]);
+  });
+
+  it("includes graphic-only image hashes and typed missing-source identities", async () => {
+    const { app, composition } = await fixture("0x27a6c8");
+    const second = await fixture("red");
+    app.catalog.upsertAsset(second.asset);
+    const scene = graphicScene({
+      duration: 1,
+      nodes: [
+        {
+          id: "image",
+          type: "image",
+          assetId: second.asset.id,
+          x: 30,
+          y: 0,
+          width: 32,
+          height: 24,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 1,
+        },
+      ],
+    });
+    app.project.timelines[0]!.graphicScenes = [scene];
+    await app.save();
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("complete");
+    expect(report.sources).toContainEqual({
+      assetId: second.asset.id,
+      sha256: await hashFile(second.source),
+    });
+    await rm(second.source);
+    const missing = await app.runVisualQa(composition.id);
+    expect(missing.status).toBe("incomplete");
+    expect(missing.issues).toContainEqual(
+      expect.objectContaining({
+        code: "asset.missing",
+        assetId: second.asset.id,
+        graphicSceneId: scene.id,
+        nodeId: "image",
+      }),
+    );
+  });
+
+  it.each(["font.load-failed", "title.overflow"] as const)(
+    "reports %s for a graphic text box before rendering",
+    async (code) => {
+      const { app, composition } = await fixture("0x27a6c8");
+      const scene = graphicScene({
+        duration: 1,
+        nodes: [
+          {
+            id: "text",
+            type: "text",
+            text: "繁體字",
+            fontSize: 60,
+            x: 0,
+            y: 0,
+            width: code === "title.overflow" ? 12 : 160,
+            height: code === "title.overflow" ? 12 : 90,
+            opacity: 1,
+            zIndex: 0,
+            start: 0,
+            end: 1,
+          },
+        ],
+      });
+      app.project.timelines[0]!.graphicScenes = [scene];
+      await app.save();
+      if (code === "font.load-failed")
+        vi.stubEnv(
+          "OPENFILM_TITLE_FONT",
+          join(app.directory, "unavailable-font.ttf"),
+        );
+      const report = await app.runVisualQa(composition.id);
+      expect(report.status).toBe("incomplete");
+      expect(report.issues).toContainEqual(
+        expect.objectContaining({
+          code,
+          graphicSceneId: scene.id,
+          nodeId: "text",
+          at: 0,
+        }),
+      );
+      expect(report.samples).toEqual([]);
+    },
+  );
+
   it("withholds cached frames after an original changes, even when its mtime is restored", async () => {
     const { app, composition, source } = await fixture("0x27a6c8");
     const replacement = await fixture("red");

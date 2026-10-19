@@ -1,9 +1,19 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  copyFile,
+  readFile,
+  rm,
+  writeFile,
+  utimes,
+  access,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { Composition } from "@openfilm/core";
+import * as media from "@openfilm/media";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import {
   graphicNode,
@@ -13,6 +23,7 @@ import { FFmpegRenderer, prepareGraphicScenes } from "../src/index.js";
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -204,6 +215,59 @@ it("renders six seconds of deterministic graphics with source-only images, CJK t
     nb_read_frames: "180",
     duration: "6.000000",
   });
+  const evidence = process.env.OPENFILM_GRAPHIC_QA_OUTPUT;
+  if (evidence) {
+    await mkdir(evidence, { recursive: true });
+    for (const [sourcePath, name] of [
+      [source, "synthetic-green.png"],
+      [output, "animation.mp4"],
+      [`${output}.manifest.json`, "animation.mp4.manifest.json"],
+    ])
+      await copyFile(sourcePath!, join(evidence, name!));
+    for (const frame of [0, 90, 179]) {
+      await writeFile(
+        join(evidence, `monitor-${frame}.png`),
+        await prepared.frame(null, frame),
+      );
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-vf",
+        `select=eq(n\\,${frame})`,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-y",
+        join(evidence, `decoded-${frame}.png`),
+      ]);
+    }
+    await writeFile(
+      join(evidence, "evidence.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          synthetic: true,
+          duration: 6,
+          frameRate: 30,
+          frameCount: 180,
+          width: 320,
+          height: 180,
+          testedFrames: [0, 90, 179],
+          shuffledProducerFrames: [90, 0, 179, 17, 90, 0, 45, 179],
+          sourceSha256: original,
+          outputSha256: await hashFile(output),
+          fontSha256: manifest.fonts.map(
+            (font: { sha256: string }) => font.sha256,
+          ),
+        },
+        null,
+        2,
+      ),
+    );
+  }
 }, 30000);
 
 it("rejects unsafe declarative input and excessive work before source/output IO", async () => {
@@ -251,4 +315,150 @@ it("rejects unsafe declarative input and excessive work before source/output IO"
     ),
   ).rejects.toMatchObject({ code: "graphics.invalid" });
   expect(accessed).toBe(false);
+});
+
+it("refuses executable image bytes without publishing or modifying the original", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-graphic-safe-"));
+  roots.push(root);
+  const source = join(root, "disguised.png");
+  const bytes = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>throw 1</script><image href="https://example.invalid/private"/></svg>',
+  );
+  await writeFile(source, bytes);
+  const asset = {
+    id: "image",
+    name: "synthetic",
+    uri: pathToFileURL(source).href,
+    mediaType: "image" as const,
+    state: {},
+    tags: [],
+    metadata: {},
+  };
+  const composition: Composition = {
+    id: "film",
+    storyId: "story",
+    duration: 6,
+    tracks: [],
+    graphicScenes: [
+      graphicScene({
+        nodes: [
+          {
+            id: "image",
+            type: "image",
+            assetId: asset.id,
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 30,
+            opacity: 1,
+            zIndex: 0,
+            start: 0,
+            end: 6,
+          },
+        ],
+      }),
+    ],
+  };
+  const output = join(root, "unsafe.mp4");
+  await expect(
+    new FFmpegRenderer().render(composition, [asset], output, {
+      width: 320,
+      height: 180,
+      frameRate: 30,
+    }),
+  ).rejects.toMatchObject({ code: "graphics.unavailable" });
+  expect(await readFile(source)).toEqual(bytes);
+  await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(access(`${output}.manifest.json`)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+it("matches legacy image bytes with the manifest hash even if an external write restores mtime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-graphic-provenance-"));
+  roots.push(root);
+  const source = join(root, "source.png"),
+    replacement = join(root, "replacement.png");
+  for (const [path, color] of [
+    [source, "green"],
+    [replacement, "red"],
+  ])
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${color}:s=32x24`,
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-y",
+      path!,
+    ]);
+  // PNG permits trailing bytes after IEND. Equalize the files so size and
+  // restored mtime cannot accidentally stand in for content provenance.
+  const first = await readFile(source),
+    second = await readFile(replacement);
+  const length = Math.max(first.length, second.length);
+  await writeFile(
+    source,
+    Buffer.concat([first, Buffer.alloc(length - first.length)]),
+  );
+  await utimes(source, 1700000000, 1700000000);
+  const bytes = Buffer.concat([second, Buffer.alloc(length - second.length)]);
+  expect(bytes.length).toBe((await readFile(source)).length);
+  const asset = await inspectMedia({
+    path: source,
+    uri: pathToFileURL(source).href,
+    name: "legacy.png",
+  });
+  delete asset.contentHash;
+  const composition: Composition = {
+    id: "film",
+    storyId: "story",
+    duration: 6,
+    tracks: [],
+    graphicScenes: [
+      graphicScene({
+        nodes: [
+          {
+            id: "image",
+            type: "image",
+            assetId: asset.id,
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 30,
+            opacity: 1,
+            zIndex: 0,
+            start: 0,
+            end: 6,
+          },
+        ],
+      }),
+    ],
+  };
+  const actual = media.hashFile;
+  let changed = false;
+  vi.spyOn(media, "hashFile").mockImplementation(async (path, signal) => {
+    const hash = await actual(path, signal);
+    if (path === source && !changed) {
+      changed = true;
+      await writeFile(source, bytes);
+      await utimes(source, 1700000000, 1700000000);
+    }
+    return hash;
+  });
+  const output = join(root, "changed.mp4");
+  await expect(
+    new FFmpegRenderer().render(composition, [asset], output, {
+      width: 320,
+      height: 180,
+      frameRate: 30,
+    }),
+  ).rejects.toThrow(/changed between manifest capture/);
+  expect(changed).toBe(true);
+  await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
 });

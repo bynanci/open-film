@@ -96,3 +96,20 @@ Local API at 127.0.0.1:4310, UI at localhost:1420. JSON endpoints:
 The CLI and server are bundled by esbuild to `dist/cli/index.mjs` and
 `dist/server/index.mjs`. Desktop Vite is built into `apps/desktop/dist`.
 Root scripts use pnpm, Vitest, strict tsc, ESLint, Prettier, and Vite.
+
+## GraphicScene v1
+
+The schema-1 Composition may contain optional `graphicScenes`; omission preserves
+legacy behavior. Only strict versioned Image/Text/Shape/Group data is admitted.
+Scene times are Composition seconds, node times scene-local half-open intervals;
+geometry uses parent-centered Composition pixels and explicit bounded animation
+endpoints. Equal scene/time/settings/source/font inputs produce equal PNGs under
+any seek order. No project JS, HTML, raw SVG, expressions or remote URLs execute.
+
+`graphic.scene.upsert/remove` use existing edit revision, receipt, Undo/Redo and
+save/reopen contracts. Shortening cannot exclude saved scenes. GET
+`/api/compositions/:id/graphics.png` requires project ID, editor revision and integer
+output frame, returns current no-store PNG bytes, and withholds stale/cancelled
+work. JSON retains all source references; OTIO graphics are metadata only;
+FCPXML/EDL reject unsupported scenes. Numeric/resource limits are documented in
+[GraphicScene v1](graphic-scenes.md), with evidence in [validation](validation-graphic-scene.md).
