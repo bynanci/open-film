@@ -23,8 +23,9 @@ questions are explicitly left for a person.
 ## Execution record
 
 Base: `089eaf20541391d59c81da075d739bcd3844ceb4` (`origin/main`).
-Candidate branch: `codex/m1-f07-visual-qa`. The commit SHA is recorded in the PR
-delivery metadata after the validated tree is committed. Validation ran on 2026-10-19 with Node
+Candidate branch: `codex/m1-f07-visual-qa`. Exact HEAD is included in the
+delivery summary; this file avoids a self-referential SHA because it is part of
+the committed tree. Validation ran on 2026-10-19 with Node
 `v24.19.0`, pnpm `11.19.0` (the repository declares pnpm `11.11.0`), FFmpeg and
 FFprobe `7.1.5-0+deb13u1`, Chromium `151.0.7922.173`, and OpenTimelineIO `0.18.1`.
 
