@@ -20,6 +20,8 @@ export default {
       width: "Width",
       height: "Height",
       opacity: "Opacity",
+      rotation: "Rotation (degrees)",
+      hidden: "Hidden",
       end: "End (s)",
       textContent: "Text content",
       fontSize: "Font size",
@@ -49,6 +51,18 @@ export default {
       retry: "Retry",
       sampled:
         "Sampled animation preview; pause to inspect the exact output frame.",
+      layerCanvas: "Graphic layer editing canvas",
+      selectLayer: "Select layer {id}",
+      hideLayer: "Hide layer",
+      showLayer: "Show layer",
+      lockLayer: "Lock layer",
+      unlockLayer: "Unlock layer",
+      raiseLayer: "Raise layer",
+      lowerLayer: "Lower layer",
+      snapping: "Snap to grid and guides",
+      guides: "Show center and alignment guides",
+      keyboardHint:
+        "Select a layer to edit its transform values; use arrow keys to nudge, and Shift+Arrow moves 10 pixels.",
     },
     templates: {
       tab: "Story templates",

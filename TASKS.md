@@ -26,12 +26,12 @@ previous M3/F03 general keyframe authoring; broader clip keyframes stay deferred
       matrix; exact-head CI is required and recorded in the PR before merge.
 - [ ] Manual hardware/4K throughput, target-display aesthetics and real NLE finishing.
 
-## Active candidate — M4 / F02 Creative Story Templates
+## Implemented — M4 / F02 Creative Story Templates
 
 Scope: [Creative Story Templates](docs/creative-story-templates.md),
 [architecture](docs/architecture.md#creative-story-template-records) and
-[validation](docs/validation-creative-story-templates.md). Base is M3 merge
-`ab072e660d5913397efe1b98394611d2350bf895`; this candidate has not been merged.
+[validation](docs/validation-creative-story-templates.md). M4 is integrated in
+PR #29 at `e6d07b04cfb7ae905e04a6102311a26da1f18e01`.
 
 - [x] Bind Conversation Card, Route Story and Photo Relationship metadata to
       ordinary GraphicScene v1 nodes without another timeline or project migration.
@@ -43,8 +43,27 @@ Scope: [Creative Story Templates](docs/creative-story-templates.md),
       autosave and reopen; deleting a scene deletes its metadata record.
 - [x] Cover safe GPX parsing, all three template types, real synthetic 24-second
       MP4 decode evidence, source hashes, browser authoring and history/reopen.
-- [ ] Complete full exact-head CI, fresh review and merge M4 before starting
-      the M5 branch; published/manual workstation and private-film gates remain separate.
+- [x] Complete exact-head CI, fresh review and merge M4 before starting M5;
+      published/manual workstation and private-film gates remain separate.
+
+## Active candidate — M5 / F03 Layer Editor (PR 5A)
+
+Base: integrated M3/M4 main `e6d07b04cfb7ae905e04a6102311a26da1f18e01`.
+Scope and implementation contract: [GraphicScene v1](docs/graphic-scenes.md),
+[architecture](docs/architecture.md#declarative-graphicscene) and
+[validation](docs/validation-layer-editor.md).
+
+- [x] Select visible scene objects in the existing paused Monitor and edit their
+      position, size, rotation, opacity and z-order through typed scene commands.
+- [x] Add hidden/locked state, lock-aware group/scene protections, 8-pixel and
+      sibling-center snapping, alignment guides and arrow-key nudging.
+- [x] Preserve existing revision, autosave, history, Undo/Redo and reopen
+      behavior; cancel stale preview/gesture work and reset selection on project
+      or Composition changes.
+- [x] Verify optional fields remain compatible with legacy scenes and compare
+      Monitor PNGs with decoded pixels from a synthetic 6-second MP4.
+- [ ] Complete the full exact-head CI gate and review PR 5A before merging;
+      5B remains blocked on 5A integration.
 
 ## Implemented — M1 / F07 Visual QA
 
@@ -84,9 +103,8 @@ not retroactively rename completed project capabilities.
       are implemented; final PR gates and manual limits are tracked in the
       [validation record](docs/validation-graphic-scene.md). General clip keyframes
       from the earlier M3/F03 proposal remain deferred.
-- [x] **M4 / F02 — Creative Story Templates.** Candidate implements Conversation
-      Card, Route Story and Photo Relationship on M3 GraphicScene v1; the exact
-      MP4/browser/validation evidence and remaining PR gates are in the record above.
+- [x] **M4 / F02 — Creative Story Templates.** Conversation Card, Route Story and
+      Photo Relationship build on M3 GraphicScene v1; merged in [PR #29](https://github.com/bynanci/open-film/pull/29).
 - [ ] **M5 / F03 — Layer Editor (PR 5A).** Add scene-layer selection and direct
       position/size/rotation/opacity/z-order editing, hidden/locked state,
       snapping/guides and keyboard controls through existing typed commands.

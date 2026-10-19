@@ -445,6 +445,17 @@ FFmpeg consumes the identical producer before native captions. There is no proje
 script/page execution or additional timeline. See the [contract](graphic-scenes.md)
 and [threat model](security/graphic-scene-threat-model.md).
 
+M5 / F03 adds optional per-node rotation, hidden and locked data to GraphicScene
+v1; scenes without these fields retain their prior behavior. The Edit Monitor's
+layer overlay derives geometry from the same evaluated Composition frame and
+submits one existing `graphic.scene.upsert` through the timeline editor for each
+gesture. The Inspector uses that command for opacity, z-order, visibility and
+lock state. The solver protects locked node values, ancestor transforms and
+scene timing/order at the command boundary. Monitor interaction is enabled only
+for a paused, current saved-revision frame; project/composition key changes
+unmount the editor and discard transient gestures. It does not add persistence,
+renderer state or a second layer timeline.
+
 ## Creative Story Template Records
 
 Optional schema-1.0.0 `Composition.graphicSceneTemplates` binds Conversation

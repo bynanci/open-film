@@ -2429,6 +2429,96 @@ button.editor-beat-heading:hover {
   gap: 6px;
   margin: 12px 0;
 }
+.graphic-layer-options {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+.graphic-layer-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+.graphic-layer-options input {
+  width: auto;
+  margin-block-start: 4px;
+}
+.graphic-keyboard-hint {
+  font-size: 11px;
+}
+.graphic-layer-list {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  margin: 10px 0;
+  overflow: auto;
+}
+.graphic-layer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-sm);
+}
+.graphic-layer-row.selected {
+  border-color: var(--of-accent);
+  background: var(--of-surface-2);
+}
+.graphic-layer-select {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 6px;
+  border: 0;
+  color: var(--of-text-primary);
+  background: transparent;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.graphic-layer-select:focus-visible,
+.graphic-layer-action:focus-visible,
+.graphic-layer-order-actions .editor-button:focus-visible {
+  outline: 2px solid var(--of-focus);
+  outline-offset: 1px;
+}
+.graphic-layer-state {
+  margin-inline-start: 4px;
+  color: var(--of-text-secondary);
+  font-size: 10px;
+}
+.graphic-layer-action {
+  max-width: 74px;
+  min-height: 26px;
+  padding: 3px 5px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graphic-layer-order-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.graphic-layer-order-actions .editor-button {
+  min-width: 28px;
+  min-height: 24px;
+  padding: 2px 6px;
+}
+.graphic-opacity-slider {
+  grid-column: 1 / -1;
+}
+.graphic-node-edit-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .graphic-scene-overlay {
   position: absolute !important;
   inset: 0;
@@ -2438,6 +2528,81 @@ button.editor-beat-heading:hover {
   pointer-events: none;
   transform: none !important;
   z-index: 3;
+}
+.graphic-preview-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.graphic-layer-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 4;
+  touch-action: none;
+}
+.graphic-layer-overlay-active {
+  pointer-events: auto;
+  outline: none;
+}
+.graphic-layer-target {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+  cursor: move;
+  touch-action: none;
+}
+.graphic-layer-target-selected {
+  fill: rgb(80 150 255 / 10%);
+  stroke: rgb(80 150 255 / 0%);
+}
+.graphic-layer-target-locked {
+  cursor: default;
+}
+.graphic-layer-selection {
+  fill: none;
+  stroke: #52a6ff;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.graphic-layer-handle {
+  fill: #fff;
+  stroke: #1675d1;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  cursor: nwse-resize;
+  pointer-events: all;
+  touch-action: none;
+}
+.graphic-layer-handle-n,
+.graphic-layer-handle-s {
+  cursor: ns-resize;
+}
+.graphic-layer-handle-e,
+.graphic-layer-handle-w {
+  cursor: ew-resize;
+}
+.graphic-layer-handle-ne,
+.graphic-layer-handle-sw {
+  cursor: nesw-resize;
+}
+.graphic-layer-rotate-handle {
+  fill: #52a6ff;
+  cursor: grab;
+}
+.graphic-layer-guide {
+  stroke: rgb(255 224 125 / 60%);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.graphic-layer-guide-snap {
+  stroke: #ff7e6a;
+  stroke-width: 1.5;
 }
 .graphic-preview-status {
   position: absolute;

@@ -23,12 +23,15 @@ CJK title rasterizer, centered and wrapped in its box. Shapes are rectangles or
 ellipses with a literal six-digit hex fill. All content clips to the output frame.
 
 Optional enter/from and exit/to animations interpolate x, y, width, height and
-opacity against explicit static values. Easing is linear, quadratic ease-in,
-quadratic ease-out, or quadratic ease-in-out. Durations must fit without overlap
-inside the node interval. Endpoints never depend on previous frames, wall time,
-randomness, CSS animation or project code. `evaluateGraphicSceneAtTime(scene,t)`
-accepts Composition seconds and returns a fresh evaluated tree. Equal inputs
-produce equal output in any seek order.
+opacity and rotation against explicit static values. Rotation is in degrees,
+defaults to zero for older scenes, and is bounded to ±3,600 degrees. Easing is
+linear, quadratic ease-in, quadratic ease-out, or quadratic ease-in-out.
+Durations must fit without overlap inside the node interval. Endpoints never
+depend on previous frames, wall time, randomness, CSS animation or project code.
+`evaluateGraphicSceneAtTime(scene,t)` accepts Composition seconds and returns a
+fresh evaluated tree. Hidden nodes stay in the saved scene and layer list but
+are omitted from evaluation and output. Equal inputs produce equal output in
+any seek order.
 
 The Node adapter prepares bounded local PNG textures and creates trusted SVG
 containing numerical geometry and embedded generated PNGs only. Resvg rasterizes
@@ -49,6 +52,19 @@ selections, transcript revisions or caption text. Shortening that would exclude 
 scene is rejected before enqueueing; users explicitly adjust/remove it first.
 Regeneration checks only its completed duration. Undo/Redo retains stable IDs.
 
+The Edit Monitor layer overlay selects visible objects, supports pointer drag,
+resize and rotation handles, and submits one existing `graphic.scene.upsert` per
+completed gesture. Opacity, z-order, hidden/locked state and numeric geometry use
+the same typed command. Snapping uses an 8-pixel Composition grid plus sibling
+centers; optional guides show frame center and active alignments. Arrow keys move
+the selected layer one Composition pixel and Shift+Arrow moves ten. A locked node
+can only be unlocked in its own command; while locked, its data, ancestor group
+transforms and containing scene timing/z-order are protected by the solver. A
+group with a locked descendant cannot be transformed as a whole. Gestures are
+discarded when their saved revision or active project changes. The overlay is
+available only while the exact saved-revision Monitor frame is loaded and the
+editor is paused; the raster preview and FFmpeg output use the same evaluator.
+
 Edit adds a Graphics Inspector with scene/node selection, primitive controls,
 timing and enter/exit controls. It uses the existing Composition duration and
 Monitor. Image admission is limited to cataloged local PNG, JPEG and WebP files,
@@ -65,7 +81,7 @@ These v1 limits fail closed with typed errors, before expensive work where
 possible: 8 scenes, 64 nodes total, nesting depth 4, 30 seconds per scene,
 512 text characters per node and 4,096 total, finite coordinates within ±8,192,
 dimensions 1–4,096, node boxes at most 8,294,400 pixels, opacity
-0–1 and integer zIndex within ±1,000. Rendering supports at most 8,294,400 output
+0–1, rotation ±3,600 degrees and integer zIndex within ±1,000. Rendering supports at most 8,294,400 output
 pixels, 60 fps, 1,800 active scene frames and 2,000,000,000 frame-pixels per render.
 Source images are at most 64 MiB each, 128 MiB combined and 32 million decoded
 pixels each. Reads are bounded even if a file grows during admission. Only the

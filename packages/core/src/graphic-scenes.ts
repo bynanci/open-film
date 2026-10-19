@@ -26,6 +26,7 @@ export interface GraphicValues {
   width: number;
   height: number;
   opacity: number;
+  rotation?: number;
 }
 export interface GraphicAnimation {
   enter?: {
@@ -45,6 +46,10 @@ interface GraphicNodeBase extends GraphicValues {
   /** Scene-local, half-open seconds. */
   start: number;
   end: number;
+  /** Hidden nodes remain editable but are omitted from Monitor and output. */
+  hidden?: boolean;
+  /** Locked nodes are immutable through typed scene-upsert commands. */
+  locked?: boolean;
   animation?: GraphicAnimation;
 }
 export interface GraphicImageNode extends GraphicNodeBase {
@@ -83,6 +88,7 @@ export interface EvaluatedGraphicNode extends GraphicValues {
   id: string;
   type: GraphicNode["type"];
   zIndex: number;
+  locked?: boolean;
   baseWidth: number;
   baseHeight: number;
   shape?: GraphicShapeNode["shape"];
@@ -107,8 +113,18 @@ const fields = [
   "start",
   "end",
   "animation",
+  "rotation",
+  "hidden",
+  "locked",
 ];
-const valueFields = ["x", "y", "width", "height", "opacity"] as const;
+const valueFields = [
+  "x",
+  "y",
+  "width",
+  "height",
+  "opacity",
+  "rotation",
+] as const;
 function bad(path: string, message: string): never {
   throw new ApplicationError("graphics.invalid", `${path}: ${message}`, 400);
 }
@@ -211,11 +227,25 @@ function identifier(value: unknown, path: string): string {
 function values(data: Data, path: string, partial = false): void {
   for (const field of valueFields) {
     if (partial && !Object.hasOwn(data, field)) continue;
+    if (!partial && field === "rotation" && !Object.hasOwn(data, field))
+      continue;
     numeric(
       data[field],
       `${path}.${field}`,
-      field === "opacity" ? 0 : field === "x" || field === "y" ? -8192 : 1,
-      field === "opacity" ? 1 : field === "x" || field === "y" ? 8192 : 4096,
+      field === "opacity"
+        ? 0
+        : field === "x" || field === "y"
+          ? -8192
+          : field === "rotation"
+            ? -3600
+            : 1,
+      field === "opacity"
+        ? 1
+        : field === "x" || field === "y"
+          ? 8192
+          : field === "rotation"
+            ? 3600
+            : 4096,
     );
   }
   if (
@@ -337,6 +367,10 @@ export function validateGraphicScenes(
         if (nodeIds.has(nodeId)) bad(p, "duplicate node ID");
         nodeIds.add(nodeId);
         values(item, p);
+        if (Object.hasOwn(item, "hidden") && typeof item.hidden !== "boolean")
+          bad(`${p}.hidden`, "expected a boolean");
+        if (Object.hasOwn(item, "locked") && typeof item.locked !== "boolean")
+          bad(`${p}.locked`, "expected a boolean");
         numeric(item.zIndex, `${p}.zIndex`, -1000, 1000, true);
         const from = numeric(item.start, `${p}.start`, 0, duration);
         const end = numeric(item.end, `${p}.end`, Number.MIN_VALUE, duration);
@@ -422,6 +456,7 @@ export function evaluateGraphicSceneAtTime(
       .sort((a, b) => a.zIndex - b.zIndex)
       .flatMap((node) => {
         if (local < node.start || local >= node.end) return [];
+        if (node.hidden) return [];
         const result: EvaluatedGraphicNode = {
           id: node.id,
           type: node.type,
@@ -430,7 +465,9 @@ export function evaluateGraphicSceneAtTime(
           width: node.width,
           height: node.height,
           opacity: node.opacity,
+          rotation: node.rotation ?? 0,
           zIndex: node.zIndex,
+          ...(node.locked === undefined ? {} : { locked: node.locked }),
           baseWidth: node.width,
           baseHeight: node.height,
         };
@@ -443,17 +480,21 @@ export function evaluateGraphicSceneAtTime(
             elapsed / enter.duration,
           );
           for (const key of valueFields) {
-            const from = enter.from[key] ?? node[key];
-            result[key] = from + (node[key] - from) * progress;
+            const base = node[key] ?? (key === "rotation" ? 0 : undefined);
+            const from = enter.from[key] ?? base;
+            if (base !== undefined && from !== undefined)
+              result[key] = from + (base - from) * progress;
           }
         } else if (exit && local >= node.end - exit.duration) {
           const progress = graphicEasing(
             exit.easing,
             (local - node.end + exit.duration) / exit.duration,
           );
-          for (const key of valueFields)
-            result[key] =
-              node[key] + ((exit.to[key] ?? node[key]) - node[key]) * progress;
+          for (const key of valueFields) {
+            const base = node[key] ?? (key === "rotation" ? 0 : undefined);
+            if (base !== undefined)
+              result[key] = base + ((exit.to[key] ?? base) - base) * progress;
+          }
         }
         if (node.type === "shape") {
           result.shape = node.shape;
