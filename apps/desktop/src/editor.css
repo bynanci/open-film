@@ -2389,3 +2389,67 @@ button.editor-beat-heading:hover {
   color: var(--editor-text);
   white-space: pre-wrap;
 }
+
+.graphic-inspector {
+  padding: var(--of-space-4);
+  min-width: 0;
+}
+.graphic-inspector fieldset {
+  border: 0;
+  min-width: 0;
+  margin: 12px 0;
+  padding: 0;
+}
+.graphic-inspector label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.graphic-inspector input,
+.graphic-inspector select,
+.graphic-inspector textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.graphic-inspector textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.graphic-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.graphic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.graphic-scene-overlay {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: fill !important;
+  pointer-events: none;
+  transform: none !important;
+  z-index: 3;
+}
+.graphic-preview-status {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--of-surface-1);
+  padding: 4px 8px;
+  z-index: 4;
+}
+.editor-inspector-tabs {
+  flex-wrap: wrap;
+}

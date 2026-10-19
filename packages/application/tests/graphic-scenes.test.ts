@@ -1,13 +1,25 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  readdir,
+  mkdir,
+  symlink,
+} from "node:fs/promises";
+import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { runProcess, inspectMedia, hashFile } from "@openfilm/media";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as render from "@openfilm/render";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
 
 const apps = new Set<OpenFilmApplication>();
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const app of apps) app.close();
   apps.clear();
   await Promise.all(
@@ -106,6 +118,179 @@ describe("durable GraphicScene editing", () => {
     expect(
       new TimelineEditor(reopened).get("composition").composition.graphicScenes,
     ).toEqual([scene]);
+  });
+
+  it("returns exact-frame PNGs and refuses stale/project-mismatched preview requests", async () => {
+    const { app, editor } = await fixture();
+    app.project.settings = { width: 320, height: 180, frameRate: 30 };
+    const initial = editor.get("composition");
+    const state = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: graphicScene() }],
+    });
+    const input = {
+      projectId: app.project.id,
+      baseRevision: state.revision,
+      frameIndex: 90,
+    };
+    const png = await app.graphics.frame("composition", input);
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    await app.graphics.frame("composition", { ...input, frameIndex: 0 });
+    expect(await app.graphics.frame("composition", input)).toEqual(png);
+    await expect(
+      app.graphics.frame("composition", { ...input, projectId: "other" }),
+    ).rejects.toMatchObject({ code: "graphics.stale" });
+    await expect(
+      app.graphics.frame("composition", { ...input, baseRevision: "old" }),
+    ).rejects.toMatchObject({ code: "graphics.stale" });
+    await expect(
+      app.graphics.frame("composition", { ...input, frameIndex: 180 }),
+    ).rejects.toMatchObject({ code: "graphics.invalid" });
+  });
+
+  it("withholds a frame when the revision changes during raster preparation", async () => {
+    const { app, editor } = await fixture();
+    app.project.settings = { width: 320, height: 180, frameRate: 30 };
+    const initial = editor.get("composition");
+    const state = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: graphicScene() }],
+    });
+    const actual = render.prepareGraphicScenes;
+    vi.spyOn(render, "prepareGraphicScenes").mockImplementation(
+      async (...args) => {
+        const prepared = await actual(...args);
+        app.project.timelines[0]!.graphicScenes![0]!.nodes[0]!.x = 42;
+        return prepared;
+      },
+    );
+    await expect(
+      app.graphics.frame("composition", {
+        projectId: app.project.id,
+        baseRevision: state.revision,
+        frameIndex: 0,
+      }),
+    ).rejects.toMatchObject({ code: "graphics.stale" });
+    expect(await readdir(join(app.directory, "cache", "graphics"))).toEqual([]);
+  });
+
+  it("bounds concurrent work, honors cancellation and removes private textures", async () => {
+    const { app, editor } = await fixture();
+    const initial = editor.get("composition");
+    const state = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: graphicScene() }],
+    });
+    const controller = new AbortController();
+    const input = {
+      projectId: app.project.id,
+      baseRevision: state.revision,
+      frameIndex: 0,
+    };
+    const pending = app.graphics.frame("composition", {
+      ...input,
+      signal: controller.signal,
+    });
+    await expect(
+      app.graphics.frame("composition", input),
+    ).rejects.toMatchObject({ code: "graphics.busy" });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    const retried = await app.graphics.frame("composition", input);
+    expect(retried.subarray(1, 4).toString()).toBe("PNG");
+    expect(await readdir(join(app.directory, "cache", "graphics"))).toEqual([]);
+  });
+
+  it("withholds source changes during the final post-cleanup revision check", async () => {
+    const { app, editor } = await fixture();
+    const source = join(app.directory, "synthetic.png");
+    const replacement = join(app.directory, "replacement.png");
+    for (const [path, color] of [
+      [source, "green"],
+      [replacement, "red"],
+    ])
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=${color}:s=32x24`,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-y",
+        path!,
+      ]);
+    const bytes = await readFile(replacement);
+    const asset = await inspectMedia({
+      path: source,
+      uri: pathToFileURL(source).href,
+      name: "synthetic.png",
+    });
+    app.catalog.upsertAsset(asset);
+    app.project.stories[0]!.beats[0]!.candidateAssetIds!.push(asset.id);
+    const initial = editor.get("composition");
+    const scene = graphicScene({
+      nodes: [
+        {
+          id: "image",
+          type: "image",
+          assetId: asset.id,
+          x: 0,
+          y: 0,
+          width: 40,
+          height: 30,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+    });
+    const state = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene }],
+    });
+    const runtime = app.graphics as unknown as { revision(id: string): string };
+    const actual = runtime.revision.bind(runtime);
+    let calls = 0;
+    vi.spyOn(runtime, "revision").mockImplementation((id) => {
+      const revision = actual(id);
+      if (++calls === 3) writeFileSync(source, bytes);
+      return revision;
+    });
+    await expect(
+      app.graphics.frame("composition", {
+        projectId: app.project.id,
+        baseRevision: state.revision,
+        frameIndex: 0,
+      }),
+    ).rejects.toMatchObject({ code: "graphics.unavailable" });
+    expect(await hashFile(source)).not.toBe(asset.contentHash);
+    expect(await readdir(join(app.directory, "cache", "graphics"))).toEqual([]);
+  });
+
+  it("refuses a symlinked private graphic cache", async () => {
+    const { app, editor } = await fixture();
+    const initial = editor.get("composition");
+    const state = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: graphicScene() }],
+    });
+    const outside = await mkdtemp(join(tmpdir(), "openfilm-graphic-outside-"));
+    roots.push(outside);
+    await mkdir(join(app.directory, "cache"), { recursive: true });
+    await symlink(outside, join(app.directory, "cache", "graphics"));
+    await expect(
+      app.graphics.frame("composition", {
+        projectId: app.project.id,
+        baseRevision: state.revision,
+        frameIndex: 0,
+      }),
+    ).rejects.toThrow(/symlink|directory/i);
+    expect(await readdir(outside)).toEqual([]);
   });
 
   it("rejects unsafe/stale edits and shortening without changing project bytes or revision", async () => {

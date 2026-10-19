@@ -47,6 +47,8 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
+import GraphicSceneInspector from "./GraphicSceneInspector.vue";
+import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
@@ -167,7 +169,9 @@ async function reloadDirectionState() {
 defineExpose({ flush, hasPending, reload: load });
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
-const inspector = ref<"clip" | "beat" | "sound" | "captions">("clip");
+const inspector = ref<"clip" | "beat" | "sound" | "captions" | "graphics">(
+  "clip",
+);
 const selectedCaptionTrackId = ref("");
 const selectedCaptionCueId = ref("");
 const captionSourceTrackId = ref("");
@@ -1969,7 +1973,21 @@ onBeforeUnmount(() => {
                   :source-version="sourceVersion"
                   :active="active && editMode === 'story'"
                   :look="playbackLook"
-                />
+                  ><template #default="slot"
+                    ><GraphicScenePreview
+                      v-if="state.composition.graphicScenes?.length"
+                      :composition-id="compositionId"
+                      :project-id="projectId"
+                      :revision="state.revision"
+                      :source-version="sourceVersion"
+                      :frame-rate="projectSettings.frameRate"
+                      :duration="state.composition.duration"
+                      :active="
+                        active && editMode === 'story' && status === 'saved'
+                      "
+                      :time="playbackClip.timelineStart + slot.time"
+                      :playing="slot.playing" /></template
+                ></PhotoPresentationPreview>
                 <div
                   v-else-if="playbackAsset.mediaType === 'image'"
                   class="editor-composition-frame"
@@ -1999,6 +2017,26 @@ onBeforeUnmount(() => {
                     :source-time="sourceTime"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
+                  />
+                  <GraphicScenePreview
+                    v-if="
+                      state.composition.graphicScenes?.length && playbackClip
+                    "
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :source-version="sourceVersion"
+                    :frame-rate="projectSettings.frameRate"
+                    :duration="state.composition.duration"
+                    :active="
+                      active && editMode === 'story' && status === 'saved'
+                    "
+                    :time="
+                      playbackClip.timelineStart +
+                      (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                        (playbackClip.transform?.speed ?? 1)
+                    "
+                    :playing="playing"
                   />
                 </div>
                 <div
@@ -2065,6 +2103,26 @@ onBeforeUnmount(() => {
                     :player="sourcePlayer"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
+                  />
+                  <GraphicScenePreview
+                    v-if="
+                      state.composition.graphicScenes?.length && playbackClip
+                    "
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :source-version="sourceVersion"
+                    :frame-rate="projectSettings.frameRate"
+                    :duration="state.composition.duration"
+                    :active="
+                      active && editMode === 'story' && status === 'saved'
+                    "
+                    :time="
+                      playbackClip.timelineStart +
+                      (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                        (playbackClip.transform?.speed ?? 1)
+                    "
+                    :playing="playing"
                   />
                 </div>
               </template>
@@ -2512,7 +2570,29 @@ onBeforeUnmount(() => {
             >
               {{ t("editor.captions.tab") }}
             </button>
+            <button
+              :class="{ selected: inspector === 'graphics' }"
+              :aria-pressed="inspector === 'graphics'"
+              :disabled="directionBlocked"
+              data-testid="graphic-inspector-tab"
+              @click="inspector = 'graphics'"
+            >
+              {{ t("editor.graphics.tab") }}
+            </button>
           </div>
+          <GraphicSceneInspector
+            v-if="inspector === 'graphics'"
+            :scenes="state.composition.graphicScenes ?? []"
+            :duration="state.composition.duration"
+            :assets="state.assets"
+            :disabled="
+              directionBlocked ||
+              historyBusy ||
+              status === 'conflict' ||
+              status === 'failed'
+            "
+            @command="command"
+          />
           <template
             v-if="inspector === 'clip' && selectedClip && selectedAsset"
           >

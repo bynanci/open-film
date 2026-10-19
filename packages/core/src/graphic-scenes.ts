@@ -135,8 +135,20 @@ function record(
   return value as Data;
 }
 function list(value: unknown, path: string, maximum: number): unknown[] {
-  if (!Array.isArray(value) || value.length > maximum)
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    value.length > maximum
+  )
     bad(path, `expected an array with at most ${maximum} items`);
+  if (
+    Reflect.ownKeys(value).some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "length" && !/^(0|[1-9]\d*)$/u.test(key)),
+    )
+  )
+    bad(path, "expected undecorated JSON array data");
   for (let i = 0; i < value.length; i++)
     if (
       !Object.hasOwn(value, i) ||
@@ -288,13 +300,13 @@ export function validateGraphicScenes(
     numeric(scene.zIndex, `${path}.zIndex`, -1000, 1000, true);
     const nodeIds = new Set<string>();
     const visit = (nodes: unknown, nodePath: string, depth: number): void => {
-      if (depth > GRAPHIC_SCENE_LIMITS.depth)
-        bad(nodePath, "nesting depth limit exceeded");
       for (const [i, raw] of list(
         nodes,
         nodePath,
         GRAPHIC_SCENE_LIMITS.nodes,
       ).entries()) {
+        if (depth > GRAPHIC_SCENE_LIMITS.depth)
+          bad(nodePath, "nesting depth limit exceeded");
         if (++count > GRAPHIC_SCENE_LIMITS.nodes)
           bad(nodePath, "64 node limit exceeded");
         const p = `${nodePath}[${i}]`;

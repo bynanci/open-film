@@ -111,6 +111,44 @@ describe("GraphicScene admission", () => {
     ).toThrow();
   });
 
+  it("admits an empty group at the maximum supported depth", () => {
+    let nodes: core.GraphicNode[] = [];
+    for (let depth = 0; depth < 4; depth++)
+      nodes = [
+        {
+          id: `group-${depth}`,
+          type: "group",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+          children: nodes,
+        },
+      ];
+    expect(
+      core.validateComposition(composition([graphicScene({ nodes })]))
+        .graphicScenes,
+    ).toHaveLength(1);
+  });
+  it.each(["decorated", "symbol", "subclass"])(
+    "rejects %s arrays outside plain JSON",
+    (kind) => {
+      const scenes = [graphicScene()];
+      if (kind === "decorated")
+        Object.defineProperty(scenes, "extra", { value: "untrusted" });
+      if (kind === "symbol")
+        Object.defineProperty(scenes, Symbol("untrusted"), {
+          value: "untrusted",
+        });
+      if (kind === "subclass") Object.setPrototypeOf(scenes, {});
+      expect(() => core.validateComposition(composition(scenes))).toThrow();
+    },
+  );
+
   it("bounds node count before traversing payloads", () => {
     const nodes = Array.from({ length: 65 }, (_, i) =>
       graphicNode({ id: `node-${i}` }),
