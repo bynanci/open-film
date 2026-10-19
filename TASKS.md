@@ -24,6 +24,30 @@ documented crosswalk; this is not a retroactive claim that those labels existed.
 - [ ] Manual: private-film aesthetics, display/projector readability, long/4K
       performance and actual Resolve/NLE finishing remain separate gates.
 
+## Update queue — Creative Scene Platform
+
+These roadmap milestones are queued, not implemented by the M1/F07 change.
+The separately requested native caption-track scope is recorded first; the
+existing roadmap M2/F03 motion milestone remains a distinct queued task.
+
+- [ ] Requested M2 / F04 — Native Caption Track: versioned stable cue/track
+      identities, transcript revision provenance, manually revised text/timing,
+      Edit timeline and inspector, accessible style/safe-area controls, true MP4
+      burn-in plus existing SRT/VTT export; never infer word timing without
+      reliable timestamps. Preserve locks, trim/split/speed, history, autosave
+      and reopen; verify synthetic narration and decoded caption timing/position.
+- [ ] Roadmap M2 / F03 — Dynamic motion authoring: extend existing clip-local
+      presentation commands with backward-compatible keyframe semantics and
+      deterministic arbitrary-seek preview/render parity.
+- [ ] Roadmap M3 / F05 — Subtitle finishing: define saved subtitle-track and
+      cue-editing behavior with measured CJK layout and MP4/subtitle parity.
+- [ ] Roadmap M4 / F04 + F08 — Photo narrative and AI assistance: establish
+      explicit consent/data boundaries and source-bound review/accept/reject
+      history before adding opt-in visual assistance.
+- [ ] Roadmap M5 / F06 + F10 + F13 — Audio and release QA: add decoded-audio
+      evidence and keep hardware, 4K and NLE workstation gates separately
+      recorded.
+
 ## Current — Apache-2.0 restoration
 
 Policy: [licensing](docs/licensing.md) and
