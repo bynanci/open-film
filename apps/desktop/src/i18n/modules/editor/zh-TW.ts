@@ -80,6 +80,7 @@ export default {
       agentSourceProvider: "語言模型服務",
       agentAffected: "受影響圖層",
       agentSelectInstructions: "勾選你要接受的編輯項目。",
+      agentRequiresActions: "請先選取前置操作 {actions}，再選取這項編輯。",
       agentBefore: "修改前",
       agentAfter: "修改後",
       agentAccept: "接受已選取的 {count} 項編輯",

@@ -84,6 +84,8 @@ export default {
       agentSourceProvider: "言語プロバイダー",
       agentAffected: "対象レイヤー",
       agentSelectInstructions: "適用する編集だけを選択してください。",
+      agentRequiresActions:
+        "この編集を選ぶ前に、前提となる操作 {actions} を選択してください。",
       agentBefore: "変更前",
       agentAfter: "変更後",
       agentAccept: "選択した編集 {count} 件を適用",

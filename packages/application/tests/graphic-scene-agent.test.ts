@@ -2,6 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  GraphicSceneTemplateRecord,
+  GraphicTextNode,
+} from "@openfilm/core";
+import { graphicSceneTemplateSourceLabel } from "@openfilm/core";
 import type { LanguageProvider } from "@openfilm/plugin-sdk";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 import {
@@ -29,6 +34,7 @@ async function fixture(
       graphicNode({ id: "private-unselected", x: 90 }),
     ],
   }),
+  templateRecords?: GraphicSceneTemplateRecord[],
 ) {
   const directory = await mkdtemp(join(tmpdir(), "openfilm-graphic-agent-"));
   directories.push(directory);
@@ -44,6 +50,7 @@ async function fixture(
     duration: 6,
     tracks: [],
     graphicScenes: [scene],
+    ...(templateRecords ? { graphicSceneTemplates: templateRecords } : {}),
   });
   await app.save();
   return { app, editor: new TimelineEditor(app), directory: app.directory };
@@ -65,6 +72,90 @@ function request(
 }
 
 describe("reviewable GraphicScene agent edits", () => {
+  it("keeps provenance-bound template edits out of the selectable proposal", async () => {
+    const sourceText = "今天很開心";
+    const scene = graphicScene({
+      nodes: [
+        {
+          id: "speaker",
+          type: "text",
+          text: "朋友",
+          fontSize: 24,
+          x: 0,
+          y: 0,
+          width: 120,
+          height: 60,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        } satisfies GraphicTextNode,
+        {
+          id: "message",
+          type: "text",
+          text: sourceText,
+          fontSize: 24,
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 80,
+          opacity: 1,
+          zIndex: 1,
+          start: 0,
+          end: 6,
+        } satisfies GraphicTextNode,
+        {
+          id: "source-label",
+          type: "text",
+          text: graphicSceneTemplateSourceLabel("zh-TW", "quoted", "合成聊天"),
+          fontSize: 14,
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 40,
+          opacity: 1,
+          zIndex: 2,
+          start: 0,
+          end: 6,
+        } satisfies GraphicTextNode,
+      ],
+    });
+    const templateRecords: GraphicSceneTemplateRecord[] = [
+      {
+        version: 1,
+        sceneId: scene.id,
+        templateId: "conversation-card",
+        data: {
+          locale: "zh-TW",
+          messages: [
+            {
+              id: "message-1",
+              speakerNodeId: "speaker",
+              textNodeId: "message",
+              sourceLabelNodeId: "source-label",
+              source: {
+                originalText: sourceText,
+                citation: "合成聊天",
+                attribution: "quoted",
+              },
+            },
+          ],
+        },
+      },
+    ];
+    const { editor } = await fixture(scene, templateRecords);
+    const proposal = await editor.previewGraphicSceneAgent("composition", {
+      ...request(editor),
+      sceneId: scene.id,
+      nodeIds: ["message"],
+      instruction: "文字改為已更新",
+    });
+    expect(proposal.actions).toEqual([]);
+    expect(proposal.conflicts).toMatchObject([
+      { code: "invalid", nodeId: "message" },
+    ]);
+  });
+
   it("previews without saving and accepts only explicit actions as one undoable edit", async () => {
     const { app, editor, directory } = await fixture();
     const before = editor.get("composition");

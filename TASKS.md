@@ -82,6 +82,10 @@ Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
       order independently of action selection order.
 - [x] Keep provider generation outside the mutation queue, propagate cancellation
       on owner change/close and enforce a bounded response deadline.
+- [x] Preserve pending acceptance barriers across inspector unmounts; validate
+      template provenance before exposing edits and mark required proposal
+      actions so only valid explicit selections can be accepted.
+- [x] Keep long local text instructions actionable with bounded review reasons.
 - [x] Cover application, API, browser, undo/redo/reopen, stale/locked and actual
       synthetic MP4 regressions with existing project contracts.
 - [ ] Complete full exact-head validation and fresh review before merge.

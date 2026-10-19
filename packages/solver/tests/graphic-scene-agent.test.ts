@@ -54,6 +54,18 @@ describe("reviewable GraphicScene agent operations", () => {
     expect(
       parseLocalGraphicSceneInstruction("文字改為新的標題", caption).operations,
     ).toMatchObject([{ kind: "set", field: "text", value: "新的標題" }]);
+    const longCaption = "台".repeat(512);
+    const longText = parseLocalGraphicSceneInstruction(
+      `set text to ${longCaption}`,
+      caption,
+    );
+    expect(longText.conflicts).toEqual([]);
+    expect(longText.operations[0]).toMatchObject({
+      kind: "set",
+      field: "text",
+      value: longCaption,
+    });
+    expect(longText.operations[0]!.reason.length).toBeLessThanOrEqual(300);
     expect(
       parseLocalGraphicSceneInstruction("make it cinematic", node),
     ).toMatchObject({
@@ -137,11 +149,44 @@ describe("reviewable GraphicScene agent operations", () => {
           value: 4096,
           reason: "Set the reviewed height.",
         },
+        {
+          kind: "set",
+          nodeId,
+          field: "opacity",
+          value: 0.5,
+          reason: "Keep this independent edit selectable.",
+        },
       ],
       6,
     );
     expect(proposal.conflicts).toEqual([]);
-    expect(proposal.actions).toHaveLength(2);
+    expect(proposal.actions).toHaveLength(3);
+    expect(proposal.actions[0]!.requiresActionIds).toEqual([]);
+    expect(proposal.actions[1]!.requiresActionIds).toEqual([
+      proposal.actions[0]!.id,
+    ]);
+    expect(proposal.actions[2]!.requiresActionIds).toEqual([]);
+    expect(() =>
+      applyGraphicSceneAgentActions(
+        scene,
+        [nodeId],
+        proposal.actions,
+        [proposal.actions[1]!.id],
+        6,
+      ),
+    ).toThrow(/required earlier/i);
+    const independent = applyGraphicSceneAgentActions(
+      scene,
+      [nodeId],
+      proposal.actions,
+      [proposal.actions[2]!.id],
+      6,
+    );
+    expect(independent.nodes[0]).toMatchObject({
+      width: 4000,
+      height: 2000,
+      opacity: 0.5,
+    });
     const selected = applyGraphicSceneAgentActions(
       scene,
       [nodeId],

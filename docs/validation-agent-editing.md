@@ -30,14 +30,20 @@ persistence path.
   exact changes to accept; the application applies only the action IDs supplied
   by the user in proposal order. Acceptance is one existing
   `graphic.scene.upsert` edit and therefore uses normal autosave, stale revision,
-  Undo/Redo and reopen behavior.
+  Undo/Redo and reopen behavior. Actions that only validate after earlier
+  operations declare those prerequisites and remain unavailable until they are
+  selected.
 - Proposals remain ephemeral and are rejected when stale, missing, locked,
   unselected, conflicting or unavailable. An uncertain acceptance stores its
   exact request ID in project/Composition-scoped local storage so Retry cannot
   silently create a second edit. Switching owners reloads the corresponding
   receipt; a stale retry fails closed. Pending acceptance blocks navigation,
   export/flush and further composition mutations. A proposal is disabled until
-  the current local composition draft is saved.
+  the current local composition draft is saved. The pending gate survives
+  inspector unmounts until the receipt is retried or explicitly discarded.
+- Candidate edits are validated against retained GraphicScene template records
+  before actions are shown and again at acceptance; provenance-bound text cannot
+  create a receipt that will fail on every retry.
 - Provider previews run outside the global mutation queue, carry an abort signal,
   stop on client/project/server close, and have a bounded 60-second deadline.
   After the provider returns, saved-revision and active-project checks fail stale
@@ -49,11 +55,12 @@ persistence path.
   in-flight Desktop preview without leaving the editor busy.
 - `packages/solver/tests/graphic-scene-agent.test.ts` covers the local grammar,
   strict JSON parsing, before/after actions, explicit action selection, bounds,
-  locked ancestors, unselected IDs and conflicts.
+  locked ancestors, unselected IDs, proposal prerequisites and bounded reasons
+  for long local text instructions.
 - `packages/application/tests/graphic-scene-agent.test.ts` covers preview
   without save, local accept, one-step Undo/Redo, reopen, provider refusal before
   consent, selected-only provider disclosure, unselected output conflicts,
-  locked layers and stale revision rejection.
+  locked layers, stale revision rejection and protected Conversation Card text.
 - `tests/integration/graphic-scene-adapters.test.ts` covers HTTP preview and
   acceptance through the same server-held TimelineEditor, followed by HTTP
   Undo. A deliberately uncooperative provider fixture verifies stale previews
@@ -61,7 +68,8 @@ persistence path.
   complete while provider generation waits.
 - `tests/e2e/graphic-scenes.spec.ts` covers Desktop Preview → Select → Explicit
   Accept, deselect disabling acceptance, retrying a lost acceptance response,
-  pending state blocking Story navigation, saved layer position and Undo.
+  inspector switching while an acceptance is pending, pending state blocking
+  Story navigation, saved layer position and Undo.
 - `packages/application/tests/graphic-scenes.test.ts` creates a synthetic
   background MP4, accepts a deterministic layer translation, renders a new real
   H.264 MP4, probes 320×180 / 12 fps / 72 frames / 6 seconds, decodes the
@@ -82,21 +90,22 @@ pnpm exec vitest run \
   tests/integration/graphic-scene-adapters.test.ts
 ```
 
-The focused command passed 5 files / 24 tests. Full local checks passed:
-`pnpm format:check`, `pnpm test:i18n` (1,609 semantic keys across English,
+The focused command passed 5 files / 25 tests. Full local checks passed:
+`pnpm format:check`, `pnpm test:i18n` (1,610 semantic keys across English,
 Traditional Chinese and Japanese), `pnpm lint`, `pnpm typecheck`, `pnpm test`
-(197 files / 2,884 tests), `pnpm build`, and `pnpm test:interchange` (18
+(197 files / 2,885 tests), `pnpm build`, and `pnpm test:interchange` (18
 OpenTimelineIO 0.18.1 checks). The complete Playwright suite passed 163/163 at
-the prior review head; the final pending-flush, operation-order and provider
-queue/deadline fixes were then verified by the focused 5B tests and the
-GraphicScene browser test. The browser test uses system Chromium at
+the pre-review-fix head; subsequent pending-barrier, operation-order,
+provider-queue, provenance and proposal-dependency fixes were verified by the
+focused 5B tests and the GraphicScene browser test (1/1). The browser test uses
+system Chromium at
 `/usr/bin/chromium` because the Playwright download host returns HTTP 403.
 `opentimelineio==0.18.1` was installed into an isolated `/tmp` Python virtual
 environment for E2E and interchange checks. After the final review fixes,
 `pnpm test` passed 197 files / 2,884 tests and the focused GraphicScene E2E
 passed again. The provider integration test was rerun with its stale-preview
-assertion (3 tests passed). The production build succeeds with the existing desktop
-bundle-size advisory (896.94 kB uncompressed).
+assertion (3 tests passed). The production build succeeds with the existing
+desktop bundle-size advisory (897.87 kB uncompressed).
 
 Native Rust checks are unavailable locally because Cargo is not installed;
 exact-head GitHub CI must pass its native job before merge. Exact-head CI and

@@ -141,7 +141,10 @@ onBeforeUnmount(() => {
   previewController?.abort();
   previewController = undefined;
   emit("busy", false);
-  emit("pending", false);
+  // Keep the editor's navigation/export barrier if the inspector is switched
+  // away while acceptance is uncertain. The receipt must be retried or
+  // explicitly discarded after the review UI is mounted again.
+  if (!pending.value) emit("pending", false);
 });
 async function consent(allow: boolean) {
   if (busy.value || props.disabled || pending.value) return;
@@ -210,9 +213,42 @@ async function generate() {
 function toggle(actionId: string, event: Event) {
   if (busy.value || pending.value || isStale.value) return;
   const checked = (event.target as HTMLInputElement).checked;
-  selected.value = checked
-    ? [...new Set([...selected.value, actionId])]
-    : selected.value.filter((id) => id !== actionId);
+  const action = plan.value?.actions.find((item) => item.id === actionId);
+  if (!action) return;
+  if (checked) {
+    if (action.requiresActionIds.some((id) => !selected.value.includes(id)))
+      return;
+    selected.value = [...new Set([...selected.value, actionId])];
+    return;
+  }
+  const deselected = new Set([actionId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const dependent of plan.value?.actions ?? [])
+      if (
+        !deselected.has(dependent.id) &&
+        dependent.requiresActionIds.some((id) => deselected.has(id))
+      ) {
+        deselected.add(dependent.id);
+        changed = true;
+      }
+  }
+  selected.value = selected.value.filter((id) => !deselected.has(id));
+}
+function prerequisitesSelected(
+  action: GraphicSceneAgentPlan["actions"][number],
+) {
+  return action.requiresActionIds.every((id) => selected.value.includes(id));
+}
+function prerequisiteNumbers(action: GraphicSceneAgentPlan["actions"][number]) {
+  return action.requiresActionIds
+    .map(
+      (id) =>
+        (plan.value?.actions.findIndex((item) => item.id === id) ?? -1) + 1,
+    )
+    .filter((index) => index > 0)
+    .join(", ");
 }
 async function transmit(value: GraphicSceneAgentAcceptance) {
   if (
@@ -402,10 +438,25 @@ function discardPending() {
             <input
               type="checkbox"
               :checked="selected.includes(action.id)"
-              :disabled="busy || disabled || !!pending || isStale"
+              :disabled="
+                busy ||
+                disabled ||
+                !!pending ||
+                isStale ||
+                !prerequisitesSelected(action)
+              "
               @change="toggle(action.id, $event)"
             />
-            <span>{{ action.reason }}</span>
+            <span>
+              {{ action.reason }}
+              <span v-if="action.requiresActionIds.length" class="editor-muted">
+                {{
+                  t("editor.graphics.agentRequiresActions", {
+                    actions: prerequisiteNumbers(action),
+                  })
+                }}
+              </span>
+            </span>
           </label>
           <dl>
             <dt>{{ t("editor.graphics.agentAffected") }}</dt>

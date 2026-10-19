@@ -84,6 +84,8 @@ export default {
       agentSourceProvider: "language provider",
       agentAffected: "Affected layer",
       agentSelectInstructions: "Select the exact edits you want to accept.",
+      agentRequiresActions:
+        "Select prerequisite action(s) {actions} before this edit.",
       agentBefore: "Before",
       agentAfter: "After",
       agentAccept: "Accept {count} selected edit(s)",

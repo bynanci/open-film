@@ -170,10 +170,14 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await page.route(acceptPath, (route) => route.abort());
   await agent.getByTestId("graphic-agent-accept").click();
   await expect(agent.getByTestId("graphic-agent-retry")).toBeVisible();
+  await page.getByTestId("graphic-template-tab").click();
+  await expect(agent).toHaveCount(0);
   await navigate(page, "story");
   await expect(
     page.locator(".main-nav button[aria-current='page']"),
   ).toHaveText("Edit");
+  await page.getByTestId("graphic-inspector-tab").click();
+  await expect(agent.getByTestId("graphic-agent-retry")).toBeVisible();
   await page.unroute(acceptPath);
   await agent.getByTestId("graphic-agent-retry").click();
   await expect(page.getByTestId("editor-save-state")).toContainText("Saved");

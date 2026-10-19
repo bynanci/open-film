@@ -70,8 +70,10 @@ existing `ProviderRegistry` and descriptor-bound text consent, and receives only
 the selected node snapshot. Deterministic local commands work without a provider.
 Stale revisions and locked or unselected content fail closed. Preview waits for
 local autosave, uncertain acceptance blocks flush/navigation, selected actions
-retain their proposal order, and provider work is cancellable, bounded and
-outside the project mutation queue. See the [validation record](docs/validation-agent-editing.md).
+retain proposal order and show required prerequisites, template provenance is
+validated before actions are exposed, and provider work is cancellable, bounded
+and outside the project mutation queue. See the
+[validation record](docs/validation-agent-editing.md).
 
 ## Implemented — M2 / F04 Native Caption Track
 

@@ -21,6 +21,8 @@ import {
   assetDisplayDimensions,
   resolvePhotoPlan,
   type MediaAsset,
+  type GraphicScene,
+  type GraphicSceneTemplateRecord,
   type SceneDirectionReceipt,
   type SceneDirectionReceiptAction,
 } from "@openfilm/core";
@@ -685,7 +687,23 @@ function graphicNodeDisclosure(
 interface CachedGraphicSceneAgentPlan {
   projectId: string;
   plan: GraphicSceneAgentPlan;
-  baseScene: import("@openfilm/core").GraphicScene;
+  baseScene: GraphicScene;
+  otherScenes: GraphicScene[];
+  templateRecords: GraphicSceneTemplateRecord[];
+  knownAssetIds: string[];
+}
+
+function validateGraphicSceneAgentTemplateBindings(
+  scene: GraphicScene,
+  otherScenes: readonly GraphicScene[],
+  templateRecords: readonly GraphicSceneTemplateRecord[],
+  knownAssetIds: readonly string[],
+): void {
+  validateGraphicSceneTemplates(
+    templateRecords,
+    [...otherScenes, scene],
+    knownAssetIds,
+  );
 }
 
 /** History and generic edit retries stay in memory; direction receipts are durable. */
@@ -863,6 +881,15 @@ export class TimelineEditor {
       parsed.nodeIds,
       operations,
       before.composition.duration,
+      (candidate) =>
+        validateGraphicSceneAgentTemplateBindings(
+          candidate,
+          (before.composition.graphicScenes ?? []).filter(
+            (item) => item.id !== scene.id,
+          ),
+          before.composition.graphicSceneTemplates ?? [],
+          before.assets.map((asset) => asset.id),
+        ),
     );
     conflicts.push(...prepared.conflicts);
     const body = {
@@ -897,6 +924,15 @@ export class TimelineEditor {
       projectId: this.application.project.id,
       plan: structuredClone(plan),
       baseScene: structuredClone(scene),
+      otherScenes: structuredClone(
+        (before.composition.graphicScenes ?? []).filter(
+          (item) => item.id !== scene.id,
+        ),
+      ),
+      templateRecords: structuredClone(
+        before.composition.graphicSceneTemplates ?? [],
+      ),
+      knownAssetIds: before.assets.map((asset) => asset.id),
     });
     return structuredClone(plan);
   }
@@ -917,7 +953,7 @@ export class TimelineEditor {
         "This GraphicScene proposal is unavailable or stale. Prepare a new review.",
         409,
       );
-    let scene: import("@openfilm/core").GraphicScene;
+    let scene: GraphicScene;
     try {
       scene = applyGraphicSceneAgentActions(
         cached.baseScene,
@@ -925,6 +961,13 @@ export class TimelineEditor {
         cached.plan.actions,
         parsed.actionIds,
         this.get(compositionId).composition.duration,
+        (candidate) =>
+          validateGraphicSceneAgentTemplateBindings(
+            candidate,
+            cached.otherScenes,
+            cached.templateRecords,
+            cached.knownAssetIds,
+          ),
       );
     } catch (error) {
       throw new TimelineEditorError(

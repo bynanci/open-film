@@ -39,6 +39,7 @@ export interface GraphicSceneAgentAction {
   reason: string;
   before: unknown;
   after: unknown;
+  requiresActionIds: string[];
 }
 
 export interface GraphicSceneAgentConflict {
@@ -58,6 +59,8 @@ export interface PreparedGraphicSceneAgentProposal {
   actions: GraphicSceneAgentAction[];
   conflicts: GraphicSceneAgentConflict[];
 }
+
+type CandidateValidator = (candidate: GraphicScene) => void;
 
 const fields: readonly GraphicSceneAgentField[] = [
   "x",
@@ -89,6 +92,21 @@ function boundedText(value: unknown, limit: number): value is string {
       return code < 32 || code === 127 || (code >= 0xd800 && code <= 0xdfff);
     })
   );
+}
+
+function conciseReason(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  let end = limit - 1;
+  const before = value.charCodeAt(end - 1);
+  const after = value.charCodeAt(end);
+  if (
+    before >= 0xd800 &&
+    before <= 0xdbff &&
+    after >= 0xdc00 &&
+    after <= 0xdfff
+  )
+    end--;
+  return `${value.slice(0, end)}…`;
 }
 
 /** Parse provider JSON as data only. No markdown, executable text or extra keys are admitted. */
@@ -265,12 +283,84 @@ function setField(
   (node as unknown as Record<string, unknown>)[field] = value;
 }
 
+function applyOperation(
+  scene: GraphicScene,
+  operation: GraphicSceneAgentOperation,
+  compositionDuration: number,
+  validateCandidate?: CandidateValidator,
+): { scene: GraphicScene; before: unknown; after: unknown } {
+  const candidate = structuredClone(scene);
+  const target = nodeFor(candidate, operation.nodeId);
+  if (!target) throw new Error("The selected layer no longer exists.");
+  let before: unknown;
+  let after: unknown;
+  if (operation.kind === "translate") {
+    if (
+      !hasOnlyKeys(operation, ["kind", "nodeId", "dx", "dy", "reason"]) ||
+      typeof operation.dx !== "number" ||
+      !Number.isFinite(operation.dx) ||
+      Math.abs(operation.dx) > 4096 ||
+      typeof operation.dy !== "number" ||
+      !Number.isFinite(operation.dy) ||
+      Math.abs(operation.dy) > 4096 ||
+      !boundedText(operation.reason, 300)
+    )
+      throw new Error("Translation is outside the allowlist bounds.");
+    before = { x: target.x, y: target.y };
+    after = { x: target.x + operation.dx, y: target.y + operation.dy };
+    setField(target, "x", (after as { x: number }).x);
+    setField(target, "y", (after as { y: number }).y);
+  } else if (operation.kind === "set") {
+    if (
+      !hasOnlyKeys(operation, ["kind", "nodeId", "field", "value", "reason"]) ||
+      !fields.includes(operation.field) ||
+      !(
+        typeof operation.value === "number" ||
+        typeof operation.value === "boolean" ||
+        typeof operation.value === "string"
+      ) ||
+      !boundedText(operation.reason, 300)
+    )
+      throw new Error("Set operation is outside the allowlist.");
+    before = scalar(target, operation.field);
+    setField(target, operation.field, operation.value);
+    after = scalar(target, operation.field);
+  } else {
+    throw new Error("Unknown operation kind.");
+  }
+  validateGraphicScenes([candidate], compositionDuration);
+  validateCandidate?.(candidate);
+  return { scene: candidate, before, after };
+}
+
+function operationsCanApply(
+  scene: GraphicScene,
+  operations: readonly GraphicSceneAgentOperation[],
+  compositionDuration: number,
+  validateCandidate?: CandidateValidator,
+): boolean {
+  let current = scene;
+  try {
+    for (const operation of operations)
+      current = applyOperation(
+        current,
+        operation,
+        compositionDuration,
+        validateCandidate,
+      ).scene;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Validate one-node allowlisted operations and compile a detached preview. */
 export function prepareGraphicSceneAgentProposal(
   scene: GraphicScene,
   selectedNodeIds: readonly string[],
   operations: readonly GraphicSceneAgentOperation[],
   compositionDuration: number,
+  validateCandidate?: CandidateValidator,
 ): PreparedGraphicSceneAgentProposal {
   const selected = new Set(selectedNodeIds);
   const proposal: PreparedGraphicSceneAgentProposal = {
@@ -339,62 +429,14 @@ export function prepareGraphicSceneAgentProposal(
       });
       continue;
     }
-    const candidate = structuredClone(current);
-    const target = nodeFor(candidate, nodeId);
-    if (!target) {
-      proposal.conflicts.push({
-        code: "missing",
-        nodeId,
-        text: "The selected layer no longer exists.",
-      });
-      continue;
-    }
-    let before: unknown;
-    let after: unknown;
+    let applied: ReturnType<typeof applyOperation>;
     try {
-      if (operation.kind === "translate") {
-        if (
-          !hasOnlyKeys(operation, ["kind", "nodeId", "dx", "dy", "reason"]) ||
-          typeof operation.dx !== "number" ||
-          !Number.isFinite(operation.dx) ||
-          Math.abs(operation.dx) > 4096 ||
-          typeof operation.dy !== "number" ||
-          !Number.isFinite(operation.dy) ||
-          Math.abs(operation.dy) > 4096 ||
-          !boundedText(operation.reason, 300)
-        )
-          throw new Error("Translation is outside the allowlist bounds.");
-        before = { x: target.x, y: target.y };
-        after = { x: target.x + operation.dx, y: target.y + operation.dy };
-        setField(target, "x", (after as { x: number }).x);
-        setField(target, "y", (after as { y: number }).y);
-      } else if (operation.kind === "set") {
-        if (
-          !hasOnlyKeys(operation, [
-            "kind",
-            "nodeId",
-            "field",
-            "value",
-            "reason",
-          ]) ||
-          typeof operation.field !== "string" ||
-          !fields.includes(operation.field as GraphicSceneAgentField) ||
-          !(
-            typeof operation.value === "number" ||
-            typeof operation.value === "boolean" ||
-            typeof operation.value === "string"
-          ) ||
-          !boundedText(operation.reason, 300)
-        )
-          throw new Error("Set operation is outside the allowlist.");
-        const field = operation.field as GraphicSceneAgentField;
-        before = scalar(target, field);
-        setField(target, field, operation.value);
-        after = scalar(target, field);
-      } else {
-        throw new Error("Unknown operation kind.");
-      }
-      validateGraphicScenes([candidate], compositionDuration);
+      applied = applyOperation(
+        current,
+        operation,
+        compositionDuration,
+        validateCandidate,
+      );
     } catch (error) {
       proposal.conflicts.push({
         code: "invalid",
@@ -406,15 +448,43 @@ export function prepareGraphicSceneAgentProposal(
       });
       continue;
     }
+    let prerequisites: typeof proposal.actions = [];
+    if (
+      !operationsCanApply(
+        scene,
+        [operation],
+        compositionDuration,
+        validateCandidate,
+      )
+    ) {
+      prerequisites = proposal.actions.slice();
+      for (const previous of proposal.actions) {
+        const without = prerequisites.filter(
+          (action) => action.id !== previous.id,
+        );
+        if (
+          operationsCanApply(
+            scene,
+            [...without.map((action) => action.operation), operation],
+            compositionDuration,
+            validateCandidate,
+          )
+        )
+          prerequisites = without;
+      }
+    }
+    // Keep only earlier reviewed actions needed to make this change valid.
+    const requiresActionIds = prerequisites.map((action) => action.id);
     for (const key of keys) touched.add(key);
-    current = candidate;
+    current = applied.scene;
     proposal.actions.push({
       id: `agent-action-${index + 1}`,
       nodeId,
       operation: structuredClone(operation),
       reason: operation.reason,
-      before: structuredClone(before),
-      after: structuredClone(after),
+      before: structuredClone(applied.before),
+      after: structuredClone(applied.after),
+      requiresActionIds,
     });
   }
   proposal.scene = current;
@@ -428,6 +498,7 @@ export function applyGraphicSceneAgentActions(
   actions: readonly GraphicSceneAgentAction[],
   actionIds: readonly string[],
   compositionDuration: number,
+  validateCandidate?: CandidateValidator,
 ): GraphicScene {
   if (
     !Array.isArray(actionIds) ||
@@ -439,6 +510,9 @@ export function applyGraphicSceneAgentActions(
   const selectedActions = actions.filter((action) => selected.has(action.id));
   if (selectedActions.length !== selected.size)
     throw new Error("The selected proposal action no longer exists.");
+  for (const action of selectedActions)
+    if (action.requiresActionIds.some((id) => !selected.has(id)))
+      throw new Error("Select required earlier proposal actions first.");
   // Apply in the reviewed proposal order, independent of checkbox click order.
   const operations = selectedActions.map((action) => {
     if (!selectedNodeIds.includes(action.nodeId))
@@ -450,6 +524,7 @@ export function applyGraphicSceneAgentActions(
     selectedNodeIds,
     operations,
     compositionDuration,
+    validateCandidate,
   );
   if (
     compiled.actions.length !== operations.length ||
@@ -648,7 +723,7 @@ export function parseLocalGraphicSceneInstruction(
           nodeId: selectedNode.id,
           field: "text",
           value: text[1]!.trim(),
-          reason: source,
+          reason: conciseReason(source, 300),
         },
       ],
       conflicts: [],
