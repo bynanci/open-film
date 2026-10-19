@@ -35,12 +35,16 @@ persistence path.
   selected.
 - Proposals remain ephemeral and are rejected when stale, missing, locked,
   unselected, conflicting or unavailable. An uncertain acceptance stores its
-  exact request ID in project/Composition-scoped local storage so Retry cannot
-  silently create a second edit. Switching owners reloads the corresponding
-  receipt; a stale retry fails closed. Pending acceptance blocks navigation,
-  export/flush and further composition mutations. A proposal is disabled until
-  the current local composition draft is saved. The pending gate survives
-  inspector unmounts until the receipt is retried or explicitly discarded.
+  exact request ID in project/Composition-scoped local storage before sending
+  the write, so a response lost across reload can be retried without creating a
+  second edit. If receipt storage fails, the write is not sent. Switching owners
+  reloads the corresponding receipt; a stale retry fails closed. Pending
+  acceptance blocks keyboard and button Undo/Redo, direction acceptance,
+  navigation, export/flush and further composition mutations. The app restores
+  the receipt barrier before mounting the Graphics inspector. A proposal is
+  disabled until the current local composition draft is saved. The pending gate
+  survives inspector unmounts until the receipt is retried or explicitly
+  discarded.
 - Candidate edits are validated against retained GraphicScene template records
   before actions are shown and again at acceptance; provenance-bound text cannot
   create a receipt that will fail on every retry.
@@ -68,8 +72,9 @@ persistence path.
   complete while provider generation waits.
 - `tests/e2e/graphic-scenes.spec.ts` covers Desktop Preview → Select → Explicit
   Accept, deselect disabling acceptance, retrying a lost acceptance response,
-  inspector switching while an acceptance is pending, pending state blocking
-  Story navigation, saved layer position and Undo.
+  inspector switching while an acceptance is pending, reload restoration before
+  opening Graphics, blocked keyboard Undo and direction acceptance, pending
+  state blocking Story navigation, saved layer position and Undo.
 - `packages/application/tests/graphic-scenes.test.ts` creates a synthetic
   background MP4, accepts a deterministic layer translation, renders a new real
   H.264 MP4, probes 320×180 / 12 fps / 72 frames / 6 seconds, decodes the
@@ -79,37 +84,25 @@ persistence path.
 
 ## Validation status
 
-Focused unit, application, API integration and FFmpeg regression command:
-
-```sh
-pnpm exec vitest run \
-  tests/unit/graphic-scene-agent-review.test.ts \
-  packages/solver/tests/graphic-scene-agent.test.ts \
-  packages/application/tests/graphic-scene-agent.test.ts \
-  packages/application/tests/graphic-scenes.test.ts \
-  tests/integration/graphic-scene-adapters.test.ts
-```
-
-The focused command passed 5 files / 25 tests. Full local checks passed:
+On the current local source state, `pnpm test` passed all 197 files / 2,885
+tests, including the actual synthetic-source FFmpeg render regression.
 `pnpm format:check`, `pnpm test:i18n` (1,610 semantic keys across English,
-Traditional Chinese and Japanese), `pnpm lint`, `pnpm typecheck`, `pnpm test`
-(197 files / 2,885 tests), `pnpm build`, and `pnpm test:interchange` (18
-OpenTimelineIO 0.18.1 checks). The complete Playwright suite passed 163/163 at
-the pre-review-fix head; subsequent pending-barrier, operation-order,
-provider-queue, provenance and proposal-dependency fixes were verified by the
-focused 5B tests and the GraphicScene browser test (1/1). The browser test uses
-system Chromium at
-`/usr/bin/chromium` because the Playwright download host returns HTTP 403.
-`opentimelineio==0.18.1` was installed into an isolated `/tmp` Python virtual
-environment for E2E and interchange checks. After the final review fixes,
-`pnpm test` passed 197 files / 2,884 tests and the focused GraphicScene E2E
-passed again. The provider integration test was rerun with its stale-preview
-assertion (3 tests passed). The production build succeeds with the existing
-desktop bundle-size advisory (897.87 kB uncompressed).
+Traditional Chinese and Japanese), `pnpm lint`, `pnpm typecheck`, and
+`pnpm build` passed. The production bundle reports the existing size advisory
+(898.39 kB uncompressed). With the isolated pinned OpenTimelineIO interpreter,
+`OPENFILM_OTIO_PYTHON=/tmp/openfilm-interchange-venv/bin/python pnpm
+test:interchange` passed all 18 checks against OpenTimelineIO 0.18.1.
+
+The full 163-test Playwright suite is being rerun against system Chromium at
+`/usr/bin/chromium` so the receipt-before-write and reload-restoration browser
+regressions are included. The GitHub native-shell gate is required because
+Cargo is not installed locally. Record the final exact head, full browser result,
+fresh PR review and exact-head GitHub CI here before merge.
 
 Native Rust checks are unavailable locally because Cargo is not installed;
-exact-head GitHub CI must pass its native job before merge. Exact-head CI and
-fresh PR review remain required.
+the GitHub native-shell job is the applicable native gate. Record the exact
+reviewed head and its CI conclusions here before merge, and keep this section
+current when the PR head changes.
 
 Provider model quality, external endpoint availability, physical display
 quality, hardware/4K throughput and downstream Resolve/NLE finishing remain

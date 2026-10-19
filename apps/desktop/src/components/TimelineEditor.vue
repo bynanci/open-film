@@ -71,6 +71,7 @@ import {
 import { durationStatus } from "../duration";
 import { clipControls, shorteningAction } from "../editorPresentation";
 import { nativeBenchmark } from "../nativeBenchmark";
+import { hasGraphicSceneAgentReceipt } from "../graphic-scene-agent-receipt";
 import {
   clampFrameStep,
   formatTimecode,
@@ -135,7 +136,19 @@ const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
 const graphicAgentBusy = ref(false);
-const graphicAgentPending = ref(false);
+const graphicAgentPending = ref(
+  hasGraphicSceneAgentReceipt(props.projectId, props.compositionId),
+);
+watch(
+  [() => props.projectId, () => props.compositionId],
+  () => {
+    graphicAgentPending.value = hasGraphicSceneAgentReceipt(
+      props.projectId,
+      props.compositionId,
+    );
+  },
+  { flush: "sync" },
+);
 const directionPending = computed(() => !!directionReview.value?.hasPending);
 const directionBlocked = computed(() => !!directionReview.value?.blocksEdits);
 const historyBusy = computed(
@@ -192,7 +205,7 @@ const hasPending = computed(
     graphicAgentPending.value,
 );
 async function history(direction: "undo" | "redo") {
-  if (precisionEditor.value?.hasPending || directionBlocked.value) return false;
+  if (precisionEditor.value?.hasPending || historyBusy.value) return false;
   return compositionHistory(direction);
 }
 async function flushInputs() {
@@ -3203,7 +3216,7 @@ onBeforeUnmount(() => {
                 !!selectedClip.locked ||
                 clipSourceLocked ||
                 !!sourceUnavailable ||
-                compositionHistoryBusy
+                historyBusy
               "
               :flush-inputs="flushInputs"
               :reload-saved="reloadDirectionState"

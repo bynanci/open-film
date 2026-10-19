@@ -85,10 +85,14 @@ Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
 - [x] Preserve pending acceptance barriers across inspector unmounts; validate
       template provenance before exposing edits and mark required proposal
       actions so only valid explicit selections can be accepted.
+- [x] Persist the idempotency receipt before sending acceptance; restore the
+      project/Composition barrier across app reload and block keyboard history
+      and direct direction acceptance while the result is uncertain.
 - [x] Keep long local text instructions actionable with bounded review reasons.
 - [x] Cover application, API, browser, undo/redo/reopen, stale/locked and actual
       synthetic MP4 regressions with existing project contracts.
-- [ ] Complete full exact-head validation and fresh review before merge.
+- [ ] Complete full exact-head validation and fresh review before merge; record
+      the exact accepted head and checks in the validation record.
 
 ## Implemented — M1 / F07 Visual QA
 

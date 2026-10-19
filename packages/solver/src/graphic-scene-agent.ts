@@ -1,4 +1,5 @@
 import {
+  GRAPHIC_SCENE_LIMITS,
   validateGraphicScenes,
   type GraphicNode,
   type GraphicScene,
@@ -669,26 +670,25 @@ export function parseLocalGraphicSceneInstruction(
     source.match(
       /^尺寸(?:設為)?\s*(\d+(?:\.\d+)?)\s*[x,，\s]\s*(\d+(?:\.\d+)?)$/u,
     );
-  if (sizePair)
+  if (sizePair) {
+    const width = Number(sizePair[1]);
+    const height = Number(sizePair[2]);
+    const order =
+      width * selectedNode.height <= GRAPHIC_SCENE_LIMITS.pixels ||
+      selectedNode.width * height > GRAPHIC_SCENE_LIMITS.pixels
+        ? (["width", "height"] as const)
+        : (["height", "width"] as const);
     return {
-      operations: [
-        {
-          kind: "set",
-          nodeId: selectedNode.id,
-          field: "width",
-          value: Number(sizePair[1]),
-          reason: source,
-        },
-        {
-          kind: "set",
-          nodeId: selectedNode.id,
-          field: "height",
-          value: Number(sizePair[2]),
-          reason: source,
-        },
-      ],
+      operations: order.map((field) => ({
+        kind: "set",
+        nodeId: selectedNode.id,
+        field,
+        value: field === "width" ? width : height,
+        reason: source,
+      })),
       conflicts: [],
     };
+  }
   const size =
     source.match(/^(?:set\s+)?(width|height)(?:\s+to)?\s+(\d+(?:\.\d+)?)$/iu) ??
     source.match(/^(width|height)\s+(\d+(?:\.\d+)?)$/iu) ??

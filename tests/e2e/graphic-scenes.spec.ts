@@ -167,11 +167,30 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   const pendingAction = agent.getByTestId("graphic-agent-action");
   await pendingAction.getByRole("checkbox").check();
   const acceptPath = "**/api/compositions/graphic-film/graphic-agent/accept";
-  await page.route(acceptPath, (route) => route.abort());
+  await page.route(acceptPath, async (route) => {
+    const receipt = await page.evaluate(() =>
+      Object.keys(localStorage).find((key) =>
+        key.startsWith("openfilm.graphic-agent:"),
+      ),
+    );
+    expect(receipt).toBeTruthy();
+    await route.abort();
+  });
   await agent.getByTestId("graphic-agent-accept").click();
   await expect(agent.getByTestId("graphic-agent-retry")).toBeVisible();
   await page.getByTestId("graphic-template-tab").click();
   await expect(agent).toHaveCount(0);
+  await navigate(page, "story");
+  await expect(
+    page.locator(".main-nav button[aria-current='page']"),
+  ).toHaveText("Edit");
+  await page.reload();
+  await navigate(page, "edit");
+  await page.keyboard.press("Control+z");
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-79);
+  await expect(page.getByTestId("direction-generate")).toBeDisabled();
   await navigate(page, "story");
   await expect(
     page.locator(".main-nav button[aria-current='page']"),

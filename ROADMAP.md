@@ -71,8 +71,10 @@ the selected node snapshot. Deterministic local commands work without a provider
 Stale revisions and locked or unselected content fail closed. Preview waits for
 local autosave, uncertain acceptance blocks flush/navigation, selected actions
 retain proposal order and show required prerequisites, template provenance is
-validated before actions are exposed, and provider work is cancellable, bounded
-and outside the project mutation queue. See the
+validated before actions are exposed, and receipt persistence precedes the write
+so reload restores the pending barrier. Keyboard history and direct direction
+acceptance are also blocked while a receipt is unresolved. Provider work is
+cancellable, bounded and outside the project mutation queue. See the
 [validation record](docs/validation-agent-editing.md).
 
 ## Implemented — M2 / F04 Native Caption Track

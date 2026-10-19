@@ -10,6 +10,7 @@ import {
   type GraphicSceneAgentPlan,
   type ReviewProviderState,
 } from "../api";
+import { graphicSceneAgentReceiptKey } from "../graphic-scene-agent-receipt";
 
 const props = defineProps<{
   projectId: string;
@@ -54,17 +55,20 @@ const acceptDisabled = computed(
 let generation = 0;
 let disposed = false;
 let previewController: AbortController | undefined;
-const ownerKey = computed(
-  () =>
-    `openfilm.graphic-agent:${JSON.stringify([props.projectId, props.compositionId])}`,
+const ownerKey = computed(() =>
+  graphicSceneAgentReceiptKey(props.projectId, props.compositionId),
 );
-function retainPending() {
+function retainPending(): boolean {
   try {
-    if (pending.value)
-      localStorage.setItem(ownerKey.value, JSON.stringify(pending.value));
-    else localStorage.removeItem(ownerKey.value);
+    if (pending.value) {
+      const serialized = JSON.stringify(pending.value);
+      localStorage.setItem(ownerKey.value, serialized);
+      return localStorage.getItem(ownerKey.value) === serialized;
+    }
+    localStorage.removeItem(ownerKey.value);
+    return true;
   } catch {
-    /* The exact receipt remains in memory if browser storage is unavailable. */
+    return false;
   }
 }
 function restorePending() {
@@ -86,14 +90,16 @@ function restorePending() {
       throw new Error("Invalid GraphicScene acceptance receipt.");
     pending.value = value;
   } catch {
+    try {
+      localStorage.removeItem(ownerKey.value);
+    } catch {
+      /* Keep the parent barrier fail-closed when receipt storage is unreadable. */
+    }
     error.value = t("editor.graphics.agentStorageError");
+    emit("pending", false);
   }
 }
 watch(busy, (value) => emit("busy", value), { immediate: true });
-watch(pending, (value) => emit("pending", !!value), {
-  immediate: true,
-  flush: "sync",
-});
 function reset() {
   generation++;
   previewController?.abort();
@@ -127,6 +133,12 @@ watch(
   },
   { immediate: true, flush: "sync" },
 );
+// Restore before the immediate emission so the parent never briefly drops a
+// persisted receipt barrier while the review panel mounts.
+watch(pending, (value) => emit("pending", !!value), {
+  immediate: true,
+  flush: "sync",
+});
 async function refreshProvider() {
   try {
     provider.value = await api.reviewProvider("graphic-scene");
@@ -257,6 +269,13 @@ async function transmit(value: GraphicSceneAgentAcceptance) {
     pending.value.requestId !== value.requestId
   )
     return;
+  // Persist the idempotency receipt before sending the write. If storage is
+  // unavailable, keep the editor blocked and let Retry attempt persistence
+  // again; sending first would make a dropped response impossible to recover.
+  if (!retainPending()) {
+    error.value = t("editor.graphics.agentStorageError");
+    return;
+  }
   const owner = ownerKey.value;
   busy.value = true;
   error.value = "";

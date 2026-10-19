@@ -37,6 +37,27 @@ describe("reviewable GraphicScene agent operations", () => {
       { kind: "set", field: "width", value: 320 },
       { kind: "set", field: "height", value: 180 },
     ]);
+    const oversized = graphicNode({
+      id: "resizable",
+      width: 1000,
+      height: 4096,
+    });
+    const resize = parseLocalGraphicSceneInstruction(
+      "size 3000 100",
+      oversized,
+    );
+    expect(resize.operations).toMatchObject([
+      { kind: "set", field: "height", value: 100 },
+      { kind: "set", field: "width", value: 3000 },
+    ]);
+    const resized = prepareGraphicSceneAgentProposal(
+      graphicScene({ nodes: [oversized] }),
+      [oversized.id],
+      resize.operations,
+      6,
+    );
+    expect(resized.conflicts).toEqual([]);
+    expect(resized.scene.nodes[0]).toMatchObject({ width: 3000, height: 100 });
     const caption = {
       id: "caption",
       type: "text" as const,
