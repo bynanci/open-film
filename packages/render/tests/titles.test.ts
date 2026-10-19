@@ -7,6 +7,7 @@ import {
   createTitleOverlay,
   titleOverlayCacheKey,
   resolveTitleFont,
+  inspectTitleOverlay,
 } from "../src/titles.js";
 
 const directories: string[] = [];
@@ -19,6 +20,51 @@ afterEach(async () => {
 });
 
 describe("local CJK title raster", () => {
+  it("returns typed font and measured-overflow diagnostics without rasterizing", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openfilm-title-inspect-"));
+    directories.push(directory);
+    const missing = await inspectTitleOverlay(
+      "A title",
+      undefined,
+      { width: 640, height: 360 },
+      { fontPath: join(directory, "missing.otf") },
+    );
+    expect(missing).toMatchObject({
+      status: "failed",
+      kind: "font.load-failed",
+    });
+
+    const loaded = await resolveTitleFont({
+      fontFamily: "Noto Sans CJK TC",
+      fontWeight: 400,
+    });
+    const overflow = await inspectTitleOverlay(
+      "A title that cannot fit",
+      { version: 1, role: "film-title", fontSize: 256 },
+      { width: 640, height: 360 },
+      { fontPath: loaded.font.path },
+    );
+    expect(overflow).toMatchObject({
+      status: "failed",
+      kind: "title.overflow",
+    });
+
+    const measured = await inspectTitleOverlay(
+      "A measured title",
+      { version: 1, role: "film-title" },
+      { width: 640, height: 360 },
+      { fontPath: loaded.font.path },
+    );
+    expect(measured.status).toBe("measured");
+    if (measured.status === "measured") {
+      expect(measured.font.sha256).toMatch(/^[a-f\d]{64}$/u);
+      expect(measured.layout.bounds.x).toBeGreaterThanOrEqual(0);
+      expect(
+        measured.layout.bounds.x + measured.layout.bounds.width,
+      ).toBeLessThanOrEqual(640);
+    }
+  });
+
   it("renders a measured Traditional Chinese title as a reusable transparent PNG", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openfilm-title-"));
     directories.push(directory);

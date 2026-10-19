@@ -1,0 +1,790 @@
+// Modified by OpenFilm contributors on 2026-10-19. See LICENSE and NOTICE.
+import { createHash, randomUUID } from "node:crypto";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  migrateProject,
+  type Composition,
+  type Job,
+  type MediaAsset,
+  type OpenFilmProject,
+} from "@openfilm/core";
+import { ProjectCatalog } from "@openfilm/catalog";
+import {
+  checkAbort,
+  hashFile,
+  localPath,
+  previewIssue,
+  runProcess,
+  safeProjectCachePath,
+  sourceStatus,
+} from "@openfilm/media";
+import { inspectTitleOverlay } from "@openfilm/render";
+import { isInside } from "./path-safety.js";
+
+export type VisualQaIssueCode =
+  | "asset.missing"
+  | "asset.changed"
+  | "asset.unsupported"
+  | "font.load-failed"
+  | "title.overflow"
+  | "visual.suspected-blank"
+  | "revision.stale";
+
+export type VisualQaIssueSeverity = "error" | "warning" | "manual-review";
+
+export interface VisualQaIssue {
+  code: VisualQaIssueCode;
+  severity: VisualQaIssueSeverity;
+  at: number;
+  clipId?: string;
+  assetId?: string;
+  /** Stable detail key; user-authored title text and filesystem paths are omitted. */
+  detail?: "unavailable" | "fallback-used" | "missing-glyph" | "changed";
+  manualReview: boolean;
+}
+
+export interface VisualQaSample {
+  index: number;
+  timestamp: number;
+  frameIndex: number;
+  sha256: string;
+  width: number;
+  height: number;
+  luma: { average: number; low: number; high: number };
+}
+
+export interface VisualQaReport {
+  version: 1;
+  id: string;
+  projectId: string;
+  compositionId: string;
+  compositionRevision: string;
+  createdAt: string;
+  status: "complete" | "incomplete" | "stale";
+  settings: { width: number; height: number; frameRate: number };
+  output?: { sha256: string; duration: number; frameCount: number };
+  sources: { assetId: string; sha256: string }[];
+  samples: VisualQaSample[];
+  issues: VisualQaIssue[];
+}
+
+export interface VisualQaOptions {
+  signal?: AbortSignal;
+  jobId?: string;
+  onProgress?: (progress: number) => void;
+}
+
+export interface VisualQaRenderOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: number) => void;
+}
+
+export interface VisualQaHost {
+  readonly directory: string;
+  readonly catalog: ProjectCatalog;
+  readonly project: OpenFilmProject;
+  getSourceAsset(assetId: string): MediaAsset | undefined;
+  renderForVisualQa(
+    compositionId: string,
+    outputPath: string,
+    options: VisualQaRenderOptions,
+  ): Promise<string>;
+}
+
+const UUID =
+  /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/u;
+const MAX_SAMPLES = 12;
+const MAX_FRAME_WIDTH = 320;
+
+class StaleVisualQaError extends Error {}
+
+function digest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function frameTime(time: number, frameRate: number): number {
+  return Math.round(time * frameRate) / frameRate;
+}
+
+function issue(
+  code: VisualQaIssueCode,
+  severity: VisualQaIssueSeverity,
+  at: number,
+  frameRate: number,
+  extra: Pick<VisualQaIssue, "clipId" | "assetId" | "detail"> = {},
+): VisualQaIssue {
+  return {
+    code,
+    severity,
+    at: frameTime(at, frameRate),
+    ...extra,
+    manualReview: severity === "manual-review",
+  };
+}
+
+function uniqueSources(
+  composition: Composition,
+): Map<string, { at: number; clipId: string }[]> {
+  const times = new Map<string, { at: number; clipId: string }[]>();
+  for (const track of composition.tracks) {
+    if (track.type === "titles") continue;
+    for (const clip of track.clips) {
+      for (const assetId of [
+        clip.assetId,
+        ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+      ]) {
+        const list = times.get(assetId) ?? [];
+        list.push({ at: clip.timelineStart, clipId: clip.id });
+        times.set(assetId, list);
+      }
+    }
+  }
+  return times;
+}
+
+async function savedProject(directory: string): Promise<OpenFilmProject> {
+  const path = join(directory, "project.json");
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isFile())
+    throw new Error("Saved project file is not a regular file");
+  return migrateProject(JSON.parse(await readFile(path, "utf8")));
+}
+
+/** Read-only counterpart to safeProjectCachePath: missing parents stay missing. */
+async function existingProjectCachePath(
+  directory: string,
+  ...segments: string[]
+): Promise<string | undefined> {
+  const projectRoot = await realpath(directory);
+  const cacheRoot = join(projectRoot, "cache");
+  const target = resolve(cacheRoot, ...segments);
+  const rel = relative(cacheRoot, target);
+  if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel))
+    return undefined;
+  const components = ["cache", ...rel.split(sep)];
+  let cursor = projectRoot;
+  for (let index = 0; index < components.length; index++) {
+    cursor = join(cursor, components[index]!);
+    let info;
+    try {
+      info = await lstat(cursor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+    if (info.isSymbolicLink()) return undefined;
+    if (index < components.length - 1 && !info.isDirectory()) return undefined;
+  }
+  return target;
+}
+
+function numberFrom(value: unknown): number | undefined {
+  const result = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(result) && result >= 0 ? result : undefined;
+}
+
+function rational(value: string): number | undefined {
+  const match = /^(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/u.exec(value);
+  if (!match) return undefined;
+  const numerator = Number(match[1]);
+  const denominator = match[2] ? Number(match[2]) : 1;
+  const result = numerator / denominator;
+  return Number.isFinite(result) && result > 0 ? result : undefined;
+}
+
+function parseProbe(stdout: Buffer): {
+  width: number;
+  height: number;
+  frameRate: number;
+  frameCount: number;
+  duration: number;
+} {
+  const value = JSON.parse(stdout.toString("utf8")) as {
+    streams?: {
+      width?: number;
+      height?: number;
+      avg_frame_rate?: string;
+      nb_read_frames?: string;
+      duration?: string;
+    }[];
+    format?: { duration?: string };
+  };
+  const stream = value.streams?.[0];
+  const frameRate = stream?.avg_frame_rate
+    ? rational(stream.avg_frame_rate)
+    : undefined;
+  const frameCount = numberFrom(stream?.nb_read_frames);
+  const duration = numberFrom(stream?.duration ?? value.format?.duration);
+  if (
+    !stream?.width ||
+    !stream.height ||
+    !frameRate ||
+    !frameCount ||
+    !duration
+  )
+    throw new Error("FFprobe could not verify the Visual QA MP4 stream");
+  return {
+    width: stream.width,
+    height: stream.height,
+    frameRate,
+    frameCount,
+    duration,
+  };
+}
+
+function parseMetric(stderr: string, name: "YAVG" | "YLOW" | "YHIGH") {
+  return [
+    ...stderr.matchAll(
+      new RegExp(`lavfi\\.signalstats\\.${name}=([\\d.]+)`, "gu"),
+    ),
+  ].map((match) => Number(match[1]));
+}
+
+function pngSize(
+  path: string,
+  bytes: Buffer,
+): { width: number; height: number } {
+  if (
+    bytes.length < 24 ||
+    bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a"
+  )
+    throw new Error(`FFmpeg did not produce a valid PNG sample: ${path}`);
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (!width || !height || width > MAX_FRAME_WIDTH || height > 8192)
+    throw new Error("A Visual QA frame has invalid dimensions");
+  return { width, height };
+}
+
+function sampleIndexes(frameCount: number, duration: number): number[] {
+  const count = Math.min(MAX_SAMPLES, Math.max(1, Math.ceil(duration / 2)));
+  return [
+    ...new Set(
+      Array.from({ length: count }, (_, index) =>
+        Math.min(
+          frameCount - 1,
+          Math.floor(((index + 0.5) * frameCount) / count),
+        ),
+      ),
+    ),
+  ];
+}
+
+/** Shared saved-revision QA used by Desktop, HTTP and CLI adapters. */
+export class VisualQaService {
+  constructor(private readonly host: VisualQaHost) {}
+
+  async run(
+    compositionId?: string,
+    options: VisualQaOptions = {},
+  ): Promise<VisualQaReport> {
+    const id = options.jobId ?? randomUUID();
+    if (!UUID.test(id))
+      throw new Error("Visual QA report ID must be a UUID v4");
+    const reportParent = await safeProjectCachePath(
+      this.host.directory,
+      "visual-qa",
+      `${id}.guard`,
+    );
+    await chmod(dirname(reportParent), 0o700);
+    const reportDirectory = join(dirname(reportParent), id);
+    await mkdir(reportDirectory, { mode: 0o700 });
+    await chmod(reportDirectory, 0o700);
+    const reportPath = await safeProjectCachePath(
+      this.host.directory,
+      "visual-qa",
+      id,
+      "report.json",
+    );
+    const project = this.host.project;
+    const composition = structuredClone(
+      compositionId
+        ? project.timelines.find((item) => item.id === compositionId)
+        : project.timelines.at(-1),
+    );
+    if (!composition) {
+      await rm(reportDirectory, { recursive: true, force: true });
+      throw new Error("Composition not found for Visual QA");
+    }
+    const frameRate = project.settings.frameRate;
+    const report: VisualQaReport = {
+      version: 1,
+      id,
+      projectId: project.id,
+      compositionId: composition.id,
+      compositionRevision: digest(composition),
+      createdAt: new Date().toISOString(),
+      status: "incomplete",
+      settings: { ...project.settings },
+      sources: [],
+      samples: [],
+      issues: [],
+    };
+    const job: Job = {
+      id,
+      type: "visual-qa",
+      status: "running",
+      progress: 0,
+      stage: "preflight",
+      createdAt: report.createdAt,
+    };
+    this.host.catalog.saveJob(job);
+    const update = (progress: number, stage: string) => {
+      checkAbort(options.signal);
+      job.status = "running";
+      job.stage = stage;
+      job.progress = Math.max(job.progress ?? 0, Math.min(0.98, progress));
+      job.updatedAt = new Date().toISOString();
+      this.host.catalog.saveJob(job);
+      try {
+        options.onProgress?.(job.progress);
+      } catch {
+        /* A progress observer does not own the Visual QA job. */
+      }
+    };
+    const cleanup = async () =>
+      rm(reportDirectory, { recursive: true, force: true });
+    const save = async () => {
+      await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await chmod(reportPath, 0o600);
+    };
+    const finish = (
+      status: Job["status"],
+      progress: number,
+      failureCode?: string,
+    ) => {
+      job.status = status;
+      job.progress = progress;
+      job.stage = status === "completed" ? "complete" : status;
+      job.updatedAt = new Date().toISOString();
+      if (status === "failed")
+        job.errors = [
+          {
+            uri: "",
+            stage: "visual-qa",
+            message:
+              failureCode === "revision.stale"
+                ? "The saved edit changed during Visual QA. Retry on the current edit."
+                : "Visual QA could not complete. Retry this saved edit.",
+            code: failureCode ?? "visual-qa.failed",
+          },
+        ];
+      this.host.catalog.saveJob(job);
+    };
+    try {
+      const disk = await savedProject(this.host.directory);
+      const diskComposition = disk.timelines.find(
+        (item) => item.id === composition.id,
+      );
+      if (
+        disk.id !== project.id ||
+        !diskComposition ||
+        digest(diskComposition) !== report.compositionRevision ||
+        digest(disk.settings) !== digest(report.settings)
+      )
+        throw new StaleVisualQaError();
+
+      const sourceTimes = uniqueSources(composition);
+      const assets = new Map<string, MediaAsset>();
+      const originalHashes = new Map<string, string>();
+      for (const [assetId, times] of sourceTimes) {
+        checkAbort(options.signal);
+        const asset = this.host.getSourceAsset(assetId);
+        if (!asset) {
+          for (const time of times)
+            report.issues.push(
+              issue("asset.missing", "error", time.at, frameRate, {
+                assetId,
+                detail: "unavailable",
+                clipId: time.clipId,
+              }),
+            );
+          continue;
+        }
+        assets.set(assetId, asset);
+        const status = await sourceStatus(asset);
+        const unsupported = previewIssue(asset);
+        if (status.status !== "available") {
+          for (const time of times)
+            report.issues.push(
+              issue("asset.missing", "error", time.at, frameRate, {
+                assetId,
+                detail: "unavailable",
+                clipId: time.clipId,
+              }),
+            );
+          continue;
+        }
+        if (unsupported) {
+          for (const time of times)
+            report.issues.push(
+              issue("asset.unsupported", "error", time.at, frameRate, {
+                assetId,
+                detail: "unavailable",
+                clipId: time.clipId,
+              }),
+            );
+          continue;
+        }
+        const sha256 = await hashFile(localPath(asset.uri), options.signal);
+        if (asset.contentHash && asset.contentHash !== sha256) {
+          for (const time of times)
+            report.issues.push(
+              issue("asset.changed", "error", time.at, frameRate, {
+                assetId,
+                detail: "changed",
+                clipId: time.clipId,
+              }),
+            );
+          continue;
+        }
+        originalHashes.set(assetId, sha256);
+        report.sources.push({ assetId, sha256 });
+      }
+
+      for (const track of composition.tracks) {
+        for (const clip of track.clips) {
+          checkAbort(options.signal);
+          if (!clip.title) continue;
+          const inspection = await inspectTitleOverlay(
+            clip.title,
+            clip.titleStyle,
+            report.settings,
+          );
+          if (inspection.status === "failed") {
+            report.issues.push(
+              issue(inspection.kind, "error", clip.timelineStart, frameRate, {
+                clipId: clip.id,
+                detail:
+                  inspection.kind === "font.load-failed"
+                    ? inspection.detail === "missing-glyph"
+                      ? "missing-glyph"
+                      : "unavailable"
+                    : undefined,
+              }),
+            );
+          } else if (
+            inspection.warnings.some((warning) =>
+              /unavailable.*using local/iu.test(warning),
+            )
+          ) {
+            report.issues.push(
+              issue(
+                "font.load-failed",
+                "warning",
+                clip.timelineStart,
+                frameRate,
+                {
+                  clipId: clip.id,
+                  detail: "fallback-used",
+                },
+              ),
+            );
+          }
+        }
+      }
+
+      update(0.1, "preflight");
+      if (report.issues.some((entry) => entry.severity === "error")) {
+        report.status = "incomplete";
+        await save();
+        finish("completed", 1);
+        return structuredClone(report);
+      }
+
+      const renderPath = await safeProjectCachePath(
+        this.host.directory,
+        "visual-qa",
+        id,
+        "render.mp4",
+      );
+      await this.host.renderForVisualQa(composition.id, renderPath, {
+        signal: options.signal,
+        onProgress: (progress) => update(0.1 + progress * 0.65, "render"),
+      });
+      await chmod(renderPath, 0o600);
+      await chmod(`${renderPath}.manifest.json`, 0o600);
+      checkAbort(options.signal);
+      const renderManifest = JSON.parse(
+        await readFile(`${renderPath}.manifest.json`, "utf8"),
+      ) as {
+        compositionSha256?: string;
+        outputSha256?: string;
+        sources?: { assetId?: string; sha256?: string }[];
+      };
+      if (renderManifest.compositionSha256 !== report.compositionRevision)
+        throw new StaleVisualQaError();
+      const outputHash = await hashFile(renderPath, options.signal);
+      if (outputHash !== renderManifest.outputSha256)
+        throw new Error(
+          "Rendered MP4 hash does not match its renderer manifest",
+        );
+      const rendererSources = new Map(
+        (renderManifest.sources ?? []).map((source) => [
+          source.assetId,
+          source.sha256,
+        ]),
+      );
+      for (const [assetId, originalHash] of originalHashes) {
+        checkAbort(options.signal);
+        if (rendererSources.get(assetId) !== originalHash)
+          throw new StaleVisualQaError();
+        const currentAsset = this.host.getSourceAsset(assetId);
+        if (
+          !currentAsset ||
+          (await hashFile(localPath(currentAsset.uri), options.signal)) !==
+            originalHash
+        )
+          throw new StaleVisualQaError();
+      }
+
+      const probe = await runProcess(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "v:0",
+          "-count_frames",
+          "-show_entries",
+          "stream=width,height,avg_frame_rate,nb_read_frames,duration",
+          "-of",
+          "json",
+          renderPath,
+        ],
+        { signal: options.signal },
+      );
+      const video = parseProbe(probe.stdout);
+      const indexes = sampleIndexes(video.frameCount, video.duration);
+      const framesDirectory = join(reportDirectory, "frames");
+      await mkdir(framesDirectory, { mode: 0o700 });
+      await chmod(framesDirectory, 0o700);
+      const selection = indexes.map((index) => `eq(n\\,${index})`).join("+");
+      const filter = `select=${selection},scale=w='min(${MAX_FRAME_WIDTH},iw)':h=-2:flags=area,signalstats,metadata=print`;
+      const pattern = join(framesDirectory, "frame-%03d.png");
+      const extraction = await runProcess(
+        "ffmpeg",
+        [
+          "-v",
+          "info",
+          "-i",
+          renderPath,
+          "-an",
+          "-vf",
+          filter,
+          "-fps_mode",
+          "passthrough",
+          "-frames:v",
+          String(indexes.length),
+          "-threads",
+          "1",
+          "-y",
+          pattern,
+        ],
+        { signal: options.signal, timeoutMs: 1800000 },
+      );
+      const metrics = {
+        average: parseMetric(extraction.stderr, "YAVG"),
+        low: parseMetric(extraction.stderr, "YLOW"),
+        high: parseMetric(extraction.stderr, "YHIGH"),
+      };
+      if (
+        Object.values(metrics).some(
+          (entries) => entries.length !== indexes.length,
+        )
+      )
+        throw new Error(
+          "FFmpeg did not return luma statistics for every sample",
+        );
+      const frameFiles = await Promise.all(
+        indexes.map(async (_frameIndex, index) => {
+          const file = await safeProjectCachePath(
+            this.host.directory,
+            "visual-qa",
+            id,
+            "frames",
+            `frame-${String(index + 1).padStart(3, "0")}.png`,
+          );
+          const info = await lstat(file);
+          if (info.isSymbolicLink() || !info.isFile())
+            throw new Error("Visual QA sample is not a regular cache file");
+          await chmod(file, 0o600);
+          return { file, bytes: await readFile(file) };
+        }),
+      );
+      report.output = {
+        sha256: outputHash,
+        duration: video.duration,
+        frameCount: video.frameCount,
+      };
+      report.samples = await Promise.all(
+        frameFiles.map(async ({ file, bytes }, index) => {
+          const dimensions = pngSize(file, bytes);
+          const luma = {
+            average: metrics.average[index]!,
+            low: metrics.low[index]!,
+            high: metrics.high[index]!,
+          };
+          const sample: VisualQaSample = {
+            index,
+            timestamp: indexes[index]! / video.frameRate,
+            frameIndex: indexes[index]!,
+            sha256: await hashFile(file, options.signal),
+            ...dimensions,
+            luma,
+          };
+          if (
+            luma.high <= 24 ||
+            (luma.average <= 22 && luma.high - luma.low <= 3)
+          )
+            report.issues.push(
+              issue(
+                "visual.suspected-blank",
+                "manual-review",
+                sample.timestamp,
+                frameRate,
+              ),
+            );
+          return sample;
+        }),
+      );
+      const latestDisk = await savedProject(this.host.directory);
+      const latestComposition = latestDisk.timelines.find(
+        (item) => item.id === composition.id,
+      );
+      const latestMemoryComposition = this.host.project.timelines.find(
+        (item) => item.id === composition.id,
+      );
+      if (
+        latestDisk.id !== report.projectId ||
+        !latestComposition ||
+        digest(latestComposition) !== report.compositionRevision ||
+        digest(latestDisk.settings) !== digest(report.settings) ||
+        this.host.project.id !== report.projectId ||
+        !latestMemoryComposition ||
+        digest(latestMemoryComposition) !== report.compositionRevision
+      )
+        throw new StaleVisualQaError();
+      report.status = "complete";
+      await save();
+      finish("completed", 1);
+      return structuredClone(report);
+    } catch (error) {
+      if (options.signal?.aborted || (error as Error)?.name === "AbortError") {
+        await cleanup();
+        finish("cancelled", job.progress ?? 0);
+        throw error;
+      }
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      if (
+        error instanceof StaleVisualQaError ||
+        code === "source.changed" ||
+        code === "media.missing"
+      ) {
+        await rm(join(reportDirectory, "frames"), {
+          recursive: true,
+          force: true,
+        });
+        await rm(join(reportDirectory, "render.mp4"), { force: true });
+        await rm(join(reportDirectory, "render.mp4.manifest.json"), {
+          force: true,
+        });
+        report.status = "stale";
+        report.output = undefined;
+        report.samples = [];
+        report.issues.push(issue("revision.stale", "warning", 0, frameRate));
+        await save();
+        finish("failed", job.progress ?? 0, "revision.stale");
+        return structuredClone(report);
+      }
+      await cleanup();
+      const failureCode =
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof (error as { code?: unknown }).code === "string" &&
+        /^[a-zA-Z\d_.-]{1,64}$/u.test((error as { code: string }).code)
+          ? (error as { code: string }).code
+          : "visual-qa.failed";
+      finish("failed", job.progress ?? 0, failureCode);
+      throw new Error("Visual QA could not complete. Retry this saved edit.", {
+        cause: error,
+      });
+    }
+  }
+
+  async readReport(reportId: string): Promise<VisualQaReport | undefined> {
+    if (!UUID.test(reportId)) return undefined;
+    try {
+      const path = await existingProjectCachePath(
+        this.host.directory,
+        "visual-qa",
+        reportId,
+        "report.json",
+      );
+      if (!path) return undefined;
+      const info = await lstat(path);
+      if (info.isSymbolicLink() || !info.isFile()) return undefined;
+      const report = JSON.parse(await readFile(path, "utf8")) as VisualQaReport;
+      if (
+        report.version !== 1 ||
+        report.id !== reportId ||
+        report.projectId !== this.host.project.id ||
+        !Array.isArray(report.samples) ||
+        !Array.isArray(report.issues)
+      )
+        return undefined;
+      return report;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async framePath(
+    reportId: string,
+    sampleIndex: number,
+  ): Promise<string | undefined> {
+    if (!Number.isSafeInteger(sampleIndex) || sampleIndex < 0) return undefined;
+    const report = await this.readReport(reportId);
+    if (!report || report.status !== "complete") return undefined;
+    const sample = report.samples.find((entry) => entry.index === sampleIndex);
+    if (!sample) return undefined;
+    try {
+      const path = await existingProjectCachePath(
+        this.host.directory,
+        "visual-qa",
+        reportId,
+        "frames",
+        `frame-${String(sampleIndex + 1).padStart(3, "0")}.png`,
+      );
+      if (!path) return undefined;
+      const info = await lstat(path);
+      const directory = dirname(path);
+      if (
+        info.isSymbolicLink() ||
+        !info.isFile() ||
+        !isInside(directory, path) ||
+        (await hashFile(path)) !== sample.sha256
+      )
+        return undefined;
+      return path;
+    } catch {
+      return undefined;
+    }
+  }
+}

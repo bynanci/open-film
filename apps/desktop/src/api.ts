@@ -27,6 +27,7 @@ import type {
   CaptionSnapshotPage,
   DirectionReviewPlan,
   DirectionReviewAcceptance,
+  VisualQaReport,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -48,6 +49,13 @@ export interface AnalysisJobRecoveryState extends AnalysisRecoveryState {
 export interface JobsState {
   jobs: Job[];
   analysisRecovery?: Record<string, AnalysisJobRecoveryState>;
+}
+
+export interface VisualQaState {
+  job: Job;
+  /** The server has released this project's cancellation and job lock. */
+  active: boolean;
+  report?: VisualQaReport;
 }
 
 export interface EditorState extends EditorDocument {
@@ -310,6 +318,11 @@ export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
   `${prefix}/preview?v=${version}`;
+export const visualQaFrameUrl = (
+  reportId: string,
+  sampleIndex: number,
+): string =>
+  `${prefix}/visual-qa/${encodeURIComponent(reportId)}/frames/${encodeURIComponent(String(sampleIndex))}`;
 export const sourceUrl = (id: string, version?: string | number): string =>
   `${prefix}/source/${encodeURIComponent(id)}${version === undefined ? "" : `?v=${encodeURIComponent(version)}`}`;
 export const titlePreviewUrl = (
@@ -684,6 +697,12 @@ export const api = {
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: () => request<JobsState>("/jobs"),
+  startVisualQa: (compositionId: string) =>
+    post<{ jobId: string }>("/visual-qa", { compositionId }),
+  visualQa: (jobId: string) =>
+    request<VisualQaState>(`/visual-qa/${encodeURIComponent(jobId)}`),
+  cancelJob: (jobId: string) =>
+    post<{ ok: true }>(`/jobs/${encodeURIComponent(jobId)}/cancel`),
   analysisRecovery: (jobId: string) =>
     request<AnalysisJobRecoveryState>(
       `/intelligence/jobs/${encodeURIComponent(jobId)}/recovery`,

@@ -112,6 +112,11 @@ import {
   savedScriptProjectIdentity,
   type SceneScriptReviewOptions,
 } from "./scene-script-review.js";
+import {
+  VisualQaService,
+  type VisualQaOptions,
+  type VisualQaReport,
+} from "./visual-qa.js";
 export {
   MediaIntelligence,
   type IntelligenceOptions,
@@ -137,6 +142,14 @@ export {
   SceneScriptReviewService,
   type SceneScriptReviewOptions,
 } from "./scene-script-review.js";
+export {
+  type VisualQaIssue,
+  type VisualQaIssueCode,
+  type VisualQaIssueSeverity,
+  type VisualQaOptions,
+  type VisualQaReport,
+  type VisualQaSample,
+} from "./visual-qa.js";
 export { resolveUserDataDirectory } from "./user-data.js";
 export {
   createReviewOwner,
@@ -252,6 +265,7 @@ export class OpenFilmApplication {
   readonly captions: CaptionService;
   readonly knowledge: KnowledgeService;
   readonly sceneScriptReview: SceneScriptReviewService;
+  readonly visualQa: VisualQaService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -283,6 +297,21 @@ export class OpenFilmApplication {
             this.persistenceConflict = true;
         },
       );
+      const readProject = () => this.project;
+      this.visualQa = new VisualQaService({
+        directory: this.directory,
+        catalog: this.catalog,
+        get project() {
+          return readProject();
+        },
+        getSourceAsset: (assetId) => this.getSourceAsset(assetId),
+        renderForVisualQa: (compositionId, outputPath, options) =>
+          this.renderFilm(compositionId, options, false, {
+            outputPath,
+            recordJob: false,
+            trackActiveJob: false,
+          }),
+      });
     } catch (error) {
       this.catalog.close();
       throw error;
@@ -557,6 +586,35 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  async runVisualQa(
+    compositionId?: string,
+    options: VisualQaOptions = {},
+  ): Promise<VisualQaReport> {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job before starting Visual QA.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.visualQa.run(compositionId, options);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  readVisualQaReport(reportId: string): Promise<VisualQaReport | undefined> {
+    return this.visualQa.readReport(reportId);
+  }
+
+  visualQaFramePath(
+    reportId: string,
+    sampleIndex: number,
+  ): Promise<string | undefined> {
+    return this.visualQa.framePath(reportId, sampleIndex);
   }
 
   get hasActiveJobs(): boolean {
@@ -1476,6 +1534,11 @@ export class OpenFilmApplication {
     compositionId: string | undefined,
     options: FilmRenderOptions,
     exportFile: boolean,
+    context: {
+      outputPath?: string;
+      recordJob?: boolean;
+      trackActiveJob?: boolean;
+    } = {},
   ): Promise<string> {
     const quality = resolveRenderQuality(options.quality).quality;
     let lookOverride: FilmLook | null | undefined;
@@ -1514,18 +1577,24 @@ export class OpenFilmApplication {
         "Timeline exceeds the story maximum duration; use Fit to Duration or shorten clips before rendering",
       );
     if (exportFile) safeDirectorySync(join(this.directory, "exports"));
-    const output = exportFile
-      ? join(this.directory, "exports", `film-${randomUUID()}.mp4`)
-      : await safeProjectCachePath(this.directory, "preview.mp4");
-    const job: Job = {
-      id: options.jobId ?? randomUUID(),
-      type: "render",
-      status: "running",
-      progress: 0,
-      createdAt: new Date().toISOString(),
-    };
-    this.catalog.saveJob(job);
-    this.activeJobs++;
+    const output =
+      context.outputPath ??
+      (exportFile
+        ? join(this.directory, "exports", `film-${randomUUID()}.mp4`)
+        : await safeProjectCachePath(this.directory, "preview.mp4"));
+    const job: Job | undefined =
+      context.recordJob === false
+        ? undefined
+        : {
+            id: options.jobId ?? randomUUID(),
+            type: "render",
+            status: "running",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          };
+    if (job) this.catalog.saveJob(job);
+    const trackActiveJob = context.trackActiveJob !== false;
+    if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
       for (const asset of assets) {
@@ -1579,12 +1648,14 @@ export class OpenFilmApplication {
           lookOverride,
           quality,
           onProgress: (progress) => {
-            const previous = job.progress ?? 0;
+            const previous = job?.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));
             if (next - previous < 0.01) return;
-            job.progress = next;
-            job.updatedAt = new Date().toISOString();
-            this.catalog.saveJob(job);
+            if (job) {
+              job.progress = next;
+              job.updatedAt = new Date().toISOString();
+              this.catalog.saveJob(job);
+            }
             try {
               options.onProgress?.(next);
             } catch {
@@ -1593,27 +1664,33 @@ export class OpenFilmApplication {
           },
         },
       );
-      job.status = "completed";
-      job.progress = 1;
+      if (job) {
+        job.status = "completed";
+        job.progress = 1;
+      }
       return path;
     } catch (error) {
-      job.status =
-        options.signal?.aborted || (error as Error).name === "AbortError"
-          ? "cancelled"
-          : "failed";
-      job.errors = [
-        {
-          uri: output,
-          stage: "render",
-          message: String(error),
-          ...errorInfo(error, "render.failed"),
-        },
-      ];
+      if (job) {
+        job.status =
+          options.signal?.aborted || (error as Error).name === "AbortError"
+            ? "cancelled"
+            : "failed";
+        job.errors = [
+          {
+            uri: output,
+            stage: "render",
+            message: String(error),
+            ...errorInfo(error, "render.failed"),
+          },
+        ];
+      }
       throw error;
     } finally {
-      job.updatedAt = new Date().toISOString();
-      this.catalog.saveJob(job);
-      this.activeJobs--;
+      if (job) {
+        job.updatedAt = new Date().toISOString();
+        this.catalog.saveJob(job);
+      }
+      if (trackActiveJob) this.activeJobs--;
     }
   }
 

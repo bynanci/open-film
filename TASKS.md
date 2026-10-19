@@ -5,6 +5,25 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — M1 / F07 Visual QA
+
+Scope and evidence: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md)
+and [Visual QA validation](docs/validation-visual-qa.md). F01–F13 are a newly
+documented crosswalk; this is not a retroactive claim that those labels existed.
+
+- [x] Render the saved Composition revision to a unique private project cache;
+      verify synthetic MP4 frames, timestamps and source/output hashes.
+- [x] Report typed missing/changed/unsupported media, font/glyph failures and
+      measured title overflow; label suspected black/blank as manual review.
+- [x] Share the application path across Desktop, HTTP and CLI; let keyboard
+      users jump from a finding or contact-sheet frame to Edit time.
+- [x] Cover stale revision, cancel/retry, project switching, cache isolation,
+      non-mutating report polling and three-locale i18n.
+- [x] Run the applicable local gate matrix and record exact outcomes in the
+      [Visual QA validation record](docs/validation-visual-qa.md).
+- [ ] Manual: private-film aesthetics, display/projector readability, long/4K
+      performance and actual Resolve/NLE finishing remain separate gates.
+
 ## Current — Apache-2.0 restoration
 
 Policy: [licensing](docs/licensing.md) and

@@ -2280,6 +2280,99 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, { ok: true });
           return;
         }
+        if (method === "POST" && route === "/api/visual-qa") {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for the active project job before starting Visual QA.",
+            );
+          const data = await body(request);
+          keys(data, ["compositionId"]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const application = current();
+          const jobId = randomUUID();
+          const controller = new AbortController();
+          application.catalog.saveJob({
+            id: jobId,
+            type: "visual-qa",
+            status: "queued",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          });
+          active.set(jobId, controller);
+          const operation = application.runVisualQa(
+            data.compositionId as string | undefined,
+            { jobId, signal: controller.signal },
+          );
+          const handled = operation
+            .catch((error: unknown) => {
+              const job = application.catalog
+                .listJobs()
+                .find((item) => item.id === jobId);
+              if (job && (job.status === "queued" || job.status === "running"))
+                application.catalog.saveJob({
+                  ...job,
+                  status: controller.signal.aborted ? "cancelled" : "failed",
+                  updatedAt: new Date().toISOString(),
+                  errors: [
+                    {
+                      uri: "",
+                      stage: "visual-qa",
+                      message:
+                        "Visual QA could not complete. Retry this saved edit.",
+                      ...errorInfo(error, "render.failed"),
+                    },
+                  ],
+                });
+            })
+            .finally(() => {
+              active.delete(jobId);
+              tasks.delete(handled);
+            });
+          tasks.add(handled);
+          json(response, 202, { jobId });
+          return;
+        }
+        const visualQa =
+          /^\/api\/visual-qa\/([a-f\d-]{36})(?:\/frames\/(\d+))?$/iu.exec(
+            route,
+          );
+        if (method === "GET" && visualQa) {
+          const application = current();
+          const reportId = visualQa[1]!;
+          const job = application.catalog
+            .listJobs()
+            .find((item) => item.id === reportId && item.type === "visual-qa");
+          if (!job)
+            throw new HttpError(404, "Visual QA report is unavailable.");
+          if (visualQa[2] !== undefined) {
+            const framePath = await application.visualQaFramePath(
+              reportId,
+              Number(visualQa[2]),
+            );
+            if (!framePath)
+              throw new HttpError(404, "Visual QA frame is unavailable.");
+            await streamFile(
+              request,
+              response,
+              framePath,
+              resolve(application.directory, "cache"),
+              "image/png",
+            );
+            return;
+          }
+          json(response, 200, {
+            job,
+            active: active.has(reportId),
+            report: await application.readVisualQaReport(reportId),
+          });
+          return;
+        }
         if (method === "POST" && route === "/api/analyze") {
           json(response, 200, application.analyze());
           return;

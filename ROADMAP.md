@@ -21,6 +21,19 @@ instead of silently dropping a second action. The current creative priority is
 the bounded film-look slice below; merging development source is not a **Released** installer or
 **Hardware Verified** recognition/NLE claim.
 
+## Current — M1 / F07 Visual QA and contact sheets
+
+Build a saved-revision review path on top of the current Composition, renderer,
+SQLite jobs and Edit workspace. Desktop, HTTP and CLI share one application
+service that produces a real MP4, timestamped decoded samples, typed measurable
+issues and a private project-local report. Suspicious black/blank samples stay
+manual-review findings so intentional cards and fades remain valid. Cancellation,
+fresh retry, stale revisions, project switching and path-safe frame reads are
+part of the contract; this does not create another timeline or project schema.
+See the [F01–F13 gap crosswalk and staged PR route](docs/roadmap/creative-scene-platform.md)
+and [validation record](docs/validation-visual-qa.md). Real-film aesthetics,
+hardware performance and Resolve/NLE finishing remain manual gates.
+
 ## Current — Apache-2.0 distribution policy
 
 The maintainer requested Apache-2.0 again for greater downstream freedom,

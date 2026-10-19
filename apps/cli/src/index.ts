@@ -59,6 +59,7 @@ Usage:
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm visual-qa --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format mp4 [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
@@ -888,7 +889,21 @@ async function main() {
         );
     } else if (command === "compose")
       print({ composition: app.compose(value(options, "story")) });
-    else if (command === "render")
+    else if (command === "visual-qa") {
+      const report = await app.runVisualQa(
+        value(options, "composition") ?? positional[1],
+        {
+          signal: controller.signal,
+          onProgress(progress) {
+            console.error(
+              JSON.stringify({ event: "visual-qa.progress", progress }),
+            );
+          },
+        },
+      );
+      print(report);
+      if (report.status !== "complete") process.exitCode = 1;
+    } else if (command === "render")
       print({
         path: await app.render(value(options, "composition"), {
           signal: controller.signal,
