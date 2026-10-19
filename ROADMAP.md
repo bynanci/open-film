@@ -18,10 +18,12 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. Existing film-look capabilities
-remain part of the working tree. M3 is integrated; the active M4/F02 candidate
-was merged as PR #29. M5 / F03 is now being developed as PR 5A from integrated
-main commit `e6d07b04cfb7ae905e04a6102311a26da1f18e01`; PR 5B / F08 follows only
-after 5A is reviewed and integrated.
+remain part of the working tree. M3 is integrated; M4/F02 was merged as PR #29.
+M5/F03 Layer Editor PR #30 is merged at main commit
+`a33340c43d40f82825bc788e1c82625883e6acbb`; M5/F08 Reviewable Agent Editing is
+implemented in PR #31 on that base. Its implementation-source CI and review
+passed; the later documentation-only CI rerun is recorded in the validation
+document.
 Merging development source is not a **Released** installer or **Hardware Verified**
 recognition/NLE claim.
 
@@ -48,7 +50,7 @@ Inspector edits use the existing command history. See the
 in PR #29 and is present in the M5 base; manual workstation and private-film
 quality gates remain separate.
 
-## Active candidate — M5 / F03 Layer Editor (PR 5A)
+## Implemented — M5 / F03 Layer Editor (PR 5A)
 
 Build direct GraphicScene object editing on the integrated M3/M4 contract. The
 Monitor overlay selects, drags, resizes and rotates layers; the Inspector edits
@@ -56,8 +58,26 @@ opacity, z-order, visibility and locks. Grid/align snapping, guides and keyboard
 nudging submit existing typed scene commands so revision checks, autosave,
 Undo/Redo and reopen remain Composition-owned. See the [GraphicScene contract](docs/graphic-scenes.md),
 [architecture](docs/architecture.md#declarative-graphicscene) and
-[validation record](docs/validation-layer-editor.md). Reviewable agent editing
-(PR 5B) is a separate dependent change and is not included in this candidate.
+[validation record](docs/validation-layer-editor.md). PR #30 merged this layer
+editor on `main`; reviewable agent editing builds on its Inspector and typed
+commands as a separate PR.
+
+## Implemented — M5 / F08 Reviewable Agent Editing (PR #31 / PR 5B)
+
+Layer-edit proposals use a bounded operation vocabulary and the selected
+GraphicScene node as their only target. The Desktop shows the affected layer,
+before/after values and conflicts; explicit acceptance submits one ordinary
+`graphic.scene.upsert` command. Provider text generation is optional, uses the
+existing `ProviderRegistry` and descriptor-bound text consent, and receives only
+the selected node snapshot. Deterministic local commands work without a provider.
+Stale revisions and locked or unselected content fail closed. Preview waits for
+local autosave, uncertain acceptance blocks flush/navigation, selected actions
+retain proposal order and show required prerequisites, template provenance is
+validated before actions are exposed, and receipt persistence precedes the write
+so reload restores the pending barrier. Keyboard history and direct direction
+acceptance are also blocked while a receipt is unresolved. Provider work is
+cancellable, bounded and outside the project mutation queue. See the
+[validation record](docs/validation-agent-editing.md).
 
 ## Implemented — M2 / F04 Native Caption Track
 
@@ -73,12 +93,12 @@ candidate does not claim word-level alignment or workstation/NLE verification.
 Duration edits that would exclude a saved caption are rejected before autosave;
 adjust the affected cue first so authored text and timing remain explicit.
 
-## Queued — M5–M6 and broader clip keyframes
+## Queued — M6 and broader clip keyframes
 
 The explicit M3/F01 scene scope replaces the earlier M3/F03 keyframe proposal;
-general clip keyframes remain future work. M5 adds the Layer Editor (F03) and
-Reviewable Agent Editing (F08) as separately reviewed PRs; agent proposals remain
-within ProviderRegistry/consent and require explicit acceptance. M6 extends photo,
+general clip keyframes remain future work. M5 delivers the Layer Editor (F03)
+and Reviewable Agent Editing (F08) as separately reviewed PRs; agent proposals
+remain within ProviderRegistry/consent and require explicit acceptance. M6 extends photo,
 sound and output verification with decoded audio evidence. The staged dependencies, risks
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).

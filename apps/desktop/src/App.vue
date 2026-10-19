@@ -23,6 +23,7 @@ import type {
   WorkflowStep,
 } from "./appTypes";
 import { durationStatus } from "./duration";
+import { hasGraphicSceneAgentReceipt } from "./graphic-scene-agent-receipt";
 import AppLauncher from "./components/AppLauncher.vue";
 import AppSettings from "./components/AppSettings.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
@@ -361,8 +362,8 @@ watch(
   editorStorageKey,
   (key) => {
     // An untouched Library does not need the editor's catalog read or hidden
-    // clip tree. Recovery still mounts eagerly, so the existing flush gate can
-    // protect local edits before Story, Export or a project switch proceeds.
+    // clip tree. Local-draft and agent-receipt recovery mount eagerly so the
+    // editor flush gate protects pending work before navigation or export.
     // Any stored bytes (even malformed/empty), or an unreadable store, keep the
     // previous eager behavior; only the editor interprets recovery contents.
     editorMountRequested.value = false;
@@ -371,7 +372,14 @@ watch(
     outputCaptionTrackId.value = undefined;
     if (!key) return;
     try {
-      editorMountRequested.value = localStorage.getItem(key) !== null;
+      editorMountRequested.value =
+        localStorage.getItem(key) !== null ||
+        (!!project.value &&
+          !!activeComposition.value &&
+          hasGraphicSceneAgentReceipt(
+            project.value.id,
+            activeComposition.value.id,
+          ));
     } catch {
       editorMountRequested.value = true;
     }

@@ -19,6 +19,7 @@ export interface HostNode {
   pause: () => void;
   addEventListener: () => void;
   removeEventListener: () => void;
+  getRootNode: () => unknown;
   options: unknown[];
 }
 function node(tag: string): HostNode {
@@ -35,6 +36,7 @@ function node(tag: string): HostNode {
     pause() {},
     addEventListener() {},
     removeEventListener() {},
+    getRootNode: () => globalThis.document,
     options: [],
   };
 }

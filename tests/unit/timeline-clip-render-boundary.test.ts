@@ -319,6 +319,9 @@ async function mountTimeline(
         onVisibilityChange: () => () => {},
       }),
     },
+    "../graphic-scene-agent-receipt": {
+      hasGraphicSceneAgentReceipt: () => false,
+    },
     "../monitor": {
       clampFrameStep,
       formatTimecode,

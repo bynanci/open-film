@@ -193,6 +193,7 @@ function timeline(child: Partial<Barrier>) {
       exposed = value;
     },
     useI18n: () => ({ t: String }),
+    hasGraphicSceneAgentReceipt: () => false,
     onMounted: () => {},
     onBeforeUnmount: () => {},
     watch: () => {},

@@ -71,6 +71,7 @@ import {
 import { durationStatus } from "../duration";
 import { clipControls, shorteningAction } from "../editorPresentation";
 import { nativeBenchmark } from "../nativeBenchmark";
+import { hasGraphicSceneAgentReceipt } from "../graphic-scene-agent-receipt";
 import {
   clampFrameStep,
   formatTimecode,
@@ -134,10 +135,28 @@ const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
+const graphicAgentBusy = ref(false);
+const graphicAgentPending = ref(
+  hasGraphicSceneAgentReceipt(props.projectId, props.compositionId),
+);
+watch(
+  [() => props.projectId, () => props.compositionId],
+  () => {
+    graphicAgentPending.value = hasGraphicSceneAgentReceipt(
+      props.projectId,
+      props.compositionId,
+    );
+  },
+  { flush: "sync" },
+);
 const directionPending = computed(() => !!directionReview.value?.hasPending);
 const directionBlocked = computed(() => !!directionReview.value?.blocksEdits);
 const historyBusy = computed(
-  () => compositionHistoryBusy.value || directionBlocked.value,
+  () =>
+    compositionHistoryBusy.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value,
 );
 const directionPreview = ref<Clip | null>(null);
 const visualQaOpen = ref(false);
@@ -161,7 +180,12 @@ function command(
   input: TimelineCommand | TimelineCommand[],
   referencedAssets: readonly MediaAsset[] = [],
 ) {
-  if (directionBlocked.value) return false;
+  if (
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value
+  )
+    return false;
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
 }
@@ -177,10 +201,11 @@ const hasPending = computed(
     compositionHasPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
-    directionPending.value,
+    directionPending.value ||
+    graphicAgentPending.value,
 );
 async function history(direction: "undo" | "redo") {
-  if (precisionEditor.value?.hasPending || directionBlocked.value) return false;
+  if (precisionEditor.value?.hasPending || historyBusy.value) return false;
   return compositionHistory(direction);
 }
 async function flushInputs() {
@@ -190,7 +215,7 @@ async function flushInputs() {
   return (await precisionEditor.value?.flush()) ?? true;
 }
 async function flush() {
-  if (directionPending.value) return false;
+  if (directionPending.value || graphicAgentPending.value) return false;
   if (!(await flushInputs())) return false;
   return (await directionReview.value?.flush()) ?? true;
 }
@@ -273,6 +298,16 @@ const graphicLayerEditing = computed(
 );
 function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
+}
+function setGraphicAgentBusy(value: boolean) {
+  graphicAgentBusy.value = value;
+}
+function setGraphicAgentPending(value: boolean) {
+  graphicAgentPending.value = value;
+}
+async function reloadAfterGraphicAgent() {
+  await load();
+  emit("edited");
 }
 function setGraphicSnapping(value: boolean) {
   graphicSnapping.value = value;
@@ -2813,6 +2848,9 @@ onBeforeUnmount(() => {
           </div>
           <GraphicSceneInspector
             v-if="inspector === 'graphics'"
+            :project-id="projectId"
+            :composition-id="compositionId"
+            :revision="state.revision"
             :scenes="state.composition.graphicScenes ?? []"
             :duration="state.composition.duration"
             :assets="state.assets"
@@ -2820,6 +2858,12 @@ onBeforeUnmount(() => {
             :selected-node-id="graphicSceneSelection.nodeId"
             :snapping="graphicSnapping"
             :guides="graphicGuides"
+            :agent-disabled="
+              directionBlocked ||
+              compositionHistoryBusy ||
+              compositionHasPending ||
+              status !== 'saved'
+            "
             :disabled="
               directionBlocked ||
               historyBusy ||
@@ -2830,6 +2874,10 @@ onBeforeUnmount(() => {
             @selection="selectGraphicLayer"
             @update:snapping="setGraphicSnapping"
             @update:guides="setGraphicGuides"
+            @agent-busy="setGraphicAgentBusy"
+            @agent-pending="setGraphicAgentPending"
+            @agent-accepted="reloadAfterGraphicAgent"
+            @agent-reload="reloadAfterGraphicAgent"
           />
           <GraphicSceneTemplateStudio
             v-if="inspector === 'templates' && state"
@@ -3168,7 +3216,7 @@ onBeforeUnmount(() => {
                 !!selectedClip.locked ||
                 clipSourceLocked ||
                 !!sourceUnavailable ||
-                compositionHistoryBusy
+                historyBusy
               "
               :flush-inputs="flushInputs"
               :reload-saved="reloadDirectionState"

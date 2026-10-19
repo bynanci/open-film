@@ -63,6 +63,54 @@ export default {
       guides: "中央と整列ガイドを表示",
       keyboardHint:
         "レイヤーを選ぶとインスペクターで変形値を編集できます。矢印キーで移動し、Shift+矢印キーで 10 ピクセル動きます。",
+      agentTitle: "レイヤー編集案を確認",
+      agentScope: "変更できるのは選択したレイヤー（{id}）だけです。",
+      agentInstruction: "編集指示",
+      agentPlaceholder:
+        "例: move right 16、rotate 5°、opacity 0.6、hide、show、size 320 180、set text Hello",
+      agentMode: "提案元",
+      agentLocal: "決定的なローカル操作",
+      agentProvider: "言語プロバイダー",
+      agentRemoteDisclosure:
+        "指示と選択したレイヤーのテキストおよび表示属性がリモートプロバイダーに送信される場合があります。メディアファイルや他のレイヤーは含まれません。",
+      agentGrantConsent: "このプロバイダーでテキストレビューを許可",
+      agentRevokeConsent: "プロバイダーの許可を取り消す",
+      agentNoProvider:
+        "言語プロバイダーが未設定です。決定的なローカル操作は引き続き利用できます。",
+      agentPreview: "提案をプレビュー",
+      agentWorking: "提案を準備中…",
+      agentSource: "提案元: {source}",
+      agentSourceLocal: "ローカル操作",
+      agentSourceProvider: "言語プロバイダー",
+      agentAffected: "対象レイヤー",
+      agentSelectInstructions: "適用する編集だけを選択してください。",
+      agentRequiresActions:
+        "この編集を選ぶ前に、前提となる操作 {actions} を選択してください。",
+      agentBefore: "変更前",
+      agentAfter: "変更後",
+      agentAccept: "選択した編集 {count} 件を適用",
+      agentPending:
+        "適用結果を確認できていません。同じリクエスト ID で再試行すると二重適用を防げます。",
+      agentRetry: "適用を再試行",
+      agentDiscardPending: "再試行レシートを消去",
+      agentStorageError: "ローカルの再試行レシートを安全に読み込めません。",
+      agentProviderError: "プロバイダーの許可を更新できませんでした。",
+      agentProviderUnavailable:
+        "このプロバイダーはテキストレビューに利用できません。設定と許可を確認してください。",
+      agentGenerateError:
+        "提案を準備できません。指示と保存済みリビジョンを確認して再試行してください。",
+      agentAcceptError:
+        "選択した編集を適用できませんでした。同じリクエストを再試行するか、新しい提案を作成してください。",
+      agentStale:
+        "提案後に保存済みの編集が変更されました。インスペクターを再読み込みしてプレビューしてください。",
+      agentConflict: {
+        unsupported: "未対応の指示",
+        invalid: "無効な操作",
+        unselected: "未選択のレイヤー",
+        missing: "レイヤーが存在しません",
+        locked: "レイヤーがロックされています",
+        duplicate: "編集が競合しています",
+      },
     },
     templates: {
       tab: "ストーリーテンプレート",

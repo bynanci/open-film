@@ -27,11 +27,17 @@ import type {
   CaptionSnapshotPage,
   DirectionReviewPlan,
   DirectionReviewAcceptance,
+  GraphicSceneAgentAcceptance,
+  GraphicSceneAgentPlan,
+  GraphicSceneAgentRequest,
   VisualQaReport,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
   DirectionReviewAcceptance,
+  GraphicSceneAgentAcceptance,
+  GraphicSceneAgentPlan,
+  GraphicSceneAgentRequest,
 } from "@openfilm/application";
 export type { SceneDirectionOptions } from "@openfilm/solver";
 import type { SceneDirectionOptions } from "@openfilm/solver";
@@ -310,8 +316,16 @@ export async function request<T>(
   return body as T;
 }
 
-export const post = <T>(path: string, body: unknown = {}): Promise<T> =>
-  request<T>(path, { method: "POST", body: JSON.stringify(body) });
+export const post = <T>(
+  path: string,
+  body: unknown = {},
+  signal?: AbortSignal,
+): Promise<T> =>
+  request<T>(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const thumbnailUrl = (id: string): string =>
@@ -611,14 +625,14 @@ export const api = {
       `/glossary/${encodeURIComponent(id)}?${new URLSearchParams({ scope })}`,
       { method: "DELETE" },
     ),
-  reviewProvider: (workflow?: "scene-script") =>
+  reviewProvider: (workflow?: "scene-script" | "graphic-scene") =>
     request<ReviewProviderState>(
       `/review/provider${workflow ? `?workflow=${workflow}` : ""}`,
     ),
   reviewConsent: (
     allow: boolean,
     disclosedProvider?: ReviewProviderState["provider"],
-    workflow?: "scene-script",
+    workflow?: "scene-script" | "graphic-scene",
   ) =>
     post<ReviewProviderState>("/review/consent", {
       allow,
@@ -800,6 +814,21 @@ export const api = {
   acceptDirection: (id: string, body: DirectionReviewAcceptance) =>
     post<EditorState>(
       `/compositions/${encodeURIComponent(id)}/direction/accept`,
+      body,
+    ),
+  previewGraphicSceneAgent: (
+    id: string,
+    body: GraphicSceneAgentRequest,
+    signal?: AbortSignal,
+  ) =>
+    post<GraphicSceneAgentPlan>(
+      `/compositions/${encodeURIComponent(id)}/graphic-agent/preview`,
+      body,
+      signal,
+    ),
+  acceptGraphicSceneAgent: (id: string, body: GraphicSceneAgentAcceptance) =>
+    post<EditorState>(
+      `/compositions/${encodeURIComponent(id)}/graphic-agent/accept`,
       body,
     ),
   edit: (

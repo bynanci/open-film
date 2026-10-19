@@ -20,7 +20,10 @@ import {
   createRouteStory,
 } from "@openfilm/story";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
-import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
+import {
+  graphicNode,
+  graphicScene,
+} from "../../../tests/fixtures/graphic-scene.js";
 
 const apps = new Set<OpenFilmApplication>();
 const roots: string[] = [];
@@ -439,6 +442,171 @@ describe("durable GraphicScene editing", () => {
       manifest.sources.find((item) => item.assetId === photoAssets[1]!.id)
         ?.sha256,
     ).toBe(photoHashes.get(photoAssets[1]!.id));
+    expect(output.report.warnings).toEqual(manifest.warnings);
+  }, 120_000);
+
+  it("renders an explicitly accepted local GraphicScene proposal into a real MP4", async () => {
+    const { app, editor } = await fixture();
+    const sourcePath = join(app.directory, "synthetic-agent-background.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0x202020:s=320x180:r=12:d=6",
+      "-t",
+      "6",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-threads",
+      "1",
+      "-y",
+      sourcePath,
+    ]);
+    const source = {
+      ...(await inspectMedia({
+        path: sourcePath,
+        uri: pathToFileURL(sourcePath).href,
+        name: "Synthetic agent background",
+      })),
+      id: "source",
+    };
+    app.catalog.upsertAsset(source);
+    app.project.settings = { width: 320, height: 180, frameRate: 12 };
+    app.project.stories[0]!.beats[0]!.candidateAssetIds = [source.id];
+    app.project.stories[0]!.beats[0]!.selectedAssetIds = [source.id];
+    app.project.timelines[0]!.duration = 6;
+    app.project.timelines[0]!.tracks[0]!.clips[0] = {
+      id: "synthetic-agent-source",
+      assetId: source.id,
+      beatId: "beat",
+      timelineStart: 0,
+      timelineDuration: 6,
+      sourceIn: 0,
+      sourceOut: 6,
+    };
+    await app.save();
+    const scene = graphicScene({
+      id: "agent-render",
+      name: "Synthetic accepted edit",
+      nodes: [
+        graphicNode({
+          id: "agent-box",
+          x: -60,
+          y: -40,
+          width: 40,
+          height: 40,
+          start: 0,
+          end: 6,
+        }),
+      ],
+    });
+    const initial = editor.get("composition");
+    const inserted = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [{ type: "graphic.scene.upsert", scene }],
+    });
+    const proposal = await editor.previewGraphicSceneAgent("composition", {
+      baseRevision: inserted.revision,
+      sceneId: scene.id,
+      nodeIds: ["agent-box"],
+      instruction: "move right 60",
+      mode: "local",
+    });
+    expect(proposal.actions).toHaveLength(1);
+    const accepted = await editor.acceptGraphicSceneAgent("composition", {
+      planId: proposal.id,
+      baseRevision: proposal.baseRevision,
+      actionIds: [proposal.actions[0]!.id],
+      requestId: "render-accepted-agent-edit",
+    });
+    expect(
+      accepted.composition.graphicScenes?.find(
+        (candidate) => candidate.id === scene.id,
+      )?.nodes[0],
+    ).toMatchObject({ x: 0, y: -40 });
+
+    const output = await app.exportMp4("composition", {
+      quality: "standard",
+    });
+    const probe = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,width,height,nb_frames,avg_frame_rate",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "json",
+      output.path,
+    ]);
+    const info = JSON.parse(probe.stdout.toString("utf8")) as {
+      streams: {
+        codec_name: string;
+        width: number;
+        height: number;
+        nb_frames: string;
+        avg_frame_rate: string;
+      }[];
+      format: { duration: string };
+    };
+    expect(info.streams[0]).toMatchObject({
+      codec_name: "h264",
+      width: 320,
+      height: 180,
+      nb_frames: "72",
+      avg_frame_rate: "12/1",
+    });
+    expect(Number(info.format.duration)).toBeCloseTo(6, 1);
+    const decoded = await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-ss",
+      "3",
+      "-i",
+      output.path,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "pipe:1",
+    ]);
+    expect(decoded.stdout).toHaveLength(320 * 180 * 3);
+    const redXs: number[] = [];
+    for (let y = 35; y < 85; y++)
+      for (let x = 80; x < 240; x++) {
+        const offset = (y * 320 + x) * 3;
+        if (
+          decoded.stdout[offset]! > 180 &&
+          decoded.stdout[offset + 1]! < 90 &&
+          decoded.stdout[offset + 2]! < 90
+        )
+          redXs.push(x);
+      }
+    expect(Math.min(...redXs)).toBeGreaterThanOrEqual(138);
+    expect(Math.max(...redXs)).toBeLessThanOrEqual(181);
+    const manifest = JSON.parse(
+      await readFile(`${output.path}.manifest.json`, "utf8"),
+    ) as {
+      composition: { graphicScenes: { id: string; nodes: { x: number }[] }[] };
+      sources: { assetId: string; sha256: string }[];
+      warnings: string[];
+    };
+    expect(
+      manifest.composition.graphicScenes.find(
+        (candidate) => candidate.id === scene.id,
+      )?.nodes[0]?.x,
+    ).toBe(0);
+    expect(
+      manifest.sources.find((item) => item.assetId === source.id)?.sha256,
+    ).toBe(await hashFile(sourcePath));
     expect(output.report.warnings).toEqual(manifest.warnings);
   }, 120_000);
 
