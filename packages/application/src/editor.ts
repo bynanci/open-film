@@ -341,7 +341,9 @@ function command(value: unknown, index: number): TimelineCommand {
       positive(data[type], `${path}.${type}`);
       break;
     case "volume":
-      fields.push("volume");
+      fields.push("volume", "audioReviewId");
+      if (data.audioReviewId !== undefined)
+        nonempty(data.audioReviewId, `${path}.audioReviewId`);
       if (finite(data.volume, `${path}.volume`, 0) > 1)
         invalid(`${path}.volume`, "must be between 0 and 1");
       break;
@@ -1331,6 +1333,16 @@ export class TimelineEditor {
           ...this.get(compositionId),
           acknowledgedRevision: receipt.revision,
         };
+      }
+      for (const item of parsed.commands) {
+        if (item.type === "volume" && item.audioReviewId)
+          await this.application.audioQuality.validateAcceptance(
+            item.audioReviewId,
+            compositionId,
+            parsed.baseRevision,
+            item.clipId,
+            item.volume,
+          );
       }
       const before = this.current(compositionId, parsed.baseRevision);
       let next = document(before);

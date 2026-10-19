@@ -1,3 +1,15 @@
+## Active — M6 / PR 6A Audio Quality
+
+- [x] Reuse existing AudioAutomation and typed volume edits.
+- [x] Measure decoded actual MP4 integrated loudness, sample/true peak and meters.
+- [x] Review role-based constant gain with original/candidate A/B and preserved curves.
+- [x] Fence saved revisions, sources, private cache, cancellation and stale playback.
+- [ ] Complete full gates, independent review, PR and merge; evidence in [validation](docs/validation-audio-quality.md).
+- [ ] PR 6B: general TTS with local mock/BYOK, ProviderRegistry consent, cost disclosure and explicit preview/accept/import.
+
+The current M6 request splits audio finishing and provider generation. The older
+F05 photo-framing expansion stays deferred; this does not relabel it as complete.
+
 # Task status
 
 This checklist describes implementation in the 0.1.0 source tree. A checked item

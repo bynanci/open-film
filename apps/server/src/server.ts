@@ -2062,6 +2062,69 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        const audioQualityMatch =
+          /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
+        if (method === "POST" && audioQualityMatch) {
+          if (active.size)
+            throw new HttpError(409, "Wait for the active project job.");
+          const data = await body(request);
+          keys(data, ["clipId", "baseRevision"]);
+          const compositionId = decodeURIComponent(audioQualityMatch[1]!);
+          const clipId = text(data, "clipId");
+          const revision = text(data, "baseRevision");
+          const controller = new AbortController();
+          const jobId = randomUUID();
+          active.set(jobId, controller);
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const report = await application.runAudioQuality(
+              compositionId,
+              clipId,
+              revision,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(409, "Audio review is stale or cancelled.");
+            json(response, 200, report);
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const audioReviewMedia =
+          /^\/api\/audio-quality\/([a-f0-9-]{36})\/(original|candidate)$/.exec(
+            route,
+          );
+        if (method === "GET" && audioReviewMedia) {
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(
+              409,
+              "Audio review belongs to another project.",
+            );
+          const path = await application.audioQuality.media(
+            audioReviewMedia[1]!,
+            audioReviewMedia[2] as "original" | "candidate",
+          );
+          await streamFile(
+            request,
+            response,
+            path,
+            join(application.directory, "cache"),
+            "video/mp4",
+          );
+          return;
+        }
         const titlePreview =
           /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
         if (method === "GET" && titlePreview) {

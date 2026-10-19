@@ -1,3 +1,5 @@
+import { AudioQualityService } from "./audio-quality.js";
+export * from "./audio-quality.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -276,6 +278,7 @@ export class OpenFilmApplication {
   readonly knowledge: KnowledgeService;
   readonly sceneScriptReview: SceneScriptReviewService;
   readonly visualQa: VisualQaService;
+  readonly audioQuality: AudioQualityService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -310,6 +313,16 @@ export class OpenFilmApplication {
           if (savedScriptProjectIdentity(disk) !== this.persistedProject)
             this.persistenceConflict = true;
         },
+      );
+      this.audioQuality = new AudioQualityService(
+        this,
+        (composition, outputPath, signal) =>
+          this.renderFilm(composition.id, { signal }, false, {
+            outputPath,
+            recordJob: false,
+            trackActiveJob: false,
+            compositionOverride: composition,
+          }),
       );
       const readProject = () => this.project;
       this.visualQa = new VisualQaService({
@@ -600,6 +613,31 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  async runAudioQuality(
+    compositionId: string,
+    clipId: string,
+    revision: string,
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.audioQuality.run(
+        compositionId,
+        clipId,
+        revision,
+        signal,
+      );
+    } finally {
+      this.activeJobs--;
+    }
   }
 
   async runVisualQa(
@@ -1554,6 +1592,7 @@ export class OpenFilmApplication {
       outputPath?: string;
       recordJob?: boolean;
       trackActiveJob?: boolean;
+      compositionOverride?: Composition;
     } = {},
   ): Promise<string> {
     const quality = resolveRenderQuality(options.quality).quality;
@@ -1572,7 +1611,9 @@ export class OpenFilmApplication {
         error instanceof Error ? error.message : String(error),
       );
     }
-    const composition = structuredClone(this.composition(compositionId));
+    const composition = structuredClone(
+      context.compositionOverride ?? this.composition(compositionId),
+    );
     const renderSettings = { ...this.project.settings };
     const projectEvidence = {
       id: this.project.id,

@@ -2,6 +2,27 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioQuality: {
+      title: "音訊品質",
+      help: "選取已設定聲音角色且未鎖定的片段。量測已儲存 MP4 混音；建議只調整固定音量，保留淡入淡出、音量曲線與壓低區段。",
+      measure: "量測已儲存混音",
+      cancel: "取消",
+      running: "正在輸出並量測原始、單獨聲音與候選混音…",
+      failed: "請儲存編輯、選取已設定角色且未鎖定的聲音片段後重試。",
+      audition: "A/B 音訊試聽",
+      original: "A · 原始混音",
+      candidate: "B · 建議混音",
+      meter: "解碼峰值音量表",
+      suggestion: "{role}：目標 {target} LUFS，調整 {gain} dB。",
+      accept: "採用音量建議",
+      issues: {
+        silence: "靜音或訊號不足，無法可靠量測整體響度。",
+        peak: "原始混音超過 −1 dBTP。",
+        limited: "建議受到峰值餘量或既有單位增益上限限制。",
+        "mix-headroom": "候選混音未保留 −1 dBTP 餘量，目前無法採用。",
+        "manual-review": "請聆聽平衡、清晰度與敘事意圖；量測無法判定美學品質。",
+      },
+    },
     graphics: {
       tab: "動態圖層",
       addScene: "新增場景",
