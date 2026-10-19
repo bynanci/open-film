@@ -66,7 +66,7 @@ Scope and implementation contract: [GraphicScene v1](docs/graphic-scenes.md),
 - [x] Complete exact-head CI and review PR 5A before merge; M5/F08 now uses
       this merged Layer Editor without adding a second timeline or edit model.
 
-## Active candidate — M5 / F08 Reviewable Agent Editing (PR 5B)
+## Implemented — M5 / F08 Reviewable Agent Editing (PR #31 / PR 5B)
 
 Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
 [reviewable agent editing validation](docs/validation-agent-editing.md).
@@ -91,8 +91,9 @@ Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
 - [x] Keep long local text instructions actionable with bounded review reasons.
 - [x] Cover application, API, browser, undo/redo/reopen, stale/locked and actual
       synthetic MP4 regressions with existing project contracts.
-- [ ] Complete full exact-head validation and fresh review before merge; record
-      the exact accepted head and checks in the validation record.
+- [x] Complete implementation-source CI and fresh review; record the exact source
+      SHA, passing checks, docs-only CI runner blocker and remaining manual gates
+      in the validation record.
 
 ## Implemented — M1 / F07 Visual QA
 
@@ -138,7 +139,7 @@ not retroactively rename completed project capabilities.
       position/size/rotation/opacity/z-order editing, hidden/locked state,
       snapping/guides and keyboard controls through existing typed commands;
       merged as PR #30.
-- [ ] **M5 / F08 — Reviewable Agent Editing (PR 5B).** Generate allowlisted typed
+- [x] **M5 / F08 — Reviewable Agent Editing (PR #31 / PR 5B).** Generate allowlisted typed
       proposals, explain affected IDs and before/after values, surface conflicts,
       and require Preview → Select → Explicit Accept; preserve local deterministic
       operations without a configured provider.

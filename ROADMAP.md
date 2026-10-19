@@ -20,8 +20,10 @@ from the earlier CI head. Selection controls also wait for saved acknowledgement
 instead of silently dropping a second action. Existing film-look capabilities
 remain part of the working tree. M3 is integrated; M4/F02 was merged as PR #29.
 M5/F03 Layer Editor PR #30 is merged at main commit
-`a33340c43d40f82825bc788e1c82625883e6acbb`; the active M5/F08 Reviewable Agent
-Editing candidate is based on that commit.
+`a33340c43d40f82825bc788e1c82625883e6acbb`; M5/F08 Reviewable Agent Editing is
+implemented in PR #31 on that base. Its implementation-source CI and review
+passed; the later documentation-only CI rerun is recorded in the validation
+document.
 Merging development source is not a **Released** installer or **Hardware Verified**
 recognition/NLE claim.
 
@@ -60,7 +62,7 @@ Undo/Redo and reopen remain Composition-owned. See the [GraphicScene contract](d
 editor on `main`; reviewable agent editing builds on its Inspector and typed
 commands as a separate PR.
 
-## Active candidate — M5 / F08 Reviewable Agent Editing (PR 5B)
+## Implemented — M5 / F08 Reviewable Agent Editing (PR #31 / PR 5B)
 
 Layer-edit proposals use a bounded operation vocabulary and the selected
 GraphicScene node as their only target. The Desktop shows the affected layer,

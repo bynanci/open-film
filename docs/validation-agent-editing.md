@@ -102,7 +102,21 @@ checks. Both exact-head GitHub Verify runs passed their TypeScript/media and
 native-shell jobs (runs [39270057403](https://github.com/bynanci/open-film/actions/runs/39270057403)
 and [39270047074](https://github.com/bynanci/open-film/actions/runs/39270047074)).
 Cargo is unavailable locally; the two native-shell CI jobs are the native gate.
-The Codex security review completed without findings.
+The fresh Codex code review of PR head `425b874` completed without findings; all
+12 prior review threads are resolved. The Codex security review on the unchanged
+implementation source completed without findings.
+
+The implementation source CI is green. The later PR head `425b87445d7342bef62e48b14c591f9b7687e3b1`
+changed only this validation record; `git diff cfe3cd6..425b874` contains no
+source changes. Its duplicate documentation-only Verify runs
+[39275438727](https://github.com/bynanci/open-film/actions/runs/39275438727) and
+[39275421234](https://github.com/bynanci/open-film/actions/runs/39275421234)
+passed native-shell, formatting, i18n, verify, interchange and CLI smoke steps,
+but their TypeScript/media jobs remained `in_progress` beyond the configured
+30-minute job timeout while GitHub's jobs endpoint returned intermittent 502
+errors. This is recorded as an Actions runner/status blocker, not as a passing
+exact-document-head CI result. The full implementation-source CI and all local
+checks above passed on `cfe3cd6`; no source files changed after that validation.
 
 Provider model quality, external endpoint availability, physical display
 quality, hardware/4K throughput and downstream Resolve/NLE finishing remain
