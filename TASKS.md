@@ -1,11 +1,18 @@
-## Active — M6 / PR 6A Audio Quality
+## M6 — Audio Quality and Provider Generation
 
 - [x] Reuse existing AudioAutomation and typed volume edits.
 - [x] Measure decoded actual MP4 integrated loudness, sample/true peak and meters.
 - [x] Review role-based constant gain with original/candidate A/B and preserved curves.
 - [x] Fence saved revisions, sources, private cache, cancellation and stale playback.
-- [ ] Complete full gates, independent review, PR and merge; evidence in [validation](docs/validation-audio-quality.md).
-- [ ] PR 6B: general TTS with local mock/BYOK, ProviderRegistry consent, cost disclosure and explicit preview/accept/import.
+- [x] Separate PR #32, independent review and full local gates; evidence in [validation](docs/validation-audio-quality.md).
+- [x] PR 6B: general TTS adapter with local mock/BYOK, ProviderRegistry consent,
+      unknown-cost acknowledgement and explicit preview/accept/import.
+- [x] Revision/history-safe managed-source handoff, cancel/late-result fencing,
+      durable accepted receipts and restart recovery.
+- [x] Actual synthetic MP4 time/source-hash evidence, focused normal/delayed/lost
+      response browser regressions and full unit/application gates.
+      Final full-browser and exact-head CI/merge outcomes are recorded in the PR verification report; merge requires success. See [validation](docs/validation-provider-generation.md).
+- [ ] Live paid TTS/pronunciation, provider billing/terms and hardware listening QA.
 
 The current M6 request splits audio finishing and provider generation. The older
 F05 photo-framing expansion stays deferred; this does not relabel it as complete.

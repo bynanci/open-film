@@ -60,6 +60,7 @@ export type TimelineCommand =
       sourceIn: number;
       sourceOut: number;
       volume?: number;
+      generationId?: string;
     }
   | { type: "audio.configure"; clipId: string; automation: AudioAutomation }
   | { type: "audio.move"; clipId: string; timelineStart: number }

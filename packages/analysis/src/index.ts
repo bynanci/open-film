@@ -6,6 +6,8 @@ import {
   validateProviderDescriptor,
   validateRemoteProviderConsent,
   type AIProvider,
+  type AudioGenerationProvider,
+  type AudioGenerationResult,
   type EmbeddingProvider,
   type LanguageProvider,
   type OperationOptions,
@@ -58,6 +60,7 @@ export class ProviderRegistry {
       embedding: "embed",
       transcription: "transcribe",
       language: "generate",
+      "audio-generation": "generateAudio",
     } as const;
     const method = methods[provider.kind];
     if (
@@ -199,6 +202,17 @@ export class ProviderRegistry {
       ...new Set<ProviderDataKind>(["text", ...dataKinds]),
     ]) as LanguageProvider;
     return provider.generate(prompt, options);
+  }
+
+  async generateAudio(
+    providerId: string,
+    text: string,
+    options?: OperationOptions,
+  ): Promise<AudioGenerationResult> {
+    const provider = this.authorized(providerId, "audio-generation", [
+      "text",
+    ]) as AudioGenerationProvider;
+    return provider.generateAudio(text, options);
   }
 
   private authorized(

@@ -2,6 +2,25 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioGeneration: {
+      title: "生成音訊",
+      disclosure:
+        "僅處理你輸入的文字，不上傳專案素材。先試聽、接受，再明確匯入時間軸。",
+      provider: "服務提供者",
+      mock: "本機測試音（免費；非語音）",
+      remoteCost: "自備金鑰服務的費用未知，請先確認提供者的最新價格。",
+      text: "旁白文字",
+      consent: "我同意僅處理這段輸入的文字",
+      costConsent: "我了解費用未知，且取消後提供者仍可能收費",
+      generate: "生成試聽版本",
+      cancel: "取消生成",
+      failed: "音訊操作失敗或已過期。請儲存、檢查服務設定後重試。",
+      preview: "生成音訊試聽",
+      receipt: "來源收據雜湊值",
+      accept: "接受音訊",
+      start: "時間軸起點（秒）",
+      import: "匯入時間軸",
+    },
     audioQuality: {
       title: "音訊品質",
       help: "選取已設定聲音角色且未鎖定的片段。量測已儲存 MP4 混音；建議只調整固定音量，保留淡入淡出、音量曲線與壓低區段。",

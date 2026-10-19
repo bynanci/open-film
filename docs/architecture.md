@@ -468,3 +468,19 @@ scene removal clears its record. Existing Composition revisions own undo,
 autosave and reopening. GPX is selected locally, size-bounded and parsed as
 data-only UTF-8 XML; source assets remain read-only. See the
 [template contract](creative-story-templates.md).
+
+## M6 audio review and optional generation
+
+`AudioQualityService` reuses the FFmpeg Renderer for original/stem/candidate MP4s
+and measures decoded output. Review-bound volume commands validate evidence inside
+`TimelineEditor.edit` and retain existing automation/history. CLI, HTTP and Edit
+share this application boundary; see [audio quality](audio-quality.md).
+
+`AudioGenerationService` calls the existing ProviderRegistry through the bounded
+text-to-audio port. Preview and acceptance do not mutate the timeline. Explicit
+import creates a managed WAV source; the editor accepts the catalog handoff only
+if existing assets and documents are identical and exactly that new audio was
+added. Matching history is preserved. The normal typed audio command then saves
+through autosave/recovery. Durable accepted receipts preserve pending edit recovery
+across restart; preview cache eviction does not revoke an already imported source.
+See [provider generation](provider-generation.md) for consent, cost and threat model.

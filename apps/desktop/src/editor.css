@@ -862,7 +862,9 @@ button.editor-beat-heading:hover {
   position: relative;
   flex: 0 0 auto;
   min-height: 0;
-  max-height: 100%;
+  /* Both dimensions already fit the measured viewport. A height-only clamp
+     distorts the frame while ResizeObserver catches up after a resize. */
+  max-height: none;
   overflow: hidden;
   background: #000;
 }

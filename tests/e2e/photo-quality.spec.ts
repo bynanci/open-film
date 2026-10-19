@@ -1201,6 +1201,26 @@ test("photo controls fit desktop sizes in English, Traditional Chinese and Japan
         .boundingBox();
       expect(dimensions!.width / dimensions!.height).toBeCloseTo(16 / 9, 2);
       expect(dimensions!.width).toBeGreaterThan(100);
+      // Keep the frame proportional immediately, then verify the measured
+      // viewport catches up without leaving a permanently clipped preview.
+      await expect
+        .poll(async () => {
+          const frame = await page
+            .locator(".photo-presentation-frame")
+            .boundingBox();
+          const screen = await page
+            .locator(".editor-source-screen")
+            .boundingBox();
+          return (
+            !!frame &&
+            !!screen &&
+            frame.x >= screen.x - 1 &&
+            frame.y >= screen.y - 1 &&
+            frame.x + frame.width <= screen.x + screen.width + 1 &&
+            frame.y + frame.height <= screen.y + screen.height + 1
+          );
+        })
+        .toBe(true);
       await page.screenshot({
         path: testInfo.outputPath(`photo-${locale}-${width}.png`),
       });

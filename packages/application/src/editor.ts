@@ -296,7 +296,10 @@ function command(value: unknown, index: number): TimelineCommand {
         "sourceIn",
         "sourceOut",
         "volume",
+        "generationId",
       );
+      if (data.generationId !== undefined)
+        nonempty(data.generationId, `${path}.generationId`);
       nonempty(data.assetId, `${path}.assetId`);
       nested(
         { version: 1, role: data.role },
@@ -1312,6 +1315,36 @@ export class TimelineEditor {
     }
   }
 
+  /** Trusted application handoff: exactly one newly accepted audio source, no document or existing-source changes. */
+  adoptImportedAudioSource(
+    before: TimelineEditorState,
+    assetId: string,
+  ): TimelineEditorState {
+    const after = this.get(before.composition.id);
+    const added = after.assets.filter(
+      (a) => !before.assets.some((b) => b.id === a.id),
+    );
+    if (
+      added.length !== 1 ||
+      added[0]!.id !== assetId ||
+      added[0]!.mediaType !== "audio" ||
+      digest(document(before)) !== digest(document(after)) ||
+      digest(before.assets) !==
+        digest(after.assets.filter((a) => a.id !== assetId))
+    )
+      throw new TimelineEditorError(
+        "Generated source import changed the editing context.",
+        409,
+      );
+    const history = this.histories.get(before.composition.id);
+    if (history?.revision === before.revision)
+      this.histories.set(before.composition.id, {
+        ...history,
+        revision: after.revision,
+      });
+    return after;
+  }
+
   async edit(
     compositionId: string,
     input: TimelineEditInput,
@@ -1335,6 +1368,13 @@ export class TimelineEditor {
         };
       }
       for (const item of parsed.commands) {
+        if (item.type === "audio.add" && item.generationId)
+          await this.application.audioGeneration.validateImport(
+            item.generationId,
+            compositionId,
+            parsed.baseRevision,
+            item,
+          );
         if (item.type === "volume" && item.audioReviewId)
           await this.application.audioQuality.validateAcceptance(
             item.audioReviewId,

@@ -1283,6 +1283,8 @@ describe("actual workspace readiness guards", () => {
           nativeEditDisposed: false,
           captionImportController: { abort: abortCaptionImport },
           captionImportGeneration: 0,
+          generationImportDisposed: false,
+          generationImportEpoch: 0,
           nativeBootGeneration: 1,
           nativeEditGeneration: 1,
           poll: undefined,

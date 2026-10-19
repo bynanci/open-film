@@ -60,6 +60,7 @@ import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
+import AudioGenerationPanel from "./AudioGenerationPanel.vue";
 import AudioQualityPanel from "./AudioQualityPanel.vue";
 const audioQualityOpen = ref(false);
 import { sourcePresentation } from "../sourcePresentation";
@@ -137,7 +138,18 @@ const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
+const generationImportBusy = ref(false);
+const audioGenerationOpen = ref(false);
+let generationImportEpoch = 0;
+let generationImportDisposed = false;
 const graphicAgentBusy = ref(false);
+watch(
+  () => [props.projectId, props.compositionId],
+  () => {
+    generationImportEpoch++;
+    generationImportBusy.value = false;
+  },
+);
 const graphicAgentPending = ref(
   hasGraphicSceneAgentReceipt(props.projectId, props.compositionId),
 );
@@ -155,6 +167,7 @@ const directionPending = computed(() => !!directionReview.value?.hasPending);
 const directionBlocked = computed(() => !!directionReview.value?.blocksEdits);
 const historyBusy = computed(
   () =>
+    generationImportBusy.value ||
     compositionHistoryBusy.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
@@ -183,6 +196,7 @@ function command(
   referencedAssets: readonly MediaAsset[] = [],
 ) {
   if (
+    generationImportBusy.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
     graphicAgentPending.value
@@ -200,6 +214,7 @@ function templateCommand(
 }
 const hasPending = computed(
   () =>
+    generationImportBusy.value ||
     compositionHasPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
@@ -217,6 +232,7 @@ async function flushInputs() {
   return (await precisionEditor.value?.flush()) ?? true;
 }
 async function flush() {
+  if (generationImportBusy.value) return false;
   if (directionPending.value || graphicAgentPending.value) return false;
   if (!(await flushInputs())) return false;
   return (await directionReview.value?.flush()) ?? true;
@@ -306,6 +322,45 @@ function setGraphicAgentBusy(value: boolean) {
 }
 function setGraphicAgentPending(value: boolean) {
   graphicAgentPending.value = value;
+}
+async function importGeneratedAudio(
+  id: string,
+  start: number,
+  complete: (ok: boolean) => void,
+) {
+  if (hasPending.value || historyBusy.value) {
+    complete(false);
+    return;
+  }
+  generationImportBusy.value = true;
+  const owner = {
+    projectId: props.projectId,
+    compositionId: props.compositionId,
+    epoch: ++generationImportEpoch,
+  };
+  const owns = () =>
+    !generationImportDisposed &&
+    owner.projectId === props.projectId &&
+    owner.compositionId === props.compositionId &&
+    owner.epoch === generationImportEpoch;
+  try {
+    const result = await api.importGeneratedAudio(id, props.projectId, start);
+    if (!owns()) {
+      complete(false);
+      return;
+    }
+    await load();
+    if (!owns() || state.value?.revision !== result.baseRevision) {
+      complete(false);
+      return;
+    }
+    complete(compositionCommand(result.command, result.assets));
+  } catch (error) {
+    if (owns()) reportError(error);
+    complete(false);
+  } finally {
+    if (owns()) generationImportBusy.value = false;
+  }
 }
 async function reloadAfterGraphicAgent() {
   await load();
@@ -1676,6 +1731,8 @@ onMounted(() => {
   measureWorkspace();
 });
 onBeforeUnmount(() => {
+  generationImportDisposed = true;
+  generationImportEpoch++;
   captionImportController?.abort();
   captionImportGeneration++;
   nativeEditDisposed = true;
@@ -1774,6 +1831,7 @@ onBeforeUnmount(() => {
         >
           {{ t("editor.fit.title") }}
         </button>
+
         <button
           class="editor-button"
           :aria-expanded="audioQualityOpen"
@@ -3313,22 +3371,45 @@ onBeforeUnmount(() => {
               <SourceDetails :asset="selectedAsset" compact />
             </details>
           </template>
-          <SoundtrackPanel
-            v-else-if="inspector === 'sound'"
-            :composition="state.composition"
-            :assets="state.assets"
-            :selected-clip="selectedClip"
-            :busy="historyBusy"
-            :active="active && editMode === 'story'"
-            :source-version="sourceVersion"
-            @command="command"
-            @select="
-              (clip) => {
-                chooseClip(clip);
-                inspector = 'sound';
-              }
-            "
-          />
+          <template v-else-if="inspector === 'sound'">
+            <button
+              class="editor-button"
+              type="button"
+              :aria-expanded="audioGenerationOpen"
+              @click="audioGenerationOpen = !audioGenerationOpen"
+            >
+              {{ t("editor.audioGeneration.title") }}
+            </button>
+            <AudioGenerationPanel
+              v-if="audioGenerationOpen"
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :revision="state?.revision ?? ''"
+              :disabled="
+                hasPending ||
+                historyBusy ||
+                directionBlocked ||
+                graphicAgentBusy ||
+                graphicAgentPending
+              "
+              @import="importGeneratedAudio"
+            />
+            <SoundtrackPanel
+              :composition="state.composition"
+              :assets="state.assets"
+              :selected-clip="selectedClip"
+              :busy="historyBusy"
+              :active="active && editMode === 'story'"
+              :source-version="sourceVersion"
+              @command="command"
+              @select="
+                (clip) => {
+                  chooseClip(clip);
+                  inspector = 'sound';
+                }
+              "
+            />
+          </template>
           <template v-else-if="inspector === 'captions'">
             <div class="editor-inspector-title">
               <h3>{{ t("editor.captions.inspector") }}</h3>

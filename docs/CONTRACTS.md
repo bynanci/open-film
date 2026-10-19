@@ -141,3 +141,16 @@ an existing record and explicit `null` removes it. Removing the scene removes it
 record. This optional field does not change the schema version, create another
 timeline or alter project media. See the
 [Creative Story Templates contract](creative-story-templates.md).
+
+## M6 audio evidence and generated-source edits
+
+Composition/project schemas and AudioAutomation v1 remain unchanged. A volume
+command may carry `audioReviewId`; application editing verifies the saved review,
+source/settings/output evidence before applying normal volume semantics. An
+`audio.add` command may carry `generationId`; only an accepted durable receipt
+matching the exact source, target, revision and command can authorize that reviewed
+import. Neither reference executes project code or selects an external endpoint.
+Ordinary existing volume/audio commands remain valid. Provider-generated WAVs are
+managed sources with opaque provenance metadata; Undo removes the overlay while
+retaining accepted media. Private receipt files support pending edit recovery,
+not remote provider authenticity or speech-quality certification.

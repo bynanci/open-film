@@ -1,3 +1,6 @@
+import { AudioGenerationService } from "./audio-generation.js";
+import type { AudioGenerationProvider } from "@openfilm/plugin-sdk";
+export * from "./audio-generation.js";
 import { AudioQualityService } from "./audio-quality.js";
 export * from "./audio-quality.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
@@ -177,7 +180,9 @@ export type {
   ScenePlanOptions,
   ScenePlanAcceptance,
 } from "./scene-plan.js";
-export type OpenFilmRuntimeOptions = KnowledgeOptions;
+export type OpenFilmRuntimeOptions = KnowledgeOptions & {
+  audioGenerationProvider?: AudioGenerationProvider;
+};
 
 export interface ImportOptions {
   signal?: AbortSignal;
@@ -279,6 +284,7 @@ export class OpenFilmApplication {
   readonly sceneScriptReview: SceneScriptReviewService;
   readonly visualQa: VisualQaService;
   readonly audioQuality: AudioQualityService;
+  readonly audioGeneration: AudioGenerationService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -313,6 +319,10 @@ export class OpenFilmApplication {
           if (savedScriptProjectIdentity(disk) !== this.persistedProject)
             this.persistenceConflict = true;
         },
+      );
+      this.audioGeneration = new AudioGenerationService(
+        this,
+        runtime.audioGenerationProvider,
       );
       this.audioQuality = new AudioQualityService(
         this,
@@ -613,6 +623,24 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  async runAudioGeneration(
+    input: Parameters<AudioGenerationService["preview"]>[0],
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.audioGeneration.preview(input, signal);
+    } finally {
+      this.activeJobs--;
+    }
   }
 
   async runAudioQuality(
