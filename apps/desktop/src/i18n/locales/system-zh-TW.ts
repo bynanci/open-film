@@ -62,6 +62,8 @@ export default {
         "您剪輯期間，已儲存的影片有了變更。請檢視新版本，或重新套用已保留的草稿。",
       invalidEdit:
         "這項變更超出素材或故事限制。請檢查裁切範圍、長度與鎖定的回憶。",
+      captionRangeConflict:
+        "縮短影片會排除已儲存的字幕。請先調整或刪除受影響的字幕，再重試。",
     },
     render: {
       overMaximum:

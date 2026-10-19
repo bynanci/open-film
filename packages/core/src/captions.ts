@@ -1,6 +1,14 @@
 import type { Clip, Composition, MediaAsset } from "./models.js";
 import type { TranscriptDocument } from "./intelligence.js";
 import { frameAlignedDuration } from "./timing.js";
+import {
+  isCaptionTextValid,
+  MAX_CAPTION_CUE_COUNT,
+  MAX_CAPTION_TEXT_CHARACTERS,
+  MAX_CAPTION_TEXT_LENGTH,
+  MAX_CAPTION_TIME_MS,
+} from "./caption-text.js";
+export { isCaptionTextValid } from "./caption-text.js";
 
 export type CaptionFormat = "srt" | "vtt";
 
@@ -9,12 +17,12 @@ export const CAPTION_LIMITS = {
   clips: 10_000,
   segments: 100_000,
   visits: 1_000_000,
-  cues: 100_000,
+  cues: MAX_CAPTION_CUE_COUNT,
   issues: 10_000,
-  textLength: 20_000,
-  textCharacters: 8_000_000,
+  textLength: MAX_CAPTION_TEXT_LENGTH,
+  textCharacters: MAX_CAPTION_TEXT_CHARACTERS,
   /** Interoperable two-digit hours, including the final millisecond. */
-  timeMs: 359_999_999,
+  timeMs: MAX_CAPTION_TIME_MS,
 } as const;
 
 export interface CaptionSource {
@@ -58,7 +66,7 @@ export function captionAssetState(asset: MediaAsset): CaptionAssetState {
   };
 }
 
-export interface CaptionCue {
+export interface MappedCaptionCue {
   id: string;
   startMs: number;
   endMs: number;
@@ -108,25 +116,11 @@ export interface CaptionIssue {
 export interface CaptionMapping {
   version: 1;
   trackId: string;
-  cues: CaptionCue[];
+  cues: MappedCaptionCue[];
   issues: CaptionIssue[];
 }
 
 /** C0 controls other than line breaks/tabs, DEL and unpaired UTF-16 are not captions. */
-export function isCaptionTextValid(text: string): boolean {
-  return (
-    typeof text === "string" &&
-    text.length <= CAPTION_LIMITS.textLength &&
-    ![...text].some((character) => {
-      const code = character.charCodeAt(0);
-      return (code < 32 && ![9, 10, 13].includes(code)) || code === 127;
-    }) &&
-    !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(
-      text,
-    )
-  );
-}
-
 /** SubRip has no portable literal escaping for markup, ASS controls or cue lines. */
 export function isSrtCaptionTextSupported(text: string): boolean {
   const normalized = text.replace(/\r\n?/gu, "\n");
@@ -620,7 +614,7 @@ export function generateCompositionCaptions(
         limitReached = true;
         break;
       }
-      const cue: CaptionCue = {
+      const cue: MappedCaptionCue = {
         id: `cue-${clipIndex + 1}-${segmentIndex + 1}`,
         startMs: begin,
         endMs: end,
@@ -654,7 +648,7 @@ export function generateCompositionCaptions(
       left.endMs - right.endMs ||
       left.id.localeCompare(right.id),
   );
-  let furthest: CaptionCue | undefined;
+  let furthest: MappedCaptionCue | undefined;
   for (const cue of result.cues) {
     if (limitReached) break;
     if (furthest && cue.startMs < furthest.endMs) {

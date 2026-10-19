@@ -3,13 +3,14 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { OpenFilmApplication } from "../src/index.js";
 
 const projects: string[] = [];
 const applications: OpenFilmApplication[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const app of applications.splice(0)) app.close();
   await Promise.all(
     projects
@@ -63,6 +64,161 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it("marks preflight findings stale when the edit changes before publication", async () => {
+    const { app, composition, source } = await fixture("0x27a6c8");
+    await rm(source);
+    let changed = false;
+    const report = await app.runVisualQa(composition.id, {
+      onProgress: (progress) => {
+        if (!changed && progress >= 0.1) {
+          changed = true;
+          app.project.timelines[0]!.tracks[0]!.clips[0]!.title =
+            "Newer synthetic edit";
+        }
+      },
+    });
+    expect(changed).toBe(true);
+    expect(report.status).toBe("stale");
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "revision.stale" }),
+    );
+    expect(report.samples).toEqual([]);
+  });
+
+  it("withholds a previously complete report's frames after the saved edit changes", async () => {
+    const { app, composition } = await fixture("0x27a6c8");
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("complete");
+    expect(await app.visualQaFramePath(report.id, 0)).toBeDefined();
+    app.project.timelines[0]!.tracks[0]!.clips[0]!.title =
+      "Newer synthetic edit";
+    await app.save();
+    expect(await app.readVisualQaReport(report.id)).toMatchObject({
+      status: "stale",
+      samples: [],
+    });
+    expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
+  });
+
+  it("decodes the native caption from the actual QA MP4 with unchanged source hashes", async () => {
+    const { app, composition, source } = await fixture("0x27a6c8");
+    const before = await hashFile(source);
+    composition.captionTracks = [
+      {
+        version: 1,
+        id: "burned-caption-track",
+        name: "合成字幕",
+        style: {
+          version: 1,
+          role: "subtitle",
+          fontSize: 12,
+          background: "none",
+        },
+        cues: [
+          {
+            version: 1,
+            id: "burned-caption-cue",
+            startMs: 250,
+            endMs: 750,
+            text: "合成字幕",
+            source: { kind: "manual" },
+            manualRevision: 0,
+          },
+        ],
+      },
+    ];
+    app.project.timelines[0] = composition;
+    await app.save();
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("complete");
+    expect(report.issues.filter((issue) => issue.severity === "error")).toEqual(
+      [],
+    );
+    expect(report.samples[0]?.timestamp).toBe(0.5);
+    const path = await app.visualQaFramePath(report.id, 0);
+    expect(path).toBeDefined();
+    const frame = await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path!,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "-",
+    ]);
+    const { width, height } = report.samples[0]!;
+    const glyphs: number[] = [];
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 3;
+        if (
+          frame.stdout[i]! > 210 &&
+          frame.stdout[i + 1]! > 210 &&
+          frame.stdout[i + 2]! > 210
+        )
+          glyphs.push(y);
+      }
+    expect(glyphs.length).toBeGreaterThan(5);
+    expect(Math.min(...glyphs)).toBeGreaterThan(height * 0.5);
+    expect(Math.max(...glyphs)).toBeLessThan(height);
+    expect(await hashFile(source)).toBe(before);
+    expect(report.sources[0]?.sha256).toBe(before);
+  });
+
+  it.each(["overflow", "font"] as const)(
+    "classifies native caption %s as a typed issue before rendering",
+    async (kind) => {
+      const { app, composition } = await fixture("0x27a6c8");
+      composition.captionTracks = [
+        {
+          version: 1,
+          id: "native-caption-track",
+          name: "合成字幕",
+          style: {
+            version: 1,
+            role: "subtitle",
+            fontSize: kind === "overflow" ? 256 : 18,
+          },
+          cues: [
+            {
+              version: 1,
+              id: "native-caption-cue",
+              startMs: 250,
+              endMs: 750,
+              text: kind === "overflow" ? "合成字幕".repeat(30) : "合成字幕",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+          ],
+        },
+      ];
+      app.project.timelines[0] = composition;
+      await app.save();
+      if (kind === "font")
+        vi.stubEnv(
+          "OPENFILM_TITLE_FONT",
+          join(app.directory, "missing-synthetic-font.ttf"),
+        );
+      await expect(app.runVisualQa(composition.id)).resolves.toMatchObject({
+        status: "incomplete",
+        samples: [],
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: kind === "overflow" ? "title.overflow" : "font.load-failed",
+            severity: "error",
+            at: 0.25,
+            captionTrackId: "native-caption-track",
+            cueId: "native-caption-cue",
+          }),
+        ]),
+      });
+    },
+  );
+
   it("does not create project-cache directories while polling a pending report", async () => {
     const { app } = await fixture("0x27a6c8");
     const id = randomUUID();

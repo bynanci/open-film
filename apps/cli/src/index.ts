@@ -58,12 +58,13 @@ Usage:
   openfilm direction-review preview <composition-id> --project <film.openfilm> --beat <beat-id> (--clips <clip-id,...> | --clips-json <JSON-array>) [--replace-existing]
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
-  openfilm render --project <film.openfilm> [--composition <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
-  openfilm export --project <film.openfilm> --format mp4 [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
+  openfilm captions add-track <snapshot-id> --project <film.openfilm> --name "繁體中文" [--language zh-TW --track-id stable-id]
   openfilm captions export <snapshot-id> --project <film.openfilm> --format srt|vtt
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
@@ -760,9 +761,23 @@ async function main() {
             signal: controller.signal,
           }),
         );
+      } else if (action === "add-track") {
+        print(
+          await app.captions.addNativeTrack(
+            {
+              projectId,
+              snapshotId: positional[2] ?? "",
+              name: value(options, "name") ?? "",
+              language: value(options, "language"),
+              trackId: value(options, "track-id"),
+              requestId: value(options, "request-id"),
+            },
+            { signal: controller.signal },
+          ),
+        );
       } else
         throw new Error(
-          "Choose captions prepare, get, or export. Run openfilm --help.",
+          "Choose captions prepare, get, add-track, or export. Run openfilm --help.",
         );
     } else if (command === "marker") {
       const id = positional[1];
@@ -909,6 +924,9 @@ async function main() {
           signal: controller.signal,
           lookOverride,
           quality,
+          ...(value(options, "caption-track")
+            ? { captionTrackId: value(options, "caption-track") }
+            : {}),
         }),
       });
     else if (command === "export") {
@@ -919,6 +937,9 @@ async function main() {
             signal: controller.signal,
             lookOverride,
             quality,
+            ...(value(options, "caption-track")
+              ? { captionTrackId: value(options, "caption-track") }
+              : {}),
           }),
         );
       else {

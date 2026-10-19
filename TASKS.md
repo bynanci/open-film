@@ -24,29 +24,33 @@ documented crosswalk; this is not a retroactive claim that those labels existed.
 - [ ] Manual: private-film aesthetics, display/projector readability, long/4K
       performance and actual Resolve/NLE finishing remain separate gates.
 
-## Update queue — Creative Scene Platform
+## Creative Scene Platform — M1–M5 delivery queue
 
-These roadmap milestones are queued, not implemented by the M1/F07 change.
-The separately requested native caption-track scope is recorded first; the
-existing roadmap M2/F03 motion milestone remains a distinct queued task.
+Scope and acceptance: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
+The F01–F13 labels are a planning crosswalk introduced by that roadmap; they do
+not retroactively rename completed project capabilities.
 
-- [ ] Requested M2 / F04 — Native Caption Track: versioned stable cue/track
-      identities, transcript revision provenance, manually revised text/timing,
-      Edit timeline and inspector, accessible style/safe-area controls, true MP4
-      burn-in plus existing SRT/VTT export; never infer word timing without
-      reliable timestamps. Preserve locks, trim/split/speed, history, autosave
-      and reopen; verify synthetic narration and decoded caption timing/position.
-- [ ] Roadmap M2 / F03 — Dynamic motion authoring: extend existing clip-local
-      presentation commands with backward-compatible keyframe semantics and
-      deterministic arbitrary-seek preview/render parity.
-- [ ] Roadmap M3 / F05 — Subtitle finishing: define saved subtitle-track and
-      cue-editing behavior with measured CJK layout and MP4/subtitle parity.
-- [ ] Roadmap M4 / F04 + F08 — Photo narrative and AI assistance: establish
-      explicit consent/data boundaries and source-bound review/accept/reject
-      history before adding opt-in visual assistance.
-- [ ] Roadmap M5 / F06 + F10 + F13 — Audio and release QA: add decoded-audio
-      evidence and keep hardware, 4K and NLE workstation gates separately
-      recorded.
+- [x] **M1 / F07 — Visual QA and contact sheets.** A saved-revision implementation
+      is integrated with M2 in [PR #27](https://github.com/bynanci/open-film/pull/27);
+      published-head CI and workstation gates are tracked separately.
+- [x] **M2 / F04 — Native Caption Track.** Versioned Composition cues, transcript
+      provenance, Edit lane/Inspector, MP4 burn-in and SRT/VTT output are implemented
+      in [PR #26](https://github.com/bynanci/open-film/pull/26); CI and workstation
+      gates are tracked separately. Shortening rejects before enqueueing when it
+      would exclude a saved caption; users adjust affected cues explicitly.
+- [ ] **M3 / F03 — Dynamic scene motion.** Define bounded reusable keyframe
+      semantics over existing clip-local motion; verify arbitrary-seek preview/render
+      parity, locks, Undo/Redo, autosave/reopen and interchange warnings.
+- [ ] **M4 / F05 + F08 — Photo narrative and AI assistance.** Build on current
+      framing and scene-direction review with declared consent/data boundaries,
+      source-bound suggestions, explicit accept/reject and no automatic edits.
+- [ ] **M5 / F06 + F10 + F13 — Audio design and verified output.** Add measurable
+      decoded-audio review and repeatable output evidence; keep hardware, real media,
+      4K and NLE finishing as separately recorded manual gates.
+
+The candidate for each milestone requires its complete exact-head automated gate
+before merge. Synthetic media proves bounded behavior only; it does not certify
+private-film aesthetics, hardware, Resolve, 4K or physical display quality.
 
 ## Current — Apache-2.0 restoration
 

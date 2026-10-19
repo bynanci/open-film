@@ -18,6 +18,7 @@ import {
   resolvePreviewClipGeometry,
   evaluateAudioGain,
   type Clip,
+  type CaptionTrack,
   type FrameSize,
   type Job,
   type ProjectSettings,
@@ -40,6 +41,7 @@ import {
   type SourceStatus,
 } from "../api";
 import { useTimelineEditor } from "../composables/useTimelineEditor";
+import { api } from "../api";
 import Icon from "./Icon.vue";
 import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
@@ -55,7 +57,12 @@ import SoundtrackPanel from "./SoundtrackPanel.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
-import { formatDuration as duration, formatNumber, formatDate } from "../i18n";
+import {
+  formatDuration as duration,
+  formatNumber,
+  formatDate,
+  localizeError,
+} from "../i18n";
 import { durationStatus } from "../duration";
 import { clipControls, shorteningAction } from "../editorPresentation";
 import { nativeBenchmark } from "../nativeBenchmark";
@@ -104,6 +111,7 @@ const {
   flush: flushComposition,
   history: compositionHistory,
   reapplyDraft,
+  addNativeCaptionTrack,
   discardDraft,
   downloadDraft,
   load,
@@ -176,7 +184,14 @@ async function reloadDirectionState() {
 }
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
-const inspector = ref<"clip" | "beat" | "sound">("clip");
+const inspector = ref<"clip" | "beat" | "sound" | "captions">("clip");
+const selectedCaptionTrackId = ref("");
+const selectedCaptionCueId = ref("");
+const captionSourceTrackId = ref("");
+const captionImporting = ref(false);
+const captionImportError = ref("");
+let captionImportGeneration = 0;
+let captionImportController: AbortController | undefined;
 const photoPlayer = ref<InstanceType<typeof PhotoPresentationPreview> | null>(
   null,
 );
@@ -247,6 +262,50 @@ const beatFields = ref({
 });
 const allClips = computed(
   () => state.value?.composition.tracks.flatMap((track) => track.clips) ?? [],
+);
+const captionTracks = computed(
+  () => state.value?.composition.captionTracks ?? [],
+);
+const captionSourceTracks = computed(
+  () =>
+    state.value?.composition.tracks.filter((track) =>
+      ["video", "audio", "music"].includes(track.type),
+    ) ?? [],
+);
+const selectedCaptionTrack = computed(() =>
+  captionTracks.value.find(
+    (track) => track.id === selectedCaptionTrackId.value,
+  ),
+);
+const selectedCaptionCue = computed(() =>
+  selectedCaptionTrack.value?.cues.find(
+    (cue) => cue.id === selectedCaptionCueId.value,
+  ),
+);
+const captionDuration = computed(() =>
+  Math.max(0.001, state.value?.composition.duration ?? 0),
+);
+watch(
+  captionTracks,
+  (tracks) => {
+    if (!tracks.some((track) => track.id === selectedCaptionTrackId.value))
+      selectedCaptionTrackId.value = tracks[0]?.id ?? "";
+    if (
+      !selectedCaptionTrack.value?.cues.some(
+        (cue) => cue.id === selectedCaptionCueId.value,
+      )
+    )
+      selectedCaptionCueId.value = "";
+  },
+  { immediate: true },
+);
+watch(
+  captionSourceTracks,
+  (tracks) => {
+    if (!tracks.some((track) => track.id === captionSourceTrackId.value))
+      captionSourceTrackId.value = tracks[0]?.id ?? "";
+  },
+  { immediate: true },
 );
 // Keep source-picker props stable during selection, playback and Activity updates.
 // Composition/assets and translated fallback labels still invalidate the list.
@@ -516,6 +575,203 @@ function chooseBeat(beatId: string) {
   selectedBeatId.value = beatId;
   inspector.value = "beat";
 }
+function selectCaption(track: CaptionTrack, cueId = "") {
+  if (directionBlocked.value) return;
+  selectedCaptionTrackId.value = track.id;
+  selectedCaptionCueId.value = cueId;
+  inspectorOpen.value = true;
+  inspector.value = "captions";
+}
+function addCaptionTrack() {
+  const track: CaptionTrack = {
+    version: 1,
+    id: crypto.randomUUID(),
+    name: t("editor.captions.defaultTrack"),
+    style: {
+      version: 1,
+      role: "subtitle",
+      fontFamily: "Noto Sans CJK TC",
+      fontSize: 32,
+      lineHeight: 1.2,
+      background: "scrim",
+      position: "bottom",
+      align: "center",
+      safeArea: { left: 0.08, right: 0.08, top: 0.08, bottom: 0.12 },
+    },
+    cues: [],
+  };
+  if (command({ type: "caption.track.add", track })) selectCaption(track);
+}
+function addCaptionCue() {
+  const track = selectedCaptionTrack.value;
+  const durationMs = Math.max(1, Math.round(captionDuration.value * 1000));
+  if (!track) return;
+  const cue = {
+    version: 1 as const,
+    id: crypto.randomUUID(),
+    startMs: 0,
+    endMs: Math.min(2_000, durationMs),
+    text: t("editor.captions.defaultCueText"),
+    source: { kind: "manual" as const },
+    manualRevision: 0,
+  };
+  if (command({ type: "caption.cue.add", trackId: track.id, cue }))
+    selectedCaptionCueId.value = cue.id;
+}
+function updateCaptionCue(patch: {
+  text?: string;
+  startMs?: number;
+  endMs?: number;
+}) {
+  const track = selectedCaptionTrack.value;
+  const cue = selectedCaptionCue.value;
+  if (track && cue)
+    command({
+      type: "caption.cue.update",
+      trackId: track.id,
+      cueId: cue.id,
+      patch,
+    });
+}
+function deleteCaptionCue() {
+  const track = selectedCaptionTrack.value;
+  const cue = selectedCaptionCue.value;
+  if (!track || !cue) return;
+  command({ type: "caption.cue.delete", trackId: track.id, cueId: cue.id });
+  selectedCaptionCueId.value = "";
+}
+function updateCaptionStyle(key: "fontFamily" | "fontSize", event: Event) {
+  const track = selectedCaptionTrack.value;
+  if (!track) return;
+  const target = event.target as HTMLInputElement;
+  const value = key === "fontSize" ? Number(target.value) : target.value;
+  command({
+    type: "caption.track.style",
+    trackId: track.id,
+    style: { ...track.style, [key]: value },
+  });
+}
+function updateCaptionSafeArea(
+  side: "left" | "right" | "top" | "bottom",
+  event: Event,
+) {
+  const track = selectedCaptionTrack.value;
+  if (!track) return;
+  const target = event.target as HTMLInputElement;
+  const safeArea = {
+    left: track.style.safeArea?.left ?? 0.08,
+    right: track.style.safeArea?.right ?? 0.08,
+    top: track.style.safeArea?.top ?? 0.08,
+    bottom: track.style.safeArea?.bottom ?? 0.12,
+    [side]: Number(target.value) / 100,
+  };
+  command({
+    type: "caption.track.style",
+    trackId: track.id,
+    style: { ...track.style, safeArea },
+  });
+}
+function locateCaption(track: CaptionTrack, cueId: string) {
+  const cue = track.cues.find((item) => item.id === cueId);
+  if (!cue) return;
+  const startSeconds = cue.startMs / 1000;
+  const transcriptClipId =
+    cue.source.kind === "transcript" ? cue.source.clipId : undefined;
+  const clip =
+    (transcriptClipId
+      ? allClips.value.find((item) => item.id === transcriptClipId)
+      : undefined) ??
+    allClips.value.find(
+      (item) =>
+        startSeconds >= item.timelineStart &&
+        startSeconds < item.timelineStart + item.timelineDuration,
+    );
+  if (!clip) return;
+  chooseClip(clip);
+  const sourceTarget =
+    (clip.sourceIn ?? 0) +
+    Math.max(0, startSeconds - clip.timelineStart) *
+      (clip.transform?.speed ?? 1);
+  sourceTime.value = Math.min(clip.sourceOut ?? sourceTarget, sourceTarget);
+  if (sourcePlayer.value) sourcePlayer.value.currentTime = sourceTime.value;
+}
+async function importNativeCaptions() {
+  if (
+    captionImporting.value ||
+    !captionSourceTrackId.value ||
+    !state.value ||
+    directionBlocked.value
+  )
+    return;
+  captionImportController?.abort();
+  const controller = new AbortController();
+  captionImportController = controller;
+  const generation = ++captionImportGeneration;
+  const projectId = props.projectId;
+  const compositionId = state.value.composition.id;
+  const current = () =>
+    !nativeEditDisposed &&
+    !controller.signal.aborted &&
+    generation === captionImportGeneration &&
+    projectId === props.projectId &&
+    compositionId === props.compositionId;
+  captionImporting.value = true;
+  captionImportError.value = "";
+  try {
+    if (!(await flush()) || !current()) return;
+    const context = await api.captionContext(
+      projectId,
+      compositionId,
+      controller.signal,
+    );
+    if (!current()) return;
+    if (
+      context.projectId !== projectId ||
+      context.compositionId !== compositionId ||
+      !context.revision
+    )
+      throw new Error("Caption context changed. Retry from the current edit.");
+    const snapshot = await api.prepareCaptions(
+      {
+        projectId,
+        compositionId,
+        trackId: captionSourceTrackId.value,
+        baseRevision: context.revision,
+      },
+      controller.signal,
+    );
+    if (!current()) return;
+    if (
+      snapshot.projectId !== projectId ||
+      snapshot.compositionId !== compositionId ||
+      snapshot.stale
+    )
+      throw new Error("Caption preview changed. Retry from the current edit.");
+    const trackId = crypto.randomUUID();
+    if (
+      (await addNativeCaptionTrack(
+        {
+          projectId,
+          snapshotId: snapshot.id,
+          name: t("editor.captions.importedTrack"),
+          trackId,
+          requestId: crypto.randomUUID(),
+        },
+        controller.signal,
+      )) &&
+      current()
+    ) {
+      const track = state.value?.composition.captionTracks?.find(
+        (item) => item.id === trackId,
+      );
+      if (track) selectCaption(track, track.cues[0]?.id ?? "");
+    }
+  } catch (cause) {
+    if (current()) captionImportError.value = localizeError(cause);
+  } finally {
+    if (generation === captionImportGeneration) captionImporting.value = false;
+  }
+}
 function editClip(
   input:
     | Omit<Extract<TimelineCommand, { type: "trim" }>, "clipId">
@@ -762,6 +1018,7 @@ async function navigateToTime(time: number): Promise<boolean> {
   pendingSourceSeek.value = sourceTimeAtEdit;
   selectedClipId.value = clip.id;
   await nextTick();
+  if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
   const player = sourcePlayer.value;
   if (player) {
     player.pause();
@@ -1297,6 +1554,8 @@ onMounted(() => {
   measureWorkspace();
 });
 onBeforeUnmount(() => {
+  captionImportController?.abort();
+  captionImportGeneration++;
   nativeEditDisposed = true;
   nativeEditGeneration++;
   cancelNativeEditReady?.();
@@ -1345,6 +1604,7 @@ onBeforeUnmount(() => {
       </div>
       <span
         class="editor-save-state"
+        data-testid="editor-save-state"
         :class="{
           failed: status === 'failed' || status === 'conflict',
           saving: status === 'saving',
@@ -2199,6 +2459,129 @@ onBeforeUnmount(() => {
                 </p>
               </div>
             </section>
+            <section
+              class="editor-caption-lane"
+              :aria-label="t('editor.captions.timeline')"
+            >
+              <header class="editor-caption-lane-heading">
+                <div>
+                  <strong>{{ t("editor.captions.timeline") }}</strong>
+                  <small>{{ t("editor.captions.timelineHint") }}</small>
+                </div>
+                <div class="editor-caption-actions">
+                  <label
+                    v-if="captionSourceTracks.length"
+                    class="editor-caption-source"
+                  >
+                    <span>{{ t("editor.captions.sourceTrack") }}</span>
+                    <select
+                      v-model="captionSourceTrackId"
+                      :aria-label="t('editor.captions.sourceTrack')"
+                      data-testid="caption-source-track"
+                      :disabled="captionImporting || historyBusy"
+                    >
+                      <option
+                        v-for="track in captionSourceTracks"
+                        :key="track.id"
+                        :value="track.id"
+                      >
+                        {{ track.type }} · {{ track.id }}
+                      </option>
+                    </select>
+                  </label>
+                  <button
+                    v-if="captionSourceTracks.length"
+                    class="editor-button"
+                    data-testid="caption-import-track"
+                    :disabled="captionImporting || historyBusy"
+                    @click="importNativeCaptions"
+                  >
+                    {{
+                      t(
+                        captionImporting
+                          ? "editor.captions.importing"
+                          : "editor.captions.importTranscript",
+                      )
+                    }}
+                  </button>
+                  <button
+                    class="editor-button"
+                    data-testid="caption-add-track"
+                    :disabled="historyBusy"
+                    @click="addCaptionTrack"
+                  >
+                    {{ t("editor.captions.addTrack") }}
+                  </button>
+                </div>
+              </header>
+              <p
+                v-if="captionImportError"
+                class="editor-caption-error"
+                role="alert"
+              >
+                {{ captionImportError }}
+              </p>
+              <p v-if="!captionTracks.length" class="editor-note">
+                {{ t("editor.captions.empty") }}
+              </p>
+              <div
+                v-for="track in captionTracks"
+                :key="track.id"
+                class="editor-caption-track"
+              >
+                <button
+                  class="editor-caption-track-name"
+                  :aria-pressed="selectedCaptionTrackId === track.id"
+                  @click="selectCaption(track)"
+                >
+                  {{ track.name }}
+                </button>
+                <div
+                  class="editor-caption-cues"
+                  role="group"
+                  :aria-label="
+                    t('editor.captions.trackLane', { name: track.name })
+                  "
+                  @click="selectCaption(track)"
+                >
+                  <button
+                    v-for="cue in track.cues"
+                    :key="cue.id"
+                    class="editor-caption-cue"
+                    :class="{
+                      selected:
+                        selectedCaptionTrackId === track.id &&
+                        selectedCaptionCueId === cue.id,
+                    }"
+                    :style="{
+                      left: `${Math.max(0, (cue.startMs / (captionDuration * 1000)) * 100)}%`,
+                      width: `${Math.max(2, ((cue.endMs - cue.startMs) / (captionDuration * 1000)) * 100)}%`,
+                    }"
+                    :aria-pressed="
+                      selectedCaptionTrackId === track.id &&
+                      selectedCaptionCueId === cue.id
+                    "
+                    :aria-label="
+                      t('editor.captions.selectCue', {
+                        time: duration(cue.startMs / 1000, {
+                          fractional: true,
+                        }),
+                        text: cue.text,
+                      })
+                    "
+                    :title="`${duration(cue.startMs / 1000, { fractional: true })} · ${cue.text}`"
+                    data-testid="caption-cue"
+                    @click.stop="selectCaption(track, cue.id)"
+                    @dblclick="locateCaption(track, cue.id)"
+                  >
+                    {{ cue.text.replaceAll("\n", " / ") }}
+                  </button>
+                  <span v-if="!track.cues.length" class="editor-caption-empty">
+                    {{ t("editor.captions.noCues") }}
+                  </span>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
         <aside
@@ -2230,6 +2613,15 @@ onBeforeUnmount(() => {
               @click="inspector = 'sound'"
             >
               {{ t("editor.sound.tab") }}
+            </button>
+            <button
+              :class="{ selected: inspector === 'captions' }"
+              :aria-pressed="inspector === 'captions'"
+              :disabled="directionBlocked"
+              data-testid="caption-inspector-tab"
+              @click="inspector = 'captions'"
+            >
+              {{ t("editor.captions.tab") }}
             </button>
           </div>
           <template
@@ -2639,6 +3031,180 @@ onBeforeUnmount(() => {
               }
             "
           />
+          <template v-else-if="inspector === 'captions'">
+            <div class="editor-inspector-title">
+              <h3>{{ t("editor.captions.inspector") }}</h3>
+              <button
+                class="editor-button"
+                :disabled="historyBusy"
+                @click="addCaptionCue"
+              >
+                {{ t("editor.captions.addCue") }}
+              </button>
+            </div>
+            <label v-if="captionTracks.length" class="editor-field">
+              {{ t("editor.captions.track") }}
+              <select
+                :value="selectedCaptionTrackId"
+                :disabled="historyBusy"
+                @change="
+                  selectCaption(
+                    captionTracks.find(
+                      (track) =>
+                        track.id === ($event.target as HTMLSelectElement).value,
+                    )!,
+                  )
+                "
+              >
+                <option
+                  v-for="track in captionTracks"
+                  :key="track.id"
+                  :value="track.id"
+                >
+                  {{ track.name }}
+                </option>
+              </select>
+            </label>
+            <template v-if="selectedCaptionTrack">
+              <div v-if="selectedCaptionCue" class="editor-fields">
+                <label class="editor-field">
+                  {{ t("editor.captions.text") }}
+                  <textarea
+                    :value="selectedCaptionCue.text"
+                    :aria-label="t('editor.captions.text')"
+                    maxlength="2000"
+                    rows="3"
+                    :disabled="historyBusy"
+                    data-testid="caption-text"
+                    @change="
+                      updateCaptionCue({
+                        text: ($event.target as HTMLTextAreaElement).value,
+                      })
+                    "
+                  />
+                </label>
+                <div class="editor-field-pair">
+                  <label class="editor-field">
+                    {{ t("editor.captions.startMs") }}
+                    <input
+                      :value="selectedCaptionCue.startMs"
+                      type="number"
+                      min="0"
+                      :max="selectedCaptionCue.endMs - 1"
+                      step="100"
+                      :disabled="historyBusy"
+                      data-testid="caption-start"
+                      @change="
+                        updateCaptionCue({
+                          startMs: Number(
+                            ($event.target as HTMLInputElement).value,
+                          ),
+                        })
+                      "
+                    />
+                  </label>
+                  <label class="editor-field">
+                    {{ t("editor.captions.endMs") }}
+                    <input
+                      :value="selectedCaptionCue.endMs"
+                      type="number"
+                      :min="selectedCaptionCue.startMs + 1"
+                      :max="Math.round(captionDuration * 1000)"
+                      step="100"
+                      :disabled="historyBusy"
+                      data-testid="caption-end"
+                      @change="
+                        updateCaptionCue({
+                          endMs: Number(
+                            ($event.target as HTMLInputElement).value,
+                          ),
+                        })
+                      "
+                    />
+                  </label>
+                </div>
+                <button
+                  class="editor-button"
+                  :disabled="historyBusy"
+                  @click="
+                    locateCaption(selectedCaptionTrack, selectedCaptionCue.id)
+                  "
+                >
+                  {{ t("editor.captions.locate") }}
+                </button>
+                <button
+                  class="editor-button danger"
+                  :disabled="historyBusy"
+                  @click="deleteCaptionCue"
+                >
+                  {{ t("editor.captions.deleteCue") }}
+                </button>
+              </div>
+              <fieldset class="editor-fields" :disabled="historyBusy">
+                <legend>{{ t("editor.captions.style") }}</legend>
+                <label class="editor-field">
+                  {{ t("editor.captions.font") }}
+                  <input
+                    :value="
+                      selectedCaptionTrack.style.fontFamily ??
+                      'Noto Sans CJK TC'
+                    "
+                    :aria-label="t('editor.captions.font')"
+                    type="text"
+                    maxlength="120"
+                    data-testid="caption-font"
+                    @change="updateCaptionStyle('fontFamily', $event)"
+                  />
+                </label>
+                <label class="editor-field">
+                  {{ t("editor.captions.fontSize") }}
+                  <input
+                    :value="selectedCaptionTrack.style.fontSize ?? 32"
+                    :aria-label="t('editor.captions.fontSize')"
+                    type="number"
+                    min="8"
+                    max="240"
+                    step="1"
+                    data-testid="caption-font-size"
+                    @change="updateCaptionStyle('fontSize', $event)"
+                  />
+                </label>
+                <fieldset
+                  class="editor-caption-safe-area"
+                  :disabled="historyBusy"
+                >
+                  <legend>{{ t("editor.captions.safeArea") }}</legend>
+                  <label
+                    v-for="side in ['left', 'right', 'top', 'bottom'] as const"
+                    :key="side"
+                    class="editor-field"
+                  >
+                    {{ t(`editor.captions.${side}`) }}
+                    <input
+                      :value="
+                        Math.round(
+                          (selectedCaptionTrack.style.safeArea?.[side] ??
+                            (side === 'bottom' ? 0.12 : 0.08)) * 100,
+                        )
+                      "
+                      type="number"
+                      min="0"
+                      max="30"
+                      step="1"
+                      :data-testid="`caption-safe-${side}`"
+                      :aria-label="t(`editor.captions.${side}`)"
+                      @change="updateCaptionSafeArea(side, $event)"
+                    />
+                  </label>
+                </fieldset>
+              </fieldset>
+              <p v-if="!selectedCaptionCue" class="editor-note">
+                {{ t("editor.captions.chooseCue") }}
+              </p>
+              <p class="editor-note">{{ t("editor.captions.manualReview") }}</p>
+            </template>
+            <p v-else class="editor-note">{{ t("editor.captions.empty") }}</p>
+          </template>
           <template v-else-if="inspector === 'beat' && selectedBeat"
             ><div class="editor-inspector-title">
               <h3>{{ selectedBeat.title }}</h3>

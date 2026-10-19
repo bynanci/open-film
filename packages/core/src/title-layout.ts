@@ -35,6 +35,7 @@ export interface ResolvedTitleStyle {
   position: "center" | "bottom";
   fadeOut: number;
   bottomSafeMargin: number;
+  safeArea: { left: number; right: number; top: number; bottom: number };
 }
 
 export interface TitleLine {
@@ -135,6 +136,23 @@ export function resolveTitleStyle(
     throw new Error(
       "Choose a supported title alignment, background and position.",
     );
+  const safeArea = {
+    left: bounded(style?.safeArea?.left ?? 0.08, 0.3, "left safe margin"),
+    right: bounded(style?.safeArea?.right ?? 0.08, 0.3, "right safe margin"),
+    top: bounded(style?.safeArea?.top ?? 0.08, 0.3, "top safe margin"),
+    bottom: bounded(
+      style?.safeArea?.bottom ??
+        (position === "bottom" ? style?.bottomSafeMargin : undefined) ??
+        0.08,
+      0.3,
+      "bottom safe margin",
+    ),
+  };
+  if (
+    safeArea.left + safeArea.right >= 0.95 ||
+    safeArea.top + safeArea.bottom >= 0.95
+  )
+    throw new Error("Title safe-area margins leave no usable frame area.");
   return {
     version: 1,
     role,
@@ -148,11 +166,8 @@ export function resolveTitleStyle(
     background,
     position,
     fadeOut: bounded(style?.fadeOut ?? 0, 10, "fade duration"),
-    bottomSafeMargin: bounded(
-      style?.bottomSafeMargin ?? 0.08,
-      0.3,
-      "bottom safe margin",
-    ),
+    bottomSafeMargin: safeArea.bottom,
+    safeArea,
   };
 }
 
@@ -193,13 +208,14 @@ export function layoutTitleText(
   const resolved = resolveTitleStyle(style, frame);
   const padding =
     resolved.background === "scrim" ? resolved.fontSize * 0.35 : 0;
-  const safeX = frame.width * 0.08 + padding;
-  const safeTop = frame.height * 0.08 + padding;
-  const safeBottom =
-    frame.height *
-      (resolved.position === "bottom" ? resolved.bottomSafeMargin : 0.08) +
-    padding;
-  const maxWidth = Math.min(resolved.maxWidth, frame.width - safeX * 2);
+  const safeLeft = frame.width * resolved.safeArea.left + padding;
+  const safeRight = frame.width * resolved.safeArea.right + padding;
+  const safeTop = frame.height * resolved.safeArea.top + padding;
+  const safeBottom = frame.height * resolved.safeArea.bottom + padding;
+  const maxWidth = Math.min(
+    resolved.maxWidth,
+    frame.width - safeLeft - safeRight,
+  );
   if (maxWidth <= 0)
     throw new Error("The title cannot fit this frame. Reduce the font size.");
   const measured = new Map<string, TitleTextMetrics>();
@@ -315,10 +331,10 @@ export function layoutTitleText(
     const item = rowMetrics[index]!;
     const x =
       resolved.align === "left"
-        ? safeX
+        ? safeLeft
         : resolved.align === "right"
-          ? frame.width - safeX - item.width
-          : (frame.width - item.width) / 2;
+          ? frame.width - safeRight - item.width
+          : safeLeft + (frame.width - safeLeft - safeRight - item.width) / 2;
     return {
       text: value,
       x,

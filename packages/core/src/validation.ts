@@ -15,7 +15,15 @@ import {
   type TitleStyle,
   type AudioAutomation,
   type FilmLook,
+  type CaptionCueSource,
+  type CaptionTrack,
 } from "./models.js";
+import {
+  isCaptionTextValid,
+  MAX_CAPTION_CUE_COUNT,
+  MAX_CAPTION_TEXT_CHARACTERS,
+  MAX_CAPTION_TIME_MS,
+} from "./caption-text.js";
 
 export interface ValidationIssue {
   path: string;
@@ -275,6 +283,7 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "position",
     "fadeOut",
     "bottomSafeMargin",
+    "safeArea",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -315,12 +324,154 @@ function titleStyle(value: unknown, path: string): TitleStyle {
   );
   optional(data, "fadeOut", path, (v, p) => number(v, p, 0, 10));
   optional(data, "bottomSafeMargin", path, (v, p) => number(v, p, 0, 0.3));
+  optional(data, "safeArea", path, (v, p) => {
+    const safe = presentationObject(v, p, ["left", "right", "top", "bottom"]);
+    for (const edge of ["left", "right", "top", "bottom"])
+      optional(safe, edge, p, (edgeValue, edgePath) =>
+        number(edgeValue, edgePath, 0, 0.3),
+      );
+    if (
+      Number(safe.left ?? 0.08) + Number(safe.right ?? 0.08) >= 0.95 ||
+      Number(safe.top ?? 0.08) + Number(safe.bottom ?? 0.08) >= 0.95
+    )
+      fail(p, "safe-area margins leave no usable frame area");
+  });
   return data as unknown as TitleStyle;
 }
 
 export function validateTitleStyle(value: unknown): TitleStyle {
   titleStyle(value, "titleStyle");
   return copyJson(value, "titleStyle") as TitleStyle;
+}
+
+function captionCueSource(value: unknown, path: string): CaptionCueSource {
+  const record = object(value, path);
+  const kind = choice(record.kind, `${path}.kind`, ["manual", "transcript"]);
+  if (kind === "manual") {
+    presentationObject(value, path, ["kind"]);
+    return { kind };
+  }
+  const source = presentationObject(value, path, [
+    "kind",
+    "assetId",
+    "transcriptId",
+    "transcriptRevisionId",
+    "segmentId",
+    "clipId",
+    "alignment",
+    "sourceIn",
+    "sourceOut",
+  ]);
+  for (const field of [
+    "assetId",
+    "transcriptId",
+    "transcriptRevisionId",
+    "segmentId",
+    "clipId",
+  ])
+    receiptIdentifier(source[field], `${path}.${field}`);
+  choice(source.alignment, `${path}.alignment`, ["segment"]);
+  const sourceIn = number(source.sourceIn, `${path}.sourceIn`, 0);
+  const sourceOut = positive(source.sourceOut, `${path}.sourceOut`);
+  if (sourceOut <= sourceIn)
+    fail(`${path}.sourceOut`, "must be greater than sourceIn");
+  return source as unknown as CaptionCueSource;
+}
+
+function captionTrack(
+  value: unknown,
+  path: string,
+  compositionDuration: number,
+): CaptionTrack {
+  const data = presentationObject(value, path, [
+    "version",
+    "id",
+    "name",
+    "language",
+    "style",
+    "cues",
+  ]);
+  versionOne(data, path);
+  receiptIdentifier(data.id, `${path}.id`);
+  const name = string(data.name, `${path}.name`);
+  if (name.length > 256)
+    fail(`${path}.name`, "expected at most 256 characters");
+  optional(data, "language", path, (v, p) => {
+    const language = string(v, p);
+    if (
+      language.length > 35 ||
+      !/^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/u.test(language)
+    )
+      fail(p, "expected a bounded BCP-47 language tag");
+  });
+  titleStyle(data.style, `${path}.style`);
+  if ((data.style as Record<string, unknown>).role !== "subtitle")
+    fail(`${path}.style.role`, "caption tracks require the subtitle role");
+  const cues = array(data.cues, `${path}.cues`);
+  if (cues.length > MAX_CAPTION_CUE_COUNT)
+    fail(`${path}.cues`, `expected at most ${MAX_CAPTION_CUE_COUNT} cues`);
+  const cueIds = new Set<string>();
+  let textCharacters = 0;
+  const maximumEnd = Math.min(
+    MAX_CAPTION_TIME_MS,
+    Math.floor(compositionDuration * 1000 + 1e-7),
+  );
+  cues.forEach((entry, index) => {
+    const cuePath = `${path}.cues[${index}]`;
+    const cue = presentationObject(entry, cuePath, [
+      "version",
+      "id",
+      "startMs",
+      "endMs",
+      "text",
+      "source",
+      "warnings",
+      "manualRevision",
+    ]);
+    versionOne(cue, cuePath);
+    receiptIdentifier(cue.id, `${cuePath}.id`);
+    const id = cue.id as string;
+    if (cueIds.has(id)) fail(`${cuePath}.id`, `duplicate caption cue ID ${id}`);
+    cueIds.add(id);
+    const start = number(
+      cue.startMs,
+      `${cuePath}.startMs`,
+      0,
+      MAX_CAPTION_TIME_MS,
+    );
+    const end = number(cue.endMs, `${cuePath}.endMs`, 0, MAX_CAPTION_TIME_MS);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end))
+      fail(cuePath, "caption times must be integer milliseconds");
+    if (end <= start) fail(`${cuePath}.endMs`, "must follow startMs");
+    if (end > maximumEnd)
+      fail(`${cuePath}.endMs`, "caption cue extends beyond the composition");
+    const text = string(cue.text, `${cuePath}.text`);
+    if (!text.trim() || !isCaptionTextValid(text))
+      fail(`${cuePath}.text`, "expected non-empty safe Unicode caption text");
+    textCharacters += text.length;
+    if (textCharacters > MAX_CAPTION_TEXT_CHARACTERS)
+      fail(`${path}.cues`, "caption text exceeds the composition limit");
+    const revision = number(cue.manualRevision, `${cuePath}.manualRevision`, 0);
+    if (!Number.isSafeInteger(revision))
+      fail(`${cuePath}.manualRevision`, "expected a nonnegative safe integer");
+    captionCueSource(cue.source, `${cuePath}.source`);
+    optional(cue, "warnings", cuePath, (warnings, warningsPath) => {
+      const entries = array(warnings, warningsPath);
+      if (entries.length > 2)
+        fail(warningsPath, "expected at most two caption review warnings");
+      const supported = new Set<string>();
+      entries.forEach((warning, warningIndex) => {
+        const value = choice(warning, `${warningsPath}[${warningIndex}]`, [
+          "timing-estimated",
+          "alignment-stale",
+        ]);
+        if (supported.has(value))
+          fail(`${warningsPath}[${warningIndex}]`, "duplicate caption warning");
+        supported.add(value);
+      });
+    });
+  });
+  return data as unknown as CaptionTrack;
 }
 
 function audioAutomation(
@@ -845,6 +996,25 @@ function composition(
         );
       seen.add(id);
       filmLook(item.look, `${entryPath}.look`);
+    });
+  });
+  optional(data, "captionTracks", path, (value, captionPath) => {
+    const tracks = array(value, captionPath);
+    if (tracks.length > 100)
+      fail(captionPath, "expected at most 100 native caption tracks");
+    const trackIds = new Set<string>();
+    tracks.forEach((entry, index) => {
+      const validated = captionTrack(
+        entry,
+        `${captionPath}[${index}]`,
+        duration,
+      );
+      if (trackIds.has(validated.id))
+        fail(
+          `${captionPath}[${index}].id`,
+          `duplicate caption track ID ${validated.id}`,
+        );
+      trackIds.add(validated.id);
     });
   });
   tracks.forEach((entry, i) => {

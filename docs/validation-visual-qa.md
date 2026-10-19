@@ -20,7 +20,7 @@ decoded samples. Dark/blank samples are advisory `manual-review` findings and
 never errors: software cannot know whether black is intentional. Other aesthetic
 questions are explicitly left for a person.
 
-## Execution record
+## Initial branch execution record
 
 Base: `089eaf20541391d59c81da075d739bcd3844ceb4` (`origin/main`).
 Candidate branch: `codex/m1-f07-visual-qa`. Exact HEAD is included in the
@@ -69,6 +69,52 @@ large-chunk notice is advisory and no native build was possible in this
 environment. Hardware, 4K performance, private-film aesthetic judgment and
 actual Resolve/NLE finishing remain manual gates below; they are not represented
 as completed.
+
+## M2 integration
+
+PR #27 now integrates main `4d79c78b8e33f74efe322132561cd46e55a942fc`,
+including the merged native CaptionTrack implementation. The three textual
+conflicts were TASKS, the CLI usage list and the creative-platform roadmap.
+Both CLI feature sets and both milestone contracts are retained.
+
+Integration testing reproduced a preflight gap: native caption font failures
+and measured overflow reached FFmpeg as generic failures because only clip titles
+were inspected. Two real-font regressions failed before the fix and pass afterward.
+The shared preflight now inspects the renderer's default caption track and reports
+typed findings with stable caption-track/cue IDs and Composition timestamps.
+No caption text or source path is included in those findings. A further real-MP4
+test decodes the QA sample during a CJK cue and checks lower-frame glyph positions
+and unchanged source hashes. The initial gate table above describes the original
+branch; current integration results and exact-head CI are recorded in the PR.
+
+The contact-sheet browser regression also reproduced animated-photo navigation
+selecting the correct clip while leaving its local preview at zero. QA navigation
+now seeks the existing photo player explicitly. The browser test checks both the
+one-second slider value and the rendered 1.05-scale transform; this assertion was
+observed failing at zero before the correction. No additional playback clock or
+timeline is introduced.
+
+Two stale-revision regressions also failed before correction: an edit during a
+failed preflight was published as incomplete instead of stale, and an older
+complete report could still serve frames after a saved edit. Publication and
+read-only report access now share a saved/in-memory Composition and settings
+fence. Stale views withhold output/samples without rewriting historical cache
+evidence; frame serving refuses that stale view.
+
+## Integration local gate
+
+The corrected integration tree passes format, i18n (1,451 semantic keys), lint,
+TypeScript/Vue checks, all 185 unit/integration files (2,782 tests), build and
+OpenTimelineIO 0.18.1 interchange checks. The 12 focused caption/QA browser cases
+pass, including the actual animated-photo seek. Full browser and native results
+must be checked on the final published PR head before merge.
+
+One exploratory parallel run collided on port 4310 between Playwright and the
+native benchmark protocol tests. Their assertions were retained; the subsequent
+serial full unit run passed. Interchange initially used system Python without
+OpenTimelineIO, then passed with the existing dedicated OTIO 0.18.1 interpreter.
+These were execution/setup failures, not waived gates. Local Rust/Cargo remain
+unavailable; native checks run in CI. The build's large-chunk advisory remains.
 
 ## Manual gates
 

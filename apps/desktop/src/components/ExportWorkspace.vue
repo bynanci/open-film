@@ -23,17 +23,23 @@ const props = defineProps<{
   report?: ExportCompatibilityReport;
   lookOverride?: FilmLook;
   quality?: "standard" | "high-detail";
+  captionTrackId?: string | null;
 }>();
 const emit = defineEmits<{
   export: [format: string];
   look: [look: FilmLook | undefined];
   quality: [value: "standard" | "high-detail"];
+  captionTrack: [value: string | null | undefined];
 }>();
 const qualityId = useId();
 function changeQuality(event: Event) {
   if (props.busy) return;
   const value = (event.target as HTMLSelectElement).value;
   if (value === "standard" || value === "high-detail") emit("quality", value);
+}
+function changeCaptionTrack(event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  emit("captionTrack", value === "__none" ? null : value || undefined);
 }
 function changeLookMode(event: Event) {
   emit(
@@ -143,6 +149,33 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
               {{ t("exportQuality.highDetail") }}
             </option>
           </select>
+        </div>
+        <div v-if="composition.captionTracks?.length" class="field">
+          <label :for="`${qualityId}-captions`">
+            {{ t("exportQuality.captionTrack") }}
+          </label>
+          <select
+            :id="`${qualityId}-captions`"
+            data-testid="export-caption-track"
+            :value="captionTrackId === null ? '__none' : (captionTrackId ?? '')"
+            :disabled="busy"
+            @change="changeCaptionTrack"
+          >
+            <option value="">
+              {{ t("exportQuality.captionTrackAutomatic") }}
+            </option>
+            <option value="__none">
+              {{ t("exportQuality.captionTrackNone") }}
+            </option>
+            <option
+              v-for="track in composition.captionTracks"
+              :key="track.id"
+              :value="track.id"
+            >
+              {{ track.name }}{{ track.language ? ` · ${track.language}` : "" }}
+            </option>
+          </select>
+          <p>{{ t("exportQuality.captionTrackHint") }}</p>
         </div>
         <p :id="`${qualityId}-hint`">
           {{

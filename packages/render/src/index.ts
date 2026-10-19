@@ -37,6 +37,8 @@ import {
   resolveFilmLook,
   validateFilmLook,
   filmLookMatrix,
+  CAPTION_LIMITS,
+  isCaptionTextValid,
   type FilmLook,
   frameAlignedDuration,
   type Clip,
@@ -65,7 +67,10 @@ export interface RenderOptions {
   lookOverride?: FilmLook | null;
   /** Omitted preserves the existing standard compression profile. */
   quality?: RenderQuality;
+  /** Renders one native caption language; omitted selects the first saved track. */
+  captionTrackId?: string | null;
 }
+export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
 const number = (value: number): string => String(Number(value.toFixed(8)));
 
@@ -118,6 +123,38 @@ export class FFmpegRenderer {
       options.lookOverride == null
         ? null
         : validateFilmLook(structuredClone(options.lookOverride));
+    const nativeCaptionTracks = composition.captionTracks ?? [];
+    const selectedCaptionTrackId =
+      options.captionTrackId === undefined
+        ? nativeCaptionTracks[0]?.id
+        : (options.captionTrackId ?? undefined);
+    const selectedCaptionTrack = selectedCaptionTrackId
+      ? nativeCaptionTracks.find((track) => track.id === selectedCaptionTrackId)
+      : undefined;
+    if (selectedCaptionTrackId && !selectedCaptionTrack)
+      throw new Error(`Caption track ${selectedCaptionTrackId} was not found.`);
+    if (selectedCaptionTrack) {
+      if (selectedCaptionTrack.style.role !== "subtitle")
+        throw new Error(
+          "Native caption tracks require the subtitle text role.",
+        );
+      if (selectedCaptionTrack.cues.length > RENDER_CAPTION_CUE_LIMIT)
+        throw new Error(
+          `Native caption rendering supports at most ${RENDER_CAPTION_CUE_LIMIT} cues per track.`,
+        );
+      for (const cue of selectedCaptionTrack.cues)
+        if (
+          !Number.isSafeInteger(cue.startMs) ||
+          !Number.isSafeInteger(cue.endMs) ||
+          cue.startMs < 0 ||
+          cue.endMs <= cue.startMs ||
+          cue.endMs > CAPTION_LIMITS.timeMs ||
+          cue.endMs > composition.duration * 1000 + 1e-7 ||
+          !isCaptionTextValid(cue.text) ||
+          !cue.text.trim()
+        )
+          throw new Error(`Caption cue ${cue.id} has invalid text or timing.`);
+    }
     if (composition.defaultLook) validateFilmLook(composition.defaultLook);
     for (const entry of composition.beatLooks ?? [])
       validateFilmLook(entry.look);
@@ -487,6 +524,66 @@ export class FFmpegRenderer {
         }
       }
       for (const addTitle of pendingTitles) await addTitle();
+      if (selectedCaptionTrack) {
+        const outputFrame = `round(t*${number(settings.frameRate)})`;
+        const cues = [...selectedCaptionTrack.cues].sort(
+          (first, second) =>
+            first.startMs - second.startMs || first.endMs - second.endMs,
+        );
+        for (let index = 0; index < cues.length; index++) {
+          checkAbort(options.signal);
+          const cue = cues[index]!;
+          const startFrame = Math.ceil(
+            (cue.startMs * settings.frameRate) / 1000 - 1e-9,
+          );
+          const endFrame = Math.ceil(
+            (cue.endMs * settings.frameRate) / 1000 - 1e-9,
+          );
+          if (endFrame <= startFrame) {
+            warnings.push(
+              `Caption cue ${cue.id} is shorter than one output frame and was not rendered.`,
+            );
+            continue;
+          }
+          const suffix = `caption${index}`;
+          const title = await createTitleOverlay(
+            cue.text,
+            selectedCaptionTrack.style,
+            settings,
+            join(work, `${suffix}.png`),
+          );
+          fonts.push({
+            family: title.font.family,
+            postscriptName: title.font.postscriptName,
+            sha256: title.font.sha256,
+          });
+          warnings.push(...title.warnings);
+          for (const warning of cue.warnings ?? [])
+            warnings.push(
+              warning === "timing-estimated"
+                ? `Caption cue ${cue.id} uses estimated segment timing; review its appearance manually.`
+                : `Caption cue ${cue.id} has stale transcript alignment; review its appearance manually.`,
+            );
+          args.push(
+            "-loop",
+            "1",
+            "-framerate",
+            number(settings.frameRate),
+            "-threads",
+            "1",
+            "-i",
+            title.path,
+          );
+          const captionInput = inputIndex++;
+          filters.push(
+            `[${captionInput}:v]format=rgba,setpts=PTS-STARTPTS+${startFrame}[${suffix}-source]`,
+          );
+          filters.push(
+            `[${videoLabel}][${suffix}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(${outputFrame},${startFrame})*lt(${outputFrame},${endFrame})'[${suffix}]`,
+          );
+          videoLabel = suffix;
+        }
+      }
       filters.push(`[${videoLabel}]format=yuv420p[vout]`);
       if (audioLabels.length)
         filters.push(

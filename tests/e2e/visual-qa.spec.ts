@@ -79,6 +79,13 @@ async function createFilm(request: APIRequestContext) {
         beatId,
         timelineStart: 0,
         timelineDuration: 2,
+        motion: {
+          version: 1,
+          preset: "push-in",
+          easing: "linear",
+          from: { scale: 1, x: 0, y: 0 },
+          to: { scale: 1.1, x: 0, y: 0 },
+        },
       },
       {
         ...seed,
@@ -141,6 +148,18 @@ test("renders a private contact sheet and locates manual-review findings in Edit
         .evaluate((image) => (image as HTMLImageElement).naturalWidth),
     )
     .toBeGreaterThan(0);
+
+  await sheet.locator(".visual-qa-sample").first().click();
+  await expect(
+    page.getByRole("slider", {
+      name: "Seek within photo presentation",
+      exact: true,
+    }),
+  ).toHaveValue("1");
+  await expect(page.locator(".photo-presentation-layers")).toHaveCSS(
+    "transform",
+    "matrix(1.05, 0, 0, 1.05, 0, 0)",
+  );
 
   const blackFrameFinding = page.getByRole("button", {
     name: "Open Edit near 00:03.000",

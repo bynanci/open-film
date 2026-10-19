@@ -16,6 +16,7 @@ import {
   type Job,
   type MediaAsset,
   type OpenFilmProject,
+  type TitleStyle,
 } from "@openfilm/core";
 import { ProjectCatalog } from "@openfilm/catalog";
 import {
@@ -47,6 +48,8 @@ export interface VisualQaIssue {
   at: number;
   clipId?: string;
   assetId?: string;
+  captionTrackId?: string;
+  cueId?: string;
   /** Stable detail key; user-authored title text and filesystem paths are omitted. */
   detail?: "unavailable" | "fallback-used" | "missing-glyph" | "changed";
   manualReview: boolean;
@@ -120,7 +123,10 @@ function issue(
   severity: VisualQaIssueSeverity,
   at: number,
   frameRate: number,
-  extra: Pick<VisualQaIssue, "clipId" | "assetId" | "detail"> = {},
+  extra: Pick<
+    VisualQaIssue,
+    "clipId" | "assetId" | "captionTrackId" | "cueId" | "detail"
+  > = {},
 ): VisualQaIssue {
   return {
     code,
@@ -282,6 +288,28 @@ function sampleIndexes(frameCount: number, duration: number): number[] {
 /** Shared saved-revision QA used by Desktop, HTTP and CLI adapters. */
 export class VisualQaService {
   constructor(private readonly host: VisualQaHost) {}
+
+  /** Every publication/read uses the same saved and in-memory revision fence. */
+  private async assertCurrent(report: VisualQaReport): Promise<void> {
+    const disk = await savedProject(this.host.directory);
+    const saved = disk.timelines.find(
+      (item) => item.id === report.compositionId,
+    );
+    const memory = this.host.project.timelines.find(
+      (item) => item.id === report.compositionId,
+    );
+    if (
+      disk.id !== report.projectId ||
+      this.host.project.id !== report.projectId ||
+      !saved ||
+      !memory ||
+      digest(saved) !== report.compositionRevision ||
+      digest(memory) !== report.compositionRevision ||
+      digest(disk.settings) !== digest(report.settings) ||
+      digest(this.host.project.settings) !== digest(report.settings)
+    )
+      throw new StaleVisualQaError();
+  }
 
   async run(
     compositionId?: string,
@@ -454,49 +482,65 @@ export class VisualQaService {
         report.sources.push({ assetId, sha256 });
       }
 
-      for (const track of composition.tracks) {
-        for (const clip of track.clips) {
-          checkAbort(options.signal);
-          if (!clip.title) continue;
-          const inspection = await inspectTitleOverlay(
-            clip.title,
-            clip.titleStyle,
-            report.settings,
+      const textOverlays: Array<{
+        text: string;
+        style: TitleStyle | undefined;
+        at: number;
+        identity: Pick<VisualQaIssue, "clipId" | "captionTrackId" | "cueId">;
+      }> = [];
+      for (const track of composition.tracks)
+        for (const clip of track.clips)
+          if (clip.title)
+            textOverlays.push({
+              text: clip.title,
+              style: clip.titleStyle,
+              at: clip.timelineStart,
+              identity: { clipId: clip.id },
+            });
+      // QA uses the renderer's default native language: the first saved track.
+      const nativeCaptions = composition.captionTracks?.[0];
+      for (const cue of nativeCaptions?.cues ?? [])
+        textOverlays.push({
+          text: cue.text,
+          style: nativeCaptions!.style,
+          at: cue.startMs / 1000,
+          identity: { captionTrackId: nativeCaptions!.id, cueId: cue.id },
+        });
+      for (const overlay of textOverlays) {
+        checkAbort(options.signal);
+        const inspection = await inspectTitleOverlay(
+          overlay.text,
+          overlay.style,
+          report.settings,
+        );
+        if (inspection.status === "failed") {
+          report.issues.push(
+            issue(inspection.kind, "error", overlay.at, frameRate, {
+              ...overlay.identity,
+              detail:
+                inspection.kind === "font.load-failed"
+                  ? inspection.detail === "missing-glyph"
+                    ? "missing-glyph"
+                    : "unavailable"
+                  : undefined,
+            }),
           );
-          if (inspection.status === "failed") {
-            report.issues.push(
-              issue(inspection.kind, "error", clip.timelineStart, frameRate, {
-                clipId: clip.id,
-                detail:
-                  inspection.kind === "font.load-failed"
-                    ? inspection.detail === "missing-glyph"
-                      ? "missing-glyph"
-                      : "unavailable"
-                    : undefined,
-              }),
-            );
-          } else if (
-            inspection.warnings.some((warning) =>
-              /unavailable.*using local/iu.test(warning),
-            )
-          ) {
-            report.issues.push(
-              issue(
-                "font.load-failed",
-                "warning",
-                clip.timelineStart,
-                frameRate,
-                {
-                  clipId: clip.id,
-                  detail: "fallback-used",
-                },
-              ),
-            );
-          }
+        } else if (
+          inspection.warnings.some((warning) =>
+            /unavailable.*using local/iu.test(warning),
+          )
+        ) {
+          report.issues.push(
+            issue("font.load-failed", "warning", overlay.at, frameRate, {
+              ...overlay.identity,
+              detail: "fallback-used",
+            }),
+          );
         }
       }
 
       update(0.1, "preflight");
+      await this.assertCurrent(report);
       if (report.issues.some((entry) => entry.severity === "error")) {
         report.status = "incomplete";
         await save();
@@ -660,23 +704,7 @@ export class VisualQaService {
           return sample;
         }),
       );
-      const latestDisk = await savedProject(this.host.directory);
-      const latestComposition = latestDisk.timelines.find(
-        (item) => item.id === composition.id,
-      );
-      const latestMemoryComposition = this.host.project.timelines.find(
-        (item) => item.id === composition.id,
-      );
-      if (
-        latestDisk.id !== report.projectId ||
-        !latestComposition ||
-        digest(latestComposition) !== report.compositionRevision ||
-        digest(latestDisk.settings) !== digest(report.settings) ||
-        this.host.project.id !== report.projectId ||
-        !latestMemoryComposition ||
-        digest(latestMemoryComposition) !== report.compositionRevision
-      )
-        throw new StaleVisualQaError();
+      await this.assertCurrent(report);
       report.status = "complete";
       await save();
       finish("completed", 1);
@@ -749,6 +777,29 @@ export class VisualQaService {
         !Array.isArray(report.issues)
       )
         return undefined;
+      try {
+        await this.assertCurrent(report);
+      } catch (error) {
+        if (!(error instanceof StaleVisualQaError)) return undefined;
+        // Derive a stale view without mutating historical evidence on disk.
+        return {
+          ...report,
+          status: "stale",
+          output: undefined,
+          samples: [],
+          issues: report.issues.some((item) => item.code === "revision.stale")
+            ? report.issues
+            : [
+                ...report.issues,
+                issue(
+                  "revision.stale",
+                  "warning",
+                  0,
+                  report.settings.frameRate,
+                ),
+              ],
+        };
+      }
       return report;
     } catch {
       return undefined;
