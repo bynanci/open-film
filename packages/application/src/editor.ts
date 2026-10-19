@@ -15,6 +15,8 @@ import {
   MAX_TITLE_LENGTH,
   MAX_SCENE_DIRECTION_RECEIPTS,
   isCaptionTextValid,
+  validateGraphicScenes,
+  graphicSceneAssetIds,
   assetDisplayDimensions,
   resolvePhotoPlan,
   type MediaAsset,
@@ -143,6 +145,18 @@ function nested(
 function command(value: unknown, index: number): TimelineCommand {
   const path = `commands[${index}]`;
   const data = record(value, path);
+  if (data.type === "graphic.scene.upsert") {
+    keys(data, ["type", "scene"], path);
+    // Per-composition bounds are enforced by the solver; structural bounds here
+    // protect request fingerprinting and structuredClone from deep client data.
+    validateGraphicScenes([data.scene], Number.MAX_VALUE);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (data.type === "graphic.scene.remove") {
+    keys(data, ["type", "sceneId"], path);
+    nonempty(data.sceneId, `${path}.sceneId`, 128);
+    return structuredClone(data) as TimelineCommand;
+  }
   const type = nonempty(data.type, `${path}.type`);
   if (type === "look") {
     const scope = data.scope;
@@ -569,6 +583,7 @@ export class TimelineEditor {
         404,
       );
     const ids = new Set([
+      ...graphicSceneAssetIds(composition.graphicScenes ?? []),
       ...composition.tracks
         .filter((track) => track.type !== "titles")
         .flatMap((track) =>

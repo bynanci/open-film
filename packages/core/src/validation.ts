@@ -24,6 +24,10 @@ import {
   MAX_CAPTION_TEXT_CHARACTERS,
   MAX_CAPTION_TIME_MS,
 } from "./caption-text.js";
+import {
+  validateGraphicScenes,
+  graphicSceneAssetIds,
+} from "./graphic-scenes.js";
 
 export interface ValidationIssue {
   path: string;
@@ -976,6 +980,13 @@ function composition(
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);
   const clipIds = new Set<string>();
+  optional(data, "graphicScenes", path, (value) => {
+    const scenes = validateGraphicScenes(value, duration);
+    if (knownAssets)
+      for (const id of graphicSceneAssetIds(scenes))
+        if (!knownAssets.has(id))
+          fail(`${path}.graphicScenes`, `unknown graphic image asset ${id}`);
+  });
   optional(data, "defaultLook", path, filmLook);
   optional(data, "beatLooks", path, (value, beatPath) => {
     const entries = array(value, beatPath);

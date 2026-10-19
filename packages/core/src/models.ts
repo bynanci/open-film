@@ -354,6 +354,8 @@ export interface Composition {
   beatLooks?: { beatId: string; look: FilmLook }[];
   /** Composition-time captions are optional so legacy schema-1 projects stay valid. */
   captionTracks?: CaptionTrack[];
+  /** Declarative Composition-time graphics; absent in legacy schema-1 projects. */
+  graphicScenes?: import("./graphic-scenes.js").GraphicScene[];
 }
 
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;
