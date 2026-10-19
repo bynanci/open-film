@@ -84,25 +84,25 @@ persistence path.
 
 ## Validation status
 
-On the current local source state, `pnpm test` passed all 197 files / 2,885
-tests, including the actual synthetic-source FFmpeg render regression.
-`pnpm format:check`, `pnpm test:i18n` (1,610 semantic keys across English,
-Traditional Chinese and Japanese), `pnpm lint`, `pnpm typecheck`, and
-`pnpm build` passed. The production bundle reports the existing size advisory
-(898.39 kB uncompressed). With the isolated pinned OpenTimelineIO interpreter,
-`OPENFILM_OTIO_PYTHON=/tmp/openfilm-interchange-venv/bin/python pnpm
-test:interchange` passed all 18 checks against OpenTimelineIO 0.18.1.
+At source head `cfe3cd6cc558cf620fbfecd35deb800bbaef0e59`, `pnpm test` passed
+all 197 files / 2,885 tests, including the actual synthetic-source FFmpeg
+render regression. `pnpm format:check`, `pnpm test:i18n` (1,610 semantic keys
+across English, Traditional Chinese and Japanese), `pnpm lint`,
+`pnpm typecheck`, and `pnpm build` passed. The production bundle reports the
+existing size advisory (898.39 kB uncompressed). With the isolated pinned
+OpenTimelineIO interpreter,
+`OPENFILM_OTIO_PYTHON=/tmp/openfilm-interchange-venv/bin/python pnpm test:interchange`
+passed all 18 checks against OpenTimelineIO 0.18.1.
 
-The full 163-test Playwright suite is being rerun against system Chromium at
-`/usr/bin/chromium` so the receipt-before-write and reload-restoration browser
-regressions are included. The GitHub native-shell gate is required because
-Cargo is not installed locally. Record the final exact head, full browser result,
-fresh PR review and exact-head GitHub CI here before merge.
-
-Native Rust checks are unavailable locally because Cargo is not installed;
-the GitHub native-shell job is the applicable native gate. Record the exact
-reviewed head and its CI conclusions here before merge, and keep this section
-current when the PR head changes.
+The complete browser suite passed 163/163 with
+`PATH=/tmp/openfilm-e2e-venv/bin:$PATH OPENFILM_CHROMIUM=/usr/bin/chromium pnpm test:e2e`.
+This includes the GraphicScene receipt-before-write, reload restoration,
+keyboard history, direct direction acceptance, inspector switch and exact retry
+checks. Both exact-head GitHub Verify runs passed their TypeScript/media and
+native-shell jobs (runs [39270057403](https://github.com/bynanci/open-film/actions/runs/39270057403)
+and [39270047074](https://github.com/bynanci/open-film/actions/runs/39270047074)).
+Cargo is unavailable locally; the two native-shell CI jobs are the native gate.
+The Codex security review completed without findings.
 
 Provider model quality, external endpoint availability, physical display
 quality, hardware/4K throughput and downstream Resolve/NLE finishing remain
