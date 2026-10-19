@@ -464,6 +464,50 @@ describe("durable GraphicScene editing", () => {
     ).rejects.toMatchObject({ code: "graphics.invalid" });
   });
 
+  it("fits long Latin and Traditional Chinese card text to the actual title renderer", async () => {
+    const samples = ["W".repeat(512), "繁體中文長訊息".repeat(64)];
+    for (const [sampleIndex, text] of samples.entries()) {
+      const { scene } = createConversationCard({
+        sceneId: `long-fit-${sampleIndex}`,
+        duration: 8,
+        frame: { width: 1920, height: 1080 },
+        messages: Array.from({ length: 4 }, (_, index) => ({
+          id: `message-${index + 1}`,
+          speaker: `合成說話者 ${index + 1}`,
+          text,
+          start: 0,
+          end: 8,
+        })),
+      });
+      const nodes = scene.nodes.filter(
+        (node) => node.type === "text" && node.id.endsWith(".text"),
+      );
+      expect(nodes).toHaveLength(4);
+      for (const node of nodes) {
+        if (node.type !== "text") continue;
+        const inspection = await render.inspectTitleOverlay(
+          node.text,
+          {
+            version: 1,
+            role: "scene-statement",
+            fontSize: node.fontSize,
+            fontFamily: node.fontFamily,
+            fontWeight: node.fontWeight,
+            background: "none",
+            position: "center",
+            maxWidth: node.width,
+            safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
+          },
+          { width: Math.ceil(node.width), height: Math.ceil(node.height) },
+        );
+        expect(
+          inspection.status,
+          `${text.slice(0, 8)} at ${node.fontSize}px`,
+        ).toBe("measured");
+      }
+    }
+  });
+
   it("withholds a frame when the revision changes during raster preparation", async () => {
     const { app, editor } = await fixture();
     app.project.settings = { width: 320, height: 180, frameRate: 30 };

@@ -178,8 +178,16 @@ function estimatedTextLines(text: string, fontSize: number, width: number) {
             : /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Extended_Pictographic}\uFF01-\uFF60]/u.test(
                   character,
                 )
-              ? 1
-              : 0.7;
+              ? 1.1
+              : /[WM@#%&]/u.test(character)
+                ? 1
+                : /[mw]/iu.test(character)
+                  ? 0.9
+                  : /[ilI.,'`:;|!]/u.test(character)
+                    ? 0.4
+                    : /[\p{Script=Latin}\p{Number}]/u.test(character)
+                      ? 0.7
+                      : 0.8;
       const advance = fontSize * units;
       if (used > 0 && used + advance > width) {
         lines++;
@@ -199,9 +207,12 @@ function fitTextFontSize(
   preferred: number,
   path: string,
 ) {
+  // Leave headroom for wider local glyphs, real word wrapping and the
+  // renderer's measured ascent/descent. This is intentionally conservative;
+  // the renderer remains the final authority when it shapes the saved text.
   for (let fontSize = preferred; fontSize >= 6; fontSize--) {
-    const estimatedHeight =
-      estimatedTextLines(text, fontSize, bounds.width) * fontSize * 1.2;
+    const lines = estimatedTextLines(text, fontSize, bounds.width);
+    const estimatedHeight = fontSize * (1.3 + Math.max(0, lines - 1) * 1.45);
     if (estimatedHeight <= bounds.height) return fontSize;
   }
   bad(

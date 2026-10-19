@@ -38,7 +38,10 @@ through `OpenFilmApplication.exportMp4`, then:
   protected-region bounds and legacy Composition compatibility.
 - Story: localized conversation builder and long-message fitting, GPX
   entity/DTD/malformed-route handling, exact byte hash, bounded waypoint/point
-  output and focus/compare/bookend layout.
+  output and focus/compare/bookend layout. Long Latin and Traditional Chinese
+  messages are separately inspected with the same local-font title renderer
+  used by Monitor and MP4 output; the stress cases verify that conservative
+  template sizing avoids the overflows reported by that renderer.
 - Solver/application: atomic scene/record edits, source-lock immutability,
   stale/orphan binding rejection, history, autosave, retry, reopen and actual MP4.
 - Browser: edit all three templates with synthetic CJK text and an emoji-safe
@@ -49,17 +52,17 @@ through `OpenFilmApplication.exportMp4`, then:
 
 ## Local verification
 
-| Gate                                                                                                             | Result                                                                                                                                                                                      |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm format:check`                                                                                              | Passed on the candidate after formatting.                                                                                                                                                   |
-| `pnpm test:i18n`                                                                                                 | Passed: 1,560 semantic keys match across en-US, zh-TW and ja-JP.                                                                                                                            |
-| `pnpm lint`                                                                                                      | Passed with zero warnings.                                                                                                                                                                  |
-| `pnpm typecheck`                                                                                                 | Passed for shared TypeScript and Desktop Vue types.                                                                                                                                         |
-| `pnpm test`                                                                                                      | Passed: 194 files, 2,866 tests. Includes the 24-second real FFmpeg MP4 regression.                                                                                                          |
-| `pnpm build`                                                                                                     | Passed. Vite reports the main 858.55 kB chunk exceeds its 500 kB advisory threshold.                                                                                                        |
-| `OPENFILM_CHROMIUM=/usr/bin/chromium OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:e2e` | Passed: all 163 browser tests, including source attribution/ranges, reordering, ID uniqueness and project reopen (16.0 minutes). Targeted M4 case also passed after grapheme-index changes. |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:interchange`                             | Passed: 18 OpenTimelineIO 0.18.1 checks, four real synthetic sources, source hash/bounds and relocation checks. Real Resolve import remains unverified.                                     |
-| `pnpm test:native`                                                                                               | Not run: Rust `cargo` is not installed in this environment.                                                                                                                                 |
+| Gate                                                                                                             | Result                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`                                                                                              | Passed on the candidate after formatting.                                                                                                                                                                      |
+| `pnpm test:i18n`                                                                                                 | Passed: 1,560 semantic keys match across en-US, zh-TW and ja-JP.                                                                                                                                               |
+| `pnpm lint`                                                                                                      | Passed with zero warnings.                                                                                                                                                                                     |
+| `pnpm typecheck`                                                                                                 | Passed for shared TypeScript and Desktop Vue types.                                                                                                                                                            |
+| `pnpm test`                                                                                                      | Passed: 194 files, 2,867 tests. Includes the 24-second real FFmpeg MP4 regression and actual title-renderer fit checks for long Latin and CJK text.                                                            |
+| `pnpm build`                                                                                                     | Passed. Vite reports the main 858.70 kB chunk exceeds its 500 kB advisory threshold.                                                                                                                           |
+| `OPENFILM_CHROMIUM=/usr/bin/chromium OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:e2e` | Passed previously: all 163 browser tests, including source attribution/ranges, reordering, ID uniqueness and project reopen (16.0 minutes). Latest targeted M4 case was re-run after the conservative fit fix. |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:interchange`                             | Passed: 18 OpenTimelineIO 0.18.1 checks, four real synthetic sources, source hash/bounds and relocation checks. Real Resolve import remains unverified.                                                        |
+| `pnpm test:native`                                                                                               | Not run: Rust `cargo` is not installed in this environment.                                                                                                                                                    |
 
 The CI result on the exact PR head is reported separately from these local
 results. The full browser run used the dedicated OpenTimelineIO interpreter so
