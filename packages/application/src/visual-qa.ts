@@ -299,7 +299,7 @@ export class VisualQaService {
   private async currentSourceHash(
     assetId: string,
     options: { signal?: AbortSignal; rehash?: boolean },
-  ): Promise<string> {
+  ): Promise<{ hash: string; verify: () => Promise<void> }> {
     checkAbort(options.signal);
     const asset = this.host.getSourceAsset(assetId);
     if (!asset) throw new StaleVisualQaError();
@@ -322,12 +322,16 @@ export class VisualQaService {
     try {
       const hash = await entry.hash;
       checkAbort(options.signal);
-      if (
-        (await signature()) !== before ||
-        this.host.getSourceAsset(assetId)?.uri !== asset.uri
-      )
-        throw new StaleVisualQaError();
-      return hash;
+      const verify = async () => {
+        checkAbort(options.signal);
+        if (
+          (await signature()) !== before ||
+          this.host.getSourceAsset(assetId)?.uri !== asset.uri
+        )
+          throw new StaleVisualQaError();
+      };
+      await verify();
+      return { hash, verify };
     } catch (error) {
       if (this.sourceHashes.get(assetId) === entry)
         this.sourceHashes.delete(assetId);
@@ -343,20 +347,21 @@ export class VisualQaService {
     checkAbort(options.signal);
     await this.assertRevision(report);
     try {
+      const verified: Array<() => Promise<void>> = [];
       for (const source of report.sources) {
-        if (
-          (await this.currentSourceHash(source.assetId, options)) !==
-          source.sha256
-        )
-          throw new StaleVisualQaError();
+        const current = await this.currentSourceHash(source.assetId, options);
+        if (current.hash !== source.sha256) throw new StaleVisualQaError();
+        verified.push(current.verify);
       }
+      // Later hashes and saved-project reads can yield for a long time. Recheck
+      // all earlier source identities together after those operations finish.
+      await this.assertRevision(report);
+      await Promise.all(verified.map((verify) => verify()));
     } catch (error) {
       checkAbort(options.signal);
       if ((error as Error)?.name === "AbortError") throw error;
       throw new StaleVisualQaError();
     }
-    // Source hashing yields to edits, saves and project lifecycle changes.
-    await this.assertRevision(report);
     checkAbort(options.signal);
   }
 

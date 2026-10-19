@@ -148,6 +148,53 @@ describe("saved-composition Visual QA", () => {
     expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
   });
 
+  it("rechecks earlier sources after hashing later sources", async () => {
+    const { app, composition, source } = await fixture("0x27a6c8");
+    const second = await fixture("green");
+    const replacement = await fixture("red");
+    const replacementBytes = await readFile(replacement.source);
+    app.catalog.upsertAsset(second.asset);
+    const track = composition.tracks.find((track) => track.type !== "titles")!;
+    const first = track.clips[0]!;
+    track.clips.push({
+      ...structuredClone(first),
+      id: randomUUID(),
+      assetId: second.asset.id,
+      timelineStart: 1,
+    });
+    composition.duration = 2;
+    app.project.timelines[0] = composition;
+    await app.save();
+    const actualProbe = media.runProcess;
+    const actualHash = media.hashFile;
+    let probed = false;
+    let changed = false;
+    vi.spyOn(media, "runProcess").mockImplementation(
+      async (command, args, options) => {
+        const result = await actualProbe(command, args, options);
+        if (command === "ffprobe" && args.includes("-count_frames"))
+          probed = true;
+        return result;
+      },
+    );
+    vi.spyOn(media, "hashFile").mockImplementation(async (path, signal) => {
+      const hash = await actualHash(path, signal);
+      if (probed && path === second.source) {
+        changed = true;
+        await writeFile(source, replacementBytes);
+      }
+      return hash;
+    });
+    const report = await app.runVisualQa(composition.id);
+    expect(changed).toBe(true);
+    expect(report).toMatchObject({
+      status: "stale",
+      samples: [],
+      output: undefined,
+    });
+    expect(await app.visualQaFramePath(report.id, 0)).toBeUndefined();
+  });
+
   it.each(["preflight", "final"] as const)(
     "honors cancellation after the %s asynchronous fence",
     async (phase) => {
