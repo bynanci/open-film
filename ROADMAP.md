@@ -18,11 +18,12 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. Existing film-look capabilities
-remain part of the working tree; M3 / F01 below is the current creative milestone.
+remain part of the working tree. M3 is integrated; the active M4/F02 candidate
+must be reviewed and integrated before M5 starts.
 Merging development source is not a **Released** installer or **Hardware Verified**
 recognition/NLE claim.
 
-## Current — M3 / F01 Declarative GraphicScene
+## Implemented — M3 / F01 Declarative GraphicScene
 
 Versioned Image, Text, Shape and Group data extends the existing Composition.
 Explicit bounded enter/exit animation is deterministic under arbitrary seeks.
@@ -33,6 +34,18 @@ NLE formats fail explicitly. See [contract](docs/graphic-scenes.md),
 [threat model](docs/security/graphic-scene-threat-model.md) and
 [validation](docs/validation-graphic-scene.md).
 
+## Active candidate — M4 / F02 Creative Story Templates
+
+Conversation Card, Route Story and Photo Relationship build on the same
+GraphicScene v1 contract and saved Composition. Conversation text retains exact
+original/citation and marked excerpts; GPX imports are selected locally,
+bounded and data-only; photo roles retain asset and focus metadata. Gallery and
+Inspector edits use the existing command history. See the
+[template contract](docs/creative-story-templates.md) and
+[validation record](docs/validation-creative-story-templates.md). This candidate
+is based on M3 main `ab072e660d5913397efe1b98394611d2350bf895`; M5 is blocked on
+its integration.
+
 ## Implemented — M2 / F04 Native Caption Track
 
 Add versioned, stable-ID caption cues to the existing saved Composition, using
@@ -40,19 +53,20 @@ transcript segments only as provenance-backed timing evidence. Edit shares the
 same composition timeline and command history for cue text, time, font and
 safe-area changes. The renderer burns a selected track into MP4 through the
 existing measured title path; SRT/WebVTT remain exportable with exact cue times.
-See the [M1–M5 queue](TASKS.md#creative-scene-platform--m1m5-delivery-queue),
+See the [M1–M6 queue](TASKS.md#creative-scene-platform--m1m6-delivery-queue),
 [capability/acceptance roadmap](docs/roadmap/creative-scene-platform.md) and
 [native caption validation](docs/validation-native-caption-track.md). This
 candidate does not claim word-level alignment or workstation/NLE verification.
 Duration edits that would exclude a saved caption are rejected before autosave;
 adjust the affected cue first so authored text and timing remain explicit.
 
-## Queued — M4–M5 and broader clip keyframes
+## Queued — M5–M6 and broader clip keyframes
 
 The explicit M3/F01 scene scope replaces the earlier M3/F03 keyframe proposal;
-general clip keyframes remain future work. M4 advances photo narrative and opt-in AI assistance
-with visible consent, evidence and user acceptance. M5 extends sound design and
-output verification with decoded audio evidence. The staged dependencies, risks
+general clip keyframes remain future work. M5 adds the Layer Editor (F03) and
+Reviewable Agent Editing (F08) as separately reviewed PRs; agent proposals remain
+within ProviderRegistry/consent and require explicit acceptance. M6 extends photo,
+sound and output verification with decoded audio evidence. The staged dependencies, risks
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 

@@ -21,7 +21,9 @@ import {
   type CaptionTrack,
   type FrameSize,
   type Job,
+  type MediaAsset,
   type ProjectSettings,
+  type ProjectContentLocale,
   type StoryBeat,
 } from "@openfilm/core";
 import {
@@ -48,6 +50,7 @@ import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import GraphicSceneInspector from "./GraphicSceneInspector.vue";
+import GraphicSceneTemplateStudio from "./GraphicSceneTemplateStudio.vue";
 import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
@@ -91,6 +94,7 @@ const props = defineProps<{
   analysisRecovery?: Record<string, import("../api").AnalysisJobRecoveryState>;
   recoveringAnalysisJobs?: Record<string, boolean>;
   projectSettings: ProjectSettings;
+  projectContentLocale?: ProjectContentLocale;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -153,10 +157,20 @@ async function closeVisualQa() {
   await nextTick();
   visualQaToggle.value?.focus();
 }
-function command(input: TimelineCommand | TimelineCommand[]) {
+function command(
+  input: TimelineCommand | TimelineCommand[],
+  referencedAssets: readonly MediaAsset[] = [],
+) {
   if (directionBlocked.value) return false;
   directionPreview.value = null;
-  return compositionCommand(input);
+  return compositionCommand(input, referencedAssets);
+}
+function templateCommand(
+  input: TimelineCommand,
+  referencedAssets: MediaAsset[],
+  complete: (accepted: boolean) => void,
+) {
+  complete(command(input, referencedAssets));
 }
 const hasPending = computed(
   () =>
@@ -186,9 +200,9 @@ async function reloadDirectionState() {
 }
 const selectedClipId = ref("");
 const selectedBeatId = ref("");
-const inspector = ref<"clip" | "beat" | "sound" | "captions" | "graphics">(
-  "clip",
-);
+const inspector = ref<
+  "clip" | "beat" | "sound" | "captions" | "graphics" | "templates"
+>("clip");
 const selectedCaptionTrackId = ref("");
 const selectedCaptionCueId = ref("");
 const captionSourceTrackId = ref("");
@@ -2690,6 +2704,15 @@ onBeforeUnmount(() => {
             >
               {{ t("editor.graphics.tab") }}
             </button>
+            <button
+              :class="{ selected: inspector === 'templates' }"
+              :aria-pressed="inspector === 'templates'"
+              :disabled="directionBlocked"
+              data-testid="graphic-template-tab"
+              @click="inspector = 'templates'"
+            >
+              {{ t("editor.templates.tab") }}
+            </button>
           </div>
           <GraphicSceneInspector
             v-if="inspector === 'graphics'"
@@ -2703,6 +2726,23 @@ onBeforeUnmount(() => {
               status === 'failed'
             "
             @command="command"
+          />
+          <GraphicSceneTemplateStudio
+            v-if="inspector === 'templates' && state"
+            :scenes="state.composition.graphicScenes ?? []"
+            :records="state.composition.graphicSceneTemplates ?? []"
+            :duration="state.composition.duration"
+            :width="projectSettings.width"
+            :height="projectSettings.height"
+            :locale="projectContentLocale ?? 'en-US'"
+            :assets="state.assets"
+            :disabled="
+              directionBlocked ||
+              historyBusy ||
+              status === 'conflict' ||
+              status === 'failed'
+            "
+            @command="templateCommand"
           />
           <template
             v-if="inspector === 'clip' && selectedClip && selectedAsset"

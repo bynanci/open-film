@@ -16,6 +16,7 @@ import {
   MAX_SCENE_DIRECTION_RECEIPTS,
   isCaptionTextValid,
   validateGraphicScenes,
+  validateGraphicSceneTemplates,
   graphicSceneAssetIds,
   assetDisplayDimensions,
   resolvePhotoPlan,
@@ -146,10 +147,12 @@ function command(value: unknown, index: number): TimelineCommand {
   const path = `commands[${index}]`;
   const data = record(value, path);
   if (data.type === "graphic.scene.upsert") {
-    keys(data, ["type", "scene"], path);
+    keys(data, ["type", "scene", "templateRecord"], path);
     // Per-composition bounds are enforced by the solver; structural bounds here
     // protect request fingerprinting and structuredClone from deep client data.
-    validateGraphicScenes([data.scene], Number.MAX_VALUE);
+    const [scene] = validateGraphicScenes([data.scene], Number.MAX_VALUE);
+    if (Object.hasOwn(data, "templateRecord") && data.templateRecord !== null)
+      validateGraphicSceneTemplates([data.templateRecord], [scene!]);
     return structuredClone(data) as TimelineCommand;
   }
   if (data.type === "graphic.scene.remove") {
@@ -991,11 +994,13 @@ export class TimelineEditor {
             "Photo diptych gap must be smaller than the composition width",
           );
         const referenced =
-          item.type === "replace" || item.type === "audio.add"
-            ? [item.assetId]
-            : item.type === "presentation" && item.layout?.secondary
-              ? [item.layout.secondary.assetId]
-              : [];
+          item.type === "graphic.scene.upsert"
+            ? graphicSceneAssetIds([item.scene])
+            : item.type === "replace" || item.type === "audio.add"
+              ? [item.assetId]
+              : item.type === "presentation" && item.layout?.secondary
+                ? [item.layout.secondary.assetId]
+                : [];
         for (const assetId of referenced) {
           if (assets.some((asset) => asset.id === assetId)) continue;
           const source = this.application.catalog.getAsset(assetId);

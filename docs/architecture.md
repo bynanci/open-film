@@ -444,3 +444,16 @@ Monitor requests current project/revision/output-frame PNGs through the applicat
 FFmpeg consumes the identical producer before native captions. There is no project
 script/page execution or additional timeline. See the [contract](graphic-scenes.md)
 and [threat model](security/graphic-scene-threat-model.md).
+
+## Creative Story Template Records
+
+Optional schema-1.0.0 `Composition.graphicSceneTemplates` binds Conversation
+Card, Route Story and Photo Relationship metadata to nodes in saved
+`Composition.graphicScenes`. Builders in `@openfilm/story` emit ordinary
+GraphicScene v1 Image/Text/Shape/Group data; metadata provides stable source
+identity and template replacement context but cannot change the renderer's
+primitive set. Application commands commit the scene and record atomically, and
+scene removal clears its record. Existing Composition revisions own undo,
+autosave and reopening. GPX is selected locally, size-bounded and parsed as
+data-only UTF-8 XML; source assets remain read-only. See the
+[template contract](creative-story-templates.md).

@@ -113,3 +113,20 @@ output frame, returns current no-store PNG bytes, and withholds stale/cancelled
 work. JSON retains all source references; OTIO graphics are metadata only;
 FCPXML/EDL reject unsupported scenes. Numeric/resource limits are documented in
 [GraphicScene v1](graphic-scenes.md), with evidence in [validation](validation-graphic-scene.md).
+
+## Creative Story Template Records
+
+The schema-1.0.0 Composition may optionally contain
+`graphicSceneTemplates: GraphicSceneTemplateRecord[]`. Each version-1 record
+has a stable `sceneId`, a whitelisted template ID and bounded template data
+validated against the existing GraphicScene and nodes. Conversation records
+bind original text, citation, exact excerpt ranges and visible attribution to
+text-node IDs. Route records bind manual or GPX provenance, coordinates and
+waypoint labels to shape/text-node IDs. Photo records bind relationship roles,
+local asset IDs/hashes, focal points and protected regions to image-node IDs.
+
+`graphic.scene.upsert` may carry a record in the same command; omission preserves
+an existing record and explicit `null` removes it. Removing the scene removes its
+record. This optional field does not change the schema version, create another
+timeline or alter project media. See the
+[Creative Story Templates contract](creative-story-templates.md).

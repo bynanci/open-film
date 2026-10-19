@@ -12,6 +12,7 @@
     "@openfilm/analysis": "workspace:*",
     "@openfilm/exporters": "workspace:*",
     "@openfilm/solver": "workspace:*",
+    "@openfilm/story": "workspace:*",
     "@tauri-apps/api": "2.12.1",
     "@tauri-apps/plugin-dialog": "2.8.1",
     "vue": "3.5.42",
