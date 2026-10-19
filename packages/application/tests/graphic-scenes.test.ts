@@ -287,13 +287,13 @@ describe("durable GraphicScene editing", () => {
         frame,
         locale: "zh-TW",
         messages: [
-          {
-            id: "msg",
-            speaker: "合成說話者",
-            text: "合成對話內容",
+          ...Array.from({ length: 4 }, (_, index) => ({
+            id: `msg-${index + 1}`,
+            speaker: `合成說話者${index + 1}`,
+            text: "長文字".repeat(12),
             start: 0.5,
             end: 7.5,
-          },
+          })),
         ],
       }),
       createRouteStory({

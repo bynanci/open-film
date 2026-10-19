@@ -11,10 +11,12 @@ nodes.
 The Edit inspector offers three local templates:
 
 - **Conversation Card** creates one to four speaker/message pairs. Messages can
-  be reordered by their saved record order and timed on the scene's local clock.
-  Text remains literal and supports line breaks. The card uses centered,
-  frame-safe margins; Graphics can edit each node's font, line breaks and
-  position. Template controls set layer animation duration and easing.
+  be reordered with keyboard-accessible controls and timed on the scene's local
+  clock. Text remains literal, supports line breaks and is conservatively fit
+  to each card slot before save; content that cannot fit at the minimum size is
+  rejected instead of failing during export. The card uses centered, frame-safe
+  margins; Graphics can edit each node's font, line breaks and position.
+  Template controls set layer animation duration and easing.
 - **Route Story** accepts explicitly entered latitude/longitude points or bytes
   from a GPX file the user selected. Points appear in sequence as a dotted route
   reveal; named waypoints remain associated with their original coordinates.
@@ -39,8 +41,12 @@ Conversation metadata binds stable message IDs to their existing speaker, text
 and optional source-label nodes. `quoted` text must equal the entire stored
 original; `excerpt` must match the saved UTF-16 range and receives a visible
 localized excerpt label; `adapted` retains the original and citation while
-identifying changed wording. Removing source metadata is an explicit inspector
-action. Source text is bounded and never sent to an AI provider by this feature.
+identifying changed wording. The Inspector exposes these three labels and
+grapheme-aware start/end offsets; serialized UTF-16 ranges cannot split emoji
+or other surrogate pairs. Editing quoted or excerpted wording changes its
+visible label to `adapted` before save. Removing source metadata is an explicit
+inspector action.
+Source text is bounded and never sent to an AI provider by this feature.
 
 Route metadata binds saved map points to shape nodes. The GPX importer is
 read-only, accepts UTF-8 XML up to 4 MiB, rejects DTDs, entities, comments,

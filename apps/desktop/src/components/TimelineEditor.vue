@@ -165,6 +165,13 @@ function command(
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
 }
+function templateCommand(
+  input: TimelineCommand,
+  referencedAssets: MediaAsset[],
+  complete: (accepted: boolean) => void,
+) {
+  complete(command(input, referencedAssets));
+}
 const hasPending = computed(
   () =>
     compositionHasPending.value ||
@@ -2735,7 +2742,7 @@ onBeforeUnmount(() => {
               status === 'conflict' ||
               status === 'failed'
             "
-            @command="command"
+            @command="templateCommand"
           />
           <template
             v-if="inspector === 'clip' && selectedClip && selectedAsset"

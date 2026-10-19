@@ -34,10 +34,17 @@ const props = defineProps<{
   disabled: boolean;
 }>();
 const emit = defineEmits<{
-  command: [command: TimelineCommand, referencedAssets?: MediaAsset[]];
+  command: [
+    command: TimelineCommand,
+    referencedAssets: MediaAsset[],
+    complete: (accepted: boolean) => void,
+  ];
 }>();
 const { t } = useI18n();
 type TemplateId = GraphicSceneTemplateRecord["templateId"];
+const graphemeSegmenter = new Intl.Segmenter("und", {
+  granularity: "grapheme",
+});
 const selectedTemplate = ref<TemplateId>("conversation-card");
 const selectedSceneId = ref("");
 const start = ref(0);
@@ -264,9 +271,8 @@ async function loadPhotoCatalog() {
 
 function addMessage() {
   if (messages.value.length >= 4) return;
-  const index = messages.value.length;
   messages.value.push({
-    id: `message-${index + 1}`,
+    id: `message-${crypto.randomUUID()}`,
     speaker: "",
     text: "",
     start: 0,
@@ -277,6 +283,12 @@ function removeMessage(index: number) {
   if (messages.value.length <= 1) return;
   messages.value.splice(index, 1);
 }
+function moveMessage(index: number, offset: -1 | 1) {
+  const destination = index + offset;
+  if (destination < 0 || destination >= messages.value.length) return;
+  const [message] = messages.value.splice(index, 1);
+  if (message) messages.value.splice(destination, 0, message);
+}
 function setSource(message: ConversationCardMessage, enabled: boolean) {
   if (enabled) {
     message.source ??= {
@@ -285,6 +297,140 @@ function setSource(message: ConversationCardMessage, enabled: boolean) {
       attribution: "quoted",
     };
   } else delete message.source;
+}
+function graphemeBoundaries(text: string): number[] {
+  const boundaries = [0];
+  for (const part of graphemeSegmenter.segment(text))
+    boundaries.push(part.index + part.segment.length);
+  return boundaries;
+}
+function graphemeCount(text: string) {
+  return graphemeBoundaries(text).length - 1;
+}
+function graphemeIndexAtOffset(text: string, offset: number) {
+  const boundaries = graphemeBoundaries(text);
+  let index = 0;
+  while (index < boundaries.length - 1 && boundaries[index + 1]! <= offset)
+    index++;
+  return index;
+}
+function offsetAtGraphemeIndex(text: string, index: number) {
+  const boundaries = graphemeBoundaries(text);
+  const bounded = Math.max(
+    0,
+    Math.min(Math.floor(index), boundaries.length - 1),
+  );
+  return boundaries[bounded]!;
+}
+function excerptFieldIndex(
+  message: ConversationCardMessage,
+  edge: "start" | "end",
+) {
+  const source = message.source;
+  if (!source) return 0;
+  const offset =
+    source.excerpt?.[edge] ??
+    (edge === "start" ? 0 : source.originalText.length);
+  return graphemeIndexAtOffset(source.originalText, offset);
+}
+function setAttribution(
+  message: ConversationCardMessage,
+  attribution: "quoted" | "excerpt" | "adapted",
+) {
+  const source = message.source;
+  if (!source) return;
+  source.attribution = attribution;
+  delete source.excerpt;
+  if (attribution === "quoted") {
+    message.text = source.originalText;
+  } else if (attribution === "excerpt") {
+    const count = graphemeCount(source.originalText);
+    if (count < 2) {
+      source.attribution = "quoted";
+      return;
+    }
+    const end = offsetAtGraphemeIndex(source.originalText, count - 1);
+    source.excerpt = { start: 0, end };
+    message.text = source.originalText.slice(0, end);
+  }
+}
+function syncSourceText(message: ConversationCardMessage) {
+  const source = message.source;
+  if (!source || source.attribution === "adapted") return;
+  if (source.attribution === "quoted") {
+    message.text = source.originalText;
+    return;
+  }
+  const count = graphemeCount(source.originalText);
+  if (count < 2) {
+    source.attribution = "quoted";
+    delete source.excerpt;
+    message.text = source.originalText;
+    return;
+  }
+  const startIndex = Math.min(
+    graphemeIndexAtOffset(source.originalText, source.excerpt?.start ?? 0),
+    count - 1,
+  );
+  const endIndex = Math.max(
+    startIndex + 1,
+    Math.min(
+      graphemeIndexAtOffset(
+        source.originalText,
+        source.excerpt?.end ?? source.originalText.length,
+      ),
+      count,
+    ),
+  );
+  const start = offsetAtGraphemeIndex(source.originalText, startIndex);
+  const end = offsetAtGraphemeIndex(source.originalText, endIndex);
+  source.excerpt = { start, end };
+  message.text = source.originalText.slice(start, end);
+}
+function updateExcerptRange(
+  message: ConversationCardMessage,
+  edge: "start" | "end",
+  value: number,
+) {
+  const source = message.source;
+  if (!source || source.attribution !== "excerpt") return;
+  const count = graphemeCount(source.originalText);
+  if (count < 2) {
+    source.attribution = "quoted";
+    delete source.excerpt;
+    message.text = source.originalText;
+    return;
+  }
+  const currentStart = excerptFieldIndex(message, "start");
+  const currentEnd = excerptFieldIndex(message, "end");
+  const requested = Number.isFinite(value) ? Math.floor(value) : 0;
+  const startIndex =
+    edge === "start"
+      ? Math.max(0, Math.min(requested, count - 1))
+      : currentStart;
+  const endIndex =
+    edge === "end"
+      ? Math.max(startIndex + 1, Math.min(requested, count))
+      : Math.max(startIndex + 1, Math.min(currentEnd, count));
+  const start = offsetAtGraphemeIndex(source.originalText, startIndex);
+  const end = offsetAtGraphemeIndex(source.originalText, endIndex);
+  source.excerpt = { start, end };
+  message.text = source.originalText.slice(start, end);
+}
+function adaptSourceLabel(message: ConversationCardMessage) {
+  const source = message.source;
+  if (!source || source.attribution === "adapted") return;
+  const attributedText =
+    source.attribution === "quoted"
+      ? source.originalText
+      : source.originalText.slice(
+          source.excerpt?.start ?? 0,
+          source.excerpt?.end ?? 0,
+        );
+  if (message.text !== attributedText) {
+    source.attribution = "adapted";
+    delete source.excerpt;
+  }
 }
 function parseManualRoute() {
   const parsePoints = (raw: string): GpxCoordinate[] =>
@@ -368,10 +514,17 @@ function write(
     "command",
     { type: "graphic.scene.upsert", scene, templateRecord },
     referencedAssets,
+    (accepted) => {
+      if (!accepted) {
+        notice.value = "";
+        error.value = t("editor.templates.commandRejected");
+        return;
+      }
+      selectedSceneId.value = scene.id;
+      notice.value = t("editor.templates.saved");
+      error.value = "";
+    },
   );
-  selectedSceneId.value = scene.id;
-  notice.value = t("editor.templates.saved");
-  error.value = "";
 }
 function configureMotion(scene: GraphicScene): GraphicScene {
   const next = structuredClone(scene);
@@ -407,32 +560,13 @@ function saveConversation() {
   const sceneId = editingScene.value?.id ?? crypto.randomUUID();
   try {
     const values = messages.value.map((message) => {
-      let source = message.source;
-      if (
-        source &&
-        message.text !==
-          (source.attribution === "excerpt" && source.excerpt
-            ? source.originalText.slice(
-                source.excerpt.start,
-                source.excerpt.end,
-              )
-            : source.attribution === "quoted"
-              ? source.originalText
-              : "")
-      ) {
-        source = {
-          originalText: source.originalText,
-          citation: source.citation,
-          attribution: "adapted",
-        };
-      }
       return {
         id: message.id,
         speaker: message.speaker,
         text: message.text,
         start: message.start,
         end: message.end,
-        ...(source ? { source: copySource(source) } : {}),
+        ...(message.source ? { source: copySource(message.source) } : {}),
       };
     });
     const result = createConversationCard({
@@ -681,6 +815,24 @@ function selectRecord(event: Event) {
             t("editor.templates.message", { number: index + 1 })
           }}</strong>
           <button
+            type="button"
+            class="editor-button"
+            :aria-label="t('editor.templates.moveMessageUp')"
+            :disabled="disabled || index === 0"
+            @click="moveMessage(index, -1)"
+          >
+            ↑ {{ t("editor.templates.moveMessageUp") }}
+          </button>
+          <button
+            type="button"
+            class="editor-button"
+            :aria-label="t('editor.templates.moveMessageDown')"
+            :disabled="disabled || index === messages.length - 1"
+            @click="moveMessage(index, 1)"
+          >
+            ↓ {{ t("editor.templates.moveMessageDown") }}
+          </button>
+          <button
             v-if="messages.length > 1"
             type="button"
             class="editor-button"
@@ -704,6 +856,7 @@ function selectRecord(event: Event) {
             maxlength="512"
             rows="3"
             :disabled="disabled"
+            @input="adaptSourceLabel(message)"
           />
         </label>
         <div class="template-grid">
@@ -748,8 +901,75 @@ function selectRecord(event: Event) {
               maxlength="16384"
               rows="3"
               :disabled="disabled"
+              @input="syncSourceText(message)"
             />
           </label>
+          <label class="template-field"
+            >{{ t("editor.templates.sourceAttribution")
+            }}<select
+              :value="message.source.attribution"
+              :disabled="disabled"
+              @change="
+                setAttribution(
+                  message,
+                  ($event.target as HTMLSelectElement).value as
+                    'quoted' | 'excerpt' | 'adapted',
+                )
+              "
+            >
+              <option value="quoted">{{ t("editor.templates.quoted") }}</option>
+              <option
+                value="excerpt"
+                :disabled="graphemeCount(message.source.originalText) < 2"
+              >
+                {{ t("editor.templates.excerpt") }}
+              </option>
+              <option value="adapted">
+                {{ t("editor.templates.adapted") }}
+              </option>
+            </select>
+          </label>
+          <div
+            v-if="message.source.attribution === 'excerpt'"
+            class="template-grid"
+          >
+            <label class="template-field"
+              >{{ t("editor.templates.excerptStart")
+              }}<input
+                :value="excerptFieldIndex(message, 'start')"
+                type="number"
+                min="0"
+                :max="
+                  Math.max(0, graphemeCount(message.source.originalText) - 1)
+                "
+                step="1"
+                :disabled="disabled"
+                @input="
+                  updateExcerptRange(
+                    message,
+                    'start',
+                    Number(($event.target as HTMLInputElement).value),
+                  )
+                "
+            /></label>
+            <label class="template-field"
+              >{{ t("editor.templates.excerptEnd")
+              }}<input
+                :value="excerptFieldIndex(message, 'end')"
+                type="number"
+                :min="excerptFieldIndex(message, 'start') + 1"
+                :max="graphemeCount(message.source.originalText)"
+                step="1"
+                :disabled="disabled"
+                @input="
+                  updateExcerptRange(
+                    message,
+                    'end',
+                    Number(($event.target as HTMLInputElement).value),
+                  )
+                "
+            /></label>
+          </div>
           <label class="template-field"
             >{{ t("editor.templates.citation")
             }}<input

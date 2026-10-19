@@ -97,6 +97,14 @@ export type GraphicSceneTemplateRecord =
 function fail(path: string, message: string): never {
   throw new ApplicationError("graphics.invalid", `${path}: ${message}`, 400);
 }
+function splitsSurrogatePair(text: string, offset: number): boolean {
+  if (offset <= 0 || offset >= text.length) return false;
+  const before = text.charCodeAt(offset - 1);
+  const after = text.charCodeAt(offset);
+  return (
+    before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
+  );
+}
 type Data = Record<string, unknown>;
 function object(value: unknown, path: string, fields: readonly string[]): Data {
   if (
@@ -345,6 +353,14 @@ export function validateGraphicSceneTemplates(
               fail(
                 `${messagePath}.source.excerpt`,
                 "invalid source text range",
+              );
+            if (
+              splitsSurrogatePair(originalText, range.start as number) ||
+              splitsSurrogatePair(originalText, range.end as number)
+            )
+              fail(
+                `${messagePath}.source.excerpt`,
+                "excerpt range splits a Unicode surrogate pair",
               );
             excerpt = {
               start: range.start as number,

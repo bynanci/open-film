@@ -102,6 +102,56 @@ describe("GraphicScene template metadata", () => {
     ).toThrow("unknown field");
   });
 
+  it("rejects excerpt offsets that split a Unicode surrogate pair", () => {
+    const originalText = "A🙂B";
+    const split = { start: 2, end: 3 };
+    const record: core.ConversationCardTemplateRecord = {
+      version: 1,
+      sceneId: "emoji-chat",
+      templateId: "conversation-card",
+      data: {
+        locale: "en-US",
+        messages: [
+          {
+            id: "message-1",
+            speakerNodeId: "speaker-1",
+            textNodeId: "body-1",
+            sourceLabelNodeId: "source-1",
+            source: {
+              originalText,
+              citation: "Synthetic source",
+              attribution: "excerpt",
+              excerpt: split,
+            },
+          },
+        ],
+      },
+    };
+    const scene: core.GraphicScene = {
+      version: 1,
+      id: "emoji-chat",
+      name: "Conversation Card",
+      start: 0,
+      duration: 4,
+      zIndex: 0,
+      nodes: [
+        textNode("speaker-1", "A"),
+        textNode("body-1", originalText.slice(split.start, split.end)),
+        textNode(
+          "source-1",
+          core.graphicSceneTemplateSourceLabel(
+            "en-US",
+            "excerpt",
+            "Synthetic source",
+          ),
+        ),
+      ],
+    };
+    expect(() => core.validateGraphicSceneTemplates([record], [scene])).toThrow(
+      "excerpt range splits a Unicode surrogate pair",
+    );
+  });
+
   it("admits bounded manual and imported route provenance without event claims", () => {
     const scene: core.GraphicScene = {
       version: 1,

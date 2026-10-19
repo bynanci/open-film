@@ -197,18 +197,100 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await studio
     .getByLabel("Keep the original message and citation", { exact: true })
     .check();
+  const sourceDetails = studio.locator("details").first();
+  await sourceDetails.evaluate((element: HTMLDetailsElement) => {
+    element.open = true;
+  });
+  await expect(sourceDetails.locator("summary")).toBeVisible();
+  await expect(
+    sourceDetails.getByRole("combobox", {
+      name: "Source attribution",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await sourceDetails
+    .locator("select")
+    .selectOption("excerpt", { force: true });
+  await sourceDetails
+    .getByLabel("Original source text", { exact: true })
+    .fill("這是完整的虛構🙂原始對話紀錄");
+  await sourceDetails
+    .getByLabel("Excerpt start (character index)", { exact: true })
+    .fill("8");
+  await sourceDetails
+    .getByLabel("Excerpt end (character index)", { exact: true })
+    .fill("12");
   await studio
     .getByLabel("Citation or source label", { exact: true })
     .fill("Synthetic conversation fixture");
+
+  await studio
+    .getByRole("button", { name: "Add message", exact: true })
+    .click();
+  await studio
+    .getByRole("button", { name: "Add message", exact: true })
+    .click();
+  const messageCards = studio.locator(".template-card");
+  await messageCards
+    .nth(1)
+    .getByLabel("Speaker", { exact: true })
+    .fill("中間訊息");
+  await messageCards
+    .nth(1)
+    .getByLabel("Message text", { exact: true })
+    .fill("準備移除");
+  await messageCards
+    .nth(2)
+    .getByLabel("Speaker", { exact: true })
+    .fill("保留訊息");
+  await messageCards
+    .nth(2)
+    .getByLabel("Message text", { exact: true })
+    .fill("移動前");
+  await messageCards
+    .nth(1)
+    .getByRole("button", { name: "Remove message", exact: true })
+    .click();
+  await studio
+    .getByRole("button", { name: "Add message", exact: true })
+    .click();
+  const lastCard = studio.locator(".template-card").last();
+  await lastCard.getByLabel("Speaker", { exact: true }).fill("新增訊息");
+  await lastCard.getByLabel("Message text", { exact: true }).fill("移動後");
+  await studio
+    .getByRole("button", { name: "Move message up", exact: true })
+    .last()
+    .click();
   await studio.getByRole("button", { name: "Save template scene" }).click();
   await expect
     .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
     .toBe(1);
   const conversation = (await state()).composition.graphicSceneTemplates[0];
   expect(conversation.templateId).toBe("conversation-card");
-  expect(conversation.data.messages[0].source.originalText).toBe(
-    "合成繁中對話內容",
+  expect(
+    conversation.data.messages.map((message: { id: string }) => message.id),
+  ).toHaveLength(3);
+  expect(
+    new Set(
+      conversation.data.messages.map((message: { id: string }) => message.id),
+    ).size,
+  ).toBe(3);
+  expect(conversation.data.messages[0].source).toMatchObject({
+    originalText: "這是完整的虛構🙂原始對話紀錄",
+    attribution: "excerpt",
+    excerpt: { start: 9, end: 13 },
+    citation: "Synthetic conversation fixture",
+  });
+  const savedScene = (await state()).composition.graphicScenes.find(
+    (scene: { id: string }) => scene.id === conversation.sceneId,
   );
+  const savedTexts = conversation.data.messages.map(
+    (message: { textNodeId: string }) =>
+      savedScene.nodes.find(
+        (node: { id: string; text?: string }) => node.id === message.textNodeId,
+      )?.text,
+  );
+  expect(savedTexts).toEqual(["原始對話", "移動後", "移動前"]);
 
   await studio
     .getByRole("button", { name: "Route story", exact: true })

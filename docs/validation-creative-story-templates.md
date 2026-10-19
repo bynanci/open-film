@@ -16,9 +16,10 @@ results from the final PR head and from manual workstation evidence.
 ## Synthetic output evidence
 
 `packages/application/tests/graphic-scenes.test.ts` creates a 24-second
-synthetic H.264 source, two generated still images, a Traditional Chinese Conversation Card, a
-manual Route Story with a fictional waypoint and a two-photo comparison. It
-exports an actual MP4 through `OpenFilmApplication.exportMp4`, then:
+synthetic H.264 source, two generated still images, a four-message Traditional
+Chinese Conversation Card with 36-character messages, a manual Route Story with
+a fictional waypoint and a two-photo comparison. It exports an actual MP4
+through `OpenFilmApplication.exportMp4`, then:
 
 - Uses FFprobe to assert H.264, 320×180, 12 fps, 288 decoded frames and 24-second
   duration.
@@ -32,36 +33,37 @@ exports an actual MP4 through `OpenFilmApplication.exportMp4`, then:
 
 ## Test coverage
 
-- Core: strict template metadata, excerpt matching, route provenance and
-  coordinate bounds, image-source identity, protected-region bounds and legacy
-  Composition compatibility.
-- Story: localized conversation builder, GPX entity/DTD/malformed-route handling,
-  exact byte hash, bounded waypoint/point output and focus/compare/bookend layout.
+- Core: strict template metadata, excerpt matching and surrogate-pair boundary
+  validation, route provenance and coordinate bounds, image-source identity,
+  protected-region bounds and legacy Composition compatibility.
+- Story: localized conversation builder and long-message fitting, GPX
+  entity/DTD/malformed-route handling, exact byte hash, bounded waypoint/point
+  output and focus/compare/bookend layout.
 - Solver/application: atomic scene/record edits, source-lock immutability,
   stale/orphan binding rejection, history, autosave, retry, reopen and actual MP4.
-- Browser: edit all three templates with synthetic CJK text, explicitly selected
-  synthetic GPX, two project photos, Undo/Redo and reopen.
+- Browser: edit all three templates with synthetic CJK text and an emoji-safe
+  excerpt range, explicitly selected synthetic GPX, two project photos,
+  Undo/Redo and reopen.
 - i18n catalogs retain identical semantic keys and placeholder shapes in
   en-US, zh-TW and ja-JP.
 
 ## Local verification
 
-| Gate                                                                                 | Result                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm format:check`                                                                  | Passed on the candidate after formatting.                                                                                                                                                                                                                                          |
-| `pnpm test:i18n`                                                                     | Passed: 1,551 semantic keys match across en-US, zh-TW and ja-JP.                                                                                                                                                                                                                   |
-| `pnpm lint`                                                                          | Passed with zero warnings.                                                                                                                                                                                                                                                         |
-| `pnpm typecheck`                                                                     | Passed for shared TypeScript and Desktop Vue types.                                                                                                                                                                                                                                |
-| `pnpm test`                                                                          | Passed: 193 files, 2,863 tests. Includes the 24-second real FFmpeg MP4 regression.                                                                                                                                                                                                 |
-| `pnpm build`                                                                         | Passed. Vite reports the existing 852.70 kB main chunk exceeds its 500 kB advisory threshold.                                                                                                                                                                                      |
-| `OPENFILM_CHROMIUM=/usr/bin/chromium pnpm test:e2e`                                  | 162 passed; one unrelated Proposal Film case failed because system `python3` lacked OpenTimelineIO. The failed case passed separately with `OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3` (OpenTimelineIO 0.18.1); the M4 browser case passed within the full run. |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:interchange` | Passed: official OpenTimelineIO 0.18.1 read/write/read, four real synthetic sources, source hash/bounds and relocation checks. Real Resolve import remains unverified.                                                                                                             |
-| `pnpm test:native`                                                                   | Not run: Rust `cargo` is not installed in this environment.                                                                                                                                                                                                                        |
+| Gate                                                                                                             | Result                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`                                                                                              | Passed on the candidate after formatting.                                                                                                                                                   |
+| `pnpm test:i18n`                                                                                                 | Passed: 1,560 semantic keys match across en-US, zh-TW and ja-JP.                                                                                                                            |
+| `pnpm lint`                                                                                                      | Passed with zero warnings.                                                                                                                                                                  |
+| `pnpm typecheck`                                                                                                 | Passed for shared TypeScript and Desktop Vue types.                                                                                                                                         |
+| `pnpm test`                                                                                                      | Passed: 194 files, 2,866 tests. Includes the 24-second real FFmpeg MP4 regression.                                                                                                          |
+| `pnpm build`                                                                                                     | Passed. Vite reports the main 858.55 kB chunk exceeds its 500 kB advisory threshold.                                                                                                        |
+| `OPENFILM_CHROMIUM=/usr/bin/chromium OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:e2e` | Passed: all 163 browser tests, including source attribution/ranges, reordering, ID uniqueness and project reopen (16.0 minutes). Targeted M4 case also passed after grapheme-index changes. |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-visualqa-otio/bin/python3 pnpm test:interchange`                             | Passed: 18 OpenTimelineIO 0.18.1 checks, four real synthetic sources, source hash/bounds and relocation checks. Real Resolve import remains unverified.                                     |
+| `pnpm test:native`                                                                                               | Not run: Rust `cargo` is not installed in this environment.                                                                                                                                 |
 
 The CI result on the exact PR head is reported separately from these local
-results. The local browser suite is not recorded as a single clean run: its one
-environment-dependent failure was independently rerun with the documented
-OpenTimelineIO interpreter.
+results. The full browser run used the dedicated OpenTimelineIO interpreter so
+the Proposal Film fixture could pass on this machine.
 
 Browser execution requires Playwright Chromium; this environment's system
 Chromium is selected with `OPENFILM_CHROMIUM=/usr/bin/chromium`. Interchange and

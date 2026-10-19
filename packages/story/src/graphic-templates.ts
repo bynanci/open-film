@@ -162,6 +162,53 @@ function textNode(
   };
 }
 
+function estimatedTextLines(text: string, fontSize: number, width: number) {
+  let lines = 0;
+  for (const paragraph of text.split("\n")) {
+    let used = 0;
+    for (const character of Array.from(paragraph)) {
+      const units =
+        /\p{Mark}/u.test(character) ||
+        character === "\u200d" ||
+        character === "\ufe0e" ||
+        character === "\ufe0f"
+          ? 0
+          : /\s/u.test(character)
+            ? 0.4
+            : /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Extended_Pictographic}\uFF01-\uFF60]/u.test(
+                  character,
+                )
+              ? 1
+              : 0.7;
+      const advance = fontSize * units;
+      if (used > 0 && used + advance > width) {
+        lines++;
+        used = 0;
+      }
+      used += advance;
+    }
+    lines++;
+  }
+  return Math.max(1, lines);
+}
+
+/** Keep template text inside its saved GraphicScene bounds before it reaches render. */
+function fitTextFontSize(
+  text: string,
+  bounds: { width: number; height: number },
+  preferred: number,
+  path: string,
+) {
+  for (let fontSize = preferred; fontSize >= 6; fontSize--) {
+    const estimatedHeight =
+      estimatedTextLines(text, fontSize, bounds.width) * fontSize * 1.2;
+    if (estimatedHeight <= bounds.height) return fontSize;
+  }
+  bad(
+    `${path} is too long for this frame and message count. Shorten it or use a larger frame.`,
+  );
+}
+
 function validateBuilt<T extends GraphicSceneTemplateRecord>(
   scene: GraphicScene,
   record: T,
@@ -204,7 +251,7 @@ export function createConversationCard(
   const width = options.frame.width;
   const height = options.frame.height;
   const contentWidth = width * 0.76;
-  const slotHeight = (height * 0.64) / messages.length;
+  const slotHeight = (height * 0.76) / messages.length;
   const nodes: GraphicNode[] = [
     {
       id: `${options.sceneId}.card`,
@@ -254,22 +301,41 @@ export function createConversationCard(
       end <= start
     )
       bad("Message time must be inside the template scene.");
-    const y = -height * 0.25 + slotHeight * index;
+    const slotTop = -height * 0.38 + slotHeight * index;
+    const speakerBounds = {
+      x: -contentWidth * 0.43,
+      y: slotTop + slotHeight * 0.12,
+      width: contentWidth * 0.86,
+      height: slotHeight * 0.24,
+    };
+    const textBounds = message.source
+      ? {
+          x: -contentWidth * 0.43,
+          y: slotTop + slotHeight * 0.49,
+          width: contentWidth * 0.86,
+          height: slotHeight * 0.44,
+        }
+      : {
+          x: -contentWidth * 0.43,
+          y: slotTop + slotHeight * 0.6,
+          width: contentWidth * 0.86,
+          height: slotHeight * 0.7,
+        };
     const speakerNodeId = `${options.sceneId}.${message.id}.speaker`;
     const textNodeId = `${options.sceneId}.${message.id}.text`;
     nodes.push(
       textNode(
         speakerNodeId,
         message.speaker,
-        {
-          x: -contentWidth * 0.43,
-          y: y - slotHeight * 0.17,
-          width: contentWidth * 0.86,
-          height: slotHeight * 0.2,
-        },
+        speakerBounds,
         start,
         end,
-        Math.max(10, Math.round(height * 0.033)),
+        fitTextFontSize(
+          message.speaker,
+          speakerBounds,
+          Math.max(6, Math.round(height * 0.033)),
+          "Speaker label",
+        ),
         2 + index * 3,
       ),
     );
@@ -277,15 +343,15 @@ export function createConversationCard(
       textNode(
         textNodeId,
         message.text,
-        {
-          x: -contentWidth * 0.43,
-          y: y + slotHeight * 0.1,
-          width: contentWidth * 0.86,
-          height: slotHeight * 0.6,
-        },
+        textBounds,
         start,
         end,
-        Math.max(12, Math.round(height * 0.048)),
+        fitTextFontSize(
+          message.text,
+          textBounds,
+          Math.max(6, Math.round(height * 0.048)),
+          "Message text",
+        ),
         3 + index * 3,
       ),
     );
@@ -309,13 +375,18 @@ export function createConversationCard(
           label,
           {
             x: -contentWidth * 0.43,
-            y: y + slotHeight * 0.37,
+            y: slotTop + slotHeight * 0.86,
             width: contentWidth * 0.86,
-            height: Math.max(20, slotHeight * 0.18),
+            height: slotHeight * 0.22,
           },
           start,
           end,
-          Math.max(8, Math.round(height * 0.021)),
+          fitTextFontSize(
+            label,
+            { width: contentWidth * 0.86, height: slotHeight * 0.22 },
+            Math.max(6, Math.round(height * 0.021)),
+            "Source label",
+          ),
           4 + index * 3,
         ),
       );

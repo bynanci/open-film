@@ -191,4 +191,29 @@ describe("GraphicScene creative templates", () => {
       }),
     ).toThrow(/512|length/i);
   });
+
+  it("fits long Traditional Chinese messages into each editable message slot", () => {
+    const messages = Array.from({ length: 4 }, (_, index) => ({
+      id: `message-${index + 1}`,
+      speaker: `說話者${index + 1}`,
+      text: "繁體中文長訊息".repeat(64),
+      start: 0,
+      end: 8,
+    }));
+    const result = createConversationCard({
+      sceneId: "long-chat",
+      duration: 8,
+      frame: { width: 1920, height: 1080 },
+      locale: "zh-TW",
+      messages,
+    });
+    const textNodes = result.scene.nodes.filter(
+      (node) => node.type === "text" && node.id.endsWith(".text"),
+    );
+    expect(textNodes).toHaveLength(4);
+    expect(
+      textNodes.every((node) => node.type === "text" && node.fontSize < 52),
+    ).toBe(true);
+    expect(textNodes.every((node) => node.height > 100)).toBe(true);
+  });
 });
