@@ -60,6 +60,8 @@ import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
+import AudioQualityPanel from "./AudioQualityPanel.vue";
+const audioQualityOpen = ref(false);
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
 import {
@@ -1773,6 +1775,14 @@ onBeforeUnmount(() => {
           {{ t("editor.fit.title") }}
         </button>
         <button
+          class="editor-button"
+          :aria-expanded="audioQualityOpen"
+          aria-controls="audio-quality-panel"
+          @click="audioQualityOpen = !audioQualityOpen"
+        >
+          {{ t("editor.audioQuality.title") }}
+        </button>
+        <button
           ref="visualQaToggle"
           class="editor-button"
           :aria-label="t('editor.visualQa.openPanel')"
@@ -1797,6 +1807,22 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
+    <AudioQualityPanel
+      v-if="audioQualityOpen"
+      id="audio-quality-panel"
+      :project-id="projectId"
+      :composition-id="compositionId"
+      :revision="state?.revision ?? ''"
+      :clip-id="selectedClip?.id ?? ''"
+      :disabled="
+        hasPending ||
+        historyBusy ||
+        directionBlocked ||
+        graphicAgentBusy ||
+        graphicAgentPending
+      "
+      @apply="command($event)"
+    />
     <div
       v-show="visualQaOpen"
       id="visual-qa-review-panel"

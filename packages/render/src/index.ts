@@ -787,3 +787,5 @@ export async function renderComposition(
     options,
   );
 }
+
+export * from "./audio-quality.js";

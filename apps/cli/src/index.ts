@@ -59,6 +59,7 @@ Usage:
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format otio
@@ -904,7 +905,22 @@ async function main() {
         );
     } else if (command === "compose")
       print({ composition: app.compose(value(options, "story")) });
-    else if (command === "visual-qa") {
+    else if (command === "audio-quality") {
+      const compositionId =
+        value(options, "composition") ?? app.project.timelines[0]?.id;
+      const clipId = value(options, "clip");
+      if (!compositionId || !clipId)
+        throw new Error("Choose --composition and --clip for audio review.");
+      const revision = new TimelineEditor(app).get(compositionId).revision;
+      print(
+        await app.runAudioQuality(
+          compositionId,
+          clipId,
+          revision,
+          controller.signal,
+        ),
+      );
+    } else if (command === "visual-qa") {
       const report = await app.runVisualQa(
         value(options, "composition") ?? positional[1],
         {

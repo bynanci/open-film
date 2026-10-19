@@ -2,6 +2,29 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioQuality: {
+      title: "音声品質",
+      help: "役割を設定した未ロックの音声を選択します。保存済み MP4 を測定し、フェードやカーブを保った固定ゲインの提案を確認できます。",
+      measure: "保存済みミックスを測定",
+      cancel: "キャンセル",
+      running: "オリジナル、ステム、候補を出力・測定中…",
+      failed:
+        "保存し、役割を設定した未ロックの音声を選択して再試行してください。",
+      audition: "A/B 音声試聴",
+      original: "A · オリジナル",
+      candidate: "B · 候補ミックス",
+      meter: "デコード済みピークメーター",
+      suggestion: "{role}：目標 {target} LUFS、変更 {gain} dB。",
+      accept: "音量の提案を適用",
+      issues: {
+        silence: "無音または信号不足のためラウドネス値がありません。",
+        peak: "オリジナルは −1 dBTP を超えています。",
+        limited: "ピークの余裕または既存のゲイン上限により制限されます。",
+        "mix-headroom": "候補に −1 dBTP の余裕がなく、適用できません。",
+        "manual-review":
+          "バランス、明瞭さ、意図を試聴してください。測定値は美的品質を保証しません。",
+      },
+    },
     graphics: {
       tab: "グラフィック",
       addScene: "シーンを追加",

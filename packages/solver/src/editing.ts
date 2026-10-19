@@ -67,7 +67,7 @@ export type TimelineCommand =
   | { type: "clip.split"; clipId: string; sourceTime: number }
   | { type: "duration"; clipId: string; duration: number }
   | { type: "speed"; clipId: string; speed: number }
-  | { type: "volume"; clipId: string; volume: number }
+  | { type: "volume"; clipId: string; volume: number; audioReviewId?: string }
   | {
       type: "transform";
       clipId: string;

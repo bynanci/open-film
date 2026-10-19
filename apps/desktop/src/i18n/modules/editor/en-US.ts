@@ -2,6 +2,32 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    audioQuality: {
+      title: "Audio quality",
+      help: "Select an unlocked sound clip with an audio role. Measure the saved MP4 mix and review a constant gain change while preserving fades, curves and ducking.",
+      measure: "Measure saved mix",
+      cancel: "Cancel",
+      running: "Rendering and measuring original, stem and candidate…",
+      failed:
+        "Save the edit, select an unlocked sound clip with a role and retry.",
+      audition: "A/B audio audition",
+      original: "A · Original mix",
+      candidate: "B · Suggested mix",
+      meter: "Decoded peak meter",
+      suggestion: "{role}: target {target} LUFS, change {gain} dB.",
+      accept: "Accept volume suggestion",
+      issues: {
+        silence:
+          "Silence or insufficient signal: integrated loudness is unavailable.",
+        peak: "The original mix exceeds −1 dBTP.",
+        limited:
+          "Peak headroom or the existing unity gain limit restricts this suggestion.",
+        "mix-headroom":
+          "The candidate lacks −1 dBTP headroom; acceptance is unavailable.",
+        "manual-review":
+          "Listen for balance, clarity and intent. Measurements do not establish aesthetic quality.",
+      },
+    },
     graphics: {
       tab: "Graphics",
       addScene: "Add scene",

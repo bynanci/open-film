@@ -31,6 +31,7 @@ import type {
   GraphicSceneAgentPlan,
   GraphicSceneAgentRequest,
   VisualQaReport,
+  AudioQualityReport,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -727,6 +728,17 @@ export const api = {
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: () => request<JobsState>("/jobs"),
+  audioQuality: (
+    compositionId: string,
+    clipId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+  ) =>
+    post<AudioQualityReport>(
+      `/compositions/${encodeURIComponent(compositionId)}/audio-quality`,
+      { clipId, baseRevision },
+      signal,
+    ),
   startVisualQa: (compositionId: string) =>
     post<{ jobId: string }>("/visual-qa", { compositionId }),
   visualQa: (jobId: string) =>

@@ -1,3 +1,12 @@
+## Active — M6 Audio Quality and Provider Generation
+
+PR 6A adds real-output MP4 loudness/peak measurement, sampled meters and reviewed
+role normalization without replacing AudioAutomation. PR 6B follows as a separate
+TTS generation PR with local mock, optional BYOK, explicit consent/cost and
+preview/accept/import. Existing local editing remains usable without a provider.
+See [audio quality contract](docs/audio-quality.md) and [validation](docs/validation-audio-quality.md).
+The earlier F05 photo-framing work remains deferred.
+
 # Roadmap
 
 OpenFilm's north star is ownership of media, story decisions, and the final edit.
