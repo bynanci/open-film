@@ -769,6 +769,7 @@ export class TimelineEditor {
   async previewGraphicSceneAgent(
     compositionId: string,
     input: GraphicSceneAgentRequest,
+    signal?: AbortSignal,
   ): Promise<GraphicSceneAgentPlan> {
     const parsed = graphicSceneAgentRequest(input);
     const before = this.current(compositionId, parsed.baseRevision);
@@ -838,6 +839,7 @@ export class TimelineEditor {
         prompt,
         {
           requiredDataKinds: ["text"],
+          signal,
           maxOutputBytes: 24_000,
         },
       );

@@ -435,11 +435,12 @@ export function applyGraphicSceneAgentActions(
     new Set(actionIds).size !== actionIds.length
   )
     throw new Error("Choose at least one unique proposal action.");
-  const byId = new Map(actions.map((action) => [action.id, action]));
-  const operations = actionIds.map((id) => {
-    const action = byId.get(id);
-    if (!action)
-      throw new Error("The selected proposal action no longer exists.");
+  const selected = new Set(actionIds);
+  const selectedActions = actions.filter((action) => selected.has(action.id));
+  if (selectedActions.length !== selected.size)
+    throw new Error("The selected proposal action no longer exists.");
+  // Apply in the reviewed proposal order, independent of checkbox click order.
+  const operations = selectedActions.map((action) => {
     if (!selectedNodeIds.includes(action.nodeId))
       throw new Error("Proposal actions may only update selected layers.");
     return action.operation;

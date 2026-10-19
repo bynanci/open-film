@@ -161,6 +161,30 @@ test("authors all primitives, seeks exact shared frames and preserves history an
     .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
     .toBe(-79);
 
+  await agent.getByTestId("graphic-agent-instruction").fill("move right 12");
+  await agent.getByTestId("graphic-agent-preview").click();
+  await expect(agent.getByTestId("graphic-agent-plan")).toBeVisible();
+  const pendingAction = agent.getByTestId("graphic-agent-action");
+  await pendingAction.getByRole("checkbox").check();
+  const acceptPath = "**/api/compositions/graphic-film/graphic-agent/accept";
+  await page.route(acceptPath, (route) => route.abort());
+  await agent.getByTestId("graphic-agent-accept").click();
+  await expect(agent.getByTestId("graphic-agent-retry")).toBeVisible();
+  await navigate(page, "story");
+  await expect(
+    page.locator(".main-nav button[aria-current='page']"),
+  ).toHaveText("Edit");
+  await page.unroute(acceptPath);
+  await agent.getByTestId("graphic-agent-retry").click();
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-67);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-79);
+
   const target = page.locator(
     `[data-testid="graphic-layer-target"][data-layer-id="${firstShapeId}"]`,
   );

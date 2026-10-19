@@ -167,7 +167,12 @@ function command(
   input: TimelineCommand | TimelineCommand[],
   referencedAssets: readonly MediaAsset[] = [],
 ) {
-  if (directionBlocked.value) return false;
+  if (
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value
+  )
+    return false;
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
 }
@@ -183,7 +188,8 @@ const hasPending = computed(
     compositionHasPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
-    directionPending.value,
+    directionPending.value ||
+    graphicAgentPending.value,
 );
 async function history(direction: "undo" | "redo") {
   if (precisionEditor.value?.hasPending || directionBlocked.value) return false;
@@ -196,7 +202,7 @@ async function flushInputs() {
   return (await precisionEditor.value?.flush()) ?? true;
 }
 async function flush() {
-  if (directionPending.value) return false;
+  if (directionPending.value || graphicAgentPending.value) return false;
   if (!(await flushInputs())) return false;
   return (await directionReview.value?.flush()) ?? true;
 }
@@ -2842,8 +2848,8 @@ onBeforeUnmount(() => {
             :agent-disabled="
               directionBlocked ||
               compositionHistoryBusy ||
-              status === 'conflict' ||
-              status === 'failed'
+              compositionHasPending ||
+              status !== 'saved'
             "
             :disabled="
               directionBlocked ||

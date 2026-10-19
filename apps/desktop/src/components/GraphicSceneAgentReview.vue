@@ -53,6 +53,7 @@ const acceptDisabled = computed(
 );
 let generation = 0;
 let disposed = false;
+let previewController: AbortController | undefined;
 const ownerKey = computed(
   () =>
     `openfilm.graphic-agent:${JSON.stringify([props.projectId, props.compositionId])}`,
@@ -95,6 +96,8 @@ watch(pending, (value) => emit("pending", !!value), {
 });
 function reset() {
   generation++;
+  previewController?.abort();
+  previewController = undefined;
   plan.value = null;
   selected.value = [];
   error.value = "";
@@ -118,6 +121,8 @@ watch(
     restorePending();
     // In-flight work for the previous owner cannot hold the new project open.
     // Its receipt remains under the previous project's storage key.
+    previewController?.abort();
+    previewController = undefined;
     busy.value = false;
   },
   { immediate: true, flush: "sync" },
@@ -133,6 +138,8 @@ onMounted(() => void refreshProvider());
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
+  previewController?.abort();
+  previewController = undefined;
   emit("busy", false);
   emit("pending", false);
 });
@@ -164,18 +171,25 @@ async function generate() {
   )
     return;
   const run = ++generation;
+  const controller = new AbortController();
+  previewController?.abort();
+  previewController = controller;
   busy.value = true;
   plan.value = null;
   selected.value = [];
   error.value = "";
   try {
-    const next = await api.previewGraphicSceneAgent(props.compositionId, {
-      baseRevision: props.revision,
-      sceneId: props.scene.id,
-      nodeIds: [props.selectedNodeId],
-      instruction: instruction.value,
-      mode: mode.value,
-    });
+    const next = await api.previewGraphicSceneAgent(
+      props.compositionId,
+      {
+        baseRevision: props.revision,
+        sceneId: props.scene.id,
+        nodeIds: [props.selectedNodeId],
+        instruction: instruction.value,
+        mode: mode.value,
+      },
+      controller.signal,
+    );
     if (disposed || run !== generation) return;
     plan.value = next;
     selected.value = [];
@@ -189,6 +203,7 @@ async function generate() {
           ? t("editor.graphics.agentProviderUnavailable")
           : t("editor.graphics.agentGenerateError");
   } finally {
+    if (previewController === controller) previewController = undefined;
     if (!disposed && run === generation) busy.value = false;
   }
 }

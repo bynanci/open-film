@@ -77,6 +77,11 @@ Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
       values and typed conflicts; preserve deterministic local commands.
 - [x] Route optional provider calls through `ProviderRegistry` and explicit text
       consent; send only selected layer snapshots and no media paths/assets.
+- [x] Disable preview during unsaved edits; make uncertain acceptance block
+      composition mutations, navigation/flush and export. Preserve proposal
+      order independently of action selection order.
+- [x] Keep provider generation outside the mutation queue, propagate cancellation
+      on owner change/close and enforce a bounded response deadline.
 - [x] Cover application, API, browser, undo/redo/reopen, stale/locked and actual
       synthetic MP4 regressions with existing project contracts.
 - [ ] Complete full exact-head validation and fresh review before merge.

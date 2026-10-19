@@ -80,6 +80,7 @@ import type {
 } from "@openfilm/plugin-sdk";
 
 type Body = Record<string, unknown>;
+const DEFAULT_GRAPHIC_SCENE_AGENT_PROVIDER_TIMEOUT_MS = 60_000;
 const httpErrorCodes: Partial<Record<number, ApplicationErrorCode>> = {
   400: "request.invalid",
   403: "request.forbidden",
@@ -444,8 +445,15 @@ export interface ServerOptions {
   transcriptionProvider?: TranscriptionProvider;
   userDataDirectory?: string;
   languageProvider?: LanguageProvider;
+  /** Bounded lifetime for consented external GraphicScene proposals. */
+  graphicSceneAgentProviderTimeoutMs?: number;
 }
 export async function startServer(options: ServerOptions = {}) {
+  const graphicSceneAgentProviderTimeoutMs =
+    number(
+      options.graphicSceneAgentProviderTimeoutMs,
+      "graphicSceneAgentProviderTimeoutMs",
+    ) ?? DEFAULT_GRAPHIC_SCENE_AGENT_PROVIDER_TIMEOUT_MS;
   const runtimeOptions = {
     userDataDirectory: resolveUserDataDirectory(options.userDataDirectory),
     languageProvider: options.languageProvider,
@@ -473,6 +481,10 @@ export async function startServer(options: ServerOptions = {}) {
       await OpenFilmApplication.open(resolve(options.project), runtimeOptions),
     );
   const active = new Map<string, AbortController>();
+  const graphicSceneAgentPreviews = new Set<AbortController>();
+  const cancelGraphicSceneAgentPreviews = () => {
+    for (const controller of graphicSceneAgentPreviews) controller.abort();
+  };
   const tasks = new Set<Promise<unknown>>();
   const requireIdleProject = () => {
     if (active.size)
@@ -561,11 +573,24 @@ export async function startServer(options: ServerOptions = {}) {
         const method = request.method;
         const cancellation =
           method === "POST" && /^\/api\/jobs\/[^/]+\/cancel$/.test(route);
+        const nonMutatingGraphicAgentPreview =
+          method === "POST" &&
+          /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
+        const acquireMutation = async () => {
+          const previousMutation = mutationQueue;
+          mutationQueue = new Promise<void>((accept) => {
+            releaseMutation = accept;
+          });
+          await previousMutation;
+          if (closing)
+            throw new HttpError(503, "The local service is closing.");
+        };
         // Serialize mutations across body reads and project replacement. Cancellation
         // remains available while a render is awaiting its child process.
         if (
           (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
+          !nonMutatingGraphicAgentPreview &&
           route !== "/api/projects/availability"
         ) {
           if (
@@ -582,13 +607,7 @@ export async function startServer(options: ServerOptions = {}) {
               409,
               "Wait for running jobs before switching projects or relinking media.",
             );
-          const previousMutation = mutationQueue;
-          mutationQueue = new Promise<void>((accept) => {
-            releaseMutation = accept;
-          });
-          await previousMutation;
-          if (closing)
-            throw new HttpError(503, "The local service is closing.");
+          await acquireMutation();
         }
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
@@ -675,6 +694,7 @@ export async function startServer(options: ServerOptions = {}) {
           // A caption GET can capture this project during upload cleanup.
           // Recheck immediately before close; do not await after this guard.
           requireIdleProject();
+          cancelGraphicSceneAgentPreviews();
           app?.close();
           app = undefined;
           json(response, 200, { ok: true });
@@ -715,6 +735,7 @@ export async function startServer(options: ServerOptions = {}) {
           const previousPath = app?.directory;
           await discardUploads();
           requireIdleProject();
+          cancelGraphicSceneAgentPreviews();
           app?.close();
           app = undefined;
           let next: OpenFilmApplication;
@@ -2127,21 +2148,102 @@ export async function startServer(options: ServerOptions = {}) {
           const compositionId = decodeURIComponent(graphicAgentMatch[1]!);
           const data = await body(request);
           const editor = editorFor(application);
-          json(
-            response,
-            200,
-            graphicAgentMatch[2] === "preview"
-              ? await editor.previewGraphicSceneAgent(
-                  compositionId,
-                  data as unknown as Parameters<
-                    TimelineEditor["previewGraphicSceneAgent"]
-                  >[1],
-                )
-              : await editor.acceptGraphicSceneAgent(
-                  compositionId,
-                  data as unknown as GraphicSceneAgentAcceptance,
-                ),
-          );
+          if (graphicAgentMatch[2] === "preview") {
+            const projectId = application.project.id;
+            const controller = new AbortController();
+            let timedOut = false;
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const disconnected = () => {
+              if (!response.writableEnded) controller.abort();
+            };
+            graphicSceneAgentPreviews.add(controller);
+            response.once("close", disconnected);
+            if (data.mode === "provider")
+              timeout = setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+              }, graphicSceneAgentProviderTimeoutMs);
+            try {
+              const plan = await editor.previewGraphicSceneAgent(
+                compositionId,
+                data as unknown as Parameters<
+                  TimelineEditor["previewGraphicSceneAgent"]
+                >[1],
+                controller.signal,
+              );
+              if (controller.signal.aborted) {
+                if (timedOut)
+                  throw new HttpError(
+                    503,
+                    "The language provider did not respond before the preview deadline.",
+                    "review.providerUnavailable",
+                  );
+                throw new TimelineEditorError(
+                  "GraphicScene preview was cancelled or its project changed.",
+                  409,
+                );
+              }
+              // Re-enter the short mutation critical section only after provider
+              // work is done, so stale state is checked against every completed
+              // edit without holding the queue during network I/O.
+              await acquireMutation();
+              if (controller.signal.aborted) {
+                if (timedOut)
+                  throw new HttpError(
+                    503,
+                    "The language provider did not respond before the preview deadline.",
+                    "review.providerUnavailable",
+                  );
+                throw new TimelineEditorError(
+                  "GraphicScene preview was cancelled or its project changed.",
+                  409,
+                );
+              }
+              if (closing)
+                throw new HttpError(
+                  503,
+                  "The local service is closing.",
+                  "workspace.closing",
+                );
+              if (app !== application || app?.project.id !== projectId)
+                throw new TimelineEditorError(
+                  "The active project changed while preparing this GraphicScene proposal.",
+                  409,
+                );
+              if (editor.get(compositionId).revision !== plan.baseRevision)
+                throw new TimelineEditorError(
+                  "The Composition changed while preparing this GraphicScene proposal.",
+                  409,
+                );
+              json(response, 200, plan);
+            } catch (error) {
+              if (timedOut)
+                throw new HttpError(
+                  503,
+                  "The language provider did not respond before the preview deadline.",
+                  "review.providerUnavailable",
+                );
+              if (controller.signal.aborted && !response.destroyed)
+                throw new TimelineEditorError(
+                  "GraphicScene preview was cancelled or its project changed.",
+                  409,
+                );
+              throw error;
+            } finally {
+              if (timeout) clearTimeout(timeout);
+              response.off("close", disconnected);
+              graphicSceneAgentPreviews.delete(controller);
+            }
+          } else {
+            json(
+              response,
+              200,
+              await editor.acceptGraphicSceneAgent(
+                compositionId,
+                data as unknown as GraphicSceneAgentAcceptance,
+              ),
+            );
+          }
           return;
         }
         const thumbnail = /^\/api\/thumbnail\/([^/]+)$/.exec(route);
@@ -2831,6 +2933,7 @@ export async function startServer(options: ServerOptions = {}) {
   if (address && typeof address !== "string") port = address.port;
   const close = async () => {
     closing = true;
+    cancelGraphicSceneAgentPreviews();
     const stopped = new Promise<void>((accept) => server.close(() => accept()));
     for (const controller of new Set(active.values())) controller.abort();
     await Promise.allSettled(tasks);

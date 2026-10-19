@@ -316,8 +316,16 @@ export async function request<T>(
   return body as T;
 }
 
-export const post = <T>(path: string, body: unknown = {}): Promise<T> =>
-  request<T>(path, { method: "POST", body: JSON.stringify(body) });
+export const post = <T>(
+  path: string,
+  body: unknown = {},
+  signal?: AbortSignal,
+): Promise<T> =>
+  request<T>(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const thumbnailUrl = (id: string): string =>
@@ -808,10 +816,15 @@ export const api = {
       `/compositions/${encodeURIComponent(id)}/direction/accept`,
       body,
     ),
-  previewGraphicSceneAgent: (id: string, body: GraphicSceneAgentRequest) =>
+  previewGraphicSceneAgent: (
+    id: string,
+    body: GraphicSceneAgentRequest,
+    signal?: AbortSignal,
+  ) =>
     post<GraphicSceneAgentPlan>(
       `/compositions/${encodeURIComponent(id)}/graphic-agent/preview`,
       body,
+      signal,
     ),
   acceptGraphicSceneAgent: (id: string, body: GraphicSceneAgentAcceptance) =>
     post<EditorState>(

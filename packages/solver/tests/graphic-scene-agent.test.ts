@@ -114,6 +114,44 @@ describe("reviewable GraphicScene agent operations", () => {
     expect(selected.nodes[0]).toMatchObject({ x: 0, opacity: 0.5 });
   });
 
+  it("applies a selected subset in proposal order, regardless of selection order", () => {
+    const scene = graphicScene({
+      nodes: [graphicNode({ id: "large", width: 4000, height: 2000 })],
+    });
+    const nodeId = scene.nodes[0]!.id;
+    const proposal = prepareGraphicSceneAgentProposal(
+      scene,
+      [nodeId],
+      [
+        {
+          kind: "set",
+          nodeId,
+          field: "width",
+          value: 100,
+          reason: "Reduce width before changing height.",
+        },
+        {
+          kind: "set",
+          nodeId,
+          field: "height",
+          value: 4096,
+          reason: "Set the reviewed height.",
+        },
+      ],
+      6,
+    );
+    expect(proposal.conflicts).toEqual([]);
+    expect(proposal.actions).toHaveLength(2);
+    const selected = applyGraphicSceneAgentActions(
+      scene,
+      [nodeId],
+      proposal.actions,
+      proposal.actions.map((action) => action.id).reverse(),
+      6,
+    );
+    expect(selected.nodes[0]).toMatchObject({ width: 100, height: 4096 });
+  });
+
   it("never compiles unselected, locked or conflicting operations", () => {
     const scene = graphicScene({
       nodes: [
