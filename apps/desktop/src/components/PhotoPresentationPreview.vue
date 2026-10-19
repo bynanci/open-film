@@ -235,6 +235,7 @@ defineExpose({ toggle, pause, seekTo });
         @load="titleFailed = false"
         @error="titleFailed = true"
       />
+      <slot :time="time" :playing="playing" />
     </div>
     <p
       v-if="!plan || sourceFailed"

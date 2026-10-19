@@ -32,6 +32,7 @@ import {
 } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  graphicSceneAssetIds,
   createProject,
   ApplicationError,
   errorInfo,
@@ -49,6 +50,12 @@ import {
   type FilmLook,
   type ProjectContentLocale,
 } from "@openfilm/core";
+import { GraphicSceneService } from "./graphic-scenes.js";
+import { TimelineEditor } from "./editor.js";
+export {
+  GraphicSceneService,
+  type GraphicFrameInput,
+} from "./graphic-scenes.js";
 import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
 import {
@@ -261,6 +268,7 @@ function managedSourceUri(
 
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
+  readonly graphics: GraphicSceneService;
   readonly catalog: ProjectCatalog;
   readonly intelligence: MediaIntelligence;
   readonly transcriptEditor: TranscriptEditor;
@@ -283,6 +291,10 @@ export class OpenFilmApplication {
     this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
+      this.graphics = new GraphicSceneService(
+        this,
+        (id) => new TimelineEditor(this).get(id).revision,
+      );
       this.intelligence = new MediaIntelligence(this.catalog);
       this.transcriptEditor = new TranscriptEditor(this);
       this.captions = new CaptionService(this);
@@ -774,6 +786,7 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
+    this.graphics.close();
     this.catalog.close();
   }
 
@@ -1416,8 +1429,9 @@ export class OpenFilmApplication {
     includeTitleAssets = false,
   ): MediaAsset[] {
     return [
-      ...new Set(
-        composition.tracks
+      ...new Set([
+        ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+        ...composition.tracks
           .filter((track) => includeTitleAssets || track.type !== "titles")
           .flatMap((track) =>
             track.clips.flatMap((clip) => [
@@ -1427,7 +1441,7 @@ export class OpenFilmApplication {
                 : []),
             ]),
           ),
-      ),
+      ]),
     ].map((id) => {
       const asset = this.catalog.getAsset(id);
       if (!asset)

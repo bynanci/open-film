@@ -7,7 +7,12 @@ import type {
   ProjectSettings,
   Track,
 } from "@openfilm/core";
-import { isFilmLookActive, resolveFilmLook } from "@openfilm/core";
+import {
+  graphicSceneAssetIds,
+  validateGraphicScenes,
+  isFilmLookActive,
+  resolveFilmLook,
+} from "@openfilm/core";
 
 export type ExportFormat = "json" | "otio" | "fcpxml" | "edl";
 export interface ExportResult {
@@ -43,6 +48,10 @@ export function otioCompatibilityReport(
   composition: Composition,
 ): OtioCompatibilityReport {
   const warnings: string[] = [];
+  if (composition.graphicScenes?.length)
+    warnings.push(
+      "GraphicScene animation and compositing are METADATA ONLY; recreate them manually in the NLE or use MP4 for rendered parity.",
+    );
   const metadataOnlyEdits: OtioCompatibilityReport["metadataOnlyEdits"] = [];
   const defaults = { scale: 1, rotation: 0, x: 0, y: 0, speed: 1, volume: 1 };
   for (const track of composition.tracks) {
@@ -191,6 +200,14 @@ function validate(
       "Export dimensions and frame rate must be positive finite values.",
     );
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  validateGraphicScenes(composition.graphicScenes ?? [], composition.duration);
+  for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
+    const asset = byId.get(id);
+    if (!asset?.uri || asset.mediaType !== "image")
+      throw new Error(
+        "GraphicScene image source is missing or unsupported; relink before export.",
+      );
+  }
   for (const track of composition.tracks)
     for (const clip of track.clips) {
       for (const sourceId of clipSourceIds(clip)) {
@@ -254,9 +271,12 @@ export function exportTimeline(
     throw new Error(`Unsupported timeline export format: ${String(format)}.`);
   const byId = validate(composition, assets, settings);
   if (format === "json") {
-    const used = new Set(
-      composition.tracks.flatMap((track) => track.clips.flatMap(clipSourceIds)),
-    );
+    const used = new Set([
+      ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+      ...composition.tracks.flatMap((track) =>
+        track.clips.flatMap(clipSourceIds),
+      ),
+    ]);
     return {
       extension: "json",
       content:
@@ -333,6 +353,10 @@ export function exportTimeline(
       warnings: report.warnings,
     };
   }
+  if (composition.graphicScenes?.length)
+    throw new Error(
+      `${format} cannot represent GraphicScene animation. Use JSON or OTIO metadata and recreate graphics manually.`,
+    );
   for (const track of composition.tracks) {
     if (!track.clips.length) continue;
     if (track.timing === "overlay")
@@ -528,6 +552,13 @@ function otio(
         storyId: composition.storyId,
         settings,
         composition,
+        ...(composition.graphicScenes?.length
+          ? {
+              graphicMediaReferences: graphicSceneAssetIds(
+                composition.graphicScenes,
+              ).map((id) => sourceIdentity(assets.get(id)!)),
+            }
+          : {}),
         compatibility: report,
       },
     },

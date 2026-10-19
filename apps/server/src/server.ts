@@ -1992,6 +1992,41 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        const graphicPreview =
+          /^\/api\/compositions\/([^/]+)\/graphics\.png$/.exec(route);
+        if (method === "GET" && graphicPreview) {
+          const frame = url.searchParams.get("frame") ?? "";
+          if (!/^\d{1,10}$/u.test(frame))
+            throw new HttpError(400, "Invalid graphic frame.");
+          const controller = new AbortController();
+          const abort = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", abort);
+          try {
+            const png = await application.graphics.frame(
+              decodeURIComponent(graphicPreview[1]!),
+              {
+                projectId: url.searchParams.get("projectId") ?? "",
+                baseRevision: url.searchParams.get("revision") ?? "",
+                frameIndex: Number(frame),
+                signal: controller.signal,
+              },
+            );
+            if (app !== application)
+              throw new HttpError(409, "Graphic project changed.");
+            response.writeHead(200, {
+              "Content-Type": "image/png",
+              "Content-Length": png.length,
+              "Cache-Control": "no-store",
+              "X-Content-Type-Options": "nosniff",
+            });
+            response.end(png);
+          } finally {
+            response.off("close", abort);
+          }
+          return;
+        }
         const titlePreview =
           /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
         if (method === "GET" && titlePreview) {

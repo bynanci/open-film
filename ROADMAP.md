@@ -18,11 +18,22 @@ retain navigation barriers. Precision mutations and composition history also
 block each other without changing normal Undo grouping. The corrected candidate has separate verification
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. Existing film-look capabilities
-remain part of the working tree; M2 / F04 below is the current creative milestone.
+remain part of the working tree; M3 / F01 below is the current creative milestone.
 Merging development source is not a **Released** installer or **Hardware Verified**
 recognition/NLE claim.
 
-## Current — M2 / F04 Native Caption Track
+## Current — M3 / F01 Declarative GraphicScene
+
+Versioned Image, Text, Shape and Group data extends the existing Composition.
+Explicit bounded enter/exit animation is deterministic under arbitrary seeks.
+Monitor and FFmpeg share the same trusted PNG producer; project HTML/JS, remote
+URLs and arbitrary image/font paths are rejected. Existing commands, history,
+autosave and reopen own the edit lifecycle. JSON/OTIO retain the scene; unsupported
+NLE formats fail explicitly. See [contract](docs/graphic-scenes.md),
+[threat model](docs/security/graphic-scene-threat-model.md) and
+[validation](docs/validation-graphic-scene.md).
+
+## Implemented — M2 / F04 Native Caption Track
 
 Add versioned, stable-ID caption cues to the existing saved Composition, using
 transcript segments only as provenance-backed timing evidence. Edit shares the
@@ -36,16 +47,16 @@ candidate does not claim word-level alignment or workstation/NLE verification.
 Duration edits that would exclude a saved caption are rejected before autosave;
 adjust the affected cue first so authored text and timing remain explicit.
 
-## Queued — M3–M5
+## Queued — M4–M5 and broader clip keyframes
 
-M3 extends bounded scene motion with reusable timing after defining backward-
-compatible keyframe behavior. M4 advances photo narrative and opt-in AI assistance
+The explicit M3/F01 scene scope replaces the earlier M3/F03 keyframe proposal;
+general clip keyframes remain future work. M4 advances photo narrative and opt-in AI assistance
 with visible consent, evidence and user acceptance. M5 extends sound design and
 output verification with decoded audio evidence. The staged dependencies, risks
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 
-## Current — M1 / F07 Visual QA and contact sheets
+## Implemented — M1 / F07 Visual QA and contact sheets
 
 Build a saved-revision review path on top of the current Composition, renderer,
 SQLite jobs and Edit workspace. Desktop, HTTP and CLI share one application

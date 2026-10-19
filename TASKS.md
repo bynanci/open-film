@@ -5,7 +5,28 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — M1 / F07 Visual QA
+## Current — M3 / F01 Declarative GraphicScene
+
+Scope: [GraphicScene v1](docs/graphic-scenes.md),
+[threat model](docs/security/graphic-scene-threat-model.md) and
+[validation](docs/validation-graphic-scene.md). This explicit M3/F01 scope replaces
+previous M3/F03 general keyframe authoring; broader clip keyframes stay deferred.
+
+- [x] Strict versioned Image/Text/Shape/Group data, bounded geometry/time/easing
+      and deterministic arbitrary-seek evaluation without project code or URLs.
+- [x] Existing commands/history/autosave/reopen and duration-conflict protection;
+      no second timeline, project-schema migration or original-media overwrite.
+- [x] Shared bounded PNG raster for Edit Monitor and FFmpeg; scene-only source/font
+      hash evidence, portable JSON/OTIO metadata and explicit NLE limitations.
+- [x] Accessible Graphics Inspector with three-locale text and sampled playback;
+      paused seek uses the exact output frame and stale results are withheld.
+- [x] Actual synthetic 6-second/180-frame MP4, decoded first/mid/last pixels,
+      shuffled seek, source-change/cancel/cache regressions and M1 QA integration.
+- [x] Whole-branch review with regression-tested corrections and automated gate
+      matrix; exact-head CI is required and recorded in the PR before merge.
+- [ ] Manual hardware/4K throughput, target-display aesthetics and real NLE finishing.
+
+## Implemented — M1 / F07 Visual QA
 
 Scope and evidence: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md)
 and [Visual QA validation](docs/validation-visual-qa.md). F01–F13 are a newly
@@ -31,16 +52,18 @@ The F01–F13 labels are a planning crosswalk introduced by that roadmap; they d
 not retroactively rename completed project capabilities.
 
 - [x] **M1 / F07 — Visual QA and contact sheets.** A saved-revision implementation
-      is integrated with M2 in [PR #27](https://github.com/bynanci/open-film/pull/27);
+      is merged with M2 in [PR #27](https://github.com/bynanci/open-film/pull/27);
       published-head CI and workstation gates are tracked separately.
 - [x] **M2 / F04 — Native Caption Track.** Versioned Composition cues, transcript
       provenance, Edit lane/Inspector, MP4 burn-in and SRT/VTT output are implemented
       in [PR #26](https://github.com/bynanci/open-film/pull/26); CI and workstation
       gates are tracked separately. Shortening rejects before enqueueing when it
       would exclude a saved caption; users adjust affected cues explicitly.
-- [ ] **M3 / F03 — Dynamic scene motion.** Define bounded reusable keyframe
-      semantics over existing clip-local motion; verify arbitrary-seek preview/render
-      parity, locks, Undo/Redo, autosave/reopen and interchange warnings.
+- [x] **M3 / F01 — Declarative GraphicScene.** Strict Image/Text/Shape/Group scenes,
+      explicit enter/exit animation, shared Monitor/MP4 raster and existing history
+      are implemented; final PR gates and manual limits are tracked in the
+      [validation record](docs/validation-graphic-scene.md). General clip keyframes
+      from the earlier M3/F03 proposal remain deferred.
 - [ ] **M4 / F05 + F08 — Photo narrative and AI assistance.** Build on current
       framing and scene-direction review with declared consent/data boundaries,
       source-bound suggestions, explicit accept/reject and no automatic edits.

@@ -848,3 +848,27 @@ export function dateLabel(value: string | undefined): string {
         year: "numeric",
       }).format(date);
 }
+
+export async function graphicFrame(
+  compositionId: string,
+  projectId: string,
+  revision: string,
+  frameIndex: number,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const query = new URLSearchParams({
+    projectId,
+    revision,
+    frame: String(frameIndex),
+  });
+  const response = await fetch(
+    `${prefix}/compositions/${encodeURIComponent(compositionId)}/graphics.png?${query}`,
+    { signal, cache: "no-store" },
+  );
+  if (!response.ok) throw responseError(await response.json(), response.status);
+  if (response.headers.get("content-type") !== "image/png")
+    throw new ApiError("Invalid graphic frame response.", response.status, {
+      code: "workspace.invalidResponse",
+    });
+  return response.blob();
+}

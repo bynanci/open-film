@@ -76,8 +76,20 @@ export default {
         "The saved film changed while you were editing. Review the newer version or reapply your saved draft.",
       invalidEdit:
         "This change doesn't fit the source or story limits. Check the trim, duration and locked memories.",
+      graphicRangeConflict:
+        "Shortening the edit would exclude saved graphics. Adjust or remove the affected scenes first, then retry.",
       captionRangeConflict:
         "Shortening the edit would exclude saved captions. Adjust or delete the affected captions first, then retry.",
+    },
+    graphics: {
+      invalid:
+        "Check the graphic scene fields, timing and supported primitives.",
+      resourceLimit:
+        "This graphic scene exceeds its resource limit. Reduce its size, duration or number of layers.",
+      unavailable:
+        "A graphic image or local font is unavailable. Check the source and try again.",
+      stale: "This graphic frame is stale. Wait for the latest edit to save.",
+      busy: "A graphic frame is being prepared. Try again shortly.",
     },
     render: {
       overMaximum:

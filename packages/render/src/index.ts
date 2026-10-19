@@ -3,6 +3,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import {
+  graphicFrameRanges,
+  prepareGraphicScenes,
+  writeGraphicSequences,
+} from "./graphic-scenes.js";
+export {
+  inspectGraphicImage,
+  prepareGraphicScenes,
+  graphicFrameRanges,
+} from "./graphic-scenes.js";
 import { photoPresentationFilters } from "./photo-filters.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
@@ -33,6 +43,7 @@ export {
   titleOverlayCacheKey,
 } from "./titles.js";
 import {
+  graphicSceneAssetIds,
   resolveClipGeometry,
   resolveFilmLook,
   validateFilmLook,
@@ -115,6 +126,7 @@ export class FFmpegRenderer {
   ): Promise<string> {
     checkAbort(options.signal);
     const encoding = resolveRenderQuality(options.quality);
+    graphicFrameRanges(composition, settings);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
@@ -191,6 +203,11 @@ export class FFmpegRenderer {
           ]),
         ),
     );
+    for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
+      if (!assetMap.has(id))
+        throw new Error("Graphic image is unavailable in the local catalog.");
+      usedIds.add(id);
+    }
     const fonts: RenderFontEvidence[] = [];
     const warnings: string[] = [];
     const output = resolve(outputPath);
@@ -524,6 +541,45 @@ export class FFmpegRenderer {
         }
       }
       for (const addTitle of pendingTitles) await addTitle();
+      const graphics = await prepareGraphicScenes(
+        composition,
+        assets,
+        settings,
+        work,
+        { signal: options.signal },
+      );
+      for (const source of graphics.sources)
+        if (
+          sources.find((item) => item.assetId === source.assetId)?.sha256 !==
+          source.sha256
+        )
+          throw new Error(
+            "Graphic source changed between manifest capture and image preparation.",
+          );
+      fonts.push(...graphics.fonts);
+      warnings.push(...graphics.warnings);
+      for (const [index, sequence] of (
+        await writeGraphicSequences(graphics, work, options)
+      ).entries()) {
+        args.push(
+          "-framerate",
+          number(settings.frameRate),
+          "-threads",
+          "1",
+          "-i",
+          sequence.pattern,
+        );
+        const input = inputIndex++;
+        const label = `graphic${index}`;
+        filters.push(
+          `[${input}:v]format=rgba,setpts=PTS-STARTPTS+${sequence.start}[${label}-source]`,
+        );
+        filters.push(
+          `[${videoLabel}][${label}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(round(t*${number(settings.frameRate)}),${sequence.start})*lt(round(t*${number(settings.frameRate)}),${sequence.end})'[${label}]`,
+        );
+        videoLabel = label;
+      }
+      await graphics.verifySources();
       if (selectedCaptionTrack) {
         const outputFrame = `round(t*${number(settings.frameRate)})`;
         const cues = [...selectedCaptionTrack.cues].sort(
@@ -663,6 +719,7 @@ export class FFmpegRenderer {
         },
       });
       checkAbort(options.signal);
+      await graphics.verifySources();
       await verifyRenderSources(sources);
       const manifestPath = join(work, "manifest.json");
       await writeRenderManifest(

@@ -8,6 +8,9 @@ import {
   validateTitleStyle,
   validateAudioAutomation,
   validateFilmLook,
+  validateGraphicScenes,
+  graphicSceneAssetIds,
+  type GraphicScene,
   filmLookMatrix,
   resolveFilmLook,
   ApplicationError,
@@ -29,6 +32,8 @@ import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
+  | { type: "graphic.scene.upsert"; scene: GraphicScene }
+  | { type: "graphic.scene.remove"; sceneId: string }
   | { type: "look"; scope: "film"; look: FilmLook | null }
   | { type: "look"; scope: "beat"; beatId: string; look: FilmLook | null }
   | { type: "look"; scope: "clip"; clipId: string; look: FilmLook | null }
@@ -336,6 +341,16 @@ function updateDuration(
     ),
   );
   finite(duration, "Resulting timeline duration", 0);
+  if (
+    reconcileOverlays &&
+    document.composition.graphicScenes?.some(
+      (scene) => scene.start + scene.duration > duration + EPSILON,
+    )
+  )
+    throw new ApplicationError(
+      "timeline.graphicRangeConflict",
+      "Shortening the edit would exclude saved graphics. Adjust or remove the affected scenes first, then retry.",
+    );
   // Regeneration may temporarily shrink a slot before appending the remaining
   // clips. Check captions with overlays once the complete edit is assembled.
   if (
@@ -684,6 +699,35 @@ export function applyTimelineCommand(
   command: TimelineCommand,
 ): EditorDocument {
   const next = structuredClone(document);
+  if (
+    command.type === "graphic.scene.upsert" ||
+    command.type === "graphic.scene.remove"
+  ) {
+    const scenes = structuredClone(next.composition.graphicScenes ?? []);
+    if (command.type === "graphic.scene.upsert") {
+      // Validate before inspecting nested source IDs or cloning client data again.
+      const [scene] = validateGraphicScenes(
+        [command.scene],
+        next.composition.duration,
+      );
+      for (const id of graphicSceneAssetIds([scene!])) {
+        const asset = findAsset(assets, id);
+        if (asset.mediaType !== "image")
+          fail(`Graphic image asset "${id}" must be a still image.`);
+      }
+      const index = scenes.findIndex((item) => item.id === scene!.id);
+      if (index < 0) scenes.push(scene!);
+      else scenes[index] = scene!;
+    } else {
+      const index = scenes.findIndex((item) => item.id === command.sceneId);
+      if (index < 0) fail(`Graphic scene "${command.sceneId}" was not found.`);
+      scenes.splice(index, 1);
+    }
+    const admitted = validateGraphicScenes(scenes, next.composition.duration);
+    if (admitted.length) next.composition.graphicScenes = admitted;
+    else delete next.composition.graphicScenes;
+    return next;
+  }
   if (command.type === "look") return applyLookCommand(next, assets, command);
   if (isCaptionCommand(command)) return applyCaptionCommand(next, command);
   if (command.type === "audio.add") {
