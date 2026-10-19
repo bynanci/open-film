@@ -70,6 +70,44 @@ export default {
     media: "Media",
     storyMoment: "Story moment",
     yourStory: "Your story",
+    visualQa: {
+      region: "Visual quality review",
+      heading: "Visual QA",
+      openPanel: "Open Visual QA panel",
+      closePanel: "Close panel",
+      description:
+        "Render the saved edit, review timestamped frames and inspect measured issues.",
+      run: "Check saved edit",
+      cancel: "Cancel check",
+      retry: "Run again",
+      running: "Checking saved edit… {progress}%",
+      stopping: "Finishing the previous check…",
+      failed: "Visual QA could not finish. Retry this saved edit.",
+      manualReview:
+        "Dark or blank frames need your judgment. Intentional black is never marked as an error.",
+      manual: "Manual review",
+      noIssues:
+        "No measured issues were found. Review the contact sheet for visual decisions.",
+      contactSheet: "Timestamped contact sheet",
+      locateIssue: "Open Edit near {time}",
+      openSample: "Select this frame at {time} in Edit",
+      status: {
+        complete: "Review ready",
+        incomplete: "Some measurable issues need attention",
+        stale: "The saved edit changed. Run Visual QA again.",
+      },
+      issues: {
+        region: "Visual QA findings",
+        review: "Review this frame",
+        missingAsset: "Missing or inaccessible media",
+        changedAsset: "Media changed since it was saved",
+        unsupportedAsset: "Media cannot be rendered for review",
+        fontFailure: "Title font or glyph unavailable",
+        titleOverflow: "Measured title extends beyond the frame",
+        suspectedBlank: "Possibly blank or black frame",
+        staleRevision: "Saved edit changed during review",
+      },
+    },
     direction: {
       examples:
         "Example: “Keep proportions; Gentle push-in”. Also supported: “Hero framing”, “Keep still”, “Horizontal pan”.",

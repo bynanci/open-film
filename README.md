@@ -122,6 +122,16 @@ pixels/frame ticks and provide preview-only composition guides, frame stepping,
 clip looping and quick transform controls in Edit. These controls reuse existing
 composition commands; see the [validation record](docs/validation-monitor-stability.md).
 
+**Visual QA / contact sheets** reviews the current saved Composition through the
+same application service from Desktop, HTTP or CLI. It renders a real MP4 into a
+private project cache, verifies its manifest/source hashes and FFprobe stream,
+then presents timestamped decoded frames and typed missing-media/font/title
+diagnostics. Suspected black/blank frames require human review; intentional black
+is never an error. In Edit, activate a finding or frame to select the matching
+clip and time. Headless use: `pnpm cli visual-qa --project <film.openfilm>
+[--composition <id>]`. See the [M1/F07 roadmap](docs/roadmap/creative-scene-platform.md)
+and [validation record](docs/validation-visual-qa.md).
+
 **Composition-aware subtitles** reuse saved transcript revisions and one selected
 dialogue/narration track. Trim, positive constant speed, gaps and repeated clip
 instances use film time. Partial boundary segments are omitted with warnings;

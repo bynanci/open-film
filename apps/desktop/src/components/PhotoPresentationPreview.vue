@@ -165,9 +165,13 @@ function toggle() {
   started = performance.now();
   animation = requestAnimationFrame(tick);
 }
-function seek(event: Event) {
+function seekTo(requested: number) {
+  if (!Number.isFinite(requested)) return;
   pause();
-  time.value = Number((event.target as HTMLInputElement).value);
+  time.value = Math.max(0, Math.min(props.clip.timelineDuration, requested));
+}
+function seek(event: Event) {
+  seekTo(Number((event.target as HTMLInputElement).value));
 }
 watch(
   () => props.clip.id,
@@ -189,7 +193,7 @@ watch(
   },
 );
 onBeforeUnmount(pause);
-defineExpose({ toggle, pause });
+defineExpose({ toggle, pause, seekTo });
 </script>
 
 <template>

@@ -70,6 +70,45 @@ export default {
     media: "メディア",
     storyMoment: "ストーリーの瞬間",
     yourStory: "あなたのストーリー",
+    visualQa: {
+      region: "映像の品質確認",
+      heading: "映像チェック",
+      openPanel: "映像チェックパネルを開く",
+      closePanel: "パネルを閉じる",
+      description:
+        "保存済みの編集を出力し、時刻付きフレームと測定可能な問題を確認します。",
+      run: "保存済みの編集を確認",
+      cancel: "確認をキャンセル",
+      retry: "もう一度確認",
+      running: "保存済みの編集を確認しています… {progress}%",
+      stopping: "前の確認処理を終了しています…",
+      failed:
+        "映像チェックを完了できませんでした。保存済みの編集でもう一度お試しください。",
+      manualReview:
+        "暗いフレームや空白のフレームは目視で判断してください。意図した黒画面はエラーになりません。",
+      manual: "目視で確認",
+      noIssues:
+        "測定可能な問題はありません。映像の判断はコンタクトシートで確認してください。",
+      contactSheet: "時刻付きコンタクトシート",
+      locateIssue: "編集画面で {time} 付近を開く",
+      openSample: "編集画面で {time} のフレームを選択",
+      status: {
+        complete: "確認結果を表示できます",
+        incomplete: "測定可能な問題があります",
+        stale: "保存済みの編集が変わりました。もう一度確認してください。",
+      },
+      issues: {
+        region: "映像チェックの結果",
+        review: "このフレームを確認",
+        missingAsset: "メディアがないか読み込めません",
+        changedAsset: "保存後にメディアが変更されました",
+        unsupportedAsset: "このメディアは確認用に出力できません",
+        fontFailure: "タイトルのフォントまたは文字を読み込めません",
+        titleOverflow: "測定上、タイトルがフレームからはみ出しています",
+        suspectedBlank: "空白または黒のフレームの可能性があります",
+        staleRevision: "確認中に保存済みの編集が変更されました",
+      },
+    },
     direction: {
       examples:
         "例：「縦横比を保持; ゆっくりズームイン」。ほかに「主役」「静止」「水平パン」に対応しています。",

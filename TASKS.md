@@ -5,6 +5,25 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Current — M1 / F07 Visual QA
+
+Scope and evidence: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md)
+and [Visual QA validation](docs/validation-visual-qa.md). F01–F13 are a newly
+documented crosswalk; this is not a retroactive claim that those labels existed.
+
+- [x] Render the saved Composition revision to a unique private project cache;
+      verify synthetic MP4 frames, timestamps and source/output hashes.
+- [x] Report typed missing/changed/unsupported media, font/glyph failures and
+      measured title overflow; label suspected black/blank as manual review.
+- [x] Share the application path across Desktop, HTTP and CLI; let keyboard
+      users jump from a finding or contact-sheet frame to Edit time.
+- [x] Cover stale revision, cancel/retry, project switching, cache isolation,
+      non-mutating report polling and three-locale i18n.
+- [x] Run the applicable local gate matrix and record exact outcomes in the
+      [Visual QA validation record](docs/validation-visual-qa.md).
+- [ ] Manual: private-film aesthetics, display/projector readability, long/4K
+      performance and actual Resolve/NLE finishing remain separate gates.
+
 ## Creative Scene Platform — M1–M5 delivery queue
 
 Scope and acceptance: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
@@ -12,8 +31,8 @@ The F01–F13 labels are a planning crosswalk introduced by that roadmap; they d
 not retroactively rename completed project capabilities.
 
 - [x] **M1 / F07 — Visual QA and contact sheets.** A saved-revision implementation
-      exists in [draft PR #27](https://github.com/bynanci/open-film/pull/27);
-      resolve its integration conflicts with M2 before making it merge-ready.
+      is integrated with M2 in [PR #27](https://github.com/bynanci/open-film/pull/27);
+      published-head CI and workstation gates are tracked separately.
 - [x] **M2 / F04 — Native Caption Track.** Versioned Composition cues, transcript
       provenance, Edit lane/Inspector, MP4 burn-in and SRT/VTT output are implemented
       in [PR #26](https://github.com/bynanci/open-film/pull/26); CI and workstation
