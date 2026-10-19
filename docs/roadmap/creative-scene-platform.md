@@ -126,6 +126,9 @@ Edit shows caption cues on a lane measured against the same Composition duration
 used by visual clips. Its Inspector edits text/line breaks, start/end, font and
 safe-area margins. Transcript import uses the shared Application caption snapshot
 service and then the ordinary Composition command; stale snapshots are rejected.
+Shortening that would exclude a saved cue is rejected before it enters the save
+queue; users adjust or remove that cue explicitly. Temporary regeneration stages
+are checked after the complete edit so unchanged or extended films remain valid.
 The renderer uses the existing measured title rasterizer and FFmpeg overlay path.
 SRT/WebVTT serialization keeps exact cue times as a separate text export.
 

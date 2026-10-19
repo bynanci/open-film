@@ -365,6 +365,7 @@ export default {
       tab: "Captions",
       inspector: "Caption inspector",
       addCue: "Add cue",
+      defaultCueText: "New caption",
       track: "Caption track",
       trackLane: "{name} caption timeline",
       selectCue: "Select caption at {time}: {text}",

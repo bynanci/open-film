@@ -366,6 +366,7 @@ export default {
       tab: "字幕",
       inspector: "字幕インスペクター",
       addCue: "キューを追加",
+      defaultCueText: "新しい字幕",
       track: "字幕トラック",
       trackLane: "{name} の字幕タイムライン",
       selectCue: "{time} の字幕を選択：{text}",

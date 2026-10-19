@@ -593,7 +593,7 @@ function addCaptionCue() {
     id: crypto.randomUUID(),
     startMs: 0,
     endMs: Math.min(2_000, durationMs),
-    text: "",
+    text: t("editor.captions.defaultCueText"),
     source: { kind: "manual" as const },
     manualRevision: 0,
   };

@@ -41,9 +41,11 @@ This generated fixture verifies the renderer, timing gate and evidence path. It
 does not establish voice quality, CJK font design quality on another machine,
 physical-display readability, 4K performance or any downstream NLE behavior.
 
-## Test results
+## Initial local gate
 
-The final local candidate passed the required automated gates:
+The initial candidate `f5848ab41f5147164d5580fba77e44473bc25f69` passed these
+local automated gates. The pre-merge corrections and current candidate evidence
+are recorded below and in [PR #26](https://github.com/bynanci/open-film/pull/26).
 
 | Command                 | Result                                                                                                                                            |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -60,8 +62,35 @@ The final local candidate passed the required automated gates:
 The browser suite used the onboarding environment's Chromium executable. The
 focused UI regression imports saved segment captions, edits Traditional Chinese
 text and timing, font size and safe area, checks retained source locks and
-Undo/Redo, then closes and reopens the project. Exact-head CI remains pending
-until the candidate branch is pushed and a PR is opened.
+Undo/Redo, then closes and reopens the project.
+
+## Pre-merge review corrections
+
+An independent review reproduced a manual Add Cue failure: its empty initial
+text was rejected before the Inspector could edit it. New cues now start with
+localized nonempty text. The actual Traditional Chinese create/edit/reopen
+browser test failed with zero cues before the correction and passes afterward.
+All 11 caption browser regressions pass locally.
+
+Shortening a film could also preserve a tail caption outside the new duration,
+letting an optimistic command enter an unsaveable queue. The shared solver now
+rejects that edit before enqueueing with `timeline.captionRangeConflict` and
+localized guidance to adjust or remove the affected captions first. Authored
+text, timing and provenance are not silently clipped. Five application cases
+cover trim, speed, deletion, still duration and beat shortening: rejection leaves
+saved bytes and revision unchanged; explicit cue adjustment permits the edit,
+Undo/Redo and reopen. Two additional solver cases verify that intermediate beat
+regeneration does not reject captions when its completed duration is unchanged
+or extended. All seven cases were observed failing before their corrections.
+
+The corrected local candidate passes format, i18n (1,422 keys), lint,
+TypeScript/Vue type checks, all 183 unit/integration files (2,768 tests), build
+and official OpenTimelineIO interchange checks. Its 11 caption browser cases
+also pass. The complete 161-case browser gate and native-shell gate run in CI;
+their results must be checked on the final published head before merge.
+
+Current full-suite and native CI results are attached to the PR's current head;
+the initial results above do not stand in for checks on later commits.
 
 ## Manual gates
 

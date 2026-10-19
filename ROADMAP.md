@@ -33,6 +33,8 @@ See the [M1–M5 queue](TASKS.md#creative-scene-platform--m1m5-delivery-queue),
 [capability/acceptance roadmap](docs/roadmap/creative-scene-platform.md) and
 [native caption validation](docs/validation-native-caption-track.md). This
 candidate does not claim word-level alignment or workstation/NLE verification.
+Duration edits that would exclude a saved caption are rejected before autosave;
+adjust the affected cue first so authored text and timing remain explicit.
 
 ## Queued — M3–M5
 

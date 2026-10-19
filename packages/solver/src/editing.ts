@@ -329,13 +329,26 @@ function updateDuration(
   assets: MediaAsset[],
   reconcileOverlays = true,
 ): void {
-  document.composition.duration = Math.max(
+  const duration = Math.max(
     0,
     ...filmClips(document).map(
       (clip) => clip.timelineStart + clip.timelineDuration,
     ),
   );
-  finite(document.composition.duration, "Resulting timeline duration", 0);
+  finite(duration, "Resulting timeline duration", 0);
+  // Regeneration may temporarily shrink a slot before appending the remaining
+  // clips. Check captions with overlays once the complete edit is assembled.
+  if (
+    reconcileOverlays &&
+    document.composition.captionTracks?.some((track) =>
+      track.cues.some((cue) => cue.endMs > duration * 1000 + EPSILON),
+    )
+  )
+    throw new ApplicationError(
+      "timeline.captionRangeConflict",
+      "Shortening the edit would exclude saved captions. Adjust or delete the affected captions first, then retry.",
+    );
+  document.composition.duration = duration;
   if (!reconcileOverlays) return;
   for (const track of document.composition.tracks) {
     if (track.timing !== "overlay") continue;

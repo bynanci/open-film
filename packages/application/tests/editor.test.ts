@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CaptionTrack, MediaAsset } from "@openfilm/core";
-import type { TimelineCommand } from "@openfilm/solver";
+import { applyTimelineCommand, type TimelineCommand } from "@openfilm/solver";
 import {
   OpenFilmApplication,
   TimelineEditor,
@@ -165,6 +165,86 @@ async function fixture() {
 }
 
 describe("durable timeline editor", () => {
+  it.each<[string, TimelineCommand]>([
+    ["trim", { type: "trim", clipId: "video-clip", sourceIn: 1, sourceOut: 5 }],
+    ["speed", { type: "speed", clipId: "video-clip", speed: 2 }],
+    ["delete", { type: "delete", clipId: "photo-clip" }],
+    ["duration", { type: "duration", clipId: "photo-clip", duration: 2 }],
+    [
+      "regenerate",
+      { type: "regenerate-beat", beatId: "beat", mode: "shorten" },
+    ],
+  ])(
+    "rejects %s before enqueueing if it would exclude saved captions, then saves after an explicit cue edit",
+    async (_name, command) => {
+      const { app, editor, path } = await fixture();
+      const track: CaptionTrack = {
+        version: 1,
+        id: "tail-captions",
+        name: "Manual captions",
+        style: { version: 1, role: "subtitle" },
+        cues: [
+          {
+            version: 1,
+            id: "tail-cue",
+            startMs: 10_000,
+            endMs: 12_000,
+            text: "保留手動字幕",
+            source: { kind: "manual" },
+            manualRevision: 0,
+          },
+        ],
+      };
+      const saved = await editor.edit("timeline", {
+        baseRevision: editor.get("timeline").revision,
+        commands: [{ type: "caption.track.add", track }],
+      });
+      const bytes = await readFile(path, "utf8");
+      expect(() => applyTimelineCommand(saved, saved.assets, command)).toThrow(
+        /saved captions/iu,
+      );
+      await expect(
+        editor.edit("timeline", {
+          baseRevision: saved.revision,
+          commands: [command],
+        }),
+      ).rejects.toMatchObject({ code: "timeline.captionRangeConflict" });
+      expect(await readFile(path, "utf8")).toBe(bytes);
+      expect(editor.get("timeline").revision).toBe(saved.revision);
+      const adjusted = await editor.edit("timeline", {
+        baseRevision: saved.revision,
+        commands: [
+          {
+            type: "caption.cue.update",
+            trackId: track.id,
+            cueId: "tail-cue",
+            patch: { startMs: 1_000, endMs: 2_000 },
+          },
+          command,
+        ],
+      });
+      expect(adjusted.composition.duration).toBeLessThan(12);
+      expect(adjusted.composition.captionTracks?.[0]?.cues[0]).toMatchObject({
+        id: "tail-cue",
+        startMs: 1_000,
+        endMs: 2_000,
+        text: "保留手動字幕",
+        manualRevision: 1,
+      });
+      const undone = await editor.undo("timeline", adjusted.revision);
+      expect(undone.composition).toEqual(saved.composition);
+      const redone = await editor.redo("timeline", undone.revision);
+      expect(redone.composition).toEqual(adjusted.composition);
+      app.close();
+      applications.delete(app);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("timeline").composition).toEqual(
+        adjusted.composition,
+      );
+    },
+  );
+
   it("autosaves, undoes, redoes and reopens a versioned native caption track", async () => {
     const { app, editor, path } = await fixture();
     const initial = editor.get("timeline");

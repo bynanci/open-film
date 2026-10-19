@@ -322,6 +322,51 @@ test("Chromium decodes literal Unicode, blank lines and timestamp-looking text w
   expect(documentRequests).toEqual([]);
 });
 
+test("Edit creates a manual Traditional Chinese cue and reopens its saved text", async ({
+  page,
+  request,
+}) => {
+  const fixture = await seed("Manual caption workflow");
+  await initialLocale(page, "zh-TW");
+  await page.goto("/");
+  await openFilm(page, fixture.path, "zh-TW");
+  await navigate(page, "edit", "zh-TW");
+  await page.getByTestId("caption-add-track").click();
+  await page.getByTestId("caption-inspector-tab").click();
+  await page
+    .getByRole("button", {
+      name: uiText("zh-TW", "editor.captions.addCue"),
+      exact: true,
+    })
+    .click();
+  await expect(page.getByTestId("caption-cue")).toHaveCount(1);
+  const text = page.getByTestId("caption-text");
+  await expect(text).toHaveValue("新字幕");
+  await text.fill("手動字幕\n第二行");
+  await text.press("Tab");
+  await expect
+    .poll(async () => {
+      const saved = await get<{ composition: Composition }>(
+        request,
+        `/compositions/${fixture.composition.id}/editor`,
+      );
+      return saved.composition.captionTracks?.[0]?.cues[0];
+    })
+    .toMatchObject({
+      text: "手動字幕\n第二行",
+      source: { kind: "manual" },
+      manualRevision: 1,
+    });
+  await closeProject();
+  await page.reload();
+  await openFilm(page, fixture.path, "zh-TW");
+  await navigate(page, "edit", "zh-TW");
+  await page.getByTestId("caption-cue").first().click();
+  await expect(page.getByTestId("caption-text")).toHaveValue(
+    "手動字幕\n第二行",
+  );
+});
+
 test("Edit imports segment-timed captions, edits the native track, and reopens the saved cue", async ({
   page,
   request,

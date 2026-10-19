@@ -337,6 +337,7 @@ export default {
       tab: "字幕",
       inspector: "字幕檢視器",
       addCue: "新增字幕段落",
+      defaultCueText: "新字幕",
       track: "字幕軌",
       trackLane: "{name} 字幕時間軸",
       selectCue: "選取 {time} 的字幕：{text}",

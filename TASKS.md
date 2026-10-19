@@ -12,10 +12,13 @@ The F01–F13 labels are a planning crosswalk introduced by that roadmap; they d
 not retroactively rename completed project capabilities.
 
 - [x] **M1 / F07 — Visual QA and contact sheets.** A saved-revision implementation
-      exists on `codex/m1-f07-visual-qa`; PR/CI integration is tracked separately.
+      exists in [draft PR #27](https://github.com/bynanci/open-film/pull/27);
+      resolve its integration conflicts with M2 before making it merge-ready.
 - [x] **M2 / F04 — Native Caption Track.** Versioned Composition cues, transcript
       provenance, Edit lane/Inspector, MP4 burn-in and SRT/VTT output are implemented
-      in this candidate; exact-head CI and workstation gates remain pending.
+      in [PR #26](https://github.com/bynanci/open-film/pull/26); CI and workstation
+      gates are tracked separately. Shortening rejects before enqueueing when it
+      would exclude a saved caption; users adjust affected cues explicitly.
 - [ ] **M3 / F03 — Dynamic scene motion.** Define bounded reusable keyframe
       semantics over existing clip-local motion; verify arbitrary-seek preview/render
       parity, locks, Undo/Redo, autosave/reopen and interchange warnings.

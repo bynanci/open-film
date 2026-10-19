@@ -73,6 +73,54 @@ const edit = (value: EditorDocument, command: TimelineCommand) =>
   applyTimelineCommand(value, [lockedSource], command);
 
 describe("native caption editing commands", () => {
+  it.each([4, 6])(
+    "preserves tail captions when regeneration finishes at %s seconds",
+    (targetDuration) => {
+      const initial = document();
+      initial.composition.duration = 4;
+      initial.composition.tracks[0]!.clips[0]!.locked = false;
+      initial.composition.tracks[0]!.clips[0]!.beatId = "beat";
+      initial.story.targetDuration = targetDuration;
+      initial.story.beats = [
+        {
+          id: "beat",
+          title: "Beat",
+          targetDuration,
+          candidateAssetIds: ["photo-a", "photo-b"],
+          selectedAssetIds: ["photo-a", "photo-b"],
+        },
+      ];
+      const assets: MediaAsset[] = [
+        { ...lockedSource, state: {} },
+        ...["photo-a", "photo-b"].map((id): MediaAsset => ({
+          id,
+          name: id,
+          uri: `file:///${id}.jpg`,
+          mediaType: "image",
+          tags: [],
+          state: {},
+          metadata: {},
+        })),
+      ];
+      const withCaptions = applyTimelineCommand(initial, assets, {
+        type: "caption.track.add",
+        track: { ...track, cues: [{ ...cue, startMs: 3_000, endMs: 4_000 }] },
+      });
+      const changed = applyTimelineCommand(withCaptions, assets, {
+        type: "regenerate-beat",
+        beatId: "beat",
+        mode: "regenerate",
+      });
+      expect(changed.composition.duration).toBe(targetDuration);
+      expect(
+        changed.composition.tracks[0]!.clips.map((clip) => clip.assetId),
+      ).toEqual(["photo-a", "photo-b"]);
+      expect(changed.composition.captionTracks).toEqual(
+        withCaptions.composition.captionTracks,
+      );
+    },
+  );
+
   it("adds and revises captions with stable IDs without editing locked source clips", () => {
     const initial = document();
     const added = edit(initial, { type: "caption.track.add", track });
