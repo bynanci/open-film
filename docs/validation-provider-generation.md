@@ -16,7 +16,11 @@ or unfinished test result.
   source hash/bounds and relocation; actual Resolve import remains unverified.
 - New focused application/provider/API/component regressions: 5 files / 7 tests.
 - Focused browser regressions: normal, delayed and lost import acknowledgments
-  all passed. Delayed import blocks Undo/navigation; retry creates one source and
+  all passed. The existing photo viewport test also passes with its original
+  aspect/width assertions plus a frame-containment check, after removing a
+  height-only CSS clamp found by the first full browser run (166 passed, 1 failed).
+  Generation lives in the Sound Inspector and respects narrow-column bounds.
+  Delayed import blocks Undo/navigation; retry creates one source and
   one timeline overlay. Full browser results are recorded in the PR report.
 - Independent review corrected exact source identity, catalog revision/history
   handoff, pending import ownership/navigation and restart recovery. Final

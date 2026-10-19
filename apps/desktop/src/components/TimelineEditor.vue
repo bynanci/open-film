@@ -1831,14 +1831,7 @@ onBeforeUnmount(() => {
         >
           {{ t("editor.fit.title") }}
         </button>
-        <button
-          class="editor-button"
-          type="button"
-          :aria-expanded="audioGenerationOpen"
-          @click="audioGenerationOpen = !audioGenerationOpen"
-        >
-          {{ t("editor.audioGeneration.title") }}
-        </button>
+
         <button
           class="editor-button"
           :aria-expanded="audioQualityOpen"
@@ -1872,20 +1865,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
-    <AudioGenerationPanel
-      v-if="audioGenerationOpen"
-      :project-id="projectId"
-      :composition-id="compositionId"
-      :revision="state?.revision ?? ''"
-      :disabled="
-        hasPending ||
-        historyBusy ||
-        directionBlocked ||
-        graphicAgentBusy ||
-        graphicAgentPending
-      "
-      @import="importGeneratedAudio"
-    />
     <AudioQualityPanel
       v-if="audioQualityOpen"
       id="audio-quality-panel"
@@ -3392,22 +3371,45 @@ onBeforeUnmount(() => {
               <SourceDetails :asset="selectedAsset" compact />
             </details>
           </template>
-          <SoundtrackPanel
-            v-else-if="inspector === 'sound'"
-            :composition="state.composition"
-            :assets="state.assets"
-            :selected-clip="selectedClip"
-            :busy="historyBusy"
-            :active="active && editMode === 'story'"
-            :source-version="sourceVersion"
-            @command="command"
-            @select="
-              (clip) => {
-                chooseClip(clip);
-                inspector = 'sound';
-              }
-            "
-          />
+          <template v-else-if="inspector === 'sound'">
+            <button
+              class="editor-button"
+              type="button"
+              :aria-expanded="audioGenerationOpen"
+              @click="audioGenerationOpen = !audioGenerationOpen"
+            >
+              {{ t("editor.audioGeneration.title") }}
+            </button>
+            <AudioGenerationPanel
+              v-if="audioGenerationOpen"
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :revision="state?.revision ?? ''"
+              :disabled="
+                hasPending ||
+                historyBusy ||
+                directionBlocked ||
+                graphicAgentBusy ||
+                graphicAgentPending
+              "
+              @import="importGeneratedAudio"
+            />
+            <SoundtrackPanel
+              :composition="state.composition"
+              :assets="state.assets"
+              :selected-clip="selectedClip"
+              :busy="historyBusy"
+              :active="active && editMode === 'story'"
+              :source-version="sourceVersion"
+              @command="command"
+              @select="
+                (clip) => {
+                  chooseClip(clip);
+                  inspector = 'sound';
+                }
+              "
+            />
+          </template>
           <template v-else-if="inspector === 'captions'">
             <div class="editor-inspector-title">
               <h3>{{ t("editor.captions.inspector") }}</h3>

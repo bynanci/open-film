@@ -21,7 +21,8 @@ only guarantees that a late result cannot import or mutate this project.
 
 ## Review lifecycle
 
-1. Enter 1–1000 characters, choose provider, review destination/cost and consent.
+1. In Edit → Sound, open Generate audio. Enter 1–1000 characters, choose provider,
+   review destination/cost and consent.
 2. Generate a bounded private WAV preview. Cancel stops local ownership; retry
    creates a fresh receipt. No timeline or library insertion occurs yet.
 3. Audition, inspect prompt/output hashes and explicitly Accept.

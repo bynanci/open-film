@@ -229,17 +229,33 @@ function importAudio() {
 <style scoped>
 .audio-generation-panel {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  gap: var(--of-space-2);
+  padding: var(--of-space-3);
+  border: 1px solid var(--editor-border-soft);
+  border-radius: var(--of-radius-sm);
   max-width: 100%;
   max-height: 28rem;
   overflow: auto;
 }
 label {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
-  gap: var(--space-1);
+  gap: var(--of-space-1);
+}
+select,
+textarea,
+input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+p {
+  overflow-wrap: anywhere;
 }
 textarea {
   min-height: 5rem;

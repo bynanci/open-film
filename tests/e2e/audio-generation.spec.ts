@@ -25,6 +25,7 @@ for (const transport of ["normal", "held", "lost"] as const) {
       await initialLocale(page);
       await page.goto("/");
       await navigate(page, "edit");
+      await page.getByRole("button", { name: "Sound", exact: true }).click();
       await page
         .getByRole("button", { name: "Generate audio", exact: true })
         .click();
@@ -46,6 +47,13 @@ for (const transport of ["normal", "held", "lost"] as const) {
         "src",
         /audio-generation/,
       );
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+          ),
+        )
+        .toBe(true);
       await expect(
         panel.getByRole("button", { name: "Import Timeline", exact: true }),
       ).toBeDisabled();
