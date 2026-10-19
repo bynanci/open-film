@@ -1267,6 +1267,7 @@ describe("actual workspace readiness guards", () => {
         {},
         () => true,
       );
+      const abortCaptionImport = vi.fn();
       await turn();
       expect(h.visibilityListeners.size).toBe(1);
       const cleanup = actualFunction(
@@ -1280,6 +1281,8 @@ describe("actual workspace readiness guards", () => {
           cancelNativeEditReady: cancel,
           nativeDisposed: false,
           nativeEditDisposed: false,
+          captionImportController: { abort: abortCaptionImport },
+          captionImportGeneration: 0,
           nativeBootGeneration: 1,
           nativeEditGeneration: 1,
           poll: undefined,
@@ -1304,6 +1307,8 @@ describe("actual workspace readiness guards", () => {
         },
       );
       cleanup();
+      if (workspace === "editor")
+        expect(abortCaptionImport).toHaveBeenCalledTimes(1);
       expect(h.visibilityListeners.size).toBe(0);
       h.visible();
       expect(h.frames).toHaveLength(0);

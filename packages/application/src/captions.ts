@@ -17,7 +17,9 @@ import {
   frameAlignedDuration,
   generateCompositionCaptions,
   migrateProject,
+  type MappedCaptionCue,
   type CaptionCue,
+  type CaptionTrack,
   type CaptionFormat,
   type CaptionIssue,
   type CaptionSource,
@@ -48,6 +50,15 @@ export interface CaptionPrepareInput {
   compositionId: string;
   trackId: string;
   baseRevision: string;
+}
+
+export interface CaptionNativeTrackInput {
+  projectId: string;
+  snapshotId: string;
+  name: string;
+  language?: string;
+  trackId?: string;
+  requestId?: string;
 }
 
 export interface CaptionSnapshotSource {
@@ -88,7 +99,7 @@ interface CaptionSnapshot {
   trackId: string;
   createdAt: string;
   sources: CaptionSnapshotSource[];
-  cues: CaptionCue[];
+  cues: MappedCaptionCue[];
   issues: CaptionIssue[];
 }
 
@@ -832,6 +843,127 @@ export class CaptionService {
     const snapshot = await this.snapshot(id, page.projectId, runtime.signal);
     const status = await this.status(snapshot, runtime.signal);
     return this.page(snapshot, page, status.reasons);
+  }
+
+  /** Copy a verified segment-mapped preview into the saved Composition. */
+  async addNativeTrack(
+    input: CaptionNativeTrackInput,
+    options: {
+      signal?: AbortSignal;
+      editor?: TimelineEditor;
+    } = {},
+  ) {
+    object(input, [
+      "projectId",
+      "snapshotId",
+      "name",
+      "language",
+      "trackId",
+      "requestId",
+    ]);
+    identifier(input.projectId, "projectId");
+    identifier(input.snapshotId, "snapshotId");
+    identifier(input.name, "name");
+    if (input.name.length > 256) invalid("Caption track name is too long.");
+    if (input.language !== undefined) identifier(input.language, "language");
+    if (input.trackId !== undefined) identifier(input.trackId, "trackId");
+    if (input.requestId !== undefined) identifier(input.requestId, "requestId");
+    this.project(input.projectId);
+    checkAbort(options.signal);
+    const snapshot = await this.snapshot(
+      input.snapshotId,
+      input.projectId,
+      options.signal,
+    );
+    if (
+      !snapshot.cues.length ||
+      snapshot.issues.some((issue) => issue.severity === "error")
+    )
+      throw new ApplicationError(
+        "captions.unavailable",
+        "Resolve caption errors and provide at least one usable cue before adding a track.",
+        409,
+      );
+    const status = await this.status(snapshot, options.signal);
+    if (
+      status.reasons.length ||
+      !this.compositionCurrent({
+        projectId: snapshot.projectId,
+        compositionId: snapshot.compositionId,
+        compositionRevision: snapshot.compositionRevision,
+        frameRate: snapshot.frameRate,
+      })
+    )
+      throw new ApplicationError(
+        "captions.stale",
+        "The preview is outdated. Generate it again before adding a native caption track.",
+        409,
+      );
+    checkAbort(options.signal);
+    const cues: CaptionCue[] = snapshot.cues.map((cue) => {
+      const warnings: CaptionCue["warnings"] = [];
+      if (
+        snapshot.issues.some(
+          (issue) =>
+            issue.code === "TIMING_ESTIMATED" &&
+            issue.clipId === cue.clipId &&
+            issue.segmentId === cue.segmentId,
+        )
+      )
+        warnings.push("timing-estimated");
+      if (
+        snapshot.issues.some(
+          (issue) =>
+            issue.code === "ALIGNMENT_STALE" &&
+            issue.clipId === cue.clipId &&
+            issue.segmentId === cue.segmentId,
+        )
+      )
+        warnings.push("alignment-stale");
+      return {
+        version: 1,
+        id: randomUUID(),
+        startMs: cue.startMs,
+        endMs: cue.endMs,
+        text: cue.text,
+        source: {
+          kind: "transcript",
+          assetId: cue.assetId,
+          transcriptId: cue.transcriptId,
+          transcriptRevisionId: cue.transcriptRevisionId,
+          segmentId: cue.segmentId,
+          clipId: cue.clipId,
+          alignment: "segment",
+          sourceIn: cue.sourceIn,
+          sourceOut: cue.sourceOut,
+        },
+        ...(warnings.length ? { warnings } : {}),
+        manualRevision: 0,
+      };
+    });
+    const track: CaptionTrack = {
+      version: 1,
+      id: input.trackId ?? randomUUID(),
+      name: input.name,
+      ...(input.language ? { language: input.language } : {}),
+      style: {
+        version: 1,
+        role: "subtitle",
+        fontFamily: "Noto Sans CJK TC",
+        background: "scrim",
+        position: "bottom",
+        align: "center",
+        safeArea: { left: 0.08, right: 0.08, top: 0.08, bottom: 0.12 },
+      },
+      cues,
+    };
+    checkAbort(options.signal);
+    const editor = options.editor ?? new TimelineEditor(this.application);
+    return editor.edit(snapshot.compositionId, {
+      baseRevision: snapshot.compositionRevision,
+      ...(input.requestId ? { requestId: input.requestId } : {}),
+      commands: [{ type: "caption.track.add", track }],
+    });
   }
 
   async export(

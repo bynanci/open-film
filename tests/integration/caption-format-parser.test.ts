@@ -2,11 +2,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { CaptionCue } from "@openfilm/core";
+import type { MappedCaptionCue } from "@openfilm/core";
 import { serializeCaptions } from "@openfilm/exporters";
 import { runProcess } from "@openfilm/media";
 
-function cue(startMs: number, endMs: number, text: string): CaptionCue {
+function cue(startMs: number, endMs: number, text: string): MappedCaptionCue {
   return {
     id: `cue-${startMs}`,
     startMs,

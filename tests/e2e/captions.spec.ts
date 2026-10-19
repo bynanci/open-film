@@ -9,7 +9,11 @@ import {
   type Page,
 } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
-import type { CaptionCue, Composition, OpenFilmProject } from "@openfilm/core";
+import type {
+  MappedCaptionCue,
+  Composition,
+  OpenFilmProject,
+} from "@openfilm/core";
 import { serializeCaptions } from "@openfilm/exporters";
 import { runProcess } from "@openfilm/media";
 import axe from "axe-core";
@@ -293,7 +297,7 @@ test("Chromium decodes literal Unicode, blank lines and timestamp-looking text w
   expect(documentRequests).toEqual([]);
   const literal =
     "十和田湖 & memories <literal>\r\n次の行\n\n00:00:05.000 --> 00:00:06.000\n🎬";
-  const cue: CaptionCue = {
+  const cue: MappedCaptionCue = {
     id: "literal",
     startMs: 1,
     endMs: 999,
@@ -316,6 +320,110 @@ test("Chromium decodes literal Unicode, blank lines and timestamp-looking text w
   ]);
   expect(page.url()).toBe("about:blank");
   expect(documentRequests).toEqual([]);
+});
+
+test("Edit imports segment-timed captions, edits the native track, and reopens the saved cue", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  const fixture = await seed("Native caption edit workflow");
+  await initialLocale(page);
+  await page.goto("/");
+  await openFilm(page, fixture.path);
+  await navigate(page, "edit");
+  await expect(page.getByTestId("caption-add-track")).toBeVisible();
+  await expect(page.getByTestId("caption-import-track")).toBeVisible();
+  await page.getByTestId("caption-source-track").selectOption("dialogue");
+  const imported = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/captions/native-track" &&
+      response.request().method() === "POST",
+  );
+  await page.getByTestId("caption-import-track").click();
+  const importResponse = await imported;
+  expect(importResponse.ok(), await importResponse.text()).toBe(true);
+  await expect(page.getByTestId("caption-cue")).toHaveCount(2);
+  await page.getByTestId("caption-inspector-tab").click();
+  const text = page.getByTestId("caption-text");
+  await expect(text).toBeVisible();
+  await text.fill("繁體字幕\n第二行");
+  await text.press("Tab");
+  const start = page.getByTestId("caption-start");
+  await start.fill("700");
+  await start.press("Tab");
+  const end = page.getByTestId("caption-end");
+  await end.fill("1700");
+  await end.press("Tab");
+  await page.getByTestId("caption-font-size").fill("34");
+  await page.getByTestId("caption-font-size").press("Tab");
+  await page.getByTestId("caption-safe-bottom").fill("18");
+  await page.getByTestId("caption-safe-bottom").press("Tab");
+
+  const readSaved = () =>
+    get<{
+      composition: Composition;
+      canUndo: boolean;
+      canRedo: boolean;
+    }>(request, `/compositions/${fixture.composition.id}/editor`);
+  await expect
+    .poll(async () => {
+      const saved = await readSaved();
+      const track = saved.composition.captionTracks?.[0];
+      const cue = track?.cues[0];
+      return {
+        text: cue?.text,
+        startMs: cue?.startMs,
+        endMs: cue?.endMs,
+        manualRevision: cue?.manualRevision,
+        alignment:
+          cue?.source.kind === "transcript" ? cue.source.alignment : null,
+        fontSize: track?.style.fontSize,
+        bottom: track?.style.safeArea?.bottom,
+      };
+    })
+    .toEqual({
+      text: "繁體字幕\n第二行",
+      startMs: 700,
+      endMs: 1700,
+      manualRevision: 3,
+      alignment: "segment",
+      fontSize: 34,
+      bottom: 0.18,
+    });
+  const beforeUndo = await readSaved();
+  expect(beforeUndo.composition.tracks[0]?.clips[0]?.locked).toBe(true);
+  await page
+    .getByRole("button", { name: uiText("en-US", "editor.undoLabel") })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await readSaved()).composition.captionTracks?.[0]?.style.safeArea
+          ?.bottom,
+    )
+    .toBe(0.12);
+  await page
+    .getByRole("button", { name: uiText("en-US", "editor.redoLabel") })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await readSaved()).composition.captionTracks?.[0]?.style.safeArea
+          ?.bottom,
+    )
+    .toBe(0.18);
+
+  await closeProject();
+  await page.reload();
+  await openFilm(page, fixture.path);
+  await navigate(page, "edit");
+  await page.getByTestId("caption-cue").first().click();
+  await page.getByTestId("caption-inspector-tab").click();
+  await expect(page.getByTestId("caption-text")).toHaveValue(
+    "繁體字幕\n第二行",
+  );
+  await expect(page.getByTestId("caption-safe-bottom")).toHaveValue("18");
 });
 
 test("corrected transcript exports mapped captions with warnings, independent parsers and immutable source evidence", async ({

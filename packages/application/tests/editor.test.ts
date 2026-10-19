@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MediaAsset } from "@openfilm/core";
+import type { CaptionTrack, MediaAsset } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import {
   OpenFilmApplication,
@@ -165,6 +165,80 @@ async function fixture() {
 }
 
 describe("durable timeline editor", () => {
+  it("autosaves, undoes, redoes and reopens a versioned native caption track", async () => {
+    const { app, editor, path } = await fixture();
+    const initial = editor.get("timeline");
+    const track: CaptionTrack = {
+      version: 1,
+      id: "captions-zh-tw",
+      name: "繁體中文",
+      language: "zh-TW",
+      style: {
+        version: 1,
+        role: "subtitle",
+        fontFamily: "Noto Sans CJK TC",
+        safeArea: { left: 0.08, right: 0.08, top: 0.08, bottom: 0.12 },
+      },
+      cues: [],
+    };
+    const saved = await editor.edit("timeline", {
+      baseRevision: initial.revision,
+      requestId: "caption-track-and-cue",
+      commands: [
+        { type: "caption.track.add", track },
+        {
+          type: "caption.cue.add",
+          trackId: track.id,
+          cue: {
+            version: 1,
+            id: "cue-1",
+            startMs: 1_000,
+            endMs: 2_500,
+            text: "原始字幕",
+            source: { kind: "manual" },
+            manualRevision: 0,
+          },
+        },
+        {
+          type: "caption.cue.update",
+          trackId: track.id,
+          cueId: "cue-1",
+          patch: { text: "手動修訂\n繁體字幕", startMs: 1_250 },
+        },
+        {
+          type: "caption.track.style",
+          trackId: track.id,
+          style: { ...track.style, fontSize: 52 },
+        },
+      ],
+    });
+    expect(saved.composition.captionTracks?.[0]?.cues[0]).toMatchObject({
+      id: "cue-1",
+      startMs: 1_250,
+      endMs: 2_500,
+      text: "手動修訂\n繁體字幕",
+      manualRevision: 1,
+      source: { kind: "manual" },
+    });
+    expect(saved.composition.captionTracks?.[0]?.style.fontSize).toBe(52);
+    expect(JSON.parse(await readFile(path, "utf8")).schemaVersion).toBe(
+      "1.0.0",
+    );
+    const undone = await editor.undo("timeline", saved.revision);
+    expect(undone.composition.captionTracks).toBeUndefined();
+    const redone = await editor.redo("timeline", undone.revision);
+    expect(redone.composition.captionTracks).toEqual(
+      saved.composition.captionTracks,
+    );
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(app.directory);
+    applications.add(reopened);
+    expect(
+      new TimelineEditor(reopened).get("timeline").composition.captionTracks,
+    ).toEqual(saved.composition.captionTracks);
+  });
+
   it("saves all manual fields in the selected story and timeline and reopens a real SQLite project", async () => {
     const { app, editor, path } = await fixture();
     const initial = editor.get("timeline");

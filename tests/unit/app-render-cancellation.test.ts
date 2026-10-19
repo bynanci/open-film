@@ -99,6 +99,7 @@ function host() {
   const analysisRecovery = ref<Record<string, AnalysisJobRecoveryState>>({});
   const refreshes = { assets: 0, project: 0 };
   const outputQuality = ref<"standard" | "high-detail">("standard");
+  const outputCaptionTrackId = ref<string | null>(null);
   const submissions: { path: string; body: unknown }[] = [];
   const dependencies = {
     api: {
@@ -120,6 +121,7 @@ function host() {
     activeComposition: ref({ id: "composition" }),
     lookOverride: ref<FilmLook | undefined>(undefined),
     outputQuality,
+    outputCaptionTrackId,
     editSerial: 0,
     post: (path: string, body: unknown) => {
       submissions.push({ path, body });

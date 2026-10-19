@@ -159,6 +159,12 @@ describe("local CJK title raster", () => {
         ...input,
         style: { ...input.style, bottomSafeMargin: 0.2 },
       }),
+    ).toBe(key);
+    expect(
+      titleOverlayCacheKey({
+        ...input,
+        style: { ...input.style, safeArea: { bottom: 0.2 } },
+      }),
     ).not.toBe(key);
     expect(
       titleOverlayCacheKey({ ...input, style: { ...input.style, fadeOut: 1 } }),

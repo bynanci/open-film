@@ -2,6 +2,7 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
@@ -21,6 +22,8 @@ import {
   type StoryBeat,
   type Track,
   type FilmLook,
+  type CaptionCue,
+  type CaptionTrack,
 } from "@openfilm/core";
 import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
@@ -72,6 +75,17 @@ export type TimelineCommand =
   | { type: "delete"; clipId: string }
   | { type: "replace"; clipId: string; assetId: string }
   | { type: "lock"; clipId: string; locked: boolean }
+  | { type: "caption.track.add"; track: CaptionTrack }
+  | { type: "caption.track.remove"; trackId: string }
+  | { type: "caption.track.style"; trackId: string; style: TitleStyle }
+  | { type: "caption.cue.add"; trackId: string; cue: CaptionCue }
+  | {
+      type: "caption.cue.update";
+      trackId: string;
+      cueId: string;
+      patch: { text?: string; startMs?: number; endMs?: number };
+    }
+  | { type: "caption.cue.delete"; trackId: string; cueId: string }
   | {
       type: "beat";
       beatId: string;
@@ -564,6 +578,92 @@ function applyLookCommand(
   return next;
 }
 
+type CaptionTimelineCommand = Extract<
+  TimelineCommand,
+  { type: `caption.${string}` }
+>;
+
+function isCaptionCommand(
+  command: TimelineCommand,
+): command is CaptionTimelineCommand {
+  return command.type.startsWith("caption.");
+}
+
+function captionTrackById(
+  tracks: CaptionTrack[],
+  trackId: string,
+): CaptionTrack {
+  const track = tracks.find((item) => item.id === trackId);
+  if (!track) fail(`Caption track "${trackId}" was not found.`);
+  return track;
+}
+
+function commitCaptionTracks(
+  next: EditorDocument,
+  tracks: CaptionTrack[],
+): EditorDocument {
+  const composition = structuredClone(next.composition);
+  if (tracks.length) composition.captionTracks = tracks;
+  else delete composition.captionTracks;
+  try {
+    next.composition = validateComposition(composition);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "Caption track is invalid.");
+  }
+  return next;
+}
+
+function applyCaptionCommand(
+  next: EditorDocument,
+  command: CaptionTimelineCommand,
+): EditorDocument {
+  const tracks = structuredClone(next.composition.captionTracks ?? []);
+  if (command.type === "caption.track.add") {
+    tracks.push(structuredClone(command.track));
+    return commitCaptionTracks(next, tracks);
+  }
+  if (command.type === "caption.track.remove") {
+    const index = tracks.findIndex((item) => item.id === command.trackId);
+    if (index < 0) fail(`Caption track "${command.trackId}" was not found.`);
+    tracks.splice(index, 1);
+    return commitCaptionTracks(next, tracks);
+  }
+  const track = captionTrackById(tracks, command.trackId);
+  if (command.type === "caption.track.style") {
+    const style = validateTitleStyle(command.style);
+    if (style.role !== "subtitle")
+      fail("Caption styling requires the subtitle role.");
+    track.style = style;
+    return commitCaptionTracks(next, tracks);
+  }
+  if (command.type === "caption.cue.add") {
+    track.cues.push(structuredClone(command.cue));
+    track.cues.sort((first, second) => first.startMs - second.startMs);
+    return commitCaptionTracks(next, tracks);
+  }
+  if (command.type === "caption.cue.delete") {
+    const index = track.cues.findIndex((item) => item.id === command.cueId);
+    if (index < 0) fail(`Caption cue "${command.cueId}" was not found.`);
+    track.cues.splice(index, 1);
+    return commitCaptionTracks(next, tracks);
+  }
+  const cue = track.cues.find((item) => item.id === command.cueId);
+  if (!cue) fail(`Caption cue "${command.cueId}" was not found.`);
+  const fields = Object.keys(command.patch);
+  if (
+    !fields.length ||
+    fields.some((field) => !["text", "startMs", "endMs"].includes(field))
+  )
+    fail("Caption cue edits require text, startMs or endMs.");
+  if (Object.hasOwn(command.patch, "text")) cue.text = command.patch.text!;
+  if (Object.hasOwn(command.patch, "startMs"))
+    cue.startMs = command.patch.startMs!;
+  if (Object.hasOwn(command.patch, "endMs")) cue.endMs = command.patch.endMs!;
+  cue.manualRevision += 1;
+  track.cues.sort((first, second) => first.startMs - second.startMs);
+  return commitCaptionTracks(next, tracks);
+}
+
 /** Applies one edit to a detached snapshot; undo history can retain either input. */
 export function applyTimelineCommand(
   document: EditorDocument,
@@ -572,6 +672,7 @@ export function applyTimelineCommand(
 ): EditorDocument {
   const next = structuredClone(document);
   if (command.type === "look") return applyLookCommand(next, assets, command);
+  if (isCaptionCommand(command)) return applyCaptionCommand(next, command);
   if (command.type === "audio.add") {
     if (
       !command.clipId.trim() ||

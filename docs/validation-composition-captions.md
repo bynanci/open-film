@@ -1,5 +1,10 @@
 # Composition-caption validation
 
+The transcript-mapped SRT/WebVTT workflow remains covered here. The saved
+Composition CaptionTrack, Edit inspector, and MP4 burn-in added in M2 / F04 have
+their own regression matrix and synthetic FFmpeg evidence in
+[validation-native-caption-track.md](validation-native-caption-track.md).
+
 The slice starts from OpenFilm main
 `34b6ff093294f97061dfb0ecb270413a52b6b7ee` on branch
 `codex/composition-aware-captions`. It does not include or modify the separate

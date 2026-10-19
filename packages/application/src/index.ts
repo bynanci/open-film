@@ -170,6 +170,8 @@ export interface FilmRenderOptions {
   onProgress?: (progress: number) => void;
   lookOverride?: FilmLook | null;
   quality?: RenderQuality;
+  /** Render one saved native caption language; omitted selects the first. */
+  captionTrackId?: string | null;
 }
 export interface ImportResult {
   job: Job;
@@ -1578,6 +1580,7 @@ export class OpenFilmApplication {
           project: projectEvidence,
           lookOverride,
           quality,
+          captionTrackId: options.captionTrackId,
           onProgress: (progress) => {
             const previous = job.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));

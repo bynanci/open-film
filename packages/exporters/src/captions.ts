@@ -3,7 +3,7 @@ import {
   ApplicationError,
   isCaptionTextValid,
   isSrtCaptionTextSupported,
-  type CaptionCue,
+  type MappedCaptionCue,
   type CaptionFormat,
 } from "@openfilm/core";
 
@@ -12,6 +12,11 @@ export interface CaptionExportResult {
   content: string;
   mediaType: string;
 }
+
+export type CaptionExportCue = Pick<
+  MappedCaptionCue,
+  "id" | "startMs" | "endMs" | "text"
+>;
 
 function timestamp(milliseconds: number, separator: "," | "."): string {
   const seconds = Math.floor(milliseconds / 1000);
@@ -54,7 +59,7 @@ function payload(text: string, format: CaptionFormat): string {
 /** Serialize already mapped cues, with independent input validation at the adapter boundary. */
 export function serializeCaptions(
   format: CaptionFormat,
-  cues: CaptionCue[],
+  cues: CaptionExportCue[],
 ): CaptionExportResult {
   if (!["srt", "vtt"].includes(format))
     throw new Error("Unsupported caption format.");

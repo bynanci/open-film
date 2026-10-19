@@ -250,6 +250,58 @@ export function useTimelineEditor(
       fail(cause);
     }
   }
+  async function addNativeCaptionTrack(
+    input: {
+      projectId: string;
+      snapshotId: string;
+      name: string;
+      language?: string;
+      trackId: string;
+      requestId: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (historyRequest) await historyRequest;
+    if (disposed || !state.value || historyBusy.value) return false;
+    historyBusy.value = true;
+    try {
+      if (!(await flushCommands()) || !state.value) return false;
+      if (state.value.composition.id !== compositionId) return false;
+      status.value = "saving";
+      reportNotice("");
+      const saved = await api.addNativeCaptionTrack(input, signal);
+      if (disposed) return false;
+      if (saved.composition.id !== compositionId)
+        throw new ApiError("The caption track belongs to another edit.", 409, {
+          code: "captions.stale",
+        });
+      if (timer) clearTimeout(timer);
+      pending = [];
+      batch = null;
+      publish(saved);
+      retainDraft();
+      edited();
+      status.value = "saved";
+      reportNotice("");
+      return true;
+    } catch (cause) {
+      if (!disposed) {
+        fail(cause);
+        // A network response may be lost after the server has committed. Reload
+        // the Composition so retrying never duplicates or hides the saved track.
+        try {
+          const saved = await api.editor(compositionId);
+          if (!disposed && saved.composition.id === compositionId)
+            publish(saved);
+        } catch {
+          /* Keep the original error and its recovery draft. */
+        }
+      }
+      return false;
+    } finally {
+      historyBusy.value = false;
+    }
+  }
   function history(direction: "undo" | "redo"): Promise<boolean> {
     if (historyRequest) return historyRequest;
     historyBusy.value = true;
@@ -340,6 +392,7 @@ export function useTimelineEditor(
     flush,
     history,
     reapplyDraft,
+    addNativeCaptionTrack,
     discardDraft,
     downloadDraft,
     load,

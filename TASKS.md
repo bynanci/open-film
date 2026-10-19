@@ -5,6 +5,31 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Creative Scene Platform — M1–M5 delivery queue
+
+Scope and acceptance: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
+The F01–F13 labels are a planning crosswalk introduced by that roadmap; they do
+not retroactively rename completed project capabilities.
+
+- [x] **M1 / F07 — Visual QA and contact sheets.** A saved-revision implementation
+      exists on `codex/m1-f07-visual-qa`; PR/CI integration is tracked separately.
+- [x] **M2 / F04 — Native Caption Track.** Versioned Composition cues, transcript
+      provenance, Edit lane/Inspector, MP4 burn-in and SRT/VTT output are implemented
+      in this candidate; exact-head CI and workstation gates remain pending.
+- [ ] **M3 / F03 — Dynamic scene motion.** Define bounded reusable keyframe
+      semantics over existing clip-local motion; verify arbitrary-seek preview/render
+      parity, locks, Undo/Redo, autosave/reopen and interchange warnings.
+- [ ] **M4 / F05 + F08 — Photo narrative and AI assistance.** Build on current
+      framing and scene-direction review with declared consent/data boundaries,
+      source-bound suggestions, explicit accept/reject and no automatic edits.
+- [ ] **M5 / F06 + F10 + F13 — Audio design and verified output.** Add measurable
+      decoded-audio review and repeatable output evidence; keep hardware, real media,
+      4K and NLE finishing as separately recorded manual gates.
+
+The candidate for each milestone requires its complete exact-head automated gate
+before merge. Synthetic media proves bounded behavior only; it does not certify
+private-film aesthetics, hardware, Resolve, 4K or physical display quality.
+
 ## Current — Apache-2.0 restoration
 
 Policy: [licensing](docs/licensing.md) and

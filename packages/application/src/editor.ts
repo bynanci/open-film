@@ -14,6 +14,7 @@ import {
   validateFilmLook,
   MAX_TITLE_LENGTH,
   MAX_SCENE_DIRECTION_RECEIPTS,
+  isCaptionTextValid,
   assetDisplayDimensions,
   resolvePhotoPlan,
   type MediaAsset,
@@ -155,6 +156,67 @@ function command(value: unknown, index: number): TimelineCommand {
     }
     keys(data, allowed, path);
     if (data.look !== null) nested(data.look, `${path}.look`, validateFilmLook);
+    return structuredClone(data) as TimelineCommand;
+  }
+  if (type.startsWith("caption.")) {
+    switch (type) {
+      case "caption.track.add":
+        keys(data, ["type", "track"], path);
+        record(data.track, `${path}.track`);
+        break;
+      case "caption.track.remove":
+        keys(data, ["type", "trackId"], path);
+        nonempty(data.trackId, `${path}.trackId`);
+        break;
+      case "caption.track.style": {
+        keys(data, ["type", "trackId", "style"], path);
+        nonempty(data.trackId, `${path}.trackId`);
+        nested(data.style, `${path}.style`, validateTitleStyle);
+        if ((data.style as RecordValue).role !== "subtitle")
+          invalid(
+            `${path}.style.role`,
+            "caption tracks require the subtitle role",
+          );
+        break;
+      }
+      case "caption.cue.add":
+        keys(data, ["type", "trackId", "cue"], path);
+        nonempty(data.trackId, `${path}.trackId`);
+        record(data.cue, `${path}.cue`);
+        break;
+      case "caption.cue.update": {
+        keys(data, ["type", "trackId", "cueId", "patch"], path);
+        nonempty(data.trackId, `${path}.trackId`);
+        nonempty(data.cueId, `${path}.cueId`);
+        const patch = record(data.patch, `${path}.patch`);
+        keys(patch, ["text", "startMs", "endMs"], `${path}.patch`);
+        if (!Object.keys(patch).length)
+          invalid(`${path}.patch`, "provide text, startMs or endMs");
+        if (
+          Object.hasOwn(patch, "text") &&
+          (typeof patch.text !== "string" ||
+            !patch.text.trim() ||
+            !isCaptionTextValid(patch.text))
+        )
+          invalid(`${path}.patch.text`, "expected safe non-empty caption text");
+        for (const field of ["startMs", "endMs"])
+          if (
+            Object.hasOwn(patch, field) &&
+            !Number.isSafeInteger(
+              finite(patch[field], `${path}.patch.${field}`, 0),
+            )
+          )
+            invalid(`${path}.patch.${field}`, "expected integer milliseconds");
+        break;
+      }
+      case "caption.cue.delete":
+        keys(data, ["type", "trackId", "cueId"], path);
+        nonempty(data.trackId, `${path}.trackId`);
+        nonempty(data.cueId, `${path}.cueId`);
+        break;
+      default:
+        invalid(`${path}.type`, `unknown command ${type}`);
+    }
     return structuredClone(data) as TimelineCommand;
   }
   if (type === "beat" || type === "regenerate-beat")

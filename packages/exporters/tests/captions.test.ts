@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { CaptionCue } from "@openfilm/core";
+import type { CaptionExportCue } from "../src/captions.js";
 import { serializeCaptions } from "../src/index.js";
 
-function cue(overrides: Partial<CaptionCue> = {}): CaptionCue {
+function cue(overrides: Partial<CaptionExportCue> = {}): CaptionExportCue {
   return {
     id: "cue",
     startMs: 1234,
     endMs: 5678,
     text: "十和田湖\nOur trip 😀",
-    clipId: "clip",
-    assetId: "source",
-    transcriptId: "transcript",
-    transcriptRevisionId: "revision",
-    segmentId: "segment",
-    sourceIn: 1.234,
-    sourceOut: 5.678,
     ...overrides,
   };
 }
