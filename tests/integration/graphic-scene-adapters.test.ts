@@ -61,3 +61,71 @@ it("serves only current project/revision PNGs through the shared HTTP applicatio
   expect(fresh.status).toBe(200);
   expect(Buffer.from(await fresh.arrayBuffer())).not.toEqual(png);
 });
+
+it("previews and accepts deterministic agent edits through the shared HTTP application boundary", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-graphic-agent-http-"));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "Synthetic.openfilm");
+  const app = await OpenFilmApplication.create(directory, "Synthetic graphics");
+  app.project.stories.push({ id: "story", title: "Synthetic", beats: [] });
+  app.project.timelines.push({
+    id: "film",
+    storyId: "story",
+    duration: 6,
+    tracks: [],
+    graphicScenes: [graphicScene()],
+  });
+  await app.save();
+  const before = new TimelineEditor(app).get("film");
+  app.close();
+  const server = await startServer({ port: 0, project: directory });
+  cleanup.push(() => server.close());
+  const origin = `http://127.0.0.1:${server.port}/api`;
+  const route = `${origin}/compositions/film/graphic-agent`;
+  const preview = await fetch(`${route}/preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      baseRevision: before.revision,
+      sceneId: "graphic-scene",
+      nodeIds: ["rectangle"],
+      instruction: "move right 24",
+      mode: "local",
+    }),
+  });
+  expect(preview.status).toBe(200);
+  const plan = (await preview.json()) as {
+    id: string;
+    baseRevision: string;
+    source: string;
+    actions: { id: string; nodeId: string }[];
+  };
+  expect(plan).toMatchObject({
+    baseRevision: before.revision,
+    source: "local",
+    actions: [{ nodeId: "rectangle" }],
+  });
+  const accepted = await fetch(`${route}/accept`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      planId: plan.id,
+      baseRevision: plan.baseRevision,
+      actionIds: [plan.actions[0]!.id],
+      requestId: "http-graphic-agent-accept",
+    }),
+  });
+  expect(accepted.status).toBe(200);
+  const state = (await accepted.json()) as {
+    revision: string;
+    composition: { graphicScenes: { nodes: { x: number }[] }[] };
+  };
+  expect(state.composition.graphicScenes[0]!.nodes[0]!.x).toBe(24);
+  const undone = await fetch(`${origin}/compositions/film/undo`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ baseRevision: state.revision }),
+  });
+  expect(undone.status).toBe(200);
+  expect((await undone.json()).composition.graphicScenes[0].nodes[0].x).toBe(0);
+});

@@ -1778,6 +1778,9 @@ export {
   type DirectionAcceptanceInput,
   type DirectionReviewAcceptance,
   type SceneDirectionOptions,
+  type GraphicSceneAgentAcceptance,
+  type GraphicSceneAgentPlan,
+  type GraphicSceneAgentRequest,
 } from "./editor.js";
 
 export {

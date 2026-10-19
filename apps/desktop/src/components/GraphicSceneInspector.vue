@@ -9,11 +9,16 @@ import {
 } from "@openfilm/core";
 import type { MediaAsset } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
+import GraphicSceneAgentReview from "./GraphicSceneAgentReview.vue";
 const props = defineProps<{
+  projectId: string;
+  compositionId: string;
+  revision: string;
   scenes: readonly GraphicScene[];
   duration: number;
   assets: readonly MediaAsset[];
   disabled: boolean;
+  agentDisabled: boolean;
   selectedSceneId?: string;
   selectedNodeId?: string;
   snapping: boolean;
@@ -24,6 +29,10 @@ const emit = defineEmits<{
   selection: [selection: { sceneId: string; nodeId: string }];
   "update:snapping": [value: boolean];
   "update:guides": [value: boolean];
+  agentBusy: [value: boolean];
+  agentPending: [value: boolean];
+  agentAccepted: [];
+  agentReload: [];
 }>();
 const { t } = useI18n();
 const sceneId = ref("");
@@ -725,5 +734,18 @@ function endpointValue(
         </button>
       </template>
     </fieldset>
+    <GraphicSceneAgentReview
+      v-if="scene && node"
+      :project-id="projectId"
+      :composition-id="compositionId"
+      :revision="revision"
+      :scene="scene"
+      :selected-node-id="node.id"
+      :disabled="agentDisabled || selectedLayerProtected"
+      @busy="emit('agentBusy', $event)"
+      @pending="emit('agentPending', $event)"
+      @accepted="emit('agentAccepted')"
+      @reload="emit('agentReload')"
+    />
   </section>
 </template>

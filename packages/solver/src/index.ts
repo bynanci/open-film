@@ -565,3 +565,18 @@ export type {
   SceneDirectionNote,
   SceneDirectionProposal,
 } from "./scene-direction.js";
+
+export {
+  applyGraphicSceneAgentActions,
+  graphicSceneNodeLockState,
+  parseGraphicSceneAgentOperations,
+  parseLocalGraphicSceneInstruction,
+  prepareGraphicSceneAgentProposal,
+} from "./graphic-scene-agent.js";
+export type {
+  GraphicSceneAgentAction,
+  GraphicSceneAgentConflict,
+  GraphicSceneAgentField,
+  GraphicSceneAgentOperation,
+  PreparedGraphicSceneAgentProposal,
+} from "./graphic-scene-agent.js";

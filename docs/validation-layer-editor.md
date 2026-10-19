@@ -1,10 +1,11 @@
 # M5 / F03 Layer Editor validation
 
-This record covers PR 5A only. It depends on integrated M3/F01 Declarative
-GraphicScene and M4/F02 Creative Story Templates. The branch was created from
-`origin/main` at `e6d07b04cfb7ae905e04a6102311a26da1f18e01`, which includes the
-M4 merge commit for PR #29. PR 5B / F08 is intentionally separate and depends on
-5A being reviewed and merged.
+This record covers merged PR #30 (5A) only. It depends on integrated M3/F01
+Declarative GraphicScene and M4/F02 Creative Story Templates. Exact PR base was
+`e6d07b04cfb7ae905e04a6102311a26da1f18e01`, PR head was
+`16439882c6a62cd20f6849e76a76054f9bb881b0`, and merge commit on `main` is
+`a33340c43d40f82825bc788e1c82625883e6acbb`. PR 5B / F08 builds on the merged
+Inspector and existing typed commands in its own change.
 
 ## Behavior under test
 
@@ -48,18 +49,12 @@ template editing. Fixtures contain synthetic media and fictional text only.
 
 ## Gate status
 
-Local candidate checks: `pnpm format:check`, `pnpm test:i18n` (1,573 semantic
-keys in all three locales), `pnpm lint`, `pnpm typecheck`, `pnpm test` (194 files
-/ 2,872 tests), `pnpm build`, `pnpm test:interchange` (18 OpenTimelineIO 0.18.1
-checks), and the full Playwright suite (163/163 passed before the final focused
-gesture assertions). The final focused GraphicScene browser test passed with
-revision-change cancellation and an edge drag that increases width by the
-pointer delta while preserving the opposite edge. The actual FFmpeg regression
-above decodes first/mid/last frames from the six-second MP4. The production
-build reports the existing 880 kB desktop JavaScript chunk size advisory; the
-build succeeds.
+The merged exact-head push and pull-request CI passed the repository verify,
+interchange, CLI smoke, native and full Playwright gates. The actual FFmpeg
+regression above decodes first/mid/last frames from the six-second MP4. The
+production build reports the existing 880 kB desktop JavaScript chunk size
+advisory; the build succeeds.
 
-Native tests were not run because Cargo/Rust are absent in this environment.
-Exact-head GitHub CI and review remain required before merge. Manual hardware,
-real-film aesthetics, 4K throughput and downstream NLE finishing are not
-certified by synthetic tests.
+Native tests passed in exact-head GitHub CI. Manual hardware, real-film
+aesthetics, 4K throughput and downstream NLE finishing are not certified by
+synthetic tests.

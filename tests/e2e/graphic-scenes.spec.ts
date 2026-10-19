@@ -80,6 +80,13 @@ test("authors all primitives, seeks exact shared frames and preserves history an
       })
     ).ok(),
   ).toBe(true);
+  expect(
+    (
+      await (await request.get(`${api}/project`)).json()
+    ).project?.timelines.some(
+      (timeline: { id: string }) => timeline.id === compositionId,
+    ),
+  ).toBe(true);
   await initialLocale(page);
   await page.goto("/");
   await navigate(page, "edit");
@@ -134,6 +141,25 @@ test("authors all primitives, seeks exact shared frames and preserves history an
     .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
     .toBe(-79);
   await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  const agent = page.getByTestId("graphic-agent-review");
+  await agent.getByTestId("graphic-agent-instruction").fill("move right 12");
+  await agent.getByTestId("graphic-agent-preview").click();
+  await expect(agent.getByTestId("graphic-agent-plan")).toBeVisible();
+  const proposedAction = agent.getByTestId("graphic-agent-action");
+  await expect(proposedAction).toContainText("move right 12");
+  const acceptAgentEdit = agent.getByTestId("graphic-agent-accept");
+  await proposedAction.getByRole("checkbox").uncheck();
+  await expect(acceptAgentEdit).toBeDisabled();
+  await proposedAction.getByRole("checkbox").check();
+  await acceptAgentEdit.click();
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-67);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-79);
 
   const target = page.locator(
     `[data-testid="graphic-layer-target"][data-layer-id="${firstShapeId}"]`,

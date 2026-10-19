@@ -46,9 +46,10 @@ PR #29 at `e6d07b04cfb7ae905e04a6102311a26da1f18e01`.
 - [x] Complete exact-head CI, fresh review and merge M4 before starting M5;
       published/manual workstation and private-film gates remain separate.
 
-## Active candidate — M5 / F03 Layer Editor (PR 5A)
+## Implemented — M5 / F03 Layer Editor (PR 5A)
 
-Base: integrated M3/M4 main `e6d07b04cfb7ae905e04a6102311a26da1f18e01`.
+PR #30 is merged into `main` at `a33340c43d40f82825bc788e1c82625883e6acbb`.
+Its base `e6d07b04cfb7ae905e04a6102311a26da1f18e01` contains integrated M3/M4.
 Scope and implementation contract: [GraphicScene v1](docs/graphic-scenes.md),
 [architecture](docs/architecture.md#declarative-graphicscene) and
 [validation](docs/validation-layer-editor.md).
@@ -62,8 +63,23 @@ Scope and implementation contract: [GraphicScene v1](docs/graphic-scenes.md),
       or Composition changes.
 - [x] Verify optional fields remain compatible with legacy scenes and compare
       Monitor PNGs with decoded pixels from a synthetic 6-second MP4.
-- [ ] Complete the full exact-head CI gate and review PR 5A before merging;
-      5B remains blocked on 5A integration.
+- [x] Complete exact-head CI and review PR 5A before merge; M5/F08 now uses
+      this merged Layer Editor without adding a second timeline or edit model.
+
+## Active candidate — M5 / F08 Reviewable Agent Editing (PR 5B)
+
+Base: merged 5A `a33340c43d40f82825bc788e1c82625883e6acbb`. Scope and evidence:
+[reviewable agent editing validation](docs/validation-agent-editing.md).
+
+- [x] Reuse the existing revision-bound review lifecycle and `graphic.scene.upsert`
+      typed command; preview, select proposal actions and explicitly accept.
+- [x] Restrict operations to selected, unlocked layers; show IDs, before/after
+      values and typed conflicts; preserve deterministic local commands.
+- [x] Route optional provider calls through `ProviderRegistry` and explicit text
+      consent; send only selected layer snapshots and no media paths/assets.
+- [x] Cover application, API, browser, undo/redo/reopen, stale/locked and actual
+      synthetic MP4 regressions with existing project contracts.
+- [ ] Complete full exact-head validation and fresh review before merge.
 
 ## Implemented — M1 / F07 Visual QA
 
@@ -105,9 +121,10 @@ not retroactively rename completed project capabilities.
       from the earlier M3/F03 proposal remain deferred.
 - [x] **M4 / F02 — Creative Story Templates.** Conversation Card, Route Story and
       Photo Relationship build on M3 GraphicScene v1; merged in [PR #29](https://github.com/bynanci/open-film/pull/29).
-- [ ] **M5 / F03 — Layer Editor (PR 5A).** Add scene-layer selection and direct
+- [x] **M5 / F03 — Layer Editor (PR 5A).** Add scene-layer selection and direct
       position/size/rotation/opacity/z-order editing, hidden/locked state,
-      snapping/guides and keyboard controls through existing typed commands.
+      snapping/guides and keyboard controls through existing typed commands;
+      merged as PR #30.
 - [ ] **M5 / F08 — Reviewable Agent Editing (PR 5B).** Generate allowlisted typed
       proposals, explain affected IDs and before/after values, surface conflicts,
       and require Preview → Select → Explicit Accept; preserve local deterministic

@@ -63,6 +63,52 @@ export default {
       guides: "Show center and alignment guides",
       keyboardHint:
         "Select a layer to edit its transform values; use arrow keys to nudge, and Shift+Arrow moves 10 pixels.",
+      agentTitle: "Review a layer edit",
+      agentScope: "Only the selected layer ({id}) can be changed.",
+      agentInstruction: "Editing instruction",
+      agentPlaceholder:
+        "Try: move right 16; rotate 5°; opacity 0.6; hide; show; size 320 180; set text Hello",
+      agentMode: "Proposal source",
+      agentLocal: "Deterministic local commands",
+      agentProvider: "Language provider",
+      agentRemoteDisclosure:
+        "The instruction and selected layer text and visual properties may be sent to this remote provider. No media files or other layers are included.",
+      agentGrantConsent: "Allow text review with this provider",
+      agentRevokeConsent: "Revoke provider consent",
+      agentNoProvider:
+        "No language provider is configured. Deterministic local commands remain available.",
+      agentPreview: "Preview proposal",
+      agentWorking: "Preparing proposal…",
+      agentSource: "Proposal source: {source}",
+      agentSourceLocal: "local command",
+      agentSourceProvider: "language provider",
+      agentAffected: "Affected layer",
+      agentSelectInstructions: "Select the exact edits you want to accept.",
+      agentBefore: "Before",
+      agentAfter: "After",
+      agentAccept: "Accept {count} selected edit(s)",
+      agentPending:
+        "The acceptance response is still pending. Retry with the same request ID to avoid applying the edit twice.",
+      agentRetry: "Retry acceptance",
+      agentDiscardPending: "Clear retry receipt",
+      agentStorageError: "The local retry receipt could not be read safely.",
+      agentProviderError: "Provider consent could not be updated.",
+      agentProviderUnavailable:
+        "This provider is not available for text review. Check its configuration and consent.",
+      agentGenerateError:
+        "The proposal could not be prepared. Check the instruction and saved revision, then retry.",
+      agentAcceptError:
+        "The selected edit was not accepted. Retry the saved request or prepare a fresh proposal.",
+      agentStale:
+        "The saved edit changed after this proposal. Reload the Inspector and preview again.",
+      agentConflict: {
+        unsupported: "Unsupported instruction",
+        invalid: "Invalid operation",
+        unselected: "Unselected layer",
+        missing: "Layer no longer exists",
+        locked: "Layer is locked",
+        duplicate: "Conflicting edits",
+      },
     },
     templates: {
       tab: "Story templates",

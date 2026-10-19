@@ -47,6 +47,7 @@ import {
   type ScenePlanAcceptance,
   type ScenePlanOptions,
   type DirectionReviewAcceptance,
+  type GraphicSceneAgentAcceptance,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -1186,13 +1187,19 @@ export async function startServer(options: ServerOptions = {}) {
           ["/api/review/provider", "/api/review/providers"].includes(route)
         ) {
           const workflow = url.searchParams.get("workflow");
-          if (workflow !== null && workflow !== "scene-script")
+          if (
+            workflow !== null &&
+            workflow !== "scene-script" &&
+            workflow !== "graphic-scene"
+          )
             throw new HttpError(400, "Choose a supported review workflow.");
           json(
             response,
             200,
             application.knowledge.languageProvider(
-              workflow === "scene-script" ? ["text"] : undefined,
+              workflow === "scene-script" || workflow === "graphic-scene"
+                ? ["text"]
+                : undefined,
             ),
           );
           return;
@@ -1208,10 +1215,17 @@ export async function startServer(options: ServerOptions = {}) {
           ]);
           if (typeof data.allow !== "boolean")
             throw new HttpError(400, "allow must be a boolean.");
-          if (data.workflow !== undefined && data.workflow !== "scene-script")
+          if (
+            data.workflow !== undefined &&
+            data.workflow !== "scene-script" &&
+            data.workflow !== "graphic-scene"
+          )
             throw new HttpError(400, "Choose a supported review workflow.");
           const requiredKinds =
-            data.workflow === "scene-script" ? (["text"] as const) : undefined;
+            data.workflow === "scene-script" ||
+            data.workflow === "graphic-scene"
+              ? (["text"] as const)
+              : undefined;
           const provider = application.knowledge.languageProvider(
             requiredKinds === undefined ? undefined : [...requiredKinds],
           ).provider;
@@ -2100,6 +2114,32 @@ export async function startServer(options: ServerOptions = {}) {
               : await editor.acceptDirection(
                   compositionId,
                   data as unknown as DirectionReviewAcceptance,
+                ),
+          );
+          return;
+        }
+        const graphicAgentMatch =
+          /^\/api\/compositions\/([^/]+)\/graphic-agent\/(preview|accept)$/.exec(
+            route,
+          );
+        if (method === "POST" && graphicAgentMatch) {
+          errorContext = "review.invalidOutput";
+          const compositionId = decodeURIComponent(graphicAgentMatch[1]!);
+          const data = await body(request);
+          const editor = editorFor(application);
+          json(
+            response,
+            200,
+            graphicAgentMatch[2] === "preview"
+              ? await editor.previewGraphicSceneAgent(
+                  compositionId,
+                  data as unknown as Parameters<
+                    TimelineEditor["previewGraphicSceneAgent"]
+                  >[1],
+                )
+              : await editor.acceptGraphicSceneAgent(
+                  compositionId,
+                  data as unknown as GraphicSceneAgentAcceptance,
                 ),
           );
           return;

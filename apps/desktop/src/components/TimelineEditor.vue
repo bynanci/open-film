@@ -134,10 +134,16 @@ const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
+const graphicAgentBusy = ref(false);
+const graphicAgentPending = ref(false);
 const directionPending = computed(() => !!directionReview.value?.hasPending);
 const directionBlocked = computed(() => !!directionReview.value?.blocksEdits);
 const historyBusy = computed(
-  () => compositionHistoryBusy.value || directionBlocked.value,
+  () =>
+    compositionHistoryBusy.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value,
 );
 const directionPreview = ref<Clip | null>(null);
 const visualQaOpen = ref(false);
@@ -273,6 +279,16 @@ const graphicLayerEditing = computed(
 );
 function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
+}
+function setGraphicAgentBusy(value: boolean) {
+  graphicAgentBusy.value = value;
+}
+function setGraphicAgentPending(value: boolean) {
+  graphicAgentPending.value = value;
+}
+async function reloadAfterGraphicAgent() {
+  await load();
+  emit("edited");
 }
 function setGraphicSnapping(value: boolean) {
   graphicSnapping.value = value;
@@ -2813,6 +2829,9 @@ onBeforeUnmount(() => {
           </div>
           <GraphicSceneInspector
             v-if="inspector === 'graphics'"
+            :project-id="projectId"
+            :composition-id="compositionId"
+            :revision="state.revision"
             :scenes="state.composition.graphicScenes ?? []"
             :duration="state.composition.duration"
             :assets="state.assets"
@@ -2820,6 +2839,12 @@ onBeforeUnmount(() => {
             :selected-node-id="graphicSceneSelection.nodeId"
             :snapping="graphicSnapping"
             :guides="graphicGuides"
+            :agent-disabled="
+              directionBlocked ||
+              compositionHistoryBusy ||
+              status === 'conflict' ||
+              status === 'failed'
+            "
             :disabled="
               directionBlocked ||
               historyBusy ||
@@ -2830,6 +2855,10 @@ onBeforeUnmount(() => {
             @selection="selectGraphicLayer"
             @update:snapping="setGraphicSnapping"
             @update:guides="setGraphicGuides"
+            @agent-busy="setGraphicAgentBusy"
+            @agent-pending="setGraphicAgentPending"
+            @agent-accepted="reloadAfterGraphicAgent"
+            @agent-reload="reloadAfterGraphicAgent"
           />
           <GraphicSceneTemplateStudio
             v-if="inspector === 'templates' && state"
