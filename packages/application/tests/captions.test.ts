@@ -192,6 +192,84 @@ describe("composition-bound caption application", () => {
     );
   });
 
+  it("imports verified segment timing into a native Composition track without changing transcript evidence", async () => {
+    const test = await fixture(1);
+    const editor = new TimelineEditor(test.app);
+    const beforeTranscript = await test.app.transcriptEditor.get("spoken");
+    const snapshot = await test.app.captions.prepare(test.input());
+    const state = await test.app.captions.addNativeTrack(
+      {
+        projectId: test.app.project.id,
+        snapshotId: snapshot.id,
+        name: "繁體中文",
+        language: "zh-TW",
+        trackId: "native-zh-tw",
+        requestId: "import-zh-tw",
+      },
+      { editor },
+    );
+    const native = state.composition.captionTracks?.[0];
+    expect(native).toMatchObject({
+      id: "native-zh-tw",
+      name: "繁體中文",
+      language: "zh-TW",
+      cues: [
+        {
+          startMs: 0,
+          endMs: 800,
+          text: "我們去了十河田湖",
+          source: {
+            kind: "transcript",
+            assetId: "spoken",
+            transcriptId: "provider-original",
+            transcriptRevisionId: beforeTranscript.revision,
+            segmentId: "segment-0",
+            clipId: "instance",
+            alignment: "segment",
+            sourceIn: 0,
+            sourceOut: 0.8,
+          },
+          manualRevision: 0,
+        },
+      ],
+    });
+    expect(native?.cues[0]).not.toHaveProperty("words");
+    expect(native?.cues[0]?.startMs).toBe(snapshot.cues[0]?.startMs);
+    expect(native?.cues[0]?.endMs).toBe(snapshot.cues[0]?.endMs);
+    expect(state.canUndo).toBe(true);
+    expect(await test.app.transcriptEditor.get("spoken")).toEqual(
+      beforeTranscript,
+    );
+    const undone = await editor.undo("film", state.revision);
+    expect(undone.composition).not.toHaveProperty("captionTracks");
+    const redone = await editor.redo("film", undone.revision);
+    expect(redone.composition.captionTracks?.[0]?.cues[0]?.id).toBe(
+      native?.cues[0]?.id,
+    );
+  });
+
+  it("rejects a stale snapshot after transcript revision changes", async () => {
+    const test = await fixture(1);
+    const snapshot = await test.app.captions.prepare(test.input());
+    const transcript = await test.app.transcriptEditor.get("spoken");
+    await test.app.transcriptEditor.edit("spoken", {
+      baseRevision: transcript.revision!,
+      requestId: "advance-transcript-revision",
+      commands: [
+        { type: "replace-text", segmentId: "segment-0", text: "新修訂" },
+      ],
+    });
+    await expect(
+      test.app.captions.addNativeTrack({
+        projectId: test.app.project.id,
+        snapshotId: snapshot.id,
+        name: "繁體中文",
+        trackId: "native-zh-tw",
+      }),
+    ).rejects.toMatchObject({ code: "captions.stale", status: 409 });
+    expect(test.app.project.timelines[0]?.captionTracks).toBeUndefined();
+  });
+
   it("publishes SRT and VTT with full clip/revision provenance, preserves earlier exports, and reopens", async () => {
     const test = await fixture();
     const snapshot = await test.app.captions.prepare(test.input());

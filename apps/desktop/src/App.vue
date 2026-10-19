@@ -345,6 +345,7 @@ const clipCount = computed(
 );
 const lookOverride = ref<FilmLook>();
 const outputQuality = ref<"standard" | "high-detail">("standard");
+const outputCaptionTrackId = ref<string | null | undefined>(undefined);
 const previewVersion = ref(0);
 const previewStale = ref(false);
 const showRenderedPreview = ref(false);
@@ -367,6 +368,7 @@ watch(
     editorMountRequested.value = false;
     lookOverride.value = undefined;
     outputQuality.value = "standard";
+    outputCaptionTrackId.value = undefined;
     if (!key) return;
     try {
       editorMountRequested.value = localStorage.getItem(key) !== null;
@@ -1568,6 +1570,11 @@ function changeOutputQuality(quality: "standard" | "high-detail") {
   outputQuality.value = quality;
   editorEdited();
 }
+function changeOutputCaptionTrack(captionTrackId: string | null | undefined) {
+  if (busy.value) return;
+  outputCaptionTrackId.value = captionTrackId;
+  editorEdited();
+}
 async function renderPreview() {
   if (!(await flushPending())) return;
   const renderingLook = lookOverride.value
@@ -1585,6 +1592,9 @@ async function renderPreview() {
         compositionId: composition.id,
         ...(renderingLook ? { lookOverride: renderingLook } : {}),
         quality: renderingQuality,
+        ...(outputCaptionTrackId.value !== undefined
+          ? { captionTrackId: outputCaptionTrackId.value }
+          : {}),
       });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
@@ -1649,6 +1659,9 @@ async function exportFilm(format: string) {
         compositionId: composition.id,
         ...(exportingLook ? { lookOverride: exportingLook } : {}),
         ...(format === "mp4" ? { quality: exportingQuality } : {}),
+        ...(format === "mp4" && outputCaptionTrackId.value !== undefined
+          ? { captionTrackId: outputCaptionTrackId.value }
+          : {}),
       });
     } catch (cause) {
       let renderJobs: Job[] | undefined;
@@ -3372,8 +3385,10 @@ onUnmounted(() => {
             :look-override="lookOverride"
             :project-settings="project.settings"
             :quality="outputQuality"
+            :caption-track-id="outputCaptionTrackId"
             @look="changeOutputLook"
             @quality="changeOutputQuality"
+            @caption-track="changeOutputCaptionTrack"
             @export="exportFilm"
           />
           <button

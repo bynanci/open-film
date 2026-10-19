@@ -811,6 +811,46 @@ export async function startServer(options: ServerOptions = {}) {
               );
               return;
             }
+            if (method === "POST" && route === "/api/captions/native-track") {
+              const data = await body(request);
+              keys(data, [
+                "projectId",
+                "snapshotId",
+                "name",
+                "language",
+                "trackId",
+                "requestId",
+              ]);
+              if (
+                ["language", "trackId", "requestId"].some(
+                  (key) =>
+                    data[key] !== undefined && typeof data[key] !== "string",
+                )
+              )
+                throw new HttpError(400, "Caption track options must be text.");
+              json(
+                response,
+                200,
+                await application.captions.addNativeTrack(
+                  {
+                    projectId: text(data, "projectId"),
+                    snapshotId: text(data, "snapshotId"),
+                    name: text(data, "name"),
+                    ...(typeof data.language === "string"
+                      ? { language: data.language }
+                      : {}),
+                    ...(typeof data.trackId === "string"
+                      ? { trackId: data.trackId }
+                      : {}),
+                    ...(typeof data.requestId === "string"
+                      ? { requestId: data.requestId }
+                      : {}),
+                  },
+                  { signal: controller.signal, editor: editorFor(application) },
+                ),
+              );
+              return;
+            }
             if (method === "GET" && route === "/api/captions/snapshot") {
               const bounds: Record<string, number> = {};
               for (const key of [
@@ -2455,6 +2495,21 @@ export async function startServer(options: ServerOptions = {}) {
               );
             }
           }
+          const hasCaptionTrackId = Object.hasOwn(data, "captionTrackId");
+          if (hasCaptionTrackId && exporting && data.format !== "mp4")
+            throw new ApplicationError(
+              "request.invalid",
+              "Caption burn-in is available for MP4 output only.",
+            );
+          if (
+            hasCaptionTrackId &&
+            data.captionTrackId !== null &&
+            typeof data.captionTrackId !== "string"
+          )
+            throw new ApplicationError(
+              "request.invalid",
+              "A caption track selection must be a saved track ID or null.",
+            );
           if (exporting && data.format !== "mp4") {
             if (
               !["json", "otio", "fcpxml", "edl"].includes(String(data.format))
@@ -2495,6 +2550,9 @@ export async function startServer(options: ServerOptions = {}) {
             jobId,
             lookOverride,
             quality,
+            ...(hasCaptionTrackId
+              ? { captionTrackId: data.captionTrackId as string | null }
+              : {}),
           };
           const task = exporting
             ? application.exportMp4(compositionId, renderOptions)

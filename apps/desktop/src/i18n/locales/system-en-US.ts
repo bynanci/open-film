@@ -76,6 +76,8 @@ export default {
         "The saved film changed while you were editing. Review the newer version or reapply your saved draft.",
       invalidEdit:
         "This change doesn't fit the source or story limits. Check the trim, duration and locked memories.",
+      captionRangeConflict:
+        "Shortening the edit would exclude saved captions. Adjust or delete the affected captions first, then retry.",
     },
     render: {
       overMaximum:

@@ -696,7 +696,7 @@ function edl(
 
 export { resolveCompatibility } from "./compatibility.js";
 export { serializeCaptions } from "./captions.js";
-export type { CaptionExportResult } from "./captions.js";
+export type { CaptionExportCue, CaptionExportResult } from "./captions.js";
 export type {
   NleFeatureId,
   NleFeatureCompatibility,

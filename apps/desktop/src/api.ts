@@ -456,6 +456,22 @@ export const api = {
       body: JSON.stringify(body),
       signal,
     }),
+  addNativeCaptionTrack: (
+    body: {
+      projectId: string;
+      snapshotId: string;
+      name: string;
+      language?: string;
+      trackId: string;
+      requestId: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<EditorState>("/captions/native-track", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    }),
   captionSnapshot: (
     id: string,
     params: {

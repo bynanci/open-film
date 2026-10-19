@@ -238,6 +238,48 @@ export interface TitleStyle {
   fadeOut?: number;
   /** Visible title/scrim distance above the frame bottom as a fraction; 0..0.3. */
   bottomSafeMargin?: number;
+  /** Optional fractional safe-frame margins; absent values retain title defaults. */
+  safeArea?: { left?: number; right?: number; top?: number; bottom?: number };
+}
+
+export type CaptionCueSource =
+  | { kind: "manual" }
+  | {
+      kind: "transcript";
+      assetId: string;
+      transcriptId: string;
+      transcriptRevisionId: string;
+      segmentId: string;
+      clipId: string;
+      /** Transcript-derived timing remains segment-aligned, never word-inferred. */
+      alignment: "segment";
+      sourceIn: number;
+      sourceOut: number;
+    };
+export type CaptionCueWarning = "timing-estimated" | "alignment-stale";
+
+export interface CaptionCue {
+  version: 1;
+  /** Stable identity survives text/time/style edits and transcript refreshes. */
+  id: string;
+  /** Composition time in integer milliseconds. */
+  startMs: number;
+  endMs: number;
+  text: string;
+  source: CaptionCueSource;
+  /** Explicit manual-review reasons inherited from transcript mapping. */
+  warnings?: CaptionCueWarning[];
+  /** Incremented for each manual text or timing revision. */
+  manualRevision: number;
+}
+
+export interface CaptionTrack {
+  version: 1;
+  id: string;
+  name: string;
+  language?: string;
+  style: TitleStyle;
+  cues: CaptionCue[];
 }
 export interface AudioAutomation {
   version: 1;
@@ -310,6 +352,8 @@ export interface Composition {
   defaultLook?: FilmLook;
   /** Stable scene IDs keep localized or user-authored titles out of lookup state. */
   beatLooks?: { beatId: string; look: FilmLook }[];
+  /** Composition-time captions are optional so legacy schema-1 projects stay valid. */
+  captionTracks?: CaptionTrack[];
 }
 
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;

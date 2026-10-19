@@ -68,6 +68,27 @@ describe("measured title layout", () => {
     );
   });
 
+  it("lays multiline CJK subtitles inside authored fractional safe-area margins", () => {
+    const style = {
+      version: 1 as const,
+      role: "subtitle" as const,
+      fontSize: 24,
+      safeArea: { left: 0.2, right: 0.1, top: 0.12, bottom: 0.18 },
+    };
+    const layout = layoutTitleText("繁體字幕\n第二行", style, frame, measure);
+    expect(layout.bounds.x).toBeGreaterThanOrEqual(frame.width * 0.2);
+    expect(layout.bounds.x + layout.bounds.width).toBeLessThanOrEqual(
+      frame.width * 0.9,
+    );
+    expect(layout.bounds.y).toBeGreaterThanOrEqual(frame.height * 0.12);
+    expect(layout.bounds.y + layout.bounds.height).toBeLessThanOrEqual(
+      frame.height * 0.82,
+    );
+    expect(() =>
+      validateTitleStyle({ ...style, safeArea: { left: 0.5, right: 0.5 } }),
+    ).toThrow(/safeArea/u);
+  });
+
   it.each([0, 0.08, 0.15, 0.3])(
     "places the complete visible scrim above a %s bottom margin",
     (bottomSafeMargin) => {
