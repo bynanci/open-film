@@ -14,8 +14,17 @@ const props = defineProps<{
   duration: number;
   assets: readonly MediaAsset[];
   disabled: boolean;
+  selectedSceneId?: string;
+  selectedNodeId?: string;
+  snapping: boolean;
+  guides: boolean;
 }>();
-const emit = defineEmits<{ command: [command: TimelineCommand] }>();
+const emit = defineEmits<{
+  command: [command: TimelineCommand];
+  selection: [selection: { sceneId: string; nodeId: string }];
+  "update:snapping": [value: boolean];
+  "update:guides": [value: boolean];
+}>();
 const { t } = useI18n();
 const sceneId = ref("");
 const nodeId = ref("");
@@ -34,19 +43,57 @@ const scene = computed(() =>
 const flatten = (
   nodes: readonly GraphicNode[],
   depth = 0,
-): { node: GraphicNode; depth: number }[] =>
-  nodes.flatMap((node) => [
-    { node, depth },
-    ...(node.type === "group" ? flatten(node.children, depth + 1) : []),
-  ]);
+  lockedAncestor = false,
+): {
+  node: GraphicNode;
+  depth: number;
+  siblings: readonly GraphicNode[];
+  lockedAncestor: boolean;
+}[] =>
+  nodes
+    .slice()
+    .sort((first, second) => second.zIndex - first.zIndex)
+    .flatMap((node) => [
+      { node, depth, siblings: nodes, lockedAncestor },
+      ...(node.type === "group"
+        ? flatten(node.children, depth + 1, lockedAncestor || !!node.locked)
+        : []),
+    ]);
 const nodes = computed(() => flatten(scene.value?.nodes ?? []));
 const node = computed(
   () => nodes.value.find((item) => item.node.id === nodeId.value)?.node,
+);
+const selectedLayerProtected = computed(() => isLayerProtected(nodeId.value));
+const sceneHasLockedLayer = computed(() =>
+  nodes.value.some((item) => item.node.locked),
+);
+watch(
+  [() => props.selectedSceneId, () => props.selectedNodeId],
+  ([selectedScene, selectedNode]) => {
+    if (selectedScene && props.scenes.some((item) => item.id === selectedScene))
+      sceneId.value = selectedScene;
+    if (
+      selectedNode &&
+      flatten(
+        props.scenes.find((item) => item.id === selectedScene)?.nodes ?? [],
+      ).some((item) => item.node.id === selectedNode)
+    )
+      nodeId.value = selectedNode;
+  },
+  { immediate: true },
 );
 watch(nodes, (list) => {
   if (!list.some((item) => item.node.id === nodeId.value))
     nodeId.value = list[0]?.node.id ?? "";
 });
+watch(
+  [sceneId, nodeId],
+  () => {
+    if (scene.value && node.value)
+      emit("selection", { sceneId: scene.value.id, nodeId: node.value.id });
+  },
+  { flush: "post" },
+);
 const images = computed(() =>
   props.assets.filter((asset) => asset.mediaType === "image"),
 );
@@ -57,11 +104,19 @@ const numericFields = [
   "width",
   "height",
   "opacity",
+  "rotation",
   "zIndex",
   "start",
   "end",
 ] as const;
-const animatedFields = ["x", "y", "width", "height", "opacity"] as const;
+const animatedFields = [
+  "x",
+  "y",
+  "width",
+  "height",
+  "opacity",
+  "rotation",
+] as const;
 const phases = ["enter", "exit"] as const;
 const easingOptions: GraphicEasing[] = [
   "linear",
@@ -93,10 +148,18 @@ function updateScene(
     });
 }
 function updateNode(update: (node: GraphicNode) => void) {
-  if (!scene.value || !node.value) return;
+  if (!scene.value || !node.value || isLayerProtected(node.value.id)) return;
+  updateLayer(node.value.id, update);
+}
+function isLayerProtected(id: string): boolean {
+  const entry = nodes.value.find((item) => item.node.id === id);
+  return !entry || entry.lockedAncestor || containsLockedLayer(entry.node);
+}
+function updateLayer(id: string, update: (node: GraphicNode) => void) {
+  if (!scene.value) return;
   const next = structuredClone(scene.value);
   const selected = flatten(next.nodes).find(
-    (item) => item.node.id === nodeId.value,
+    (item) => item.node.id === id,
   )?.node;
   if (!selected) return;
   update(selected);
@@ -148,7 +211,7 @@ function addNode(type: GraphicNode["type"]) {
   const parent = flatten(next.nodes).find(
     (item) => item.node.id === nodeId.value,
   )?.node;
-  if (parent?.type === "group") parent.children.push(added);
+  if (parent?.type === "group" && !parent.locked) parent.children.push(added);
   else next.nodes.push(added);
   save(next);
   nodeId.value = added.id;
@@ -166,6 +229,59 @@ function removeNode() {
       );
   next.nodes = remove(next.nodes);
   save(next);
+}
+function nudgeLayer(event: KeyboardEvent) {
+  if (!node.value || isLayerProtected(node.value.id)) return;
+  const amount = event.shiftKey ? 10 : 1;
+  const delta =
+    event.key === "ArrowLeft"
+      ? { x: -amount, y: 0 }
+      : event.key === "ArrowRight"
+        ? { x: amount, y: 0 }
+        : event.key === "ArrowUp"
+          ? { x: 0, y: -amount }
+          : event.key === "ArrowDown"
+            ? { x: 0, y: amount }
+            : null;
+  if (!delta) return;
+  event.preventDefault();
+  updateNode((item) => {
+    item.x += delta.x;
+    item.y += delta.y;
+  });
+}
+function reorderNode(id: string, offset: -1 | 1) {
+  if (!scene.value) return;
+  const next = structuredClone(scene.value);
+  const selected = flatten(next.nodes).find(
+    (item) => item.node.id === id,
+  )?.node;
+  const container = findContainer(next.nodes, id);
+  if (!selected || !container || isLayerProtected(id)) return;
+  nodeId.value = id;
+  selected.zIndex =
+    offset > 0
+      ? Math.min(1000, Math.max(...container.map((item) => item.zIndex)) + 1)
+      : Math.max(-1000, Math.min(...container.map((item) => item.zIndex)) - 1);
+  save(next);
+}
+function findContainer(
+  nodes: GraphicNode[],
+  id: string,
+): GraphicNode[] | undefined {
+  if (nodes.some((item) => item.id === id)) return nodes;
+  for (const item of nodes) {
+    if (item.type === "group") {
+      const found = findContainer(item.children, id);
+      if (found) return found;
+    }
+  }
+}
+function containsLockedLayer(node: GraphicNode): boolean {
+  return (
+    !!node.locked ||
+    (node.type === "group" && node.children.some(containsLockedLayer))
+  );
 }
 function animationDuration(phase: "enter" | "exit", event: Event) {
   const duration = Number(value(event));
@@ -219,6 +335,31 @@ function endpointValue(
 <template>
   <section class="graphic-inspector" :aria-label="t('editor.graphics.tab')">
     <p class="editor-muted">{{ t("editor.graphics.help") }}</p>
+    <div class="graphic-layer-options">
+      <label>
+        <input
+          type="checkbox"
+          :checked="snapping"
+          @change="
+            emit('update:snapping', ($event.target as HTMLInputElement).checked)
+          "
+        />
+        {{ t("editor.graphics.snapping") }}
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          :checked="guides"
+          @change="
+            emit('update:guides', ($event.target as HTMLInputElement).checked)
+          "
+        />
+        {{ t("editor.graphics.guides") }}
+      </label>
+    </div>
+    <p class="editor-muted graphic-keyboard-hint">
+      {{ t("editor.graphics.keyboardHint") }}
+    </p>
     <p v-if="error" role="alert">{{ t("editor.graphics.invalid") }}</p>
     <button
       class="editor-button"
@@ -249,9 +390,112 @@ function endpointValue(
             }}<input
               type="number"
               step="any"
+              :disabled="sceneHasLockedLayer"
               :value="scene[field]"
               @change="updateScene(field, $event)"
           /></label>
+        </div>
+        <div
+          v-if="nodes.length"
+          class="graphic-layer-list"
+          :aria-label="t('editor.graphics.node')"
+        >
+          <div
+            v-for="item in nodes"
+            :key="item.node.id"
+            class="graphic-layer-row"
+            :class="{ selected: item.node.id === nodeId }"
+          >
+            <button
+              type="button"
+              class="graphic-layer-select"
+              :aria-pressed="item.node.id === nodeId"
+              :aria-label="
+                t('editor.graphics.selectLayer', { id: item.node.id })
+              "
+              @click="nodeId = item.node.id"
+              @keydown.stop="nudgeLayer"
+            >
+              <span aria-hidden="true">{{ "· ".repeat(item.depth) }}</span>
+              {{ t(`editor.graphics.${item.node.type}`) }} ·
+              {{ item.node.id.slice(0, 8) }}
+              <span v-if="item.node.hidden" class="graphic-layer-state">{{
+                t("editor.graphics.hidden")
+              }}</span>
+            </button>
+            <button
+              type="button"
+              class="editor-button graphic-layer-action"
+              :aria-label="
+                t(
+                  item.node.hidden
+                    ? 'editor.graphics.showLayer'
+                    : 'editor.graphics.hideLayer',
+                )
+              "
+              :aria-pressed="!!item.node.hidden"
+              :disabled="item.lockedAncestor || containsLockedLayer(item.node)"
+              @click="
+                updateLayer(item.node.id, (layer) => {
+                  layer.hidden = !layer.hidden;
+                })
+              "
+            >
+              {{
+                item.node.hidden
+                  ? t("editor.graphics.showLayer")
+                  : t("editor.graphics.hideLayer")
+              }}
+            </button>
+            <button
+              type="button"
+              class="editor-button graphic-layer-action"
+              :aria-label="
+                t(
+                  item.node.locked
+                    ? 'editor.graphics.unlockLayer'
+                    : 'editor.graphics.lockLayer',
+                )
+              "
+              :aria-pressed="!!item.node.locked"
+              :disabled="item.lockedAncestor"
+              @click="
+                updateLayer(item.node.id, (layer) => {
+                  layer.locked = !layer.locked;
+                })
+              "
+            >
+              {{
+                item.node.locked
+                  ? t("editor.graphics.unlockLayer")
+                  : t("editor.graphics.lockLayer")
+              }}
+            </button>
+            <div class="graphic-layer-order-actions">
+              <button
+                type="button"
+                class="editor-button"
+                :aria-label="t('editor.graphics.raiseLayer')"
+                :disabled="
+                  item.lockedAncestor || containsLockedLayer(item.node)
+                "
+                @click="reorderNode(item.node.id, 1)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                class="editor-button"
+                :aria-label="t('editor.graphics.lowerLayer')"
+                :disabled="
+                  item.lockedAncestor || containsLockedLayer(item.node)
+                "
+                @click="reorderNode(item.node.id, -1)"
+              >
+                ↓
+              </button>
+            </div>
+          </div>
         </div>
         <div class="graphic-actions">
           <button
@@ -279,174 +523,200 @@ function endpointValue(
           </select></label
         >
         <template v-if="node">
-          <p v-if="node.type === 'group'" class="editor-muted">
-            {{ t("editor.graphics.groupHelp") }}
-          </p>
-          <div class="graphic-field-grid">
-            <label v-for="field in numericFields" :key="field"
-              >{{ t(`editor.graphics.${field}`)
-              }}<input
-                type="number"
-                step="any"
-                :data-testid="`graphic-node-${field}`"
-                :value="node[field]"
+          <fieldset
+            class="graphic-node-edit-fields"
+            :disabled="selectedLayerProtected"
+          >
+            <p v-if="node.type === 'group'" class="editor-muted">
+              {{ t("editor.graphics.groupHelp") }}
+            </p>
+            <div class="graphic-field-grid">
+              <label v-for="field in numericFields" :key="field"
+                >{{ t(`editor.graphics.${field}`)
+                }}<input
+                  type="number"
+                  step="any"
+                  :data-testid="`graphic-node-${field}`"
+                  :value="node[field]"
+                  @change="
+                    updateNode((item) => {
+                      item[field] = Number(value($event));
+                    })
+                  "
+              /></label>
+            </div>
+            <label class="graphic-opacity-slider"
+              >{{ t("editor.graphics.opacity") }}
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                :value="node.opacity"
+                :disabled="!!node.locked"
                 @change="
                   updateNode((item) => {
-                    item[field] = Number(value($event));
-                  })
-                "
-            /></label>
-          </div>
-          <template v-if="node.type === 'text'">
-            <label
-              >{{ t("editor.graphics.textContent")
-              }}<textarea
-                :value="node.text"
-                data-testid="graphic-text"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'text') item.text = value($event);
+                    item.opacity = Number(value($event));
                   })
                 "
               />
             </label>
-            <label
-              >{{ t("editor.graphics.fontSize")
-              }}<input
-                type="number"
-                :value="node.fontSize"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'text')
-                      item.fontSize = Number(value($event));
-                  })
-                "
-            /></label>
-            <label
-              >{{ t("editor.graphics.fontFamily")
-              }}<input
-                :value="node.fontFamily ?? ''"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'text') {
-                      const text = value($event);
-                      if (text) item.fontFamily = text;
-                      else delete item.fontFamily;
-                    }
-                  })
-                "
-            /></label>
-            <label
-              >{{ t("editor.graphics.fontWeight")
-              }}<select
-                :value="node.fontWeight ?? 400"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'text')
-                      item.fontWeight = Number(value($event)) as 400 | 700;
-                  })
-                "
-              >
-                <option :value="400">400</option>
-                <option :value="700">700</option>
-              </select></label
-            >
-          </template>
-          <label v-if="node.type === 'image'"
-            >{{ t("editor.graphics.image")
-            }}<select
-              :value="node.assetId"
-              @change="
-                updateNode((item) => {
-                  if (item.type === 'image') item.assetId = value($event);
-                })
-              "
-            >
-              <option v-for="asset in images" :key="asset.id" :value="asset.id">
-                {{ asset.name }}
-              </option>
-            </select></label
-          >
-          <template v-if="node.type === 'shape'"
-            ><label
-              >{{ t("editor.graphics.shape")
-              }}<select
-                :value="node.shape"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'shape')
-                      item.shape = value($event) as 'rect' | 'ellipse';
-                  })
-                "
-              >
-                <option value="rect">{{ t("editor.graphics.rect") }}</option>
-                <option value="ellipse">
-                  {{ t("editor.graphics.ellipse") }}
-                </option>
-              </select></label
-            ><label
-              >{{ t("editor.graphics.fill")
-              }}<input
-                type="color"
-                :value="node.fill"
-                @change="
-                  updateNode((item) => {
-                    if (item.type === 'shape') item.fill = value($event);
-                  })
-                " /></label
-          ></template>
-          <fieldset v-for="phase in phases" :key="phase">
-            <legend>{{ t(`editor.graphics.${phase}`) }}</legend>
-            <label
-              >{{ t("editor.graphics.duration")
-              }}<input
-                type="number"
-                min="0"
-                step="0.1"
-                :data-testid="`graphic-${phase}-duration`"
-                :value="node.animation?.[phase]?.duration ?? 0"
-                @change="animationDuration(phase, $event)"
-            /></label>
-            <template v-if="node.animation?.[phase]"
-              ><label
-                >{{ t("editor.graphics.easing")
-                }}<select
-                  :value="node.animation?.[phase]?.easing"
+            <template v-if="node.type === 'text'">
+              <label
+                >{{ t("editor.graphics.textContent")
+                }}<textarea
+                  :value="node.text"
+                  data-testid="graphic-text"
                   @change="
                     updateNode((item) => {
-                      const animation = item.animation?.[phase];
-                      if (animation)
-                        animation.easing = value($event) as GraphicEasing;
+                      if (item.type === 'text') item.text = value($event);
+                    })
+                  "
+                />
+              </label>
+              <label
+                >{{ t("editor.graphics.fontSize")
+                }}<input
+                  type="number"
+                  :value="node.fontSize"
+                  @change="
+                    updateNode((item) => {
+                      if (item.type === 'text')
+                        item.fontSize = Number(value($event));
+                    })
+                  "
+              /></label>
+              <label
+                >{{ t("editor.graphics.fontFamily")
+                }}<input
+                  :value="node.fontFamily ?? ''"
+                  @change="
+                    updateNode((item) => {
+                      if (item.type === 'text') {
+                        const text = value($event);
+                        if (text) item.fontFamily = text;
+                        else delete item.fontFamily;
+                      }
+                    })
+                  "
+              /></label>
+              <label
+                >{{ t("editor.graphics.fontWeight")
+                }}<select
+                  :value="node.fontWeight ?? 400"
+                  @change="
+                    updateNode((item) => {
+                      if (item.type === 'text')
+                        item.fontWeight = Number(value($event)) as 400 | 700;
                     })
                   "
                 >
-                  <option
-                    v-for="easing in easingOptions"
-                    :key="easing"
-                    :value="easing"
-                  >
-                    {{ t(`editor.graphics.${easing}`) }}
-                  </option>
+                  <option :value="400">400</option>
+                  <option :value="700">700</option>
                 </select></label
               >
-              <div class="graphic-field-grid">
-                <label v-for="field in animatedFields" :key="field"
-                  >{{ t(`editor.graphics.${phase}`) }}
-                  {{ t(`editor.graphics.${field}`)
-                  }}<input
-                    type="number"
-                    step="any"
-                    :value="endpointValue(phase, field)"
-                    @change="endpoint(phase, field, $event)"
-                /></label></div
+            </template>
+            <label v-if="node.type === 'image'"
+              >{{ t("editor.graphics.image")
+              }}<select
+                :value="node.assetId"
+                @change="
+                  updateNode((item) => {
+                    if (item.type === 'image') item.assetId = value($event);
+                  })
+                "
+              >
+                <option
+                  v-for="asset in images"
+                  :key="asset.id"
+                  :value="asset.id"
+                >
+                  {{ asset.name }}
+                </option>
+              </select></label
+            >
+            <template v-if="node.type === 'shape'"
+              ><label
+                >{{ t("editor.graphics.shape")
+                }}<select
+                  :value="node.shape"
+                  @change="
+                    updateNode((item) => {
+                      if (item.type === 'shape')
+                        item.shape = value($event) as 'rect' | 'ellipse';
+                    })
+                  "
+                >
+                  <option value="rect">{{ t("editor.graphics.rect") }}</option>
+                  <option value="ellipse">
+                    {{ t("editor.graphics.ellipse") }}
+                  </option>
+                </select></label
+              ><label
+                >{{ t("editor.graphics.fill")
+                }}<input
+                  type="color"
+                  :value="node.fill"
+                  @change="
+                    updateNode((item) => {
+                      if (item.type === 'shape') item.fill = value($event);
+                    })
+                  " /></label
             ></template>
+            <fieldset v-for="phase in phases" :key="phase">
+              <legend>{{ t(`editor.graphics.${phase}`) }}</legend>
+              <label
+                >{{ t("editor.graphics.duration")
+                }}<input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  :data-testid="`graphic-${phase}-duration`"
+                  :value="node.animation?.[phase]?.duration ?? 0"
+                  @change="animationDuration(phase, $event)"
+              /></label>
+              <template v-if="node.animation?.[phase]"
+                ><label
+                  >{{ t("editor.graphics.easing")
+                  }}<select
+                    :value="node.animation?.[phase]?.easing"
+                    @change="
+                      updateNode((item) => {
+                        const animation = item.animation?.[phase];
+                        if (animation)
+                          animation.easing = value($event) as GraphicEasing;
+                      })
+                    "
+                  >
+                    <option
+                      v-for="easing in easingOptions"
+                      :key="easing"
+                      :value="easing"
+                    >
+                      {{ t(`editor.graphics.${easing}`) }}
+                    </option>
+                  </select></label
+                >
+                <div class="graphic-field-grid">
+                  <label v-for="field in animatedFields" :key="field"
+                    >{{ t(`editor.graphics.${phase}`) }}
+                    {{ t(`editor.graphics.${field}`)
+                    }}<input
+                      type="number"
+                      step="any"
+                      :value="endpointValue(phase, field)"
+                      @change="endpoint(phase, field, $event)"
+                  /></label></div
+              ></template>
+            </fieldset>
+            <button class="editor-button" @click="removeNode">
+              {{ t("editor.graphics.removeNode") }}
+            </button>
           </fieldset>
-          <button class="editor-button" @click="removeNode">
-            {{ t("editor.graphics.removeNode") }}
-          </button>
         </template>
         <button
           class="editor-button"
+          :disabled="sceneHasLockedLayer"
           @click="
             emit('command', { type: 'graphic.scene.remove', sceneId: scene.id })
           "

@@ -108,6 +108,9 @@ describe("durable GraphicScene editing", () => {
     const redo = await editor.redo("composition", undo.revision);
     expect(redo.composition.graphicScenes).toEqual([scene]);
     scene.nodes[0]!.x = 42;
+    scene.nodes[0]!.rotation = 22.5;
+    scene.nodes[0]!.hidden = true;
+    scene.nodes[0]!.locked = true;
     const updated = await editor.edit("composition", {
       baseRevision: redo.revision,
       commands: [{ type: "graphic.scene.upsert", scene }],
@@ -115,6 +118,9 @@ describe("durable GraphicScene editing", () => {
     expect(updated.composition.graphicScenes?.[0]?.nodes[0]).toMatchObject({
       id: "rectangle",
       x: 42,
+      rotation: 22.5,
+      hidden: true,
+      locked: true,
     });
     const path = app.directory;
     app.close();

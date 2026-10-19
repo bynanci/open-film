@@ -91,6 +91,19 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await page.getByTestId("graphic-node-x").fill("-80");
   await page.getByTestId("graphic-node-x").press("Tab");
   await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  const state = async () =>
+    (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+  const firstShapeId = (await state()).composition.graphicScenes[0].nodes[0].id;
+  await panel.getByRole("button", { name: "Shape", exact: true }).click();
+  await page.getByTestId("graphic-node-x").fill("100");
+  await page.getByTestId("graphic-node-x").press("Tab");
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes.length)
+    .toBe(2);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await panel
+    .getByRole("button", { name: `Select layer ${firstShapeId}`, exact: true })
+    .click();
   const preview = page.getByTestId("graphic-preview");
   await expect(preview).toBeVisible();
   await expect(preview).toHaveAttribute("data-frame", "0");
@@ -103,6 +116,197 @@ test("authors all primitives, seeks exact shared frames and preserves history an
     return [...ctx.getImageData(80, 90, 1, 1).data];
   });
   expect(pixel).toEqual([237, 184, 79, 255]);
+  await expect(
+    panel.getByRole("checkbox", { name: "Snap to grid and guides" }),
+  ).toBeChecked();
+  await expect(
+    panel.getByRole("checkbox", { name: "Show center and alignment guides" }),
+  ).toBeChecked();
+  const canvas = page.getByTestId("graphic-layer-canvas");
+  await expect(canvas).toHaveClass(/graphic-layer-overlay-active/);
+  const selectLayer = panel.getByRole("button", {
+    name: `Select layer ${firstShapeId}`,
+    exact: true,
+  });
+  await selectLayer.focus();
+  await selectLayer.press("ArrowRight");
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-79);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  const target = page.locator(
+    `[data-testid="graphic-layer-target"][data-layer-id="${firstShapeId}"]`,
+  );
+  const canvasBox = await canvas.boundingBox();
+  const targetBox = await target.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+  await page.mouse.move(
+    targetBox!.x + targetBox!.width / 2,
+    targetBox!.y + targetBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    targetBox!.x + targetBox!.width / 2 + (canvasBox!.width * 16) / 320,
+    targetBox!.y + targetBox!.height / 2,
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-64);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  // A second local command advances the saved revision while the pointer is
+  // still held. The earlier draft gesture must be cancelled, not replayed.
+  const staleGestureBox = await target.boundingBox();
+  expect(staleGestureBox).not.toBeNull();
+  await page.mouse.move(
+    staleGestureBox!.x + staleGestureBox!.width / 2,
+    staleGestureBox!.y + staleGestureBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    staleGestureBox!.x +
+      staleGestureBox!.width / 2 +
+      (canvasBox!.width * 16) / 320,
+    staleGestureBox!.y + staleGestureBox!.height / 2,
+  );
+  await page.getByTestId("graphic-node-x").fill("-40");
+  await page.getByTestId("graphic-node-x").press("Tab");
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(-40);
+
+  const resize = page.locator(
+    '[data-testid="graphic-layer-resize-handle"][data-handle="e"]',
+  );
+  await expect(resize).toBeVisible();
+  const resizeBox = await resize.boundingBox();
+  expect(resizeBox).not.toBeNull();
+  await page.mouse.move(
+    resizeBox!.x + resizeBox!.width / 2,
+    resizeBox!.y + resizeBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    resizeBox!.x + resizeBox!.width / 2 + (canvasBox!.width * 16) / 320,
+    resizeBox!.y + resizeBox!.height / 2,
+  );
+  await page.mouse.up();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].width,
+    )
+    .toBeCloseTo(176, 0);
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBeCloseTo(-32, 0);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  const rotate = page.getByTestId("graphic-layer-rotation-handle");
+  await expect(rotate).toBeVisible();
+  const rotateBox = await rotate.boundingBox();
+  const nodeBox = await page
+    .getByTestId("graphic-layer-target")
+    .first()
+    .boundingBox();
+  expect(rotateBox).not.toBeNull();
+  expect(nodeBox).not.toBeNull();
+  const center = {
+    x: nodeBox!.x + nodeBox!.width / 2,
+    y: nodeBox!.y + nodeBox!.height / 2,
+  };
+  const handlePoint = {
+    x: rotateBox!.x + rotateBox!.width / 2,
+    y: rotateBox!.y + rotateBox!.height / 2,
+  };
+  const radius = Math.hypot(handlePoint.x - center.x, handlePoint.y - center.y);
+  await page.mouse.move(handlePoint.x, handlePoint.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + radius, center.y);
+  await page.mouse.up();
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].nodes[0].rotation,
+    )
+    .toBeCloseTo(90, 0);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  await page.getByTestId("graphic-node-opacity").fill("0.5");
+  await page.getByTestId("graphic-node-opacity").press("Tab");
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].opacity,
+    )
+    .toBe(0.5);
+  const selectedLayerRow = panel.locator(".graphic-layer-row.selected");
+  await selectedLayerRow
+    .getByRole("button", { name: "Raise layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].zIndex,
+    )
+    .toBe(1);
+  await selectedLayerRow
+    .getByRole("button", { name: "Lower layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].zIndex,
+    )
+    .toBe(-1);
+
+  await selectedLayerRow
+    .getByRole("button", { name: "Hide layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].hidden,
+    )
+    .toBe(true);
+  await selectedLayerRow
+    .getByRole("button", { name: "Show layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].hidden,
+    )
+    .toBe(false);
+  await selectedLayerRow
+    .getByRole("button", { name: "Lock layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[0].locked,
+    )
+    .toBe(true);
+  await expect(page.getByTestId("graphic-node-x")).toBeDisabled();
+  const lockedX = (await state()).composition.graphicScenes[0].nodes[0].x;
+  const lockedTargetBox = await target.boundingBox();
+  expect(lockedTargetBox).not.toBeNull();
+  await page.mouse.move(
+    lockedTargetBox!.x + lockedTargetBox!.width / 2,
+    lockedTargetBox!.y + lockedTargetBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    lockedTargetBox!.x + lockedTargetBox!.width / 2 + 32,
+    lockedTargetBox!.y + lockedTargetBox!.height / 2,
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await state()).composition.graphicScenes[0].nodes[0].x)
+    .toBe(lockedX);
+  await selectedLayerRow
+    .getByRole("button", { name: "Unlock layer", exact: true })
+    .click();
+  await expect(page.getByTestId("graphic-node-x")).toBeEnabled();
+
   await page.getByTestId("graphic-enter-duration").fill("3");
   await page.getByTestId("graphic-enter-duration").press("Tab");
   await page.getByTestId("graphic-enter-duration").fill("0");
@@ -142,28 +346,80 @@ test("authors all primitives, seeks exact shared frames and preserves history an
         (node: { type: string }) => node.type,
       );
     })
-    .toEqual(["shape", "text", "group"]);
+    .toEqual(["shape", "shape", "text", "group"]);
+  const groupId = (await state()).composition.graphicScenes[0].nodes[3].id;
+  const selectById = (id: string) =>
+    panel.getByRole("button", { name: `Select layer ${id}`, exact: true });
+  const rowById = (id: string) =>
+    panel.locator(
+      `.graphic-layer-row:has(button[aria-label="Select layer ${id}"])`,
+    );
+  const groupRow = () => rowById(groupId);
+  await groupRow()
+    .getByRole("button", { name: "Lock layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[3].locked,
+    )
+    .toBe(true);
+  await expect(page.getByTestId("graphic-node-x")).toBeDisabled();
+  await groupRow()
+    .getByRole("button", { name: "Unlock layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[3].locked,
+    )
+    .toBe(false);
   await panel.getByRole("button", { name: "Image", exact: true }).click();
   await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
-  const state = async () =>
-    (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+  const childId = (await state()).composition.graphicScenes[0].nodes[3]
+    .children[0].id;
+  await groupRow()
+    .getByRole("button", { name: "Lock layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[3].locked,
+    )
+    .toBe(true);
+  await selectById(childId).click();
+  await expect(page.getByTestId("graphic-node-x")).toBeDisabled();
+  await expect(
+    rowById(childId).getByRole("button", { name: "Lock layer", exact: true }),
+  ).toBeDisabled();
+  await groupRow()
+    .getByRole("button", { name: "Unlock layer", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].nodes[3].locked,
+    )
+    .toBe(false);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await selectById(groupId).click();
+  await panel.getByRole("button", { name: "Image", exact: true }).click();
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
   const saved = await state();
   expect(
     saved.composition.graphicScenes[0].nodes.map(
       (node: { type: string }) => node.type,
     ),
-  ).toEqual(["shape", "text", "group"]);
-  expect(saved.composition.graphicScenes[0].nodes[2].children[0].type).toBe(
-    "image",
-  );
-  expect(saved.composition.graphicScenes[0].nodes[1].text).toBe("繁中動態敘事");
+  ).toEqual(["shape", "shape", "text", "group"]);
+  expect(
+    saved.composition.graphicScenes[0].nodes[3].children.map(
+      (node: { type: string }) => node.type,
+    ),
+  ).toEqual(["image", "image"]);
+  expect(saved.composition.graphicScenes[0].nodes[2].text).toBe("繁中動態敘事");
   await page.getByRole("button", { name: "Undo edit", exact: true }).click();
   await expect
     .poll(
       async () =>
-        (await state()).composition.graphicScenes[0].nodes[2].children.length,
+        (await state()).composition.graphicScenes[0].nodes[3].children.length,
     )
-    .toBe(0);
+    .toBe(1);
   await page.getByRole("button", { name: "Redo edit", exact: true }).click();
   await expect
     .poll(async () => (await state()).composition.graphicScenes)

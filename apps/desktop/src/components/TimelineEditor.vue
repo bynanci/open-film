@@ -259,6 +259,73 @@ const titlePreviewFailed = ref(false);
 const titlePreviewRetry = ref(0);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
+const graphicSceneSelection = ref({ sceneId: "", nodeId: "" });
+const graphicSnapping = ref(true);
+const graphicGuides = ref(true);
+const graphicLayerEditing = computed(
+  () =>
+    props.active &&
+    editMode.value === "story" &&
+    inspector.value === "graphics" &&
+    status.value === "saved" &&
+    !playing.value &&
+    !historyBusy.value,
+);
+function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
+  graphicSceneSelection.value = selection;
+}
+function setGraphicSnapping(value: boolean) {
+  graphicSnapping.value = value;
+}
+function setGraphicGuides(value: boolean) {
+  graphicGuides.value = value;
+}
+function firstGraphicNode(
+  nodes: import("@openfilm/core").GraphicNode[],
+): string {
+  const first = nodes[0];
+  return first?.id ?? "";
+}
+watch(
+  [() => props.projectId, () => props.compositionId],
+  () => {
+    graphicSceneSelection.value = { sceneId: "", nodeId: "" };
+  },
+  { flush: "sync" },
+);
+watch(
+  () => state.value?.composition.graphicScenes,
+  (scenes) => {
+    const selection = graphicSceneSelection.value;
+    const scene =
+      scenes?.find((item) => item.id === selection.sceneId) ?? scenes?.[0];
+    if (!scene) {
+      graphicSceneSelection.value = { sceneId: "", nodeId: "" };
+      return;
+    }
+    const hasNode = (
+      nodes: import("@openfilm/core").GraphicNode[],
+      id: string,
+    ): boolean =>
+      nodes.some(
+        (node) =>
+          node.id === id ||
+          (node.type === "group" && hasNode(node.children, id)),
+      );
+    if (
+      scene.id !== selection.sceneId ||
+      !hasNode(scene.nodes, selection.nodeId)
+    )
+      graphicSceneSelection.value = {
+        sceneId: scene.id,
+        nodeId:
+          selection.nodeId && hasNode(scene.nodes, selection.nodeId)
+            ? selection.nodeId
+            : firstGraphicNode(scene.nodes),
+      };
+  },
+  { immediate: true },
+);
 const clipFields = ref({
   sourceIn: 0,
   sourceOut: 0,
@@ -2111,7 +2178,17 @@ onBeforeUnmount(() => {
                         active && editMode === 'story' && status === 'saved'
                       "
                       :time="playbackClip.timelineStart + slot.time"
-                      :playing="slot.playing" /></template
+                      :playing="slot.playing"
+                      :scenes="state.composition.graphicScenes ?? []"
+                      :frame-width="projectSettings.width"
+                      :frame-height="projectSettings.height"
+                      :selected-scene-id="graphicSceneSelection.sceneId"
+                      :selected-node-id="graphicSceneSelection.nodeId"
+                      :editing="graphicLayerEditing"
+                      :snapping="graphicSnapping"
+                      :guides="graphicGuides"
+                      @select="selectGraphicLayer"
+                      @command="command" /></template
                 ></PhotoPresentationPreview>
                 <div
                   v-else-if="playbackAsset.mediaType === 'image'"
@@ -2162,6 +2239,16 @@ onBeforeUnmount(() => {
                         (playbackClip.transform?.speed ?? 1)
                     "
                     :playing="playing"
+                    :scenes="state.composition.graphicScenes ?? []"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :selected-scene-id="graphicSceneSelection.sceneId"
+                    :selected-node-id="graphicSceneSelection.nodeId"
+                    :editing="graphicLayerEditing"
+                    :snapping="graphicSnapping"
+                    :guides="graphicGuides"
+                    @select="selectGraphicLayer"
+                    @command="command"
                   />
                 </div>
                 <div
@@ -2248,6 +2335,16 @@ onBeforeUnmount(() => {
                         (playbackClip.transform?.speed ?? 1)
                     "
                     :playing="playing"
+                    :scenes="state.composition.graphicScenes ?? []"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :selected-scene-id="graphicSceneSelection.sceneId"
+                    :selected-node-id="graphicSceneSelection.nodeId"
+                    :editing="graphicLayerEditing"
+                    :snapping="graphicSnapping"
+                    :guides="graphicGuides"
+                    @select="selectGraphicLayer"
+                    @command="command"
                   />
                 </div>
               </template>
@@ -2719,6 +2816,10 @@ onBeforeUnmount(() => {
             :scenes="state.composition.graphicScenes ?? []"
             :duration="state.composition.duration"
             :assets="state.assets"
+            :selected-scene-id="graphicSceneSelection.sceneId"
+            :selected-node-id="graphicSceneSelection.nodeId"
+            :snapping="graphicSnapping"
+            :guides="graphicGuides"
             :disabled="
               directionBlocked ||
               historyBusy ||
@@ -2726,6 +2827,9 @@ onBeforeUnmount(() => {
               status === 'failed'
             "
             @command="command"
+            @selection="selectGraphicLayer"
+            @update:snapping="setGraphicSnapping"
+            @update:guides="setGraphicGuides"
           />
           <GraphicSceneTemplateStudio
             v-if="inspector === 'templates' && state"

@@ -82,6 +82,25 @@ it("renders six seconds of deterministic graphics with source-only images, CJK t
               exit: { duration: 3, easing: "linear", to: { x: 100 } },
             },
           }),
+          graphicNode({
+            id: "rotated",
+            fill: "#ff00ff",
+            x: -80,
+            y: 50,
+            width: 40,
+            height: 12,
+            rotation: 45,
+          }),
+          graphicNode({
+            id: "hidden",
+            fill: "#00ffff",
+            x: 100,
+            y: 80,
+            width: 30,
+            height: 30,
+            hidden: true,
+            zIndex: 2,
+          }),
           {
             ...common,
             id: "image",
@@ -142,6 +161,26 @@ it("renders six seconds of deterministic graphics with source-only images, CJK t
   }
   expect(seen.get(0)).not.toEqual(seen.get(90));
   const output = join(root, "animation.mp4");
+  const monitorPath = join(root, "monitor-frame.png");
+  await writeFile(monitorPath, seen.get(90)!);
+  const monitorRgba = (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      monitorPath,
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgba",
+      "pipe:1",
+    ])
+  ).stdout;
+  const rgbaPixel = (bytes: Buffer, x: number, y: number) => [
+    ...bytes.subarray((y * 320 + x) * 4, (y * 320 + x) * 4 + 4),
+  ];
+  expect(rgbaPixel(monitorRgba, 86, 151).slice(0, 3)).toEqual([255, 0, 255]);
+  expect(rgbaPixel(monitorRgba, 260, 170)[3]).toBe(0);
   await new FFmpegRenderer().render(composition, [asset], output, {
     width: 320,
     height: 180,
@@ -177,6 +216,10 @@ it("renders six seconds of deterministic graphics with source-only images, CJK t
     expect(bytes.length).toBe(320 * 180 * 3);
     expect(pixel(bytes, x, 120)[0]).toBeGreaterThan(220);
     expect(pixel(bytes, x, 120)[1]).toBeGreaterThan(220);
+    expect(pixel(bytes, 86, 151)[0]).toBeGreaterThan(200);
+    expect(pixel(bytes, 86, 151)[1]).toBeLessThan(60);
+    expect(pixel(bytes, 86, 151)[2]).toBeGreaterThan(200);
+    expect(pixel(bytes, 260, 170).every((value) => value < 30)).toBe(true);
     expect(pixel(bytes, 260, 60)[1]).toBeGreaterThan(220);
     expect(pixel(bytes, 85, 80)[2]).toBeGreaterThan(110);
     expect(pixel(bytes, 85, 80)[0]).toBeLessThan(15);

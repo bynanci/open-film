@@ -40,6 +40,33 @@ describe("GraphicScene admission", () => {
     expect(saved.graphicScenes?.[0]).not.toBe(scene);
   });
 
+  it("admits optional layer state and bounded rotation without migrating legacy scenes", () => {
+    const scene = graphicScene({
+      nodes: [graphicNode({ rotation: -17.5, hidden: true, locked: true })],
+    });
+    const saved = core.validateComposition(composition([scene]));
+    expect(saved.graphicScenes?.[0]?.nodes[0]).toMatchObject({
+      rotation: -17.5,
+      hidden: true,
+      locked: true,
+    });
+    expect(
+      core.validateComposition(composition([graphicScene()])).graphicScenes?.[0]
+        ?.nodes[0],
+    ).not.toHaveProperty("rotation");
+    for (const patch of [
+      { rotation: 3601 },
+      { rotation: Number.NaN },
+      { hidden: "yes" },
+      { locked: 1 },
+    ])
+      expect(() =>
+        core.validateComposition(
+          composition([graphicScene({ nodes: [graphicNode(patch as never)] })]),
+        ),
+      ).toThrow();
+  });
+
   it.each([
     { version: 2 },
     { start: -1 },
@@ -238,6 +265,27 @@ describe("deterministic GraphicScene time evaluation", () => {
     expect(frames[1]).toEqual(frames[4]);
     expect(frames[0]).toEqual(frames[5]);
     expect(scene.nodes[0]?.x).toBe(0);
+  });
+
+  it("evaluates rotation deterministically and excludes hidden layers", () => {
+    const scene = graphicScene({
+      nodes: [
+        graphicNode({
+          rotation: 30,
+          locked: true,
+          animation: {
+            enter: { duration: 2, easing: "linear", from: { rotation: -30 } },
+          },
+        }),
+        graphicNode({ id: "hidden", hidden: true, zIndex: 1 }),
+      ],
+    });
+    const later = core.evaluateGraphicSceneAtTime(scene, 1);
+    const earlier = core.evaluateGraphicSceneAtTime(scene, 0.5);
+    expect(later.nodes).toHaveLength(1);
+    expect(later.nodes[0]).toMatchObject({ rotation: 0, locked: true });
+    expect(earlier.nodes[0]?.rotation).toBe(-15);
+    expect(core.evaluateGraphicSceneAtTime(scene, 1)).toEqual(later);
   });
 
   it("keeps half-open scene/node times and nested local clocks", () => {

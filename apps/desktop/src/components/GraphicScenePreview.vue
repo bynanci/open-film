@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import type { GraphicScene } from "@openfilm/core";
+import type { TimelineCommand } from "@openfilm/solver";
 import { graphicFrame, ApiError } from "../api";
+import GraphicSceneLayerOverlay from "./GraphicSceneLayerOverlay.vue";
 const props = defineProps<{
   compositionId: string;
   projectId: string;
@@ -12,6 +15,18 @@ const props = defineProps<{
   sourceVersion?: number;
   active: boolean;
   playing: boolean;
+  scenes?: readonly GraphicScene[];
+  frameWidth?: number;
+  frameHeight?: number;
+  selectedSceneId?: string;
+  selectedNodeId?: string;
+  editing?: boolean;
+  snapping?: boolean;
+  guides?: boolean;
+}>();
+const emit = defineEmits<{
+  select: [selection: { sceneId: string; nodeId: string }];
+  command: [command: TimelineCommand];
 }>();
 const { t } = useI18n();
 const scope = computed(
@@ -26,6 +41,9 @@ const requestedFrame = computed(() =>
       Math.floor((props.time + 1e-9) * props.frameRate),
     ),
   ),
+);
+const displayedFrameTime = computed(
+  () => requestedFrame.value / props.frameRate,
 );
 const url = ref("");
 const shownFrame = ref(-1);
@@ -130,15 +148,32 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <img
-    v-if="url && active"
-    class="graphic-scene-overlay"
-    data-testid="graphic-preview"
-    :data-frame="shownFrame"
-    :src="url"
-    :alt="t('editor.graphics.preview')"
-    draggable="false"
-  />
+  <div v-if="active" class="graphic-preview-root">
+    <img
+      v-if="url"
+      class="graphic-scene-overlay"
+      data-testid="graphic-preview"
+      :data-frame="shownFrame"
+      :src="url"
+      :alt="t('editor.graphics.preview')"
+      draggable="false"
+    />
+    <GraphicSceneLayerOverlay
+      v-if="editing && frameWidth && frameHeight"
+      :scenes="scenes ?? []"
+      :revision="revision"
+      :time="displayedFrameTime"
+      :frame-width="frameWidth"
+      :frame-height="frameHeight"
+      :selected-scene-id="selectedSceneId ?? ''"
+      :selected-node-id="selectedNodeId ?? ''"
+      :enabled="editing && !playing && !!url && shownFrame === requestedFrame"
+      :snapping="snapping ?? true"
+      :guides="guides ?? true"
+      @select="emit('select', $event)"
+      @command="emit('command', $event)"
+    />
+  </div>
   <span v-if="failed && active" class="graphic-preview-status" role="status"
     >{{ t("editor.graphics.previewFailed") }}
     <button

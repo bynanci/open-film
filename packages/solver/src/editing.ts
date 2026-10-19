@@ -161,6 +161,113 @@ const EPSILON = 1e-7;
 function fail(message: string): never {
   throw new TimelineEditingError(message);
 }
+
+type GraphicLayerNode = GraphicScene["nodes"][number];
+type GraphicNodeLockEntry = {
+  node: GraphicLayerNode;
+  ancestors: GraphicLayerNode[];
+};
+
+function graphicNodeLockEntries(
+  scene: GraphicScene,
+): Map<string, GraphicNodeLockEntry> {
+  const entries = new Map<string, GraphicNodeLockEntry>();
+  const visit = (nodes: GraphicLayerNode[], ancestors: GraphicLayerNode[]) => {
+    for (const node of nodes) {
+      entries.set(node.id, { node, ancestors });
+      if (node.type === "group") visit(node.children, [...ancestors, node]);
+    }
+  };
+  visit(scene.nodes, []);
+  return entries;
+}
+
+function withoutGraphicLock(node: GraphicLayerNode) {
+  const { locked: _locked, ...editableData } = node;
+  return editableData;
+}
+function sameGraphicData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object" ||
+    Array.isArray(left) !== Array.isArray(right)
+  )
+    return false;
+  if (Array.isArray(left) && Array.isArray(right))
+    return (
+      left.length === right.length &&
+      left.every((value, index) => sameGraphicData(value, right[index]))
+    );
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        sameGraphicData(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+function graphicAncestorState(node: GraphicLayerNode) {
+  if (node.type === "group") {
+    const { locked: _locked, children: _children, ...state } = node;
+    return state;
+  }
+  const { locked: _locked, ...state } = node;
+  return state;
+}
+
+/** Enforce layer locks at the command boundary, including edits outside Desktop. */
+function assertGraphicSceneLocks(
+  previous: GraphicScene | undefined,
+  next: GraphicScene,
+): void {
+  if (!previous) return;
+  const oldEntries = graphicNodeLockEntries(previous);
+  if (
+    [...oldEntries.values()].some(({ node }) => node.locked) &&
+    (previous.start !== next.start ||
+      previous.duration !== next.duration ||
+      previous.zIndex !== next.zIndex)
+  )
+    fail(
+      "A scene containing locked graphic layers cannot be moved or retimed.",
+    );
+  const newEntries = graphicNodeLockEntries(next);
+  for (const [id, entry] of oldEntries) {
+    if (!entry.node.locked) continue;
+    const replacement = newEntries.get(id);
+    if (!replacement) fail(`Locked graphic layer "${id}" cannot be removed.`);
+    if (
+      !sameGraphicData(
+        withoutGraphicLock(entry.node),
+        withoutGraphicLock(replacement.node),
+      )
+    )
+      fail(`Locked graphic layer "${id}" cannot be changed.`);
+    if (
+      !sameGraphicData(
+        entry.ancestors.map(graphicAncestorState),
+        replacement.ancestors.map(graphicAncestorState),
+      )
+    )
+      fail(
+        `A group containing locked graphic layer "${id}" cannot be changed.`,
+      );
+  }
+}
+
+function hasLockedGraphicNode(scene: GraphicScene): boolean {
+  return [...graphicNodeLockEntries(scene).values()].some(
+    ({ node }) => node.locked,
+  );
+}
 function finite(
   value: number,
   label: string,
@@ -725,6 +832,7 @@ export function applyTimelineCommand(
           fail(`Graphic image asset "${id}" must be a still image.`);
       }
       const index = scenes.findIndex((item) => item.id === scene!.id);
+      assertGraphicSceneLocks(index < 0 ? undefined : scenes[index], scene!);
       if (index < 0) scenes.push(scene!);
       else scenes[index] = scene!;
       if (Object.hasOwn(command, "templateRecord")) {
@@ -741,6 +849,8 @@ export function applyTimelineCommand(
     } else {
       const index = scenes.findIndex((item) => item.id === command.sceneId);
       if (index < 0) fail(`Graphic scene "${command.sceneId}" was not found.`);
+      if (hasLockedGraphicNode(scenes[index]!))
+        fail(`Graphic scene "${command.sceneId}" contains locked layers.`);
       scenes.splice(index, 1);
       for (
         let recordIndex = templates.length - 1;

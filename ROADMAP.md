@@ -19,7 +19,9 @@ block each other without changing normal Undo grouping. The corrected candidate 
 from the earlier CI head. Selection controls also wait for saved acknowledgements
 instead of silently dropping a second action. Existing film-look capabilities
 remain part of the working tree. M3 is integrated; the active M4/F02 candidate
-must be reviewed and integrated before M5 starts.
+was merged as PR #29. M5 / F03 is now being developed as PR 5A from integrated
+main commit `e6d07b04cfb7ae905e04a6102311a26da1f18e01`; PR 5B / F08 follows only
+after 5A is reviewed and integrated.
 Merging development source is not a **Released** installer or **Hardware Verified**
 recognition/NLE claim.
 
@@ -34,7 +36,7 @@ NLE formats fail explicitly. See [contract](docs/graphic-scenes.md),
 [threat model](docs/security/graphic-scene-threat-model.md) and
 [validation](docs/validation-graphic-scene.md).
 
-## Active candidate — M4 / F02 Creative Story Templates
+## Implemented — M4 / F02 Creative Story Templates
 
 Conversation Card, Route Story and Photo Relationship build on the same
 GraphicScene v1 contract and saved Composition. Conversation text retains exact
@@ -42,9 +44,20 @@ original/citation and marked excerpts; GPX imports are selected locally,
 bounded and data-only; photo roles retain asset and focus metadata. Gallery and
 Inspector edits use the existing command history. See the
 [template contract](docs/creative-story-templates.md) and
-[validation record](docs/validation-creative-story-templates.md). This candidate
-is based on M3 main `ab072e660d5913397efe1b98394611d2350bf895`; M5 is blocked on
-its integration.
+[validation record](docs/validation-creative-story-templates.md). M4 is merged
+in PR #29 and is present in the M5 base; manual workstation and private-film
+quality gates remain separate.
+
+## Active candidate — M5 / F03 Layer Editor (PR 5A)
+
+Build direct GraphicScene object editing on the integrated M3/M4 contract. The
+Monitor overlay selects, drags, resizes and rotates layers; the Inspector edits
+opacity, z-order, visibility and locks. Grid/align snapping, guides and keyboard
+nudging submit existing typed scene commands so revision checks, autosave,
+Undo/Redo and reopen remain Composition-owned. See the [GraphicScene contract](docs/graphic-scenes.md),
+[architecture](docs/architecture.md#declarative-graphicscene) and
+[validation record](docs/validation-layer-editor.md). Reviewable agent editing
+(PR 5B) is a separate dependent change and is not included in this candidate.
 
 ## Implemented — M2 / F04 Native Caption Track
 

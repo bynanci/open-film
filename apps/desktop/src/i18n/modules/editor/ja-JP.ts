@@ -20,6 +20,8 @@ export default {
       width: "幅",
       height: "高さ",
       opacity: "不透明度",
+      rotation: "回転（度）",
+      hidden: "非表示",
       end: "終了（秒）",
       textContent: "テキスト内容",
       fontSize: "文字サイズ",
@@ -49,6 +51,18 @@ export default {
       retry: "再試行",
       sampled:
         "再生中はサンプル表示です。一時停止すると正確な出力フレームを確認できます。",
+      layerCanvas: "グラフィックレイヤー編集キャンバス",
+      selectLayer: "レイヤー {id} を選択",
+      hideLayer: "レイヤーを非表示",
+      showLayer: "レイヤーを表示",
+      lockLayer: "レイヤーをロック",
+      unlockLayer: "レイヤーのロックを解除",
+      raiseLayer: "レイヤーを前面へ",
+      lowerLayer: "レイヤーを背面へ",
+      snapping: "グリッドとガイドにスナップ",
+      guides: "中央と整列ガイドを表示",
+      keyboardHint:
+        "レイヤーを選ぶとインスペクターで変形値を編集できます。矢印キーで移動し、Shift+矢印キーで 10 ピクセル動きます。",
     },
     templates: {
       tab: "ストーリーテンプレート",

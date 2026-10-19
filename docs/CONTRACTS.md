@@ -103,8 +103,11 @@ The schema-1 Composition may contain optional `graphicScenes`; omission preserve
 legacy behavior. Only strict versioned Image/Text/Shape/Group data is admitted.
 Scene times are Composition seconds, node times scene-local half-open intervals;
 geometry uses parent-centered Composition pixels and explicit bounded animation
-endpoints. Equal scene/time/settings/source/font inputs produce equal PNGs under
-any seek order. No project JS, HTML, raw SVG, expressions or remote URLs execute.
+endpoints. Optional rotation defaults to zero; `hidden` and `locked` retain the
+node's stable identity and do not require a project-schema migration. Hidden
+nodes are omitted from evaluation/rendering. Equal scene/time/settings/source/
+font inputs produce equal PNGs under any seek order. No project JS, HTML, raw
+SVG, expressions or remote URLs execute.
 
 `graphic.scene.upsert/remove` use existing edit revision, receipt, Undo/Redo and
 save/reopen contracts. Shortening cannot exclude saved scenes. GET
@@ -113,6 +116,14 @@ output frame, returns current no-store PNG bytes, and withholds stale/cancelled
 work. JSON retains all source references; OTIO graphics are metadata only;
 FCPXML/EDL reject unsupported scenes. Numeric/resource limits are documented in
 [GraphicScene v1](graphic-scenes.md), with evidence in [validation](validation-graphic-scene.md).
+
+The M5 Layer Editor uses the existing Monitor and typed scene-upsert command for
+direct transforms and Inspector edits. A locked node can only be unlocked in a
+separate command; the command boundary rejects edits to its values, containing
+group transforms and containing scene timing/order. Transient drag state is
+discarded on revision change or editor unmount; only an acknowledged command is
+saved through existing autosave/history/reopen behavior. See the
+[Layer Editor validation record](validation-layer-editor.md).
 
 ## Creative Story Template Records
 

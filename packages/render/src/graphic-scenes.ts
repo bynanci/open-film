@@ -411,7 +411,7 @@ export async function prepareGraphicScenes(
                     ? `<rect x="${numeric(-node.baseWidth / 2)}" y="${numeric(-node.baseHeight / 2)}" width="${numeric(node.baseWidth)}" height="${numeric(node.baseHeight)}" fill="${node.fill}"/>`
                     : `<ellipse cx="0" cy="0" rx="${numeric(node.baseWidth / 2)}" ry="${numeric(node.baseHeight / 2)}" fill="${node.fill}"/>`
                   : `<image x="${numeric(-node.baseWidth / 2)}" y="${numeric(-node.baseHeight / 2)}" width="${numeric(node.baseWidth)}" height="${numeric(node.baseHeight)}" href="data:image/png;base64,${textures.get(`${scene.id}/${node.id}`)!}"/>`;
-            return `<g transform="translate(${numeric(node.x)} ${numeric(node.y)}) scale(${numeric(node.width / node.baseWidth)} ${numeric(node.height / node.baseHeight)})" opacity="${numeric(node.opacity)}">${content}</g>`;
+            return `<g transform="translate(${numeric(node.x)} ${numeric(node.y)}) rotate(${numeric(node.rotation ?? 0)}) scale(${numeric(node.width / node.baseWidth)} ${numeric(node.height / node.baseHeight)})" opacity="${numeric(node.opacity)}">${content}</g>`;
           };
           return tree.nodes.map(render).join("");
         })
