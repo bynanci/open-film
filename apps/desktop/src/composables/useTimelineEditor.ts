@@ -1,5 +1,13 @@
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  toRaw,
+} from "vue";
 import { applyTimelineCommand, type TimelineCommand } from "@openfilm/solver";
+import type { MediaAsset } from "@openfilm/core";
 import { api, ApiError, type EditorState } from "../api";
 import { useI18n } from "vue-i18n";
 import { errorDetail, localizeError } from "../i18n";
@@ -171,12 +179,24 @@ export function useTimelineEditor(
       fail(cause);
     }
   }
-  function command(input: TimelineCommand | TimelineCommand[]): boolean {
+  function command(
+    input: TimelineCommand | TimelineCommand[],
+    referencedAssets: readonly MediaAsset[] = [],
+  ): boolean {
     if (!state.value || historyBusy.value || status.value === "loading")
       return false;
     const commands = Array.isArray(input) ? input : [input];
     try {
-      const next = applyTo(state.value, commands);
+      const knownIds = new Set(state.value.assets.map((asset) => asset.id));
+      const additions = referencedAssets.flatMap((asset) => {
+        if (knownIds.has(asset.id)) return [];
+        knownIds.add(asset.id);
+        return [structuredClone(toRaw(asset))];
+      });
+      const base = additions.length
+        ? { ...state.value, assets: [...state.value.assets, ...additions] }
+        : state.value;
+      const next = applyTo(base, commands);
       pending.push(...commands);
       publish(next);
       edited();

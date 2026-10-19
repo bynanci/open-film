@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { MediaAsset } from "@openfilm/core";
 import { applyTimelineCommand, type EditorDocument } from "../src/editing.js";
 import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
+import {
+  createConversationCard,
+  createPhotoRelationship,
+} from "@openfilm/story";
 
 const assets: MediaAsset[] = [
   {
@@ -176,5 +180,93 @@ describe("GraphicScene commands", () => {
         scene,
       }),
     ).toThrow(/image|asset|source/i);
+  });
+
+  it("commits template metadata atomically and removes it with its scene", () => {
+    const { scene, record } = createConversationCard({
+      sceneId: "conversation-card",
+      duration: 6,
+      frame: { width: 1920, height: 1080 },
+      locale: "zh-TW",
+      messages: [
+        { id: "msg-1", speaker: "Ari", text: "合成測試訊息", start: 0, end: 6 },
+      ],
+    });
+    const added = applyTimelineCommand(document(), assets, {
+      type: "graphic.scene.upsert",
+      scene,
+      templateRecord: record,
+    });
+    expect(added.composition.graphicScenes).toEqual([scene]);
+    expect(added.composition.graphicSceneTemplates).toEqual([record]);
+    const changed = structuredClone(scene);
+    changed.nodes.find((node) => node.id.endsWith(".text"))!.x = 12;
+    const updated = applyTimelineCommand(added, assets, {
+      type: "graphic.scene.upsert",
+      scene: changed,
+    });
+    expect(updated.composition.graphicSceneTemplates).toEqual([record]);
+    const removed = applyTimelineCommand(updated, assets, {
+      type: "graphic.scene.remove",
+      sceneId: scene.id,
+    });
+    expect(removed.composition.graphicSceneTemplates).toBeUndefined();
+    expect(added.composition.graphicScenes).toEqual([scene]);
+  });
+
+  it("rejects stale template node bindings and asset IDs before mutation", () => {
+    const { scene, record } = createConversationCard({
+      sceneId: "conversation-card-stale",
+      duration: 6,
+      frame: { width: 1920, height: 1080 },
+      messages: [
+        { id: "msg-1", speaker: "Ari", text: "Message", start: 0, end: 6 },
+      ],
+    });
+    expect(() =>
+      applyTimelineCommand(document(), assets, {
+        type: "graphic.scene.upsert",
+        scene,
+        templateRecord: { ...record, sceneId: "different-scene" },
+      }),
+    ).toThrow(/saved GraphicScene|reference/i);
+  });
+
+  it("keeps locked source photos read-only while templates bind their identities", () => {
+    const photos: MediaAsset[] = [
+      {
+        ...assets[0]!,
+        id: "locked-photo-a",
+        name: "Synthetic A",
+        uri: "file:///synthetic/a.png",
+        mediaType: "image",
+        state: { locked: true },
+      },
+      {
+        ...assets[0]!,
+        id: "locked-photo-b",
+        name: "Synthetic B",
+        uri: "file:///synthetic/b.png",
+        mediaType: "image",
+        state: { locked: true },
+      },
+    ];
+    const before = structuredClone(photos);
+    const { scene, record } = createPhotoRelationship({
+      sceneId: "locked-photo-relationship",
+      duration: 6,
+      frame: { width: 1920, height: 1080 },
+      relationship: "compare",
+      photos: photos.map((photo) => ({ assetId: photo.id })),
+    });
+    const original = document();
+    const added = applyTimelineCommand(original, photos, {
+      type: "graphic.scene.upsert",
+      scene,
+      templateRecord: record,
+    });
+    expect(added.composition.graphicSceneTemplates).toEqual([record]);
+    expect(photos).toEqual(before);
+    expect(added.composition.tracks).toEqual(original.composition.tracks);
   });
 });

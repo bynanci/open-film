@@ -356,6 +356,8 @@ export interface Composition {
   captionTracks?: CaptionTrack[];
   /** Declarative Composition-time graphics; absent in legacy schema-1 projects. */
   graphicScenes?: import("./graphic-scenes.js").GraphicScene[];
+  /** Optional provenance bindings for editable GraphicScene story templates. */
+  graphicSceneTemplates?: import("./graphic-scene-templates.js").GraphicSceneTemplateRecord[];
 }
 
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;

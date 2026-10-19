@@ -9,8 +9,10 @@ import {
   validateAudioAutomation,
   validateFilmLook,
   validateGraphicScenes,
+  validateGraphicSceneTemplates,
   graphicSceneAssetIds,
   type GraphicScene,
+  type GraphicSceneTemplateRecord,
   filmLookMatrix,
   resolveFilmLook,
   ApplicationError,
@@ -32,7 +34,11 @@ import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
-  | { type: "graphic.scene.upsert"; scene: GraphicScene }
+  | {
+      type: "graphic.scene.upsert";
+      scene: GraphicScene;
+      templateRecord?: GraphicSceneTemplateRecord | null;
+    }
   | { type: "graphic.scene.remove"; sceneId: string }
   | { type: "look"; scope: "film"; look: FilmLook | null }
   | { type: "look"; scope: "beat"; beatId: string; look: FilmLook | null }
@@ -704,6 +710,9 @@ export function applyTimelineCommand(
     command.type === "graphic.scene.remove"
   ) {
     const scenes = structuredClone(next.composition.graphicScenes ?? []);
+    const templates = structuredClone(
+      next.composition.graphicSceneTemplates ?? [],
+    );
     if (command.type === "graphic.scene.upsert") {
       // Validate before inspecting nested source IDs or cloning client data again.
       const [scene] = validateGraphicScenes(
@@ -718,14 +727,40 @@ export function applyTimelineCommand(
       const index = scenes.findIndex((item) => item.id === scene!.id);
       if (index < 0) scenes.push(scene!);
       else scenes[index] = scene!;
+      if (Object.hasOwn(command, "templateRecord")) {
+        const recordIndex = templates.findIndex(
+          (item) => item.sceneId === scene!.id,
+        );
+        if (recordIndex >= 0) templates.splice(recordIndex, 1);
+        if (
+          command.templateRecord !== null &&
+          command.templateRecord !== undefined
+        )
+          templates.push(command.templateRecord);
+      }
     } else {
       const index = scenes.findIndex((item) => item.id === command.sceneId);
       if (index < 0) fail(`Graphic scene "${command.sceneId}" was not found.`);
       scenes.splice(index, 1);
+      for (
+        let recordIndex = templates.length - 1;
+        recordIndex >= 0;
+        recordIndex--
+      )
+        if (templates[recordIndex]!.sceneId === command.sceneId)
+          templates.splice(recordIndex, 1);
     }
     const admitted = validateGraphicScenes(scenes, next.composition.duration);
+    const admittedTemplates = validateGraphicSceneTemplates(
+      templates,
+      admitted,
+      assets.map((asset) => asset.id),
+    );
     if (admitted.length) next.composition.graphicScenes = admitted;
     else delete next.composition.graphicScenes;
+    if (admittedTemplates.length)
+      next.composition.graphicSceneTemplates = admittedTemplates;
+    else delete next.composition.graphicSceneTemplates;
     return next;
   }
   if (command.type === "look") return applyLookCommand(next, assets, command);

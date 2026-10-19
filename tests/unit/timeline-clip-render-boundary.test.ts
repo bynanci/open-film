@@ -304,6 +304,7 @@ async function mountTimeline(
     vue,
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
+    "@openfilm/story": {},
     "@openfilm/solver": solver,
     "../api": io,
     "../i18n": i18n,

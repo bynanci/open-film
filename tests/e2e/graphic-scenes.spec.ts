@@ -32,11 +32,14 @@ test("authors all primitives, seeks exact shared frames and preserves history an
     const photo = app.catalog
       .listAssets({ limit: 100 })
       .find((asset) => asset.name === "01-photo.png")!;
+    const secondPhoto = app.catalog
+      .listAssets({ limit: 100 })
+      .find((asset) => asset.name === "03-evening.png")!;
     app.project.settings = { width: 320, height: 180, frameRate: 30 };
     const story = app.generateStory({
       title: "Synthetic animation",
       template: "blank",
-      assetIds: [photo.id],
+      assetIds: [photo.id, secondPhoto.id],
       targetDuration: 6,
       maxDuration: 6,
     });
@@ -184,4 +187,99 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await expect(page.getByTestId("graphic-scene-select")).toHaveValue(
     saved.composition.graphicScenes[0].id,
   );
+
+  await page.getByTestId("graphic-template-tab").click();
+  const studio = page.locator(".graphic-template-studio");
+  await studio.getByLabel("Speaker", { exact: true }).fill("合成說話者");
+  await studio
+    .getByLabel("Message text", { exact: true })
+    .fill("合成繁中對話內容");
+  await studio
+    .getByLabel("Keep the original message and citation", { exact: true })
+    .check();
+  await studio
+    .getByLabel("Citation or source label", { exact: true })
+    .fill("Synthetic conversation fixture");
+  await studio.getByRole("button", { name: "Save template scene" }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
+    .toBe(1);
+  const conversation = (await state()).composition.graphicSceneTemplates[0];
+  expect(conversation.templateId).toBe("conversation-card");
+  expect(conversation.data.messages[0].source.originalText).toBe(
+    "合成繁中對話內容",
+  );
+
+  await studio
+    .getByRole("button", { name: "Route story", exact: true })
+    .click();
+  const gpx = Buffer.from(
+    '<gpx><trk><name>Synthetic Fictional Walk</name><trkseg><trkpt lat="25.0" lon="121.0"/><trkpt lat="25.1" lon="121.1"/></trkseg></trk><wpt lat="25.05" lon="121.05"><name>Fictional Marker</name></wpt></gpx>',
+  );
+  await studio.getByLabel("Import a GPX route file").setInputFiles({
+    name: "synthetic-route.gpx",
+    mimeType: "application/gpx+xml",
+    buffer: gpx,
+  });
+  await expect(studio.getByText(/Source: synthetic-route\.gpx/)).toBeVisible();
+  await studio.getByRole("button", { name: "Save template scene" }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
+    .toBe(2);
+  const route = (await state()).composition.graphicSceneTemplates[1];
+  expect(route.templateId).toBe("route-story");
+  expect(route.data.source).toMatchObject({
+    kind: "gpx",
+    fileName: "synthetic-route.gpx",
+  });
+  expect(route.data.waypoints[0].label).toBe("Fictional Marker");
+
+  await studio
+    .getByRole("button", { name: "Photo relationship", exact: true })
+    .click();
+  await studio
+    .getByRole("combobox", { name: "Photo relationship", exact: true })
+    .selectOption("compare");
+  const photoSelects = studio.locator("fieldset.template-card select");
+  await photoSelects.nth(0).selectOption({ index: 1 });
+  await photoSelects.nth(1).selectOption({ index: 2 });
+  await studio.getByRole("button", { name: "Save template scene" }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
+    .toBe(3);
+  const templates = (await state()).composition.graphicSceneTemplates;
+  expect(templates[2].templateId).toBe("photo-relationship");
+  expect(
+    templates[2].data.photos.map((photo: { assetId: string }) => photo.assetId),
+  ).toHaveLength(2);
+  expect(
+    new Set(
+      templates[2].data.photos.map(
+        (photo: { assetId: string }) => photo.assetId,
+      ),
+    ).size,
+  ).toBe(2);
+
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
+    .toBe(2);
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(async () => (await state()).composition.graphicSceneTemplates?.length)
+    .toBe(3);
+  expect((await state()).composition.graphicSceneTemplates).toEqual(templates);
+  expect((await request.post(`${api}/project/close`, { data: {} })).ok()).toBe(
+    true,
+  );
+  expect(
+    (
+      await request.post(`${api}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  expect((await state()).composition.graphicSceneTemplates).toEqual(templates);
 });

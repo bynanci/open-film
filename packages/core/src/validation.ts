@@ -28,6 +28,7 @@ import {
   validateGraphicScenes,
   graphicSceneAssetIds,
 } from "./graphic-scenes.js";
+import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
 
 export interface ValidationIssue {
   path: string;
@@ -986,6 +987,14 @@ function composition(
       for (const id of graphicSceneAssetIds(scenes))
         if (!knownAssets.has(id))
           fail(`${path}.graphicScenes`, `unknown graphic image asset ${id}`);
+  });
+  optional(data, "graphicSceneTemplates", path, (value) => {
+    const scenes = validateGraphicScenes(data.graphicScenes ?? [], duration);
+    validateGraphicSceneTemplates(
+      value,
+      scenes,
+      knownAssets ? [...knownAssets] : undefined,
+    );
   });
   optional(data, "defaultLook", path, filmLook);
   optional(data, "beatLooks", path, (value, beatPath) => {

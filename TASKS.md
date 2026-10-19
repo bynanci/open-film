@@ -5,7 +5,7 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Current — M3 / F01 Declarative GraphicScene
+## Implemented — M3 / F01 Declarative GraphicScene
 
 Scope: [GraphicScene v1](docs/graphic-scenes.md),
 [threat model](docs/security/graphic-scene-threat-model.md) and
@@ -26,6 +26,26 @@ previous M3/F03 general keyframe authoring; broader clip keyframes stay deferred
       matrix; exact-head CI is required and recorded in the PR before merge.
 - [ ] Manual hardware/4K throughput, target-display aesthetics and real NLE finishing.
 
+## Active candidate — M4 / F02 Creative Story Templates
+
+Scope: [Creative Story Templates](docs/creative-story-templates.md),
+[architecture](docs/architecture.md#creative-story-template-records) and
+[validation](docs/validation-creative-story-templates.md). Base is M3 merge
+`ab072e660d5913397efe1b98394611d2350bf895`; this candidate has not been merged.
+
+- [x] Bind Conversation Card, Route Story and Photo Relationship metadata to
+      ordinary GraphicScene v1 nodes without another timeline or project migration.
+- [x] Retain exact chat source/citation and excerpt ranges; parse only explicitly
+      selected bounded GPX files and save source hash plus route geometry.
+- [x] Provide a localized Gallery/Inspector for text, timing, source photos,
+      animation, focal point and protected-region edits.
+- [x] Persist scene and record through existing typed commands, Undo/Redo,
+      autosave and reopen; deleting a scene deletes its metadata record.
+- [x] Cover safe GPX parsing, all three template types, real synthetic 24-second
+      MP4 decode evidence, source hashes, browser authoring and history/reopen.
+- [ ] Complete full exact-head CI, fresh review and merge M4 before starting
+      the M5 branch; published/manual workstation and private-film gates remain separate.
+
 ## Implemented — M1 / F07 Visual QA
 
 Scope and evidence: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md)
@@ -45,7 +65,7 @@ documented crosswalk; this is not a retroactive claim that those labels existed.
 - [ ] Manual: private-film aesthetics, display/projector readability, long/4K
       performance and actual Resolve/NLE finishing remain separate gates.
 
-## Creative Scene Platform — M1–M5 delivery queue
+## Creative Scene Platform — M1–M6 delivery queue
 
 Scope and acceptance: [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 The F01–F13 labels are a planning crosswalk introduced by that roadmap; they do
@@ -64,11 +84,18 @@ not retroactively rename completed project capabilities.
       are implemented; final PR gates and manual limits are tracked in the
       [validation record](docs/validation-graphic-scene.md). General clip keyframes
       from the earlier M3/F03 proposal remain deferred.
-- [ ] **M4 / F05 + F08 — Photo narrative and AI assistance.** Build on current
-      framing and scene-direction review with declared consent/data boundaries,
-      source-bound suggestions, explicit accept/reject and no automatic edits.
-- [ ] **M5 / F06 + F10 + F13 — Audio design and verified output.** Add measurable
-      decoded-audio review and repeatable output evidence; keep hardware, real media,
+- [x] **M4 / F02 — Creative Story Templates.** Candidate implements Conversation
+      Card, Route Story and Photo Relationship on M3 GraphicScene v1; the exact
+      MP4/browser/validation evidence and remaining PR gates are in the record above.
+- [ ] **M5 / F03 — Layer Editor (PR 5A).** Add scene-layer selection and direct
+      position/size/rotation/opacity/z-order editing, hidden/locked state,
+      snapping/guides and keyboard controls through existing typed commands.
+- [ ] **M5 / F08 — Reviewable Agent Editing (PR 5B).** Generate allowlisted typed
+      proposals, explain affected IDs and before/after values, surface conflicts,
+      and require Preview → Select → Explicit Accept; preserve local deterministic
+      operations without a configured provider.
+- [ ] **M6 / F05 + F06 + F10 + F13 — Photo/audio/output review.** Add decoded
+      audio diagnostics and repeatable output evidence; keep hardware, real media,
       4K and NLE finishing as separately recorded manual gates.
 
 The candidate for each milestone requires its complete exact-head automated gate

@@ -3384,6 +3384,7 @@ onUnmounted(() => {
             :report="exportReport"
             :look-override="lookOverride"
             :project-settings="project.settings"
+            :project-content-locale="project.projectContentLocale ?? 'en-US'"
             :quality="outputQuality"
             :caption-track-id="outputCaptionTrackId"
             @look="changeOutputLook"

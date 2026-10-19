@@ -12,7 +12,13 @@ import { runProcess, inspectMedia, hashFile } from "@openfilm/media";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MediaAsset } from "@openfilm/core";
 import * as render from "@openfilm/render";
+import {
+  createConversationCard,
+  createPhotoRelationship,
+  createRouteStory,
+} from "@openfilm/story";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
 
@@ -119,6 +125,316 @@ describe("durable GraphicScene editing", () => {
       new TimelineEditor(reopened).get("composition").composition.graphicScenes,
     ).toEqual([scene]);
   });
+
+  it("persists template provenance with its GraphicScene through undo, redo and reopen", async () => {
+    const { app, editor } = await fixture();
+    const initial = editor.get("composition");
+    const { scene, record } = createConversationCard({
+      sceneId: "conversation-card",
+      duration: 6,
+      frame: { width: 320, height: 180 },
+      locale: "zh-TW",
+      messages: [
+        {
+          id: "message-1",
+          speaker: "合成說話者",
+          text: "合成繁中訊息",
+          start: 0.5,
+          end: 5.5,
+        },
+      ],
+    });
+    const saved = await editor.edit("composition", {
+      baseRevision: initial.revision,
+      commands: [
+        { type: "graphic.scene.upsert", scene, templateRecord: record },
+      ],
+    });
+    expect(saved.composition.graphicSceneTemplates).toEqual([record]);
+    const undo = await editor.undo("composition", saved.revision);
+    expect(undo.composition.graphicScenes).toBeUndefined();
+    expect(undo.composition.graphicSceneTemplates).toBeUndefined();
+    const redo = await editor.redo("composition", undo.revision);
+    expect(redo.composition.graphicSceneTemplates).toEqual([record]);
+    const path = app.directory;
+    app.close();
+    apps.delete(app);
+    const reopened = await OpenFilmApplication.open(path);
+    apps.add(reopened);
+    expect(
+      new TimelineEditor(reopened).get("composition").composition
+        .graphicSceneTemplates,
+    ).toEqual([record]);
+  });
+
+  it("admits explicitly selected catalog photos outside the story candidate pool", async () => {
+    const { app, editor } = await fixture();
+    app.catalog.upsertAsset({
+      id: "catalog-photo",
+      uri: "file:///synthetic/catalog-photo.png",
+      name: "Synthetic catalog photo",
+      mediaType: "image",
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    const before = editor.get("composition");
+    expect(before.assets.some((asset) => asset.id === "catalog-photo")).toBe(
+      false,
+    );
+    const { scene, record } = createPhotoRelationship({
+      sceneId: "selected-catalog-photo",
+      duration: 6,
+      frame: { width: 320, height: 180 },
+      locale: "en-US",
+      relationship: "focus-reveal",
+      photos: [{ assetId: "catalog-photo", focalPoint: { x: 0.5, y: 0.5 } }],
+    });
+    const saved = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [
+        { type: "graphic.scene.upsert", scene, templateRecord: record },
+      ],
+    });
+    expect(saved.composition.graphicSceneTemplates).toEqual([record]);
+    expect(saved.assets.some((asset) => asset.id === "catalog-photo")).toBe(
+      true,
+    );
+  });
+
+  it("renders a synthetic 24-second three-template MP4 with verifiable timing and source hashes", async () => {
+    const { app, editor } = await fixture();
+    const sourcePath = join(app.directory, "synthetic-story.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0x202020:s=320x180:r=12:d=24",
+      "-t",
+      "24",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-threads",
+      "1",
+      "-y",
+      sourcePath,
+    ]);
+    const source = await inspectMedia({
+      path: sourcePath,
+      uri: pathToFileURL(sourcePath).href,
+      name: "Synthetic background",
+    });
+    app.catalog.upsertAsset(source);
+    app.project.settings = { width: 320, height: 180, frameRate: 12 };
+    app.project.stories[0]!.beats[0]!.candidateAssetIds = [source.id];
+    app.project.stories[0]!.beats[0]!.selectedAssetIds = [source.id];
+    app.project.timelines[0]!.duration = 24;
+    app.project.timelines[0]!.tracks[0]!.clips[0] = {
+      id: "synthetic-24s",
+      assetId: source.id,
+      beatId: "beat",
+      timelineStart: 0,
+      timelineDuration: 24,
+      sourceIn: 0,
+      sourceOut: 24,
+    };
+    const photoAssets: MediaAsset[] = [];
+    const photoHashes = new Map<string, string>();
+    for (const [id, color] of [
+      ["photo-red", "red"],
+      ["photo-blue", "blue"],
+    ] as const) {
+      const path = join(app.directory, `${id}.png`);
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=${color}:s=64x64`,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-y",
+        path,
+      ]);
+      const photo = await inspectMedia({
+        path,
+        uri: pathToFileURL(path).href,
+        name: `${id}.png`,
+      });
+      app.catalog.upsertAsset(photo);
+      photoAssets.push(photo);
+      photoHashes.set(photo.id, await hashFile(path));
+    }
+    app.project.stories[0]!.beats[0]!.candidateAssetIds = [
+      source.id,
+      ...photoAssets.map((photo) => photo.id),
+    ];
+    app.project.stories[0]!.beats[0]!.selectedAssetIds = [source.id];
+    await app.save();
+    const frame = { width: 320, height: 180 };
+    const built = [
+      createConversationCard({
+        sceneId: "synthetic-conversation",
+        start: 0,
+        duration: 8,
+        frame,
+        locale: "zh-TW",
+        messages: [
+          {
+            id: "msg",
+            speaker: "合成說話者",
+            text: "合成對話內容",
+            start: 0.5,
+            end: 7.5,
+          },
+        ],
+      }),
+      createRouteStory({
+        sceneId: "synthetic-route",
+        start: 8,
+        duration: 8,
+        frame,
+        locale: "zh-TW",
+        route: {
+          kind: "manual",
+          points: [
+            { latitude: 25, longitude: 121 },
+            { latitude: 25.1, longitude: 121.1 },
+          ],
+          waypoints: [
+            { label: "虛構站點", latitude: 25.05, longitude: 121.05 },
+          ],
+        },
+      }),
+      createPhotoRelationship({
+        sceneId: "synthetic-photos",
+        start: 16,
+        duration: 8,
+        frame,
+        locale: "zh-TW",
+        relationship: "compare",
+        photos: photoAssets.map((photo) => ({
+          assetId: photo.id,
+          contentHash: photo.contentHash,
+          focalPoint: { x: 0.5, y: 0.5 },
+        })),
+      }),
+    ];
+    let revision = editor.get("composition").revision;
+    for (const item of built) {
+      const result = await editor.edit("composition", {
+        baseRevision: revision,
+        commands: [
+          {
+            type: "graphic.scene.upsert",
+            scene: item.scene,
+            templateRecord: item.record,
+          },
+        ],
+      });
+      revision = result.revision;
+    }
+    const output = await app.exportMp4("composition", { quality: "standard" });
+    const probe = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,width,height,nb_frames,avg_frame_rate",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "json",
+      output.path,
+    ]);
+    const info = JSON.parse(probe.stdout.toString("utf8")) as {
+      streams: {
+        codec_name: string;
+        width: number;
+        height: number;
+        nb_frames: string;
+        avg_frame_rate: string;
+      }[];
+      format: { duration: string };
+    };
+    expect(info.streams[0]).toMatchObject({
+      codec_name: "h264",
+      width: 320,
+      height: 180,
+      nb_frames: "288",
+      avg_frame_rate: "12/1",
+    });
+    expect(Number(info.format.duration)).toBeCloseTo(24, 1);
+    const frameAt = async (seconds: number) =>
+      runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-ss",
+        String(seconds),
+        "-i",
+        output.path,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+      ]).then((result) => result.stdout);
+    const samples = new Map<number, Buffer>();
+    for (const seconds of [17.5, 1.5, 8.5, 17.5]) {
+      const decoded = await frameAt(seconds);
+      expect(decoded).toHaveLength(320 * 180 * 3);
+      const prior = samples.get(seconds);
+      if (prior) expect(decoded).toEqual(prior);
+      else samples.set(seconds, decoded);
+    }
+    const pixel = (bytes: Buffer, x: number, y: number) => [
+      ...bytes.subarray((y * 320 + x) * 3, (y * 320 + x) * 3 + 3),
+    ];
+    const dialogue = samples.get(1.5)!;
+    expect(pixel(dialogue, 42, 42)).not.toEqual([32, 32, 32]);
+    const routeFrame = samples.get(8.5)!;
+    let routePixels = 0;
+    for (let offset = 0; offset < routeFrame.length; offset += 3)
+      if (
+        routeFrame[offset + 1]! > routeFrame[offset]! + 45 &&
+        routeFrame[offset + 1]! > 150 &&
+        routeFrame[offset + 2]! > 140
+      )
+        routePixels++;
+    expect(routePixels).toBeGreaterThan(100);
+    const photoFrame = samples.get(17.5)!;
+    expect(pixel(photoFrame, 80, 90)[0]).toBeGreaterThan(180);
+    expect(pixel(photoFrame, 240, 90)[2]).toBeGreaterThan(180);
+    const manifest = JSON.parse(
+      await readFile(`${output.path}.manifest.json`, "utf8"),
+    ) as {
+      composition: { graphicSceneTemplates: unknown[] };
+      sources: { assetId: string; sha256: string }[];
+      warnings: string[];
+    };
+    expect(manifest.composition.graphicSceneTemplates).toEqual(
+      built.map((item) => item.record),
+    );
+    expect(
+      manifest.sources.find((item) => item.assetId === photoAssets[0]!.id)
+        ?.sha256,
+    ).toBe(photoHashes.get(photoAssets[0]!.id));
+    expect(
+      manifest.sources.find((item) => item.assetId === photoAssets[1]!.id)
+        ?.sha256,
+    ).toBe(photoHashes.get(photoAssets[1]!.id));
+    expect(output.report.warnings).toEqual(manifest.warnings);
+  }, 120_000);
 
   it("returns exact-frame PNGs and refuses stale/project-mismatched preview requests", async () => {
     const { app, editor } = await fixture();
