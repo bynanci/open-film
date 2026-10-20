@@ -191,8 +191,17 @@ export class NleHandoffService {
       if (!asset) throw new Error(`Missing handoff source: ${id}`);
       return asset;
     });
-    if (plan.visualRanges.length || plan.bakeAudio)
+    if (plan.visualRanges.length || plan.bakeAudio) {
+      const { width, height } = this.host.project.settings;
+      if (
+        !Number.isInteger(width) ||
+        !Number.isInteger(height) ||
+        width % 2 !== 0 ||
+        height % 2 !== 0
+      )
+        throw new Error("Render dimensions must be even integers");
       graphicFrameRanges(composition, this.host.project.settings);
+    }
     for (const track of composition.captionTracks ?? [])
       if (track.cues.length)
         serializeCaptions(
@@ -342,6 +351,7 @@ export class NleHandoffService {
           format?: { duration?: string };
         };
         const streams = inspected.streams;
+        let verifiedDuration: number | undefined;
         if (asset.mediaType !== "image") {
           const type = asset.mediaType === "audio" ? "audio" : "video";
           const duration = Number(
@@ -350,6 +360,7 @@ export class NleHandoffService {
           );
           if (!Number.isFinite(duration) || duration <= 0)
             throw new Error("Source duration cannot be verified");
+          verifiedDuration = duration;
           for (const clip of composition.tracks
             .flatMap((t) => t.clips)
             .filter((c) => c.assetId === asset.id)) {
@@ -385,6 +396,9 @@ export class NleHandoffService {
         references.push({ assetId: asset.id, sha256, file });
         originals.push({
           ...asset,
+          ...(verifiedDuration === undefined
+            ? {}
+            : { duration: verifiedDuration }),
           uri: file,
           name: `Source ${index + 1}`,
           metadata: {

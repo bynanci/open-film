@@ -1,5 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
 import {
+  FRAME_BOUNDARY_TOLERANCE_SECONDS,
+  frameAlignedDuration,
   graphicSceneAssetIds,
   isFilmLookActive,
   resolveFilmLook,
@@ -94,9 +96,15 @@ export function createHandoffPlan(
     if (!Number.isFinite(seconds) || seconds < 0)
       throw new Error("Invalid handoff time");
     const value = seconds * rate;
-    if (strict && Math.abs(value - Math.round(value)) > 1e-5)
+    if (!strict) return value;
+    if (
+      Math.abs(seconds - Math.round(value) / rate) >
+      FRAME_BOUNDARY_TOLERANCE_SECONDS
+    )
       throw new Error("Bake boundaries must align to output frames");
-    return strict ? Math.round(value) : value;
+    return seconds === 0
+      ? 0
+      : Math.round(frameAlignedDuration(seconds, rate) * rate);
   };
   keys(composition, [
     "id",
@@ -393,6 +401,24 @@ export function createHandoffPlan(
   if (visualRanges.length > 128)
     throw new Error(
       "Handoff supports at most 128 disjoint visual bake ranges; use preserve-editability or fewer ranges",
+    );
+  if (
+    visualRanges.some(
+      (range) =>
+        range.endFrame >
+        Math.round(frameAlignedDuration(composition.duration, rate) * rate),
+    )
+  )
+    throw new Error(
+      "Visual bake exceeds complete reference frames; align the composition end to output frames",
+    );
+  if (
+    (visualRanges.length || options.bakeAudio === true) &&
+    (composition.captionTracks?.find((track) => track.id === captionTrackId)
+      ?.cues.length ?? 0) > 64
+  )
+    throw new Error(
+      "Handoff reference rendering supports at most 64 selected caption cues; select no caption language, or use preserve-editability without full mix, and import the SRT/VTT sidecars manually",
     );
   // Native source/cut claims apply only to ranges that survive replacement.
   for (let index = items.length - 1; index >= 0; index--) {

@@ -1,3 +1,5 @@
+export const FRAME_BOUNDARY_TOLERANCE_SECONDS = 1e-9;
+
 /**
  * End of the complete output frames in a composition, in seconds.
  *
@@ -13,5 +15,8 @@ export function frameAlignedDuration(
     throw new Error("Composition duration must be positive and finite");
   if (!Number.isFinite(frameRate) || frameRate <= 0)
     throw new Error("Frame rate must be positive and finite");
-  return Math.floor((duration + 1e-9) * frameRate) / frameRate;
+  return (
+    Math.floor((duration + FRAME_BOUNDARY_TOLERANCE_SECONDS) * frameRate) /
+    frameRate
+  );
 }

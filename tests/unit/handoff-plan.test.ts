@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Composition } from "@openfilm/core";
+import { frameAlignedDuration, type Composition } from "@openfilm/core";
 import { createHandoffPlan } from "@openfilm/exporters";
 const cut: Composition = {
   id: "cut",
@@ -294,3 +294,45 @@ it("bounds caption track count so sidecar receipts remain downloadable", () => {
   }));
   expect(() => createHandoffPlan(c, 24)).toThrow(/limit/i);
 });
+
+it.each(
+  [24, 30, 29.97].flatMap((rate) =>
+    [-1e-7, -2e-9, 2e-9].map((drift) => ({ rate, drift })),
+  ),
+)(
+  "rejects a bake boundary outside renderer tolerance at $rate fps with $drift seconds drift",
+  ({ rate, drift }) => {
+    const c = structuredClone(cut);
+    c.duration = 30 / rate + drift;
+    c.tracks[0]!.clips[0]!.timelineDuration = c.duration;
+    c.tracks[0]!.clips[0]!.title = "Boundary";
+    expect(() => createHandoffPlan(c, rate)).not.toThrow();
+    expect(() =>
+      createHandoffPlan(c, rate, { mode: "preserve-visual-fidelity" }),
+    ).toThrow(/align.*frame/i);
+    expect(() => createHandoffPlan(c, rate, { bakeAudio: true })).toThrow(
+      /align.*frame/i,
+    );
+  },
+);
+
+it.each(
+  [24, 30, 29.97].flatMap((rate) =>
+    [-5e-10, 5e-10].map((drift) => ({ rate, drift })),
+  ),
+)(
+  "keeps the renderer's admitted frame edge at $rate fps with $drift seconds drift",
+  ({ rate, drift }) => {
+    const c = structuredClone(cut);
+    c.duration = 30 / rate + drift;
+    c.tracks[0]!.clips[0]!.timelineDuration = c.duration;
+    c.tracks[0]!.clips[0]!.title = "Boundary";
+    const plan = createHandoffPlan(c, rate, {
+      mode: "preserve-visual-fidelity",
+      bakeAudio: true,
+    });
+    expect(plan.visualRanges).toEqual([{ startFrame: 0, endFrame: 30 }]);
+    expect(plan.durationFrames).toBe(30);
+    expect(Math.round(frameAlignedDuration(c.duration, rate) * rate)).toBe(30);
+  },
+);
