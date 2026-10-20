@@ -282,3 +282,15 @@ it("bakes only the actual incoming transition interval", () => {
     ),
   ).toContainEqual(expect.objectContaining({ startFrame: 12, endFrame: 96 }));
 });
+
+it("bounds caption track count so sidecar receipts remain downloadable", () => {
+  const c = structuredClone(cut);
+  c.captionTracks = Array.from({ length: 129 }, (_, index) => ({
+    version: 1,
+    id: `language-${index}`,
+    name: "Synthetic",
+    style: { version: 1, role: "subtitle" },
+    cues: [],
+  }));
+  expect(() => createHandoffPlan(c, 24)).toThrow(/limit/i);
+});

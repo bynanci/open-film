@@ -115,3 +115,11 @@ settings/timelines: refreshing/reimporting a same-ID source requires a new revie
 Short transitions bake only their actual duration; the native remainder does not
 reapply the transition. Full-frame verification and derivative FFmpeg jobs have a
 30-minute upper deadline and retain cancellation support.
+
+The opaque review token binds the complete normalized plan as well as project
+and source revisions. Changing mode, mix or caption selection requires reviewing
+again. Audio-only assets on video/overlay tracks are explicitly unsupported in
+this slice: move them to Audio before handoff. Review JSON is limited to 2 MiB
+after range expansion and caption tracks to 128, leaving bounded inventory space
+within the 4 MiB downloadable receipt cap. The 5,000-cue CLI regression remains
+supported; large bake expansion must be reduced or use preserve-editability.

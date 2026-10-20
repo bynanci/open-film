@@ -127,3 +127,13 @@ fade yields four baked frames at 8 fps, compares first/last pixels to the refere
 and preserves the remaining 3.5-second native cut with no repeated transition.
 The 66e2da5 browser run was interrupted after 139 passes (one interrupted / 29 not
 run) to fix these new correctness findings; final-head results supersede it.
+
+Additional review findings have fail-first regressions for changed export options,
+audio-only assets on visual tracks and oversized expanded plans. The token now
+binds normalized plan/options and final publication rechecks it. This slice rejects
+audio-only video/overlay sources during review with an Audio-track instruction.
+A real 128-track × 128-caption-range plan is rejected by the 2 MiB review budget;
+caption tracks are bounded to 128 so generated sidecars and inventory fit the
+4 MiB receipt cap. Existing 5,000-cue CLI export still passes. The b274b8c browser
+run was interrupted after 117 passes (one interrupted / 51 not run) to apply
+these findings; it is not claimed as a complete browser pass.

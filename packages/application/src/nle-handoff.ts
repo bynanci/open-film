@@ -149,11 +149,17 @@ export class NleHandoffService {
   }
   review(compositionId: string, input: HandoffOptions = {}): HandoffReview {
     const { composition, revision } = this.snapshot(compositionId);
-    return {
+    const plan = this.plan(composition, input);
+    const review = {
       projectId: this.host.project.id,
-      revision,
-      plan: this.plan(composition, input),
+      revision: digest({ snapshot: revision, plan }),
+      plan,
     };
+    // Leave room for at most 256 sources, 128 precomps and 256 sidecars
+    // within the 4 MiB downloadable receipt limit.
+    if (Buffer.byteLength(JSON.stringify(review, null, 2)) > 2 * 1024 ** 2)
+      throw new Error("Handoff review expansion limit exceeded (2 MiB)");
+    return review;
   }
   private plan(composition: Composition, input: HandoffOptions): HandoffPlan {
     const plan = createHandoffPlan(
@@ -173,6 +179,10 @@ export class NleHandoffService {
     ))
       for (const clip of track.clips) {
         const asset = this.host.getSourceAsset(clip.assetId);
+        if (asset?.mediaType === "audio")
+          throw new Error(
+            "Audio-only sources on visual tracks are unsupported for handoff; move the clip to an audio track",
+          );
         if (!asset || !hasEmbeddedAudio(asset)) continue;
         const manual =
           (clip.transform?.speed ?? 1) !== 1 ||
@@ -825,7 +835,10 @@ export class NleHandoffService {
         id,
       );
       checkAbort(signal);
-      if (this.snapshot(input.compositionId).revision !== review.revision)
+      if (
+        this.review(input.compositionId, options(input)).revision !==
+        review.revision
+      )
         throw new Error("Stale handoff revision");
       renameSync(staging, target);
       published = true;

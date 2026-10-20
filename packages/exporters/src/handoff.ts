@@ -49,6 +49,7 @@ export function createHandoffPlan(
   keys(options, ["mode", "bakeAudio", "captionTrackId"]);
   if (
     composition.tracks.length > 128 ||
+    (composition.captionTracks?.length ?? 0) > 128 ||
     composition.tracks.reduce((n, t) => n + t.clips.length, 0) > 2000 ||
     (composition.captionTracks ?? []).reduce((n, t) => n + t.cues.length, 0) >
       5000

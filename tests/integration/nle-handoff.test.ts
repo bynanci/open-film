@@ -1116,3 +1116,61 @@ it("renders only a short transition and preserves its remaining native cut witho
     ).toBeLessThan(3);
   }
 });
+
+it("binds mode, audio and caption selections to the reviewed approval", async () => {
+  const { app, composition } = await fixture();
+  const review = app.reviewHandoff(composition.id);
+  const request = {
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+  };
+  for (const change of [
+    { mode: "preserve-visual-fidelity" as const },
+    { bakeAudio: true },
+    { captionTrackId: null },
+  ])
+    await expect(app.exportHandoff({ ...request, ...change })).rejects.toThrow(
+      /stale/i,
+    );
+});
+
+it("rejects audio-only sources on visual tracks during review before silent picture baking", async () => {
+  const { app, composition } = await fixture();
+  composition.tracks[0]!.clips[0]!.assetId =
+    composition.tracks[1]!.clips[0]!.assetId;
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() =>
+    app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+  ).toThrow(/audio.*visual/i);
+});
+
+it("rejects expanded reviews that cannot fit the downloadable receipt budget", async () => {
+  const { app, composition } = await fixture();
+  app.project.settings.frameRate = 100;
+  const clip = composition.tracks[0]!.clips[0]!;
+  composition.graphicScenes = [];
+  composition.tracks = Array.from({ length: 128 }, (_, index) => ({
+    id: `visual-${index}`,
+    type: "video" as const,
+    clips: [{ ...clip, id: `clip-${index}` }],
+  }));
+  composition.captionTracks![0]!.cues = Array.from(
+    { length: 128 },
+    (_, index) => ({
+      version: 1 as const,
+      id: `cue-${index}`,
+      startMs: index * 30,
+      endMs: index * 30 + 10,
+      text: "合成字幕",
+      source: { kind: "manual" as const },
+      manualRevision: 0,
+    }),
+  );
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() =>
+    app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+  ).toThrow(/review.*limit/i);
+});
