@@ -1,9 +1,15 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
 import { createHash } from "node:crypto";
-import { constants, lstatSync, readFileSync, createWriteStream } from "node:fs";
+import {
+  constants,
+  linkSync,
+  unlinkSync,
+  lstatSync,
+  readFileSync,
+  createWriteStream,
+} from "node:fs";
 import {
   lstat,
-  link,
   mkdir,
   mkdtemp,
   open,
@@ -2294,19 +2300,38 @@ export class CollectMediaService {
       ].reduce((sum, file) => sum + file.size, 0);
       if (packageBytes > MAX_PACKAGE_BYTES)
         fail("request.tooLarge", "Package exceeds the ZIP32 size limit.", 413);
-      if (this.capture().revision !== captured.revision) {
-        fail(
-          "story.planStale",
-          "Project changed while sources were being collected.",
-          409,
-        );
-      }
-      checkAbortAndStatus(input.signal);
+      const assertCurrent = () => {
+        checkAbortAndStatus(input.signal);
+        if (this.capture().revision !== captured.revision)
+          fail(
+            "story.planStale",
+            "Project changed while sources were being collected.",
+            409,
+          );
+      };
+      assertCurrent();
       if (input.format === "zip") {
         await writeStoredZip(stage, zipStage, input.signal);
+        const archive = lstatSync(zipStage);
+        if (
+          !archive.isFile() ||
+          archive.isSymbolicLink() ||
+          archive.nlink !== 1
+        )
+          fail(
+            "export.failed",
+            "The completed private ZIP archive changed before publication.",
+            422,
+          );
+        assertCurrent();
         try {
-          await link(zipStage, destination.path);
-          await rm(zipStage, { force: true });
+          // The synchronous exclusive link is the commit point. A saved edit or
+          // cancellation cannot interleave after the final fence; observer
+          // activity and awaited private cleanup happen after this commit.
+          linkSync(zipStage, destination.path);
+          // Leave the committed archive with one link before announcing
+          // completion, as required by the existing ZIP verifier.
+          unlinkSync(zipStage);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "EEXIST")
             fail(
@@ -2316,7 +2341,7 @@ export class CollectMediaService {
             );
           throw error;
         }
-        packageBytes = (await lstat(destination.path)).size;
+        packageBytes = archive.size;
       } else {
         // Keep the safe aggregate receipt if an external replacement prevents
         // reclaiming the published directory into our private stage.
@@ -2326,15 +2351,7 @@ export class CollectMediaService {
             staging: stage,
             destination: destination.path,
             signal: input.signal,
-            assertCurrent: () => {
-              checkAbortAndStatus(input.signal);
-              if (this.capture().revision !== captured.revision)
-                fail(
-                  "story.planStale",
-                  "Project changed while sources were being collected.",
-                  409,
-                );
-            },
+            assertCurrent,
           });
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "EEXIST")

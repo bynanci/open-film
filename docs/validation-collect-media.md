@@ -279,6 +279,46 @@ keys pass. The frozen offline install applies Koffi's disabled lifecycle policy.
 Independent Collect and stem reviewers separately bind their actual-process
 checks to the final source commit; full release gates remain with the coordinator.
 
+## Final ZIP publication fence — 2026-10-20
+
+Review finding `4329851118` was reproduced at
+`18cb8ff346f926ac71081a81c6fafdd69bc28792`: a saved project edit or cancellation
+while the real ZIP writer was held still allowed publication and success. The
+completed private archive contained the old captured revision. Independent
+controls also reproduce the gap during actual final archive fsync and after
+native close, before the caller resumes.
+
+Collect now rechecks the current revision and cancellation after archive writing.
+It validates and measures the private regular archive, then runs its final fence
+and exclusive synchronous hardlink without yielding. The successful `linkSync`
+is the commit point. There is no asynchronous public-path operation between the
+fence and commit, and no later public unlink or rollback. Private link cleanup is
+synchronous before completion notification, preserving the verifier's one-link
+archive requirement. Remaining temporary cleanup can await after commitment.
+
+A saved edit or cancellation before commitment rejects without a public archive.
+Cancellation or a throwing observer at completion cannot revoke a committed
+archive. If another process replaces that path after commitment, its inode and
+bytes remain untouched; reported size and manifest hash describe the archive that
+was committed. A raced existing file, empty directory or symlink still makes
+exclusive hardlink creation fail without overwriting it. ZIP publication continues
+to work independently of the native directory-rename capability.
+
+Eight bounded synthetic regressions cover held real archive writes, actual stored
+ZIP extraction and CRC checks, saved project/source preservation, three real
+child-process destination winners, completion cancellation/observer failure,
+postcommit foreign replacements and actual FFmpeg Verify output. Causal baseline
+results contain two failures with six passing ownership/valid-archive controls.
+The additional completion-link control caught and corrected a draft-only two-link
+visibility regression before the source freeze. Source, archive and destination
+ownership rules remain active.
+
+The final follow-up passes 91 tests in seven focused Collect, ZIP/archive,
+source-safety, directory-publication and HTTP files with one worker. TypeScript,
+Vue, changed-file lint, formatting and diff checks pass. Independent review also
+tests the actual final-fsync and native-close cancellation boundaries; combined
+release suites and CI rerun against the frozen fix are coordinated separately.
+
 ## Manual gates and limits
 
 - Run relocation/reopen on real Windows and macOS filesystems, including path
