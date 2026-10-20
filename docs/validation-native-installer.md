@@ -302,3 +302,73 @@ do not qualify an installer or a Windows/macOS workstation.
 
 No full test/browser suite or native OS workstation gate was rerun for this
 isolated list change; combined release validation remains separate.
+
+### Failed shutdown, startup cancellation and native downloads, 2026-10-20
+
+Three remaining review findings were reproduced against the integrated source.
+An actual staged launcher retained a dead service after its real private control
+channel reported `close-failed`. The launcher now keeps that failure visible,
+waits for the service's actual exit and exits its owner channel nonzero. It never
+reports `closed` success for the failed shutdown. Rust can reap the owner and a
+single explicit Retry starts a fresh verified service; successfully spawned live
+services still require their matching close acknowledgement and exit.
+
+RuntimeGate now polls pending close requests during initial startup and Retry.
+Live App owners retain the full jobs/Collect/relink/flush close preparation;
+unknown runtime states with an App veto close without flushing. A blocked
+dead service retains the existing local-draft guards, and an initial startup
+without an App can cancel directly. An accepted close invalidates its startup
+response before awaiting native close; late ready results after close, failure
+or disposal cannot remount the workspace. A veto leaves the pending Retry valid
+and its authored drafts protected.
+
+Rust close no longer waits behind the start operation mutex. It cancels that
+attempt's ticket before taking the child lock; file hashing checks cancellation,
+and spawn publishes the child atomically with its final cancellation check.
+Successful close remains terminal until shell exit; failed close permits a new
+explicit Retry. The owned reader's terminal close evidence survives cancellation
+of a startup attempt. Late ready, unrelated blocked and EOF publications stay
+fenced; replacement waits for the old reader to finish before taking ownership.
+Real-process Rust regressions use a hash-verified six-file synthetic shell
+launcher, separately from the Node/FFmpeg runtime acceptance test.
+
+Actual Chromium at `http://tauri.localhost` reproduced an Origin-less private
+export anchor receiving 403. All 11 service-backed download links now share
+`LocalDownload`: seven export/profile links, two caption links, Collect ZIP and
+NLE handoff. Ordinary same-origin browser anchors retain direct streaming and
+Enter activation. Cross-origin service links fetch through the current private
+prefix, with redirects and credentials disabled, then save a window-local blob.
+Owner/URL/filename changes and unmount abort pending fetches; old connection/body
+results cannot publish. Errors are visible, and created blob URLs are revoked.
+Origin, Host, session and consent rules are unchanged; no new download credential
+or protocol is introduced.
+
+The permanent browser cases save actual rendered MP4, render manifest, SRT/VTT
+and caption manifests, compare each download's SHA-256 to its server-owned file
+and attach filename/byte-count/hash evidence. They cover native Enter activation,
+blob cleanup, ordinary direct streaming with zero blobs, a fault-injected403
+error with no unhandled rejection/download/blob, and continued real403 rejection
+of an Origin-less cross-site anchor, attacker Origin and missing native prefix.
+The fault-injected response exercises error presentation; the successful output
+and Origin controls use the real ephemeral native-session server.
+
+Full Tauri compilation requires fresh native-shell CI: local GTK/WebKit
+development prerequisites remain absent. Native OS save-dialog behavior and
+large cross-origin blob memory use remain manual gates. These Linux process and
+Chromium observations do not certify an installed WebView or any installer;
+the Windows/macOS and distribution gates above remain not-run.
+
+| Focused final follow-up check                                                                              | Result                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native launcher/stream/control/session, draft lifecycle, shared download and consumer/manifest regressions | 9 files / 108 tests passed, one worker. Existing draft Discard/ownership, live ACK and acquired-write controls remain passing.                                                                      |
+| Actual Chromium downloads, same-origin streaming, errors and Origin controls                               | 5 tests passed. Download filenames, byte counts and SHA-256 values are attached; successful artifacts are compared to their server-owned files.                                                     |
+| Exact Rust runtime module                                                                                  | 13 tests passed; formatter and isolated Clippy passed with Rust 1.99.0. Includes verified pending-process cancellation, late ready rejection, first-Retry owner ACK and hash cancellation controls. |
+| Static checks                                                                                              | Focused ESLint, full TypeScript/Vue, changed-file formatting and diff checks passed.                                                                                                                |
+
+Expected RED cases were observed for the real failed-close owner, busy initial
+startup/Retry and Rust operation lock, and actual native-origin export navigation.
+Independent review also exposed the pending live-job veto and cancelled-reader
+terminal-ACK edges; their causal controls remain in the passing suite. A consumer
+template parse test caught a closing-tag edit error, which was corrected without
+removing the inventory assertion. No full test or browser suite was rerun in this
+isolated follow-up; integration and fresh full native CI remain separate gates.

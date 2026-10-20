@@ -40,11 +40,14 @@ struct Manifest {
     optional_capabilities: Value,
     distribution: Value,
 }
-fn hash(path: &Path) -> Result<String, String> {
+fn hash(path: &Path, cancelled: &impl Fn() -> bool) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|_| "runtime.missing")?;
     let mut digest = Sha256::new();
     let mut buffer = [0u8; 65536];
     loop {
+        if cancelled() {
+            return Err("runtime.preflight".into());
+        }
         let count = file.read(&mut buffer).map_err(|_| "runtime.hash")?;
         if count == 0 {
             break;
@@ -98,7 +101,14 @@ fn verified_manifest(reader: impl Read, expected: &str) -> Result<Manifest, Stri
     }
     serde_json::from_slice(&bytes).map_err(|_| "runtime.invalid".into())
 }
-fn verified_entries(root: &Path, expected: &str) -> Result<(PathBuf, PathBuf), String> {
+fn verified_entries(
+    root: &Path,
+    expected: &str,
+    cancelled: impl Fn() -> bool,
+) -> Result<(PathBuf, PathBuf), String> {
+    if cancelled() {
+        return Err("runtime.preflight".into());
+    }
     if expected == "unconfigured" {
         return Err("runtime.missing".into());
     }
@@ -164,7 +174,10 @@ fn verified_entries(root: &Path, expected: &str) -> Result<(PathBuf, PathBuf), S
         }
         let path = safe_path(root, &file.path)?;
         let metadata = fs::metadata(&path).map_err(|_| "runtime.missing")?;
-        if !metadata.is_file() || metadata.len() != file.size || hash(&path)? != file.sha256 {
+        if !metadata.is_file()
+            || metadata.len() != file.size
+            || hash(&path, &cancelled)? != file.sha256
+        {
             return Err("runtime.hash".into());
         }
         #[cfg(unix)]
@@ -197,6 +210,8 @@ struct Inner {
     child: Mutex<Option<Child>>,
     status: Arc<Mutex<Value>>,
     operation: Mutex<()>,
+    startup_epoch: Arc<AtomicU64>,
+    stopping: AtomicBool,
     reader_done: Arc<AtomicBool>,
     pub exiting: AtomicBool,
     pending_close: AtomicU64,
@@ -210,6 +225,8 @@ impl Default for NativeService {
             child: Mutex::new(None),
             status: Arc::new(Mutex::new(json!({"state":"starting"}))),
             operation: Mutex::new(()),
+            startup_epoch: Arc::new(AtomicU64::new(0)),
+            stopping: AtomicBool::new(false),
             reader_done: Arc::new(AtomicBool::new(true)),
             exiting: AtomicBool::new(false),
             pending_close: AtomicU64::new(0),
@@ -273,9 +290,25 @@ impl NativeService {
         value
     }
     pub fn start(&self, root: PathBuf, data: PathBuf, projects: PathBuf) -> Value {
+        let expected = option_env!("OPENFILM_RUNTIME_MANIFEST_SHA256").unwrap_or("unconfigured");
+        self.start_verified(root, data, projects, expected)
+    }
+    fn start_verified(
+        &self,
+        root: PathBuf,
+        data: PathBuf,
+        projects: PathBuf,
+        expected: &str,
+    ) -> Value {
+        // Capture before waiting for another start. A close cancels this exact
+        // attempt even if a later failed stop permits a fresh explicit Retry.
+        let epoch = self.0.startup_epoch.load(Ordering::SeqCst);
         let Ok(_guard) = self.0.operation.lock() else {
             return self.blocked("runtime.preflight");
         };
+        if self.cancelled(epoch) {
+            return self.status();
+        }
         if let Ok(mut child) = self.0.child.lock() {
             if child
                 .as_mut()
@@ -299,14 +332,29 @@ impl NativeService {
                 return self.blocked("runtime.closeFailed");
             }
         }
-        match self.launch(root, data, projects) {
+        let result = self.launch(root, data, projects, expected, epoch);
+        if self.cancelled(epoch) {
+            return self.status();
+        }
+        match result {
             Ok(value) => value,
             Err(code) => self.blocked(&code),
         }
     }
-    fn launch(&self, root: PathBuf, data: PathBuf, projects: PathBuf) -> Result<Value, String> {
-        let expected = option_env!("OPENFILM_RUNTIME_MANIFEST_SHA256").unwrap_or("unconfigured");
-        let (node, launcher) = verified_entries(&root, expected)?;
+    fn cancelled(&self, epoch: u64) -> bool {
+        self.0.stopping.load(Ordering::SeqCst)
+            || self.exiting()
+            || self.0.startup_epoch.load(Ordering::SeqCst) != epoch
+    }
+    fn launch(
+        &self,
+        root: PathBuf,
+        data: PathBuf,
+        projects: PathBuf,
+        expected: &str,
+        epoch: u64,
+    ) -> Result<Value, String> {
+        let (node, launcher) = verified_entries(&root, expected, || self.cancelled(epoch))?;
         fs::create_dir_all(&data).map_err(|_| "runtime.storage")?;
         let mut command = Command::new(node);
         command
@@ -341,12 +389,19 @@ impl NativeService {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x08000000);
         }
+        // The cancellation check and publication of the spawned child share
+        // the same lock used by close; no late start can escape a completed stop.
+        let mut owned = self.0.child.lock().map_err(|_| "runtime.preflight")?;
+        if self.cancelled(epoch) {
+            return Err("runtime.preflight".into());
+        }
         let mut child = command.spawn().map_err(|_| "runtime.node")?;
         let stdout = child.stdout.take().ok_or("runtime.handshake")?;
-        *self.0.child.lock().map_err(|_| "runtime.preflight")? = Some(child);
+        *owned = Some(child);
         let status = self.0.status.clone();
         let reader_done = self.0.reader_done.clone();
         reader_done.store(false, Ordering::SeqCst);
+        let startup_epoch = self.0.startup_epoch.clone();
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
@@ -365,19 +420,29 @@ impl NativeService {
                         .any(|state| value["state"] == *state)
                     {
                         if let Ok(mut current) = status.lock() {
-                            *current = value.clone();
+                            // This reader still owns the child until reader_done
+                            // permits replacement. Its terminal close evidence
+                            // survives attempt cancellation; late ready does not.
+                            if startup_epoch.load(Ordering::SeqCst) == epoch
+                                || value["state"] == "closed"
+                                || (value["state"] == "blocked"
+                                    && value["code"] == "runtime.closeFailed")
+                            {
+                                *current = value.clone();
+                            }
                         }
                         let _ = sender.send(value);
                     }
                 }
             }
             if let Ok(mut current) = status.lock() {
-                if current["state"] == "ready" {
+                if startup_epoch.load(Ordering::SeqCst) == epoch && current["state"] == "ready" {
                     *current = json!({"state":"blocked","code":"runtime.serviceExited"});
                 }
             }
             reader_done.store(true, Ordering::SeqCst);
         });
+        drop(owned);
         receiver
             .recv_timeout(Duration::from_secs(60))
             .map_err(|_| "runtime.timeout".into())
@@ -415,10 +480,16 @@ impl NativeService {
         Err("runtime.closeFailed".into())
     }
     pub fn stop(&self) -> Result<(), String> {
-        let _guard = self.0.operation.lock().map_err(|_| "runtime.closeFailed")?;
+        // Close must reach the owner channel during hashing/readiness waits.
+        // A successful final close remains terminal until the shell exits.
+        self.0.stopping.store(true, Ordering::SeqCst);
+        self.0.startup_epoch.fetch_add(1, Ordering::SeqCst);
         let result = self.stop_inner();
         if result.is_err() {
             self.blocked("runtime.closeFailed");
+            self.0.stopping.store(false, Ordering::SeqCst);
+        } else if let Ok(mut status) = self.0.status.lock() {
+            *status = json!({"state":"closed"});
         }
         result
     }
@@ -486,7 +557,7 @@ mod tests {
     }
     #[test]
     fn rejects_unconfigured_runtime_before_execution() {
-        assert!(verified_entries(Path::new("/missing"), "unconfigured").is_err());
+        assert!(verified_entries(Path::new("/missing"), "unconfigured", || false).is_err());
     }
     #[test]
     fn rejects_path_escapes() {
@@ -531,6 +602,176 @@ mod tests {
         let service = NativeService::default();
         assert!(service.stop().is_ok());
         assert!(!service.has_child());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn close_reaches_a_real_starting_child_without_waiting_for_the_start_operation() {
+        let service = NativeService::default();
+        let mut child = Command::new("/bin/sh")
+            .args([
+                "-c",
+                "read request; printf '%s\\n' '{\"state\":\"closed\"}'; exit 0",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        *service.0.child.lock().unwrap() = Some(child);
+        service.0.reader_done.store(false, Ordering::SeqCst);
+        let observed = service.clone();
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                *observed.0.status.lock().unwrap() = serde_json::from_str(&line).unwrap();
+            }
+            observed.0.reader_done.store(true, Ordering::SeqCst);
+        });
+        // Startup owns this mutex through verification and its readiness wait.
+        let operation = service.0.operation.lock().unwrap();
+        let closing = service.clone();
+        let (sender, receiver) = mpsc::channel();
+        let close = std::thread::spawn(move || {
+            sender.send(closing.stop()).unwrap();
+        });
+        let immediate = receiver.recv_timeout(Duration::from_secs(1));
+        let cancelled_before_start_returned = immediate.is_ok();
+        drop(operation);
+        let result =
+            immediate.unwrap_or_else(|_| receiver.recv_timeout(Duration::from_secs(3)).unwrap());
+        close.join().unwrap();
+        reader.join().unwrap();
+        assert!(result.is_ok());
+        assert!(
+            cancelled_before_start_returned,
+            "close waited behind the startup operation mutex"
+        );
+        assert!(!service.has_child());
+    }
+    #[cfg(unix)]
+    fn verified_shell_fixture(script: &str) -> (PathBuf, PathBuf, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!(
+            "openfilm-start-cancel-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let data = root.join("data");
+        fs::create_dir_all(&data).unwrap();
+        fs::copy("/bin/sh", root.join("node")).unwrap();
+        fs::set_permissions(root.join("node"), fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(root.join("launcher.sh"), script).unwrap();
+        for name in ["service.js", "ffmpeg", "ffprobe", "font.ttf"] {
+            fs::write(root.join(name), b"Synthetic process fixture only").unwrap();
+        }
+        let entries = json!({"node":"node","launcher":"launcher.sh","service":"service.js","ffmpeg":"ffmpeg","ffprobe":"ffprobe","font":"font.ttf"});
+        let files: Vec<Value> = entries.as_object().unwrap().values().map(|path| {
+            let name = path.as_str().unwrap();
+            let bytes = fs::read(root.join(name)).unwrap();
+            json!({"path":name,"sha256":format!("{:x}",Sha256::digest(&bytes)),"size":bytes.len(),"executable":name=="node","component":"synthetic-test-only"})
+        }).collect();
+        let manifest = serde_json::to_vec(&json!({"schemaVersion":1,"appVersion":env!("CARGO_PKG_VERSION"),"nodeVersion":"24.14.0","platform":std::env::consts::OS.replace("macos","darwin"),"architecture":std::env::consts::ARCH.replace("x86_64","x64").replace("aarch64","arm64"),"projectSchema":"1.0.0","entries":entries,"files":files,"components":[{"id":"synthetic-test-only"}],"updates":{"mode":"manual","automatic":false,"signatureRequired":true},"optionalCapabilities":{"exiftool":false,"whisper":false},"distribution":{"status":"test-only"}})).unwrap();
+        let expected = format!("{:x}", Sha256::digest(&manifest));
+        fs::write(root.join("runtime-manifest.json"), manifest).unwrap();
+        (root, data, expected)
+    }
+    #[cfg(unix)]
+    #[test]
+    fn cancels_a_verified_pending_launcher_and_rejects_its_late_ready_message() {
+        let (root, data, expected) = verified_shell_fixture("printf pending > \"$2/pending\"\nread request\nprintf '%s\\n' '{\"state\":\"ready\",\"port\":1}' '{\"state\":\"closed\"}'\n");
+        let service = NativeService::default();
+        let starting = service.clone();
+        let start_root = root.clone();
+        let start_data = data.clone();
+        let start = std::thread::spawn(move || {
+            starting.start_verified(
+                start_root,
+                start_data.clone(),
+                start_data.join("projects"),
+                &expected,
+            )
+        });
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !data.join("pending").exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            data.join("pending").exists(),
+            "verified launcher did not reach its real pending wait"
+        );
+        let closing = service.clone();
+        let (sender, receiver) = mpsc::channel();
+        let close = std::thread::spawn(move || {
+            sender.send(closing.stop()).unwrap();
+        });
+        let prompt = receiver.recv_timeout(Duration::from_secs(2));
+        if prompt.is_err() {
+            // Failure cleanup only; never let a RED cancellation test hang60s.
+            if let Some(child) = service.0.child.lock().unwrap().as_mut() {
+                child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(b"{\"type\":\"shutdown\"}\n")
+                    .unwrap();
+            }
+        }
+        let result = start.join().unwrap();
+        close.join().unwrap();
+        assert!(prompt.is_ok(), "close waited behind pending startup");
+        assert!(prompt.unwrap().is_ok());
+        assert_ne!(result["state"], "ready");
+        assert_eq!(service.status()["state"], "closed");
+        assert!(!service.has_child());
+        assert_eq!(
+            service.start(root.clone(), data.clone(), data.join("projects"))["state"],
+            "closed"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn cancellation_interrupts_runtime_hash_reads() {
+        let cancelled = std::cell::Cell::new(0);
+        let path =
+            std::env::temp_dir().join(format!("openfilm-cancel-hash-{}", std::process::id()));
+        fs::write(&path, vec![0u8; 3 * 65536]).unwrap();
+        let result = hash(&path, &|| {
+            cancelled.set(cancelled.get() + 1);
+            cancelled.get() == 2
+        });
+        fs::remove_file(path).unwrap();
+        assert_eq!(cancelled.get(), 2);
+        assert_eq!(result.unwrap_err(), "runtime.preflight");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn one_retry_consumes_the_owned_terminal_ack_after_a_failed_stop_epoch() {
+        let (root, data, expected) = verified_shell_fixture("printf '%s\\n' '{\"state\":\"ready\",\"port\":1}'\nread request\nprintf '%s\\n' '{\"state\":\"closed\"}'\n");
+        let service = NativeService::default();
+        assert_eq!(
+            service.start_verified(root.clone(), data.clone(), data.join("projects"), &expected)
+                ["state"],
+            "ready"
+        );
+        // Reproduce the exact metadata of a timed-out failed close while the
+        // verified child/reader remains owned, without waiting45s in this test.
+        service.0.startup_epoch.fetch_add(1, Ordering::SeqCst);
+        service.blocked("runtime.closeFailed");
+        assert!(!service.0.stopping.load(Ordering::SeqCst));
+        // Retry sends real shutdown, consumes the old owner's real closed/exit
+        // and starts the replacement on this first call.
+        assert_eq!(
+            service.start_verified(root.clone(), data.clone(), data.join("projects"), &expected)
+                ["state"],
+            "ready"
+        );
+        assert!(service.has_child());
+        assert!(service.stop().is_ok());
+        assert!(!service.has_child());
+        fs::remove_dir_all(root).unwrap();
     }
     #[cfg(unix)]
     #[test]

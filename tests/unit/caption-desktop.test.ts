@@ -7,6 +7,7 @@ import {
   api as desktopApi,
   captionDownloadUrl,
 } from "../../apps/desktop/src/api";
+import { loadComponent } from "./helpers/vue-sfc-host";
 
 // Run the production Vue setup with real reactivity; only transport delivery is controlled.
 const requireDesktop = createRequire(
@@ -182,6 +183,13 @@ function fixture() {
       defineProps: () => props,
       useI18n: () => ({ t: (key: string) => key, te: () => true }),
       api,
+      LocalDownload: loadComponent(
+        "apps/desktop/src/components/LocalDownload.vue",
+        {
+          "../api": { fetchDownloadBlob: vi.fn() },
+          "../i18n": { localizeError: String },
+        },
+      ),
       ApiError,
       localizeError: (error: unknown) => String(error),
       errorDetail: String,

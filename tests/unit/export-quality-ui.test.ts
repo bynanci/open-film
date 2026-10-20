@@ -63,6 +63,13 @@ async function fixture(
       },
       "./CaptionExport.vue": stub,
       "./NleHandoff.vue": stub,
+      "./LocalDownload.vue": loadComponent(
+        "apps/desktop/src/components/LocalDownload.vue",
+        {
+          "../api": { fetchDownloadBlob: vi.fn() },
+          "../i18n": { localizeError: String },
+        },
+      ),
       "./ExportReport.vue": stub,
       "./Icon.vue": stub,
       "./FilmLookSelect.vue": stub,

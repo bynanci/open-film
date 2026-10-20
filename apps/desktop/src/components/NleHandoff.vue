@@ -5,6 +5,7 @@ import type { Composition } from "@openfilm/core";
 import type { HandoffMode } from "@openfilm/exporters";
 import type { HandoffReview, HandoffPublication } from "@openfilm/application";
 import { post, handoffDownloadUrl } from "../api";
+import LocalDownload from "./LocalDownload.vue";
 const props = defineProps<{
   projectId: string;
   composition: Composition;
@@ -174,11 +175,12 @@ function cancel() {
         {{ t("nleHandoff.publish") }}
       </button>
     </template>
-    <a
+    <LocalDownload
       v-if="publication && archiveIndex >= 0"
       :href="handoffDownloadUrl(projectId, publication.id, archiveIndex)"
-      download="handoff.tar"
-      >{{ t("nleHandoff.download") }}</a
+      filename="handoff.tar"
+      :owner="projectId"
+      >{{ t("nleHandoff.download") }}</LocalDownload
     >
   </section>
 </template>
