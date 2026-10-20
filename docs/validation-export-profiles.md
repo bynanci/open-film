@@ -5,10 +5,10 @@
 The current branch implements the shared versioned Export Profile path across
 Application, FFmpeg, HTTP, CLI and Desktop. Automated regression and real
 synthetic FFmpeg outputs pass. The branch is based on `main` at
-`bb2c4521ad894478893485119442a00ffd9b34cc`; PR CI starts after publication.
-Real-person framing, workstation playback, sustained high-resolution rendering,
-and target NLE behavior remain manual gates; synthetic fixtures do not establish
-those properties.
+`bb2c4521ad894478893485119442a00ffd9b34cc`; GitHub CI is rerunning after a
+frame-count correction. Real-person framing, workstation playback, sustained
+high-resolution rendering, and target NLE behavior remain manual gates;
+synthetic fixtures do not establish those properties.
 
 ## Contract coverage
 
@@ -30,7 +30,7 @@ all output remains under `/tmp/openfilm-export-profiles-qa/` and is not committe
 or uploaded as an artifact.
 
 Run directory:
-`/tmp/openfilm-export-profiles-qa/64100764-5a9e-4ec7-8f17-389d4d8b133f`.
+`/tmp/openfilm-export-profiles-qa/3dc9192b-1e2b-4264-b986-ad2adc53a4ec`.
 Each H.264 MP4 decoded to the requested dimensions, 144 frames at 12 fps and
 12.000 seconds. FFprobe and SHA-256 receipts were checked by the script.
 
@@ -69,22 +69,29 @@ frames each; output hashes matched their manifests. The 90×160 still and previe
 at 4.5 seconds decoded to identical RGB pixels. The WAV mix and narration/music
 stems each contain 576,000 stereo samples at 48 kHz (12 seconds).
 
+The first GitHub `typescript-and-media` run exposed one-frame-short output on
+its FFmpeg build (143 of 144 frames at 12 fps, 5 of 6 at 30 fps). Profiled
+outputs now explicitly clone the final composed frame as needed and trim to the
+complete frame count derived from the output duration. The prior failing real
+FFmpeg integration and renderer regressions pass locally after this correction;
+new GitHub checks are pending.
+
 ## Automated test runs
 
 Run date: 2026-10-20 UTC. Verification was run after rebasing M7B onto current
 `main` at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 
-| Command                 | Result                                                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `pnpm format:check`     | Passed for the final M7B files.                                                                              |
-| `pnpm test:i18n`        | Passed; 1,720 semantic keys matched across en-US, zh-TW and ja-JP.                                           |
-| `pnpm lint`             | Passed with `--max-warnings=0`.                                                                              |
-| `pnpm typecheck`        | Passed (`tsc` and `vue-tsc`).                                                                                |
-| `pnpm test`             | Passed: 213 files, 2,939 tests.                                                                              |
-| `pnpm build`            | Passed; main bundle 948.96 kB (gzip 287.69 kB), with the existing Vite chunk-size advisory.                  |
-| `pnpm test:e2e`         | Passed: 169 Playwright tests in 16.5 minutes, including the M7B browser export and cancellation regressions. |
-| `pnpm test:interchange` | Passed: 18 checks, including OTIO read-write-read, source bounds/hash, unsafe URL rejection, and relocation. |
-| `pnpm test:native`      | Not run: `rustc` and `cargo` are unavailable in this environment.                                            |
+| Command                 | Result                                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`     | Passed for the final M7B files.                                                                                                                      |
+| `pnpm test:i18n`        | Passed; 1,720 semantic keys matched across en-US, zh-TW and ja-JP.                                                                                   |
+| `pnpm lint`             | Passed with `--max-warnings=0`.                                                                                                                      |
+| `pnpm typecheck`        | Passed (`tsc` and `vue-tsc`).                                                                                                                        |
+| `pnpm test`             | Passed: 213 files, 2,939 tests.                                                                                                                      |
+| `pnpm build`            | Passed; main bundle 948.96 kB (gzip 287.69 kB), with the existing Vite chunk-size advisory.                                                          |
+| `pnpm test:e2e`         | Passed: 169 Playwright tests before the final frame-count correction; the M7B browser export regression passed again after that correction (1 test). |
+| `pnpm test:interchange` | Passed: 18 checks, including OTIO read-write-read, source bounds/hash, unsafe URL rejection, and relocation.                                         |
+| `pnpm test:native`      | Not run: `rustc` and `cargo` are unavailable in this environment.                                                                                    |
 
 The M7B PR has not yet been created, so GitHub CI is pending. The M7D Collect
 Media work package is queued in `TASKS.md` and `ROADMAP.md`; this M7B change does

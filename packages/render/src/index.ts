@@ -248,6 +248,10 @@ export class FFmpegRenderer {
       : frameAlignedDuration(composition.duration, outputFrameRate);
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
+    const outputFrameCount = Math.max(
+      1,
+      Math.round(outputDuration * outputFrameRate),
+    );
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
     const usedIds = new Set(
       composition.tracks
@@ -749,6 +753,11 @@ export class FFmpegRenderer {
               `fps=${number(outputFrameRate)}:round=near`,
               ...outputFrameFilters(exportProfile),
               "format=yuv420p",
+              // Keep the final encoded stream at the exact complete-frame count.
+              // Some FFmpeg builds end the composed stream one frame early after
+              // applying output time limits; cloning then trimming is deterministic.
+              "tpad=stop_mode=clone:stop=-1",
+              `trim=end_frame=${outputFrameCount}`,
             ]
           : ["format=yuv420p"];
         filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
