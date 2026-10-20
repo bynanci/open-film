@@ -2174,6 +2174,201 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        if (method === "GET" && route === "/api/motion-generation/providers") {
+          json(response, 200, application.motionGeneration.list());
+          return;
+        }
+        const motionPreview =
+          /^\/api\/compositions\/([^/]+)\/motion-generation$/.exec(route);
+        if (method === "POST" && motionPreview) {
+          const data = await body(request);
+          keys(data, [
+            "requestId",
+            "projectId",
+            "baseRevision",
+            "clipId",
+            "sceneId",
+            "providerId",
+            "count",
+            "candidateAssetIds",
+            "prompt",
+            "negativeConstraints",
+            "consent",
+            "containsPeople",
+          ]);
+          const requestId = text(data, "requestId");
+          if (
+            active.size &&
+            !application.motionGeneration.hasRequest(requestId)
+          )
+            throw new HttpError(409, "Wait for the active project job.");
+          if (data.count !== undefined && typeof data.count !== "number")
+            throw new HttpError(400, "Invalid motion candidate count.");
+          if (
+            data.candidateAssetIds !== undefined &&
+            (!Array.isArray(data.candidateAssetIds) ||
+              data.candidateAssetIds.length > 3 ||
+              data.candidateAssetIds.some(
+                (id) => typeof id !== "string" || !id || id.length > 256,
+              ))
+          )
+            throw new HttpError(400, "Invalid local candidate selection.");
+          if (
+            typeof data.containsPeople !== "boolean" ||
+            (data.sceneId !== undefined &&
+              data.sceneId !== null &&
+              (typeof data.sceneId !== "string" ||
+                !data.sceneId ||
+                data.sceneId.length > 256))
+          )
+            throw new HttpError(
+              400,
+              "Explicit subject and valid scene selection required.",
+            );
+          const input: import("@openfilm/application").MotionRequest = {
+            projectId: text(data, "projectId"),
+            requestId,
+            compositionId: decodeURIComponent(motionPreview[1]!),
+            baseRevision: text(data, "baseRevision"),
+            clipId: text(data, "clipId"),
+            providerId: text(data, "providerId"),
+            ...(data.sceneId !== undefined
+              ? { sceneId: data.sceneId as string | null }
+              : {}),
+            ...(data.count !== undefined
+              ? { count: data.count as number }
+              : {}),
+            ...(data.candidateAssetIds !== undefined
+              ? { candidateAssetIds: data.candidateAssetIds as string[] }
+              : {}),
+            prompt: text(data, "prompt"),
+            negativeConstraints: text(data, "negativeConstraints"),
+            consent: data.consent === true,
+            containsPeople: data.containsPeople === true,
+          };
+          const controller = new AbortController(),
+            jobId = `motion:${randomUUID()}`;
+          let done!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            done = resolve;
+          });
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          if (response.destroyed || request.aborted) controller.abort();
+          active.set(jobId, controller);
+          tasks.add(completed);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const receipts = await application.runMotionGeneration(
+              input,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (controller.signal.aborted || app !== application) {
+              await application.motionGeneration.revoke(requestId);
+              throw new HttpError(409, "Motion owner changed or cancelled.");
+            }
+            json(response, 200, receipts);
+          } finally {
+            response.off("close", disconnected);
+            active.delete(jobId);
+            done();
+            tasks.delete(completed);
+          }
+          return;
+        }
+        if (method === "POST" && route === "/api/motion-generation/clear") {
+          const data = await body(request);
+          keys(data, ["projectId"]);
+          if (text(data, "projectId") !== application.project.id)
+            throw new HttpError(409, "Motion project changed.");
+          await application.motionGeneration.clearPreviews();
+          json(response, 200, { ok: true });
+          return;
+        }
+        const motionRevoke =
+          /^\/api\/motion-generation\/requests\/([a-f0-9-]{36})\/revoke$/.exec(
+            route,
+          );
+        if (method === "POST" && motionRevoke) {
+          const data = await body(request);
+          keys(data, ["projectId"]);
+          if (text(data, "projectId") !== application.project.id)
+            throw new HttpError(409, "Motion project changed.");
+          await application.motionGeneration.revoke(motionRevoke[1]!);
+          json(response, 200, { ok: true });
+          return;
+        }
+        const motionAction =
+          /^\/api\/motion-generation\/([a-f0-9-]{36})\/(receipt|media|accept|import|restore)$/.exec(
+            route,
+          );
+        if (motionAction) {
+          const id = motionAction[1]!,
+            action = motionAction[2]!;
+          if (method === "GET" && ["receipt", "media"].includes(action)) {
+            if (url.searchParams.get("projectId") !== application.project.id)
+              throw new HttpError(409, "Motion project changed.");
+            if (action === "receipt")
+              json(
+                response,
+                200,
+                await application.motionGeneration.receipt(id),
+              );
+            else
+              await streamFile(
+                request,
+                response,
+                await application.motionGeneration.media(id),
+                join(application.directory, "cache"),
+                "video/mp4",
+              );
+            return;
+          }
+          if (
+            method === "POST" &&
+            ["accept", "import", "restore"].includes(action)
+          ) {
+            const data = await body(request);
+            keys(
+              data,
+              action === "accept" ? ["projectId", "reviewed"] : ["projectId"],
+            );
+            if (text(data, "projectId") !== application.project.id)
+              throw new HttpError(409, "Motion project changed.");
+            if (active.size)
+              throw new HttpError(409, "Wait for the active project job.");
+            if (action === "accept")
+              json(
+                response,
+                200,
+                await application.motionGeneration.accept(
+                  id,
+                  data.reviewed === true,
+                ),
+              );
+            else {
+              const state =
+                action === "import"
+                  ? await application.motionGeneration.importCandidate(
+                      id,
+                      editorFor(application),
+                    )
+                  : await application.motionGeneration.restore(
+                      id,
+                      editorFor(application),
+                    );
+              json(response, 200, {
+                revision: state.revision,
+                receipt: await application.motionGeneration.receipt(id),
+              });
+            }
+            return;
+          }
+        }
         if (method === "GET" && route === "/api/audio-generation/providers") {
           json(response, 200, application.audioGeneration.list());
           return;
@@ -3223,6 +3418,7 @@ export async function startServer(options: ServerOptions = {}) {
     await mutationQueue;
     await stopped;
     await discardUploads();
+    await app?.motionGeneration.dispose();
     app?.close({ requireSave: true });
   };
   return { server, port, close };

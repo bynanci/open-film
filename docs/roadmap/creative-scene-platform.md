@@ -191,3 +191,13 @@ Exact gate outcomes, synthetic artifact hashes and remaining manual gates are in
 Templates followed the M1 work; since then M2/F04, M3/F01, M4/F02 and M5/F03
 have been integrated, and PR #31 implements M5/F08 on the merged Layer Editor.
 This sequence does not silently add remote processing or automatic edits.
+
+## M8B candidate — local motion review
+
+M8B is separately stacked on M8A PR #35 exact head
+`e78c4e06da2eb908dc0cb4548718c83b7798a8f1`. It adds real local external-video
+candidates and deterministic camera fixtures to the existing Composition/Provider
+boundaries, with explicit human review/Accept/Replace/Restore. It does not enable
+remote image-to-video or claim that M6 tone/TTS performs video generation. See
+[motion validation](../validation-motion-candidates.md) for exact evidence and
+uncompleted CI/native/remote/manual gates. No independent mainline merge claim.

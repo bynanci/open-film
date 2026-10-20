@@ -60,6 +60,8 @@ Usage:
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm motion providers|preview|receipt|accept|import|restore|revoke|clear --project <film.openfilm> [--id <candidate-id>]
+  openfilm motion preview --project <film.openfilm> --composition <id> --clip <id> --request-id <uuid> --motion-consent --motion-prompt <text> --motion-negative <constraints> [--motion-provider local-motion-fixture|local-motion-import] [--motion-count 2|3] [--motion-candidates <id,id>] [--contains-people|--environment-only] [--motion-scene <id>]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
@@ -112,9 +114,20 @@ function parse(args: string[]) {
     "confirm",
     "clear-description",
     "replace-existing",
+    "motion-consent",
+    "contains-people",
+    "environment-only",
+    "reviewed",
   ]);
   const values = new Set([
     "project",
+    "clip",
+    "motion-provider",
+    "motion-count",
+    "motion-candidates",
+    "motion-prompt",
+    "motion-negative",
+    "motion-scene",
     "title",
     "name",
     "description",
@@ -981,7 +994,77 @@ async function main() {
         );
     } else if (command === "compose")
       print({ composition: app.compose(value(options, "story")) });
-    else if (command === "audio-quality") {
+    else if (command === "motion") {
+      const action = positional[1],
+        id = value(options, "id");
+      if (action === "providers") print(app.motionGeneration.list());
+      else if (action === "clear") {
+        await app.motionGeneration.clearPreviews();
+        print({ cleared: true });
+      } else if (action === "preview") {
+        const compositionId = value(options, "composition"),
+          clipId = value(options, "clip"),
+          requestId = value(options, "request-id");
+        if (!compositionId || !clipId || !requestId)
+          throw new Error(
+            "Choose --composition, --clip and a stable --request-id UUID.",
+          );
+        print(
+          await app.runMotionGeneration(
+            {
+              projectId: app.project.id,
+              compositionId,
+              clipId,
+              requestId,
+              baseRevision: new TimelineEditor(app).get(compositionId).revision,
+              providerId:
+                value(options, "motion-provider") ?? "local-motion-fixture",
+              count: Number(value(options, "motion-count") ?? "2"),
+              ...(value(options, "motion-candidates")
+                ? {
+                    candidateAssetIds: value(
+                      options,
+                      "motion-candidates",
+                    )!.split(","),
+                  }
+                : {}),
+              ...(value(options, "motion-scene")
+                ? { sceneId: value(options, "motion-scene") }
+                : {}),
+              prompt: value(options, "motion-prompt") ?? "",
+              negativeConstraints: value(options, "motion-negative") ?? "",
+              consent: options["motion-consent"] === true,
+              containsPeople:
+                options["environment-only"] !== true ||
+                options["contains-people"] === true,
+            },
+            controller.signal,
+          ),
+        );
+      } else {
+        if (!id)
+          throw new Error("Provide --id for the motion candidate or request.");
+        if (action === "receipt") print(await app.motionGeneration.receipt(id));
+        else if (action === "accept")
+          print(
+            await app.motionGeneration.accept(id, options.reviewed === true),
+          );
+        else if (action === "revoke") {
+          await app.motionGeneration.revoke(id);
+          print({ revoked: true });
+        } else if (action === "import" || action === "restore") {
+          const editor = new TimelineEditor(app);
+          const state =
+            action === "import"
+              ? await app.motionGeneration.importCandidate(id, editor)
+              : await app.motionGeneration.restore(id, editor);
+          print({
+            revision: state.revision,
+            receipt: await app.motionGeneration.receipt(id),
+          });
+        } else throw new Error("Choose a supported motion action.");
+      }
+    } else if (command === "audio-quality") {
       const compositionId =
         value(options, "composition") ?? app.project.timelines[0]?.id;
       const clipId = value(options, "clip");

@@ -522,3 +522,17 @@ outputs and caches are never copied or replaced. The version diff is a
 deterministic structural comparison across existing Story, Composition,
 CaptionCue, GraphicScene/template, audio automation and source identities. See
 [Named Versions](named-versions.md) and its [validation record](validation-named-versions.md).
+
+### M8B local motion candidates
+
+`MotionGenerationService` is the shared CLI/HTTP/Desktop application boundary;
+`motion-generation` is a ProviderRegistry byte port, separate from audio/TTS.
+Only local camera fixture and explicit Library-video import execute. The service
+validates hashes, source/target identity and saved revisions, normalizes/decodes
+MP4, and stores private v1 receipts/request claims. Explicit review/acceptance is
+separate from catalog import and existing typed replacement/restoration commands.
+Prepared journal + expected-document identity recover interrupted/lost responses
+without a second timeline or project schema migration. Desktop reuses its existing
+navigation/history barrier; completed preview cache supports multi-process CLI
+review with expiry and explicit discard. See [contract](motion-candidates.md) and
+[threat model](security/motion-candidates-threat-model.md).

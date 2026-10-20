@@ -1,5 +1,10 @@
+import { MotionGenerationService } from "./motion-generation.js";
+export * from "./motion-generation.js";
 import { AudioGenerationService } from "./audio-generation.js";
-import type { AudioGenerationProvider } from "@openfilm/plugin-sdk";
+import type {
+  AudioGenerationProvider,
+  MotionGenerationProvider,
+} from "@openfilm/plugin-sdk";
 export * from "./audio-generation.js";
 import { AudioQualityService } from "./audio-quality.js";
 export * from "./audio-quality.js";
@@ -190,6 +195,8 @@ export type {
 } from "./scene-plan.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions & {
   audioGenerationProvider?: AudioGenerationProvider;
+  motionGenerationProvider?: MotionGenerationProvider;
+  motionGenerationTimeoutMs?: number;
 };
 
 export interface ImportOptions {
@@ -273,6 +280,7 @@ export class OpenFilmApplication {
   readonly visualQa: VisualQaService;
   readonly audioQuality: AudioQualityService;
   readonly audioGeneration: AudioGenerationService;
+  readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
   private activeJobs = 0;
   private persistedProject: string;
@@ -314,6 +322,11 @@ export class OpenFilmApplication {
       this.audioGeneration = new AudioGenerationService(
         this,
         runtime.audioGenerationProvider,
+      );
+      this.motionGeneration = new MotionGenerationService(
+        this,
+        runtime.motionGenerationProvider,
+        runtime.motionGenerationTimeoutMs,
       );
       this.audioQuality = new AudioQualityService(
         this,
@@ -455,6 +468,7 @@ export class OpenFilmApplication {
       }
       application.knowledge.recoverInterruptedReviews();
       application.intelligence.recoverInterruptedJobs();
+      await application.motionGeneration.expirePreviews();
       return application;
     } catch (error) {
       application.catalog.close();
@@ -620,6 +634,24 @@ export class OpenFilmApplication {
 
   async save(): Promise<void> {
     this.saveSync();
+  }
+
+  async runMotionGeneration(
+    input: Parameters<MotionGenerationService["preview"]>[0],
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs && !this.motionGeneration.hasRequest(input.requestId))
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.motionGeneration.preview(input, signal);
+    } finally {
+      this.activeJobs--;
+    }
   }
 
   async runAudioGeneration(
@@ -861,6 +893,7 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
+    void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
     this.catalog.close();
   }

@@ -9,7 +9,10 @@ import precision from "../modules/precision/en-US";
 import transcript from "../modules/transcript/en-US";
 import system from "./system-en-US";
 
+import motion from "../modules/motion/en-US";
+
 export default {
+  ...motion,
   ...exportQuality,
   ...looks,
   ...system,

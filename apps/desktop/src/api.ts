@@ -1,4 +1,8 @@
-import type { AudioGenerationReceipt } from "@openfilm/application";
+import type {
+  MotionRequest,
+  MotionGenerationReceipt,
+  AudioGenerationReceipt,
+} from "@openfilm/application";
 import type {
   MediaAsset,
   OpenFilmProject,
@@ -774,6 +778,40 @@ export const api = {
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: () => request<JobsState>("/jobs"),
+  clearMotion: (projectId: string) =>
+    post<{ ok: boolean }>("/motion-generation/clear", { projectId }),
+  motionProviders: () =>
+    request<{ id: string; name: string; available: boolean }[]>(
+      "/motion-generation/providers",
+    ),
+  previewMotion: (
+    { compositionId, ...input }: MotionRequest,
+    signal: AbortSignal,
+  ) =>
+    post<MotionGenerationReceipt[]>(
+      `/compositions/${encodeURIComponent(compositionId)}/motion-generation`,
+      input,
+      signal,
+    ),
+  motionReceipt: (id: string, projectId: string) =>
+    request<MotionGenerationReceipt>(
+      `/motion-generation/${encodeURIComponent(id)}/receipt?${new URLSearchParams({ projectId })}`,
+    ),
+  acceptMotion: (id: string, projectId: string, reviewed: boolean) =>
+    post<MotionGenerationReceipt>(
+      `/motion-generation/${encodeURIComponent(id)}/accept`,
+      { projectId, reviewed },
+    ),
+  applyMotion: (id: string, projectId: string, action: "import" | "restore") =>
+    post<{ revision: string; receipt: MotionGenerationReceipt }>(
+      `/motion-generation/${encodeURIComponent(id)}/${action}`,
+      { projectId },
+    ),
+  revokeMotion: (id: string, projectId: string) =>
+    post<{ ok: boolean }>(
+      `/motion-generation/requests/${encodeURIComponent(id)}/revoke`,
+      { projectId },
+    ),
   audioGenerationProviders: () =>
     request<
       { id: string; name: string; execution: string; endpoint?: string }[]
@@ -996,4 +1034,8 @@ export async function graphicFrame(
       code: "workspace.invalidResponse",
     });
   return response.blob();
+}
+
+export function motionMediaUrl(id: string, projectId: string) {
+  return `${prefix}/motion-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
 }

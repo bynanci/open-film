@@ -9,7 +9,10 @@ import precision from "../modules/precision/zh-TW";
 import transcript from "../modules/transcript/zh-TW";
 import system from "./system-zh-TW";
 
+import motion from "../modules/motion/zh-TW";
+
 export default {
+  ...motion,
   ...exportQuality,
   ...looks,
   ...system,
