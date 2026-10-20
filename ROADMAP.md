@@ -536,3 +536,14 @@ candidate, not a mainline completion claim. Native presentation, human/detail
 fidelity, third-party rights/cost/retention and paid remote generation require
 separate evidence. A future adapter must pass the existing consent/provider
 boundary plus verified official API and download safety review before enabling it.
+
+## Candidate — M7C reviewable NLE fidelity
+
+A saved-revision HandoffPlan explains native editability, metadata recreation and
+explicit opaque baking by exact range. Short precomps use the existing renderer;
+untouched cuts and embedded video dialogue retain native track/source timing.
+Optional full mix and caption sidecars travel with original Composition, source
+hashes and portable media in a private, atomic TAR exchange. Ordinary interchange
+is unchanged. See [contract](docs/nle-handoff.md) and [validation](docs/validation-nle-handoff.md).
+Final CI/review and actual Resolve workstation QA remain separate gates. Alpha,
+M7B stems and M8A depth are not claimed on this independent main base.

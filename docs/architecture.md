@@ -536,3 +536,14 @@ without a second timeline or project schema migration. Desktop reuses its existi
 navigation/history barrier; completed preview cache supports multi-process CLI
 review with expiry and explicit discard. See [contract](motion-candidates.md) and
 [threat model](security/motion-candidates-threat-model.md).
+
+## M7C NLE handoff
+
+`exporters/handoff.ts` is a browser-safe feature/range planner over Composition.
+`application/nle-handoff.ts` binds it to the saved project and source hashes,
+uses the existing renderer for full context and short opaque precomps, projects
+embedded video audio to native Audio tracks or an explicit full mix, and publishes
+one atomic project-private exchange directory. A bounded USTAR writer packages
+only generated relative names. CLI/HTTP/Desktop call the same application service;
+project schema, editing/history, autosave and originals are unchanged. No alpha
+profile or real NLE application acceptance is inferred. See [contract](nle-handoff.md).

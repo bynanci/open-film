@@ -1051,3 +1051,10 @@ export async function graphicFrame(
 export function motionMediaUrl(id: string, projectId: string) {
   return `${prefix}/motion-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
 }
+
+export const handoffDownloadUrl = (
+  projectId: string,
+  id: string,
+  index: number,
+) =>
+  `${prefix}/handoff/file?projectId=${encodeURIComponent(projectId)}&id=${encodeURIComponent(id)}&index=${index}`;

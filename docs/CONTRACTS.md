@@ -208,3 +208,13 @@ and [validation](validation-named-versions.md).
   swept at open/new preview/expired access, with no daemon for closed projects.
 
 Details: [motion candidates](motion-candidates.md).
+
+## NLE handoff v1
+
+HandoffPlan/receipts version independently of project schema 1.0.0. Preserve
+editability is default; opaque precomp/full-mix replacement is explicit and scoped
+to reported ranges. Source/cut metadata survives every bake. Saved revision,
+source stream identity/hash and safe private paths are fenced before atomic
+publication; cancellation removes staging. Package media references are relative.
+Unknown effects, unsupported alpha/stems, off-grid visual boundaries or missing/
+changed media cannot publish a success. See [NLE handoff](nle-handoff.md).

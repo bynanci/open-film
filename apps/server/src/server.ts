@@ -890,6 +890,96 @@ export async function startServer(options: ServerOptions = {}) {
           });
           return;
         }
+        if (
+          method === "POST" &&
+          (route === "/api/handoff/review" || route === "/api/handoff/export")
+        ) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for running jobs before NLE handoff.",
+            );
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "compositionId",
+            "revision",
+            "mode",
+            "bakeAudio",
+            "captionTrackId",
+          ]);
+          if (data.projectId !== application.project.id)
+            throw new HttpError(409, "The handoff project changed.");
+          const compositionId = text(data, "compositionId");
+          const options = {
+            ...(data.mode !== undefined ? { mode: data.mode } : {}),
+            ...(data.bakeAudio !== undefined
+              ? { bakeAudio: data.bakeAudio }
+              : {}),
+            ...(data.captionTrackId !== undefined
+              ? { captionTrackId: data.captionTrackId }
+              : {}),
+          } as import("@openfilm/exporters").HandoffOptions;
+          if (route.endsWith("/review")) {
+            json(
+              response,
+              200,
+              application.reviewHandoff(compositionId, options),
+            );
+            return;
+          }
+          const controller = new AbortController(),
+            requestId = `handoff:${randomUUID()}`;
+          let done!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            done = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const result = await application.exportHandoff(
+              {
+                projectId: application.project.id,
+                compositionId,
+                revision: text(data, "revision"),
+                ...options,
+              },
+              controller.signal,
+            );
+            json(response, 200, result);
+          } finally {
+            response.off("close", disconnected);
+            active.delete(requestId);
+            done();
+            tasks.delete(completed);
+          }
+          return;
+        }
+        if (method === "GET" && route === "/api/handoff/file") {
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(409, "The handoff project changed.");
+          const index = Number(url.searchParams.get("index"));
+          const file = await application.handoff.file(
+            url.searchParams.get("id") ?? "",
+            index,
+          );
+          response.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${basename(file)}"`,
+          );
+          await streamFile(
+            request,
+            response,
+            file,
+            join(application.directory, "cache", "nle-handoff-published"),
+            "application/octet-stream",
+          );
+          return;
+        }
         if (route.startsWith("/api/captions/")) {
           errorContext = "captions.failed";
           const controller = new AbortController();

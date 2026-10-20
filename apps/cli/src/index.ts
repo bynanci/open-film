@@ -63,6 +63,8 @@ Usage:
   openfilm motion providers|preview|receipt|accept|import|restore|revoke|clear --project <film.openfilm> [--id <candidate-id>]
   openfilm motion preview --project <film.openfilm> --composition <id> --clip <id> --request-id <uuid> --motion-consent --motion-prompt <text> --motion-negative <constraints> [--motion-provider local-motion-fixture|local-motion-import] [--motion-count 2|3] [--motion-candidates <id,id>] [--contains-people|--environment-only] [--motion-scene <id>]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
+  openfilm handoff review --project <film.openfilm> --composition <id> [--mode preserve-editability|preserve-visual-fidelity] [--bake-audio] [--caption-track <id> | --no-captions]
+  openfilm handoff export --project <film.openfilm> --review <review.json>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format otio
@@ -119,6 +121,8 @@ function parse(args: string[]) {
     "contains-people",
     "environment-only",
     "reviewed",
+    "bake-audio",
+    "no-captions",
   ]);
   const values = new Set([
     "project",
@@ -129,6 +133,9 @@ function parse(args: string[]) {
     "motion-prompt",
     "motion-negative",
     "motion-scene",
+    "review",
+    "mode",
+    "caption-track",
     "title",
     "name",
     "description",
@@ -1113,7 +1120,54 @@ async function main() {
             : {}),
         }),
       });
-    else if (command === "export") {
+    else if (command === "handoff") {
+      if (options["no-captions"] && value(options, "caption-track"))
+        throw new Error("Choose --caption-track or --no-captions");
+      if (positional[1] === "review")
+        print(
+          app.reviewHandoff(
+            value(options, "composition") ??
+              app.project.timelines.at(-1)?.id ??
+              "",
+            {
+              mode: (value(options, "mode") ??
+                "preserve-editability") as import("@openfilm/exporters").HandoffMode,
+              bakeAudio: options["bake-audio"] === true,
+              ...(options["no-captions"]
+                ? { captionTrackId: null }
+                : value(options, "caption-track")
+                  ? { captionTrackId: value(options, "caption-track") }
+                  : {}),
+            },
+          ),
+        );
+      else if (positional[1] === "export") {
+        const path = value(options, "review");
+        if (!path) throw new Error("Provide --review <review.json>");
+        const info = await stat(path);
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error("Review must be regular JSON of at most 16 MiB");
+        const bytes = await readFile(path);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Review JSON exceeds 16 MiB");
+        const review = JSON.parse(
+          bytes.toString("utf8"),
+        ) as import("@openfilm/application").HandoffReview;
+        print(
+          await app.exportHandoff(
+            {
+              projectId: review.projectId,
+              compositionId: review.plan.compositionId,
+              revision: review.revision,
+              mode: review.plan.mode,
+              bakeAudio: review.plan.bakeAudio,
+              captionTrackId: review.plan.captionTrackId,
+            },
+            controller.signal,
+          ),
+        );
+      } else throw new Error("Choose handoff review or export");
+    } else if (command === "export") {
       const format = value(options, "format") ?? "json";
       if (format === "mp4")
         print(
