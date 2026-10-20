@@ -168,7 +168,8 @@ Restoration requires the same server-observed project path and ID, the same
 story/beat or asset owner, and an unchanged saved baseline. Category restoration
 also compares media URI, hash and type after a fresh read. Late reads and dirty
 live fields cannot be overwritten. Newer edits take priority; conflicting copies
-stay downloadable until explicitly discarded. An empty replacement service can
+stay downloadable until explicitly discarded. Consumed snapshot IDs are removed
+only if the owner is still current after the complete recovery pass. An empty replacement service can
 start and the user can reopen the original project. Recovery is limited to 16
 entries / 1 MiB; exceeding either bound keeps the old App owner mounted instead
 of truncating its only draft copy. Retained drafts and restored dirty fields
@@ -181,15 +182,15 @@ its acknowledgement; and the workspace is inert during connection recovery or
 close. Local beforeunload guards still prevent dead-service close for drafts,
 and normal live close still uses the existing flush preparation.
 
-| Follow-up check                                                                      | Result                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Actual RuntimeGate/App/ScenePlanner headless lifecycle regressions                   | 25 passed, including exact/empty values, repeated failed Retry, path/story/media changes, empty-service reopen, late/newer edits, overflow retention, export/discard and live/dead close. API/native I/O is simulated; the actual setup/lifecycle code runs. |
-| Focused lifecycle, existing benchmark, script-review and asset-selection regressions | 4 files / 108 tests passed with one worker.                                                                                                                                                                                                                  |
-| Exact Rust runtime module                                                            | 9 tests passed; formatter and isolated Clippy passed with Rust 1.99.0. Full Tauri compilation remains dependent on native CI.                                                                                                                                |
-| Static checks                                                                        | Lint, TypeScript/Vue and formatting checks passed; 1,715 semantic keys match across all three locales.                                                                                                                                                       |
+| Follow-up check                                                                      | Result                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Actual RuntimeGate/App/ScenePlanner headless lifecycle regressions                   | 26 passed, including exact/empty values, repeated failed Retry, path/story/media changes, empty-service reopen, late/newer edits, partial recovery ownership, overflow retention, export/discard and live/dead close. API/native I/O is simulated; the actual setup/lifecycle code runs. |
+| Focused lifecycle, existing benchmark, script-review and asset-selection regressions | 4 files / 109 tests passed with one worker.                                                                                                                                                                                                                                              |
+| Exact Rust runtime module                                                            | 9 tests passed; formatter and isolated Clippy passed with Rust 1.99.0. Full Tauri compilation remains dependent on native CI.                                                                                                                                                            |
+| Static checks                                                                        | Lint, TypeScript/Vue and formatting checks passed; 1,715 semantic keys match across all three locales.                                                                                                                                                                                   |
 
 Expected failures were observed before fixing lost drafts, older-copy priority,
-late-owner listener installation and dead-service close. The new bounded
+late-owner listener installation, partial-recovery snapshot consumption after an owner refresh, and dead-service close. The new bounded
 manifest-reader tests first failed because that verification boundary was
 absent, then passed with the same-buffer implementation. No full suite or
 browser suite was rerun in the isolated follow-up checkout; the integration
