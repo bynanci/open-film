@@ -43,6 +43,14 @@ const candidates = ref<MotionGenerationReceipt[]>([]),
   sceneId = ref(""),
   frameUrl = ref(""),
   compareTime = ref(0);
+const videoQuery = ref(""),
+  loadedVideoQuery = ref(""),
+  videoOffset = ref(0),
+  videoTotal = ref(0),
+  videoLoading = ref(false),
+  chosenVideos = ref<MediaAsset[]>([]);
+const videoPageSize = 100;
+let videoLoadGeneration = 0;
 let epoch = 0,
   controller: AbortController | undefined,
   requestId: string | undefined;
@@ -72,6 +80,8 @@ function clearFrame() {
 }
 function reset(revoke = true) {
   epoch++;
+  videoLoadGeneration++;
+  videoLoading.value = false;
   controller?.abort();
   controller = undefined;
   busy.value = false;
@@ -87,12 +97,18 @@ watch(
     props.compositionId,
     props.state.revision,
     props.clip.id,
+    props.sourceVersion,
   ],
   async () => {
     reset();
     candidates.value = [];
     failed.value = false;
     consent.value = false;
+    videos.value = [];
+    selected.value = [];
+    chosenVideos.value = [];
+    videoOffset.value = 0;
+    videoTotal.value = 0;
     const token = epoch;
     try {
       if (importedId.value) {
@@ -118,7 +134,6 @@ watch(
     negative.value,
     people.value,
     sceneId.value,
-    selected.value.join(","),
   ],
   () => {
     reset();
@@ -141,19 +156,61 @@ async function clearPreviews() {
     failed.value = true;
   }
 }
-async function loadVideos() {
+async function loadVideos(offset = 0) {
+  if (props.disabled || busy.value || videoLoading.value) return;
   const token = epoch;
+  const load = ++videoLoadGeneration;
+  const projectId = props.projectId;
+  const query = videoQuery.value.trim();
+  if (query !== loadedVideoQuery.value) offset = 0;
+  const owned = () =>
+    token === epoch &&
+    load === videoLoadGeneration &&
+    projectId === props.projectId &&
+    provider.value === "local-motion-import";
+  videoLoading.value = true;
+  failed.value = false;
   try {
     const result = await api.assets(
-      new URLSearchParams({ mediaType: "video", limit: "100" }),
+      new URLSearchParams({
+        mediaType: "video",
+        limit: String(videoPageSize),
+        offset: String(offset),
+        search: query,
+      }),
     );
-    if (token === epoch)
+    if (owned()) {
       videos.value = result.assets.filter(
         (a) => a.mediaType === "video" && !a.state.locked && !a.state.rejected,
       );
+      videoOffset.value = offset;
+      videoTotal.value = result.total;
+      loadedVideoQuery.value = query;
+    }
   } catch {
-    failed.value = true;
+    if (owned()) failed.value = true;
+  } finally {
+    if (owned()) videoLoading.value = false;
   }
+}
+function toggleVideo(video: MediaAsset) {
+  if (props.disabled || busy.value || videoLoading.value) return;
+  if (selected.value.includes(video.id))
+    chosenVideos.value = chosenVideos.value.filter(
+      (item) => item.id !== video.id,
+    );
+  else {
+    if (
+      selected.value.length >= 3 ||
+      video.state.locked ||
+      video.state.rejected
+    )
+      return;
+    chosenVideos.value = [...chosenVideos.value, video];
+  }
+  selected.value = chosenVideos.value.map((item) => item.id);
+  reset();
+  candidates.value = [];
 }
 async function generate() {
   if (busy.value || props.disabled || !consent.value) return;
@@ -259,7 +316,9 @@ async function compare() {
     <p class="editor-note">{{ t("motion.localOnly") }}</p>
     <fieldset
       class="editor-fields"
-      :disabled="disabled || busy || asset.mediaType !== 'image'"
+      :disabled="
+        disabled || busy || videoLoading || asset.mediaType !== 'image'
+      "
     >
       <label class="editor-field"
         >{{ t("motion.provider")
@@ -273,19 +332,69 @@ async function compare() {
         </select></label
       >
       <template v-if="provider === 'local-motion-import'"
-        ><button class="editor-button" type="button" @click="loadVideos">
+        ><label class="editor-field"
+          >{{ t("motion.searchVideos")
+          }}<input
+            v-model="videoQuery"
+            type="search"
+            maxlength="200"
+            @keydown.enter.prevent="loadVideos()"
+        /></label>
+        <button class="editor-button" type="button" @click="loadVideos()">
           {{ t("motion.loadVideos") }}
         </button>
         <p class="editor-note">{{ t("motion.externalNotice") }}</p>
         <label v-for="video in videos" :key="video.id" class="editor-field"
           ><input
-            v-model="selected"
             type="checkbox"
             :value="video.id"
+            :checked="selected.includes(video.id)"
             :disabled="selected.length >= 3 && !selected.includes(video.id)"
+            @change="toggleVideo(video)"
           />{{ video.name }}</label
-        ></template
-      >
+        >
+        <div role="group" :aria-label="t('motion.videoPages')">
+          <button
+            type="button"
+            class="editor-button"
+            :disabled="videoOffset === 0"
+            @click="loadVideos(Math.max(0, videoOffset - videoPageSize))"
+          >
+            {{ t("motion.previousVideos") }}
+          </button>
+          <span role="status">{{
+            t("motion.videoPage", {
+              from: videoTotal ? videoOffset + 1 : 0,
+              to: Math.min(videoOffset + videoPageSize, videoTotal),
+              total: videoTotal,
+            })
+          }}</span>
+          <button
+            type="button"
+            class="editor-button"
+            :disabled="videoOffset + videoPageSize >= videoTotal"
+            @click="loadVideos(videoOffset + videoPageSize)"
+          >
+            {{ t("motion.nextVideos") }}
+          </button>
+        </div>
+        <p role="status">
+          {{ t("motion.selectedVideos", { count: selected.length }) }}
+        </p>
+        <ul v-if="chosenVideos.length">
+          <li v-for="video in chosenVideos" :key="video.id">
+            {{ video.name }}
+            <button
+              type="button"
+              class="editor-button"
+              :aria-label="t('motion.removeVideo', { name: video.name })"
+              @click="toggleVideo(video)"
+            >
+              {{ t("motion.removeVideo", { name: video.name }) }}
+            </button>
+          </li>
+        </ul>
+      </template>
       <label class="editor-field"
         >{{ t("motion.prompt")
         }}<textarea v-model="prompt" maxlength="1000" rows="2" />
@@ -331,7 +440,7 @@ async function compare() {
       </button>
     </fieldset>
     <button
-      v-if="busy || requestId"
+      v-if="busy || requestId || videoLoading"
       type="button"
       class="editor-button"
       @click="
@@ -395,7 +504,9 @@ async function compare() {
           {{
             r.costStatus === "free-fixture"
               ? t("motion.free")
-              : t("motion.unknownCost")
+              : r.costStatus === "provider-cost-unknown"
+                ? t("motion.unknownProviderCost")
+                : t("motion.unknownCost")
           }}
         </p>
         <button

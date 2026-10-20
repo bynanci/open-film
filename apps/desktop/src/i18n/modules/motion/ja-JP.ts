@@ -17,6 +17,13 @@ export default {
     fixture: "ローカルカメラテスト（AI ではありません）",
     external: "外部動画を読み込む",
     loadVideos: "ライブラリ動画を読み込む",
+    searchVideos: "ライブラリ動画を検索",
+    videoPages: "ライブラリ動画のページ",
+    previousVideos: "前の動画",
+    nextVideos: "次の動画",
+    videoPage: "ライブラリ動画 {from}～{to} / {total} 件",
+    selectedVideos: "選択した動画：{count} / 3 本",
+    removeVideo: "{name} を選択解除",
     externalNotice:
       "先にライブラリへ動画を読み込み、1～3 本を選択します。原画との関係は利用者の申告です。アップロードしません。",
     prompt: "意図（ハッシュのみ保存）",
@@ -38,6 +45,8 @@ export default {
     candidate: "候補 {number}",
     free: "無料のローカルテスト。24 時間または破棄で期限切れ。",
     unknownCost: "外部生成の費用と由来は利用者の申告です。",
+    unknownProviderCost:
+      "ローカルプロバイダーの費用と原画との関係は未検証です。",
     accept: "審査後に承認",
     import: "選択した写真クリップを置換",
     restore: "元の写真／M8A を復元",

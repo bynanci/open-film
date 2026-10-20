@@ -66,6 +66,214 @@ async function commitManagedMotionBeforeJournal(
   }
   return candidate!;
 }
+it("records injected local generation as provider-declared provenance through adoption", async () => {
+  const root = await mkdtemp(join(tmpdir(), "motion-local-provenance-"));
+  const f = await createMotionFixture(root, {
+    motionGenerationProvider: adapter(async (input, options) => ({
+      ...(await localMotionFixture.generateMotion(input, options)),
+      model: "third-party-local-v1",
+      mock: false,
+    })),
+  });
+  try {
+    const service = f.app.motionGeneration;
+    expect(service.list().find((item) => item.id === "fault")?.available).toBe(
+      true,
+    );
+    await expect(
+      service.preview({ ...request(f, "fault"), consent: false }),
+    ).rejects.toMatchObject({ status: 400 });
+    const [candidate] = await service.preview(request(f, "fault"));
+    expect(candidate).toMatchObject({
+      providerId: "fault",
+      model: "third-party-local-v1",
+      mock: false,
+      origin: "local-generation",
+      sourceRelation: "provider-declared",
+      estimatedCostUsd: null,
+      costStatus: "provider-cost-unknown",
+    });
+    await expect(
+      service.importCandidate(candidate!.id, f.editor),
+    ).rejects.toMatchObject({ status: 409 });
+    await service.accept(candidate!.id, true);
+    const imported = await service.importCandidate(candidate!.id, f.editor);
+    const asset = f.app.catalog.getAsset(
+      imported.composition.tracks[0]!.clips[0]!.assetId,
+    )!;
+    expect(asset.metadata["openfilm.motionGeneration"]).toMatchObject({
+      origin: "local-generation",
+      sourceRelation: "provider-declared",
+      providerId: "fault",
+      costStatus: "provider-cost-unknown",
+    });
+  } finally {
+    await f.app.motionGeneration.dispose();
+    f.app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const cleanup of ["reopen", "clear"] as const)
+  for (const terminal of ["imported", "restored", "revoked"] as const)
+    it(`reclaims ${terminal} candidate bytes after interrupted cleanup via ${cleanup}`, async () => {
+      const root = await mkdtemp(join(tmpdir(), "motion-terminal-cleanup-"));
+      const f = await createMotionFixture(root);
+      let closed = false;
+      try {
+        const [candidate] = await f.app.motionGeneration.preview(request(f));
+        await f.app.motionGeneration.accept(candidate!.id, true);
+        // Fail after the real durable receipt publication, before finishImport removes private bytes.
+        const journal = f.app.motionGeneration as unknown as {
+          write: (
+            path: string,
+            value: { receipt?: { state?: string } },
+          ) => Promise<void>;
+        };
+        const write = journal.write.bind(journal);
+        journal.write = async (path, value) => {
+          await write(path, value);
+          if (
+            value.receipt?.state ===
+            (terminal === "revoked" ? "revoked" : "imported")
+          )
+            throw new Error("Synthetic crash before candidate cleanup");
+        };
+        try {
+          await expect(
+            terminal === "revoked"
+              ? f.app.motionGeneration.revoke(candidate!.requestId)
+              : f.app.motionGeneration.importCandidate(candidate!.id, f.editor),
+          ).rejects.toThrow("Synthetic crash before candidate cleanup");
+        } finally {
+          journal.write = write;
+        }
+        if (terminal === "restored")
+          await f.app.motionGeneration.restore(candidate!.id, f.editor);
+        expect(
+          (await f.app.motionGeneration.receipt(candidate!.id)).state,
+        ).toBe(terminal);
+        const cache = join(f.app.directory, "cache/motion-candidates");
+        expect(await readdir(cache)).toContain(candidate!.id);
+        const asset = f.app.catalog.listAssets({
+          mediaType: "video",
+          limit: 1,
+        })[0];
+        const { hashFile, runProcess } = await import("@openfilm/media");
+        const { OpenFilmApplication } = await import("../src/index.js");
+        let app = f.app;
+        if (cleanup === "reopen") {
+          await app.motionGeneration.dispose();
+          app.close();
+          closed = true;
+          app = await OpenFilmApplication.open(join(root, "film.openfilm"));
+        } else await app.motionGeneration.clearPreviews();
+        try {
+          expect(await readdir(cache)).not.toContain(candidate!.id);
+          expect(
+            (await app.motionGeneration.receipt(candidate!.id)).state,
+          ).toBe(terminal);
+          if (asset)
+            expect(await hashFile(localPath(asset.uri))).toBe(
+              candidate!.outputSha256,
+            );
+          expect(await hashFile(localPath(f.image.uri))).toBe(
+            candidate!.sourceSha256,
+          );
+          const output = await app.render("film");
+          const proof = JSON.parse(
+            (
+              await runProcess("ffprobe", [
+                "-v",
+                "error",
+                "-count_frames",
+                "-show_entries",
+                "stream=codec_type,nb_read_frames:format=duration",
+                "-of",
+                "json",
+                output,
+              ])
+            ).stdout.toString(),
+          );
+          expect(
+            proof.streams.find(
+              (stream: { codec_type: string }) => stream.codec_type === "video",
+            ).nb_read_frames,
+          ).toBe("48");
+          expect(
+            proof.streams.some(
+              (stream: { codec_type: string }) => stream.codec_type === "audio",
+            ),
+          ).toBe(true);
+          expect(Number(proof.format.duration)).toBe(4);
+        } finally {
+          if (closed) {
+            await app.motionGeneration.dispose();
+            app.close();
+          }
+        }
+      } finally {
+        if (!closed) {
+          await f.app.motionGeneration.dispose();
+          f.app.close();
+        }
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+it("retains prepared candidate bytes and their recovery journal during explicit cleanup", async () => {
+  const root = await mkdtemp(join(tmpdir(), "motion-prepared-clear-"));
+  const f = await createMotionFixture(root);
+  try {
+    const [candidate] = await f.app.motionGeneration.preview(request(f));
+    await f.app.motionGeneration.accept(candidate!.id, true);
+    const edit = f.editor.edit.bind(f.editor);
+    f.editor.edit = async () => {
+      throw new Error("Synthetic prepared edit failure");
+    };
+    try {
+      await expect(
+        f.app.motionGeneration.importCandidate(candidate!.id, f.editor),
+      ).rejects.toThrow("Synthetic prepared edit failure");
+    } finally {
+      f.editor.edit = edit;
+    }
+    const receiptFile = join(
+      f.app.directory,
+      "cache/motion-receipts",
+      `${candidate!.id}.json`,
+    );
+    const previewFile = join(
+      f.app.directory,
+      "cache/motion-candidates",
+      candidate!.id,
+      "preview.mp4",
+    );
+    const journal = await readFile(receiptFile);
+    const preview = await readFile(previewFile);
+    await f.app.motionGeneration.clearPreviews();
+    expect((await f.app.motionGeneration.receipt(candidate!.id)).state).toBe(
+      "prepared",
+    );
+    expect(await readFile(receiptFile)).toEqual(journal);
+    expect(await readFile(previewFile)).toEqual(preview);
+    const imported = await f.app.motionGeneration.importCandidate(
+      candidate!.id,
+      f.editor,
+    );
+    expect(imported.composition.tracks[0]!.clips[0]!.assetId).not.toBe(
+      f.image.id,
+    );
+    expect((await f.app.motionGeneration.receipt(candidate!.id)).state).toBe(
+      "imported",
+    );
+  } finally {
+    await f.app.motionGeneration.dispose();
+    f.app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 for (const status of [429, 500])
   it(`sanitizes provider ${status}, clears partial outputs and permits explicit new retry`, async () => {
     const root = await mkdtemp(join(tmpdir(), "motion-fault-"));

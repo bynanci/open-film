@@ -87,10 +87,12 @@ export interface MotionGenerationReceipt {
   providerId: string;
   model: string;
   mock: boolean;
-  origin: "fixture" | "external-import";
-  sourceRelation: "camera-derived-original" | "user-declared-external";
+  origin: "fixture" | "external-import" | "local-generation";
+  sourceRelation:
+    "camera-derived-original" | "user-declared-external" | "provider-declared";
   estimatedCostUsd: number | null;
-  costStatus: "free-fixture" | "external-cost-unknown";
+  costStatus:
+    "free-fixture" | "external-cost-unknown" | "provider-cost-unknown";
   outputSha256: string;
   output: MotionOutputProof;
   inputAssetId?: string;
@@ -629,17 +631,23 @@ export class MotionGenerationService {
           origin:
             input.providerId === localMotionImport.id
               ? "external-import"
-              : "fixture",
+              : input.providerId === localMotionFixture.id
+                ? "fixture"
+                : "local-generation",
           sourceRelation:
             input.providerId === localMotionImport.id
               ? "user-declared-external"
-              : "camera-derived-original",
+              : input.providerId === localMotionFixture.id
+                ? "camera-derived-original"
+                : "provider-declared",
           estimatedCostUsd:
             input.providerId === localMotionFixture.id ? 0 : null,
           costStatus:
             input.providerId === localMotionFixture.id
               ? "free-fixture"
-              : "external-cost-unknown",
+              : input.providerId === localMotionImport.id
+                ? "external-cost-unknown"
+                : "provider-cost-unknown",
           outputSha256: await hashFile(path, signal),
           output,
           ...(external
@@ -727,12 +735,18 @@ export class MotionGenerationService {
         }
         throw error;
       }
-      if (!["preview", "accepted"].includes(record.receipt.state)) continue;
-      const created = Date.parse(record.receipt.createdAt);
-      if (Number.isFinite(created) && Date.now() - created <= 86400000)
+      if (["preview", "accepted"].includes(record.receipt.state)) {
+        const created = Date.parse(record.receipt.createdAt);
+        if (Number.isFinite(created) && Date.now() - created <= 86400000)
+          continue;
+        record.receipt.state = "revoked";
+        await this.write(await this.path("motion-receipts", id), record);
+      } else if (
+        !["imported", "restored", "revoked"].includes(record.receipt.state)
+      )
         continue;
-      record.receipt.state = "revoked";
-      await this.write(await this.path("motion-receipts", id), record);
+      // Terminal journals no longer depend on private candidate bytes. A crash
+      // after publishing the state must not retain those bytes or their quota.
       await rm(
         dirname(await this.path("motion-candidates", id, "preview.mp4")),
         { recursive: true, force: true },
@@ -1085,11 +1099,7 @@ export class MotionGenerationService {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
-      if (
-        record &&
-        ["prepared", "imported", "restored"].includes(record.receipt.state)
-      )
-        continue;
+      if (record?.receipt.state === "prepared") continue;
       await rm(
         dirname(await this.path("motion-candidates", id, "preview.mp4")),
         { recursive: true, force: true },

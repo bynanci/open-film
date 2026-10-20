@@ -15,6 +15,10 @@ The Inspector offers two explicit local jobs:
   videos. Import them through the existing local importer first. The relationship
   to the photo, external generation cost, rights and provenance are user declared;
   OpenFilm does not infer that a video was generated from that photo.
+  Search the full Library or use Previous/Next to browse 100 videos per page.
+  Up to three choices stay selected across pages/searches; their names and Remove
+  controls remain visible. Locked and rejected videos are excluded. Project,
+  saved-revision or source changes clear the choices; Cancel ignores late reads.
 
 Enter intent and constraints, acknowledge the local job, and preview. Original
 photo and existing M8A frames can be compared with each candidate's video controls.
@@ -52,6 +56,10 @@ open, preview creation and expired-media access physically sweep expired
 unadopted files. Explicit revoke/Discard removes them earlier. No background
 process runs while OpenFilm is closed. At most 24 live candidate folders are
 admitted. Adopted media and prepared recovery journals are retained for history.
+If a process stops after an imported/restored/revoked receipt commits but before
+candidate deletion, the next sweep or explicit Discard removes those leftover
+private candidate bytes. Receipt journals and managed media remain. Prepared
+candidate bytes stay available until the interrupted import resolves.
 
 UUID request claims precede provider invocation. Same request/fingerprint shares
 work or returns the same ready candidates; changed, cancelled, interrupted or
@@ -82,6 +90,13 @@ consent checks cover text/images/video on every remote invocation, but the
 application rejects all remote motion descriptors even with consent. A future
 trusted remote adapter needs separate official API, redirects/download, license,
 retention, data destination, cost/key handling and explicit per-job consent review.
+
+Trusted runtime injection can supply another local motion provider. Its receipt
+and adopted metadata use `origin: local-generation`,
+`sourceRelation: provider-declared` and `costStatus: provider-cost-unknown`, with
+no estimated cost. Model/mock identity remains the provider's declaration; this
+classification makes no camera-fixture, AI-quality or source-relationship claim.
+The built-in fixture and external import keep their existing distinct provenance.
 
 ## Shared entry points
 
