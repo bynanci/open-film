@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
+import packageInfo from "../package.json" with { type: "json" };
 import {
   ApplicationError,
   errorInfo,
@@ -324,7 +325,7 @@ async function main() {
   const { positional, options } = parse(process.argv.slice(2));
   const command = positional[0];
   if (options.version) {
-    console.log("OpenFilm 0.1.0");
+    console.log(`OpenFilm ${packageInfo.version}`);
     return;
   }
   if (!command || options.help) {
