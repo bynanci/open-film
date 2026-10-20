@@ -134,3 +134,45 @@ it("keeps audio automation manual unless explicitly mixed", () => {
     p.items.find((i) => i.feature === "audioAutomation")?.disposition,
   ).toBe("baked");
 });
+
+it("allows native fractional audio and picture edges around an aligned graphic precomp", () => {
+  const c = structuredClone(cut);
+  c.duration = 4.01;
+  c.tracks[0]!.clips[0]!.timelineStart = 0.01;
+  c.tracks[0]!.clips[0]!.timelineDuration = 4;
+  c.tracks.push({
+    id: "sound",
+    type: "audio",
+    clips: [
+      {
+        id: "sound",
+        assetId: "audio",
+        timelineStart: 0.01,
+        timelineDuration: 2,
+      },
+    ],
+  });
+  c.graphicScenes = [
+    {
+      version: 1,
+      id: "graphic",
+      name: "Synthetic",
+      start: 1,
+      duration: 1,
+      zIndex: 0,
+      nodes: [],
+    },
+  ];
+  const plan = createHandoffPlan(c, 24, { mode: "preserve-visual-fidelity" });
+  expect(plan.visualRanges).toEqual([{ startFrame: 24, endFrame: 48 }]);
+  expect(
+    plan.items.find(
+      (item) => item.ownerId === "sound" && item.feature === "cut",
+    )?.startFrame,
+  ).toBeCloseTo(0.24, 10);
+  expect(
+    plan.items.filter(
+      (item) => item.ownerId === "a" && item.feature === "cut",
+    )[0]?.startFrame,
+  ).toBeCloseTo(0.24, 10);
+});

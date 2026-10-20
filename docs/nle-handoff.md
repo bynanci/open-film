@@ -19,7 +19,10 @@ The version-1 `HandoffPlan` records owner IDs, exact half-open frame positions,
 rational rate, native/metadata/baked/unsupported policy and reasons. Replaced cut
 ranges are marked baked and source identity there becomes provenance metadata;
 untouched ranges remain native. Fractional native positions remain fractional;
-visual baking rejects boundaries crossing the output frame grid. Unsupported
+only the boundaries used for visual baking must lie on the output frame grid.
+Untouched native picture/audio edges retain fractional timing. A full mix still
+requires a frame-aligned Composition end because the existing renderer ends at
+the last complete frame. Unsupported
 fields, overlapping clips, alpha/stem requests and unsupported source formats
 fail closed. Transparent overlays are disabled: no tested alpha profile is claimed.
 
@@ -55,7 +58,9 @@ the TAR hash (the archive cannot recursively hash itself). Consumers may discard
 custom metadata; keep the original project and package for returning to OpenFilm.
 
 Local staging/published artifacts remain in private per-project cache directories.
-No shared cache or arbitrary output path is accepted. Staging is mode 0700,
+No shared cache or arbitrary output path is accepted. Source transport is an
+exclusive abortable stream; imported portable references are rewritten to contain
+only relative package names and source hashes. Staging is mode 0700,
 files 0600; symlink parents, symlink/hardlinked downloads, traversal and foreign
 project requests are rejected. v1 limits include 256 referenced assets, 1 GiB
 source bytes, 2,000 clips / 5,000 cues / 128 tracks, 2 GiB archive payload and one hour of source timeline. Export fails

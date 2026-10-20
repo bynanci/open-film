@@ -132,7 +132,7 @@ export function createHandoffPlan(
   };
   const durationFrames = frame(
     composition.duration,
-    fidelity || options.bakeAudio === true,
+    options.bakeAudio === true,
   );
   if (durationFrames <= 0) throw new Error("Empty handoff timeline");
   for (const track of composition.tracks) {
@@ -197,10 +197,6 @@ export function createHandoffPlan(
       )
         throw new Error("Unsupported overlapping clips or invalid bounds");
       end = stop;
-      if (fidelity) {
-        frame(start, true);
-        frame(stop, true);
-      }
       add(
         clip.id,
         "sourceIdentity",

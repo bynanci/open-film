@@ -1,18 +1,18 @@
+import { pipeline } from "node:stream/promises";
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
 import { createHash, randomUUID } from "node:crypto";
-import { constants, readFileSync, renameSync, lstatSync } from "node:fs";
 import {
-  copyFile,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+  constants,
+  createWriteStream,
+  readFileSync,
+  renameSync,
+  lstatSync,
+} from "node:fs";
+import { lstat, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import {
   graphicSceneAssetIds,
+  frameAlignedDuration,
   type Composition,
   type MediaAsset,
   type OpenFilmProject,
@@ -84,6 +84,25 @@ function hasEmbeddedAudio(asset: MediaAsset): boolean {
   const probe = asset.metadata["openfilm.ffprobe"] as
     { streams?: { codec_type?: string }[] } | undefined;
   return probe?.streams?.some((s) => s.codec_type === "audio") ?? false;
+}
+/** Exclusive bounded streaming transport; owner cancellation closes both handles. */
+export async function copyHandoffSource(
+  source: string,
+  destination: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  checkAbort(signal);
+  const input = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    checkAbort(signal);
+    await pipeline(
+      input.createReadStream({ signal }),
+      createWriteStream(destination, { flags: "wx", mode: 0o600 }),
+      { signal },
+    );
+  } finally {
+    await input.close();
+  }
 }
 export class NleHandoffService {
   constructor(private readonly host: HandoffHost) {}
@@ -297,15 +316,25 @@ export class NleHandoffService {
             "Source audio metadata differs; refresh source inspection before handoff",
           );
         const file = `media/source-${index}${extension}`;
-        await copyFile(path, join(staging, file), constants.COPYFILE_EXCL);
-        const handle = await open(join(staging, file), "r+");
-        await handle.chmod(0o600);
-        await handle.close();
+        await copyHandoffSource(path, join(staging, file), signal);
         if ((await hashFile(join(staging, file), signal)) !== sha256)
           throw new Error("Copied source hash mismatch");
         files.push(file);
         references.push({ assetId: asset.id, sha256, file });
-        originals.push({ ...asset, uri: file, name: `Source ${index + 1}` });
+        originals.push({
+          ...asset,
+          uri: file,
+          name: `Source ${index + 1}`,
+          metadata: {
+            "openfilm.reference": {
+              id: asset.id,
+              uri: file,
+              type: "file",
+              relativePath: file,
+              contentHash: sha256,
+            },
+          },
+        });
       }
       const mappings: {
         kind: string;
@@ -390,7 +419,10 @@ export class NleHandoffService {
         const referenceProof = await this.probe(reference, signal);
         if (
           Number(referenceProof.nb_read_frames) !==
-          Math.ceil(plan.durationFrames)
+          Math.round(
+            frameAlignedDuration(composition.duration, settings.frameRate) *
+              settings.frameRate,
+          )
         )
           throw new Error("Reference frame count mismatch");
         await write(

@@ -73,3 +73,14 @@ Chromium cache. No runtime/provider download or personal fixture is required.
 Windows/macOS native install, GPU, hardware capture, Resolve/Premiere/Final Cut
 playback and 4K visual QA remain not-run. M7B stems and M8A depth are not integrated
 on this independent base; they must not be marked complete by this work.
+
+## Follow-up automated review
+
+Imported/relinked portable-reference metadata now has explicit realistic fixture
+coverage: originalUri/rootUri and other absolute references are replaced, and the
+complete native OTIO is asserted path-free. Native fractional picture/audio edges
+are accepted around aligned graphic precomps, while actual bake boundaries remain
+strict. Real sparse-file streaming copy cancellation and destination exclusivity
+are covered. An immediate retry is held behind controlled cancelled-render cleanup,
+then succeeds with no staging left; the existing mutation queue already provided
+that ordering, so no UI workaround or weakened assertion was introduced.

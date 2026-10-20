@@ -77,6 +77,16 @@ async function fixture() {
     });
   photo.contentHash = await hashFile(image);
   sound.contentHash = await hashFile(audio);
+  for (const asset of [photo, sound])
+    asset.metadata["openfilm.reference"] = {
+      id: asset.id,
+      uri: asset.uri,
+      type: "file",
+      originalUri: asset.uri,
+      rootUri: pathToFileURL(root).href,
+      relativePath: asset.name,
+      contentHash: asset.contentHash,
+    };
   app.catalog.upsertAsset(photo);
   app.catalog.upsertAsset(sound);
   const story = app.generateStory({
@@ -714,4 +724,74 @@ it("rejects source ranges beyond actual duration even if catalog duration was en
   expect(await readdir(join(app.directory, "cache", "nle-handoff"))).toEqual(
     [],
   );
+});
+
+it("queues an immediate review retry until cancelled server cleanup completes", async () => {
+  const { app, composition } = await fixture();
+  const review = app.reviewHandoff(composition.id, {
+      mode: "preserve-visual-fidelity",
+    }),
+    directory = app.directory;
+  cleanup.pop();
+  app.close();
+  const server = await startServer({ port: 0, project: directory });
+  cleanup.push(() => server.close());
+  let entered!: () => void, sawAbort!: () => void, finishCleanup!: () => void;
+  const rendering = new Promise<void>((resolve) => {
+      entered = resolve;
+    }),
+    aborting = new Promise<void>((resolve) => {
+      sawAbort = resolve;
+    }),
+    cleanupHeld = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+  vi.spyOn(FFmpegRenderer.prototype, "render").mockImplementationOnce(
+    async function (this: FFmpegRenderer, ...args) {
+      entered();
+      await new Promise<void>((resolve) => {
+        const signal = args[4]?.signal;
+        if (signal?.aborted) resolve();
+        else signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      sawAbort();
+      await cleanupHeld;
+      throw new Error("cancelled after controlled cleanup");
+    },
+  );
+  const base = `http://127.0.0.1:${server.port}/api`,
+    controller = new AbortController();
+  const input = {
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+  };
+  const post = (route: string, signal?: AbortSignal) =>
+    fetch(base + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal,
+    });
+  const first = post("/handoff/export", controller.signal).catch(
+    (error) => error,
+  );
+  await rendering;
+  controller.abort();
+  await aborting;
+  let replied = false;
+  const retry = post("/handoff/review").then((response) => {
+    replied = true;
+    return response;
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(replied).toBe(false);
+  } finally {
+    finishCleanup();
+  }
+  expect((await retry).status).toBe(200);
+  await first;
+  expect(await readdir(join(directory, "cache", "nle-handoff"))).toEqual([]);
 });
