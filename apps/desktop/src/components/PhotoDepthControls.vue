@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   GraphicImageNode,
@@ -8,10 +8,12 @@ import type {
 } from "@openfilm/core";
 import type { MediaAsset } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
-import { thumbnailUrl } from "../api";
+import { api, thumbnailUrl } from "../api";
 import { canCreatePhotoDepth } from "../photo-depth-controls";
 
 const props = defineProps<{
+  projectId: string;
+  dependencyVersion?: string;
   scene: GraphicScene;
   node: GraphicImageNode;
   assets: readonly MediaAsset[];
@@ -20,16 +22,69 @@ const props = defineProps<{
   disabled: boolean;
 }>();
 const emit = defineEmits<{
-  command: [command: TimelineCommand];
+  command: [command: TimelineCommand, referencedAssets: readonly MediaAsset[]];
   preview: [time: number];
   importAssets: [];
 }>();
 const { t } = useI18n();
+const libraryAssets = shallowRef<MediaAsset[]>([]);
+const libraryError = ref(false);
+const libraryRetry = ref(0);
+const assets = computed(() => [
+  ...new Map(
+    [...libraryAssets.value, ...props.assets].map((asset) => [asset.id, asset]),
+  ).values(),
+]);
+const eligibleImage = (asset: MediaAsset) => {
+  try {
+    const uri = new URL(asset.uri);
+    return (
+      asset.mediaType === "image" &&
+      uri.protocol === "file:" &&
+      !uri.hostname &&
+      /^[a-f0-9]{64}$/u.test(asset.contentHash ?? "")
+    );
+  } catch {
+    return false;
+  }
+};
+watch(
+  [() => props.projectId, () => props.dependencyVersion, libraryRetry],
+  async ([projectId], previous, onCleanup) => {
+    let stale = false;
+    onCleanup(() => {
+      stale = true;
+    });
+    if (projectId !== previous[0]) libraryAssets.value = [];
+    libraryError.value = false;
+    try {
+      const images: MediaAsset[] = [];
+      let offset = 0;
+      while (!stale) {
+        const page = await api.assets(
+          new URLSearchParams({
+            mediaType: "image",
+            offset: String(offset),
+            limit: "200",
+          }),
+        );
+        if (stale) return;
+        images.push(...page.assets.filter(eligibleImage));
+        offset += page.assets.length;
+        if (!page.assets.length || offset >= page.total) break;
+      }
+      if (!stale) libraryAssets.value = images;
+    } catch {
+      if (!stale) libraryError.value = true;
+    }
+  },
+  { immediate: true },
+);
 const selectedMaskId = ref("");
 const selectedBackgroundId = ref("");
 const backgroundKind = ref<"source" | "asset">("source");
 const selectedMask = computed(() =>
-  props.assets.find((asset) => asset.id === selectedMaskId.value),
+  pngMasks.value.find((asset) => asset.id === selectedMaskId.value),
 );
 const fallbackReason =
   ref<NonNullable<PhotoDepthRecipe["fallbackReason"]>>("mask-not-available");
@@ -42,20 +97,17 @@ const isPng = (asset: MediaAsset) =>
   asset.mediaType === "image" &&
   (asset.codec?.toLowerCase().includes("png") || /\.png$/iu.test(asset.name));
 const pngMasks = computed(() =>
-  props.assets.filter(
+  assets.value.filter(
     (asset) =>
-      asset.id !== props.node.assetId &&
-      isPng(asset) &&
-      /^[a-f0-9]{64}$/u.test(asset.contentHash ?? ""),
+      asset.id !== props.node.assetId && isPng(asset) && eligibleImage(asset),
   ),
 );
 const backgrounds = computed(() =>
-  props.assets.filter(
+  assets.value.filter(
     (asset) =>
-      asset.mediaType === "image" &&
+      eligibleImage(asset) &&
       asset.id !== props.node.assetId &&
-      asset.id !== selectedMaskId.value &&
-      /^[a-f0-9]{64}$/u.test(asset.contentHash ?? ""),
+      asset.id !== selectedMaskId.value,
   ),
 );
 const selectedBackground = computed(() =>
@@ -71,8 +123,7 @@ const parallax = computed(() =>
 );
 const seconds = computed(() => props.node.end - props.node.start);
 const eligibility = computed(() => {
-  if (!source.value || !/^[a-f0-9]{64}$/u.test(source.value.contentHash ?? ""))
-    return "source";
+  if (!source.value || !eligibleImage(source.value)) return "source";
   if (seconds.value < 3 || seconds.value > 6) return "duration";
   if (props.node.animation || Math.abs(props.node.rotation ?? 0) > 1e-9)
     return "motion";
@@ -91,13 +142,13 @@ const canCreateParallax = computed(() =>
   }),
 );
 const currentMask = computed(() =>
-  props.assets.find((asset) => asset.id === parallax.value?.maskAssetId),
+  assets.value.find((asset) => asset.id === parallax.value?.maskAssetId),
 );
 const currentBackground = computed(() => {
   const recipe = parallax.value;
   const background = recipe?.background;
   if (background?.kind !== "asset") return undefined;
-  return props.assets.find((asset) => asset.id === background.assetId);
+  return assets.value.find((asset) => asset.id === background.assetId);
 });
 const startTime = computed(() => props.scene.start + props.node.start);
 const middleTime = computed(() => startTime.value + seconds.value / 2);
@@ -114,7 +165,7 @@ watch(
     () => props.node.id,
     () => props.node.assetId,
     () => depth.value,
-    () => props.assets,
+    () => assets.value,
   ],
   ([sceneId, nodeId, assetId, recipe], previous) => {
     const sameTarget =
@@ -122,6 +173,17 @@ watch(
       nodeId === previous[1] &&
       assetId === previous[2];
     const previousRecipe = previous[3];
+    if (sameTarget && recipe === previousRecipe) {
+      if (!pngMasks.value.some((asset) => asset.id === selectedMaskId.value))
+        selectedMaskId.value = pngMasks.value[0]?.id ?? "";
+      if (
+        !backgrounds.value.some(
+          (asset) => asset.id === selectedBackgroundId.value,
+        )
+      )
+        selectedBackgroundId.value = backgrounds.value[0]?.id ?? "";
+      return;
+    }
     const pendingMask =
       sameTarget &&
       recipe?.mode === "parallax" &&
@@ -158,7 +220,26 @@ function save(recipe: PhotoDepthRecipe | undefined) {
   const scene = structuredClone(props.scene);
   if (recipe) scene.photoDepth = recipe;
   else delete scene.photoDepth;
-  emit("command", { type: "graphic.scene.upsert", scene });
+  const ids = new Set(
+    recipe
+      ? [
+          recipe.sourceAssetId,
+          ...(recipe.mode === "parallax"
+            ? [
+                recipe.maskAssetId,
+                ...(recipe.background.kind === "asset"
+                  ? [recipe.background.assetId]
+                  : []),
+              ]
+            : []),
+        ]
+      : [],
+  );
+  emit(
+    "command",
+    { type: "graphic.scene.upsert", scene },
+    assets.value.filter((asset) => ids.has(asset.id)),
+  );
 }
 
 function createParallax() {
@@ -204,7 +285,13 @@ function createParallax() {
 
 function useFallback() {
   const original = source.value;
-  if (!original?.contentHash || seconds.value < 3 || seconds.value > 6) return;
+  if (
+    !original ||
+    !eligibleImage(original) ||
+    seconds.value < 3 ||
+    seconds.value > 6
+  )
+    return;
   save({
     version: 1,
     id: depth.value?.id ?? crypto.randomUUID(),
@@ -212,7 +299,7 @@ function useFallback() {
     mode: "fallback",
     duration: seconds.value,
     sourceAssetId: original.id,
-    sourceSha256: original.contentHash,
+    sourceSha256: original.contentHash!,
     fallbackReason: fallbackReason.value,
   });
 }
@@ -259,7 +346,7 @@ function updateEasing(event: Event) {
 }
 function updateBackground() {
   updateRecipe((recipe) => {
-    const asset = props.assets.find(
+    const asset = backgrounds.value.find(
       (item) => item.id === selectedBackgroundId.value,
     );
     recipe.background =
@@ -274,6 +361,12 @@ function updateBackground() {
   <section class="photo-depth-controls" data-testid="photo-depth-controls">
     <h4>{{ t("editor.photoDepth.heading") }}</h4>
     <p class="editor-muted">{{ t("editor.photoDepth.description") }}</p>
+    <p v-if="libraryError" class="editor-error" role="alert">
+      {{ t("editor.photoDepth.libraryError") }}
+      <button type="button" class="editor-button" @click="libraryRetry++">
+        {{ t("editor.graphics.retry") }}
+      </button>
+    </p>
     <p v-if="eligibility === 'source'" class="editor-muted">
       {{ t("editor.photoDepth.sourceHashRequired") }}
     </p>

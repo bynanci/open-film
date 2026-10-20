@@ -273,6 +273,7 @@ async function inspectPhotoDepthMask(
       "file,pipe",
       "-f",
       mask.format,
+      "-noautorotate",
       "-i",
       mask.path,
       "-frames:v",

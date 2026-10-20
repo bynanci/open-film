@@ -2989,6 +2989,16 @@ onBeforeUnmount(() => {
             :duration="state.composition.duration"
             :frame-rate="projectSettings.frameRate"
             :assets="state.assets"
+            :dependency-version="
+              (jobs ?? [])
+                .filter(
+                  (job) =>
+                    job.type === 'import' &&
+                    ['completed', 'failed', 'cancelled'].includes(job.status),
+                )
+                .map((job) => `${job.id}:${job.status}`)
+                .join('|')
+            "
             :selected-scene-id="graphicSceneSelection.sceneId"
             :selected-node-id="graphicSceneSelection.nodeId"
             :snapping="graphicSnapping"

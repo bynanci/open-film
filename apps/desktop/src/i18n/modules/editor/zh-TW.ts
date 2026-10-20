@@ -149,6 +149,7 @@ export default {
       description:
         "使用本機 PNG Alpha 遮罩與可選背景補景。原照片保持不變，也不會呼叫遠端圖片服務。",
       importAssets: "匯入本機照片圖層",
+      libraryError: "無法載入本機照片圖層，請重試。",
       sourceHashRequired: "請先匯入並儲存本機照片，再編輯景深圖層。",
       durationRule: "請將此圖片圖層設為 3–6 秒（目前 {duration} 秒）。",
       motionRule: "啟用視差前，請移除圖片旋轉或進出場動畫。",

@@ -165,6 +165,7 @@ export default {
       description:
         "Use a local PNG alpha mask and optional background fill. Source photos remain unchanged; no remote image service is used.",
       importAssets: "Import local photo layers",
+      libraryError: "Could not load local photo layers. Try again.",
       sourceHashRequired:
         "Import and save this local photo before editing its depth layers.",
       durationRule:

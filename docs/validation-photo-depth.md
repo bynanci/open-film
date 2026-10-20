@@ -155,6 +155,56 @@ above, including source-alpha intersection, protected-region checks, arbitrary
 seeks and fallback/legacy parity. No full suite or browser suite was rerun for
 this follow-up; the coordinator owns combined release verification.
 
+## PR #35 Library, timing and mask-orientation follow-up at a19f54b
+
+Reviewed baseline: `a19f54bd771b0c93f17b50e07fc6f1e70a09eedd`.
+
+| Discussion ID                  | Disposition and regression evidence                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4326942553                     | Accepted as an explicit decode-policy fix: mask inspection now disables autorotation, matching foreground preparation. A synthetic EXIF-6 PNG with a recognized 90-degree display matrix previously rejected the correct protected region; Monitor and actual FFmpeg output now match its unrotated reference.                                                                                                                                    |
+| 4326942566                     | Accepted and fixed: changing the bound image interval also changes recipe duration for both parallax and fallback. Actual inspector controls accept 4.5-second and 3-second intervals; invalid shorter edits remain rejected. Browser saves, Undo and reopened recipes preserve the binding.                                                                                                                                                      |
+| 4326942581                     | Accepted and fixed: typed command admission requires local file images for source, mask and background. Tests alter synthetic persisted catalog data to HTTPS and hosted `file://` URIs, then verify that admission leaves the document, revision and history unchanged. Normal catalog imports already reject non-file URIs.                                                                                                                     |
+| 4326942597 / PR #40 4326967726 | Accepted and fixed together: the panel queries every Library image page separately, filters eligible local hashed images, refreshes after terminal import jobs, and fences superseded reads. Only explicitly chosen recipe dependencies enter optimistic command context; the service resolves those IDs from its catalog. Story candidate pools and required selections are unchanged. Unrelated imports preserve editor revision and Undo/Redo. |
+
+The first red run reproduced both timing modes and both missing-Library UI
+behaviors. Corrected source-admission fixtures then reproduced both non-file
+dependency admissions, and the actual FFmpeg orientation case rejected a valid
+protected region before the one-option production fix. The separate application
+pool/history test already passed and protects the existing service behavior.
+
+FFmpeg 7.1.5 does not interpret PNG eXIf orientation natively on this runner.
+The regression writes real EXIF orientation metadata and adds FFmpeg's
+`-display_rotation 90` input override only in its test process adapter, so the
+real decoder exercises recognized rotation while honoring production
+`-noautorotate` options. This is compatibility-policy evidence, not a claim
+that this installed decoder natively autorotates PNG metadata. No production
+process options are replaced by the test adapter.
+
+The focused run passes 58 tests in six files: actual Vue controls, core editor
+history/application checks, solver checks and actual FFmpeg rendering. The
+isolated Chromium test imports both unlocked mask/background images through
+the panel after the editor loads with explicit Story pools; it verifies that
+the old revision and Undo history survive import, authors the recipe, retimes
+it, previews a shared frame, exercises Undo/Redo, reopens and removes the bound
+image. It passes on API port 49135 and UI port 49235. Its temporary proxy supplies
+the existing trusted loopback Origin/Host; no default port was bound and no
+production origin policy changed. A direct frame request retries only the
+existing typed `graphics.busy` response while the automatic preview completes.
+
+The oriented-mask render is 320×180, six seconds, 48 decoded frames. Shuffled
+Monitor frames match the plain-mask reference, foreground/background decoded
+pixels match the Monitor within eight RGB levels, and both MP4s have SHA-256
+`bcb228765fc472a431b7a260315ccd945d6ec4571387710176e92b428dac15eb`.
+All source hashes remain unchanged. Retained temporary synthetic masks, MP4s,
+Monitor/decoded frames, manifest and measurements are in
+`/tmp/openfilm-v1-validation/pr35-wave2-render-evidence`; focused/browser/static
+logs use `/tmp/openfilm-v1-validation/pr35-wave2-*`.
+
+Formatting, changed-file lint, TypeScript/Vue checks and i18n (1,746 matching
+semantic keys) pass. No full suite, native installer or real-photo manual gate
+is inferred from these focused checks; combined integration gates remain with
+the coordinator.
+
 ## Manual gates
 
 - Test representative real photographs only on a local workstation. Check hair,
