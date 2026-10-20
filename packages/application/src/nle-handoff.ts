@@ -385,6 +385,7 @@ export class NleHandoffService {
             throw new Error("Source duration cannot be verified");
           verifiedDuration = duration;
           for (const clip of composition.tracks
+            .filter((track) => track.type !== "titles")
             .flatMap((t) => t.clips)
             .filter((c) => c.assetId === asset.id)) {
             const end =

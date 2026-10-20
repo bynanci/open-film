@@ -1215,6 +1215,207 @@ it("omits catalog-backed title placeholder media from native exchange while reta
   }
 });
 
+it.each(["video", "audio"] as const)(
+  "publishes a long generated title with a short ignored %s source while protecting consumed source bounds",
+  async (kind) => {
+    const { root, app, composition, image, audio } = await fixture();
+    composition.graphicScenes = [];
+    composition.captionTracks = [];
+    const path = join(
+      root,
+      kind === "video" ? "short-title.mp4" : "short-title.wav",
+    );
+    await runProcess(
+      "ffmpeg",
+      kind === "video"
+        ? [
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=green:s=160x90:r=8:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=1200:duration=1",
+            "-t",
+            "1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-threads",
+            "1",
+            path,
+          ]
+        : [
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=1200:duration=1",
+            path,
+          ],
+    );
+    const placeholder = await inspectMedia({
+      path,
+      uri: pathToFileURL(path).href,
+      name: `short-title.${kind === "video" ? "mp4" : "wav"}`,
+    });
+    placeholder.contentHash = await hashFile(path);
+    expect(placeholder.duration).toBeCloseTo(1, 2);
+    app.catalog.upsertAsset(placeholder);
+    const title = {
+      id: "long-generated-title",
+      assetId: placeholder.id,
+      sourceIn: 0,
+      sourceOut: 4,
+      timelineStart: 0,
+      timelineDuration: 4,
+      title: "FOUR SECOND TITLE",
+      titleStyle: {
+        version: 1 as const,
+        role: "subtitle" as const,
+        fontSize: 14,
+      },
+    };
+    composition.tracks.push({
+      id: "ignored-short-title",
+      type: "titles",
+      clips: [title],
+    });
+    app.project.timelines = [composition];
+    await app.save();
+    const before = JSON.stringify(app.project),
+      savedBefore = await readFile(join(app.directory, "project.json"));
+    const hashes = await Promise.all(
+      [image, audio, path].map((path) => hashFile(path)),
+    );
+    const rendered = await app.render(composition.id),
+      renderedHash = await hashFile(rendered);
+    const publications = [];
+    for (const mode of [
+      "preserve-editability",
+      "preserve-visual-fidelity",
+    ] as const) {
+      const review = app.reviewHandoff(composition.id, { mode });
+      const publication = await app.exportHandoff({
+        projectId: review.projectId,
+        compositionId: composition.id,
+        revision: review.revision,
+        mode,
+      });
+      const read = async (name: string) =>
+        readFile(
+          await app.handoff.file(
+            publication.id,
+            publication.files.findIndex((file) => file.name === name),
+          ),
+          "utf8",
+        );
+      const timeline = JSON.parse(await read("timeline.otio"));
+      const clips = timeline.tracks.children
+        .flatMap(
+          (track: { children: { OTIO_SCHEMA: string }[] }) => track.children,
+        )
+        .filter(
+          (clip: { OTIO_SCHEMA: string }) => clip.OTIO_SCHEMA === "Clip.1",
+        );
+      expect(
+        clips.some(
+          (clip: { metadata?: { openfilm?: { assetId?: string } } }) =>
+            clip.metadata?.openfilm?.assetId === placeholder.id,
+        ),
+      ).toBe(false);
+      const provenance = JSON.parse(await read("provenance.json"));
+      expect(
+        provenance.originalComposition.tracks.find(
+          (track: { id: string }) => track.id === "ignored-short-title",
+        ).clips,
+      ).toEqual([title]);
+      const reference = provenance.sources.find(
+        (source: { assetId: string }) => source.assetId === placeholder.id,
+      );
+      expect(reference.sha256).toBe(placeholder.contentHash);
+      expect(
+        await hashFile(
+          await app.handoff.file(
+            publication.id,
+            publication.files.findIndex((file) => file.name === reference.file),
+          ),
+        ),
+      ).toBe(placeholder.contentHash);
+      if (mode === "preserve-visual-fidelity")
+        expect(
+          await hashFile(
+            await app.handoff.file(
+              publication.id,
+              publication.files.findIndex(
+                (file) => file.name === "reference.mp4",
+              ),
+            ),
+          ),
+        ).toBe(renderedHash);
+      publications.push({ id: publication.id, mode });
+    }
+    expect(JSON.stringify(app.project)).toBe(before);
+    expect(await readFile(join(app.directory, "project.json"))).toEqual(
+      savedBefore,
+    );
+    // The identical short source is now consumed on a real picture/audio track.
+    // Stale catalog duration must not bypass the freshly inspected one-second bound.
+    app.catalog.upsertAsset({ ...placeholder, duration: 4 });
+    const consumed = composition.tracks[kind === "video" ? 0 : 1]!.clips[0]!;
+    consumed.assetId = placeholder.id;
+    consumed.sourceIn = 0;
+    consumed.sourceOut = 4;
+    app.project.timelines = [composition];
+    await app.save();
+    const review = app.reviewHandoff(composition.id);
+    await expect(
+      app.exportHandoff({
+        projectId: review.projectId,
+        compositionId: composition.id,
+        revision: review.revision,
+      }),
+    ).rejects.toThrow(/Source bounds exceed inspected media duration/);
+    expect(await readdir(join(app.directory, "cache", "nle-handoff"))).toEqual(
+      [],
+    );
+    expect(
+      await Promise.all([image, audio, path].map((path) => hashFile(path))),
+    ).toEqual(hashes);
+    const evidence = process.env.OPENFILM_HANDOFF_SHORT_TITLE_QA_OUTPUT;
+    if (evidence) {
+      const { cp } = await import("node:fs/promises");
+      await mkdir(evidence, { recursive: true });
+      for (const publication of publications)
+        await cp(
+          join(app.directory, "cache", "nle-handoff-published", publication.id),
+          join(evidence, `${kind}-${publication.mode}`),
+          { recursive: true },
+        );
+      await writeFile(
+        join(evidence, `${kind}-short-title-proof.json`),
+        JSON.stringify(
+          {
+            sourceDuration: placeholder.duration,
+            titleDuration: 4,
+            sourceHashes: hashes,
+            renderedHash,
+            consumedSourceRejected: true,
+            publications,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  },
+);
+
 it.each([
   "overlay-layout",
   "overlay-motion",

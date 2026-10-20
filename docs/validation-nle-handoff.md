@@ -377,3 +377,32 @@ cancellation, frame boundaries and the existing caption/graphic/resource limits.
 No full suite, browser, default-port listener, native installation or real NLE
 import was run. `realNleVerified` remains false; workstation and native/manual
 gates above remain partial or not run.
+
+### Short title backing sources
+
+An additional `4327254780` regression against
+`4c1f92fbd4a1498bcb2261723e1a78a5d0bc090a` reproduced publication refusing a
+four-second generated title backed by ignored one-second video/audio media.
+The renderer accepted both titles, but publication applied their unused source
+range to the short source. Both new cases failed before the one-line fix.
+
+Publication now excludes title-track clips only from consumed source-range
+checks. It still inspects, hashes, copies and records each backing source.
+Actual native and fidelity packages retain matching copied source hashes and
+the unchanged four-second authored title in provenance, while native picture
+and audio tracks omit the ignored backing media. Both fidelity references
+match their actual OpenFilm render, SHA-256
+`c7411b1f20b777a487edb613b281fb119e742c3f5f0647bc39bc3d3913ae04ce`.
+The saved/in-memory project and original source hashes remain unchanged.
+
+Each test then consumes the identical short source on a real picture/audio
+track with a deliberately stale four-second catalog duration. Publication
+still rejects the freshly inspected one-second bound and cleans unpublished
+staging. This protects source admission while allowing generated-title timing.
+Synthetic packages and numerical proof are retained in
+`/tmp/openfilm-v1-validation/pr39-wave4-short-title-evidence`.
+
+The complete three-file handoff target passes **86 tests** in **46.41 seconds**.
+Type checking, changed-file ESLint/formatting and `git diff --check` pass. This
+follow-up changes no renderer code and adds no full-suite, browser, default-port
+or native/NLE manual verification claim.
