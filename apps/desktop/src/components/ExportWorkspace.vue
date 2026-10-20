@@ -140,9 +140,12 @@ function clearPreview() {
 watch(
   [
     () => props.projectId,
-    () => props.composition,
+    // Project polling replaces the JSON object even when the saved cut is
+    // unchanged. Fence real edit changes without cancelling an active render
+    // merely because an equivalent project snapshot was refreshed.
+    () => JSON.stringify(props.composition),
     () => props.projectSettings.frameRate,
-    () => props.lookOverride,
+    () => JSON.stringify(props.lookOverride),
     () => props.captionTrackId,
     () => props.quality,
     ratio,
@@ -160,7 +163,6 @@ watch(
     stillResult.value = null;
     audioResult.value = null;
   },
-  { deep: true },
 );
 
 function current(generation: number, controller: AbortController) {

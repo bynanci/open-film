@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it } from "vitest";
-import type { Composition, ProjectSettings } from "@openfilm/core";
+import {
+  createExportProfile,
+  type Composition,
+  type ProjectSettings,
+} from "@openfilm/core";
 import { resolveCompatibility } from "@openfilm/exporters";
 import enUS from "../../apps/desktop/src/i18n/locales/en-US";
 import zhTW from "../../apps/desktop/src/i18n/locales/zh-TW";
@@ -45,6 +49,7 @@ async function fixture(locale: keyof typeof catalogs = "en-US") {
     "apps/desktop/src/components/ExportWorkspace.vue",
     {
       "vue-i18n": { useI18n: () => ({ t, locale: vue.ref(locale) }) },
+      "@openfilm/core": { createExportProfile },
       "@openfilm/exporters": { resolveCompatibility },
       "../api": { exportDownloadUrl: (name: string) => `/export/${name}` },
       "./CaptionExport.vue": stub,
