@@ -1383,13 +1383,25 @@ export class ProjectVersionService {
       versionId,
       checkpointVersionId: checkpointId,
     };
-    this.writeJournal({
-      version: 1,
-      targetVersionId: versionId,
-      checkpointVersionId: checkpointId,
-      requestId,
-      fingerprint,
-      stage: "applying",
+    // Deletion shares this lock. Either it finishes first and aborts restore,
+    // or the published journal protects the live recovery checkpoint from removal.
+    this.app.catalog.withProjectWrite(() => {
+      this.assertRestoreBaseline(before, () => {});
+      const recovery = this.load(checkpointId);
+      if (recovery.record.projectRevision !== before.revision)
+        fail(
+          "story.planConflict",
+          "The recovery checkpoint no longer matches the current project.",
+          409,
+        );
+      this.writeJournal({
+        version: 1,
+        targetVersionId: versionId,
+        checkpointVersionId: checkpointId,
+        requestId,
+        fingerprint,
+        stage: "applying",
+      });
     });
     let staleDuringRestore = false;
     let restoreManifestPublished = false;

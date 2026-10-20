@@ -125,3 +125,12 @@ full-array sort invocations7000 →0; median10.31ms →2.07ms;
 maximum13.30ms →3.81ms. Raw samples are retained in the release-validation
 workspace. These short local samples support the algorithmic change, not a
 cross-device latency promise. No locks, project schema or original bytes change.
+
+Independent follow-up review reproduced a checkpoint-deletion race introduced
+by explicit capacity management: deletion between checkpoint creation and
+journal publication let restore succeed without a recovery snapshot. A new RED
+regression demonstrated that loss. The checkpoint is now loaded/revalidated and
+the applying journal published under the same project write lock used by
+deletion; a deleted checkpoint aborts before manifest/catalog changes. The fresh
+focused result is31tests plus1browser scenario passed, including rejection of a
+confirmation response belonging to another project.

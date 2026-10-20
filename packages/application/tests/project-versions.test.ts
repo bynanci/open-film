@@ -1268,4 +1268,46 @@ describe("named project versions", () => {
     expect(await readFile(join(directory, "project.json"))).toEqual(manifest);
     expect(app.versions.currentRevision()).toBe(input.baseRevision);
   });
+  it("aborts before restore publication if its recovery checkpoint was explicitly deleted", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-checkpoint-deletion-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Target state");
+    cleanup.push(() => app.close());
+    const target = await app.versions.create({
+      name: "Target",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    });
+    app.project.title = "Current state must retain a recovery snapshot";
+    await app.save();
+    const manifest = await readFile(join(directory, "project.json"));
+    const baseRevision = app.versions.currentRevision();
+    const create = app.versions.create.bind(app.versions);
+    vi.spyOn(app.versions, "create").mockImplementation(async (input) => {
+      const checkpoint = await create(input);
+      app.versions.remove(checkpoint.id, { baseRevision, confirmed: true });
+      return checkpoint;
+    });
+    await expect(
+      app.versions.restore(target.id, {
+        baseRevision,
+        requestId: randomUUID(),
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ status: 404, code: "request.notFound" });
+    expect(await readFile(join(directory, "project.json"))).toEqual(manifest);
+    expect(app.versions.currentRevision()).toBe(baseRevision);
+    expect(app.project.title).toBe(
+      "Current state must retain a recovery snapshot",
+    );
+    expect(app.versions.list().map((version) => version.id)).toEqual([
+      target.id,
+    ]);
+    await expect(
+      readFile(join(directory, "versions", "restore-journal.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
