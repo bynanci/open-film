@@ -93,9 +93,9 @@ Run date: 2026-10-20 UTC. Verification was run after rebasing M7B onto current
 | `pnpm test:interchange` | Passed: 18 checks, including OTIO read-write-read, source bounds/hash, unsafe URL rejection, and relocation.                                         |
 | `pnpm test:native`      | Not run: `rustc` and `cargo` are unavailable in this environment.                                                                                    |
 
-The M7B PR has not yet been created, so GitHub CI is pending. The M7D Collect
-Media work package is queued in `TASKS.md` and `ROADMAP.md`; this M7B change does
-not implement it.
+The M7B PR is open and its checks are rerunning against the frame-count
+correction. The M7D Collect Media work package is queued in `TASKS.md` and
+`ROADMAP.md`; this M7B change does not implement it.
 
 ## Manual gates
 
