@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -67,6 +68,7 @@ import {
 } from "@openfilm/core";
 import {
   checkAbort,
+  hashFile,
   localPath,
   runProcess,
   previewVideoFilters,
@@ -78,6 +80,14 @@ export interface RenderSettings {
   width: number;
   height: number;
   frameRate: number;
+}
+/** An application-approved immutable plan, checked again at publication. */
+export interface RenderSnapshot {
+  compositionSha256: string;
+  settingsSha256: string;
+  assetsSha256: string;
+  sources?: ReadonlyArray<{ assetId: string; sha256: string; size: number }>;
+  assertCurrent: () => void;
 }
 export interface RenderOptions {
   signal?: AbortSignal;
@@ -98,6 +108,8 @@ export interface RenderOptions {
   audioOnly?: boolean;
   /** Optional role filter for a separate WAV stem. */
   audioRole?: AudioAutomation["role"];
+  /** Internal snapshot binding for a reviewed preview and its delivered pixels. */
+  snapshot?: RenderSnapshot;
 }
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
@@ -193,6 +205,26 @@ export class FFmpegRenderer {
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
+    const snapshot = options.snapshot
+      ? {
+          ...options.snapshot,
+          sources:
+            options.snapshot.sources &&
+            structuredClone(options.snapshot.sources),
+        }
+      : undefined;
+    snapshot?.assertCurrent();
+    const sha256 = (value: unknown) =>
+      createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    if (
+      snapshot &&
+      (snapshot.compositionSha256 !== sha256(composition) ||
+        snapshot.settingsSha256 !== sha256(settings) ||
+        snapshot.assetsSha256 !== sha256(assets))
+    )
+      throw new Error(
+        "Render plan changed after crop approval; review a new export frame.",
+      );
     const exportProfile = options.exportProfile
       ? validateExportProfile(structuredClone(options.exportProfile))
       : undefined;
@@ -388,6 +420,27 @@ export class FFmpegRenderer {
       assets.filter((asset) => usedIds.has(asset.id)),
       options.signal,
     );
+    if (snapshot?.sources) {
+      const expected = new Map(
+        snapshot.sources.map((source) => [source.assetId, source]),
+      );
+      if (
+        expected.size !== snapshot.sources.length ||
+        expected.size !== sources.length ||
+        sources.some((source) => {
+          const approved = expected.get(source.assetId);
+          return (
+            !approved ||
+            approved.sha256 !== source.sha256 ||
+            approved.size !== source.size
+          );
+        })
+      )
+        throw new Error(
+          "Source changed after crop approval; review a new export frame.",
+        );
+    }
+    snapshot?.assertCurrent();
     await mkdir(dirname(output), { recursive: true });
     await validateRenderTargets(output);
     // Different paths can still name one original file (hard links or a parent
@@ -908,7 +961,29 @@ export class FFmpegRenderer {
           ...(options.audioRole ? { audioRole: options.audioRole } : {}),
         },
       );
-      await publishRenderPair(temporaryOutput, manifestPath, output, work);
+      if (snapshot?.sources)
+        for (const source of sources)
+          if (
+            (await hashFile(localPath(source.uri), options.signal)) !==
+            source.sha256
+          )
+            throw new Error(`Source changed during render: ${source.name}`);
+      await publishRenderPair(temporaryOutput, manifestPath, output, work, {
+        assertCurrent:
+          snapshot &&
+          (() => {
+            checkAbort(options.signal);
+            snapshot.assertCurrent();
+            for (const source of sources) {
+              const current = statSync(localPath(source.uri));
+              if (
+                current.size !== source.size ||
+                current.mtime.toISOString() !== source.modifiedAt
+              )
+                throw new Error(`Source changed during render: ${source.name}`);
+            }
+          }),
+      });
       return output;
     } catch (error) {
       retainWork = error instanceof RenderPublicationRecoveryError;

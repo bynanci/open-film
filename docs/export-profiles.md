@@ -99,6 +99,10 @@ Use the same look/caption choices in both calls. The second call can instead
 select `--format mp4` and omit `--time` to deliver video from that reviewed
 profile. `--confirm-crop` alone cannot authorize an unreviewed crop.
 
+Approval validation and publication share an immutable render snapshot. A
+concurrent project, source or render-plan change rejects the crop; a change
+during the output/receipt renames rolls publication back.
+
 Profiles and manifests are output records, not project schema fields. Exports
 are staged in private directories and atomically published. Output paths reject
 symlinks and unsafe names; manifests and outputs are hash-checked on retry. The

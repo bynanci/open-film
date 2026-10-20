@@ -8,6 +8,8 @@ export interface RenderPublicationOperations {
   lstat: (path: string) => Promise<Stats>;
   rename: (source: string, destination: string) => Promise<void>;
   rm: (path: string, options: { force: true }) => Promise<void>;
+  /** Synchronous snapshot guard; rollback also covers a change during renames. */
+  assertCurrent?: () => void;
 }
 
 const defaults: RenderPublicationOperations = { lstat, rename, rm };
@@ -87,6 +89,7 @@ export async function publishRenderPair(
     throw new Error(
       "Staged render files and publication destinations must be distinct.",
     );
+  io.assertCurrent?.();
   await validateRenderTargets(output, io);
   // Validate staging before moving either existing original into a backup.
   for (const temporary of [temporaryOutput, temporaryManifest])
@@ -113,15 +116,19 @@ export async function publishRenderPair(
     for (const target of targets) {
       // Recheck immediately before moving each destination: a sidecar that
       // changed since early render preflight must not move an entire directory.
-      if (await regularOrAbsent(target.destination, io)) {
+      const exists = await regularOrAbsent(target.destination, io);
+      io.assertCurrent?.();
+      if (exists) {
         await io.rename(target.destination, target.backup);
         target.backedUp = true;
       }
     }
     for (const target of targets) {
+      io.assertCurrent?.();
       await io.rename(target.temporary, target.destination);
       target.installed = true;
     }
+    io.assertCurrent?.();
   } catch (failure) {
     const rollbackErrors: unknown[] = [];
     const retained = new Set<string>();

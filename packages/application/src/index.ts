@@ -376,6 +376,7 @@ export class OpenFilmApplication {
               outputPath,
               recordJob: false,
               trackActiveJob: false,
+              snapshot: options.snapshot,
             },
           ),
       });
@@ -1870,6 +1871,7 @@ export class OpenFilmApplication {
       recordJob?: boolean;
       trackActiveJob?: boolean;
       compositionOverride?: Composition;
+      snapshot?: RenderOptions["snapshot"];
     } = {},
   ): Promise<string> {
     let exportProfile: ExportProfile | undefined;
@@ -1920,12 +1922,6 @@ export class OpenFilmApplication {
     const composition = structuredClone(
       context.compositionOverride ?? this.composition(compositionId),
     );
-    if (exportFile && exportProfile)
-      await this.exportProfiles.assertCropPreview({
-        compositionId,
-        ...options,
-        profile: exportProfile,
-      });
     const renderSettings = { ...this.project.settings };
     const projectEvidence = {
       id: this.project.id,
@@ -1934,6 +1930,15 @@ export class OpenFilmApplication {
         .update(JSON.stringify(this.project))
         .digest("hex"),
     };
+    const approved =
+      exportFile && exportProfile
+        ? await this.exportProfiles.assertCropPreview({
+            compositionId,
+            ...options,
+            profile: exportProfile,
+          })
+        : context.snapshot;
+    approved?.assertCurrent();
     const story = this.project.stories.find(
       (item) => item.id === composition.storyId,
     );
@@ -2027,6 +2032,7 @@ export class OpenFilmApplication {
           exportProfile,
           audioOnly: options.audioOnly,
           audioRole: options.audioRole,
+          snapshot: approved,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));
