@@ -87,6 +87,17 @@ fn safe_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     }
     Ok(current)
 }
+fn verified_manifest(reader: impl Read, expected: &str) -> Result<Manifest, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "runtime.missing")?;
+    if bytes.len() > 8 * 1024 * 1024 || format!("{:x}", Sha256::digest(&bytes)) != expected {
+        return Err("runtime.hash".into());
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "runtime.invalid".into())
+}
 fn verified_entries(root: &Path, expected: &str) -> Result<(PathBuf, PathBuf), String> {
     if expected == "unconfigured" {
         return Err("runtime.missing".into());
@@ -103,13 +114,13 @@ fn verified_entries(root: &Path, expected: &str) -> Result<(PathBuf, PathBuf), S
         .map_err(|_| "runtime.missing")?
         .len()
         > 8 * 1024 * 1024
-        || hash(&manifest_path)? != expected
     {
         return Err("runtime.hash".into());
     }
-    let manifest: Manifest =
-        serde_json::from_slice(&fs::read(manifest_path).map_err(|_| "runtime.missing")?)
-            .map_err(|_| "runtime.invalid")?;
+    let manifest = verified_manifest(
+        fs::File::open(manifest_path).map_err(|_| "runtime.missing")?,
+        expected,
+    )?;
     let platform = match std::env::consts::OS {
         "macos" => "darwin",
         "windows" => "win32",
@@ -376,7 +387,11 @@ impl NativeService {
         let Some(child) = guard.as_mut() else {
             return Ok(());
         };
-        if let Some(stdin) = child.stdin.as_mut() {
+        let already_exited = child
+            .try_wait()
+            .map_err(|_| "runtime.closeFailed")?
+            .is_some();
+        if let Some(stdin) = child.stdin.as_mut().filter(|_| !already_exited) {
             let _ = stdin.write_all(b"{\"type\":\"shutdown\"}\n");
             let _ = stdin.flush();
         }
@@ -389,7 +404,7 @@ impl NativeService {
                 }
                 let closed = self.status()["state"] == "closed";
                 *guard = None;
-                return if code.success() && closed {
+                return if already_exited || (code.success() && closed) {
                     Ok(())
                 } else {
                     Err("runtime.closeFailed".into())
@@ -411,6 +426,64 @@ impl NativeService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manifest_verification_parses_the_hashed_bytes_after_a_file_replacement() {
+        struct ReplaceAtEof {
+            source: fs::File,
+            path: PathBuf,
+            replacement: Vec<u8>,
+        }
+        impl Read for ReplaceAtEof {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.source.read(output)?;
+                if count == 0 {
+                    fs::write(&self.path, &self.replacement)?;
+                }
+                Ok(count)
+            }
+        }
+        let value = json!({"schemaVersion":1,"appVersion":env!("CARGO_PKG_VERSION"),"nodeVersion":"24.14.0","platform":"linux","architecture":"x64","projectSchema":"1.0.0","entries":{},"files":[],"components":[],"updates":{},"optionalCapabilities":{},"distribution":{}});
+        let original = serde_json::to_vec(&value).unwrap();
+        let mut replacement = value.clone();
+        replacement["appVersion"] = json!("99.0.0");
+        let replacement = serde_json::to_vec(&replacement).unwrap();
+        let expected = format!("{:x}", Sha256::digest(&original));
+        let path = std::env::temp_dir().join(format!(
+            "openfilm-manifest-race-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(&path, original).unwrap();
+        let reader = ReplaceAtEof {
+            source: fs::File::open(&path).unwrap(),
+            path: path.clone(),
+            replacement: replacement.clone(),
+        };
+        let parsed = verified_manifest(reader, &expected).unwrap();
+        assert_eq!(parsed.app_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(fs::read(&path).unwrap(), replacement);
+        assert_eq!(
+            verified_manifest(fs::File::open(&path).unwrap(), &expected)
+                .err()
+                .unwrap(),
+            "runtime.hash"
+        );
+        fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn manifest_reader_bounds_the_actual_bytes_even_if_the_file_grows() {
+        let bytes = vec![b' '; 8 * 1024 * 1024 + 1];
+        let expected = format!("{:x}", Sha256::digest(&bytes));
+        assert_eq!(
+            verified_manifest(std::io::Cursor::new(bytes), &expected)
+                .err()
+                .unwrap(),
+            "runtime.hash"
+        );
+    }
     #[test]
     fn rejects_unconfigured_runtime_before_execution() {
         assert!(verified_entries(Path::new("/missing"), "unconfigured").is_err());
@@ -457,6 +530,34 @@ mod tests {
     fn stopping_without_owned_child_is_safe() {
         let service = NativeService::default();
         assert!(service.stop().is_ok());
+        assert!(!service.has_child());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn stopping_an_already_dead_child_does_not_require_a_new_ack() {
+        let service = NativeService::default();
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exit 7"])
+            .spawn()
+            .unwrap();
+        child.wait().unwrap();
+        *service.0.child.lock().unwrap() = Some(child);
+        *service.0.status.lock().unwrap() =
+            json!({"state":"blocked","code":"runtime.serviceExited"});
+        assert!(service.stop().is_ok());
+        assert!(!service.has_child());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn live_shutdown_still_requires_the_matching_acknowledgement() {
+        let service = NativeService::default();
+        let child = Command::new("/bin/sh")
+            .args(["-c", "read line; exit 7"])
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        *service.0.child.lock().unwrap() = Some(child);
+        assert!(service.stop().is_err());
         assert!(!service.has_child());
     }
 }

@@ -9,6 +9,10 @@ import {
   type ScenePlanOptions,
 } from "../api";
 import { formatDuration, formatNumber, localizeError } from "../i18n";
+import type {
+  NativePlannerInputs,
+  NativePlannerText,
+} from "../native-draft-recovery";
 
 const props = defineProps<{
   title: string;
@@ -29,8 +33,8 @@ const title = ref(props.title);
 const brief = ref("");
 const groupBy = ref<ScenePlanOptions["groupBy"]>("category");
 const scope = ref<"library" | "page">("library");
-const target = ref(props.targetDuration);
-const maximum = ref(props.maxDuration);
+const target = ref<number | string>(props.targetDuration);
+const maximum = ref<number | string>(props.maxDuration);
 const transition = ref<ScenePlanOptions["transition"]>("cut");
 const plan = ref<ScenePlan>();
 const working = ref(false);
@@ -40,6 +44,60 @@ const edited = ref(false);
 const confirmDiscard = ref<"close" | "preview">();
 const accepted = ref(false);
 const formChanged = ref(false);
+let generatedText: Record<string, string>[] = [];
+function proposalText(): Record<string, string>[] {
+  return (
+    plan.value?.story.beats.map((beat) => ({
+      title: beat.title,
+      intent: beat.intent ?? "",
+      narration: beat.script?.narration ?? "",
+      visualDirection: beat.script?.visualDirection ?? "",
+    })) ?? []
+  );
+}
+function captureNativeDraft(): {
+  inputs: NativePlannerInputs;
+  text: NativePlannerText[];
+} | null {
+  if (!hasDraft.value) return null;
+  const text = edited.value
+    ? proposalText().flatMap((fields, index) =>
+        Object.entries(fields).flatMap(([field, value]) =>
+          generatedText[index]?.[field] !== undefined &&
+          generatedText[index]![field] !== value
+            ? [{ scene: index + 1, field, text: value }]
+            : [],
+        ),
+      )
+    : [];
+  return {
+    inputs: {
+      title: title.value,
+      brief: brief.value,
+      groupBy: groupBy.value,
+      scope: scope.value,
+      target: target.value,
+      maximum: maximum.value,
+      transition: transition.value,
+    },
+    text,
+  };
+}
+function restoreNativeDraft(inputs: NativePlannerInputs) {
+  title.value = inputs.title;
+  brief.value = inputs.brief;
+  groupBy.value = inputs.groupBy;
+  scope.value = inputs.scope;
+  target.value = inputs.target;
+  maximum.value = inputs.maximum;
+  transition.value = inputs.transition;
+  plan.value = undefined;
+  generatedText = [];
+  edited.value = false;
+  accepted.value = false;
+  formChanged.value = true;
+}
+defineExpose({ captureNativeDraft, restoreNativeDraft });
 const hasDraft = computed(() => !!plan.value || formChanged.value);
 const blocked = computed(() => working.value || props.disabled);
 const failureMessage = computed(() =>
@@ -107,6 +165,7 @@ async function preview(confirmed = false) {
       ...(scope.value === "page" ? { assetIds: props.visibleAssetIds } : {}),
     });
     plan.value = result.plan;
+    generatedText = proposalText();
     edited.value = false;
     accepted.value = false;
     formChanged.value = false;

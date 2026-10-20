@@ -4,11 +4,19 @@ export default {
       title: "設定本機工作區",
       starting: "正在檢查已安裝的執行元件並啟動本機工作區…",
       retry: "重試設定",
+      draftsRetained: "已保留本機草稿",
+      draftsHint:
+        "這些草稿只保留在此視窗。重新開啟原專案，可還原內容未變更的草稿。內容已變更或遺失時，請先下載副本再捨棄；系統不會自動覆寫已儲存的專案。",
+      reopenDraftProject: "重新開啟原專案",
+      downloadDraft: "下載草稿",
+      discardDraft: "捨棄保留的草稿",
       recovery:
         "請修復或重新安裝相同的已驗證 OpenFilm 候選版本，再重試。現有專案會保留在原資料夾。",
       local: "檢查只使用已安裝的本機檔案，不會上傳素材。",
       errors: {
         unsaved: "請先儲存或處理尚未完成的草稿，再關閉 OpenFilm。",
+        recoveryFull:
+          "草稿復原空間已滿。請返回複製目前草稿，或下載並捨棄保留的草稿後重試。",
         missing: "安裝的執行元件不完整。",
         hash: "執行元件檔案未通過完整性檢查。",
         invalid: "執行元件清單或檔案路徑無效。",
