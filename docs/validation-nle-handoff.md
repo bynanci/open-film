@@ -336,3 +336,44 @@ No full repository suite, browser, default-port service, native installation or
 real NLE check was run for this follow-up. Earlier full-suite evidence belongs
 to its stated base. The release coordinator owns combined validation; all
 workstation and native/manual gates above remain partial or not run.
+
+## Review follow-up — title placeholders and render-required approval
+
+Remediation base: `077abf2e69e14dc02a882f9103e651ef450e2d1d`, in a separate
+regular clone. The three comments were fetched from GitHub and checked against
+that exact head. Nine new regressions failed before the production fixes;
+the same nine then passed. No existing assertion was weakened.
+
+| Discussion   | Disposition     | Behavior and evidence                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4327254780` | Accepted, fixed | Handoff exchange clones omit generated-title tracks, whose backing asset the renderer ignores. The plan makes no native title-source/cut claim and explains the omitted placeholder. Original title text, source identity and timing remain in provenance; fidelity mode bakes the generated title into its explicit precomp. Existing unresolved-placeholder refusal remains covered.                  |
+| `4327254790` | Accepted, fixed | The renderer's existing source/track capability checks are shared through `validateRenderClipCapabilities`. Render-required review rejects photo layout and motion on real overlay stills and on video sources with the same diagnostic as the renderer, before staging. Native metadata exchange remains available. Existing title/audio-automation and unsupported-source capability tests also pass. |
+| `4327254798` | Accepted, fixed | Render-required review checks the associated Story maximum with `renderFilm`'s same tolerance and typed `render.overMaximum` error. Fidelity and full-mix approval both reject an over-maximum composition; native metadata exchange remains available. The saved Story maximum participates in the approval snapshot, so unsaved changes are refused and saved changes invalidate older approvals.     |
+
+The actual title regression uses a green PNG as the title track's placeholder
+over blue video, with generated text. OpenFilm's decoded first pixel is
+`[0, 0, 254]`; neither native exchange mode emits that placeholder as a visible
+clip or title source track. Fidelity output spans all 32 frames at 160×90,
+8 fps, and its reference MP4 is byte-identical to the actual OpenFilm render:
+SHA-256 `9d427724ff2060206ae7a3680bc2e3eec3c7116732d888a8aebee6d19c561508`.
+Both packages retain the original title recipe in provenance; the fidelity
+mapping names the generated-title owner. All three original source hashes and
+the saved/in-memory project remain unchanged.
+
+Synthetic packages and machine-readable title evidence are retained in
+`/tmp/openfilm-v1-validation/pr39-wave4-title-evidence`. RED/GREEN, focused and
+static logs use `/tmp/openfilm-v1-validation/pr39-wave4-*`.
+
+The complete bounded target passed **5 files / 114 tests** in **41.32 seconds**:
+
+```sh
+pnpm exec vitest run tests/unit/handoff-plan.test.ts tests/unit/handoff-transport.test.ts tests/integration/nle-handoff.test.ts packages/core/tests/timing.test.ts packages/render/tests/presentation-capability.test.ts --maxWorkers=1 --cache=false
+```
+
+Repository type checking, changed-file ESLint/formatting, i18n (1,730 matching
+semantic keys on this base) and `git diff --check` pass. The target includes
+actual rendering/publication, stale approvals, source hashes, locked originals,
+cancellation, frame boundaries and the existing caption/graphic/resource limits.
+No full suite, browser, default-port listener, native installation or real NLE
+import was run. `realNleVerified` remains false; workstation and native/manual
+gates above remain partial or not run.

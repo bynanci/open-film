@@ -1039,6 +1039,300 @@ it("rejects unresolved title placeholders during review rather than after approv
   ).toThrow(/title.*source/i);
 });
 
+it("omits catalog-backed title placeholder media from native exchange while retaining authored and baked title evidence", async () => {
+  const { root, app, composition, image, audio } = await fixture();
+  composition.graphicScenes = [];
+  composition.captionTracks = [];
+  const placeholderPath = join(root, "ignored-placeholder.png");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=green:s=160x90",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    placeholderPath,
+  ]);
+  const placeholder = await inspectMedia({
+    path: placeholderPath,
+    uri: pathToFileURL(placeholderPath).href,
+    name: "ignored-placeholder.png",
+  });
+  placeholder.contentHash = await hashFile(placeholderPath);
+  app.catalog.upsertAsset(placeholder);
+  composition.tracks.push({
+    id: "titles",
+    type: "titles",
+    clips: [
+      {
+        id: "generated-title",
+        assetId: placeholder.id,
+        timelineStart: 0,
+        timelineDuration: 4,
+        title: "LOCAL TITLE",
+        titleStyle: { version: 1, role: "subtitle", fontSize: 14 },
+      },
+    ],
+  });
+  app.project.timelines = [composition];
+  await app.save();
+  const before = JSON.stringify(app.project);
+  const sourceHashes = await Promise.all(
+    [image, audio, placeholderPath].map((path) => hashFile(path)),
+  );
+  const rendered = await app.render(composition.id);
+  const renderedHash = await hashFile(rendered);
+  const decoded = (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      rendered,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "pipe:1",
+    ])
+  ).stdout;
+  expect(decoded[2]).toBeGreaterThan(240);
+  expect(decoded[1]).toBeLessThan(12);
+  const publications = [];
+  for (const mode of [
+    "preserve-editability",
+    "preserve-visual-fidelity",
+  ] as const) {
+    const review = app.reviewHandoff(composition.id, { mode });
+    expect(
+      review.plan.items
+        .filter(
+          (item) =>
+            item.ownerId === "generated-title" &&
+            ["sourceIdentity", "cut"].includes(item.feature),
+        )
+        .every((item) => item.disposition !== "native-editable"),
+    ).toBe(true);
+    const publication = await app.exportHandoff({
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+      mode,
+    });
+    const read = async (name: string) =>
+      readFile(
+        await app.handoff.file(
+          publication.id,
+          publication.files.findIndex((file) => file.name === name),
+        ),
+        "utf8",
+      );
+    const timeline = JSON.parse(await read("timeline.otio"));
+    const nativeClips = timeline.tracks.children
+      .flatMap(
+        (track: {
+          children: {
+            OTIO_SCHEMA: string;
+            metadata?: { openfilm?: { assetId?: string } };
+          }[];
+        }) => track.children,
+      )
+      .filter((clip: { OTIO_SCHEMA: string }) => clip.OTIO_SCHEMA === "Clip.1");
+    expect(
+      nativeClips.some(
+        (clip: { metadata?: { openfilm?: { assetId?: string } } }) =>
+          clip.metadata?.openfilm?.assetId === placeholder.id,
+      ),
+    ).toBe(false);
+    expect(
+      timeline.tracks.children.some(
+        (track: { name: string }) => track.name === "titles",
+      ),
+    ).toBe(false);
+    const provenance = JSON.parse(await read("provenance.json"));
+    expect(
+      provenance.originalComposition.tracks.find(
+        (track: { id: string }) => track.id === "titles",
+      ),
+    ).toEqual(composition.tracks.at(-1));
+    expect(publication.plan.realNleVerified).toBe(false);
+    if (mode === "preserve-visual-fidelity") {
+      expect(publication.plan.visualRanges).toEqual([
+        { startFrame: 0, endFrame: 32 },
+      ]);
+      expect(
+        provenance.mappings.find(
+          (mapping: { kind: string }) => mapping.kind === "visual-precomp",
+        ).sourceOwnerIds,
+      ).toContain("generated-title");
+      expect(
+        await hashFile(
+          await app.handoff.file(
+            publication.id,
+            publication.files.findIndex(
+              (file) => file.name === "reference.mp4",
+            ),
+          ),
+        ),
+      ).toBe(renderedHash);
+    }
+    publications.push({ mode, id: publication.id, plan: publication.plan });
+  }
+  expect(
+    await Promise.all(
+      [image, audio, placeholderPath].map((path) => hashFile(path)),
+    ),
+  ).toEqual(sourceHashes);
+  expect(JSON.stringify(app.project)).toBe(before);
+  if (process.env.OPENFILM_HANDOFF_TITLE_QA_OUTPUT) {
+    const { cp } = await import("node:fs/promises");
+    const evidence = process.env.OPENFILM_HANDOFF_TITLE_QA_OUTPUT;
+    await mkdir(evidence, { recursive: true });
+    for (const publication of publications)
+      await cp(
+        join(app.directory, "cache", "nle-handoff-published", publication.id),
+        join(evidence, publication.mode),
+        { recursive: true },
+      );
+    await writeFile(
+      join(evidence, "title-placeholder-proof.json"),
+      JSON.stringify(
+        {
+          sourceHashes,
+          renderedHash,
+          firstPixel: [...decoded.subarray(0, 3)],
+          publications,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+});
+
+it.each([
+  "overlay-layout",
+  "overlay-motion",
+  "video-layout",
+  "video-motion",
+] as const)(
+  "rejects render-required %s at review with the renderer's capability diagnostic",
+  async (kind) => {
+    const { root, app, composition } = await fixture();
+    const track = composition.tracks[0]!;
+    if (kind.startsWith("overlay")) {
+      track.type = "overlay";
+      const path = join(root, "overlay-photo.png");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=160x90",
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        path,
+      ]);
+      const photo = await inspectMedia({
+        path,
+        uri: pathToFileURL(path).href,
+        name: "overlay-photo.png",
+      });
+      photo.contentHash = await hashFile(path);
+      app.catalog.upsertAsset(photo);
+      track.clips[0]!.assetId = photo.id;
+    }
+    const clip = track.clips[0]!;
+    if (kind.endsWith("layout")) clip.layout = { version: 1, preset: "hero" };
+    else
+      clip.motion = {
+        version: 1,
+        preset: "pan",
+        easing: "linear",
+        from: { x: 0, y: 0, scale: 1 },
+        to: { x: 0.05, y: 0, scale: 1.02 },
+      };
+    app.project.timelines = [composition];
+    await app.save();
+    const assets = app.catalog.listAssets({ limit: 100 });
+    await expect(
+      new FFmpegRenderer().render(
+        composition,
+        assets,
+        join(root, "unsupported.mp4"),
+        app.project.settings,
+      ),
+    ).rejects.toThrow(/still image on a story video track/i);
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    for (const input of [
+      { mode: "preserve-visual-fidelity" as const },
+      { bakeAudio: true },
+    ])
+      expect(() => app.reviewHandoff(composition.id, input)).toThrow(
+        /still image on a story video track/i,
+      );
+    expect(await readdir(join(app.directory, "cache"))).not.toContain(
+      "nle-handoff",
+    );
+  },
+);
+
+it.each([{ mode: "preserve-visual-fidelity" as const }, { bakeAudio: true }])(
+  "rejects render-required review over its associated Story maximum: %j",
+  async (input) => {
+    const { app, composition } = await fixture();
+    composition.duration = 4.25;
+    app.project.timelines = [composition];
+    await app.save();
+    await expect(app.render(composition.id)).rejects.toMatchObject({
+      code: "render.overMaximum",
+    });
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    expect(() => app.reviewHandoff(composition.id, input)).toThrow(
+      /story maximum/i,
+    );
+    app.project.stories.find(
+      (story) => story.id === composition.storyId,
+    )!.maxDuration = 4.25 - 0.000005;
+    await app.save();
+    expect(() => app.reviewHandoff(composition.id, input)).not.toThrow();
+  },
+);
+
+it("binds render approval to the saved Story maximum without mutating the project", async () => {
+  const { app, composition } = await fixture();
+  const first = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  app.project.stories.find(
+    (story) => story.id === composition.storyId,
+  )!.maxDuration = 5;
+  expect(() =>
+    app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+  ).toThrow(/stale|unsaved/i);
+  await app.save();
+  const next = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  expect(next.revision).not.toBe(first.revision);
+  await expect(
+    app.exportHandoff({
+      projectId: first.projectId,
+      compositionId: composition.id,
+      revision: first.revision,
+      mode: first.plan.mode,
+    }),
+  ).rejects.toThrow(/stale/i);
+});
+
 it("invalidates reviewed approval when a same-ID catalog source is refreshed", async () => {
   const { app, composition } = await fixture();
   const review = app.reviewHandoff(composition.id);

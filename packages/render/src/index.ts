@@ -115,6 +115,42 @@ function hasAudio(asset: MediaAsset): boolean {
   );
 }
 
+/** Static source/track capabilities shared by rendering and render-required review. */
+export function validateRenderClipCapabilities(
+  composition: Composition,
+  assets: readonly MediaAsset[],
+): void {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  for (const track of composition.tracks)
+    for (const clip of track.clips) {
+      if (track.type === "titles") {
+        if (clip.layout || clip.motion || clip.audioAutomation)
+          throw new Error(
+            `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
+          );
+        continue;
+      }
+      const asset = assetMap.get(clip.assetId);
+      if (!asset)
+        throw new Error(
+          `Clip ${clip.id} references missing asset ${clip.assetId}`,
+        );
+      const issue = previewIssue(asset);
+      if (issue) throw new Error(`${asset.name}: ${issue}`);
+      if (
+        (clip.layout || clip.motion) &&
+        (asset.mediaType !== "image" || track.type !== "video")
+      )
+        throw new Error(
+          `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
+        );
+      if (clip.audioAutomation && !hasAudio(asset))
+        throw new Error(
+          `Clip ${clip.id}: audio automation requires an audio stream.`,
+        );
+    }
+}
+
 /** A preview adapter; originals are inputs and all editing is expressed as filters. */
 export class FFmpegRenderer {
   async render(
@@ -221,20 +257,11 @@ export class FFmpegRenderer {
     }
     // Capability checks precede source IO, preserving actionable unsupported-360
     // errors even when the original source has not been mounted.
+    validateRenderClipCapabilities(composition, assets);
     for (const track of composition.tracks)
       for (const clip of track.clips) {
-        if (track.type === "titles") {
-          if (clip.layout || clip.motion || clip.audioAutomation)
-            throw new Error(
-              `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
-            );
-          continue;
-        }
-        const asset = assetMap.get(clip.assetId);
-        if (!asset)
-          throw new Error(
-            `Clip ${clip.id} references missing asset ${clip.assetId}`,
-          );
+        if (track.type === "titles") continue;
+        const asset = assetMap.get(clip.assetId)!;
         if (
           track.type !== "audio" &&
           track.type !== "music" &&
@@ -256,19 +283,6 @@ export class FFmpegRenderer {
             matrix: filmLookMatrix(effective.look),
           });
         }
-        const issue = previewIssue(asset);
-        if (issue) throw new Error(`${asset.name}: ${issue}`);
-        if (
-          (clip.layout || clip.motion) &&
-          (asset.mediaType !== "image" || track.type !== "video")
-        )
-          throw new Error(
-            `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
-          );
-        if (clip.audioAutomation && !hasAudio(asset))
-          throw new Error(
-            `Clip ${clip.id}: audio automation requires an audio stream.`,
-          );
       }
     const sources = await captureRenderSources(
       assets.filter((asset) => usedIds.has(asset.id)),

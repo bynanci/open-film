@@ -175,13 +175,16 @@ export function createHandoffPlan(
     if (!["video", "overlay", "titles", "audio", "music"].includes(track.type))
       throw new Error("Unsupported track type");
     const audio = track.type === "audio" || track.type === "music";
+    const title = track.type === "titles";
     add(
       track.id,
       "layerTiming",
       0,
       composition.duration,
-      audio && options.bakeAudio ? "audio" : "native",
-      "Native OTIO track/gap timing; consumer layer interpretation needs workstation QA",
+      title ? "manual" : audio && options.bakeAudio ? "audio" : "native",
+      title
+        ? "Generated title timing is metadata until explicitly baked; ignored placeholder media is omitted from exchange"
+        : "Native OTIO track/gap timing; consumer layer interpretation needs workstation QA",
     );
     if (track.timing)
       add(
@@ -241,16 +244,20 @@ export function createHandoffPlan(
         "sourceIdentity",
         start,
         stop,
-        "native",
-        "Original asset ID/hash and source range preserved; baked copies also map back to this identity",
+        title ? "manual" : "native",
+        title
+          ? "Title placeholder source is ignored by the renderer and omitted from native exchange; authored identity remains in provenance"
+          : "Original asset ID/hash and source range preserved; baked copies also map back to this identity",
       );
       add(
         clip.id,
         "cut",
         start,
         stop,
-        "native",
-        "Native source trim/cut outside explicit precomp ranges",
+        title ? "manual" : "native",
+        title
+          ? "Ignored title placeholder media has no native cut; generated title timing remains metadata or an explicit bake"
+          : "Native source trim/cut outside explicit precomp ranges",
       );
       if (clip.locked)
         add(
@@ -424,6 +431,11 @@ export function createHandoffPlan(
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index]!;
     if (!["cut", "sourceIdentity"].includes(item.feature)) continue;
+    const title = composition.tracks.some(
+      (track) =>
+        track.type === "titles" &&
+        track.clips.some((clip) => clip.id === item.ownerId),
+    );
     const audio = composition.tracks.some(
       (t) =>
         ["audio", "music"].includes(t.type) &&
@@ -457,9 +469,10 @@ export function createHandoffPlan(
             ? "baked"
             : "metadata-only"
           : item.disposition,
-        reason: covered
-          ? "Original source/cut retained in provenance; this range uses explicit rendered replacement"
-          : item.reason,
+        reason:
+          covered && !title
+            ? "Original source/cut retained in provenance; this range uses explicit rendered replacement"
+            : item.reason,
       } as HandoffItem;
     });
     items.splice(index, 1, ...pieces);
