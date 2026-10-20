@@ -155,6 +155,42 @@ describe("durable GraphicScene editing", () => {
       });
   };
 
+  it.each([false, true])(
+    "preserves caller-owned PhotoDepth command data through admission and history (frozen=%s)",
+    async (frozen) => {
+      const { app, editor } = await fixture();
+      addDepthAssets(app);
+      const before = editor.get("composition");
+      const scene = dependencyScene();
+      const recipe = scene.photoDepth;
+      const command = { type: "graphic.scene.upsert" as const, scene };
+      const snapshot = structuredClone(command);
+      if (frozen) {
+        Object.freeze(command);
+        Object.freeze(scene);
+        Object.freeze(recipe);
+        Object.freeze(scene.nodes);
+        scene.nodes.forEach(Object.freeze);
+      }
+
+      const accepted = await editor.edit("composition", {
+        baseRevision: before.revision,
+        commands: [command],
+      });
+      expect(command).toEqual(snapshot);
+      expect(command.scene).toBe(scene);
+      expect(command.scene.photoDepth).toBe(recipe);
+      expect(accepted.composition.graphicScenes).toEqual([snapshot.scene]);
+      expect(accepted.composition.graphicScenes![0]).not.toBe(scene);
+      const undone = await editor.undo("composition", accepted.revision);
+      expect(undone.composition).toEqual(before.composition);
+      const redone = await editor.redo("composition", undone.revision);
+      expect(redone.composition).toEqual(accepted.composition);
+      expect(command.scene.photoDepth).toBe(recipe);
+      expect(command).toEqual(snapshot);
+    },
+  );
+
   it.each(
     ["mask", "background"].flatMap((name) =>
       ["https://synthetic.invalid", "file://remote-host"].map((origin) => ({

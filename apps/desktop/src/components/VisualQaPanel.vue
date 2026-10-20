@@ -42,6 +42,7 @@ function issueLabel(code: string): string {
     "asset.missing": "missingAsset",
     "asset.changed": "changedAsset",
     "asset.unsupported": "unsupportedAsset",
+    "graphics.resource-limit": "graphicsResourceLimit",
     "font.load-failed": "fontFailure",
     "title.overflow": "titleOverflow",
     "visual.suspected-blank": "suspectedBlank",

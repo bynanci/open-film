@@ -826,7 +826,10 @@ describe("PhotoDepth rendering", () => {
         { width: 320, height: 180, frameRate: 12 },
         root,
       ),
-    ).rejects.toMatchObject({ code: "graphics.resourceLimit" });
+    ).rejects.toMatchObject({
+      code: "graphics.maskInvalid",
+      message: expect.stringMatching(/mask.*pixel budget/iu),
+    });
   });
 
   it("renders six seconds of PhotoDepth to a decoded 180-frame MP4 with deterministic seek and source receipts", async () => {

@@ -41,6 +41,7 @@ export type VisualQaIssueCode =
   | "asset.missing"
   | "asset.changed"
   | "asset.unsupported"
+  | "graphics.resource-limit"
   | "font.load-failed"
   | "title.overflow"
   | "visual.suspected-blank"
@@ -781,7 +782,7 @@ export class VisualQaService {
             "graphics.maskMissing": "photo-depth.mask-missing",
             "graphics.backgroundMissing": "photo-depth.background-missing",
             "graphics.maskInvalid": "photo-depth.mask-invalid",
-            "graphics.resourceLimit": "photo-depth.mask-invalid",
+            "graphics.resourceLimit": "graphics.resource-limit",
             "graphics.maskMismatch": "photo-depth.mask-mismatch",
             "graphics.maskEmpty": "photo-depth.mask-empty",
             "graphics.protectedRegion": "photo-depth.protected-region",

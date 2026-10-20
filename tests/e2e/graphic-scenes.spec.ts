@@ -21,6 +21,276 @@ test.afterEach(async ({ request }) => {
   await fixture?.cleanup();
   fixture = undefined;
 });
+
+for (const layout of [
+  "graphics-only",
+  "visual-gaps",
+  "covered-other-clip",
+] as const) {
+  test(`previews exact PhotoDepth start/middle/end frames in ${layout} without changing selection or saved edits`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    fixture = await createDesktopFixture(0);
+    const maskPath = join(fixture.media, "synthetic-seek-mask.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "nullsrc=s=320x180,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,40,139)*between(Y,30,149),255,0)'",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "rgba",
+      maskPath,
+    ]);
+    const maskHash = await hashFile(maskPath);
+    const app = await OpenFilmApplication.create(
+      fixture.project,
+      `Synthetic ${layout} depth`,
+    );
+    try {
+      await app.importFolder(fixture.media);
+      const assets = app.catalog.listAssets({ limit: 100 });
+      const photo = assets.find((asset) => asset.name === "01-photo.png")!;
+      const other = assets.find((asset) => asset.name === "03-evening.png")!;
+      const mask = assets.find(
+        (asset) => asset.name === "synthetic-seek-mask.png",
+      )!;
+      app.project.settings = { width: 320, height: 180, frameRate: 30 };
+      const story = app.generateStory({
+        title: `Synthetic ${layout}`,
+        template: "blank",
+        assetIds: [photo.id, other.id],
+        targetDuration: 8,
+        maxDuration: 8,
+      });
+      const composition = app.compose(story.id);
+      composition.id = compositionId;
+      composition.duration = 8;
+      composition.tracks =
+        layout === "graphics-only"
+          ? []
+          : [
+              {
+                id: "gap-video",
+                type: "video",
+                clips: [
+                  {
+                    id: "gap-first",
+                    assetId: other.id,
+                    beatId: story.beats[0]!.id,
+                    sourceIn: 0,
+                    sourceOut: 0.5,
+                    timelineStart: 0,
+                    timelineDuration: 0.5,
+                  },
+                  {
+                    id: "gap-last",
+                    assetId: other.id,
+                    beatId: story.beats[0]!.id,
+                    sourceIn: 0,
+                    sourceOut: 0.5,
+                    timelineStart: 7.5,
+                    timelineDuration: 0.5,
+                  },
+                  ...(layout === "covered-other-clip"
+                    ? [
+                        {
+                          id: "covering-photo",
+                          assetId: photo.id,
+                          beatId: story.beats[0]!.id,
+                          sourceIn: 0,
+                          sourceOut: 6,
+                          timelineStart: 1,
+                          timelineDuration: 6,
+                          motion: {
+                            version: 1 as const,
+                            preset: "push-in" as const,
+                            easing: "linear" as const,
+                            from: { scale: 1, x: 0, y: 0 },
+                            to: { scale: 1.08, x: 0, y: 0 },
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            ];
+      composition.graphicScenes = [
+        {
+          version: 1,
+          id: "seek-depth-scene",
+          name: "Synthetic seek",
+          start: 1,
+          duration: 6,
+          zIndex: 0,
+          nodes: [
+            {
+              id: "seek-photo",
+              type: "image",
+              assetId: photo.id,
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              opacity: 1,
+              zIndex: 0,
+              start: 0,
+              end: 6,
+            },
+          ],
+          photoDepth: {
+            version: 1,
+            id: "seek-depth",
+            nodeId: "seek-photo",
+            mode: "parallax",
+            duration: 6,
+            sourceAssetId: photo.id,
+            sourceSha256: photo.contentHash!,
+            maskAssetId: mask.id,
+            maskSha256: mask.contentHash!,
+            background: { kind: "source" },
+            protectedRegion: { x: 0.12, y: 0.16, width: 0.33, height: 0.68 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0.5,
+            camera: {
+              from: { x: -0.02, y: 0, scale: 1 },
+              to: { x: 0.02, y: 0, scale: 1.04 },
+            },
+            easing: "ease-in-out",
+          },
+        },
+      ];
+      app.project.timelines[app.project.timelines.length - 1] = composition;
+      await app.save();
+    } finally {
+      app.close();
+    }
+    expect(
+      (
+        await request.post(`${api}/project/open`, {
+          data: { path: fixture.project },
+        })
+      ).ok(),
+    ).toBe(true);
+    const state = async () =>
+      (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+    const saved = await state();
+    const projectId = (await (await request.get(`${api}/project`)).json())
+      .project.id;
+    const validFrame = await request.get(
+      `${api}/compositions/${compositionId}/graphics.png?${new URLSearchParams({ projectId, revision: saved.revision, frame: "30" })}`,
+    );
+    expect(validFrame.status()).toBe(200);
+    await initialLocale(page);
+    await page.goto("/");
+    await navigate(page, "edit");
+    await page.getByTestId("graphic-inspector-tab").click();
+    const panel = page.locator(".graphic-inspector");
+    await panel
+      .getByRole("button", { name: "Select layer seek-photo", exact: true })
+      .click();
+    const controls = panel.getByTestId("photo-depth-controls");
+    const selection = await page
+      .locator(".editor-clip.selected")
+      .evaluateAll((nodes) => nodes.map((node) => node.id));
+    const frames = [];
+    for (const [label, frame] of [
+      ["Preview start", 30],
+      ["Preview middle", 120],
+      ["Preview end", 209],
+    ] as const) {
+      await controls.getByRole("button", { name: label, exact: true }).click();
+      const preview = page.getByTestId("graphic-preview");
+      await expect(preview).toBeVisible();
+      await expect(preview).toHaveAttribute("data-frame", String(frame));
+      expect(
+        await page
+          .locator(".editor-clip.selected")
+          .evaluateAll((nodes) => nodes.map((node) => node.id)),
+      ).toEqual(selection);
+      await expect(page.getByTestId("graphic-inspector-tab")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      const pixels = await preview.evaluate(async (image: HTMLImageElement) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const rgba = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+        return [...new Uint8Array(await crypto.subtle.digest("SHA-256", rgba))]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      });
+      frames.push({ frame, rgbaSha256: pixels });
+    }
+    expect(new Set(frames.map((frame) => frame.rgbaSha256)).size).toBe(3);
+    const after = await state();
+    expect(after.revision).toBe(saved.revision);
+    expect(after.composition).toEqual(saved.composition);
+    expect(after.story).toEqual(saved.story);
+    expect([after.canUndo, after.canRedo]).toEqual([
+      saved.canUndo,
+      saved.canRedo,
+    ]);
+    if (layout !== "graphics-only") {
+      await page.locator("#clip-gap-first").click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "0",
+      );
+    }
+    expect(
+      (await request.post(`${api}/project/close`, { data: {} })).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await request.post(`${api}/project/open`, {
+          data: { path: fixture.project },
+        })
+      ).ok(),
+    ).toBe(true);
+    await page.reload();
+    await navigate(page, "edit");
+    await page.getByTestId("graphic-inspector-tab").click();
+    await panel
+      .getByRole("button", { name: "Select layer seek-photo", exact: true })
+      .click();
+    await controls
+      .getByRole("button", { name: "Preview middle", exact: true })
+      .click();
+    await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+      "data-frame",
+      "120",
+    );
+    expect((await state()).revision).toBe(saved.revision);
+    expect(await hashFile(maskPath)).toBe(maskHash);
+    expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+    await testInfo.attach("exact-depth-seeks", {
+      body: JSON.stringify({
+        layout,
+        frames,
+        revision: saved.revision,
+        selection,
+      }),
+      contentType: "application/json",
+    });
+  });
+}
+
 test("authors all primitives, seeks exact shared frames and preserves history and reopen", async ({
   page,
   request,

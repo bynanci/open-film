@@ -262,7 +262,7 @@ async function inspectPhotoDepthMask(
   const pixels = mask.width * mask.height;
   if (pixels > limits.photoMaskPixels)
     photoDepthFailure(
-      "graphics.resourceLimit",
+      "graphics.maskInvalid",
       "PhotoDepth mask exceeds the decoded pixel budget.",
     );
   const decoded = await runProcess(

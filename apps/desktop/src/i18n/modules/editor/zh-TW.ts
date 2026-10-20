@@ -313,6 +313,7 @@ export default {
         missingAsset: "素材遺失或無法讀取",
         changedAsset: "素材在儲存後已變更",
         unsupportedAsset: "無法輸出此素材供檢查",
+        graphicsResourceLimit: "圖像場景超出支援的資源上限",
         fontFailure: "標題字型或字元無法載入",
         titleOverflow: "量測結果顯示標題超出畫面",
         suspectedBlank: "疑似空白或黑色影格",

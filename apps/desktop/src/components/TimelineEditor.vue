@@ -305,6 +305,10 @@ const titlePreviewRetry = ref(0);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
 const graphicSceneSelection = ref({ sceneId: "", nodeId: "" });
+const graphicPreviewTime = ref<number>();
+watch([() => props.projectId, () => props.compositionId], () => {
+  graphicPreviewTime.value = undefined;
+});
 const graphicSnapping = ref(true);
 const graphicGuides = ref(true);
 const graphicLayerEditing = computed(
@@ -320,12 +324,33 @@ function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
 }
 async function previewGraphicAtTime(time: number) {
-  const restoreGraphicsInspector = inspector.value === "graphics";
-  const navigated = await navigateToTime(time);
-  if (navigated && restoreGraphicsInspector) {
-    await nextTick();
-    inspector.value = "graphics";
-  }
+  if (!Number.isFinite(time) || time < 0 || !(await flush())) return;
+  const composition = state.value?.composition;
+  if (!composition) return;
+  const rate = props.projectSettings.frameRate;
+  const lastFrame = Math.floor(composition.duration * rate + 1e-7) - 1;
+  if (lastFrame < 0) return;
+  sourcePlayer.value?.pause();
+  playing.value = false;
+  fitPreview.value = null;
+  directionPreview.value = null;
+  editMode.value = "story";
+  inspectorOpen.value = true;
+  inspector.value = "graphics";
+  graphicPreviewTime.value =
+    Math.min(lastFrame, Math.floor(time * rate + 1e-9)) / rate;
+  const clip = playbackClip.value;
+  const localTime = clip ? graphicPreviewTime.value - clip.timelineStart : 0;
+  const sourceAtTime = clip
+    ? (clip.sourceIn ?? 0) + localTime * (clip.transform?.speed ?? 1)
+    : 0;
+  pendingSourceSeek.value = clip ? sourceAtTime : undefined;
+  await nextTick();
+  if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
+  if (sourcePlayer.value) {
+    sourcePlayer.value.pause();
+    configurePlayer();
+  } else sourceTime.value = sourceAtTime;
 }
 function setGraphicAgentBusy(value: boolean) {
   graphicAgentBusy.value = value;
@@ -789,6 +814,7 @@ function chooseClip(clip: Clip, openInspector = true) {
   applyClipSelection(clip, openInspector);
 }
 function applyClipSelection(clip: Clip, openInspector = true) {
+  graphicPreviewTime.value = undefined;
   fitPreview.value = null;
   directionPreview.value = null;
   if (openInspector) inspectorOpen.value = true;
@@ -1042,16 +1068,24 @@ function previewNumber(
     : fallback;
 }
 const previewGeometry = computed(() => {
-  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  const graphics = graphicPreviewTime.value !== undefined;
+  const committed = resolveClipGeometry(
+    (graphics ? playbackClip.value : selectedClip.value)?.transform,
+  );
   return resolvePreviewClipGeometry(
-    {
-      scale: previewNumber(clipFields.value.scale, committed.scale, true),
-      rotation: previewNumber(clipFields.value.rotation, committed.rotation),
-      x: previewNumber(clipFields.value.x, committed.x),
-      y: previewNumber(clipFields.value.y, committed.y),
-    },
+    graphics
+      ? committed
+      : {
+          scale: previewNumber(clipFields.value.scale, committed.scale, true),
+          rotation: previewNumber(
+            clipFields.value.rotation,
+            committed.rotation,
+          ),
+          x: previewNumber(clipFields.value.x, committed.x),
+          y: previewNumber(clipFields.value.y, committed.y),
+        },
     sourcePreviewSize.value ??
-      selectedAsset.value?.dimensions ??
+      (graphics ? playbackAsset.value : selectedAsset.value)?.dimensions ??
       props.projectSettings,
     props.projectSettings,
     sourceViewport.value,
@@ -1236,6 +1270,7 @@ async function navigateToTime(time: number): Promise<boolean> {
     Math.min(sourceOut, sourceIn + localTime * (clip.transform?.speed ?? 1)),
   );
   sourcePlayer.value?.pause();
+  graphicPreviewTime.value = undefined;
   fitPreview.value = null;
   directionPreview.value = null;
   editMode.value = "story";
@@ -1525,9 +1560,19 @@ const fitPreviewAfter = computed(() => {
     return undefined;
   }
 });
-const playbackClip = computed(
-  () => directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value,
-);
+const playbackClip = computed(() => {
+  const time = graphicPreviewTime.value;
+  if (time !== undefined)
+    return state.value?.composition.tracks
+      .filter((track) => track.type === "video" || track.type === "overlay")
+      .flatMap((track) => track.clips)
+      .find(
+        (clip) =>
+          time >= clip.timelineStart &&
+          time < clip.timelineStart + clip.timelineDuration,
+      );
+  return directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value;
+});
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -2522,6 +2567,33 @@ onBeforeUnmount(() => {
                   />
                 </div>
               </template>
+              <div
+                v-else-if="state.composition.graphicScenes?.length"
+                class="editor-composition-frame"
+                :style="previewFrameStyle"
+              >
+                <GraphicScenePreview
+                  :composition-id="compositionId"
+                  :project-id="projectId"
+                  :revision="state.revision"
+                  :source-version="sourceVersion"
+                  :frame-rate="projectSettings.frameRate"
+                  :duration="state.composition.duration"
+                  :active="active && editMode === 'story' && status === 'saved'"
+                  :time="graphicPreviewTime ?? 0"
+                  :playing="false"
+                  :scenes="state.composition.graphicScenes"
+                  :frame-width="projectSettings.width"
+                  :frame-height="projectSettings.height"
+                  :selected-scene-id="graphicSceneSelection.sceneId"
+                  :selected-node-id="graphicSceneSelection.nodeId"
+                  :editing="graphicLayerEditing"
+                  :snapping="graphicSnapping"
+                  :guides="graphicGuides"
+                  @select="selectGraphicLayer"
+                  @command="command"
+                />
+              </div>
               <div v-else class="editor-source-empty">
                 <Icon name="film" :size="30" /><span>{{
                   t("editor.source.choose")
@@ -2610,6 +2682,17 @@ onBeforeUnmount(() => {
                   }}</small
                 ></span
               >
+              <div
+                v-if="!playbackAsset && state.composition.graphicScenes?.length"
+                class="editor-monitor-transport"
+              >
+                <time :aria-label="t('editor.monitor.timecode')">{{
+                  formatTimecode(
+                    graphicPreviewTime ?? 0,
+                    projectSettings.frameRate,
+                  )
+                }}</time>
+              </div>
               <div
                 v-show="photoPresentationActive"
                 :id="`photo-transport-${compositionId}`"

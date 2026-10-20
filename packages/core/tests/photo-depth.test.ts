@@ -62,6 +62,41 @@ const composition = (scene: unknown) => ({
 });
 
 describe("PhotoDepth v1 admission and frame evaluation", () => {
+  it.each([false, true])(
+    "validates a detached copy without changing caller data (frozen=%s)",
+    (frozen) => {
+      const scene = depthScene();
+      const originalRecipe = scene.photoDepth;
+      const originalCamera = originalRecipe.camera;
+      const before = structuredClone(scene);
+      if (frozen) {
+        Object.freeze(scene);
+        Object.freeze(originalRecipe);
+        Object.freeze(originalCamera);
+        Object.freeze(scene.nodes);
+        scene.nodes.forEach(Object.freeze);
+      }
+
+      const admitted = core.validateGraphicScenes([scene], 6);
+      expect(scene).toEqual(before);
+      expect(scene.photoDepth).toBe(originalRecipe);
+      expect(scene.photoDepth.camera).toBe(originalCamera);
+      expect(admitted).toEqual([before]);
+      expect(admitted[0]).not.toBe(scene);
+      expect(admitted[0]!.photoDepth).not.toBe(originalRecipe);
+      expect(admitted[0]!.nodes).not.toBe(scene.nodes);
+    },
+  );
+
+  it("does not change an earlier valid scene when a later scene is rejected", () => {
+    const scene = depthScene();
+    const originalRecipe = scene.photoDepth;
+    const invalid = depthScene(recipe({ amplitude: 2 }));
+    invalid.id = "invalid-depth-scene";
+    expect(() => core.validateGraphicScenes([scene, invalid], 6)).toThrow();
+    expect(scene.photoDepth).toBe(originalRecipe);
+  });
+
   it("admits a bounded local recipe attached to its source image node", () => {
     const saved = core.validateComposition(composition(depthScene()), {
       assetIds: ["original", "foreground-mask", "background-fill"],
