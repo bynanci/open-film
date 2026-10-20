@@ -1,7 +1,8 @@
 # M8B motion candidate validation
 
 Validation date: 2026-10-20, Linux cloud, Node 24.19.0, pinned pnpm 11.11.0,
-FFmpeg/ffprobe available locally. No paid or real remote generation was called.
+FFmpeg/ffprobe 7.1.5-0+deb13u1 available locally. No paid or real remote generation was called.
+Recorded hashes identify this run, not a cross-platform codec golden.
 
 ## Source and dependency
 
@@ -57,29 +58,38 @@ This is evidence of camera fixtures and local candidate adoption, **not AI quali
 
 ## Gates
 
-Final command results and durations are updated after the full run below. Earlier
+Runtime source tested: `de52cf168fe36ba15a65a74240e1269d85638e50`.
+The final follow-up commit updates documentation only. Command results and durations
+are recorded below; exact current head/check status is reported in PR #40. Earlier
 red tests caught unsupported request envelope fields, metadata lookup, precommit
 recovery and an expiry-root helper creating an empty folder; these were corrected
 without skipping or weakening assertions. An initial overlapping browser startup
 hit occupied port 4310; a later concurrent unit/browser run failed 27 tests
 (26 native benchmark port collisions plus a new CLI regression exposing missing
 `--clip` option admission). The CLI was corrected and its actual processes passed;
-full suites are rerun sequentially, without skips or changed assertions.
+full suites are rerun sequentially, without skips or changed assertions. A following run began before all old browser
+server children had exited and failed seven native benchmark cases. After
+shutting down only those owned test services, the frozen browser rerun passed all
+170 tests, then the fully isolated unit/integration rerun passed all 2976 tests.
+The earlier browser run was stopped after its Precision failure was traced to
+Vite hot updates during an i18n edit (the service correctly returned source.changed
+but the view was reset). The unchanged Precision assertions passed in the final
+complete run. No final check was skipped or weakened.
 
-| Command                          | Final status                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `pnpm format:check`              | Pending final documentation formatting                                                            |
-| `pnpm test:i18n`                 | Passed: 1779 matching semantic keys, all three locales                                            |
-| `pnpm lint`                      | Passed after removing unused import                                                               |
-| `pnpm typecheck`                 | Passed                                                                                            |
-| `pnpm test`                      | First full pass: 217 files / 2973 tests, 120.93 s; rerun after review fixes pending               |
-| `pnpm build`                     | Passed; existing large-chunk advisory remains                                                     |
-| `pnpm test:e2e`                  | Full run in progress                                                                              |
-| `pnpm test:interchange`          | Passed: 18 official OTIO parser tests, source/bounds/relocation checks; real Resolve not verified |
-| `pnpm test:native`               | Not run: no cargo/Rust toolchain in this cloud environment                                        |
-| Synthetic FFmpeg evidence script | Passed: real MP4 decode, sample/seek/hash/output checks                                           |
-| Independent correctness review   | Three findings fixed; focused application suites independently passed (18 tests)                  |
-| GitHub CI                        | Pending PR creation/exact-head run                                                                |
+| Command                          | Final status                                                                                                                                                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`              | Passed on final source and documentation                                                                                                                                                                  |
+| `pnpm test:i18n`                 | Passed: 1779 matching semantic keys, all three locales                                                                                                                                                    |
+| `pnpm lint`                      | Passed after removing unused import                                                                                                                                                                       |
+| `pnpm typecheck`                 | Passed                                                                                                                                                                                                    |
+| `pnpm test`                      | Passed: 217 files / 2976 tests, 119.75 s; final isolated complete run                                                                                                                                     |
+| `pnpm build`                     | Passed; existing large-chunk advisory remains                                                                                                                                                             |
+| `pnpm test:e2e`                  | Passed: 170/170 tests, 16.6 minutes, frozen-source complete rerun                                                                                                                                         |
+| `pnpm test:interchange`          | Passed: 18 official OTIO parser tests, source/bounds/relocation checks; real Resolve not verified                                                                                                         |
+| `pnpm test:native`               | Passed in Linux CI native-shell (plus locked cargo build); local not run because cargo/Rust unavailable; no Windows/macOS workstation claim                                                               |
+| Synthetic FFmpeg evidence script | Passed: real MP4 decode, sample/seek/hash/output checks                                                                                                                                                   |
+| Independent correctness review   | Three findings fixed; focused application suites independently passed (18 tests); actual MP4/hash/seek evidence independently reverified                                                                  |
+| GitHub CI                        | Source head de52cf1: native-shell passed; typescript-and-media browser stage pending at documentation update. Final documentation-only head automatically reruns CI; see PR #40 checks for current status |
 
 ## Remaining gates / limitations
 
@@ -92,3 +102,42 @@ diptych and protected/required edits are deliberately refused. Closed projects
 have no background cache deletion daemon. Adopted sources remain for history;
 private journal storage is not an authenticity boundary against the same OS user.
 M8A PR #35 remains an integration dependency; do not merge M8B independently.
+
+## Changed paths
+
+```text
+ROADMAP.md
+TASKS.md
+apps/cli/src/index.ts
+apps/desktop/src/api.ts
+apps/desktop/src/components/MotionGenerationPanel.vue
+apps/desktop/src/components/TimelineEditor.vue
+apps/desktop/src/i18n/locales/en-US.ts
+apps/desktop/src/i18n/locales/ja-JP.ts
+apps/desktop/src/i18n/locales/zh-TW.ts
+apps/desktop/src/i18n/modules/motion/en-US.ts
+apps/desktop/src/i18n/modules/motion/ja-JP.ts
+apps/desktop/src/i18n/modules/motion/zh-TW.ts
+apps/server/src/server.ts
+docs/CONTRACTS.md
+docs/architecture.md
+docs/motion-candidates.md
+docs/roadmap/creative-scene-platform.md
+docs/security/motion-candidates-threat-model.md
+docs/superpowers/plans/2026-10-20-ai-motion.md
+docs/validation-motion-candidates.md
+packages/analysis/src/index.ts
+packages/application/src/editor.ts
+packages/application/src/index.ts
+packages/application/src/motion-generation.ts
+packages/application/src/motion-media.ts
+packages/application/src/motion-provider.ts
+packages/application/tests/motion-faults.test.ts
+packages/application/tests/motion-generation.test.ts
+packages/plugin-sdk/src/ports.ts
+scripts/verify-motion-candidates.ts
+tests/e2e/motion-generation.spec.ts
+tests/fixtures/motion-generation.ts
+tests/integration/motion-generation.test.ts
+tests/unit/motion-provider.test.ts
+```
