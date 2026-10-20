@@ -140,6 +140,46 @@ changed-file ESLint, formatting and diff checks passed. The final logs use
 `pr36-request-font-` prefixes. This follow-up does not run a full repository or
 browser suite; collected per-style font integration remains with the coordinator.
 
+### Follow-up: font assignment approval
+
+Independent review of the integrated `a39512c` font protection reproduced a
+remaining gap: swapping two local font candidates between rendered uses kept
+the provenance set equal while the actual reviewed pixels changed. Both PNG
+and MP4 crop deliveries still accepted the old token. The genuine two-case
+red run is `/tmp/openfilm-v1-validation/pr36-font-use-red.log`.
+
+Production commit `1a1955c560a58a53e88d6d34b14232824a0478f3` adds separate
+`fontBindings` receipts alongside the existing `fonts` provenance set. Each
+binding uses a typed tuple of title track/clip, caption track/cue, or graphic
+scene/node IDs. Canonicalization preserves delimiter-bearing identifiers and
+the three namespaces, rejects conflicting bindings, and never includes local
+font paths. Nested group text participates. Hydrated previews, render snapshots,
+PNG request fingerprints and final receipts retain the bindings. A renderer
+rejects a changed assignment before encoding; old set-only receipts require a
+new preview. Existing collected per-style font callbacks keep selecting the
+actual font; the protection records the resulting file and face.
+
+Six focused controls pass in `pr36-font-use-controls.log`: real PNG/MP4
+two-font swaps across title, caption and nested graphic text reject with no
+published artifact; identical bytes relocated to different candidate paths
+produce the reviewed pixels; old persisted receipts reject in fresh application
+instances and newly generated approvals succeed; typed-tuple collision and
+direct renderer legacy-snapshot controls pass. `pnpm typecheck`, changed-file
+ESLint, formatting and diff checks pass. Full repository, browser and native
+checks remain with the coordinator.
+
+The broader focused export/render run passed **22 files / 188 tests** in
+**156.49 seconds**, including the prior source, cancellation, publication,
+request-lock and rollback controls. Its log is `pr36-font-use-focused.log`.
+
+Independent integration probes also pass on immutable callback-enabled snapshot
+`42ccae24b043020a14dec844448c6f9c8bcaa6a1`. Both title/caption swaps and
+shared-ID title/caption/nested-scene swaps reject; relocating the original bytes
+accepts and preserves decoded pixels. Evidence is retained in
+`pr36-independent-font-assignment-green/evidence.json` and
+`pr36-independent-font-shared-ids-green/evidence.json` under the same validation
+directory. These probes only change private synthetic candidate files.
+
 ### Initial remediation verification
 
 At `ac5c5bae0579c586703c33968acb5bc442634df5`, focused verification passed in
