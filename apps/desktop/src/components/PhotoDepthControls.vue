@@ -109,21 +109,46 @@ const endTime = computed(() =>
 );
 
 watch(
-  [() => props.scene.id, () => props.node.id, () => props.scene.photoDepth],
-  () => {
-    const recipe = props.scene.photoDepth;
-    if (recipe?.nodeId === props.node.id && recipe.mode === "parallax") {
-      selectedMaskId.value = recipe.maskAssetId;
+  [
+    () => props.scene.id,
+    () => props.node.id,
+    () => props.node.assetId,
+    () => depth.value,
+    () => props.assets,
+  ],
+  ([sceneId, nodeId, assetId, recipe], previous) => {
+    const sameTarget =
+      sceneId === previous[0] &&
+      nodeId === previous[1] &&
+      assetId === previous[2];
+    const previousRecipe = previous[3];
+    const pendingMask =
+      sameTarget &&
+      recipe?.mode === "parallax" &&
+      previousRecipe?.mode === "parallax" &&
+      recipe.id === previousRecipe.id &&
+      recipe.sourceSha256 === previousRecipe.sourceSha256 &&
+      recipe.maskAssetId === previousRecipe.maskAssetId &&
+      recipe.maskSha256 === previousRecipe.maskSha256 &&
+      selectedMaskId.value !== previousRecipe.maskAssetId &&
+      pngMasks.value.some((asset) => asset.id === selectedMaskId.value);
+    if (recipe?.mode === "parallax") {
+      if (!pendingMask) selectedMaskId.value = recipe.maskAssetId;
       if (recipe.background?.kind === "asset") {
         backgroundKind.value = "asset";
         selectedBackgroundId.value = recipe.background.assetId;
-      } else backgroundKind.value = "source";
+      } else {
+        backgroundKind.value = "source";
+        selectedBackgroundId.value = backgrounds.value[0]?.id ?? "";
+      }
     } else {
       selectedMaskId.value = pngMasks.value[0]?.id ?? "";
+      backgroundKind.value = "source";
       selectedBackgroundId.value = backgrounds.value[0]?.id ?? "";
     }
     if (recipe?.mode === "fallback")
       fallbackReason.value = recipe.fallbackReason;
+    else if (!sameTarget) fallbackReason.value = "mask-not-available";
   },
   { immediate: true },
 );
@@ -298,186 +323,177 @@ function updateBackground() {
         )
       }}
     </button>
-    <template v-if="depth?.mode === 'fallback'">
-      <p class="editor-muted">{{ t("editor.photoDepth.fallbackActive") }}</p>
-    </template>
-    <template v-else>
-      <label>
-        {{ t("editor.photoDepth.foregroundMask") }}
-        <select
-          v-model="selectedMaskId"
-          :disabled="disabled || !pngMasks.length"
-        >
-          <option value="">{{ t("editor.photoDepth.chooseMask") }}</option>
-          <option v-for="asset in pngMasks" :key="asset.id" :value="asset.id">
-            {{ asset.name }}
-          </option>
-        </select>
-      </label>
-      <label>
-        {{ t("editor.photoDepth.backgroundMode") }}
-        <select
-          v-model="backgroundKind"
-          :disabled="disabled"
-          @change="updateBackground"
-        >
-          <option value="source">
-            {{ t("editor.photoDepth.useOriginalBackground") }}
-          </option>
-          <option value="asset">
-            {{ t("editor.photoDepth.useBackgroundAsset") }}
-          </option>
-        </select>
-      </label>
-      <label v-if="backgroundKind === 'asset'">
-        {{ t("editor.photoDepth.background") }}
-        <select
-          v-model="selectedBackgroundId"
-          :disabled="disabled || !backgrounds.length"
-          @change="updateBackground"
-        >
-          <option
-            v-for="asset in backgrounds"
-            :key="asset.id"
-            :value="asset.id"
-          >
-            {{ asset.name }}
-          </option>
-        </select>
-      </label>
-      <template v-if="parallax">
-        <div class="photo-depth-field-grid">
-          <label
-            v-for="field in ['x', 'y', 'width', 'height'] as const"
-            :key="field"
-          >
-            {{ t(`editor.photoDepth.region.${field}`) }}
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              :value="parallax.protectedRegion[field]"
-              :disabled="disabled"
-              @change="updateRegion(field, $event)"
-            />
-          </label>
-          <label>
-            {{ t("editor.photoDepth.amplitude") }}
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              :value="parallax.amplitude"
-              :disabled="disabled"
-              @change="updateNumber('amplitude', $event)"
-            />
-          </label>
-          <label>
-            {{ t("editor.photoDepth.foregroundDepth") }}
-            <input
-              type="number"
-              min="1"
-              max="1.35"
-              step="0.01"
-              :value="parallax.foregroundDepth"
-              :disabled="disabled"
-              @change="updateNumber('foregroundDepth', $event)"
-            />
-          </label>
-          <label>
-            {{ t("editor.photoDepth.backgroundDepth") }}
-            <input
-              type="number"
-              min="0"
-              max="0.65"
-              step="0.01"
-              :value="parallax.backgroundDepth"
-              :disabled="disabled"
-              @change="updateNumber('backgroundDepth', $event)"
-            />
-          </label>
-          <label>
-            {{ t("editor.photoDepth.easing") }}
-            <select
-              :value="parallax.easing"
-              :disabled="disabled"
-              @change="updateEasing"
-            >
-              <option
-                v-for="easing in [
-                  'linear',
-                  'ease-in',
-                  'ease-out',
-                  'ease-in-out',
-                ] as const"
-                :key="easing"
-                :value="easing"
-              >
-                {{ t(`editor.graphics.${easing}`) }}
-              </option>
-            </select>
-          </label>
-        </div>
-        <fieldset
-          v-for="endpoint in ['from', 'to'] as const"
-          :key="endpoint"
-          class="photo-depth-camera"
-        >
-          <legend>{{ t(`editor.photoDepth.camera.${endpoint}`) }}</legend>
-          <div class="photo-depth-field-grid">
-            <label v-for="field in ['x', 'y', 'scale'] as const" :key="field">
-              {{ t(`editor.photoDepth.camera.${field}`) }}
-              <input
-                type="number"
-                :min="field === 'scale' ? 1 : -0.05"
-                :max="field === 'scale' ? 1.12 : 0.05"
-                step="0.01"
-                :value="parallax.camera[endpoint][field]"
-                :disabled="disabled"
-                @change="updateCamera(endpoint, field, $event)"
-              />
-            </label>
-          </div>
-        </fieldset>
-        <p class="editor-muted">{{ t("editor.photoDepth.edgeReview") }}</p>
-        <div class="photo-depth-preview-actions">
-          <button
-            type="button"
-            class="editor-button"
-            @click="emit('preview', startTime)"
-          >
-            {{ t("editor.photoDepth.previewStart") }}
-          </button>
-          <button
-            type="button"
-            class="editor-button"
-            @click="emit('preview', middleTime)"
-          >
-            {{ t("editor.photoDepth.previewMiddle") }}
-          </button>
-          <button
-            type="button"
-            class="editor-button"
-            @click="emit('preview', endTime)"
-          >
-            {{ t("editor.photoDepth.previewEnd") }}
-          </button>
-        </div>
-      </template>
-      <button
-        type="button"
-        class="editor-button"
-        :disabled="!canCreateParallax"
-        @click="createParallax"
+    <p v-if="depth?.mode === 'fallback'" class="editor-muted">
+      {{ t("editor.photoDepth.fallbackActive") }}
+    </p>
+    <label>
+      {{ t("editor.photoDepth.foregroundMask") }}
+      <select v-model="selectedMaskId" :disabled="disabled || !pngMasks.length">
+        <option value="">{{ t("editor.photoDepth.chooseMask") }}</option>
+        <option v-for="asset in pngMasks" :key="asset.id" :value="asset.id">
+          {{ asset.name }}
+        </option>
+      </select>
+    </label>
+    <label>
+      {{ t("editor.photoDepth.backgroundMode") }}
+      <select
+        v-model="backgroundKind"
+        :disabled="disabled"
+        @change="updateBackground"
       >
-        {{
-          t(parallax ? "editor.photoDepth.update" : "editor.photoDepth.create")
-        }}
-      </button>
+        <option value="source">
+          {{ t("editor.photoDepth.useOriginalBackground") }}
+        </option>
+        <option value="asset">
+          {{ t("editor.photoDepth.useBackgroundAsset") }}
+        </option>
+      </select>
+    </label>
+    <label v-if="backgroundKind === 'asset'">
+      {{ t("editor.photoDepth.background") }}
+      <select
+        v-model="selectedBackgroundId"
+        :disabled="disabled || !backgrounds.length"
+        @change="updateBackground"
+      >
+        <option v-for="asset in backgrounds" :key="asset.id" :value="asset.id">
+          {{ asset.name }}
+        </option>
+      </select>
+    </label>
+    <template v-if="parallax">
+      <div class="photo-depth-field-grid">
+        <label
+          v-for="field in ['x', 'y', 'width', 'height'] as const"
+          :key="field"
+        >
+          {{ t(`editor.photoDepth.region.${field}`) }}
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="parallax.protectedRegion[field]"
+            :disabled="disabled"
+            @change="updateRegion(field, $event)"
+          />
+        </label>
+        <label>
+          {{ t("editor.photoDepth.amplitude") }}
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="parallax.amplitude"
+            :disabled="disabled"
+            @change="updateNumber('amplitude', $event)"
+          />
+        </label>
+        <label>
+          {{ t("editor.photoDepth.foregroundDepth") }}
+          <input
+            type="number"
+            min="1"
+            max="1.35"
+            step="0.01"
+            :value="parallax.foregroundDepth"
+            :disabled="disabled"
+            @change="updateNumber('foregroundDepth', $event)"
+          />
+        </label>
+        <label>
+          {{ t("editor.photoDepth.backgroundDepth") }}
+          <input
+            type="number"
+            min="0"
+            max="0.65"
+            step="0.01"
+            :value="parallax.backgroundDepth"
+            :disabled="disabled"
+            @change="updateNumber('backgroundDepth', $event)"
+          />
+        </label>
+        <label>
+          {{ t("editor.photoDepth.easing") }}
+          <select
+            :value="parallax.easing"
+            :disabled="disabled"
+            @change="updateEasing"
+          >
+            <option
+              v-for="easing in [
+                'linear',
+                'ease-in',
+                'ease-out',
+                'ease-in-out',
+              ] as const"
+              :key="easing"
+              :value="easing"
+            >
+              {{ t(`editor.graphics.${easing}`) }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <fieldset
+        v-for="endpoint in ['from', 'to'] as const"
+        :key="endpoint"
+        class="photo-depth-camera"
+      >
+        <legend>{{ t(`editor.photoDepth.camera.${endpoint}`) }}</legend>
+        <div class="photo-depth-field-grid">
+          <label v-for="field in ['x', 'y', 'scale'] as const" :key="field">
+            {{ t(`editor.photoDepth.camera.${field}`) }}
+            <input
+              type="number"
+              :min="field === 'scale' ? 1 : -0.05"
+              :max="field === 'scale' ? 1.12 : 0.05"
+              step="0.01"
+              :value="parallax.camera[endpoint][field]"
+              :disabled="disabled"
+              @change="updateCamera(endpoint, field, $event)"
+            />
+          </label>
+        </div>
+      </fieldset>
+      <p class="editor-muted">{{ t("editor.photoDepth.edgeReview") }}</p>
+      <div class="photo-depth-preview-actions">
+        <button
+          type="button"
+          class="editor-button"
+          @click="emit('preview', startTime)"
+        >
+          {{ t("editor.photoDepth.previewStart") }}
+        </button>
+        <button
+          type="button"
+          class="editor-button"
+          @click="emit('preview', middleTime)"
+        >
+          {{ t("editor.photoDepth.previewMiddle") }}
+        </button>
+        <button
+          type="button"
+          class="editor-button"
+          @click="emit('preview', endTime)"
+        >
+          {{ t("editor.photoDepth.previewEnd") }}
+        </button>
+      </div>
     </template>
-    <label v-if="depth" class="photo-depth-fallback-reason">
+    <button
+      type="button"
+      class="editor-button"
+      :disabled="!canCreateParallax"
+      @click="createParallax"
+    >
+      {{
+        t(parallax ? "editor.photoDepth.update" : "editor.photoDepth.create")
+      }}
+    </button>
+    <label class="photo-depth-fallback-reason">
       {{ t("editor.photoDepth.fallbackReason") }}
       <select v-model="fallbackReason" :disabled="disabled">
         <option value="mask-not-available">
