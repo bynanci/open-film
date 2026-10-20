@@ -1,9 +1,9 @@
-## Stable patch integration — in progress
+## 0.4.0 integration — in progress
 
-The next application release is0.4.0; the existing project schema stays1.0.0.
+The next application release is 0.4.0; the existing project schema stays 1.0.0.
 This maintenance pass hardens Named Versions and integrates independently
 reviewed Photo Depth, Professional Export, Collect Media, Native Installer
-candidate tooling, NLE Fidelity and Motion Candidates (PRs35–40). Shared-source
+candidate tooling, NLE Fidelity and Motion Candidates (PRs 35–40). Shared-source
 contracts, non-destructive editing and explicit provider consent remain intact.
 Exact combined tests and remaining workstation gates will be recorded in the
 release validation report before merge/publication. Native installers are not
@@ -116,110 +116,13 @@ candidate does not claim word-level alignment or workstation/NLE verification.
 Duration edits that would exclude a saved caption are rejected before autosave;
 adjust the affected cue first so authored text and timing remain explicit.
 
-## Queued — M6 and broader clip keyframes
+## Integrated recovery and delivery workflows
 
-The explicit M3/F01 scene scope replaces the earlier M3/F03 keyframe proposal;
-general clip keyframes remain future work. M5 delivers the Layer Editor (F03)
-and Reviewable Agent Editing (F08) as separately reviewed PRs; agent proposals
-remain within ProviderRegistry/consent and require explicit acceptance. M6 extends photo,
-sound and output verification with decoded audio evidence. The staged dependencies, risks
-and acceptance evidence are recorded in the
-[creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
-
-## Implemented — M7A named project versions
-
-## Merged — M7A named project versions (PR #34)
-
-M7A adds immutable, local project snapshots and structural comparison through
-the shared application service. Restore requires a current revision, explicit
-confirmation, verified source identity and a fresh recovery checkpoint; it does
-not merge with session Undo/Redo or copy original media. M7A is integrated in
-`main` through PR #34. See [the contract](docs/named-versions.md) and
-[validation](docs/validation-named-versions.md).
-
-M7B still needs still-PNG/WAV/stem and aspect-ratio presets; M7C needs an honest
-native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
-media collection and relocation evidence; M7E needs Windows/macOS workstation
-installer, dependency and rollback evidence. These are separate PRs and remain
-queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
-templates and Visual QA and is tracked as a separate stacked M8A candidate on
-M7A PR #34's exact head. It is not part of the M7A snapshot and must be
-retargeted if that dependency changes.
-
-not merge with session Undo/Redo or copy original media. The candidate includes
-synthetic actual-MP4 validation. PR #34 is integrated into `main` at
-`bb2c4521ad894478893485119442a00ffd9b34cc`. See
-[the contract](docs/named-versions.md) and
-[validation](docs/validation-named-versions.md).
-
-## Candidate — M7B Export Profiles and professional exports
-
-M7B adds render-only 16:9, 9:16 and 1:1 profiles; reviewed crop/contain preview;
-PNG stills; and an aligned WAV mix and role stems through the existing renderer.
-It does not rewrite Composition geometry or the project schema. A synthetic
-12-second run produced and decoded actual MP4s at all three ratios, plus an
-opaque PNG and aligned 48 kHz WAV outputs. Full latest-main gates, PR review and
-CI remain pending. See [Export Profiles](docs/export-profiles.md) and
-[validation](docs/validation-export-profiles.md).
-
-M7C needs an honest native/baked/metadata/unsupported NLE report; M7D needs
-path-safe, license-aware media collection and relocation evidence; M7E needs
-Windows/macOS workstation installer, dependency and rollback evidence. These
-are separate PRs and remain queued. M8A selective 2.5D photo motion is a
-separate open PR, #35, based on current `main` at
-`bb2c4521ad894478893485119442a00ffd9b34cc`; it is not a dependency of M7B.
-
-## Candidate — M8A selective 2.5D PhotoDepth
-
-M8A extends the saved GraphicScene Image node with a local, hash-bound
-foreground mask and optional background fill. A bounded camera/easing evaluator
-drives Monitor and FFmpeg from the existing Composition clock; explicit
-fallback, lock/history/reopen behavior and typed Visual QA findings preserve
-the local-first editing contract. See [PhotoDepth](docs/photo-depth.md), the
-[threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1), and
-[validation](docs/validation-photo-depth.md).
-
-Automated evidence passed on the M8A source tree stacked over M7A PR #34:
-2,941 unit/integration tests, all 169 E2E tests, build, interchange and the
-actual 6-second synthetic MP4 with decoded frame and Monitor parity measurements.
-See [the validation record](docs/validation-photo-depth.md). Independent PR
-review and stacked CI are pending. Real-photo subject stability, sustained 4K
-rendering, physical display, Windows/macOS behavior and NLE review remain manual
-gates.
-
-M7B is an open Export Formats candidate PR (#36) with unresolved review findings.
-M7C remains queued. M7D is in development as a separate Collect Media candidate;
-its validation record separates synthetic relocation/render results from
-Windows/macOS workstation gates. M7E still needs native installer, dependency
-and rollback evidence. M8 selective 2.5D photo animation is separate from M7A.
-
-## Candidate — M7D Collect Media
-
-Collect only assets referenced by a chosen saved Composition or by the project
-stories/compositions. The shared application service previews hashes, size,
-font dependencies and explicit rights declarations, then writes a filtered
-project manifest and SQLite snapshot plus hash-addressed media/font files. It
-supports ZIP and directory output, rejects unsafe paths and links, excludes
-versions/caches/credentials/private source paths, and verifies a relocated
-package by reopening it and rendering a real MP4. Exact-head gates, CI and
-independent review remain before merge; see [the contract](docs/collect-media.md)
-and [validation](docs/validation-collect-media.md).
-
-main through PR #34 with synthetic actual-MP4 evidence. See [the contract](docs/named-versions.md)
-and [validation](docs/validation-named-versions.md).
-
-M7B (#36), M7D (#37) and M8A (#35) are independent open candidates with unresolved
-review findings. M7C remains queued. M7E's runtime/installer candidate and its
-separate artifact/workstation gates are described below.
-
-Automated evidence passed on the M8A source tree based on current `main`:
-2,941 unit/integration tests, all 169 E2E tests, build, interchange and the
-actual 6-second synthetic MP4 with decoded frame and Monitor parity measurements.
-See [the validation record](docs/validation-photo-depth.md). Independent PR
-review and latest-main CI are pending; one TypeScript/media job remains in
-progress. Real-photo subject stability, sustained 4K
-rendering, physical display, Windows/macOS behavior and NLE review remain manual
-gates.
+M6 Audio Quality and Provider Generation, M7A Named Versions and the reviewed
+M7B–M8B feature heads share the existing application boundary. Named Versions
+now includes explicit capacity management and stronger recovery/source fences.
+The0.4.0 integration below combines the six feature PRs; workstation and native
+distribution gates remain independent of synthetic correctness tests.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 
@@ -578,42 +481,27 @@ remain open independently of file-parser or browser success.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## Candidate — M8B reviewable local motion
+## 0.4.0 — Reviewed creative-workflow integration
 
-M8B builds on M8A PR #35 using the same Composition clock and typed edit path.
-The first release provides deterministic camera fixtures (explicitly not AI) and
-explicit external local video candidates. Original/M8A/candidate comparison,
-human review, separate Accept/Replace and explicit Restore preserve local editing
-and history. Remote image-to-video remains disabled; M6 tone/TTS is not reused or
-advertised as image-to-video. Receipt v1 and bounded decoded MP4 proofs accompany
-candidate ownership, cancellation, expiry and recovery.
+| Phase   | Included source behavior                                                                                              | Remaining boundary                                                                                                           |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| M7A     | Named snapshots, ordered/collision-free diff, explicit deletion and protected checkpoint/source verification          | Workstation permissions/recovery                                                                                             |
+| M7B #36 | Profile previews, PNG, MP4 ratios, WAV and aligned role stems; review-bound crop and selected look/caption/quality    | Real-photo framing, sustained 4K and target-player QA                                                                        |
+| M7C #39 | Native/metadata/baked/unsupported report, portable opaque precomps/full mix and receipts                              | Real NLE/Resolve import/relink; transparent overlays unsupported                                                             |
+| M7D #37 | Referenced media/fonts, explicit rights, safe ZIP/directory and actual relocation/reopen render proof                 | Cross-machine filesystems, typography and license suitability                                                                |
+| M7E #38 | Verified owned runtime lifecycle and manual installer-candidate tooling                                               | **Partial:** audited runtime inputs, Windows/macOS clean-machine signing/update/rollback evidence; no installer distribution |
+| M8A #35 | Protected local photo layers, bounded deterministic parallax/fallback, alpha-safe masks and typed Visual QA           | Real subjects, edge aesthetics, display/HDR and4K                                                                            |
+| M8B #40 | Local fixture/external video comparison, explicit accept/replace/restore, protected history and bounded private cache | Remote motion disabled; provider/API/terms/cost/retention and human fidelity require separate review                         |
 
-See [motion contract](docs/motion-candidates.md) and
-[validation/manual gates](docs/validation-motion-candidates.md). This is a stacked
-candidate, not a mainline completion claim. Native presentation, human/detail
-fidelity, third-party rights/cost/retention and paid remote generation require
-separate evidence. A future adapter must pass the existing consent/provider
-boundary plus verified official API and download safety review before enabling it.
+See [release validation](docs/validation-stable-release.md) for exact inputs,
+combined gate status and preserved original feature evidence. Main remains the
+release base; no separate timeline or project-schema migration is introduced.
 
-## Candidate — M7C reviewable NLE fidelity
+## Next milestone — workstation evidence and delivery
 
-A saved-revision HandoffPlan explains native editability, metadata recreation and
-explicit opaque baking by exact range. Short precomps use the existing renderer;
-untouched cuts and embedded video dialogue retain native track/source timing.
-Optional full mix and caption sidecars travel with original Composition, source
-hashes and portable media in a private, atomic TAR exchange. Ordinary interchange
-is unchanged. See [contract](docs/nle-handoff.md) and [validation](docs/validation-nle-handoff.md).
-Final CI/review and actual Resolve workstation QA remain separate gates. Alpha,
-M7B stems and M8A depth are not claimed on this independent main base.
-
-## Candidate — M7E verified native runtime and installer workflow
-
-M7E introduces hash-verified runtime resources, owned service startup/shutdown,
-graphical first-run diagnostics and explicit installer candidate workflows.
-Review hardening covers startup cancellation, window close ownership, recovery
-remounting, permission-preserving archive transport and shell/runtime version checks.
-Automatic updates remain unconfigured. Candidate implementation/tests are
-separate from reviewed target runtime inputs, installer artifact builds and real
-Windows/macOS acceptance. See [the contract](docs/native-installer.md) and
-[validation](docs/validation-native-installer.md). M7B/M7D/M8A remain independent
-open candidates; this work does not merge them or certify their outstanding QA.
+Complete Windows/macOS clean-machine runtime/installer validation and audited
+signing/update/rollback inputs before enabling distribution. Verify real NLE
+import/relink/playback, representative fonts/licensing, protected subjects,
+physical color, listening and sustained 4K performance. Future remote generation
+must pass explicit provider consent, API/download safety and terms/cost/retention
+review; local editing continues without a provider.

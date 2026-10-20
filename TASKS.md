@@ -1,10 +1,10 @@
-## Next stable patch — review remediation and integration
+## 0.4.0 release — review remediation and integration
 
 - [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.
 - [x] Add explicit confirmed deletion through shared application/API/CLI/Desktop to free bounded version capacity without automatic pruning.
 - [x] Cover stale/confirmation/retry/recovery/reopen and synthetic source-change regressions.
-- [ ] Verify and optimize all six feature PRs35–40, preserve their branch ancestry, and run complete combined gates.
-- [ ] Merge the reviewed integration candidate after exact-head CI passes; publish the next stable patch0.4.0 source release with accurate platform/manual limits.
+- [ ] Verify and optimize all six feature PRs 35–40, preserve their branch ancestry, and run complete combined gates.
+- [ ] Merge the reviewed integration candidate after exact-head CI passes; publish the next stable version 0.4.0 source release with accurate platform/manual limits.
 
 ## M6 — Audio Quality and Provider Generation
 
@@ -27,7 +27,7 @@ F05 photo-framing expansion stays deferred; this does not relabel it as complete
 
 # Task status
 
-This checklist describes implementation in the 0.1.0 source tree. A checked item
+This checklist describes implementation in the 0.4.0 source tree. A checked item
 means behavior or a concrete artifact exists; it does not certify every operating
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -752,219 +752,93 @@ _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party m
 
 ## Implemented — M7A / F09 Named Versions
 
-Scope: [Named Versions contract](docs/named-versions.md),
-[architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). M7A is integrated in `main`
-through PR #34. Project versions are independent of session Undo/Redo and do
-not copy original media.
+PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
+[Contract](docs/named-versions.md) · [validation](docs/validation-named-versions.md).
 
-[validation](docs/validation-named-versions.md). M7A is integrated in `main` through PR #34. Runtime/installer QA remains separate.
+- [x] Immutable private manifest/SQLite snapshots, stable IDs, source receipts,
+      idempotent requests, mutable labels and cross-session comparison/restore.
+- [x] Explicit checkpointed restore with revision/source/lock fences and recovery.
+- [x] Confirmed snapshot deletion through shared service/API/CLI/Desktop; bounded
+      storage, receipt tombstones and journal-protected recovery checkpoints.
+- [x] Collision-free ordered diffs and linear source-manifest validation.
+- [ ] Manual: Windows/macOS filesystem, permissions and forced-exit recovery.
 
-## Merged — M7A / F09 Named Versions (PR #34)
+## Integrated — M7B / F10 Professional Export (#36)
 
-Scope: [Named Versions contract](docs/named-versions.md),
-[architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). PR #34 is merged into `main`
-at `bb2c4521ad894478893485119442a00ffd9b34cc`.
+[Contract](docs/export-profiles.md) · [validation](docs/validation-export-profiles.md).
 
-- [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
-      v1 records, source hashes, idempotent retries and mutable labels isolated
-      in private index metadata.
-- [x] Compare Story, Composition, Captions, GraphicScenes/templates, audio and
-      source identities without exposing source paths.
-- [x] Restore only after revision/confirmation/source/lock checks, first create
-      a named checkpoint, recover interrupted publication and invalidate stale
-      Desktop editor state across project generations.
-- [x] Share application behavior across HTTP, CLI and localized keyboard-
-      accessible Desktop; old projects open without a versions directory.
-- [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
-      restore V2 with synthetic photos, captions, graphics, audio, frame/audio
-      measurements and unchanged source hashes.
-- [x] Merge the reviewed M7A implementation through PR #34.
-- [ ] Manual: workstation filesystem and permission behavior remains separate
-      from synthetic package validation.
+- [x] Render-only 16:9, 9:16 and 1:1 profiles; actual MP4, PNG, WAV and role stems.
+- [x] Preview-bound crop confirmation, selected look/caption/quality identity,
+      complete-frame time bounds, private bounded cache and stale/cancel handling.
+- [x] Uniform stereo stems, role-specific preflight and conflicting-source rejection;
+      preserve original Composition, source hashes and audio curves.
+- [x] Shared Application/Desktop/HTTP/CLI and real 12-second/three-ratio evidence.
+- [ ] Manual: real-photo framing, target-player/NLE and sustained 4K validation.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+## Integrated — M7C / F11 NLE Fidelity (#39)
 
-- [x] Complete PR #34 review and merge. Named Versions is integrated on `main`.
+[Contract](docs/nle-handoff.md) · [validation](docs/validation-nle-handoff.md).
 
-## Candidate — M7B / F10 Export Profiles and Professional Exports
+- [x] Versioned native/metadata/baked/unsupported reports bound to saved source
+      identity, options, rational frame boundaries and explicit acceptance.
+- [x] Private portable TAR, native cuts/dialogue, scoped opaque precomps, optional
+      full mix/caption sidecars and actual decoded frame/sample/hash evidence.
+- [x] Verify all 22 review threads; retain already-correct cancellation and source fences.
+- [ ] Manual: real Resolve/NLE import, relink, playback, color and channel checks.
+- [ ] Future: transparent overlays and separately editable baked effects/stems.
 
-Scope: [Export Profiles contract](docs/export-profiles.md),
-[architecture](docs/architecture.md#m7b-versioned-export-profiles), and
-[validation](docs/validation-export-profiles.md). This work is independent of
-the still-open M8A PR and targets fetched `main` at
-`bb2c4521ad894478893485119442a00ffd9b34cc`.
+## Integrated — M7D / F12 Collect Media (#37)
 
-- [x] Add strict render-only profile v1 for 16:9, 9:16 and 1:1 with bounded
-      dimensions/fps, contain or explicit center crop, quality and format;
-      leave saved project settings and Composition geometry untouched.
-- [x] Add revision/source-bound Preview Export Frame and PNG still output using
-      the FFmpeg renderer, selected look/captions, warnings and versioned hash
-      receipts; crop requires preview and confirmation.
-- [x] Export full WAV mix and available narration/music/ambience/dialogue stems
-      through existing AudioAutomation, aligned at 48 kHz/24-bit PCM; do not
-      fabricate files for roles with no source audio.
-- [x] Share profile logic through Application, Desktop, HTTP and CLI with
-      cancellation, retry, stale result fencing, path safety and private cache.
-- [x] Produce and decode synthetic 12-second MP4s at all three ratios, verify
-      first/middle/last frames, output/source hashes, warnings, PNG parity and
-      aligned audio in the validation record.
-- [ ] Complete latest-main full test matrix, independent review, exact-head CI
-      and PR checks before considering merge.
-- [ ] Complete workstation review of real-photo framing, target-player/NLE
-      playback and sustained full-resolution rendering.
+[Contract](docs/collect-media.md) · [validation](docs/validation-collect-media.md).
 
-M7C–M7E remain separate queued work packages:
+- [x] Plan only referenced Story/Composition media and font dependencies, with
+      explicit rights, immutable source receipts and revision-bound publication.
+- [x] Safe ZIP/directory paths, SQLite-consistent filtered catalog, no credentials,
+      full reference/font validation and stable original provenance after relocation.
+- [x] Verify exact dimensions and embedded audio, cancel both hash scans, reopen
+      and compare actual MP4 after original sources are removed.
+- [ ] Manual: target-workstation filesystems, typography/licensing and cross-machine QA.
 
-- [ ] M7C — classify NLE-native/editable, metadata-only, baked and unsupported
-      behavior with optional pre-rendering and a compatibility report.
-- [ ] M7D — add a previewable Collect Plan for selected used media, generated
-      assets and required dependencies; verify hashes, safe relative paths,
-      SQLite-consistent project snapshots, ZIP/directory safety, relocation,
-      reopen, preview and actual MP4 output. Report missing rights/dependencies
-      and block incomplete packages from claiming completeness.
-- [ ] M7E — package Tauri, Node service, FFmpeg and fonts with first-run and
-      update/rollback evidence on Windows and macOS workstations.
+## Partial — M7E / F13 Native Installer tooling (#38)
 
-## Candidate — M8A selective 2.5D PhotoDepth
+[Contract](docs/native-installer.md) · [validation](docs/validation-native-installer.md).
 
-Scope: [PhotoDepth contract](docs/photo-depth.md), [threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1),
-[validation record](docs/validation-photo-depth.md), [GraphicScene contract](docs/graphic-scenes.md).
-This branch is stacked on M7A PR #34's exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`;
-it is not merged and must be retargeted if that dependency changes.
+- [x] Hash-verified runtime staging, version agreement, private owned-service
+      startup/shutdown, flush/close handshake, recovery remount and diagnostics.
+- [x] Signed-manifest bytes pinned during verification; permission-preserving
+      runtime/installer archives; portable Node/Vite build invocation.
+- [x] Manual candidate workflow; bundling disabled by default, no automatic-update feed.
+- [ ] Complete audited per-platform runtime inputs and license/dependency review.
+- [ ] Obtain Windows/macOS clean-machine installer, first-run, signing/notarization,
+      update and rollback evidence before distributing native installers.
 
-PR #35 targets current `main` at `bb2c4521ad894478893485119442a00ffd9b34cc`;
-its exact head is `0ffde64949f59289939904aa6cf537de47eb9467`.
+## Integrated — M8A local PhotoDepth (#35)
 
-- [x] Add a strict optional `PhotoDepthRecipe` to the existing GraphicScene
-      Image contract with stable IDs, source/mask/fill hashes, protected region,
-      bounded camera/depth/easing and explicit fallback.
-- [x] Share one arbitrary-seek evaluator and prepared foreground/background
-      textures across Monitor PNG and FFmpeg output; keep the image-node interval
-      as the only clock and preserve legacy projects.
-- [x] Use the existing local media importer, validate PNG dimensions/alpha/source
-      hashes, and keep typed edit, lock, source replacement, history/autosave and
-      reopen semantics in the current command path.
-- [x] Add Visual QA diagnostics for unavailable/changed sources, invalid or
-      empty/mismatched masks, enclosed transparent regions, protected-region
-      failures, explicit fallback and manual subject/edge review.
-- [x] Complete a real 6-second/180-frame synthetic MP4, shuffled decoded seeks,
-      Monitor parity, Visual QA, named-version restore/reopen and Desktop browser
-      regressions; record hashes and measurements in the validation file.
-- [x] Pass format, i18n, lint, typecheck, unit/integration, build, all 169 E2E
-      tests and interchange validation on the M8A source tree.
-- [ ] Complete independent PR review and stacked PR CI. Rust/native checks are
-      unavailable because this environment has no Rust toolchain. Real people,
-      sustained 4K, physical display and Resolve/NLE behavior remain
-      candidate-bound workstation gates.
+[Contract](docs/photo-depth.md) · [validation](docs/validation-photo-depth.md).
 
-## Candidate — M8B reviewable local motion candidates
+- [x] Versioned local original/mask/fill/protected-subject recipe on GraphicScene;
+      bounded parallax/easing, fallback and shared arbitrary-seek Monitor/FFmpeg.
+- [x] Typed edits, locks, required selection, Undo/Redo, autosave, reopen and
+      Named Versions remain on the existing Composition/history path.
+- [x] Preserve source alpha when masking; typed stale-fallback QA; actual 6-second/
+      180-frame source-hash/seek/edge/parity evidence.
+- [ ] Manual: real protected subjects, edge aesthetics, physical color and sustained 4K.
 
-Stacked on M8A PR #35 exact head `e78c4e06da2eb908dc0cb4548718c83b7798a8f1`.
-See [contract](docs/motion-candidates.md), [threat model](docs/security/motion-candidates-threat-model.md)
-and [validation](docs/validation-motion-candidates.md). No remote image-to-video
-provider is enabled; the deterministic camera fixture is explicitly not AI.
+## Integrated — M8B reviewable Motion Candidates (#40)
 
-- [x] Extend ProviderRegistry with motion bytes/data-kind consent; keep remote
-      motion disabled until a separately verified trusted adapter exists.
-- [x] Generate 2–3 local fixture candidates or admit 1–3 explicitly imported
-      local videos; validate bounded actual MP4, normalize timing/SDR/audio and
-      bind hashes, consent, cost status and human review in receipt v1.
-- [x] Share application logic across CLI/HTTP/Desktop; compare Original/M8A/video,
-      explicit Accept → Replace → Restore using existing typed commands and catalog.
-- [x] Preserve narration/duration, source locks/required selection, Undo/Redo,
-      autosave/reopen/Named Versions; fence stale/late results and recover lost
-      acknowledgments or prepared precommit imports.
-- [x] Exercise invalid/oversized bytes, 429/500, timeout/ignored abort, conflicting
-      request IDs, revoked consent, changed sources/revisions/project generation,
-      real external MP4 audio removal and private cache expiry/discard.
-- [x] Produce actual synthetic 4-second MP4s with decoded every-second samples,
-      shuffled seek comparisons, actual adopted output and immutable source hashes.
-- [ ] Final exact-head CI and stacked dependency review before merge. M8B is not
-      independently mergeable into main while M8A is open; no merge in this task.
-- [ ] Paid remote generation/API terms/license/cost/retention, human deformation,
-      color appearance and native workstation presentation remain manual/not-run.
+[Contract](docs/motion-candidates.md) · [validation](docs/validation-motion-candidates.md).
 
-M7B #36, M7D #37 and M7E #38 remain independent open candidates. M7C is the
-independent candidate below; none is implemented by M7A. M7A #34 is merged,
-while its workstation gates remain separately open.
+- [x] Local camera fixture and explicitly imported video candidates, declared
+      provenance/cost/consent, compare, human review, explicit Accept/Replace/Restore.
+- [x] Existing typed commands/history; narration/duration/source protection,
+      stale/cancel/retry and prepared-journal/lost-response recovery.
+- [x] Actual synthetic MP4/seeks/source receipts; private expiry/discard, including
+      aged receiptless crash folders while preserving recent/prepared/imported work.
+- [ ] Remote image-to-video remains disabled; future adapters require verified API,
+      terms/license/cost/retention/download safety and explicit provider consent.
+- [ ] Manual: human/detail fidelity, physical color and native presentation.
 
-## Candidate — M7C NLE Fidelity
-
-Scope: [contract](docs/nle-handoff.md), [plan](docs/superpowers/plans/2026-10-20-nle-fidelity.md)
-and [validation](docs/validation-nle-handoff.md). Independent main base; M7B #36,
-M8A #35 and M7D #37 remain separate candidates. M7A #34 is merged.
-
-- [x] Add HandoffPlan v1 with per-feature/range native, metadata and explicit bake
-      decisions, reasons, rational times and fail-closed unsupported options.
-- [x] Preserve native cuts/source identities outside reviewed opaque precomps;
-      preserve embedded video dialogue as native Audio or explicit full mix.
-- [x] Produce private atomic TAR exchange with immutable source copies, captions,
-      original effect provenance and actual render/frame/sample/hash evidence.
-- [x] Share review/publication across Desktop, HTTP and CLI; protect saved revision,
-      source hashes, project switch, cancellation, file paths and partial cleanup.
-- [ ] Complete final exact-head full gates, CI and fresh correctness review.
-- [ ] Run actual Resolve workstation import/playback/relink/color/channel QA.
-- [ ] Integrate M7B stems and M8A depth only after their contracts are merged;
-      transparent overlay remains unavailable until a measured alpha profile exists.
-
-## Candidate — M7D / F12 Collect Media
-
-Scope: [portable package contract](docs/collect-media.md),
-[architecture](docs/architecture.md#m7d-collect-media-packages), and
-[validation](docs/validation-collect-media.md). This work uses the current
-`main` base after M7A; it does not depend on the still-open M7B/M8A PRs.
-
-- [x] Plan only referenced media for the current saved Composition or all
-      referenced project stories/compositions; never include the whole library.
-- [x] Require per-resource rights declarations and show unavailable, changed,
-      unsupported, oversized, or missing-rights items before collection.
-- [x] Snapshot the saved manifest and SQLite catalog under the catalog writer
-      fence; VACUUM the filtered catalog and omit unrelated rows, versions,
-      jobs, caches, secrets, and absolute original paths.
-- [x] Create hash-addressed ZIP or directory packages with source/font hashes,
-      atomic staged publication, cancellation, stale-source guards and path
-      checks; preserve source files unchanged.
-- [x] Verify relocation by unpacking privately, checking receipts, reopening,
-      rendering a preview and decoding a real MP4.
-- [ ] Complete exact-head full test matrix, CI and independent review; keep
-      Windows/macOS filesystem and permission behavior as workstation gates.
-
-M7B (Export Formats) remains an open candidate PR and has unresolved review
-findings; M7C and M7E remain queued. M7D does not implement those phases.
-
-- [x] Merge M7A through PR #34 after its implementation/CI gates.
-- [ ] Manual: workstation filesystem/permission behavior remains a separate gate.
-
-M7B (#36), M7D (#37) and M8A (#35) remain independent open PRs with unresolved review findings. M7C remains queued. M7E is the candidate below.
-
-## Candidate — M7E Native Installer / Runtime Bundle
-
-Scope: [runtime/installer contract](docs/native-installer.md),
-[implementation plan](docs/superpowers/plans/2026-10-20-native-installer.md), and
-[validation](docs/validation-native-installer.md). Based on main after M7A;
-M7B/M7D/M8A remain independent open PRs with unresolved review findings.
-
-- [x] Add RuntimeManifest v1, explicit pinned local inputs, license-file requirements,
-      SPDX inventory and safe staging without network binary downloads.
-- [x] Verify the build-embedded manifest and all runtime hashes before starting
-      the existing local service; test CJK font/raster and H.264/AAC capability.
-- [x] Use owned service processes, private sessions/ephemeral loopback ports,
-      readiness handshake and graphical first-run diagnostics.
-- [x] Preserve browser drafts and require saved/acknowledged shutdown before
-      native exit; reuse existing project/catalog/edit contracts.
-- [x] Add explicit target-platform candidate packaging and artifact receipts;
-      leave automatic updates disabled with a trusted-signature verification seam.
-- [x] Add startup-cancel, delayed close-ack, workspace recovery and safe runtime archive regressions.
-- [ ] Complete exact-head regression/CI and correctness review.
-- [ ] Supply reviewed distributable runtime binaries and complete license/source
-      obligations for each target, then generate its installer artifacts.
-- [ ] Run real clean Windows/macOS install, upgrade/failure rollback and uninstall
-      with candidate SHA and source/project preservation evidence.
-
-- [ ] Complete the latest-main CI and independent PR review. Rust/native checks are
-      unavailable because this environment has no Rust toolchain. Real people,
-      sustained 4K, physical display and Resolve/NLE behavior remain
-      candidate-bound workstation gates.
+The six PR heads are combined with ancestry preserved in the 0.4.0 release
+candidate. [Combined validation](docs/validation-stable-release.md) owns final
+full-suite, browser, interchange, native CI and merge/release evidence; feature
+validation records retain their original branch identities and historical runs.

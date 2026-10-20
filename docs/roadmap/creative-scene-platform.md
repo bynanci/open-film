@@ -1,87 +1,41 @@
 # Creative Scene Platform
 
-This roadmap adapts the product goals to the current `main` source tree. The
-checked-in `TASKS.md`, `ROADMAP.md`, README and architecture documents do not
-define an F01–F13 catalogue; the crosswalk below is a new planning aid, not a
-claim that these labels were previously accepted or completed. Status describes
-the behavior present in `main` at M7A integration base
-`bb2c4521ad894478893485119442a00ffd9b34cc`. M1–M6 and M7A are integrated; M7A
-merged through PR #34. M7B Export Formats remains an open candidate PR (#36)
-with unresolved code-review findings. M7D is the current independent candidate;
-its local evidence and workstation gates are recorded in
-`docs/validation-collect-media.md`.
-
-define an F01–F13 catalogue; the crosswalk below is a planning aid, not a claim
-that these labels were previously accepted or completed. M1–M6 are integrated
-on current `main`. M7A Named Versions merged as PR #34 at
-`bb2c4521ad894478893485119442a00ffd9b34cc`. M7B Export Profiles is in
-implementation on a separate branch and is independent of the still-open M8A
-PR #35. See the exact validation records for each milestone's evidence and
-remaining gates.
+This crosswalk describes the 0.4.0 integration source tree. M1–M6 and M7A were
+already integrated on base `bb2c4521ad894478893485119442a00ffd9b34cc`;
+reviewed PRs 35–40 now share one candidate with branch ancestry preserved.
+Synthetic correctness, hosted CI and workstation/distribution acceptance remain
+separate. [Release validation](../validation-stable-release.md) records exact
+original/remediation heads and final gates; no manual gate is silently completed.
 
 ## Capability gap crosswalk
 
-| ID  | Capability                                                    | Main status         | Evidence and gap                                                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F01 | Local-first foundations and declarative GraphicScene (M3/F01) | Complete            | M3 is merged. Strict versioned scenes, pure arbitrary-seek evaluation, shared Monitor/FFmpeg raster and existing history are in `docs/graphic-scenes.md`.                                                                                                                  |
-| F02 | Story-first creative templates on saved Composition           | Complete / M4       | Conversation, route and photo-relationship templates build editable GraphicScene v1 primitives; exact source identity stays in optional Composition metadata (`docs/creative-story-templates.md`). Merged in PR #29.                                                       |
-| F03 | Dynamic scene motion and reusable layer editing               | Complete / 5A       | Photo motion and GraphicScene enter/exit animation plus direct layer selection/transforms, snapping, guides, keyboard controls and lock-aware typed edits are integrated in PR #30.                                                                                        |
-| F04 | Native caption track and transcript provenance                | Implemented in M2   | Merged M2 adds stable versioned cues, Edit controls, transcript provenance and MP4 burn-in alongside existing SRT/WebVTT output.                                                                                                                                           |
-| F05 | Photo narrative and measured title workflows                  | Partial             | M4 adds editable photo relationships and explicit focus protection; broader measured framing, automatic narrative selection and private-film aesthetics remain open.                                                                                                       |
-| F06 | Music, narration and sound design                             | Partial / M6        | Overlay music/narration, fades, gain and manual ducking render; decoded mix review and production audio evidence remain queued for M6.                                                                                                                                     |
-| F07 | Saved-revision Visual QA and timestamped contact sheets       | Implemented in M1   | M1 adds a shared saved-revision QA report/contact sheet through Application, Desktop, API and CLI, with typed findings and Edit navigation. PR #27 is merged after exact-head media/native CI; M3 extends findings to graphic-only images/text.                            |
-| F08 | AI-assisted creative edits                                    | Partial / 5B        | Local speech recognition, optional text suggestions and bounded scene-direction commands exist. PR 5B adds selected-layer reviewable operations, ProviderRegistry/consent and deterministic local commands; provider generation is bounded and outside the mutation queue. |
-| F09 | Non-destructive edit safety and recovery                      | Complete foundation | Source-preserving edits, locks, serialized save contracts, autosave, bounded history, cancellation and reopen coverage are present.                                                                                                                                        |
-| F10 | FFmpeg output and verifiable provenance                       | Partial / M6        | Real MP4 rendering, source/font hashes, warnings, FFprobe and interchange evidence exist; M1 binds sampled-frame reports to a saved revision. Expanded output evidence is queued for M6. Hardware, 4K and real NLE finishing remain manual.                                |
-| F11 | Shared application logic across entry points                  | Complete foundation | Desktop and CLI use `@openfilm/application`; loopback HTTP adapts the same services. New QA behavior must remain behind that boundary.                                                                                                                                     |
-| F12 | Privacy, security, licensing and accessible localized UX      | Partial             | Apache-2.0/NOTICE, local-only sources, API guards, project-local caches, three locales and keyboard-tested Edit controls exist. QA images and reports still need explicit cache isolation, path-safe serving and localized keyboard navigation.                            |
-| F13 | Reproducible validation and real-world release evidence       | Partial             | Synthetic media, actual FFmpeg regressions and manual Resolve/workstation gates are documented. Hardware, private-film quality, camera, 4K and NLE sign-off cannot be inferred from fixture success.                                                                       |
+| ID  | Capability                                                    | 0.4.0 source status                 | Evidence and gap                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F01 | Local-first foundations and declarative GraphicScene (M3/F01) | Complete                            | M3 is merged. Strict versioned scenes, pure arbitrary-seek evaluation, shared Monitor/FFmpeg raster and existing history are in `docs/graphic-scenes.md`.                                                                                                                  |
+| F02 | Story-first creative templates on saved Composition           | Complete / M4                       | Conversation, route and photo-relationship templates build editable GraphicScene v1 primitives; exact source identity stays in optional Composition metadata (`docs/creative-story-templates.md`). Merged in PR #29.                                                       |
+| F03 | Dynamic scene motion and reusable layer editing               | Complete / 5A                       | Photo motion and GraphicScene enter/exit animation plus direct layer selection/transforms, snapping, guides, keyboard controls and lock-aware typed edits are integrated in PR #30.                                                                                        |
+| F04 | Native caption track and transcript provenance                | Implemented in M2                   | Merged M2 adds stable versioned cues, Edit controls, transcript provenance and MP4 burn-in alongside existing SRT/WebVTT output.                                                                                                                                           |
+| F05 | Photo narrative and measured title workflows                  | Partial                             | M4 adds editable photo relationships and explicit focus protection; broader measured framing, automatic narrative selection and private-film aesthetics remain open.                                                                                                       |
+| F06 | Music, narration and sound design                             | Implemented / M6 + M7B              | Existing curves/fades/ducking, decoded loudness/peak/true-peak, reviewable normalization/A-B and aligned role stems are present; hardware listening remains manual.                                                                                                        |
+| F07 | Saved-revision Visual QA and timestamped contact sheets       | Implemented in M1                   | M1 adds a shared saved-revision QA report/contact sheet through Application, Desktop, API and CLI, with typed findings and Edit navigation. PR #27 is merged after exact-head media/native CI; M3 extends findings to graphic-only images/text.                            |
+| F08 | AI-assisted creative edits                                    | Partial / 5B                        | Local speech recognition, optional text suggestions and bounded scene-direction commands exist. PR 5B adds selected-layer reviewable operations, ProviderRegistry/consent and deterministic local commands; provider generation is bounded and outside the mutation queue. |
+| F09 | Non-destructive edit safety and recovery                      | Complete foundation                 | Source-preserving edits, locks, serialized save contracts, autosave, bounded history, cancellation and reopen coverage are present.                                                                                                                                        |
+| F10 | FFmpeg output and verifiable provenance                       | Implemented; manual finishing gates | Actual MP4/PNG/WAV/stems, source/font hashes, profile receipts, NLE reports and portable packages are tested; physical4K/display/NLE certification remains open.                                                                                                           |
+| F11 | Shared application logic across entry points                  | Complete foundation                 | Desktop and CLI use `@openfilm/application`; loopback HTTP adapts the same services. New QA behavior must remain behind that boundary.                                                                                                                                     |
+| F12 | Privacy, security, licensing and accessible localized UX      | Implemented foundation              | Apache-2.0/NOTICE, explicit consent/rights, private bounded caches, safe paths, credential exclusion, three locales and keyboard controls; licensing/platform acceptance remains manual.                                                                                   |
+| F13 | Reproducible validation and real-world release evidence       | Partial                             | Synthetic media, actual FFmpeg regressions and manual Resolve/workstation gates are documented. Hardware, private-film quality, camera, 4K and NLE sign-off cannot be inferred from fixture success.                                                                       |
 
-## M7 delivery route
+## M7–M8 delivery route
 
-The M7 sequence packages project recovery and delivery capabilities as separate
-changes. Each item requires its own exact-base/head evidence; completing M7A
-does not complete the remaining M7 work.
-
-| PR  | Scope                      | Dependency and acceptance                                                                                                                                                                                                                                                     |
-| --- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 7A  | Named Versions (merged)    | Merged through PR #34. Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md). |
-| 7B  | Export Formats (candidate) | Open PR #36. Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent. Unresolved review findings remain.                                                                                    |
-| 7C  | NLE Fidelity (queued)      | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                                   |
-| 7D  | Collect Media (candidate)  | Current independent M7D work. Collect only referenced media/dependencies with rights, hashes, path safety, ZIP validation and relocation/reopen; exclude credentials/private paths. See [contract](../collect-media.md) and [validation](../validation-collect-media.md).     |
-| 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                                             |
-
-| PR  | Scope                        | Dependency and acceptance                                                                                                                                                                                                                                         |
-| --- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 7A  | Named Versions (candidate)   | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md).            |
-| 7B  | Export Formats (queued)      | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                                        |
-| 7C  | NLE Fidelity (queued)        | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                       |
-| 7D  | Collect Media (queued)       | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                           |
-| 7E  | Native Installer (candidate) | M7E adds verified runtime staging, private owned startup/shutdown and candidate packaging; distribution inputs and Windows/macOS workstation evidence remain pending. See [contract](../native-installer.md) and [validation](../validation-native-installer.md). |
-
-M8A selective 2.5D photo motion is a separate candidate stacked on M7A PR #34's
-exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`. It extends GraphicScene
-
-| PR  | Scope                         | Dependency and acceptance                                                                                                                                                                                                                                          |
-| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 7A  | Named Versions (merged #34)   | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md).             |
-| 7B  | Export Profiles (in progress) | Reuse Composition/render state; actual-frame preview, still PNG, aligned WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent. See [contract](../export-profiles.md) and [validation](../validation-export-profiles.md). |
-| 7C  | NLE Fidelity (queued)         | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                        |
-| 7D  | Collect Media (queued)        | Preview selected-use collection; package referenced media/dependencies with rights, hashes, controlled relative paths and SQLite-safe snapshots; verify archive safety, relocation, reopen, preview and real MP4 without original external URIs.                   |
-| 7E  | Native Installer (queued)     | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                                  |
-
-M8A selective 2.5D photo motion is a separate open PR #35 based on current
-`main` at `bb2c4521ad894478893485119442a00ffd9b34cc`. It extends GraphicScene
-with a local hash-bound alpha mask, optional background fill, bounded deterministic
-camera motion, explicit fallback and typed Visual QA/manual-review findings. It
-does not add another timeline or use remote image generation. The full automated
-matrix and decoded synthetic MP4 evidence passed; independent PR review and
-stacked CI are pending. Real-photo/4K/workstation gates remain separate. See
-
-latest-main CI are pending. One TypeScript/media check remains in progress.
-Real-photo/4K/workstation gates remain separate. See
-[`PhotoDepth validation`](../validation-photo-depth.md); M7A itself does not
-contain this feature.
+| Phase     | Integrated contract                                                                        | Acceptance boundary                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| M7A / #34 | Immutable named snapshots, explicit capacity deletion, ordered diffs, checkpointed restore | [Version validation](../validation-named-versions.md); source/lock/revision/reopen and actual MP4                                            |
+| M7B / #36 | Versioned output profiles, PNG, WAV/stems and three MP4 ratios                             | [Export validation](../validation-export-profiles.md); actual frames/audio/hash/crop-proof parity                                            |
+| M7C / #39 | Native/metadata/baked/unsupported handoff with explicit precomps/full mix                  | [NLE validation](../validation-nle-handoff.md); real Resolve/NLE acceptance remains manual                                                   |
+| M7D / #37 | Referenced media/fonts/rights, safe ZIP/directory and stable provenance                    | [Collect validation](../validation-collect-media.md); actual relocation/reopen/MP4, no credentials                                           |
+| M7E / #38 | Verified owned runtime and manual candidate packaging                                      | [Native validation](../validation-native-installer.md); **partial**, Windows/macOS installer/signing/update/rollback evidence still required |
+| M8A / #35 | Local protected photo layering and bounded declarative parallax/fallback                   | [PhotoDepth validation](../validation-photo-depth.md); deterministic seeks/source hashes/alpha/typed QA                                      |
+| M8B / #40 | Reviewed local fixture and explicit external video candidates on the same clock            | [Motion validation](../validation-motion-candidates.md); accept/replace/restore/expiry; remote motion disabled                               |
 
 ## Dependencies and PR route
 
@@ -220,19 +174,11 @@ Templates followed the M1 work; since then M2/F04, M3/F01, M4/F02 and M5/F03
 have been integrated, and PR #31 implements M5/F08 on the merged Layer Editor.
 This sequence does not silently add remote processing or automatic edits.
 
-## M8B candidate — local motion review
+## Integrated motion and native acceptance boundary
 
-M8B is separately stacked on M8A PR #35 exact head
-`e78c4e06da2eb908dc0cb4548718c83b7798a8f1`. It adds real local external-video
-candidates and deterministic camera fixtures to the existing Composition/Provider
-boundaries, with explicit human review/Accept/Replace/Restore. It does not enable
-remote image-to-video or claim that M6 tone/TTS performs video generation. See
-[motion validation](../validation-motion-candidates.md) for exact evidence and
-uncompleted CI/native/remote/manual gates. No independent mainline merge claim.
-
-## M7E base and acceptance boundary
-
-M7E uses main `bb2c4521ad894478893485119442a00ffd9b34cc` after M7A (#34).
-M7B (#36), M7D (#37) and M8A (#35) remain independent candidates with unresolved
-review findings. Runtime/process tests and installer workflow implementation do
-not satisfy their feature gates or clean Windows/macOS installer acceptance.
+M8B extends the same M8A/GraphicScene, Composition, typed-edit and consent
+contracts; local camera fixtures are explicitly not AI. Native tooling is a
+partial delivery slice with bundling disabled and no automatic-update feed.
+Actual Windows/macOS installer, human/detail/physical-display, downstream NLE,
+sustained 4K and remote-provider approval remain outside synthetic CI evidence.
+See [combined release validation](../validation-stable-release.md).

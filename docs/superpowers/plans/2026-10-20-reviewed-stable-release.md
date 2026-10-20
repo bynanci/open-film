@@ -1,8 +1,8 @@
 # Reviewed fixes and next stable release implementation plan
 
-**Goal:** Fix the six reproduced findings from the review audit, merge verified changes, and publish a truthful 0.4.0 source release.
-**Architecture:** Keep Composition, the project schema, SQLite storage, locks and editing history intact. Use the existing named-version service for explicit snapshot deletion, and the existing renderer for stem channel normalization. Main and the unmerged export feature have separate candidates.
-**Spec:** User-authorized remediation of PR34 review5579974422 and the confirmed review audit; user explicitly authorized merge and publication; later clarified all six PRs35–40 must be integrated and the version is the next stable patch, not necessarily1.0.0.
+**Goal:** Fix the confirmed findings from the review audit and fresh independent/GitHub reviews, merge verified changes, and publish a truthful 0.4.0 source release.
+**Architecture:** Keep Composition, the project schema, SQLite storage, locks and editing history intact. Use the existing named-version service for explicit snapshot deletion, and the existing renderer for stem channel normalization. Each feature retains its own reviewed candidate; one integration branch preserves all six PR heads and validates the combined result.
+**Spec:** User-authorized remediation of PR34 review5579974422 and the confirmed review audit; user explicitly authorized merge and publication; later clarified all six PRs35–40 must be integrated and the version is the next stable version, not necessarily1.0.0.
 **Tools:** Vue3, TypeScript, SQLite, FFmpeg, Vitest, Playwright, pnpm11/Node24.
 
 ## Scope and invariants
