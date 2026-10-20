@@ -1,5 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { validateMediaAsset, type Job, type MediaAsset } from "@openfilm/core";
 import {
@@ -58,13 +67,10 @@ export interface CatalogRelinkChange {
 
 export const CATALOG_SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024;
 
-type SnapshotDatabase = DatabaseSync & {
-  serialize(): Uint8Array;
-  deserialize(image: Uint8Array): void;
-};
-
-function snapshotDatabase(database: DatabaseSync): SnapshotDatabase {
-  return database as SnapshotDatabase;
+export interface CatalogSnapshotInspection {
+  schemaVersion: number;
+  logicalRevision: string;
+  assets: MediaAsset[];
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
@@ -75,28 +81,107 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-function validateSerializedCatalog(
+function withSnapshotDatabase<T>(
+  image: Uint8Array,
+  read: (database: DatabaseSync) => T,
+): T {
+  if (image.length === 0 || image.length > CATALOG_SNAPSHOT_MAX_BYTES)
+    throw new Error("Catalog snapshot exceeds its size limit.");
+  const directory = mkdtempSync(join(tmpdir(), "openfilm-catalog-snapshot-"));
+  const path = join(directory, "database.sqlite");
+  let copy: DatabaseSync | undefined;
+  try {
+    writeFileSync(path, image, { flag: "wx", mode: 0o600 });
+    copy = new DatabaseSync(path);
+    return read(copy);
+  } finally {
+    try {
+      copy?.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+
+function validateCatalogDatabase(
+  database: DatabaseSync,
+  expectedSchemaVersion: number,
+): void {
+  const integrity = database.prepare("PRAGMA integrity_check").all();
+  if (
+    integrity.length !== 1 ||
+    integrity[0]?.integrity_check !== "ok" ||
+    Number(database.prepare("PRAGMA user_version").get()?.user_version ?? 0) !==
+      expectedSchemaVersion
+  )
+    throw new Error("Catalog snapshot failed its integrity or schema check.");
+  if (database.prepare("PRAGMA foreign_key_check").all().length)
+    throw new Error("Catalog snapshot has invalid foreign-key references.");
+}
+
+function logicalCatalogRevision(database: DatabaseSync): string {
+  const schema = database
+    .prepare(
+      "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
+    )
+    .all();
+  const tables = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
+    .all()
+    .map((row) => String(row.name));
+  const rows = tables.map((table) => {
+    const quoted = `"${table.replaceAll('"', '""')}"`;
+    return [
+      table,
+      database
+        .prepare(`SELECT * FROM ${quoted}`)
+        .all()
+        .map((row) => JSON.stringify(row))
+        .sort(),
+    ];
+  });
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        schema,
+        rows,
+        version: database.prepare("PRAGMA user_version").get(),
+      }),
+    )
+    .digest("hex");
+}
+
+/** Read a saved image through a private file-backed SQLite connection. */
+export function inspectCatalogSnapshot(
+  image: Uint8Array,
+  expectedSchemaVersion: number,
+): CatalogSnapshotInspection {
+  return withSnapshotDatabase(image, (database) => {
+    validateCatalogDatabase(database, expectedSchemaVersion);
+    const schemaVersion = Number(
+      database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+    );
+    const assets = database
+      .prepare("SELECT data FROM assets ORDER BY id")
+      .all()
+      .map((row) => JSON.parse(String(row.data)) as MediaAsset);
+    return {
+      schemaVersion,
+      logicalRevision: logicalCatalogRevision(database),
+      assets,
+    };
+  });
+}
+
+function validateCatalogImage(
   image: Buffer,
   expectedSchemaVersion: number,
 ): void {
-  if (image.length === 0 || image.length > CATALOG_SNAPSHOT_MAX_BYTES)
-    throw new Error("Catalog snapshot exceeds its size limit.");
-  const copy = new DatabaseSync(":memory:");
-  try {
-    snapshotDatabase(copy).deserialize(image);
-    const integrity = copy.prepare("PRAGMA integrity_check").all();
-    if (
-      integrity.length !== 1 ||
-      integrity[0]?.integrity_check !== "ok" ||
-      Number(copy.prepare("PRAGMA user_version").get()?.user_version ?? 0) !==
-        expectedSchemaVersion
-    )
-      throw new Error("Catalog snapshot failed its integrity or schema check.");
-    if (copy.prepare("PRAGMA foreign_key_check").all().length)
-      throw new Error("Catalog snapshot has invalid foreign-key references.");
-  } finally {
-    copy.close();
-  }
+  withSnapshotDatabase(image, (database) =>
+    validateCatalogDatabase(database, expectedSchemaVersion),
+  );
 }
 
 function relinkError(
@@ -298,11 +383,10 @@ export class ProjectCatalog {
 
   /**
    * Capture the saved catalog while blocking project readers and writers.
-   * `serialize()` does not incorporate an on-disk WAL, so this switches to
-   * rollback-journal mode first, which checkpoints committed WAL pages, and
-   * then serializes under an exclusive transaction. The callback must be
-   * synchronous and may only read this catalog; publish the result only after
-   * this method returns successfully.
+   * Switching out of WAL checkpoints committed pages into the main file; an
+   * exclusive transaction then keeps that file stable while it is copied.
+   * The callback must be synchronous and may only read this catalog; publish
+   * the result only after this method returns successfully.
    */
   withConsistentSnapshot<T>(
     capture: (image: Buffer, schemaVersion: number) => T,
@@ -353,8 +437,16 @@ export class ProjectCatalog {
       );
       if (schemaVersion !== CATALOG_SCHEMA_VERSION)
         throw new Error("Catalog schema changed before snapshot capture.");
-      const image = Buffer.from(snapshotDatabase(this.database).serialize());
-      validateSerializedCatalog(image, schemaVersion);
+      const info = lstatSync(this.databasePath);
+      if (
+        info.isSymbolicLink() ||
+        !info.isFile() ||
+        info.size <= 0 ||
+        info.size > CATALOG_SNAPSHOT_MAX_BYTES
+      )
+        throw new Error("Catalog snapshot exceeds its size limit.");
+      const image = readFileSync(this.databasePath);
+      validateCatalogImage(image, schemaVersion);
       const captured = capture(Buffer.from(image), schemaVersion);
       if (isPromiseLike(captured))
         throw new Error("Catalog snapshot callback must be synchronous.");
@@ -379,6 +471,7 @@ export class ProjectCatalog {
   restoreFromSnapshot(
     snapshotPath: string,
     publishManifest?: () => void,
+    assertCurrent?: () => void,
   ): void {
     if (this.database.isTransaction)
       throw new Error("Cannot restore a nested catalog snapshot.");
@@ -393,7 +486,7 @@ export class ProjectCatalog {
     )
       throw new Error("Catalog snapshot exceeds its size limit.");
     const image = readFileSync(snapshotPath);
-    validateSerializedCatalog(image, CATALOG_SCHEMA_VERSION);
+    validateCatalogImage(image, CATALOG_SCHEMA_VERSION);
 
     const previousMode = String(
       this.database.prepare("PRAGMA journal_mode").get()?.journal_mode ?? "",
@@ -464,6 +557,12 @@ export class ProjectCatalog {
       )
         throw new Error("Catalog snapshot schema does not match this project.");
 
+      if (assertCurrent) {
+        const result = (assertCurrent as () => unknown)();
+        if (isPromiseLike(result))
+          throw new Error("Restore baseline validation must be synchronous.");
+      }
+
       const tables = this.database
         .prepare(
           "SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -513,6 +612,11 @@ export class ProjectCatalog {
       throw error;
     }
     cleanup();
+  }
+
+  /** Logical row revision is stable across WAL/rollback journal header changes. */
+  logicalRevision(): string {
+    return logicalCatalogRevision(this.database);
   }
 
   /** Serialize manifest baseline checks and publication with all catalog writers.

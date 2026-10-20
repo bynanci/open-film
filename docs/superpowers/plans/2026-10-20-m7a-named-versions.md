@@ -27,18 +27,20 @@ as part of this change.
   hashes without absolute source paths, credentials or cache paths. Diff is
   deterministic and groups Story beats, Composition/tracks/clips, captions,
   GraphicScenes/templates, audio and referenced source identities.
-- Establish one snapshot boundary under the SQLite project writer guard. The
-  implementation will prove the `node:sqlite` serialized image path with WAL
-  data and competing-process tests: transition to rollback-journal mode to
-  checkpoint WAL, acquire an exclusive transaction, read the saved manifest and
-  serialize the same catalog state, then restore WAL mode. Refuse rather than
-  publish if a writer/read lock, active import/render/job, stale project owner,
-  schema check, size bound or source identity check cannot be satisfied. Stage
-  files privately, fsync where supported, validate hashes/integrity, then
+- Establish one snapshot boundary under the SQLite project writer guard.
+  Transition to rollback-journal mode to checkpoint WAL, acquire an exclusive
+  transaction, and copy the main database file with the saved manifest; then
+  restore WAL mode. Use private file-backed SQLite connections so the supported
+  Node 24.14 runtime does not depend on newer serialization APIs. Refuse rather
+  than publish if a writer/read lock, active import/render/job, stale project
+  owner, schema check, size bound or source identity check cannot be satisfied.
+  Stage files privately, fsync where supported, validate hashes/integrity, then
   atomically publish the complete version directory. No direct Vue file access.
 - Restore uses an explicit base project revision, an explicit confirmation and
   a fresh current-state checkpoint before touching the project. Validate the
-  selected version, catalog, sources and current revision first. Apply catalog
+  selected version, catalog, sources and current revision first, then recheck
+  the revision inside the exclusive restore transaction before any rows change.
+  Apply catalog
   rows in-place inside an exclusive SQLite transaction so live catalog adapters
   remain valid; publish `project.json` with a durable restore journal. On error
   roll back the database and manifest; on process restart recover the journal

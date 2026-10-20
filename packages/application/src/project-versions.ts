@@ -13,9 +13,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { lstat } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { platform } from "node:os";
-import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import {
   ApplicationError,
   PROJECT_VERSION_LIMITS,
@@ -30,9 +30,14 @@ import {
   type ProjectVersionRecord,
   type ProjectVersionSourceReference,
 } from "@openfilm/core";
-import { CATALOG_SNAPSHOT_MAX_BYTES } from "@openfilm/catalog";
-import { hashFile, localPath } from "@openfilm/media";
-import { isInside } from "./path-safety.js";
+import {
+  CATALOG_SCHEMA_VERSION,
+  CATALOG_SNAPSHOT_MAX_BYTES,
+  inspectCatalogSnapshot,
+} from "@openfilm/catalog";
+import { hashFile, localPath, referenceFor } from "@openfilm/media";
+import { managedSourceUri } from "./path-safety.js";
+import { portableCacheUri } from "./portable-cache.js";
 import { savedScriptProjectIdentity } from "./scene-script-review.js";
 import type { OpenFilmApplication } from "./index.js";
 
@@ -41,14 +46,6 @@ const MAX_PROJECT_BYTES = 16 * 1024 * 1024;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA_PATTERN = /^[a-f0-9]{64}$/u;
-
-type SnapshotDatabase = DatabaseSync & {
-  deserialize(image: Uint8Array): void;
-};
-
-function snapshotDatabase(database: DatabaseSync): SnapshotDatabase {
-  return database as SnapshotDatabase;
-}
 
 export class ProjectVersionError extends ApplicationError {
   override name = "ProjectVersionError";
@@ -317,11 +314,18 @@ function syncDirectory(path: string): void {
   }
 }
 
-function atomicJson(path: string, value: unknown): void {
+function atomicJson(
+  path: string,
+  value: unknown,
+  beforePublish?: () => void,
+  published?: () => void,
+): void {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     writeFileDurably(temporary, `${JSON.stringify(value, null, 2)}\n`);
+    beforePublish?.();
     renameSync(temporary, path);
+    published?.();
     syncDirectory(dirname(path));
   } catch (error) {
     if (existsSync(temporary)) rmSync(temporary, { force: true });
@@ -352,100 +356,29 @@ function referencedAssetIds(project: OpenFilmProject): Set<string> {
 }
 
 function snapshotAssets(image: Buffer): Map<string, MediaAsset> {
-  const database = new DatabaseSync(":memory:");
-  try {
-    snapshotDatabase(database).deserialize(image);
-    const rows = database
-      .prepare("SELECT id,data FROM assets ORDER BY id")
-      .all();
-    return new Map(
-      rows.map((row) => [
-        String(row.id),
-        JSON.parse(String(row.data)) as MediaAsset,
-      ]),
-    );
-  } finally {
-    database.close();
-  }
+  return new Map(
+    inspectCatalogSnapshot(image, CATALOG_SCHEMA_VERSION).assets.map(
+      (asset) => [asset.id, asset],
+    ),
+  );
 }
 
 function validateCatalogImage(
   image: Buffer,
   expectedSchemaVersion: number,
 ): void {
-  const database = new DatabaseSync(":memory:");
   try {
-    snapshotDatabase(database).deserialize(image);
-    if (
-      database.prepare("PRAGMA integrity_check").get()?.integrity_check !==
-        "ok" ||
-      database.prepare("PRAGMA foreign_key_check").all().length ||
-      Number(database.prepare("PRAGMA user_version").get()?.user_version) !==
-        expectedSchemaVersion
-    )
-      fail(
-        "request.invalid",
-        "The named version catalog failed integrity validation.",
-      );
-  } finally {
-    database.close();
-  }
-}
-
-/** Hash logical catalog rows because SQLite's journal-mode header changes on each WAL snapshot. */
-function logicalCatalogRevision(image: Buffer): string {
-  const database = new DatabaseSync(":memory:");
-  try {
-    snapshotDatabase(database).deserialize(image);
-    const schema = database
-      .prepare(
-        "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
-      )
-      .all();
-    const tables = database
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-      )
-      .all()
-      .map((row) => String(row.name));
-    const rows = tables.map((table) => {
-      const quoted = `"${table.replaceAll('"', '""')}"`;
-      return [
-        table,
-        database
-          .prepare(`SELECT * FROM ${quoted}`)
-          .all()
-          .map((row) => JSON.stringify(row))
-          .sort(),
-      ];
-    });
-    return digest(
-      JSON.stringify({
-        schema,
-        rows,
-        version: database.prepare("PRAGMA user_version").get(),
-      }),
+    inspectCatalogSnapshot(image, expectedSchemaVersion);
+  } catch {
+    fail(
+      "request.invalid",
+      "The named version catalog failed integrity validation.",
     );
-  } finally {
-    database.close();
   }
 }
 
 function managedSource(projectDirectory: string, asset: MediaAsset): boolean {
-  const managed = asset.metadata["openfilm.managedSource"] as
-    { relativePath?: unknown; uri?: unknown } | undefined;
-  if (
-    typeof managed?.relativePath !== "string" ||
-    managed.uri !== asset.uri ||
-    !managed.relativePath.startsWith("sources/") ||
-    managed.relativePath.includes("\\")
-  )
-    return false;
-  const path = resolve(projectDirectory, managed.relativePath);
-  return (
-    isInside(join(projectDirectory, "sources"), path) &&
-    path !== join(projectDirectory, "sources")
-  );
+  return managedSourceUri(projectDirectory, asset) !== undefined;
 }
 
 async function sourceReference(
@@ -532,6 +465,20 @@ function clipMap(project: OpenFilmProject) {
       for (const clip of track.clips)
         clips.set(`${composition.id}\u0000${clip.id}`, clip);
   return clips;
+}
+
+function canonicalJson(value: unknown): string {
+  const canonical = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(canonical);
+    if (item && typeof item === "object")
+      return Object.fromEntries(
+        Object.entries(item)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, child]) => [key, canonical(child)]),
+      );
+    return item;
+  };
+  return JSON.stringify(canonical(value));
 }
 
 /** Project-owned, bounded, path-private durable snapshots shared by every UI adapter. */
@@ -626,7 +573,10 @@ export class ProjectVersionService {
         );
       const projectHash = digest(manifest);
       const catalogHash = digest(catalog);
-      const catalogRevision = logicalCatalogRevision(catalog);
+      const catalogRevision = inspectCatalogSnapshot(
+        catalog,
+        schemaVersion,
+      ).logicalRevision;
       return {
         manifest,
         catalog,
@@ -775,6 +725,61 @@ export class ProjectVersionService {
       project,
       directory,
     };
+  }
+
+  private rebaseTarget(target: LoadedVersion): {
+    project: OpenFilmProject;
+    assets: Map<string, MediaAsset>;
+    changedAssets: MediaAsset[];
+  } {
+    const assets = snapshotAssets(target.catalog);
+    const changedAssets: MediaAsset[] = [];
+    const libraryIds = new Set<string>();
+    const managedRoot = join(this.app.directory, "sources");
+    const rootUri = pathToFileURL(managedRoot).href;
+    for (const [id, asset] of assets) {
+      const uri = managedSourceUri(this.app.directory, asset);
+      if (!uri || uri === asset.uri) continue;
+      const managed = asset.metadata["openfilm.managedSource"] as Record<
+        string,
+        unknown
+      >;
+      const reference = referenceFor(asset, target.project.mediaLibraries);
+      const relativePath = relative(managedRoot, localPath(uri))
+        .split(sep)
+        .join("/");
+      libraryIds.add(reference.mediaLibraryId);
+      const thumbnailUri =
+        asset.thumbnailUri &&
+        portableCacheUri(asset, asset.thumbnailUri, "thumbnails");
+      const proxyUri =
+        asset.proxyUri && portableCacheUri(asset, asset.proxyUri, "proxies");
+      const rebased: MediaAsset = {
+        ...asset,
+        uri,
+        metadata: {
+          ...asset.metadata,
+          "openfilm.managedSource": { ...managed, uri },
+          "openfilm.reference": { ...reference, rootUri, relativePath },
+        },
+        ...(thumbnailUri ? { thumbnailUri } : {}),
+        ...(proxyUri ? { proxyUri } : {}),
+      };
+      assets.set(id, rebased);
+      changedAssets.push(rebased);
+    }
+    const project =
+      libraryIds.size === 0
+        ? target.project
+        : {
+            ...target.project,
+            mediaLibraries: target.project.mediaLibraries.map((library) =>
+              libraryIds.has(library.id)
+                ? { ...library, uri: rootUri }
+                : library,
+            ),
+          };
+    return { project, assets, changedAssets };
   }
 
   private async referencesFor(
@@ -1075,15 +1080,9 @@ export class ProjectVersionService {
       const index = this.readIndex();
       const entry = index.entries.find((item) => item.id === versionId);
       if (!entry) fail("request.notFound", "Named version was not found.", 404);
-      const { description: _previousDescription, ...withoutDescription } =
-        entry;
-      updated = {
-        ...withoutDescription,
-        name,
-        ...(description === undefined || description === null
-          ? {}
-          : { description }),
-      };
+      updated = { ...entry, name };
+      if (description === null) delete updated.description;
+      else if (description !== undefined) updated.description = description;
       const entries = index.entries.map((item) =>
         item.id === versionId ? updated! : item,
       );
@@ -1095,24 +1094,29 @@ export class ProjectVersionService {
   private async assertNoLockConflicts(
     current: OpenFilmProject,
     target: LoadedVersion,
+    targetAssets: Map<string, MediaAsset>,
   ): Promise<void> {
-    const currentAssets = [...this.app.catalog.iterateAssetSummaries()]
-      .filter((asset) => asset.state.locked)
-      .map((asset) => this.app.catalog.getAsset(asset.id)!)
-      .filter(Boolean);
-    const targetAssets = snapshotAssets(target.catalog);
-    for (const asset of currentAssets) {
-      const currentAsset = this.app.catalog.getAsset(asset.id)!;
-      if (!currentAsset.state.locked) continue;
-      const targetAsset = targetAssets.get(asset.id);
+    const currentLockedIds = new Set(
+      [...this.app.catalog.iterateAssetSummaries()]
+        .filter((asset) => asset.state.locked)
+        .map((asset) => asset.id),
+    );
+    const protectedIds = new Set(currentLockedIds);
+    for (const [id, asset] of targetAssets)
+      if (asset.state.locked) protectedIds.add(id);
+    for (const id of protectedIds) {
+      const currentAsset = this.app.catalog.getAsset(id);
+      const targetAsset = targetAssets.get(id);
       if (
+        !currentAsset ||
         !targetAsset ||
-        targetAsset.mediaType !== currentAsset.mediaType ||
-        !targetAsset.state.locked
+        !currentLockedIds.has(id) ||
+        !targetAsset.state.locked ||
+        canonicalJson(currentAsset) !== canonicalJson(targetAsset)
       )
         fail(
           "timeline.conflict",
-          `Restore would remove or change locked source ${asset.id}. Unlock it before restoring this version.`,
+          `Restore would remove or change locked source ${id}. Unlock it before restoring this version.`,
           409,
         );
       const [currentIdentity, targetIdentity] = await Promise.all([
@@ -1125,7 +1129,7 @@ export class ProjectVersionService {
       )
         fail(
           "timeline.conflict",
-          `Restore would change locked source ${asset.id}. Unlock it before restoring this version.`,
+          `Restore would change locked source ${id}. Unlock it before restoring this version.`,
           409,
         );
     }
@@ -1133,7 +1137,7 @@ export class ProjectVersionService {
     const targetClips = clipMap(target.project);
     for (const [key, clip] of currentClips) {
       if (!(clip as { locked?: boolean }).locked) continue;
-      if (JSON.stringify(clip) !== JSON.stringify(targetClips.get(key)))
+      if (canonicalJson(clip) !== canonicalJson(targetClips.get(key)))
         fail(
           "timeline.conflict",
           "Restore would change or remove a locked clip. Unlock it before restoring this version.",
@@ -1142,8 +1146,10 @@ export class ProjectVersionService {
     }
   }
 
-  private async verifySources(version: LoadedVersion): Promise<void> {
-    const assets = snapshotAssets(version.catalog);
+  private async verifySources(
+    version: LoadedVersion,
+    assets: Map<string, MediaAsset>,
+  ): Promise<void> {
     for (const source of version.record.sourceReferences) {
       const asset = assets.get(source.assetId);
       if (!asset || asset.mediaType !== source.mediaType)
@@ -1162,6 +1168,58 @@ export class ProjectVersionService {
           `Source ${source.assetId} is missing or changed. Relink the original media before restoring this version.`,
           409,
         );
+    }
+  }
+
+  private readSavedProject(): OpenFilmProject | undefined {
+    try {
+      const path = join(this.app.directory, "project.json");
+      const info = lstatSync(path);
+      if (
+        info.isSymbolicLink() ||
+        !info.isFile() ||
+        info.size > MAX_PROJECT_BYTES
+      )
+        return undefined;
+      const project = validateProject(
+        migrateProject(JSON.parse(readFileSync(path, "utf8"))),
+      );
+      return project.id === this.app.project.id ? project : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private assertRestoreBaseline(before: Snapshot, conflict: () => void): void {
+    const project = this.readSavedProject();
+    if (
+      !project ||
+      digest(
+        `${savedScriptProjectIdentity(project)}:${this.app.catalog.logicalRevision()}`,
+      ) !== before.revision
+    ) {
+      conflict();
+      fail(
+        "story.planConflict",
+        "The project changed while the restore was being checked. Refresh and retry.",
+        409,
+      );
+    }
+  }
+
+  private assertRestoreManifest(before: Snapshot, conflict: () => void): void {
+    const project = this.readSavedProject();
+    if (
+      !project ||
+      savedScriptProjectIdentity(project) !==
+        savedScriptProjectIdentity(before.project)
+    ) {
+      conflict();
+      fail(
+        "story.planConflict",
+        "The saved project changed before restore publication. Refresh and retry.",
+        409,
+      );
     }
   }
 
@@ -1212,8 +1270,13 @@ export class ProjectVersionService {
         409,
       );
     const target = this.load(versionId);
-    await this.verifySources(target);
-    await this.assertNoLockConflicts(before.project, target);
+    const rebasedTarget = this.rebaseTarget(target);
+    await this.verifySources(target, rebasedTarget.assets);
+    await this.assertNoLockConflicts(
+      before.project,
+      target,
+      rebasedTarget.assets,
+    );
     if (this.currentRevision() !== before.revision)
       fail(
         "story.planConflict",
@@ -1247,16 +1310,30 @@ export class ProjectVersionService {
       fingerprint,
       stage: "applying",
     });
+    let staleDuringRestore = false;
+    let restoreManifestPublished = false;
+    const markStale = () => {
+      staleDuringRestore = true;
+    };
     try {
       this.app.catalog.restoreFromSnapshot(
         join(target.directory, "database.sqlite"),
-        () =>
+        () => {
+          this.assertRestoreManifest(before, markStale);
+          for (const asset of rebasedTarget.changedAssets)
+            this.app.catalog.upsertAsset(asset);
           atomicJson(
             join(this.app.directory, "project.json"),
-            JSON.parse(target.manifest.toString("utf8")),
-          ),
+            rebasedTarget.project,
+            () => this.assertRestoreManifest(before, markStale),
+            () => {
+              restoreManifestPublished = true;
+            },
+          );
+        },
+        () => this.assertRestoreBaseline(before, markStale),
       );
-      this.app.acceptRestoredProject(target.project);
+      this.app.acceptRestoredProject(rebasedTarget.project);
       this.app.catalog.withProjectWrite(() => {
         const index = this.readIndex();
         const existing = this.assertReceipt(
@@ -1284,6 +1361,10 @@ export class ProjectVersionService {
         checkpointVersionId: checkpointId,
       };
     } catch (error) {
+      if (staleDuringRestore || !restoreManifestPublished) {
+        this.removeJournal();
+        throw error;
+      }
       try {
         this.recoverInterruptedRestore();
       } catch (recoveryError) {

@@ -107,7 +107,7 @@ import {
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
 import { ProjectVersionService } from "./project-versions.js";
-import { isInside } from "./path-safety.js";
+import { isInside, managedSourceUri } from "./path-safety.js";
 import {
   MediaIntelligence,
   type IntelligenceOptions,
@@ -259,26 +259,6 @@ function atomicJsonSync(path: string, value: unknown): void {
     closeSync(fd);
   }
   renameSync(temporary, path);
-}
-
-function managedSourceUri(
-  directory: string,
-  asset: MediaAsset,
-): string | undefined {
-  const managed = asset.metadata["openfilm.managedSource"] as
-    { relativePath?: unknown; uri?: unknown } | undefined;
-  if (
-    typeof managed?.relativePath !== "string" ||
-    managed.uri !== asset.uri ||
-    !managed.relativePath.startsWith("sources/") ||
-    managed.relativePath.includes("\\")
-  )
-    return undefined;
-  const root = join(directory, "sources");
-  const path = resolve(directory, managed.relativePath);
-  return isInside(root, path) && path !== root
-    ? pathToFileURL(path).href
-    : undefined;
 }
 
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */

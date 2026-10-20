@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { ProjectCatalog } from "../src/index.js";
+import { inspectCatalogSnapshot, ProjectCatalog } from "../src/index.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 describe("consistent project catalog snapshots", () => {
-  it("serializes committed WAL rows under an exclusive snapshot boundary", async () => {
+  it("copies committed WAL rows under an exclusive snapshot boundary", async () => {
     const directory = await mkdtemp(
       join(tmpdir(), "openfilm-catalog-snapshot-"),
     );
@@ -29,20 +29,9 @@ describe("consistent project catalog snapshots", () => {
       metadata: {},
     });
     const result = catalog.withConsistentSnapshot((image, schemaVersion) => {
-      const copy = new DatabaseSync(":memory:");
-      try {
-        (
-          copy as DatabaseSync & { deserialize(value: Uint8Array): void }
-        ).deserialize(image);
-        expect(copy.prepare("SELECT id FROM assets").all()).toEqual([
-          { id: "asset-one" },
-        ]);
-        expect(
-          copy.prepare("PRAGMA integrity_check").get()?.integrity_check,
-        ).toBe("ok");
-      } finally {
-        copy.close();
-      }
+      const snapshot = inspectCatalogSnapshot(image, schemaVersion);
+      expect(snapshot.assets.map((asset) => asset.id)).toEqual(["asset-one"]);
+      expect(snapshot.logicalRevision).toMatch(/^[a-f0-9]{64}$/u);
       return { bytes: image.length, schemaVersion };
     });
     expect(result.bytes).toBeGreaterThan(0);

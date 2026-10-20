@@ -2,10 +2,12 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -453,6 +455,7 @@ describe("named project versions", () => {
     const firstRevision = app.versions.currentRevision();
     const first = await app.versions.create({
       name: "Opening",
+      description: "Keep this note when renaming.",
       baseRevision: firstRevision,
       requestId: "10000000-0000-4000-8000-000000000001",
     });
@@ -463,6 +466,7 @@ describe("named project versions", () => {
     expect(
       await app.versions.create({
         name: "Opening",
+        description: "Keep this note when renaming.",
         baseRevision: firstRevision,
         requestId: "10000000-0000-4000-8000-000000000001",
       }),
@@ -491,6 +495,14 @@ describe("named project versions", () => {
       ),
     ).toBe(immutableRecord);
     expect(app.versions.list()[0]?.name).toBe("Opening · approved");
+    expect(app.versions.list()[0]?.description).toBe(
+      "Keep this note when renaming.",
+    );
+    app.versions.rename(first.id, {
+      name: "Opening · cleared",
+      description: null,
+    });
+    expect(app.versions.list()[0]?.description).toBeUndefined();
     app.close();
     app = await OpenFilmApplication.open(directory);
     const restoreRequest = {
@@ -652,6 +664,197 @@ describe("named project versions", () => {
       }),
     ).rejects.toMatchObject({ status: 409, code: "timeline.conflict" });
     expect(app.versions.list()).toHaveLength(1);
+  });
+
+  it("refuses to restore any changed fields on an asset locked in both versions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-locked-edit-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const source = join(root, "locked-source.png");
+    await writeFile(source, Buffer.from("unchanged locked synthetic source"));
+    const app = await OpenFilmApplication.create(
+      directory,
+      "Locked asset film",
+    );
+    cleanup.push(() => {
+      try {
+        app.close();
+      } catch {
+        // The test may already have closed the app.
+      }
+    });
+    app.catalog.upsertAsset({
+      id: "locked-source",
+      uri: pathToFileURL(source).href,
+      name: "Locked source",
+      mediaType: "image",
+      contentHash: await hashFile(source),
+      tags: ["before"],
+      state: { locked: true },
+      metadata: {},
+    });
+    app.project.stories.push({
+      id: "story",
+      title: "Story",
+      beats: [
+        { id: "beat", title: "Beat", candidateAssetIds: ["locked-source"] },
+      ],
+    });
+    await app.save();
+    const version = await app.versions.create({
+      name: "Locked asset checkpoint",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "31000000-0000-4000-8000-000000000001",
+    });
+    app.catalog.updateAsset("locked-source", { tags: ["after"] });
+
+    await expect(
+      app.versions.restore(version.id, {
+        baseRevision: app.versions.currentRevision(),
+        confirmed: true,
+        requestId: "31000000-0000-4000-8000-000000000002",
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "timeline.conflict" });
+    expect(app.catalog.getAsset("locked-source")?.tags).toEqual(["after"]);
+  });
+
+  it("keeps an external manifest edit made after restore preflight instead of overwriting it", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-restore-race-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Original title");
+    cleanup.push(() => {
+      try {
+        app.close();
+      } catch {
+        // The test may already have closed the app.
+      }
+    });
+    const version = await app.versions.create({
+      name: "Original title",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "32000000-0000-4000-8000-000000000001",
+    });
+    app.project.title = "Current title";
+    await app.save();
+    const currentRevision = app.versions.currentRevision();
+    const originalRestore = app.catalog.restoreFromSnapshot.bind(app.catalog);
+    vi.spyOn(app.catalog, "restoreFromSnapshot").mockImplementation(
+      (path, publishManifest, assertCurrent) => {
+        const external = JSON.parse(
+          readFileSync(join(directory, "project.json"), "utf8"),
+        ) as { title: string };
+        external.title = "External edit after preflight";
+        writeFileSync(
+          join(directory, "project.json"),
+          `${JSON.stringify(external, null, 2)}\n`,
+        );
+        originalRestore(path, publishManifest, assertCurrent);
+      },
+    );
+
+    await expect(
+      app.versions.restore(version.id, {
+        baseRevision: currentRevision,
+        confirmed: true,
+        requestId: "32000000-0000-4000-8000-000000000002",
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "story.planConflict" });
+    expect(
+      JSON.parse(readFileSync(join(directory, "project.json"), "utf8")).title,
+    ).toBe("External edit after preflight");
+  });
+
+  it("rebases managed sources when restoring a version after moving the project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-relocation-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const originalDirectory = join(root, "original.openfilm");
+    const movedDirectory = join(root, "moved.openfilm");
+    const relativePath = "sources/synthetic.png";
+    const originalSource = join(originalDirectory, relativePath);
+    const sourceBytes = Buffer.from("synthetic managed image bytes");
+    let app = await OpenFilmApplication.create(
+      originalDirectory,
+      "Managed relocation film",
+    );
+    cleanup.push(() => {
+      try {
+        app.close();
+      } catch {
+        // The test closes and reopens the project across the relocation.
+      }
+    });
+    await mkdir(join(originalDirectory, "sources"), { recursive: true });
+    await writeFile(originalSource, sourceBytes);
+    const originalRootUri = pathToFileURL(
+      join(originalDirectory, "sources"),
+    ).href;
+    const originalSourceUri = pathToFileURL(originalSource).href;
+    app.project.mediaLibraries.push({
+      id: "managed-library",
+      name: "Managed sources",
+      uri: originalRootUri,
+    });
+    app.catalog.upsertAsset({
+      id: "managed-source",
+      name: "Synthetic managed image",
+      uri: originalSourceUri,
+      mediaType: "image",
+      contentHash: await hashFile(originalSource),
+      tags: [],
+      state: {},
+      metadata: {
+        "openfilm.managedSource": {
+          relativePath,
+          uri: originalSourceUri,
+        },
+        "openfilm.reference": {
+          mediaLibraryId: "managed-library",
+          rootUri: originalRootUri,
+          relativePath: "synthetic.png",
+          originalUri: originalSourceUri,
+        },
+      },
+    });
+    app.project.stories.push({
+      id: "story",
+      title: "Story",
+      beats: [
+        { id: "beat", title: "Beat", candidateAssetIds: ["managed-source"] },
+      ],
+    });
+    await app.save();
+    const version = await app.versions.create({
+      name: "Before move",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "33000000-0000-4000-8000-000000000001",
+    });
+    app.close({ requireSave: true });
+    await rename(originalDirectory, movedDirectory);
+    app = await OpenFilmApplication.open(movedDirectory);
+
+    await app.versions.restore(version.id, {
+      baseRevision: app.versions.currentRevision(),
+      confirmed: true,
+      requestId: "33000000-0000-4000-8000-000000000002",
+    });
+    const movedSourceUri = pathToFileURL(
+      join(movedDirectory, relativePath),
+    ).href;
+    expect(app.catalog.getAsset("managed-source")?.uri).toBe(movedSourceUri);
+    expect(
+      app.catalog.getAsset("managed-source")?.metadata[
+        "openfilm.managedSource"
+      ],
+    ).toMatchObject({ relativePath, uri: movedSourceUri });
+    expect(app.project.mediaLibraries[0]?.uri).toBe(
+      pathToFileURL(join(movedDirectory, "sources")).href,
+    );
+    expect(await readFile(join(movedDirectory, relativePath))).toEqual(
+      sourceBytes,
+    );
   });
 
   it("rejects symlinked version storage and rolls an interrupted publication back to its checkpoint", async () => {

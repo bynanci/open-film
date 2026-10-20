@@ -19,7 +19,10 @@ merge.
 - Application covers durable create/list/inspect/diff/rename/restore, lost
   response idempotency, reopen, immutable package content, source fingerprint
   checks, stale revision refusal, current locks, explicit confirmation,
-  interrupted restore recovery, and symlink rejection.
+  interrupted restore recovery, and symlink rejection. Regressions also prove
+  that name-only renames keep descriptions, any field change on a locked asset
+  blocks restore, manifest edits after preflight remain on disk, and managed
+  source URIs rebase after a project directory moves.
 - HTTP/CLI tests share application behavior and reject unknown request fields;
   API output omits source paths. Playwright covers create, compare, rename and
   explicit restore from the localized Versions workspace.
@@ -57,24 +60,31 @@ Local candidate verification passed:
 - `pnpm format:check`, `pnpm test:i18n` (1,686 semantic keys), `pnpm lint`,
   `pnpm typecheck`, `pnpm build`: passed. Vite reports the existing 931 kB
   minified application chunk warning; build completes successfully.
-- `pnpm test`: 210 files / 2,912 tests passed in 98.15 seconds.
-- `pnpm test:e2e`: 168/168 passed in 15.6 minutes with Chromium. The environment
-  used `/tmp/openfilm-playwright-browsers` and the pinned official
-  `opentimelineio==0.18.1` installed under `/tmp/openfilm-python-packages`.
+- `pnpm test`: 210 files / 2,915 tests passed in 98.95 seconds.
+- `pnpm test:e2e`: 168 tests passed on the prior head. The full suite is
+  rerunning against this corrective working tree with Chromium from
+  `/tmp/openfilm-playwright-browsers`.
 - `pnpm test:interchange`: 18 official parser tests passed; read/write/read,
   four synthetic source files, hashes/bounds, missing-source rejection and
   relocation checks passed. Real Resolve import remains unverified.
+- Node 24.14 compatibility regression: 12/12 catalog and named-version tests
+  passed using the project's supported minimum runtime.
 - `pnpm test:native`: not run because `cargo`/Rust is not installed in this
   environment.
 
-The first browser run exposed an outdated four-item navigation assertion and
+The first GitHub CI run exposed use of Node 24.19-only SQLite
+`serialize()`/`deserialize()` methods although the project supports Node
+24.14. The catalog now copies the main SQLite file after WAL checkpointing and
+uses private file-backed connections for snapshot inspection. I reproduced the
+original failure under Node 24.14, then verified the catalog and named-version
+regressions pass under that exact runtime after the fix. The first browser run exposed an outdated four-item navigation assertion and
 the missing optional Python OTIO prerequisite. The navigation regression now
 expects and checks the Versions entry; the pinned parser was installed only in
 `/tmp`. The affected tests passed individually, then the complete browser suite
-passed. The fresh base SHA above is exact; the candidate head SHA, PR URL and CI
-checks are recorded in the PR after publication. Until exact-head CI and review
-are complete, this is locally verified and not merge-approved. No hardware,
-Resolve, 4K or physical-display behavior is inferred from synthetic tests.
+passed. Exact-head CI is running after this correction. Until it completes and
+review is resolved, this is locally verified and not merge-approved. No
+hardware, Resolve, 4K or physical-display behavior is inferred from synthetic
+tests.
 
 ## Manual gates
 
