@@ -49,7 +49,8 @@
     "@openfilm/story": "workspace:*",
     "@resvg/resvg-js": "2.6.2",
     "exiftool-vendored.pl": "13.59.3",
-    "fontkit": "2.0.4"
+    "fontkit": "2.0.4",
+    "koffi": "3.3.3"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
