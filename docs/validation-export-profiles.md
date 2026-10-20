@@ -383,6 +383,38 @@ formatting and localization checks pass. No full suite or browser is launched fo
 this follow-up; independent actual-process checks and combined release gates are
 reported separately.
 
+## Passive CLI export opening follow-up — 2026-10-20
+
+An actual built-CLI stem retry exposed a separate opening-lifecycle defect at
+`fa62b87656f4632ef0c5fc207846f18b41da159a`. Ordinary exports opened a writable
+workspace. That opener could recover unrelated running jobs, and closing it saved
+`updatedAt`, so an unchanged request in the next CLI process no longer matched
+the original full-project fingerprint. Preview and crop-token paths already used
+the passive export opener.
+
+Every `export` format now uses the existing `openForExport` lifecycle. The
+fingerprint, source checks, crop approval and stale-project fences are unchanged.
+PNG, WAV, stems and editable JSON output preserve the saved project, catalog and
+source bytes. MP4 preserves the saved project and existing jobs while retaining
+its intentional completed render-job record. Exporting does not perform workspace
+job recovery or save a possibly stale source project on exit.
+
+Five actual source-CLI regressions failed before the opener change and passed
+afterward. Separate processes repeat identical PNG/WAV/stem IDs and verify the
+same output/receipt hashes and inodes, actual 160×90 PNG dimensions and 48 kHz
+stereo PCM with 12,000 samples. A changed saved frame rate still rejects all three
+old IDs without changing the completed winner. SHA-256 checks cover project,
+catalog and source bytes; a seeded unrelated running render job remains untouched.
+JSON and MP4 have separate controls for their catalog behavior.
+
+The focused CLI run passed **4 files / 10 selected tests** in 16.20 seconds
+(64 unrelated cases filtered), including existing crop, Unicode-path, film-look
+and compression-quality controls. TypeScript/Vue checks, changed-file lint,
+formatting and diff checks pass. Logs and synthetic evidence use the
+`pr41-cli-export-` prefix under `/tmp/openfilm-v1-validation/`. Production bundle
+verification remains with the independent CLI reviewer and combined release
+gates; no browser or full suite was run for this opener-only change.
+
 ## Manual gates
 
 - Review portrait and square framing with representative real photos locally;
