@@ -34,6 +34,7 @@ import {
 } from "@openfilm/media";
 import {
   publishRenderPair,
+  visualSourceAssetIds,
   type RenderOptions,
   type RenderSnapshot,
 } from "@openfilm/render";
@@ -235,7 +236,10 @@ export class ExportProfileService {
         this.renderSnapshot(snapshot),
       );
       const previewSources = readSources(renderReceipt);
-      this.assertSourceCoverage(previewSources, snapshot.assets);
+      this.assertSourceCoverage(
+        previewSources,
+        this.visualAssets(snapshot.composition, snapshot.assets),
+      );
       const sourceReceipts = await this.currentSourceReceipts(
         previewSources,
         snapshot.assets,
@@ -300,10 +304,13 @@ export class ExportProfileService {
     }
     try {
       const composition = this.options.getComposition(entry.compositionId);
-      const assets = this.options.getAssets(composition);
+      const assets = this.visualAssets(
+        composition,
+        this.options.getAssets(composition),
+      );
       this.assertSourceCoverage(entry.sources, assets);
       await this.verifyManifestSources(
-        { sources: entry.sources },
+        { compositionId: entry.compositionId, sources: entry.sources },
         assets,
         entry.profile,
       );
@@ -544,7 +551,10 @@ export class ExportProfileService {
       ];
       const outputSha256 = await hashFile(stagedPng, signal);
       const renderSources = readSources(renderReceipt);
-      this.assertSourceCoverage(renderSources, snapshot.assets);
+      this.assertSourceCoverage(
+        renderSources,
+        this.visualAssets(snapshot.composition, snapshot.assets),
+      );
       const sourceGuards: Array<() => void> = [];
       const sourceReceipts = await this.currentSourceReceipts(
         renderSources,
@@ -695,6 +705,7 @@ export class ExportProfileService {
       settingsSha256: digest(snapshot.project.settings),
       assetsSha256: digest(snapshot.assets),
       sources: sources && structuredClone(sources),
+      sourceScope: "visual",
       assertCurrent: () => this.assertCurrent(snapshot),
     };
   }
@@ -738,6 +749,7 @@ export class ExportProfileService {
     };
     await this.options.render(compositionId, outputPath, {
       signal,
+      videoOnly: true,
       quality: profile.quality,
       exportProfile: renderProfile,
       snapshot,
@@ -1281,7 +1293,12 @@ export class ExportProfileService {
     const expectedAssets =
       profile.format === "wav" || profile.format === "audio-stems"
         ? assets.filter(hasAudio)
-        : assets;
+        : profile.format === "png"
+          ? this.visualAssets(
+              this.options.getComposition(manifest.compositionId as string),
+              assets,
+            )
+          : assets;
     this.assertSourceCoverage(sources, expectedAssets);
     const current = await this.currentSourceReceipts(
       sources,
@@ -1292,6 +1309,14 @@ export class ExportProfileService {
       throw new Error(
         "A source size no longer matches the saved export receipt.",
       );
+  }
+
+  private visualAssets(
+    composition: Composition,
+    assets: MediaAsset[],
+  ): MediaAsset[] {
+    const ids = visualSourceAssetIds(composition, assets);
+    return assets.filter((asset) => ids.has(asset.id));
   }
 
   private async verifyOutputHash(

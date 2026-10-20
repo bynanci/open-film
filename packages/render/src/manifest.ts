@@ -133,6 +133,7 @@ export async function writeRenderManifest(
   encoding: RenderQualityProfile = resolveRenderQuality(),
   outputConfig: {
     format: "mp4" | "wav";
+    videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
   } = { format: "mp4" },
@@ -225,8 +226,8 @@ export async function writeRenderManifest(
         : {
             ...encoding,
             pixelFormat: "yuv420p",
-            audio: "aac",
-            sampleRate: 48000,
+            audio: outputConfig.videoOnly ? null : "aac",
+            sampleRate: outputConfig.videoOnly ? null : 48000,
           },
     sources,
     fonts,

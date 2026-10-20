@@ -69,6 +69,34 @@ Logs are retained locally under `/tmp/openfilm-v1-validation/` with prefixes
 `pr36-independent-stale-probe-fixed.log`. Browser and full-suite execution are
 reserved for the coordinator's integration run.
 
+### Follow-up: audio and preview request boundaries
+
+Four further comments were checked against
+`918e9a1817ed19d9292b87578a0f6f33a7e9a3b8`. The earlier crop guard is
+retained; the additional gaps were reproduced before their fixes.
+
+| Review thread | Disposition and regression                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4326505574`  | Fixed: audio-only rendering does not select or validate picture captions. A saved track with 5,001 valid cues now permits the WAV mix and both role stems; normal MP4 still enforces the caption limit.                                                                                                                                                                                                                                                                                                               |
+| `4326505595`  | Fixed: a preview reserves the server mutation queue across its body read and active-job registration. A partial HTTP body followed by project close previously closed the captured application; close now returns 409 and the completed preview remains readable.                                                                                                                                                                                                                                                     |
+| `4326505606`  | Partly covered by the previous crop follow-up: PNG has revision/source guards through publication and rollback. WAV/stem routes still released the server mutation queue early. PNG/WAV/stem delivery now retains that queue through publication; real exports paused after receipt staging keep a concurrent edit queued and complete before the edit. Cancellation bypasses the queue.                                                                                                                              |
+| `4326505622`  | Fixed: previews and PNGs use a picture-only intermediate and visual source receipts. After standalone narration and music files are removed, preview/still pixels match a normal MP4 rendered while the files were available, including captions and a title attached to an audio clip. FFprobe confirms that intermediates contain only video, and their encoding receipts report no audio. Preview verification and still retries work with those audio files absent; MP4/WAV delivery still rejects missing audio. |
+
+Six new application/HTTP regressions cover these cases using actual FFmpeg and
+an ephemeral loopback port. Their failing runs are retained in
+`pr36-p2-red.log` and `pr36-p2-offline-red.log` under
+`/tmp/openfilm-v1-validation/`. The earlier source-change and rollback evidence
+under the `pr36-stale-approval` and `pr36-publication-guard` prefixes remains
+applicable to PNG publication. Picture review covers visual source identities;
+a delivered MP4 also captures and verifies its audio sources.
+
+The focused follow-up run passed **21 files / 165 tests** in 76.30 seconds,
+including all renderer suites and the prior crop/rollback races. The separate
+actual-render HTTP cancellation regression passed. `pnpm typecheck`, changed-file
+lint, formatting and diff checks passed. Logs use the `pr36-p2-` prefix in the
+same local validation directory. Full-suite, browser and collected-font
+integration remain with the coordinator.
+
 ### Initial remediation verification
 
 At `ac5c5bae0579c586703c33968acb5bc442634df5`, focused verification passed in
