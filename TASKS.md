@@ -766,5 +766,25 @@ separately.
 - [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
       workstation filesystem/permission behavior as a separate manual gate.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+M7B #36, M7D #37 and M7E #38 remain independent open candidates. M7C is the
+independent candidate below; none is implemented by M7A. M7A #34 is merged,
+while its workstation gates remain separately open.
+
+## Candidate — M7C NLE Fidelity
+
+Scope: [contract](docs/nle-handoff.md), [plan](docs/superpowers/plans/2026-10-20-nle-fidelity.md)
+and [validation](docs/validation-nle-handoff.md). Independent main base; M7B #36,
+M8A #35 and M7D #37 remain separate candidates. M7A #34 is merged.
+
+- [x] Add HandoffPlan v1 with per-feature/range native, metadata and explicit bake
+      decisions, reasons, rational times and fail-closed unsupported options.
+- [x] Preserve native cuts/source identities outside reviewed opaque precomps;
+      preserve embedded video dialogue as native Audio or explicit full mix.
+- [x] Produce private atomic TAR exchange with immutable source copies, captions,
+      original effect provenance and actual render/frame/sample/hash evidence.
+- [x] Share review/publication across Desktop, HTTP and CLI; protect saved revision,
+      source hashes, project switch, cancellation, file paths and partial cleanup.
+- [ ] Complete final exact-head full gates, CI and fresh correctness review.
+- [ ] Run actual Resolve workstation import/playback/relink/color/channel QA.
+- [ ] Integrate M7B stems and M8A depth only after their contracts are merged;
+      transparent overlay remains unavailable until a measured alpha profile exists.

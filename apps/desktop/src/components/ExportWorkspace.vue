@@ -4,6 +4,7 @@
 
 import { computed, ref, useId } from "vue";
 import type { Composition, FilmLook, ProjectSettings } from "@openfilm/core";
+import NleHandoff from "./NleHandoff.vue";
 import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
@@ -287,6 +288,11 @@ const formats = ["otio", "fcpxml", "edl", "json"] as const;
       </section>
     </section>
     <CaptionExport
+      :project-id="projectId"
+      :composition="composition"
+      :busy="busy"
+    />
+    <NleHandoff
       :project-id="projectId"
       :composition="composition"
       :busy="busy"

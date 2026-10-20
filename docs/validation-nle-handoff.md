@@ -1,0 +1,75 @@
+# M7C validation — native and rendered NLE exchange
+
+Base: `bb2c4521ad894478893485119442a00ffd9b34cc`.
+Implementation candidate; exact final head, commands/times and hosted CI are
+recorded in the M7C PR. No merge or public release is authorized for this phase.
+
+## Automated regression coverage
+
+- Pure HandoffPlan defaults, metadata/visual/audio dispositions, split coverage,
+  rational 30000/1001 and fractional native positions, off-grid bake and unknown
+  effect refusal, disabled alpha/stems.
+- Real synthetic 5-second 160×90 8-fps H.264 source with embedded 660 Hz audio;
+  source trim 1–5 seconds into a 4-second cut. Separate synthetic 440 Hz WAV,
+  manual Traditional Chinese caption at 2–3 seconds, and red GraphicScene at 1–2.
+- Explicit fidelity + mix produces one 1–3 second / 16-frame precomp, native
+  0–1 and 3–4 second excerpts, 32-frame reference and 192,000-sample 48-kHz PCM mix.
+  Actual decoded first/last precomp frames compare with reference frames 8/23 at
+  mean absolute RGB error <3/255; overlay pixel checked independently. SRT timing,
+  original Composition, source hashes, source bounds and native audio offsets
+  are asserted. The official OTIO 0.18.1 parser read/write/read retains the entire
+  normalized document and four-second duration.
+- A separate fidelity-without-mix case verifies native embedded dialogue projection
+  across the full cut and decodes its real audio. This closes the independent
+  review's audio-loss finding; a silent visual precomp never replaces dialogue.
+- Default native exports repeat with identical OTIO bytes and no absolute source
+  paths. TAR inventory is read by the system tar parser. Sources and project state
+  remain unchanged. HTTP/CLI use the same plan and project-scoped download rules.
+- Stale input/disk revision, missing/changed sources, mid-render cancellation,
+  HTTP disconnect, actual invalid FFmpeg codec, traversal and symlinked staging
+  fail closed, releasing the owner and removing unpublished files.
+- Browser verifies Traditional Chinese labels, review-before-export, option-change
+  invalidation, keyboard activation, actual TAR download and unchanged project.
+
+## Execution notes
+
+The first complete browser attempt was interrupted: a development hot reload
+navigated away during an editing assertion, and the new section initially pushed
+the existing primary export action out of view. The section was moved after the
+existing export/subtitle actions, without weakening viewport or save assertions.
+A second run was interrupted to fix the independent review's embedded-audio loss.
+Final full results must be recorded separately from those interrupted attempts.
+
+The initial real precomp check found 15 decoded frames instead of 16. Explicit
+rational output frame rate restores all frames; exact count assertions remain.
+Official OTIO metadata is compared through its JSON serialization rather than
+Python AnyDictionary object equality. Native validation was attempted with Rust
+1.99.0 but the local host lacks GLib/GTK/WebKit development pkg-config files;
+this is an environment failure, not native QA success. Interchange uses the
+existing explicit OpenTimelineIO virtualenv; browser checks use the existing
+Chromium cache. No runtime/provider download or personal fixture is required.
+
+## Resolve workstation gate — NOT RUN
+
+1. Record candidate SHA, OS/Resolve version, package TAR hash and all inventory
+   hashes. Unpack on a clean workstation and open `timeline.otio`; do not call
+   parser acceptance an application import result.
+2. Confirm native video source-in 1 second, source-out 2 for the opening excerpt,
+   then source-in 4, source-out 5 for the ending excerpt. Total cut stays 4 seconds.
+   Opaque precomp covers record 1–3 seconds, with no gap, extra frame or doubled
+   picture. Inspect first/last frame and GraphicScene/caption pixel placement.
+3. For no-mix package, confirm separate Audio clip from the video's real stream,
+   source-in 1/source-out 5 and record 0–4; no missing/doubled dialogue. Recreate
+   any metadata-only gain/retime/envelope explicitly. For mix package, confirm one
+   full mix and no additional native audio tracks, exact start/end and channel layout.
+4. Import SRT/VTT separately where supported; compare 2–3-second caption timing,
+   selected language and styling differences. Avoid duplicating burned captions.
+5. Check relative-media relinking after moving the entire package. Reopen the NLE
+   project, verify originals' hashes, color interpretation, audio and playback.
+6. Confirm original recipes/source IDs remain in the retained OpenFilm package;
+   NLE re-export may drop custom metadata. Save observations/screenshots and mark
+   each capability individually. No actual Resolve evidence exists for this PR.
+
+Windows/macOS native install, GPU, hardware capture, Resolve/Premiere/Final Cut
+playback and 4K visual QA remain not-run. M7B stems and M8A depth are not integrated
+on this independent base; they must not be marked complete by this work.

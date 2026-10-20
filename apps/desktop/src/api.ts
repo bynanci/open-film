@@ -997,3 +997,10 @@ export async function graphicFrame(
     });
   return response.blob();
 }
+
+export const handoffDownloadUrl = (
+  projectId: string,
+  id: string,
+  index: number,
+) =>
+  `${prefix}/handoff/file?projectId=${encodeURIComponent(projectId)}&id=${encodeURIComponent(id)}&index=${index}`;

@@ -1,3 +1,5 @@
+import { NleHandoffService, type HandoffRequest } from "./nle-handoff.js";
+import type { HandoffOptions } from "@openfilm/exporters";
 import { AudioGenerationService } from "./audio-generation.js";
 import type { AudioGenerationProvider } from "@openfilm/plugin-sdk";
 export * from "./audio-generation.js";
@@ -271,6 +273,7 @@ export class OpenFilmApplication {
   readonly knowledge: KnowledgeService;
   readonly sceneScriptReview: SceneScriptReviewService;
   readonly visualQa: VisualQaService;
+  readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
   readonly audioGeneration: AudioGenerationService;
   readonly versions: ProjectVersionService;
@@ -326,6 +329,20 @@ export class OpenFilmApplication {
           }),
       );
       const readProject = () => this.project;
+      this.handoff = new NleHandoffService({
+        directory: this.directory,
+        get project() {
+          return readProject();
+        },
+        getSourceAsset: (id) => this.getSourceAsset(id),
+        render: (composition, outputPath, signal, captionTrackId) =>
+          this.renderFilm(composition.id, { signal, captionTrackId }, false, {
+            outputPath,
+            recordJob: false,
+            trackActiveJob: false,
+            compositionOverride: composition,
+          }),
+      });
       this.visualQa = new VisualQaService({
         directory: this.directory,
         catalog: this.catalog,
@@ -660,6 +677,24 @@ export class OpenFilmApplication {
         revision,
         signal,
       );
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  reviewHandoff(compositionId: string, options: HandoffOptions = {}) {
+    return this.handoff.review(compositionId, options);
+  }
+  async exportHandoff(input: HandoffRequest, signal?: AbortSignal) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for active project jobs",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.handoff.publish(input, signal);
     } finally {
       this.activeJobs--;
     }
@@ -1869,3 +1904,9 @@ export {
   type RelinkPlanInput,
   type RelinkApplyInput,
 } from "./relink.js";
+
+export type {
+  HandoffRequest,
+  HandoffPublication,
+  HandoffReview,
+} from "./nle-handoff.js";

@@ -488,3 +488,14 @@ broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## Candidate — M7C reviewable NLE fidelity
+
+A saved-revision HandoffPlan explains native editability, metadata recreation and
+explicit opaque baking by exact range. Short precomps use the existing renderer;
+untouched cuts and embedded video dialogue retain native track/source timing.
+Optional full mix and caption sidecars travel with original Composition, source
+hashes and portable media in a private, atomic TAR exchange. Ordinary interchange
+is unchanged. See [contract](docs/nle-handoff.md) and [validation](docs/validation-nle-handoff.md).
+Final CI/review and actual Resolve workstation QA remain separate gates. Alpha,
+M7B stems and M8A depth are not claimed on this independent main base.

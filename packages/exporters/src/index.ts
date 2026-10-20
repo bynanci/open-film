@@ -733,3 +733,12 @@ export type {
   NleFeatureCompatibility,
   NleVerificationEvidence,
 } from "./compatibility.js";
+export { createHandoffPlan } from "./handoff.js";
+export type {
+  HandoffMode,
+  HandoffDisposition,
+  HandoffOptions,
+  HandoffRange,
+  HandoffItem,
+  HandoffPlan,
+} from "./handoff.js";
