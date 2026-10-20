@@ -50,6 +50,8 @@ export const applicationErrorCodes = [
   "graphics.protectedRegion",
   "import.failed",
   "export.failed",
+  "export.directoryUnavailable",
+  "export.stemsUnavailable",
   "captions.invalid",
   "captions.stale",
   "captions.failed",

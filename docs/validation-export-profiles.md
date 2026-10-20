@@ -349,6 +349,40 @@ The M7B PR is open and its checks are rerunning against the frame-count
 correction. The M7D Collect Media work package is queued in `TASKS.md` and
 `ROADMAP.md`; this M7B change does not implement it.
 
+## Atomic stem directory publication follow-up — 2026-10-20
+
+Collect finding `4328164569` also reproduced an empty-directory overwrite in
+audio-stem publication. The complete staged stem directory now moves through the
+shared OS atomic no-replace wrapper. A raced empty directory is preserved, while
+a valid same-request winner is accepted only through existing request, profile,
+source, receipt and output-hash checks. A completed stem directory becomes visible
+with every WAV and `manifest.json` together, including the manifest-only result
+when no roles apply. Same-ID process-crash retries retain the original atomic
+visibility contract.
+
+The wrapper loads before the final synchronous source/revision/abort fence.
+Unsupported native operations or filesystems produce a typed, localized choice
+to export a WAV mix or choose another disk; there is no ordinary-rename fallback.
+Known-stage inode receipts bind publication and rollback. A late failure reclaims
+only the owned directory into its private stage with an exclusive rename.
+Foreign replacement directories and rollback-path winners remain untouched; the
+existing `RenderPublicationRecoveryError` retains original PCM, per-role render
+receipts and a copy of the aggregate manifest in private render work when safe
+rollback is impossible. It also retains any existing staging recovery path.
+
+Real-process regressions cover raced destinations, same-ID retry after SIGKILL,
+exact source/output hashes, valid PCM sample counts, empty-role durability,
+cancellation and stale-source/revision fences. Independent reviewers retain the
+causal REDs from the original overwrite and the rejected portable-copy prototype.
+Linux native calls are exercised locally; macOS/Windows and unsupported-filesystem
+checks remain workstation gates.
+
+The final bounded run passes 148 tests in eight related publication/Collect/export
+files and 12 core/error-localization tests. TypeScript/Vue, changed-file lint,
+formatting and localization checks pass. No full suite or browser is launched for
+this follow-up; independent actual-process checks and combined release gates are
+reported separately.
+
 ## Manual gates
 
 - Review portrait and square framing with representative real photos locally;

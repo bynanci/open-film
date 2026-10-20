@@ -116,6 +116,10 @@ export default {
         "Some memories couldn't be added. Check their locations and file types, then try again.",
     },
     export: {
+      directoryUnavailable:
+        "Cannot publish a directory package at this location. Choose a ZIP package or another disk.",
+      stemsUnavailable:
+        "Cannot publish a stem directory at this location. Choose a WAV mix or another disk.",
       failed:
         "The film couldn't be exported. Check the destination, available space and media, then try again.",
     },
