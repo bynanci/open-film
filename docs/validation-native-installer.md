@@ -226,6 +226,16 @@ It checks byte-range responses and rejection of the unprefixed endpoint.
 The simulated website origin receives Chromium's local-network permission in
 the fixture; this is not an observation of an installed Tauri WebView.
 
+The same contract was independently reproduced in the existing Soundtrack source
+player: changing only its live cross-origin mode enabled decoding on the same
+native URL. The bounded template audit adds anonymous CORS to 13 service-backed
+media tags in Timeline/Precision/Soundtrack, photo/title previews, timeline
+thumbnails and visual-QA frames. Existing App, AssetCard, ScenePlanner and
+Transcript media already use it. The graphics preview consumes an already
+fetched blob URL and requires no change. A permanent actual Soundtrack/TimelineClip
+browser case now checks native source decoding, four-second duration, decoded
+thumbnail dimensions and continued rejection of an attacker Origin.
+
 Owned service shutdown now registers read-only file responses before filesystem
 awaits, aborts their response/pipeline on close, checks cancellation after path
 and stat reads, and waits for their settlement. Mutation sockets keep their
@@ -245,6 +255,6 @@ acknowledgement and exit requirements.
 | Check                                                                                                    | Result                                                                                                                                                                                                                                                                          |
 | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Focused native runtime, stream/write, owned control, draft lifecycle and actual audio-player regressions | 7 files / 45 tests passed with one worker.                                                                                                                                                                                                                                      |
-| Chromium runtime keyboard and native audio playback                                                      | 3 passed without default ports; audio service uses an ephemeral port. Keyboard fixture mocks the App slot/IPC/action sinks while executing the real Gate and editor handlers; audio fixture runs real players, media generation and HTTP/session boundary.                      |
+| Chromium runtime keyboard and native audio/source/thumbnail playback                                     | 4 passed without default ports; media service uses an ephemeral port. Keyboard fixture mocks the App slot/IPC/action sinks while executing the real Gate and editor handlers; media fixture runs real players/thumbnails, media generation and HTTP/session boundary.           |
 | Expected failures                                                                                        | Observed background shortcut actions, all three raw audio media URLs, missing close acknowledgement with a paused response, and unclosable real spawn error before their fixes. A native-origin media isolation probe also demonstrated the required cross-origin request mode. |
 | Native module and workstation status                                                                     | Rust runtime source is unchanged from the nine-test reviewed head. Combined gates and fresh native-shell CI remain required. All native-installer workstation gates above remain not-run.                                                                                       |

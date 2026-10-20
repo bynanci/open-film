@@ -209,6 +209,7 @@ defineExpose({ toggle, pause, seekTo });
           <img
             v-for="layer in renderLayers"
             :key="layer.key"
+            crossorigin="anonymous"
             :src="layer.src"
             :alt="layer.name"
             draggable="false"
@@ -227,6 +228,7 @@ defineExpose({ toggle, pause, seekTo });
       <img
         v-if="clip.title"
         :key="`${titleUrl}:${titleRetry}`"
+        crossorigin="anonymous"
         class="photo-presentation-title"
         :src="titleUrl"
         :alt="clip.title"

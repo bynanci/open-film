@@ -874,6 +874,7 @@ onBeforeUnmount(() => {
             v-if="active && asset!.mediaType === 'video'"
             ref="player"
             :key="sourceKey"
+            crossorigin="anonymous"
             :src="sourceUrl(asset!.id, sourceKey)"
             controls
             preload="metadata"
@@ -888,6 +889,7 @@ onBeforeUnmount(() => {
             v-else-if="active && asset!.mediaType === 'audio'"
             ref="player"
             :key="sourceKey"
+            crossorigin="anonymous"
             :src="sourceUrl(asset!.id, sourceKey)"
             controls
             preload="metadata"

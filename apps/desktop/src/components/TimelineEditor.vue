@@ -2227,6 +2227,7 @@ onBeforeUnmount(() => {
                 <div v-if="playbackUnavailable" class="editor-missing-source">
                   <img
                     v-if="playbackAsset.thumbnailUri"
+                    crossorigin="anonymous"
                     :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
@@ -2247,6 +2248,7 @@ onBeforeUnmount(() => {
                 >
                   <img
                     v-if="playbackAsset.thumbnailUri"
+                    crossorigin="anonymous"
                     :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
@@ -2316,6 +2318,7 @@ onBeforeUnmount(() => {
                 >
                   <img
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :alt="playbackAsset.name"
                     :style="[previewMediaStyle, playbackLookStyle]"
@@ -2378,6 +2381,7 @@ onBeforeUnmount(() => {
                     v-if="active && editMode === 'story'"
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     controls
                     preload="metadata"
@@ -2397,6 +2401,7 @@ onBeforeUnmount(() => {
                   <video
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :poster="
                       playbackAsset.thumbnailUri

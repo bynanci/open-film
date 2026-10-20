@@ -74,5 +74,11 @@ onBeforeUnmount(pause);
 </script>
 
 <template>
-  <img :src="src" :alt="clip.title" :style="{ opacity }" draggable="false" />
+  <img
+    crossorigin="anonymous"
+    :src="src"
+    :alt="clip.title"
+    :style="{ opacity }"
+    draggable="false"
+  />
 </template>

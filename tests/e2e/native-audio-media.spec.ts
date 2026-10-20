@@ -16,6 +16,9 @@ let runtime: Awaited<ReturnType<typeof startServer>>;
 let root: string;
 let fixture: string;
 let prefix: string;
+let sourceProps: string;
+let thumbnailProps: string;
+let thumbnailAssetId: string;
 test.beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-native-audio-browser-"));
   const previousData = process.env.OPENFILM_USER_DATA_DIR;
@@ -23,7 +26,22 @@ test.beforeAll(async () => {
   let projectId: string;
   let revision: string;
   try {
-    const { app } = await createAudioQualityFixture(root);
+    const { app, video } = await createAudioQualityFixture(root);
+    expect(video.thumbnailUri).toBeTruthy();
+    sourceProps = JSON.stringify({
+      composition: app.project.timelines[0],
+      assets: app.catalog.listAssets({ limit: 100 }),
+      selectedClip: app.project.timelines[0]!.tracks[1]!.clips[0],
+      busy: false,
+      active: true,
+    });
+    thumbnailProps = JSON.stringify({
+      clip: app.project.timelines[0]!.tracks[0]!.clips[0],
+      selected: false,
+      mediaType: "video",
+      assetName: video.name,
+    });
+    thumbnailAssetId = video.id;
     projectId = app.project.id;
     revision = new TimelineEditor(app).get("film").revision;
     app.close();
@@ -43,6 +61,8 @@ test.beforeAll(async () => {
   for (const [name, file] of [
     ["quality", "AudioQualityPanel.vue"],
     ["generation", "AudioGenerationPanel.vue"],
+    ["source", "SoundtrackPanel.vue"],
+    ["thumbnail", "TimelineClip.vue"],
   ]) {
     const path = resolve("apps/desktop/src/components", file!);
     components[`fixture:${name}`] = compiler.compileScript(
@@ -59,7 +79,7 @@ test.beforeAll(async () => {
   });
   const output = await build({
     stdin: {
-      contents: `import { createApp, h } from "vue"; import Quality from "fixture:quality"; import Generation from "fixture:generation"; import {configureNativeConnection} from ${JSON.stringify(resolve("apps/desktop/src/api.ts"))}; configureNativeConnection(${runtime.port},${JSON.stringify(session)}); createApp({render:()=>h('div',[h(Quality,${props}),h(Generation,${props})])}).mount('#app');`,
+      contents: `import { createApp, h } from "vue"; import Quality from "fixture:quality"; import Generation from "fixture:generation"; import Source from "fixture:source"; import Thumbnail from "fixture:thumbnail"; import {configureNativeConnection,thumbnailUrl} from ${JSON.stringify(resolve("apps/desktop/src/api.ts"))}; configureNativeConnection(${runtime.port},${JSON.stringify(session)}); createApp({render:()=>h('div',[h(Quality,${props}),h(Generation,${props}),h(Source,${sourceProps}),h(Thumbnail,{...${thumbnailProps},thumbnailSrc:thumbnailUrl(${JSON.stringify(thumbnailAssetId)})})])}).mount('#app');`,
       resolveDir: resolve("apps/desktop"),
     },
     bundle: true,
@@ -80,7 +100,10 @@ test.beforeAll(async () => {
             path: desktop.resolve("vue/dist/vue.esm-bundler.js"),
           }));
           bundler.onResolve(
-            { filter: /^(fixture:(quality|generation)|vue-i18n)$/ },
+            {
+              filter:
+                /^(fixture:(quality|generation|source|thumbnail)|vue-i18n|\.\.\/i18n|\.\/Icon\.vue)$/,
+            },
             ({ path }) => ({ path, namespace: "fixture" }),
           );
           bundler.onLoad(
@@ -88,7 +111,11 @@ test.beforeAll(async () => {
             ({ path }) => ({
               contents:
                 components[path] ??
-                "export const useI18n = () => ({t:key=>key});",
+                (path === "../i18n"
+                  ? "export const formatDuration = value => String(value); export const formatNumber = value => String(value);"
+                  : path === "./Icon.vue"
+                    ? "export default {render:()=>null};"
+                    : "export const useI18n = () => ({t:key=>key});"),
               loader: "ts",
               resolveDir: resolve("apps/desktop/src/components"),
             }),
@@ -98,6 +125,43 @@ test.beforeAll(async () => {
     ],
   });
   fixture = output.outputFiles[0]!.text;
+});
+test("native source playback and actual timeline thumbnails decode without relaxing the service Origin boundary", async ({
+  page,
+  request,
+}) => {
+  await page.context().grantPermissions(["local-network-access"], {
+    origin: "http://tauri.localhost",
+  });
+  await page.route("http://tauri.localhost/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+  );
+  await page.goto("http://tauri.localhost/");
+  await page.addScriptTag({ content: fixture });
+  const audio = page.locator(".editor-soundtrack-panel audio");
+  await expect(audio).toBeVisible();
+  expect(await audio.getAttribute("src")).toContain(`${prefix}/source/`);
+  await expect
+    .poll(() => audio.evaluate((node) => (node as HTMLAudioElement).readyState))
+    .toBeGreaterThan(0);
+  expect(
+    await audio.evaluate((node) => (node as HTMLAudioElement).duration),
+  ).toBeCloseTo(4, 1);
+  const thumbnail = page.locator(".editor-clip img");
+  await thumbnail.scrollIntoViewIfNeeded();
+  expect(await thumbnail.getAttribute("src")).toContain(`${prefix}/thumbnail/`);
+  await expect
+    .poll(() =>
+      thumbnail.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  expect(
+    (
+      await request.get(`${prefix}/workspace`, {
+        headers: { Origin: "https://attacker.example" },
+      })
+    ).status(),
+  ).toBe(403);
 });
 test.afterAll(async () => {
   await runtime?.close();
@@ -111,11 +175,9 @@ test("native audio quality A/B and generated preview decode through the owned pr
   // and translation labels are fixtures. Synthesis is the explicit local mock.
   // Chromium's website permission is specific to this simulated native origin;
   // the installed WebView's OS behavior remains a separate workstation gate.
-  await page
-    .context()
-    .grantPermissions(["local-network-access"], {
-      origin: "http://tauri.localhost",
-    });
+  await page.context().grantPermissions(["local-network-access"], {
+    origin: "http://tauri.localhost",
+  });
   await page.route("http://tauri.localhost/**", (route) =>
     route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
   );
