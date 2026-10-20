@@ -35,7 +35,44 @@ after ten minutes and include an output hash. They are validated against the
 current project and source identities before use; this does not claim that a
 human actually inspected the frame.
 
-Focused verification passed in 21 files / 145 tests, covering all renderer
+### Follow-up: concurrent crop approval changes
+
+Independent review of `ac5c5bae0579c586703c33968acb5bc442634df5` reproduced a
+stale approval: a save during asynchronous preview hashing could publish a still
+whose pixels differed from the reviewed frame. The original revision check ran
+before hashing, and PNG publication captured its project snapshot afterward.
+MP4 also captured settings after validation and lacked a publication revision
+guard.
+
+The follow-up freezes project, Composition, settings and catalog asset metadata
+before validation; rechecks the revision after asynchronous verification; and
+carries the reviewed source identities into the renderer. Actual renderer inputs
+must match that snapshot. Source hashes are rechecked before delivery, with
+revision and filesystem state guards through both publication renames. A change
+between or after those renames rolls the pair back, preserving existing outputs.
+
+Fifteen new regression cases passed: eight PNG/MP4 cases for changes during
+validation, after approval, in source bytes and in derived render plans; a save
+during MP4 rendering; source changes after MP4/PNG receipt staging; and four
+real-I/O publication rollback cases. The original nine application races were
+observed failing first; all eight completed stale-plan renders had pixels that
+differed from the preview. The publication and late source guards also have
+recorded failing runs with their causal checks absent.
+
+The follow-up focused run passed **21 files / 160 tests** in 63.73 seconds.
+All fifteen race/rollback regressions passed again after final cleanup. Type
+checking, focused lint, formatting and diff checks passed. The exact independent probe now reports
+`published:false`, `changedDuringValidation:true`, and a stale-preview error.
+Logs are retained locally under `/tmp/openfilm-v1-validation/` with prefixes
+`pr36-stale-approval`, `pr36-publication-guard`, `pr36-source-publication`, and
+`pr36-source-png-publication`. The fixed independent probe is recorded in
+`pr36-independent-stale-probe-fixed.log`. Browser and full-suite execution are
+reserved for the coordinator's integration run.
+
+### Initial remediation verification
+
+At `ac5c5bae0579c586703c33968acb5bc442634df5`, focused verification passed in
+21 files / 145 tests, covering all renderer
 suites, profile and quality HTTP/CLI integration, film looks, core profiles and
 Desktop component behavior. The complete `pnpm test --maxWorkers=1` run passed
 213 files / 2,951 tests in 293.60 seconds. `pnpm lint`, `pnpm typecheck`,

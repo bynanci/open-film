@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
+import { appendFileSync, existsSync, readdirSync } from "node:fs";
 import {
   mkdtemp,
   lstat,
@@ -271,6 +272,305 @@ const postJson = (base: string, route: string, body: unknown) =>
   });
 
 describe("professional profile exports", () => {
+  it.each(
+    (["png", "mp4"] as const).flatMap((format) =>
+      (["validation", "after-approval", "source", "render-plan"] as const).map(
+        (window) => ({ format, window }),
+      ),
+    ),
+  )(
+    "rejects a $format crop when its approved snapshot changes during $window",
+    async ({ format, window }) => {
+      const { app, composition, imagePath } = await fixture(1);
+      const profile = createExportProfile({
+        ratio: "9:16",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+        framing: "crop",
+        format,
+      });
+      const preview = await app.previewExportFrame({
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+      });
+      const reviewedPixels = await decodedRgb(
+        await app.exportProfiles.previewPath(preview.token),
+      );
+      const options = Reflect.get(app.exportProfiles, "options") as {
+        getProject: () => typeof app.project;
+      };
+      const getProject = options.getProject;
+      let changed = false;
+      let scheduled = false;
+      const changeProject = async () => {
+        changed = true;
+        app.project.settings = { width: 90, height: 160, frameRate: 12 };
+        app.project.timelines[0]!.tracks[0]!.clips[0]!.title =
+          "UNREVIEWED TITLE";
+        await app.save();
+      };
+      let alternatePixels: Buffer | undefined;
+      if (window === "source") {
+        const alternate = join(app.directory, "cache", "unreviewed-source.png");
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=blue:s=320x180:r=1:d=1",
+          "-frames:v",
+          "1",
+          "-threads",
+          "1",
+          alternate,
+        ]);
+        alternatePixels = await readFile(alternate);
+      }
+      let restore: () => void;
+      if (window === "validation") {
+        options.getProject = () => {
+          if (!scheduled) {
+            scheduled = true;
+            setImmediate(() => void changeProject());
+          }
+          return getProject();
+        };
+        restore = () => {
+          options.getProject = getProject;
+        };
+      } else if (window === "render-plan") {
+        const render = FFmpegRenderer.prototype.render;
+        const spy = vi
+          .spyOn(FFmpegRenderer.prototype, "render")
+          .mockImplementation(function (
+            this: FFmpegRenderer,
+            cut,
+            assets,
+            output,
+            settings,
+            renderOptions,
+          ) {
+            changed = true;
+            const unreviewed = structuredClone(cut);
+            unreviewed.tracks[0]!.clips[0]!.title = "UNREVIEWED TITLE";
+            return render.call(
+              this,
+              unreviewed,
+              assets,
+              output,
+              settings,
+              renderOptions,
+            );
+          });
+        restore = () => spy.mockRestore();
+      } else {
+        const approve = app.exportProfiles.assertCropPreview.bind(
+          app.exportProfiles,
+        );
+        const spy = vi
+          .spyOn(app.exportProfiles, "assertCropPreview")
+          .mockImplementation(async (...args) => {
+            const approval = await approve(...args);
+            if (window === "source") {
+              changed = true;
+              await writeFile(imagePath, alternatePixels!);
+            } else await changeProject();
+            return approval;
+          });
+        restore = () => spy.mockRestore();
+      }
+      let output: { path: string } | undefined;
+      let failure: unknown;
+      try {
+        output =
+          format === "png"
+            ? await app.exportStill({
+                compositionId: composition.id,
+                profile,
+                time: 0.25,
+                requestId: `stale-crop-${window}-001`,
+                confirmCrop: true,
+                cropPreviewToken: preview.token,
+              })
+            : await app.exportMp4(composition.id, {
+                exportProfile: profile,
+                confirmCrop: true,
+                cropPreviewToken: preview.token,
+              });
+      } catch (error) {
+        failure = error;
+      } finally {
+        restore();
+      }
+      const proof = {
+        format,
+        window,
+        changed,
+        published: Boolean(output),
+        savedPixelsDifferFromPreview: output
+          ? !reviewedPixels.equals(
+              await decodedRgb(
+                output.path,
+                format === "mp4" ? 0.25 : undefined,
+              ),
+            )
+          : undefined,
+        error: failure instanceof Error ? failure.message : undefined,
+      };
+      console.log(JSON.stringify(proof));
+      expect(proof).toMatchObject({ changed: true, published: false });
+      expect(failure).toBeInstanceOf(Error);
+      expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+    },
+  );
+
+  it("rejects MP4 crop publication if the saved project changes while FFmpeg renders", async () => {
+    const { app, composition } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "9:16",
+      width: 90,
+      height: 160,
+      frameRate: 12,
+      framing: "crop",
+    });
+    const preview = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    let changed = false;
+    await expect(
+      app.exportMp4(composition.id, {
+        exportProfile: profile,
+        confirmCrop: true,
+        cropPreviewToken: preview.token,
+        onProgress: () => {
+          if (changed) return;
+          changed = true;
+          app.project.timelines[0]!.tracks[0]!.clips[0]!.title =
+            "UNREVIEWED TITLE";
+          void app.save();
+        },
+      }),
+    ).rejects.toThrow(/changed|stale/u);
+    expect(changed).toBe(true);
+    expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+  });
+
+  it("rejects MP4 crop publication if a source changes after its render manifest is staged", async () => {
+    const { app, composition, imagePath } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "9:16",
+      width: 90,
+      height: 160,
+      frameRate: 12,
+      framing: "crop",
+    });
+    const preview = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const approve = app.exportProfiles.assertCropPreview.bind(
+      app.exportProfiles,
+    );
+    let changed = false;
+    const spy = vi
+      .spyOn(app.exportProfiles, "assertCropPreview")
+      .mockImplementation(async (...args) => {
+        const approval = await approve(...args);
+        if (!approval) return approval;
+        return {
+          ...approval,
+          assertCurrent: () => {
+            approval.assertCurrent();
+            if (
+              !changed &&
+              readdirSync(join(app.directory, "exports")).some(
+                (name) =>
+                  name.startsWith(".render-") &&
+                  existsSync(
+                    join(app.directory, "exports", name, "manifest.json"),
+                  ),
+              )
+            ) {
+              appendFileSync(imagePath, "changed after manifest staging");
+              changed = true;
+            }
+          },
+        };
+      });
+    try {
+      await expect(
+        app.exportMp4(composition.id, {
+          exportProfile: profile,
+          confirmCrop: true,
+          cropPreviewToken: preview.token,
+        }),
+      ).rejects.toThrow(/Source changed/u);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(changed).toBe(true);
+    expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+  });
+
+  it("rejects PNG crop publication if a source changes after its still receipt is staged", async () => {
+    const { app, composition, imagePath } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "9:16",
+      width: 90,
+      height: 160,
+      frameRate: 12,
+      framing: "crop",
+      format: "png",
+    });
+    const preview = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const options = Reflect.get(app.exportProfiles, "options") as {
+      getProject: () => typeof app.project;
+    };
+    const getProject = options.getProject;
+    const work = join(app.directory, "cache", "export-work");
+    let changed = false;
+    options.getProject = () => {
+      if (
+        !changed &&
+        readdirSync(work).some(
+          (name) =>
+            existsSync(join(work, name, "manifest.json")) &&
+            existsSync(join(work, name, "still.png")),
+        )
+      ) {
+        appendFileSync(imagePath, "changed after still receipt staging");
+        changed = true;
+      }
+      return getProject();
+    };
+    try {
+      await expect(
+        app.exportStill({
+          compositionId: composition.id,
+          profile,
+          time: 0.25,
+          requestId: "source-change-before-png-001",
+          confirmCrop: true,
+          cropPreviewToken: preview.token,
+        }),
+      ).rejects.toThrow(/Source changed/u);
+    } finally {
+      options.getProject = getProject;
+    }
+    expect(changed).toBe(true);
+    expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+  });
+
   it("requires a crop preview bound to the current frame, render choices and saved revision", async () => {
     const { app, composition, projectPath, close } = await fixture(1);
     const profile = createExportProfile({

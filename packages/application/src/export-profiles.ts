@@ -1,5 +1,6 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import {
   copyFile,
   chmod,
@@ -26,11 +27,16 @@ import type {
 import { frameAlignedDuration, validateExportProfile } from "@openfilm/core";
 import {
   hashFile,
+  checkAbort,
   localPath,
   runProcess,
   safeProjectCachePath,
 } from "@openfilm/media";
-import { publishRenderPair, type RenderOptions } from "@openfilm/render";
+import {
+  publishRenderPair,
+  type RenderOptions,
+  type RenderSnapshot,
+} from "@openfilm/render";
 
 export interface ProfileFramePreview {
   token: string;
@@ -226,6 +232,7 @@ export class ExportProfileService {
           lookOverride: input.lookOverride,
           captionTrackId: input.captionTrackId,
         },
+        this.renderSnapshot(snapshot),
       );
       const previewSources = readSources(renderReceipt);
       this.assertSourceCoverage(previewSources, snapshot.assets);
@@ -314,6 +321,12 @@ export class ExportProfileService {
     if (info.isSymbolicLink() || !info.isFile())
       throw new Error("Export preview cache entry is not a regular file.");
     await this.verifyOutputHash(entry.path, entry.outputSha256);
+    const current = this.options.getProject();
+    if (current.id !== entry.projectId || digest(current) !== entry.revision) {
+      this.previews.delete(token);
+      await this.removePreview(token, entry.path);
+      throw new Error("Export frame preview is stale; render a new preview.");
+    }
     return entry.path;
   }
 
@@ -326,7 +339,7 @@ export class ExportProfileService {
     cropPreviewToken?: string;
     lookOverride?: FilmLook | null;
     captionTrackId?: string | null;
-  }): Promise<void> {
+  }): Promise<RenderSnapshot | undefined> {
     if (input.profile.framing !== "crop") return;
     checkCrop(input.profile, input.confirmCrop === true);
     const invalid = () =>
@@ -334,9 +347,17 @@ export class ExportProfileService {
         "Confirm crop with a reviewed export frame matching the current output settings.",
       );
     if (!input.cropPreviewToken) throw invalid();
+    const snapshot = this.snapshot(input.compositionId);
     await this.previewPath(input.cropPreviewToken);
-    const entry = this.previews.get(input.cropPreviewToken)!;
-    const composition = this.options.getComposition(input.compositionId);
+    this.assertCurrent(snapshot);
+    const entry = this.previews.get(input.cropPreviewToken);
+    if (
+      !entry ||
+      entry.projectId !== snapshot.project.id ||
+      entry.revision !== snapshot.revision
+    )
+      throw invalid();
+    const composition = snapshot.composition;
     const expectedFrame =
       input.time === undefined
         ? undefined
@@ -353,6 +374,7 @@ export class ExportProfileService {
       (expectedFrame !== undefined && expectedFrame !== entry.frameIndex)
     )
       throw invalid();
+    return this.renderSnapshot(snapshot, entry.sources);
   }
 
   private previewReceiptPath(token: string): Promise<string> {
@@ -431,9 +453,11 @@ export class ExportProfileService {
     signal?: AbortSignal;
   }): Promise<ProfileExportArtifact> {
     const profile = profileMode(input.profile, ["png"]);
-    await this.assertCropPreview(input);
     const requestId = safeRequestId(input.requestId);
     const snapshot = this.snapshot(input.compositionId);
+    const approved = await this.assertCropPreview(input);
+    approved?.assertCurrent();
+    this.assertCurrent(snapshot);
     const time = this.validateTime(input.time, snapshot.composition, profile);
     const frameIndex = Math.floor(time * profile.frameRate + 1e-9);
     const frameTime = frameIndex / profile.frameRate;
@@ -457,6 +481,7 @@ export class ExportProfileService {
           captionTrackId: input.captionTrackId,
         },
         renderSelection(input),
+        approved,
         input.signal,
       ),
     );
@@ -474,6 +499,7 @@ export class ExportProfileService {
       captionTrackId?: string | null;
     },
     receiptSelection: Record<string, unknown>,
+    approved?: RenderSnapshot,
     signal?: AbortSignal,
   ): Promise<ProfileExportArtifact> {
     const directory = await this.exportDirectory();
@@ -500,6 +526,7 @@ export class ExportProfileService {
         profile,
         signal,
         selection,
+        approved,
       );
       await this.extractFrame(videoPath, stagedPng, frameIndex, signal);
       await this.assertPngDimensions(
@@ -518,10 +545,12 @@ export class ExportProfileService {
       const outputSha256 = await hashFile(stagedPng, signal);
       const renderSources = readSources(renderReceipt);
       this.assertSourceCoverage(renderSources, snapshot.assets);
+      const sourceGuards: Array<() => void> = [];
       const sourceReceipts = await this.currentSourceReceipts(
         renderSources,
         snapshot.assets,
         signal,
+        sourceGuards,
       );
       await this.writeReceipt(stagedManifest, {
         version: 1,
@@ -550,7 +579,13 @@ export class ExportProfileService {
       });
       this.assertCurrent(snapshot);
       await chmod(stagedPng, 0o600);
-      await publishRenderPair(stagedPng, stagedManifest, path, work);
+      await publishRenderPair(stagedPng, stagedManifest, path, work, {
+        assertCurrent: () => {
+          checkAbort(signal);
+          this.assertCurrent(snapshot);
+          for (const guard of sourceGuards) guard();
+        },
+      });
       return {
         path,
         filename: basename(path),
@@ -623,11 +658,11 @@ export class ExportProfileService {
   }
 
   private snapshot(compositionId?: string) {
-    const project = this.options.getProject();
+    const project = structuredClone(this.options.getProject());
     const composition = structuredClone(
       this.options.getComposition(compositionId),
     );
-    const assets = this.options.getAssets(composition);
+    const assets = structuredClone(this.options.getAssets(composition));
     return { project, composition, assets, revision: digest(project) };
   }
 
@@ -642,6 +677,26 @@ export class ExportProfileService {
       throw new Error(
         "Project or Composition changed during profile export; retry from the current revision.",
       );
+    const assets = this.options.getAssets(
+      this.options.getComposition(snapshot.composition.id),
+    );
+    if (digest(assets) !== digest(snapshot.assets))
+      throw new Error(
+        "Render source metadata changed during profile export; review a new export frame.",
+      );
+  }
+
+  private renderSnapshot(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+    sources?: RenderSnapshot["sources"],
+  ): RenderSnapshot {
+    return {
+      compositionSha256: digest(snapshot.composition),
+      settingsSha256: digest(snapshot.project.settings),
+      assetsSha256: digest(snapshot.assets),
+      sources: sources && structuredClone(sources),
+      assertCurrent: () => this.assertCurrent(snapshot),
+    };
   }
 
   private validateTime(
@@ -674,6 +729,7 @@ export class ExportProfileService {
       lookOverride?: FilmLook | null;
       captionTrackId?: string | null;
     } = {},
+    snapshot?: RenderSnapshot,
   ): Promise<RenderReceipt> {
     const renderProfile: ExportProfile = {
       ...profile,
@@ -684,6 +740,7 @@ export class ExportProfileService {
       signal,
       quality: profile.quality,
       exportProfile: renderProfile,
+      snapshot,
       ...(selection.lookOverride === undefined
         ? {}
         : { lookOverride: selection.lookOverride }),
@@ -1101,6 +1158,7 @@ export class ExportProfileService {
     sources: NonNullable<RenderReceipt["sources"]>,
     assets: MediaAsset[],
     signal?: AbortSignal,
+    guards?: Array<() => void>,
   ) {
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
     const result: Array<{
@@ -1124,6 +1182,11 @@ export class ExportProfileService {
         sha256 !== source.sha256
       )
         throw new Error(`Source changed during export: ${source.name}`);
+      guards?.push(() => {
+        const current = statSync(localPath(asset.uri));
+        if (current.size !== after.size || current.mtimeMs !== after.mtimeMs)
+          throw new Error(`Source changed during export: ${source.name}`);
+      });
       result.push({
         assetId: source.assetId,
         name: source.name,

@@ -52,6 +52,52 @@ async function fixture(existing = true) {
 }
 
 describe("MP4 and manifest publication", () => {
+  it.each(
+    [true, false].flatMap((existing) =>
+      ["video", "manifest"].map((after) => ({ existing, after })),
+    ),
+  )(
+    "rolls back a snapshot change after installing $after (existing=$existing)",
+    async ({ existing, after }) => {
+      const f = await fixture(existing);
+      const failure = new Error("Approved snapshot changed during publication");
+      let changed = false;
+      await expect(
+        publishRenderPair(
+          f.temporaryOutput,
+          f.temporaryManifest,
+          f.output,
+          f.work,
+          {
+            assertCurrent: () => {
+              if (changed) throw failure;
+            },
+            rename: async (source, destination) => {
+              await rename(source, destination);
+              if (
+                source ===
+                (after === "video" ? f.temporaryOutput : f.temporaryManifest)
+              )
+                changed = true;
+            },
+          },
+        ),
+      ).rejects.toBe(failure);
+      expect(changed).toBe(true);
+      if (existing) {
+        expect(await readFile(f.output, "utf8")).toBe("original video");
+        expect(await readFile(f.manifest, "utf8")).toBe("original receipt");
+      } else {
+        await expect(readFile(f.output)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        await expect(readFile(f.manifest)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }
+    },
+  );
+
   it("publishes the complete staged pair over regular existing files", async () => {
     const f = await fixture();
     await publishRenderPair(
