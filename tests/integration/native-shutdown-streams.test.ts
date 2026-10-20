@@ -67,7 +67,7 @@ it.each(["backpressured", "awaiting-stat"] as const)(
       platform: "node",
       target: "node24",
       format: "esm",
-      external: ["@resvg/resvg-js", "fontkit"],
+      external: ["@resvg/resvg-js", "fontkit", "koffi"],
       plugins:
         phase === "awaiting-stat"
           ? [

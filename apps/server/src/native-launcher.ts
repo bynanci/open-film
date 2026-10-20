@@ -152,6 +152,10 @@ export async function preflightRuntime(
   )
     throw new Error("runtime.codecs");
   const require = createRequire(runtimePath(root, manifest.entries.service));
+  // Inventory verification above must finish before loading any native addon.
+  // Resolve relative to the verified service, including its staged host binary.
+  if ((require("koffi") as { version?: string }).version !== "3.3.3")
+    throw new Error("runtime.version");
   const fontkit = require("fontkit") as {
     openSync(
       path: string,

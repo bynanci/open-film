@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 async function fixture() {
   const root = await mkdtemp(
-    join(tmpdir(), "openfilm-exclusive-目錄 with spaces-"),
+    join(tmpdir(), "openfilm-exclusive-目錄 with spaces 🧪-"),
   );
   roots.push(root);
   const source = join(root, "私有 complete stage");

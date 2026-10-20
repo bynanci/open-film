@@ -35,6 +35,7 @@ beforeAll(async () => {
     platform: "node",
     format: "esm",
     target: "node24",
+    external: ["koffi"],
   });
 });
 afterAll(() => rm(buildDirectory, { recursive: true, force: true }));

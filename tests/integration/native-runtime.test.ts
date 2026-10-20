@@ -1,21 +1,33 @@
 import { build } from "esbuild";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, watch } from "node:fs";
+import { createRequire } from "node:module";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   chmod,
   copyFile,
+  cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import {
@@ -30,6 +42,7 @@ const roots: string[] = [];
 const readOnlyDirectories: string[] = [];
 const children: ChildProcessWithoutNullStreams[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const path of readOnlyDirectories.splice(0))
     await chmod(path, 0o700).catch(() => {});
   for (const child of children.splice(0)) {
@@ -64,6 +77,7 @@ async function bundle(
   root: string,
   ffmpegSource = "/usr/bin/ffmpeg",
   serviceEntry = "apps/server/src/index.ts",
+  beforeStage?: (output: string) => void | Promise<void>,
 ) {
   const repository = join(root, "build");
   await mkdir(join(repository, "dist/server"), { recursive: true });
@@ -87,7 +101,7 @@ async function bundle(
       platform: "node",
       target: "node24",
       format: "esm",
-      external: ["@resvg/resvg-js", "fontkit"],
+      external: ["@resvg/resvg-js", "fontkit", "koffi"],
     });
   const license = join(root, "test-receipt.txt");
   await writeFile(
@@ -150,6 +164,7 @@ async function bundle(
     nodeVersion: process.versions.node,
     tools,
   };
+  await beforeStage?.(output);
   const manifest = await stageRuntime(inputs, output, repository);
   const repeated = join(root, "repeated-runtime");
   await stageRuntime(inputs, repeated, repository);
@@ -169,6 +184,146 @@ async function bundle(
   ).rejects.toThrow("hash mismatch");
   return { output, manifest };
 }
+it("inventories the actual loaded host Koffi addon and all upstream MIT notices", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-native-koffi-"));
+  roots.push(root);
+  const { output, manifest } = await bundle(root);
+  expect(manifest.components.find((c) => c.id === "koffi")).toMatchObject({
+    version: "3.3.3",
+    license: "MIT",
+  });
+  const nativeId = `@koromix/koffi-${process.platform}-${process.arch}`;
+  expect(manifest.components.find((c) => c.id === nativeId)).toMatchObject({
+    version: "3.3.3",
+    license: "MIT",
+  });
+  const require = createRequire(join(output, manifest.entries.service));
+  expect((require("koffi") as { version: string }).version).toBe("3.3.3");
+  const loaded = Object.keys(require.cache).filter(
+    (path) => path.startsWith(output) && path.endsWith("koffi.node"),
+  );
+  expect(loaded).toHaveLength(1);
+  const nativePath = relative(output, loaded[0]!).replaceAll("\\", "/");
+  expect(manifest.files.find((f) => f.path === nativePath)).toMatchObject({
+    component: nativeId,
+    sha256: await runtimeHash(loaded[0]!),
+  });
+  for (const [path, sha256] of [
+    [
+      "LICENSE.txt",
+      "22bcbbbacd739b026a8dc484f62a31484ce4c4e31f3408b60b29b4e41d62b290",
+    ],
+    [
+      "vendor/node-addon-api/LICENSE.md",
+      "89024017b88a9f2b763f79b941a4f2db3b4428edfcacdc0b23866b2da633ad0c",
+    ],
+    [
+      "vendor/node-api-headers/LICENSE",
+      "a553508f516031c91f3af1148d44970cb81bbae6c4f091be6835d39cc252238c",
+    ],
+  ])
+    expect(
+      manifest.files.find((f) => f.path === `node_modules/koffi/${path}`),
+    ).toMatchObject({ sha256 });
+  const installed = launch(join(root, "owner"), output);
+  await installed.ready();
+  await installed.stop();
+});
+it("does not replace an external empty directory created after runtime staging admission", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "openfilm-native-stage-exclusive-"),
+  );
+  roots.push(root);
+  let observer: ReturnType<typeof watch> | undefined;
+  let foreign: ReturnType<typeof lstatSync> | undefined;
+  let destination = "";
+  try {
+    await expect(
+      bundle(root, undefined, undefined, (output) => {
+        destination = output;
+        mkdirSync(dirname(output), { recursive: true });
+        observer = watch(dirname(output), (_event, name) => {
+          if (!foreign && name?.startsWith(".openfilm-runtime-")) {
+            mkdirSync(output);
+            foreign = lstatSync(output);
+          }
+        });
+      }),
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(foreign).toBeDefined();
+    expect(await lstat(destination)).toMatchObject({
+      dev: foreign!.dev,
+      ino: foreign!.ino,
+    });
+    expect(await readdir(destination)).toEqual([]);
+  } finally {
+    observer?.close();
+  }
+});
+it.each([
+  "LICENSE.txt",
+  "vendor/node-addon-api/LICENSE.md",
+  "vendor/node-api-headers/LICENSE",
+])(
+  "rejects an actual source change after the reviewed %s hash before copy",
+  async (notice) => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-koffi-notice-race-"));
+    roots.push(root);
+    let changed = false,
+      destination = "";
+    await expect
+      .soft(
+        bundle(root, undefined, undefined, async (output) => {
+          destination = output;
+          // Copy only into a private test package. Never alter pnpm's shared store.
+          const modules = join(root, "build/node_modules");
+          const originalCore = await realpath(resolve("node_modules/koffi"));
+          const nativeId = `@koromix/koffi-${process.platform}-${process.arch}`;
+          const dependencyRequire = createRequire(
+            join(originalCore, "package.json"),
+          );
+          const originalNative = dirname(dependencyRequire.resolve(nativeId));
+          await rm(modules);
+          await mkdir(join(modules, "@resvg"), { recursive: true });
+          await mkdir(join(modules, "@koromix"), { recursive: true });
+          for (const name of ["fontkit", "@resvg/resvg-js"])
+            await symlink(
+              await realpath(resolve("node_modules", name)),
+              join(modules, name),
+              "dir",
+            );
+          const core = join(modules, "koffi");
+          await cp(originalCore, core, {
+            recursive: true,
+            filter: (source) => basename(source) !== "node_modules",
+          });
+          await cp(originalNative, join(modules, nativeId), {
+            recursive: true,
+          });
+          const target = join(core, notice);
+          const manifest =
+            await import("../../apps/server/src/runtime-manifest.js");
+          const originalHash = manifest.runtimeHash;
+          vi.spyOn(manifest, "runtimeHash").mockImplementation(
+            async (path, signal) => {
+              const actual = await originalHash(path, signal);
+              if (path === target && !changed) {
+                changed = true;
+                await writeFile(
+                  target,
+                  "Real bytes changed after the reviewed hash",
+                );
+              }
+              return actual;
+            },
+          );
+        }),
+      )
+      .rejects.toThrow("Runtime input hash mismatch");
+    expect(changed).toBe(true);
+    await expect(lstat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
 function launch(
   root: string,
   bundle: string,
@@ -380,7 +535,7 @@ it("closes a genuine service spawn error and can launch a fresh owner afterward"
     platform: "node",
     target: "node24",
     format: "esm",
-    external: ["@resvg/resvg-js", "fontkit"],
+    external: ["@resvg/resvg-js", "fontkit", "koffi"],
   });
   // Removing cwd after the verified preflight produces a real ENOENT spawn
   // error, with no service PID or exit event; no production verifier is mocked.
@@ -474,7 +629,7 @@ it("starts a relocated verified runtime, edits/renders/reopens synthetic media a
     platform: "node",
     target: "node24",
     format: "esm",
-    external: ["@resvg/resvg-js", "fontkit"],
+    external: ["@resvg/resvg-js", "fontkit", "koffi"],
   });
   const cancelled = launch(join(root, "cancelled"), output, harness);
   await eventually(() =>
