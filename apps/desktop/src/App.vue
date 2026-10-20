@@ -64,6 +64,16 @@ import SourceDetails from "./components/SourceDetails.vue";
 import AnalysisJobActions from "./components/AnalysisJobActions.vue";
 import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
 import { nativeBenchmark } from "./nativeBenchmark";
+import type {
+  NativeLocalDraft,
+  RetainedNativeDraft,
+} from "./native-draft-recovery";
+
+const props = defineProps<{
+  nativeDrafts?: RetainedNativeDraft[];
+  nativeGeneration?: number;
+}>();
+const emit = defineEmits<{ nativeDraftsRestored: [ids: number[]] }>();
 
 const { t } = useI18n();
 const interfaceLocales = [
@@ -179,6 +189,7 @@ watch(
   { flush: "sync" },
 );
 const scenePlannerOpen = ref(false);
+const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
 const scenePlanDraftPresent = ref(false);
 let projectMutationVersion = 0;
 const libraryView = ref<"all" | "events" | "duplicates">("all");
@@ -896,6 +907,7 @@ async function resetProjectView() {
   tab.value = "library";
   restoreScriptReviewTarget();
   rememberProject();
+  await restoreNativeDrafts();
 }
 async function createFilm(value: FilmCreation) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
@@ -1941,7 +1953,185 @@ async function prepareNativeClose() {
     )
   );
 }
-defineExpose({ prepareNativeClose });
+function categoryBaseline(asset: MediaAsset): string {
+  return JSON.stringify({
+    uri: asset.uri,
+    contentHash: asset.contentHash ?? null,
+    mediaType: asset.mediaType,
+    tags: asset.tags,
+  });
+}
+function beatBaseline(beat: StoryBeat): string {
+  return JSON.stringify({
+    title: beat.title,
+    intent: beat.intent ?? "",
+    targetDuration: beat.targetDuration ?? 0,
+    selectedAssetIds: beat.selectedAssetIds ?? [],
+    candidateAssetIds: beat.candidateAssetIds ?? [],
+    narration: beat.script?.narration ?? "",
+    visualDirection: beat.script?.visualDirection ?? "",
+  });
+}
+function plannerBaseline(): string {
+  return JSON.stringify({
+    title: project.value?.title,
+    templateId: project.value?.filmSettings?.templateId,
+    targetDuration: project.value?.filmSettings?.targetDuration,
+    maxDuration: project.value?.filmSettings?.maxDuration,
+  });
+}
+function captureNativeDrafts(): NativeLocalDraft[] {
+  const current = project.value;
+  const path = projectPath.value;
+  if (!current || !path) return [];
+  const owner = {
+    projectId: current.id,
+    projectPath: path,
+    projectTitle: current.title,
+  };
+  const drafts: NativeLocalDraft[] = [];
+  if (beatDirty.value && activeStory.value && activeBeat.value)
+    drafts.push({
+      ...owner,
+      kind: "beat",
+      entityId: activeBeat.value.id,
+      storyId: activeStory.value.id,
+      label: activeBeat.value.title,
+      baseline: beatBaseline(activeBeat.value),
+      value: JSON.parse(JSON.stringify(beatDraft.value)),
+    });
+  if (categoryDirty.value && selectedAsset.value)
+    drafts.push({
+      ...owner,
+      kind: "category",
+      entityId: selectedAsset.value.id,
+      label: selectedAsset.value.name,
+      baseline: categoryBaseline(selectedAsset.value),
+      value: [...categoryDraft.value],
+    });
+  const planner = scenePlanner.value?.captureNativeDraft();
+  if (planner) {
+    drafts.push({
+      ...owner,
+      kind: "planner",
+      entityId: "planner",
+      label: current.title,
+      baseline: plannerBaseline(),
+      value: planner.inputs,
+    });
+    if (planner.text.length)
+      drafts.push({
+        ...owner,
+        kind: "planner-text",
+        entityId: "planner-text",
+        label: current.title,
+        baseline: plannerBaseline(),
+        value: planner.text,
+      });
+  }
+  return drafts;
+}
+let nativeRecoveryAttempt = 0;
+async function restoreNativeDrafts() {
+  const attempt = ++nativeRecoveryAttempt;
+  const current = project.value;
+  const path = projectPath.value;
+  const generation = props.nativeGeneration ?? 0;
+  if (!current || !path) return;
+  const owned = () =>
+    !nativeDisposed &&
+    attempt === nativeRecoveryAttempt &&
+    project.value === current &&
+    projectPath.value === path &&
+    props.nativeGeneration === generation;
+  const consumed: number[] = [];
+  const entries = [...(props.nativeDrafts ?? [])].sort(
+    (left, right) => right.generation - left.generation || right.id - left.id,
+  );
+  for (const entry of entries) {
+    if (!owned()) break;
+    if (
+      entry.generation >= generation ||
+      entry.projectId !== current.id ||
+      entry.projectPath !== path
+    )
+      continue;
+    if (entry.kind === "beat") {
+      const story = current.stories.find((item) => item.id === entry.storyId);
+      const index =
+        story?.beats.findIndex((beat) => beat.id === entry.entityId) ?? -1;
+      if (
+        !story ||
+        index < 0 ||
+        beatDirty.value ||
+        beatBaseline(story.beats[index]!) !== entry.baseline
+      )
+        continue;
+      activeStoryId.value = story.id;
+      activeBeatIndex.value = index;
+      await nextTick();
+      if (
+        !owned() ||
+        beatDirty.value ||
+        activeStory.value?.id !== story.id ||
+        activeBeat.value?.id !== entry.entityId ||
+        beatBaseline(activeBeat.value) !== entry.baseline
+      )
+        continue;
+      beatDraft.value = JSON.parse(JSON.stringify(entry.value));
+      beatDirty.value = true;
+      tab.value = "story";
+      consumed.push(entry.id);
+    } else if (entry.kind === "category" && !categoryDirty.value) {
+      const selectedBefore = selectedAssetId.value;
+      try {
+        const result = await api.assets(
+          new URLSearchParams({ ids: entry.entityId, limit: "1" }),
+        );
+        const asset = result.assets.find((item) => item.id === entry.entityId);
+        if (
+          !owned() ||
+          categoryDirty.value ||
+          selectedAssetId.value !== selectedBefore ||
+          !asset ||
+          categoryBaseline(asset) !== entry.baseline
+        )
+          continue;
+        cacheAssets([asset]);
+        selectedAssetId.value = asset.id;
+        categoryDraft.value = [...entry.value];
+        categoryDirty.value = true;
+        consumed.push(entry.id);
+      } catch {
+        /* Keep the only recovery copy until a fresh read can validate it. */
+      }
+    } else if (
+      entry.kind === "planner" &&
+      !scenePlanDraftPresent.value &&
+      plannerBaseline() === entry.baseline
+    ) {
+      scenePlannerOpen.value = true;
+      tab.value = "story";
+      await nextTick();
+      if (
+        !owned() ||
+        scenePlanDraftPresent.value ||
+        !scenePlanner.value ||
+        plannerBaseline() !== entry.baseline
+      )
+        continue;
+      scenePlanner.value.restoreNativeDraft(entry.value);
+      consumed.push(entry.id);
+    }
+    // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
+  }
+  if (consumed.length) emit("nativeDraftsRestored", consumed);
+}
+defineExpose({
+  prepareNativeClose,
+  captureNativeDrafts,
+  openNativeDraftProject: openProject,
+});
 function protectDrafts(event: BeforeUnloadEvent) {
   if (
     categoryDirty.value ||
@@ -1956,6 +2146,8 @@ function protectDrafts(event: BeforeUnloadEvent) {
 }
 onMounted(async () => {
   await boot();
+  await restoreNativeDrafts();
+  if (nativeDisposed) return;
   poll = setInterval(() => {
     void pollJobs();
   }, 1000);
@@ -2154,6 +2346,7 @@ onUnmounted(() => {
         v-if="scenePlannerOpen"
         v-show="tab === 'story'"
         :key="project.id"
+        ref="scenePlanner"
         :title="project.title"
         :target-duration="
           project.filmSettings?.targetDuration ?? targetDuration

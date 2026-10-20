@@ -5,12 +5,20 @@ export default {
       starting:
         "Checking the installed runtime and starting your local workspace…",
       retry: "Retry setup",
+      draftsRetained: "Local drafts retained",
+      draftsHint:
+        "These drafts stay only in this window. Reopen their original project to restore unchanged drafts. For changed or missing content, download a copy before discarding it; saved projects are never overwritten automatically.",
+      reopenDraftProject: "Reopen original project",
+      downloadDraft: "Download draft",
+      discardDraft: "Discard retained draft",
       recovery:
         "Repair or reinstall the same verified OpenFilm candidate, then retry. Existing projects stay in their folders.",
       local:
         "This check uses only installed local files. No media is uploaded.",
       errors: {
         unsaved: "Save or resolve the pending draft before closing OpenFilm.",
+        recoveryFull:
+          "Draft recovery storage is full. Go back to copy the current draft, or download and discard retained drafts before retrying.",
         missing: "The installed runtime is incomplete.",
         hash: "An installed runtime file failed its integrity check.",
         invalid: "The runtime manifest or a file path is invalid.",
