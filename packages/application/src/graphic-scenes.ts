@@ -154,7 +154,10 @@ export class GraphicSceneService {
           assets,
           settings,
           work,
-          { signal },
+          {
+            signal,
+            fontPathForStyle: (style) => this.host.titleFontPath(style),
+          },
         );
         finalSources = prepared.assertSourceIdentities;
         const png = await prepared.frame(null, input.frameIndex);

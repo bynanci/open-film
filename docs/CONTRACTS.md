@@ -182,3 +182,40 @@ creates a named checkpoint; failure recovery uses a private project journal.
 Session Undo/Redo is unchanged and does not include project-level restore. See
 [Named Versions](named-versions.md), [project format](project-format.md#named-versions)
 and [validation](validation-named-versions.md).
+
+## M7D Collect Media
+
+`app.collectMedia` exposes shared `plan`, `create` and `verify` operations.
+Plans select one saved Composition (`current-film`) or all saved
+Stories/Compositions (`entire-project`), and report only referenced assets and
+resolved fonts. Every resource needs a confirmed rights declaration before a
+package can be marked complete. `create` is bound to both `planId` and
+`baseRevision`; changed sources, project revisions, missing rights and unsafe
+paths fail before publication. It does not move originals, include unselected
+Library assets, or include Named Versions snapshots.
+
+`POST /api/collect/plan` accepts `{scope, compositionId?, rightsDeclarations?}`.
+`POST /api/collect/create` accepts that selection plus
+`{planId, baseRevision, format: "zip" | "directory"}`; the server chooses a
+unique destination inside the open project's `exports/` directory.
+`POST /api/collect/verify` accepts `{packageName}` from that directory only.
+Request cancellation aborts staged work, and server project switching remains
+blocked until the operation's cleanup completes.
+
+The CLI uses `collect plan|create|verify --project <path>`; create requires
+`--plan-id`, `--base-revision`, `--format`, `--destination`, and the same scope
+and optional rights JSON used for planning. Verify accepts a local directory or
+ZIP path. Both entry points call the same application service.
+
+Portable package assets use opaque per-asset `openfilm-package://` references
+and hash-addressed paths under `sources/`; collected font files and bindings
+reside under `fonts/`. The external `collect-manifest.json` receipt lists
+relative file paths, SHA-256/size pairs, asset/font references, rights
+declarations, selected IDs and only digests of original URIs. The filtered
+catalog snapshot retains selected transcript data, removes unrelated and
+transient rows, and is vacuumed before packaging. Package Verify validates file
+and catalog hashes, reopens in a private temporary root, renders a preview and
+MP4, cross-checks the renderer's source/output receipt, decodes every frame and
+uses FFprobe for frame/audio stream evidence. It does not certify another
+workstation or NLE. See [Collect Media](collect-media.md) and
+[validation](validation-collect-media.md).

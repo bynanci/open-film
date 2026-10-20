@@ -38,6 +38,10 @@ import type {
   ProjectVersionCreateInput,
   ProjectVersionRestoreInput,
   ProjectVersionRestoreResult,
+  CollectMediaPlan,
+  CollectPlanInput,
+  CollectMediaCreateResult,
+  CollectMediaVerifyResult,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -507,6 +511,23 @@ export const api = {
         generation: number;
       }
     >(`/versions/${encodeURIComponent(id)}/restore`, body),
+  collectMediaPlan: (body: CollectPlanInput, signal?: AbortSignal) =>
+    post<{ plan: CollectMediaPlan }>("/collect/plan", body, signal),
+  createCollectedMedia: (
+    body: CollectPlanInput & {
+      planId: string;
+      baseRevision: string;
+      format: "directory" | "zip";
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: CollectMediaCreateResult }>("/collect/create", body, signal),
+  verifyCollectedMedia: (packageName: string, signal?: AbortSignal) =>
+    post<{ result: CollectMediaVerifyResult }>(
+      "/collect/verify",
+      { packageName },
+      signal,
+    ),
   captionContext: (
     projectId: string,
     compositionId: string,

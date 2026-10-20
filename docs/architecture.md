@@ -507,3 +507,25 @@ outputs and caches are never copied or replaced. The version diff is a
 deterministic structural comparison across existing Story, Composition,
 CaptionCue, GraphicScene/template, audio automation and source identities. See
 [Named Versions](named-versions.md) and its [validation record](validation-named-versions.md).
+
+## M7D Collect Media packages
+
+`CollectMediaService` is shared by Desktop, loopback HTTP and CLI. It selects
+only saved Story/Composition references, hashes sources and resolved fonts,
+requires explicit rights receipts, and binds each plan to the saved project and
+catalog revision. The package writer captures the manifest and a SQLite-consistent
+image under the catalog writer fence, filters unselected catalog rows and
+VACUUMs the result so deleted asset data is not left in free pages. It excludes
+versions, caches, jobs and credentials without changing project schema 1.0.0 or
+the existing edit/history model.
+
+ZIP and directory outputs use hash-addressed source/font files, private staging,
+per-destination locks, source rehashing and revision checks before publication.
+The verifier rejects unsafe paths, links, nested archives and invalid ZIP
+records, unpacks into a private temporary root, validates receipts, reopens the
+package, renders a preview and MP4, and decodes/checks the actual output. Font
+lookup is package-relative and hash-checked when a collected project reopens.
+The verifier reports representative render evidence for the first Composition;
+cross-platform workstation and NLE checks remain manual. See the
+[Collect Media contract](collect-media.md) and
+[validation record](validation-collect-media.md).

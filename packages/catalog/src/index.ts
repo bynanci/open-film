@@ -175,6 +175,112 @@ export function inspectCatalogSnapshot(
   });
 }
 
+/**
+ * Build a portable catalog image containing only the explicitly selected
+ * media rows. Transcript revisions for those assets remain available, while
+ * transient jobs, caches, suggestions and unrelated catalog rows are omitted.
+ * URI rewriting is supplied by the application so paths remain package-local.
+ */
+export function createPortableCatalogSnapshot(
+  image: Uint8Array,
+  expectedSchemaVersion: number,
+  assets: readonly MediaAsset[],
+): Buffer {
+  if (assets.length > 10_000)
+    throw new Error("Portable catalog exceeds its asset count limit.");
+  const ids = new Set<string>();
+  for (const asset of assets) {
+    validateMediaAsset(asset);
+    if (ids.has(asset.id))
+      throw new Error("Portable catalog has duplicate asset identifiers.");
+    ids.add(asset.id);
+  }
+  if (image.length === 0 || image.length > CATALOG_SNAPSHOT_MAX_BYTES)
+    throw new Error("Catalog snapshot exceeds its size limit.");
+  const directory = mkdtempSync(join(tmpdir(), "openfilm-portable-catalog-"));
+  const path = join(directory, "database.sqlite");
+  let database: DatabaseSync | undefined;
+  try {
+    writeFileSync(path, image, { flag: "wx", mode: 0o600 });
+    database = new DatabaseSync(path);
+    database.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+    validateCatalogDatabase(database, expectedSchemaVersion);
+    database.exec("BEGIN IMMEDIATE;");
+    try {
+      database.exec(`
+        DELETE FROM intelligence_cache;
+        DELETE FROM intelligence_markers;
+        DELETE FROM review_suggestions;
+        DELETE FROM review_batches;
+        DELETE FROM scene_script_suggestions;
+        DELETE FROM project_glossary;
+        DELETE FROM jobs;
+        CREATE TEMP TABLE collect_selected_assets(id TEXT PRIMARY KEY);
+      `);
+      const insertId = database.prepare(
+        "INSERT INTO collect_selected_assets(id) VALUES(?)",
+      );
+      for (const id of ids) insertId.run(id);
+      database.exec(
+        "DELETE FROM assets WHERE id NOT IN (SELECT id FROM collect_selected_assets)",
+      );
+      const update = database.prepare(`
+        UPDATE assets SET uri=?,name=?,media_type=?,captured_at=?,rating=?,
+          favorite=?,rejected=?,locked=?,data=? WHERE id=?
+      `);
+      for (const asset of assets) {
+        const result = update.run(
+          asset.uri,
+          asset.name,
+          asset.mediaType,
+          asset.capturedAt ? new Date(asset.capturedAt).toISOString() : null,
+          asset.rating ?? null,
+          Number(Boolean(asset.state.favorite)),
+          Number(Boolean(asset.state.rejected)),
+          Number(Boolean(asset.state.locked)),
+          JSON.stringify(asset),
+          asset.id,
+        );
+        if (Number(result.changes) !== 1)
+          throw new Error(`Portable catalog source was not found: ${asset.id}`);
+      }
+      database.exec("COMMIT;");
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK;");
+      throw error;
+    }
+    const actualIds = database
+      .prepare("SELECT id FROM assets ORDER BY id")
+      .all()
+      .map((row) => String(row.id));
+    if (
+      actualIds.length !== assets.length ||
+      actualIds.some((id) => !ids.has(id))
+    )
+      throw new Error("Portable catalog contains an unexpected media row.");
+    // SQLite keeps deleted payloads in free pages until VACUUM. Rebuild the
+    // projected catalog so omitted assets cannot be recovered from slack space.
+    database.exec("VACUUM;");
+    const mode = String(
+      database.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode ?? "",
+    ).toLowerCase();
+    if (mode !== "delete")
+      throw new Error("Portable catalog could not be finalized safely.");
+    validateCatalogDatabase(database, expectedSchemaVersion);
+    database.close();
+    database = undefined;
+    const result = readFileSync(path);
+    validateCatalogImage(result, expectedSchemaVersion);
+    return result;
+  } finally {
+    try {
+      database?.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+
 function validateCatalogImage(
   image: Buffer,
   expectedSchemaVersion: number,

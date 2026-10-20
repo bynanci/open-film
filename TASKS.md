@@ -742,13 +742,13 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## Candidate — M7A / F09 Named Versions
+## Implemented — M7A / F09 Named Versions
 
 Scope: [Named Versions contract](docs/named-versions.md),
 [architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). This branch is based on the
-latest fetched `main`; it is not merged and CI/review gates are tracked
-separately.
+[validation](docs/validation-named-versions.md). M7A is integrated in `main`
+through PR #34. Project versions are independent of session Undo/Redo and do
+not copy original media.
 
 - [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
       v1 records, source hashes, idempotent retries and mutable labels isolated
@@ -763,8 +763,31 @@ separately.
 - [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
       restore V2 with synthetic photos, captions, graphics, audio, frame/audio
       measurements and unchanged source hashes.
-- [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
-      workstation filesystem/permission behavior as a separate manual gate.
+- [x] Merge the reviewed M7A implementation through PR #34.
+- [ ] Manual: workstation filesystem and permission behavior remains separate
+      from synthetic package validation.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+## Candidate — M7D / F12 Collect Media
+
+Scope: [portable package contract](docs/collect-media.md),
+[architecture](docs/architecture.md#m7d-collect-media-packages), and
+[validation](docs/validation-collect-media.md). This work uses the current
+`main` base after M7A; it does not depend on the still-open M7B/M8A PRs.
+
+- [x] Plan only referenced media for the current saved Composition or all
+      referenced project stories/compositions; never include the whole library.
+- [x] Require per-resource rights declarations and show unavailable, changed,
+      unsupported, oversized, or missing-rights items before collection.
+- [x] Snapshot the saved manifest and SQLite catalog under the catalog writer
+      fence; VACUUM the filtered catalog and omit unrelated rows, versions,
+      jobs, caches, secrets, and absolute original paths.
+- [x] Create hash-addressed ZIP or directory packages with source/font hashes,
+      atomic staged publication, cancellation, stale-source guards and path
+      checks; preserve source files unchanged.
+- [x] Verify relocation by unpacking privately, checking receipts, reopening,
+      rendering a preview and decoding a real MP4.
+- [ ] Complete exact-head full test matrix, CI and independent review; keep
+      Windows/macOS filesystem and permission behavior as workstation gates.
+
+M7B (Export Formats) remains an open candidate PR and has unresolved review
+findings; M7C and M7E remain queued. M7D does not implement those phases.

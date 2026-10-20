@@ -18,6 +18,7 @@ import {
   resolveRenderQuality,
   type ScenePlanAcceptance,
   type DirectionReviewPlan,
+  type CollectRightsDeclaration,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -74,6 +75,9 @@ Usage:
   openfilm versions diff <before-id> <after-id> --project <film.openfilm>
   openfilm versions rename <version-id> --project <film.openfilm> --name "New name" [--description "..."|--clear-description]
   openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
+  openfilm collect plan --project <film.openfilm> --scope current-film|entire-project [--composition <id>] [--rights <declarations.json>]
+  openfilm collect create --project <film.openfilm> --scope current-film|entire-project --plan-id <sha256> --base-revision <sha256> --format directory|zip --destination <new-path> [--composition <id>] [--rights <declarations.json>]
+  openfilm collect verify --project <film.openfilm> --package <directory-or-zip>
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
 Original media stays unchanged. No network service or AI account is required.
@@ -166,6 +170,10 @@ function parse(args: string[]) {
     "look",
     "look-strength",
     "quality",
+    "destination",
+    "rights",
+    "plan-id",
+    "package",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -358,7 +366,75 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    if (command === "versions") {
+    if (command === "collect") {
+      const action = positional[1];
+      if (action === "verify") {
+        const packagePath = value(options, "package");
+        if (!packagePath)
+          throw new Error("Specify --package <directory-or-zip>.");
+        print(
+          await app.collectMedia.verify(
+            resolve(packagePath),
+            controller.signal,
+          ),
+        );
+      } else {
+        const scope = value(options, "scope");
+        if (scope !== "current-film" && scope !== "entire-project")
+          throw new Error("Choose --scope current-film or entire-project.");
+        const compositionId = value(options, "composition");
+        if (scope === "current-film" && !compositionId)
+          throw new Error("current-film scope requires --composition <id>.");
+        let rightsDeclarations: CollectRightsDeclaration[] | undefined;
+        const rightsPath = value(options, "rights");
+        if (rightsPath) {
+          const parsed: unknown = JSON.parse(
+            await readFile(resolve(rightsPath), "utf8"),
+          );
+          if (!Array.isArray(parsed))
+            throw new Error(
+              "--rights must point to a JSON array of confirmed declarations.",
+            );
+          rightsDeclarations = parsed as CollectRightsDeclaration[];
+        }
+        const base = {
+          scope,
+          ...(compositionId ? { compositionId } : {}),
+          ...(rightsDeclarations ? { rightsDeclarations } : {}),
+        } as const;
+        if (action === "plan") {
+          print(await app.collectMedia.plan(base, controller.signal));
+        } else if (action === "create") {
+          const planId = value(options, "plan-id");
+          const baseRevision = value(options, "base-revision");
+          const destination = value(options, "destination");
+          const format = value(options, "format");
+          if (!planId || !baseRevision || !destination)
+            throw new Error(
+              "create requires --plan-id, --base-revision, and --destination.",
+            );
+          if (format !== "directory" && format !== "zip")
+            throw new Error("Choose --format directory or zip.");
+          print(
+            await app.collectMedia.create({
+              ...base,
+              planId,
+              baseRevision,
+              destination: resolve(destination),
+              format,
+              signal: controller.signal,
+              onProgress(progress) {
+                console.error(
+                  JSON.stringify({ event: "collect.progress", progress }),
+                );
+              },
+            }),
+          );
+        } else {
+          throw new Error("Choose collect plan|create|verify.");
+        }
+      }
+    } else if (command === "versions") {
       const action = positional[1];
       if (action === "revision") {
         print({

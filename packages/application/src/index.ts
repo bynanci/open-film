@@ -54,6 +54,7 @@ import {
   type FilmSettings,
   type FilmLook,
   type ProjectContentLocale,
+  type TitleStyle,
 } from "@openfilm/core";
 import { GraphicSceneService } from "./graphic-scenes.js";
 import { TimelineEditor } from "./editor.js";
@@ -107,6 +108,24 @@ import {
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
 import { ProjectVersionService } from "./project-versions.js";
+import {
+  CollectMediaService,
+  collectFontPathForStyle,
+  loadCollectedFontBindings,
+} from "./collect-media.js";
+export {
+  CollectMediaService,
+  CollectMediaError,
+  type CollectMediaCreateInput,
+  type CollectMediaCreateResult,
+  type CollectMediaPlan,
+  type CollectPlanInput,
+  type CollectMediaPlanItem,
+  type CollectMediaScope,
+  type CollectMediaVerifyResult,
+  type CollectRightsDeclaration,
+  type CollectRightsBasis,
+} from "./collect-media.js";
 import { isInside, managedSourceUri } from "./path-safety.js";
 import {
   MediaIntelligence,
@@ -274,6 +293,7 @@ export class OpenFilmApplication {
   readonly audioQuality: AudioQualityService;
   readonly audioGeneration: AudioGenerationService;
   readonly versions: ProjectVersionService;
+  readonly collectMedia: CollectMediaService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -284,6 +304,10 @@ export class OpenFilmApplication {
     public project: OpenFilmProject,
     runtime: OpenFilmRuntimeOptions = {},
     private readonly intent: "workspace" | "export" = "workspace",
+    private readonly packageFontBindings: ReadonlyMap<
+      string,
+      string
+    > = new Map(),
   ) {
     // Bind the baseline to the loaded state, never a second disk read that
     // could have advanced while open() was awaiting filesystem work.
@@ -291,6 +315,7 @@ export class OpenFilmApplication {
     this.catalog = new ProjectCatalog(directory);
     try {
       this.versions = new ProjectVersionService(this);
+      this.collectMedia = new CollectMediaService(this);
       this.graphics = new GraphicSceneService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
@@ -396,6 +421,7 @@ export class OpenFilmApplication {
       JSON.parse(await readFile(join(path, "project.json"), "utf8")),
     );
     const canonical = await realpath(path);
+    const packageFontBindings = await loadCollectedFontBindings(canonical);
     for (const name of ["story", "timeline", "analysis", "cache", "exports"]) {
       try {
         safeDirectorySync(join(canonical, name));
@@ -409,6 +435,7 @@ export class OpenFilmApplication {
       project,
       runtime,
       options.intent,
+      packageFontBindings,
     );
     try {
       application.versions.recoverInterruptedRestore();
@@ -488,6 +515,15 @@ export class OpenFilmApplication {
     return uri && uri !== asset.uri ? { ...asset, uri } : asset;
   }
 
+  /** Package-owned fonts are hash-checked and resolved by requested family/weight. */
+  titleFontPath(style: TitleStyle | undefined): string | undefined {
+    return collectFontPathForStyle(
+      this.packageFontBindings,
+      style,
+      this.project.settings,
+    );
+  }
+
   private repairMediaReferences(): void {
     this.catalog.withProjectWrite(() => {
       let next: OpenFilmProject | undefined;
@@ -500,7 +536,41 @@ export class OpenFilmApplication {
         if (uri) {
           const managedRoot = join(this.directory, "sources");
           const rootUri = pathToFileURL(managedRoot).href;
-          const reference = referenceFor(asset, this.project.mediaLibraries);
+          const packageReference = asset.metadata["openfilm.reference"] as
+            Record<string, unknown> | undefined;
+          const reference = asset.uri.startsWith("openfilm-package://")
+            ? {
+                originalUri:
+                  typeof packageReference?.originalUri === "string"
+                    ? packageReference.originalUri
+                    : asset.uri,
+                filename:
+                  typeof packageReference?.filename === "string"
+                    ? packageReference.filename
+                    : asset.name,
+                mediaLibraryId:
+                  typeof packageReference?.mediaLibraryId === "string"
+                    ? packageReference.mediaLibraryId
+                    : `legacy:${asset.id}`,
+                relativePath:
+                  typeof packageReference?.relativePath === "string"
+                    ? packageReference.relativePath
+                    : typeof managed?.relativePath === "string"
+                      ? managed.relativePath
+                      : `sources/${asset.id}`,
+                volumeId:
+                  typeof packageReference?.volumeId === "string"
+                    ? packageReference.volumeId
+                    : "collected-package",
+                rootUri,
+                ...(typeof packageReference?.contentHash === "string"
+                  ? { contentHash: packageReference.contentHash }
+                  : {}),
+                ...(typeof packageReference?.fileSize === "number"
+                  ? { fileSize: packageReference.fileSize }
+                  : {}),
+              }
+            : referenceFor(asset, this.project.mediaLibraries);
           const relativePath = relative(managedRoot, localPath(uri))
             .split(sep)
             .join("/");
@@ -1550,7 +1620,11 @@ export class OpenFilmApplication {
         404,
       );
     const settings = { ...this.project.settings };
-    const { font } = await resolveTitleFont(clip.titleStyle);
+    const fontPath = this.titleFontPath(clip.titleStyle);
+    const { font } = await resolveTitleFont(
+      clip.titleStyle,
+      fontPath ? { fontPath } : undefined,
+    );
     const key = titleOverlayCacheKey({
       text: clip.title,
       style: clip.titleStyle,
@@ -1579,6 +1653,7 @@ export class OpenFilmApplication {
         clip.titleStyle,
         settings,
         temporary,
+        fontPath ? { fontPath } : undefined,
       );
       await rename(temporary, path);
     } finally {
@@ -1742,6 +1817,7 @@ export class OpenFilmApplication {
           lookOverride,
           quality,
           captionTrackId: options.captionTrackId,
+          fontPathForStyle: (style) => this.titleFontPath(style),
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));

@@ -55,6 +55,7 @@ import {
   type Clip,
   type Composition,
   type MediaAsset,
+  type TitleStyle,
 } from "@openfilm/core";
 import {
   checkAbort,
@@ -80,6 +81,8 @@ export interface RenderOptions {
   quality?: RenderQuality;
   /** Renders one native caption language; omitted selects the first saved track. */
   captionTrackId?: string | null;
+  /** Optional package-local font resolver; callers must supply hash-verified paths. */
+  fontPathForStyle?: (style: TitleStyle | undefined) => string | undefined;
 }
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
@@ -352,6 +355,9 @@ export class FFmpegRenderer {
               clip.titleStyle,
               settings,
               titleFile,
+              {
+                fontPath: options.fontPathForStyle?.(clip.titleStyle),
+              },
             );
             fonts.push({
               family: title.font.family,
@@ -546,7 +552,10 @@ export class FFmpegRenderer {
         assets,
         settings,
         work,
-        { signal: options.signal },
+        {
+          signal: options.signal,
+          fontPathForStyle: options.fontPathForStyle,
+        },
       );
       for (const source of graphics.sources)
         if (
@@ -607,6 +616,9 @@ export class FFmpegRenderer {
             selectedCaptionTrack.style,
             settings,
             join(work, `${suffix}.png`),
+            {
+              fontPath: options.fontPathForStyle?.(selectedCaptionTrack.style),
+            },
           );
           fonts.push({
             family: title.font.family,

@@ -83,8 +83,14 @@ function location(input: string): Location {
     /^\/\/[^/]/.test(path);
   if (/^file:/i.test(input)) {
     const url = new URL(input);
-    if (url.search || url.hash)
+    if (
+      url.search ||
+      (url.hash && !/^#openfilm-asset=[a-f0-9]{24}$/u.test(url.hash))
+    )
       throw new Error("File URLs must encode filename query/hash characters.");
+    // Collected packages may address one content-deduplicated source through
+    // several stable asset identities. The marker is not part of the path.
+    url.hash = "";
     windows = !!url.hostname || /^\/[A-Za-z]:\//.test(url.pathname);
     path = fileURLToPath(url, { windows });
   } else if (
