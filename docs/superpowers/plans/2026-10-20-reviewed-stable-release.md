@@ -32,6 +32,7 @@
 - [x] Update validation, TASKS, ROADMAP and 0.4.0 release metadata/notes; retain unfinished platform gates.
 - [x] Independently repair/review all six feature heads; integrate them with ancestry preserved.
 - [x] Run combined format/i18n/lint/typecheck/test/build/interchange, built CLI smoke and actual shared render regressions.
+- [x] Reproduce and independently close final CLI/archive/native admission findings; preserve owned output and rerun full combined basic gates.
 
 Final full browser/native CI, exact-head review, merge and publication are gated
 and recorded by [PR #41](https://github.com/bynanci/open-film/pull/41) and the

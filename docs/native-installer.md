@@ -4,8 +4,9 @@ This candidate implements verified runtime staging, native startup/diagnostics,
 owned shutdown and an installer build workflow. Windows/macOS installation QA,
 release signing and an update feed are **not configured or validated**. A Linux
 runtime process regression is not evidence of a self-contained Windows installer.
-M7A is integrated in main. M7B/M7D/M8A remain separate PRs; M7E uses the current
-main runtime contract and does not depend on their unmerged changes.
+The 0.4.0 source integration includes M7A–M7D and M8A/M8B on the same
+Composition/application contracts. Native distribution remains a separate
+manual candidate gate.
 
 ## RuntimeManifest v1
 
@@ -121,8 +122,11 @@ The native shell requests close through a numbered bridge request. The UI first
 runs its existing beforeunload draft protections. Pending drafts keep the window
 open; an accepted close makes the workspace inert, then awaits existing
 application cancellation/save/SQLite close, a matching private IPC acknowledgement
-and a successful child exit. A close failure stays visible and does not authorize
-force termination. The shared private IPC retains its existing benchmark wire
+and a successful child exit. Startup cancellation reaches the owned launcher
+without waiting behind readiness; late startup results cannot remount Edit.
+A close failure stays visible and does not authorize force termination. An
+already exited failed owner can be reaped before an explicit Retry. The shared
+private IPC retains its existing benchmark wire
 names for compatibility; native ownership is an explicit separate opt-in. Loss
 of the native owner's input/IPC channel requests graceful shutdown of that owned
 service only. An OS hard kill during a failed save cannot be certified as safe.

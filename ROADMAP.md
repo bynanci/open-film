@@ -5,10 +5,18 @@ This maintenance pass hardens Named Versions and integrates independently
 reviewed Photo Depth, Professional Export, Collect Media, Native Installer
 candidate tooling, NLE Fidelity and Motion Candidates (PRs 35–40). Shared-source
 contracts, non-destructive editing and explicit provider consent remain intact.
-Combined basic gates and actual cross-feature render/package parity pass; see
+The final 15 feature/integration corrections include scene schema and seeking,
+delivery and caption fences, passive NLE review, and atomic package/stem publication.
+Final review also covers installed CLI metadata, empty ZIP/owned cancellation
+cleanup and all 43 native FFmpeg filter capabilities. Combined basic gates and
+actual cross-feature render/package parity pass; see
 [release validation](docs/validation-stable-release.md). Final exact-head browser,
 native CI, merge and tag results accompany the
 [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+
+CLI exports preserve saved revisions and unrelated jobs across durable retries.
+Native installer distribution also requires compatible remediation and reachability
+review for GLib 0.18.5 / `RUSTSEC-2024-0429`; that existing gate remains open.
 Next are measured Windows/macOS/NLE workstation gates and larger caption-reference
 batching. Native installers remain unverified/manual candidates.
 

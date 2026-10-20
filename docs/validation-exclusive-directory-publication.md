@@ -93,9 +93,11 @@ ESLint/formatting, production build, built-CLI smoke and diff checks pass.
 An additional actual merged built-CLI probe successfully creates/verifies a
 Collect directory, preserves its inode on collision and publishes a PCM stem.
 Its extra same-request-ID retry exposed the existing normal CLI opener's project
-timestamp write; that separate CLI correction and its negative evidence remain
-with the export owner. This dependency/package correction does not relax the
-request fingerprint or claim that CLI retry case passed.
+timestamp write. The separate export correction now uses the passive opener;
+actual cross-process retry and project/catalog preservation pass independently,
+with source/settings mismatch rejection retained. See
+[profile export validation](validation-export-profiles.md). The original negative
+evidence remains recorded; no request fingerprint was relaxed.
 
 Evidence is retained under `/tmp/openfilm-v1-validation/exclusive-ffi-*` and
 `exclusive-ffi-dependency-audit.json`. Final bounded test counts, exact commits,
