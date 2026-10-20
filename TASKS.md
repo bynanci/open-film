@@ -11,6 +11,8 @@
 - [x] Preserve saved project revisions and unrelated jobs during CLI export; prove durable cross-process retries and retained source/settings rejection with the actual built executable.
 - [x] Fix supported FFmpeg 6.1.1 singleton/low-frame-rate delivery without changing saved project rates; retain the original browser case and independently verify actual decoded output on 6.1.1 and 7.1.5.
 - [x] Fence saved revisions and cancellation after real ZIP creation, publish synchronously without replacing destinations, and preserve postcommit outputs; independently verify actual archive races.
+- [x] Remediate the failed JavaScript advisory gate with exact Vite 8.2.4, verified registry/provenance, zero-audit and bounded launcher/build/native/browser controls; see [validation](docs/validation-vite-security.md).
+- [ ] Complete fresh combined gates, the full browser run and hosted exact-head CI on the Vite-patched integration candidate before release.
 - [ ] Resolve the existing GLib 0.18.5 / `RUSTSEC-2024-0429` native distribution gate through compatible upstream remediation and reachability review before publishing installers.
 
 Final browser/native CI, merge and publication status is recorded on
