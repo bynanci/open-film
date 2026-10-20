@@ -84,3 +84,7 @@ strict. Real sparse-file streaming copy cancellation and destination exclusivity
 are covered. An immediate retry is held behind controlled cancelled-render cleanup,
 then succeeds with no staging left; the existing mutation queue already provided
 that ordering, so no UI workaround or weakened assertion was introduced.
+
+The source inspector also reuses the existing local media protocol/demuxer policy.
+A real renamed ffconcat playlist regression confirms it is rejected by the
+whitelist before following unhashed sibling sources.

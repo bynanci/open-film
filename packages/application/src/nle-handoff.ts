@@ -28,6 +28,7 @@ import {
   checkAbort,
   hashFile,
   localPath,
+  localMediaInputOptions,
   runProcess,
   safeProjectCachePath,
 } from "@openfilm/media";
@@ -271,6 +272,7 @@ export class NleHandoffService {
             "stream=codec_type,duration:format=duration",
             "-of",
             "json",
+            ...(await localMediaInputOptions(path, signal)),
             path,
           ],
           { signal },

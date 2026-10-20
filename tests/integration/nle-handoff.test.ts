@@ -795,3 +795,31 @@ it("queues an immediate review retry until cancelled server cleanup completes", 
   await first;
   expect(await readdir(join(directory, "cache", "nle-handoff"))).toEqual([]);
 });
+
+it("rejects a renamed concat playlist through the existing local media demuxer whitelist", async () => {
+  const { app, composition, root } = await fixture();
+  const original = app.catalog.getAsset(
+    composition.tracks[0]!.clips[0]!.assetId,
+  )!;
+  const playlist = join(root, "disguised.mp4");
+  await writeFile(
+    playlist,
+    "ffconcat version 1.0\nfile 'synthetic.mp4'\nduration 5\n",
+  );
+  app.catalog.upsertAsset({
+    ...original,
+    uri: pathToFileURL(playlist).href,
+    contentHash: await hashFile(playlist),
+  });
+  const review = app.reviewHandoff(composition.id);
+  await expect(
+    app.exportHandoff({
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+    }),
+  ).rejects.toThrow(/whitelist/i);
+  expect(await readdir(join(app.directory, "cache", "nle-handoff"))).toEqual(
+    [],
+  );
+});
