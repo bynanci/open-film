@@ -51,9 +51,12 @@ sessions and orphan receipts when another preview is generated. Receipts can be
 validated by a later service instance while their saved revision remains current.
 The last selectable frame is the last complete frame at the output frame rate.
 Preview receipts also retain the actual title, caption and GraphicScene font
-file hashes and face identities. Crop delivery checks the fonts used by its
-renderer before encoding. A changed font requires a new preview; collecting
-identical font bytes at another path preserves the approval.
+file hashes and face identities for each rendered use. Typed ID tuples bind
+titles to their track/clip, captions to their track/cue, and scene text to its
+scene/node, including nested groups. Crop delivery checks those assignments
+before encoding. Changing a font or reassigning the same font set requires a
+new preview; collecting identical font bytes at another path preserves the
+approval. Older receipts without these usage bindings require a new preview.
 
 PNG stills use that same render path. `exports/still-<request-id>.png` is
 published with a versioned JSON manifest containing the project/revision,
