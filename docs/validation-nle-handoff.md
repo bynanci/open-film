@@ -2,7 +2,8 @@
 
 Base: `bb2c4521ad894478893485119442a00ffd9b34cc`.
 Implementation candidate; exact final head, commands/times and hosted CI are
-recorded in the M7C PR. No merge or public release is authorized for this phase.
+recorded in the M7C PR. The revalidation below records local evidence separately
+from hosted CI and workstation approval.
 
 ## Automated regression coverage
 
@@ -147,3 +148,89 @@ request reaches application export/render or publication. The existing body read
 after queue acquisition rejects the destroyed unread request, so no server-flow
 change was needed. The 2aa1d34 browser run was interrupted after 139 passes
 (one interrupted / 29 not run) to apply the caption correction; it is not a pass.
+
+## 2026-10-20 review audit
+
+Audited candidate: `2dc059635b80a403aac215810fa0cda36cb329c5` (PR #39).
+All 22 open review threads were compared with this candidate's implementation
+and regression coverage. Their unresolved GitHub state does not identify an
+unfixed defect: the candidate already contains the relevant corrections or
+fail-closed restrictions. This follow-up changes validation documentation only.
+No new production fix or new red/green cycle is claimed.
+
+The initially suspected cancellation races did not reproduce. Every handoff POST
+acquires the mutation queue before reading its body and checking active jobs.
+An immediate retry therefore waits for cancelled export cleanup rather than
+receiving a running-job conflict. A queued request whose response has closed
+fails its unread body stream before entering application export. Both chunked
+and Content-Length regressions confirm that no second render or publication
+starts. Keep these ordering assertions if request-body handling is refactored.
+
+Thread numbers below refer to the discussion IDs in
+[PR #39](https://github.com/bynanci/open-film/pull/39).
+All dispositions are **addressed in the audited candidate**.
+
+| Discussion   | Concern                           | Evidence checked                                                                                                                                                   |
+| ------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `4324039134` | Native fractional boundaries      | Planner accepts fractional picture/audio edges around aligned visual ranges; only actual visual bake edges are strict.                                             |
+| `4324039142` | Absolute portable references      | Packaged asset metadata is replaced with relative references; reproducible native OTIO contains neither the source root nor `file://`.                             |
+| `4324039146` | Retry during cancellation cleanup | Controlled cancelled renderer holds cleanup; immediate review retry remains pending, then returns 200 with empty staging.                                          |
+| `4324039155` | Abort source staging              | Real 64 MiB sparse-file copy aborts before completion, closes handles and preserves destination exclusivity.                                                       |
+| `4324147661` | Decimal output grid               | 29.97, 23.976 and 30000/1001 planner cases retain the configured rate; real disjoint 29.97-fps precomps match reference endpoints.                                 |
+| `4324147670` | Full-mix track timing             | Original audio/music layer timing is classified baked when a full mix replaces it.                                                                                 |
+| `4324147677` | Repeated full-reference decoding  | Range extraction seeks before input, trims using source PTS, uses a 30-minute deadline and rejects more than 128 disjoint visual ranges.                           |
+| `4324147683` | Visual mapping audio owners       | Visual owner set excludes audio/music tracks; rendered package regression excludes `audio` and `voice` from visual-precomp mappings.                               |
+| `4324210802` | CLI review size                   | CLI consumes and publishes its generated 5,000-cue review, explicitly asserted larger than 1 MiB.                                                                  |
+| `4324210816` | Full-mix provenance owners        | Supplemental real FFmpeg publication includes embedded-video and audio owners, and excludes silent-video, still and title owners.                                  |
+| `4324210830` | Titles on audio/music tracks      | Planner rejects visible titles/title styles on those tracks before approval; standalone supplied review probe also rejects with the documented instruction.        |
+| `4324210839` | CLI caption omission              | `--no-captions` produces `captionTrackId: null`; conflicting caption options are rejected.                                                                         |
+| `4324343843` | Synthetic title source            | Application review rejects an unbound title placeholder with a source-binding instruction.                                                                         |
+| `4324343854` | Static transport limits           | Planner rejects timelines beyond one hour and more than 256 distinct referenced assets before approval.                                                            |
+| `4324462213` | Verification timeout              | Both reference and derivative frame-count probes use the explicit 1,800,000 ms deadline, asserted during a real render.                                            |
+| `4324462219` | Reviewed source identities        | Revision hashes sorted referenced catalog records; changing a same-ID hash or stream metadata invalidates approval. Final publication rechecks the same binding.   |
+| `4324462224` | Transition bake length            | Half-second transition produces four frames at 8 fps; decoded endpoints match the reference and the remaining 3.5 seconds stays native without another transition. |
+| `4324564589` | Reviewed options                  | Revision includes the normalized plan; changed mode, full-mix choice or caption selection is rejected as stale.                                                    |
+| `4324564597` | Audio asset on visual track       | Application review rejects audio-only sources on video/overlay tracks before picture baking can remove them.                                                       |
+| `4324564604` | Downloadable receipt budget       | Review rejects the real 128-track × 128-range expanded plan above 2 MiB; caption track count is bounded so the receipt inventory fits the 4 MiB read limit.        |
+| `4324669734` | Stored cue ordering               | Sidecars sort a copy by start/end; SRT and VTT place the early cue first and saved project order remains unchanged.                                                |
+| `4324669740` | Queued disconnect                 | Fully sent chunked and Content-Length requests close while queued; only the first request reaches application export/render and only one package exists.           |
+
+Validation commands activate `/workspace/.openfilm-env/activate.sh` first. The
+frozen offline dependency install found a missing registry tarball; the frozen
+online install then completed with no manifest or lockfile changes. Focused
+handoff validation passed **3 files / 41 tests** in **19.22 seconds**:
+
+```sh
+pnpm exec vitest run tests/unit/handoff-plan.test.ts tests/unit/handoff-transport.test.ts tests/integration/nle-handoff.test.ts --maxWorkers=1
+```
+
+The focused real FFmpeg checks verify the 32-frame reference, 16-frame visual
+precomp, source offsets, first/last decoded frame mean error below 3/255, native
+embedded dialogue, and a 192,000-sample 48 kHz full mix. The official OTIO 0.18.1
+parser completes read/write/read without losing the normalized document.
+These are synthetic low-resolution checks; they do not establish 4K performance,
+native application installation or actual Resolve/Premiere/Final Cut playback.
+Browser validation is recorded separately by the release coordinator.
+
+The supplemental owner probe publishes a two-second composition with silent video,
+video containing audio, a still, a title backed by an audio catalog asset, and an
+audio clip. Only the embedded-video and audio clips appear in the full-mix
+mapping. This checks the distinction against real inspected streams and a
+completed publication, beyond reading the mapping filter.
+
+Additional local checks passed: `pnpm lint`, `pnpm typecheck`, `pnpm build`,
+`pnpm test:i18n` (1,730 matching semantic keys in three locales), and
+`pnpm test:interchange` (18 Python harness tests, official OTIO read/write/read,
+missing-source rejection, and workstation relocation/source-hash gates). The
+build retains its existing warning about a minified chunk larger than 500 kB.
+
+The complete `pnpm test --maxWorkers=1` run passed **213 files / 2,960 tests**
+in **387.13 seconds**, with no failed or skipped tests. This includes the existing
+lock, stale-revision, source-hash, unsupported-input and cancellation regressions;
+the benchmark suite's deliberately injected failure events are passing negative
+cases, not failed tests. Documentation formatting and `git diff --check` also pass.
+
+The retained synthetic package inventory independently verifies all 12 file
+sizes and SHA-256 values, and the TAR has 12 unique entries. Its TAR SHA-256 is
+`100d38f543ddd1b610f9eb49fcb556d0a119271d5c6c07c84f7dcded861ccc38`.
+No native workstation or real NLE gate above is upgraded by these local results.
