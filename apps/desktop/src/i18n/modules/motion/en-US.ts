@@ -17,6 +17,13 @@ export default {
     fixture: "Local camera fixture (not AI)",
     external: "Imported external video",
     loadVideos: "Load Library videos",
+    searchVideos: "Search Library videos",
+    videoPages: "Library video pages",
+    previousVideos: "Previous videos",
+    nextVideos: "Next videos",
+    videoPage: "Library videos {from}–{to} of {total}",
+    selectedVideos: "Selected videos: {count} of 3",
+    removeVideo: "Remove {name}",
     externalNotice:
       "Import videos into Library first. Select 1–3. Their relationship to the original is your declaration; no upload occurs.",
     prompt: "Intent (stored as hash)",
@@ -39,6 +46,8 @@ export default {
     candidate: "Candidate {number}",
     free: "Free local fixture; expires after 24 hours or revoke.",
     unknownCost: "External generation cost and provenance are user declared.",
+    unknownProviderCost:
+      "Local provider cost and source relationship are unverified.",
     accept: "Accept after review",
     import: "Replace selected photo clip",
     restore: "Restore original photo / M8A",
