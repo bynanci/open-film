@@ -155,8 +155,9 @@ Audited candidate: `2dc059635b80a403aac215810fa0cda36cb329c5` (PR #39).
 All 22 open review threads were compared with this candidate's implementation
 and regression coverage. Their unresolved GitHub state does not identify an
 unfixed defect: the candidate already contains the relevant corrections or
-fail-closed restrictions. This follow-up changes validation documentation only.
-No new production fix or new red/green cycle is claimed.
+fail-closed restrictions. That initial audit changed validation documentation
+only and claimed no new production fix or red/green cycle. The later findings
+and their separate remediation are recorded below.
 
 The initially suspected cancellation races did not reproduce. Every handoff POST
 acquires the mutation queue before reading its body and checking active jobs.
@@ -234,3 +235,43 @@ The retained synthetic package inventory independently verifies all 12 file
 sizes and SHA-256 values, and the TAR has 12 unique entries. Its TAR SHA-256 is
 `100d38f543ddd1b610f9eb49fcb556d0a119271d5c6c07c84f7dcded861ccc38`.
 No native workstation or real NLE gate above is upgraded by these local results.
+
+## Later review — static approval preflight and amplified full mix
+
+Remediation base: `d436b5acfd3d45c22df0e9939c51c8c7ccb832b6`.
+All four new findings reproduced in nine failing regressions before production
+changes. The same nine cases then passed. Review and publication now share
+native-exchange validation, while renderer capability checks stay in the
+application layer using the existing `graphicFrameRanges` helper. Exporters and
+core gain no renderer dependency or separate rendering planner.
+
+| Discussion   | Disposition     | Behavior and evidence                                                                                                                                                                                                                                                          |
+| ------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `4326536363` | Accepted, fixed | Review rejects any missing referenced catalog asset. Separate video, overlay, audio and music regressions reject approval before publication. Existing title-placeholder refusal stays specific.                                                                               |
+| `4326536372` | Accepted, fixed | Fidelity or full-mix review applies the renderer's graphic budget, including aggregate scene-frames and the 60-fps limit. Three overlapping 30-second scenes at 30 fps and a 90-fps scene reject approval; metadata-only native exchange remains available.                    |
+| `4326536381` | Accepted, fixed | Every nonempty saved caption track is checked through the same sorted SubRip serializer used for sidecars. Markup and timing-like text reject approval even when no caption language is selected, because the package always includes both SRT and VTT.                        |
+| `4326536397` | Accepted, fixed | Native validation uses an exchange clone with already-baked volume removed when full mix is selected. The real renderer and original Composition provenance retain authored gain. Amplified native-only gain still fails review instead of becoming an unpublishable approval. |
+
+The gain regression publishes real unamplified and gain-2 full mixes with the
+same embedded-video and standalone audio sources. Decoded mono PCM RMS must
+increase by a factor between 1.9 and 2.1. The final exchange has unity picture
+gain and exactly one audio track, while original provenance retains gain 2.
+Source hashes and the saved/in-memory project remain unchanged. Optional
+`OPENFILM_HANDOFF_GAIN_QA_OUTPUT` retains both synthetic packages and numerical
+`gain-proof.json` evidence for independent inspection.
+
+Validation uses the complete three-file handoff target with one worker:
+
+```sh
+pnpm exec vitest run tests/unit/handoff-plan.test.ts tests/unit/handoff-transport.test.ts tests/integration/nle-handoff.test.ts --maxWorkers=1
+```
+
+The final complete run passed **3 files / 50 tests** in **23.23 seconds**,
+including retained real-render evidence. Measured unamplified/amplified RMS was
+0.1282692 / 0.2564879, a **1.999606×** increase. Both synthetic package inventories
+and original source hashes verify.
+Targeted ESLint, repository type checking and the production build also passed;
+the existing bundle-size warning remains. No full repository suite, browser,
+default-port service, native installation or real NLE check was run for this
+follow-up. The earlier 2,960-test full-suite result belongs to its audited base;
+the release coordinator owns combined validation after integration.
