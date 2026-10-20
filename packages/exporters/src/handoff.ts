@@ -1,5 +1,6 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
 import {
+  graphicSceneAssetIds,
   isFilmLookActive,
   resolveFilmLook,
   type Composition,
@@ -107,6 +108,17 @@ export function createHandoffPlan(
     "graphicScenes",
     "graphicSceneTemplates",
   ]);
+  const sourceIds = new Set([
+    ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+    ...composition.tracks.flatMap((track) =>
+      track.clips.flatMap((clip) => [
+        clip.assetId,
+        ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+      ]),
+    ),
+  ]);
+  if (composition.duration > 3600 || sourceIds.size > 256)
+    throw new Error("Handoff resource limit exceeded (one hour / 256 assets)");
   const fidelity = mode === "preserve-visual-fidelity";
   const captionTrackId =
     options.captionTrackId === undefined

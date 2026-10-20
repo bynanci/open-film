@@ -255,3 +255,17 @@ it("rejects visible titles attached to audio tracks instead of silently dropping
     }),
   ).toThrow(/titles on audio/i);
 });
+
+it("rejects static transport limits before approving a plan", () => {
+  const c = structuredClone(cut);
+  c.duration = 3601;
+  expect(() => createHandoffPlan(c, 24)).toThrow(/resource limit/i);
+  c.duration = 4;
+  c.tracks[0]!.clips = Array.from({ length: 257 }, (_, i) => ({
+    id: `clip-${i}`,
+    assetId: `asset-${i}`,
+    timelineStart: i / 100,
+    timelineDuration: 0.01,
+  }));
+  expect(() => createHandoffPlan(c, 24)).toThrow(/resource limit/i);
+});

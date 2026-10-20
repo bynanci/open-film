@@ -104,3 +104,12 @@ than 1 MiB consumed by CLI export, and fail-closed titles on audio/music tracks.
 These address additional automated review findings without silently dropping
 visible content. Earlier full-suite attempts during review edits are superseded
 by the frozen final-candidate run recorded in the PR.
+
+Static one-hour / 256-distinct-source limits are checked during review as well as
+publication. Title-track clips with unresolved synthetic placeholder asset IDs
+are rejected during review with a binding instruction; this slice requires a
+catalog-backed source even when the renderer could draw a title without one.
+Dedicated planner/application regressions cover these restrictions. The prior
+04f4e37 browser run was deliberately interrupted after 156 passes to apply these
+review findings; its remaining 13 cases are not claimed as executed. The final
+candidate reruns the unchanged full browser suite.

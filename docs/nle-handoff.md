@@ -104,3 +104,8 @@ The default selects the first caption track; no-caption selection still retains
 sidecar captions. Review JSON is bounded to 16 MiB, including the supported
 5,000-cue plan. Visible titles on audio/music clips are explicitly unsupported:
 move them to a visual track before handoff, rather than losing them during mix.
+
+Review rejects timelines exceeding one hour or 256 distinct source assets.
+Title-track clips must bind an existing catalog source: unresolved synthetic
+placeholder IDs are explicitly unsupported in this handoff slice, even when
+standalone title rendering could otherwise ignore their source ID.

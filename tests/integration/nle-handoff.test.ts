@@ -992,3 +992,25 @@ it("CLI can explicitly omit caption burn-in and consume its maximum-caption revi
     ),
   ).toHaveLength(5000);
 });
+
+it("rejects unresolved title placeholders during review rather than after approval", async () => {
+  const { app, composition } = await fixture();
+  composition.tracks.push({
+    id: "titles",
+    type: "titles",
+    clips: [
+      {
+        id: "title",
+        assetId: "synthetic-placeholder",
+        timelineStart: 0,
+        timelineDuration: 1,
+        title: "合成標題",
+      },
+    ],
+  });
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() =>
+    app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+  ).toThrow(/title.*source/i);
+});

@@ -142,6 +142,12 @@ export class NleHandoffService {
       this.host.project.settings.frameRate,
       input,
     );
+    for (const track of composition.tracks.filter((t) => t.type === "titles"))
+      for (const clip of track.clips)
+        if (!this.host.getSourceAsset(clip.assetId))
+          throw new Error(
+            "Title placeholder source is unsupported for handoff; bind a catalog source before review",
+          );
     const rate = plan.rate.numerator / plan.rate.denominator;
     for (const track of composition.tracks.filter((t) =>
       ["video", "overlay"].includes(t.type),
