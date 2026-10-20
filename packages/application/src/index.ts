@@ -106,6 +106,7 @@ import {
   type MediaCandidate,
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
+import { ProjectVersionService } from "./project-versions.js";
 import { isInside } from "./path-safety.js";
 import {
   MediaIntelligence,
@@ -163,6 +164,13 @@ export {
   type VisualQaSample,
 } from "./visual-qa.js";
 export { resolveUserDataDirectory } from "./user-data.js";
+export {
+  ProjectVersionService,
+  ProjectVersionError,
+  type ProjectVersionCreateInput,
+  type ProjectVersionRestoreInput,
+  type ProjectVersionRestoreResult,
+} from "./project-versions.js";
 export {
   createReviewOwner,
   ownsReviewOwner,
@@ -285,9 +293,11 @@ export class OpenFilmApplication {
   readonly visualQa: VisualQaService;
   readonly audioQuality: AudioQualityService;
   readonly audioGeneration: AudioGenerationService;
+  readonly versions: ProjectVersionService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
+  private generation = 0;
 
   private constructor(
     readonly directory: string,
@@ -300,6 +310,7 @@ export class OpenFilmApplication {
     this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
+      this.versions = new ProjectVersionService(this);
       this.graphics = new GraphicSceneService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
@@ -419,6 +430,12 @@ export class OpenFilmApplication {
       runtime,
       options.intent,
     );
+    try {
+      application.versions.recoverInterruptedRestore();
+    } catch (error) {
+      application.catalog.close();
+      throw error;
+    }
     if (options.intent === "export") {
       // Deriving text must not recover other processes' jobs, rewrite media
       // references, or save this possibly obsolete project on CLI shutdown.
@@ -699,6 +716,18 @@ export class OpenFilmApplication {
 
   get hasActiveJobs(): boolean {
     return this.activeJobs > 0;
+  }
+
+  /** Successful project-level restore invalidates all cached editor snapshots. */
+  get projectGeneration(): number {
+    return this.generation;
+  }
+
+  acceptRestoredProject(project: OpenFilmProject): void {
+    this.project = validateProject(project);
+    this.persistedProject = savedScriptProjectIdentity(this.project);
+    this.persistenceConflict = false;
+    this.generation += 1;
   }
 
   reserveIntelligenceJob(

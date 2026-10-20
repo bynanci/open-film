@@ -9,5 +9,6 @@ import "./relink.css";
 import "./source.css";
 import "./export-report.css";
 import "./product.css";
+import "./versions.css";
 
 createApp(App).use(i18n).mount("#app");

@@ -22,6 +22,8 @@ import type {
   TranscriptReviewSuggestion as ReviewSuggestion,
   ReviewBatch,
   SceneScriptReviewSuggestion,
+  ProjectVersionDiff,
+  ProjectVersionRecord,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -33,6 +35,9 @@ import type {
   GraphicSceneAgentRequest,
   VisualQaReport,
   AudioQualityReport,
+  ProjectVersionCreateInput,
+  ProjectVersionRestoreInput,
+  ProjectVersionRestoreResult,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -462,6 +467,46 @@ async function uploadFiles(
   }
 }
 export const api = {
+  projectVersionRevision: (signal?: AbortSignal) =>
+    request<{ projectId: string; revision: string }>("/versions/revision", {
+      signal,
+    }),
+  projectVersions: (signal?: AbortSignal) =>
+    request<{ versions: ProjectVersionRecord[] }>("/versions", { signal }),
+  createProjectVersion: (body: ProjectVersionCreateInput) =>
+    post<{ version: ProjectVersionRecord }>("/versions", body),
+  inspectProjectVersion: (id: string, signal?: AbortSignal) =>
+    request<{
+      record: ProjectVersionRecord;
+      summary: {
+        title: string;
+        storyCount: number;
+        compositionCount: number;
+        captionTrackCount: number;
+        graphicSceneCount: number;
+      };
+      catalogSchemaVersion: number;
+    }>(`/versions/${encodeURIComponent(id)}`, { signal }),
+  diffProjectVersions: (before: string, after: string, signal?: AbortSignal) =>
+    request<{ diff: ProjectVersionDiff }>(
+      `/versions/diff?${new URLSearchParams({ before, after })}`,
+      { signal },
+    ),
+  renameProjectVersion: (
+    id: string,
+    body: { name: string; description?: string | null },
+  ) =>
+    patch<{ version: ProjectVersionRecord }>(
+      `/versions/${encodeURIComponent(id)}`,
+      body,
+    ),
+  restoreProjectVersion: (id: string, body: ProjectVersionRestoreInput) =>
+    post<
+      ProjectVersionRestoreResult & {
+        project: OpenFilmProject;
+        generation: number;
+      }
+    >(`/versions/${encodeURIComponent(id)}/restore`, body),
   captionContext: (
     projectId: string,
     compositionId: string,

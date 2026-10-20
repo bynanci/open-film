@@ -484,3 +484,26 @@ added. Matching history is preserved. The normal typed audio command then saves
 through autosave/recovery. Durable accepted receipts preserve pending edit recovery
 across restart; preview cache eviction does not revoke an already imported source.
 See [provider generation](provider-generation.md) for consent, cost and threat model.
+
+## M7A named project versions
+
+`ProjectVersionService` is the shared application boundary for Desktop, HTTP and
+CLI. It captures the saved project manifest and catalog image under the existing
+project/catalog writer guard, validates their revisions, hashes referenced
+sources, and stages a bounded immutable package under `versions/`. SQLite
+serialization switches out of WAL only while an exclusive snapshot is held,
+then restores WAL mode. A project with no version store remains valid schema
+1.0.0. Version names and descriptions are mutable index metadata; the project
+and catalog images are content-addressed immutable snapshot payloads.
+
+Restore is project-level recovery, separate from TimelineEditor Undo/Redo. It
+requires a matching current revision and explicit confirmation, revalidates the
+target package/source hashes and current locks, and first captures the current
+state as a named checkpoint. The catalog restore transaction publishes the
+validated manifest with the catalog rows. A durable journal rolls back an
+interrupted restore on next open; after success the application increments
+project generation so Desktop discards stale editor state. Originals, render
+outputs and caches are never copied or replaced. The version diff is a
+deterministic structural comparison across existing Story, Composition,
+CaptionCue, GraphicScene/template, audio automation and source identities. See
+[Named Versions](named-versions.md) and its [validation record](validation-named-versions.md).

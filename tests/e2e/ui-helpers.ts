@@ -36,7 +36,7 @@ export async function initialLocale(
 
 export async function navigate(
   page: Page,
-  workspace: "library" | "story" | "edit" | "export",
+  workspace: "library" | "story" | "edit" | "export" | "versions",
   locale: ProjectContentLocale = "en-US",
 ) {
   await page

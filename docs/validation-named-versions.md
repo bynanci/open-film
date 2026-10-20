@@ -1,0 +1,86 @@
+# M7A / Named Versions validation
+
+## Scope and status
+
+This candidate is based on the freshly fetched `main` SHA
+`ba7af5067c486654a9708c6f0df00c923ab9cfb6`. It adds project-owned immutable
+manifest/catalog snapshots and structured comparison/restore without changing
+project schema 1.0.0 or catalog schema v5. The versions store is optional, so
+existing projects without `versions/` remain readable. This record distinguishes
+implemented behavior from CI and workstation sign-off; it does not authorize a
+merge.
+
+## Regression coverage
+
+- Core validates versioned records and produces deterministic path-free diffs.
+- Catalog captures a consistent SQLite image across WAL transactions and
+  restores rows with schema/integrity checks. Writer contention and publication
+  failure preserve the prior catalog/manifest.
+- Application covers durable create/list/inspect/diff/rename/restore, lost
+  response idempotency, reopen, immutable package content, source fingerprint
+  checks, stale revision refusal, current locks, explicit confirmation,
+  interrupted restore recovery, and symlink rejection.
+- HTTP/CLI tests share application behavior and reject unknown request fields;
+  API output omits source paths. Playwright covers create, compare, rename and
+  explicit restore from the localized Versions workspace.
+- The actual renderer regression executes V1 → edits → V2 → close/reopen/diff →
+  restore V1 → MP4 → close/reopen/restore V2 using generated video+tone and two
+  generated stills. It decodes before/during/after caption times and the photo
+  comparison, verifies shape placement, H.264 dimensions/fps/frame count,
+  AAC presence, duration and bounded decoded audio RMS, and checks every source
+  hash against both the render manifest and original synthetic bytes.
+
+## Local actual FFmpeg evidence
+
+FFmpeg/FFprobe: `7.1.5`. One local regression output was H.264, 320×180 at
+12 fps, 48 video frames, four seconds, with AAC audio. Decoded video samples at
+0.1 s, 1.0 s and 2.5 s verified subtitle absence/presence and two-photo
+placement. Measured decoded audio RMS was `0.0230981242` with the saved 0.25
+automation gain. The render reported no warnings. Output SHA-256:
+`75c829f6faf22e19f1da53be2f389dd2724d19e9e5198476930748fb94a7b306`.
+
+The synthetic background/tone and red/blue photo hashes were checked from the
+fresh source bytes and matched the MP4 render manifest:
+
+- `2c9ee57ad54cfacd92ec1496a098ca4106a185afa9f07961f121d5bb3435769f`
+- `e386832be66aab9418f3ceb88d14d867b8f27fc0184ba022a75d53a5cb5c986d`
+- `8a99d3516af67e4546dc0fc8bb0df873e09e378c0a6e903c712e5bd1c9dd5c36`
+
+The temporary evidence JSON was written only to `/tmp/openfilm-m7a-ffmpeg-evidence.json`;
+fixture media and project data are removed after tests. No private media or
+credentials are used.
+
+## Gate results
+
+Local candidate verification passed:
+
+- `pnpm format:check`, `pnpm test:i18n` (1,686 semantic keys), `pnpm lint`,
+  `pnpm typecheck`, `pnpm build`: passed. Vite reports the existing 931 kB
+  minified application chunk warning; build completes successfully.
+- `pnpm test`: 210 files / 2,912 tests passed in 98.15 seconds.
+- `pnpm test:e2e`: 168/168 passed in 15.6 minutes with Chromium. The environment
+  used `/tmp/openfilm-playwright-browsers` and the pinned official
+  `opentimelineio==0.18.1` installed under `/tmp/openfilm-python-packages`.
+- `pnpm test:interchange`: 18 official parser tests passed; read/write/read,
+  four synthetic source files, hashes/bounds, missing-source rejection and
+  relocation checks passed. Real Resolve import remains unverified.
+- `pnpm test:native`: not run because `cargo`/Rust is not installed in this
+  environment.
+
+The first browser run exposed an outdated four-item navigation assertion and
+the missing optional Python OTIO prerequisite. The navigation regression now
+expects and checks the Versions entry; the pinned parser was installed only in
+`/tmp`. The affected tests passed individually, then the complete browser suite
+passed. The fresh base SHA above is exact; the candidate head SHA, PR URL and CI
+checks are recorded in the PR after publication. Until exact-head CI and review
+are complete, this is locally verified and not merge-approved. No hardware,
+Resolve, 4K or physical-display behavior is inferred from synthetic tests.
+
+## Manual gates
+
+- Verify private-directory permissions, project relocation and recovery after a
+  forced process interruption on supported Windows and macOS workstations.
+- Review the restore confirmation and recovery workflow with a real project on
+  each target desktop OS. Never use private project data in CI artifacts.
+- Hardware performance, 4K restore/render throughput, real-film aesthetics and
+  external NLE behavior are outside this candidate's automated evidence.

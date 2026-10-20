@@ -315,7 +315,10 @@ test("theme, reduced motion, and keyboard focus remain functional", async ({
   });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
-  await expect(page.locator(".main-nav button")).toHaveCount(4);
+  await expect(page.locator(".main-nav button")).toHaveCount(5);
+  await expect(
+    page.locator(".main-nav button").filter({ hasText: "Versions" }),
+  ).toHaveCount(1);
   await page.locator(".main-nav button").first().focus();
   await page.keyboard.press("Tab");
   expect(

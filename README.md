@@ -64,6 +64,8 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   gain points and manual ducking, without moving pictures or extending the film.
 - Undo/redo, lock important clips, regenerate one beat, review explainable Fit to
   target suggestions, and recover autosave failures without dropping the draft.
+- Save immutable named project versions, compare story/edit/source changes, and
+  explicitly restore a version after a durable pre-restore checkpoint.
 - Keep editing missing media, reconnect a moved folder or single file, and move
   projects with their cached thumbnails and proxies.
 - Import Pixel metadata and Insta360 flat exports, recognize raw360 associations,
@@ -138,6 +140,15 @@ instances use film time. Partial boundary segments are omitted with warnings;
 edited word alignment is never presented as precise. No model, remote service,
 caption track or burn-in is required. See [the workflow and limits](docs/composition-captions.md)
 and [the pinned OpenCut reference](docs/opencut-reference.md).
+
+**Named project versions** save immutable project-manifest and SQLite catalog
+snapshots inside each project. They survive close/reopen, show structured Story,
+Composition, caption, graphic/template, audio and source-identity differences,
+and restore only after a revision check, explicit confirmation, source/lock
+validation and a current-state checkpoint. Original media stays in place;
+session Undo/Redo remains separate. See [the contract](docs/named-versions.md),
+[format notes](docs/project-format.md#named-versions) and
+[validation record](docs/validation-named-versions.md).
 
 **Scene-script planning:** use saved media
 categories or chronology to draft editable scenes, narration and visual direction,

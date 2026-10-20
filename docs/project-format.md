@@ -21,6 +21,12 @@ film.openfilm/
     events.json
     duplicates.json
   sources/               browser-selected managed source copies
+  versions/              immutable named project snapshots and private index
+    index.json           mutable labels and idempotency receipts only
+    <version-id>/
+      project.json       saved schema-1.0.0 manifest image
+      database.sqlite    SQLite-consistent catalog image
+      record.json        immutable version identity and source hashes
   cache/
     thumbnails/
     proxies/
@@ -125,6 +131,27 @@ and may still need relinking. Missing-source and library availability are checke
 at runtime, independently of stored editing revisions. Automatic physical-volume
 detection is not implemented. See [media portability](media-portability.md) and
 [relinking contracts](RELINK_CONTRACTS.md) for matching and remount limitations.
+
+## Named versions
+
+The optional `versions/` directory is application-owned data outside project
+schema 1.0.0 and catalog schema v5. Projects without it open normally. Version
+creation captures the saved manifest and a bounded catalog image while the
+catalog writer is excluded; it validates the SQLite schema, integrity and
+foreign keys before staging and publishing the package. Snapshot metadata and
+hashes do not copy source media or expose absolute source URIs through API/CLI
+records. Names and descriptions live in the index and can change without
+rewriting a saved version. The store has explicit count and byte caps and does
+not silently prune versions.
+
+Restore validates the selected manifest/catalog/source fingerprints, current
+revision and locks, then first creates a named recovery checkpoint. Manifest
+publication runs in the catalog restore transaction; a small private journal
+rolls back to the checkpoint when startup detects an interrupted publication.
+The current project manifest and catalog are replaced together, and editor
+snapshots are invalidated. This does not restore cache/exports or originals and
+does not become session Undo/Redo. See [Named Versions](named-versions.md) for
+the full lifecycle and failure behavior.
 
 Browser-managed copies record a validated source-relative path and their previous
 managed URI under `openfilm.managedSource`. On moving the project, opening it

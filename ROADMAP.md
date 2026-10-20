@@ -115,6 +115,23 @@ sound and output verification with decoded audio evidence. The staged dependenci
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 
+## Candidate — M7A named project versions
+
+M7A adds immutable, local project snapshots and structural comparison through
+the shared application service. Restore requires a current revision, explicit
+confirmation, verified source identity and a fresh recovery checkpoint; it does
+not merge with session Undo/Redo or copy original media. The candidate includes
+synthetic actual-MP4 validation, while exact-head full gates and independent
+review remain required before merge. See [the contract](docs/named-versions.md)
+and [validation](docs/validation-named-versions.md).
+
+M7B still needs still-PNG/WAV/stem and aspect-ratio presets; M7C needs an honest
+native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
+media collection and relocation evidence; M7E needs Windows/macOS workstation
+installer, dependency and rollback evidence. These are separate PRs and remain
+queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
+templates and Visual QA, but is not part of M7A.
+
 ## Implemented — M1 / F07 Visual QA and contact sheets
 
 Build a saved-revision review path on top of the current Composition, renderer,
