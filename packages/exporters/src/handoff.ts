@@ -61,18 +61,32 @@ export function createHandoffPlan(
     throw new Error("Unsupported handoff options");
   if (!Number.isFinite(frameRate) || frameRate <= 0 || frameRate > 120)
     throw new Error("Unsupported frame rate");
-  let numerator = Math.round(frameRate * 1e6),
-    denominator = 1e6;
-  for (const n of [24000, 30000, 60000, 120000])
-    if (Math.abs(frameRate - n / 1001) < 0.001) {
-      numerator = n;
-      denominator = 1001;
+  const [mantissa, exponentText = "0"] = String(frameRate)
+    .toLowerCase()
+    .split("e");
+  const [whole, fraction = ""] = mantissa!.split(".");
+  let n = BigInt(whole! + fraction),
+    d = 10n ** BigInt(fraction.length);
+  const exponent = Number(exponentText);
+  if (exponent >= 0) n *= 10n ** BigInt(exponent);
+  else d *= 10n ** BigInt(-exponent);
+  for (const candidate of [24000, 30000, 60000, 120000])
+    if (frameRate === candidate / 1001) {
+      n = BigInt(candidate);
+      d = 1001n;
       break;
     }
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-  const d = gcd(numerator, denominator);
-  numerator /= d;
-  denominator /= d;
+  const gcd = (a: bigint, b: bigint): bigint => (b ? gcd(b, a % b) : a);
+  const divisor = gcd(n, d);
+  n /= divisor;
+  d /= divisor;
+  if (
+    n > BigInt(Number.MAX_SAFE_INTEGER) ||
+    d > BigInt(Number.MAX_SAFE_INTEGER)
+  )
+    throw new Error("Unsupported frame rate precision");
+  const numerator = Number(n),
+    denominator = Number(d);
   const rate = numerator / denominator;
   const frame = (seconds: number, strict = false) => {
     if (!Number.isFinite(seconds) || seconds < 0)
@@ -145,7 +159,7 @@ export function createHandoffPlan(
       "layerTiming",
       0,
       composition.duration,
-      "native",
+      audio && options.bakeAudio ? "audio" : "native",
       "Native OTIO track/gap timing; consumer layer interpretation needs workstation QA",
     );
     if (track.timing)
@@ -326,7 +340,13 @@ export function createHandoffPlan(
     .filter(
       (i) =>
         i.disposition === "baked" &&
-        !["volume", "audioAutomation", "speed"].includes(i.feature),
+        !["volume", "audioAutomation", "speed"].includes(i.feature) &&
+        !(
+          i.feature === "layerTiming" &&
+          composition.tracks.some(
+            (t) => t.id === i.ownerId && ["audio", "music"].includes(t.type),
+          )
+        ),
     )
     .concat(
       items.filter(
@@ -350,6 +370,10 @@ export function createHandoffPlan(
         endFrame: item.endFrame,
       });
   }
+  if (visualRanges.length > 128)
+    throw new Error(
+      "Handoff supports at most 128 disjoint visual bake ranges; use preserve-editability or fewer ranges",
+    );
   // Native source/cut claims apply only to ranges that survive replacement.
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index]!;

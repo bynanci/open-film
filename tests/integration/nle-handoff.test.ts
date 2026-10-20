@@ -223,6 +223,11 @@ it("hands off native cuts plus measured graphic/caption precomps and an aligned 
     ),
   ).toEqual([8, 8]);
   expect(timeline.metadata.openfilm.originalComposition).toEqual(composition);
+  const visualMapping = timeline.metadata.openfilm.handoff.mappings.find(
+    (m: { kind: string }) => m.kind === "visual-precomp",
+  );
+  expect(visualMapping.sourceOwnerIds).not.toContain("audio");
+  expect(visualMapping.sourceOwnerIds).not.toContain("voice");
   expect(
     timeline.metadata.openfilm.handoff.sources
       .map((s: { sha256: string }) => s.sha256)
@@ -822,4 +827,116 @@ it("rejects a renamed concat playlist through the existing local media demuxer w
   expect(await readdir(join(app.directory, "cache", "nle-handoff"))).toEqual(
     [],
   );
+});
+
+it("seeks disjoint decimal-rate precomps without changing first/last frames or OTIO rate", async () => {
+  const { app, composition } = await fixture(),
+    rate = 29.97;
+  app.project.settings.frameRate = rate;
+  composition.duration = 119 / rate;
+  composition.captionTracks = [];
+  for (const track of composition.tracks)
+    for (const clip of track.clips) {
+      clip.timelineDuration = composition.duration;
+      clip.sourceOut = (clip.sourceIn ?? 0) + composition.duration;
+    }
+  const scene = composition.graphicScenes![0]!;
+  composition.graphicScenes = [
+    { ...scene, id: "early", start: 20 / rate, duration: 20 / rate },
+    { ...scene, id: "late", start: 80 / rate, duration: 20 / rate },
+  ];
+  for (const graphic of composition.graphicScenes)
+    graphic.nodes[0]!.end = 20 / rate;
+  app.project.timelines = [composition];
+  await app.save();
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  expect(review.plan.rate).toEqual({ numerator: 2997, denominator: 100 });
+  const result = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+  });
+  const path = (name: string) =>
+    app.handoff.file(
+      result.id,
+      result.files.findIndex((f) => f.name === name),
+    );
+  const timeline = JSON.parse(
+    await readFile(await path("timeline.otio"), "utf8"),
+  );
+  expect(timeline.global_start_time.rate).toBe(rate);
+  const reference = await path("reference.mp4");
+  const decode = async (file: string, n: number) =>
+    (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        `select=eq(n\\,${n})`,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+      ])
+    ).stdout;
+  for (const [index, start] of [20, 80].entries()) {
+    const baked = await path(`media/precomp-${index}.mp4`);
+    for (const offset of [0, 19]) {
+      const a = await decode(reference, start + offset),
+        b = await decode(baked, offset);
+      expect(a.length).toBe(160 * 90 * 3);
+      expect(b.length).toBe(a.length);
+      expect(
+        a.reduce((sum, v, i) => sum + Math.abs(v - b[i]!), 0) / a.length,
+      ).toBeLessThan(3);
+    }
+  }
+});
+
+it("does not inherit the film look again on already rendered precomps", async () => {
+  const { app, composition } = await fixture();
+  composition.defaultLook = { version: 1, preset: "retro", strength: 0.8 };
+  app.project.timelines = [composition];
+  await app.save();
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  const publication = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+  });
+  const index = publication.files.findIndex(
+    (file) => file.name === "timeline.otio",
+  );
+  const timeline = JSON.parse(
+    await readFile(await app.handoff.file(publication.id, index), "utf8"),
+  );
+  expect(timeline.metadata.openfilm.originalComposition.defaultLook).toEqual(
+    composition.defaultLook,
+  );
+  expect(
+    timeline.metadata.openfilm.compatibility.metadataOnlyEdits.filter(
+      (item: { features: string[] }) => item.features.includes("look"),
+    ),
+  ).toEqual([]);
+  const exchange = timeline.metadata.openfilm.composition;
+  const precomp = exchange.tracks.find(
+    (track: { id: string }) =>
+      track.id.startsWith("handoff-") && track.id.includes("-track-"),
+  );
+  expect(precomp.clips[0].look).toEqual({
+    version: 1,
+    preset: "none",
+    strength: 1,
+  });
 });

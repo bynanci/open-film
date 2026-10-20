@@ -176,3 +176,59 @@ it("allows native fractional audio and picture edges around an aligned graphic p
     )[0]?.startFrame,
   ).toBeCloseTo(0.24, 10);
 });
+
+it.each([29.97, 23.976, 30000 / 1001])(
+  "uses the configured renderer grid for %s fps",
+  (rate) => {
+    const c = structuredClone(cut);
+    c.duration = 120 / rate;
+    c.tracks[0]!.clips[0]!.timelineDuration = c.duration;
+    c.graphicScenes = [
+      {
+        version: 1,
+        id: "g",
+        name: "Synthetic",
+        start: 20 / rate,
+        duration: 80 / rate,
+        zIndex: 0,
+        nodes: [],
+      },
+    ];
+    const p = createHandoffPlan(c, rate, { mode: "preserve-visual-fidelity" });
+    expect(p.visualRanges).toEqual([{ startFrame: 20, endFrame: 100 }]);
+    expect(p.rate.numerator / p.rate.denominator).toBe(rate);
+  },
+);
+it("marks replaced audio track timing baked and bounds disjoint render work", () => {
+  const c = structuredClone(cut);
+  c.tracks[0]!.type = "audio";
+  expect(
+    createHandoffPlan(c, 24, { bakeAudio: true }).items.find(
+      (i) => i.feature === "layerTiming",
+    )?.disposition,
+  ).toBe("baked");
+});
+
+it("rejects unbounded disjoint visual work before rendering", () => {
+  const c = structuredClone(cut);
+  c.captionTracks = [
+    {
+      version: 1,
+      id: "captions",
+      name: "Synthetic",
+      style: { version: 1, role: "subtitle" },
+      cues: Array.from({ length: 129 }, (_, i) => ({
+        version: 1 as const,
+        id: `cue-${i}`,
+        startMs: i * 20,
+        endMs: i * 20 + 10,
+        text: "字",
+        source: { kind: "manual" as const },
+        manualRevision: 0,
+      })),
+    },
+  ];
+  expect(() =>
+    createHandoffPlan(c, 100, { mode: "preserve-visual-fidelity" }),
+  ).toThrow(/128 disjoint/i);
+});

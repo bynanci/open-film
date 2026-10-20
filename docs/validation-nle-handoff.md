@@ -88,3 +88,13 @@ that ordering, so no UI workaround or weakened assertion was introduced.
 The source inspector also reuses the existing local media protocol/demuxer policy.
 A real renamed ffconcat playlist regression confirms it is rejected by the
 whitelist before following unhashed sibling sources.
+
+Decimal configured rates (29.97 and 23.976) retain their exact decimal rational;
+only an explicitly configured 30000/1001 uses that ratio. Handoff OTIO and decoded
+precomps share that rate. A real two-interval 29.97-fps render compares both ends
+of each precomp with reference frames, including an interval reached by input
+seek. Interval extraction seeks near its start, retains source timestamps for
+precise trim, and limits a plan to 128 disjoint precomps. Audio timing is classified
+as baked for full mix; picture mappings exclude audio owners and unselected cues.
+Already rendered precomps explicitly disable inherited looks while original
+Composition recipes remain intact, preventing a second color application.

@@ -91,3 +91,10 @@ Official OpenTimelineIO 0.18.1 read/write/read is automated. Real Resolve,
 Premiere and Final Cut import, playback, relinking, channel layout and color are
 **not verified**. Use [the M7C workstation checklist](validation-nle-handoff.md).
 No automatic native keyframe reconstruction is claimed.
+
+Handoff timing preserves the configured frame-rate value: decimal 29.97 is
+2997/100, distinct from 30000/1001. Native fractional cut positions are retained;
+only actual bake boundaries require frame alignment. Plans allow at most 128
+disjoint visual precomps. Extraction seeks near each interval before exact
+source-PTS trimming, and rendered clips disable inherited color looks because
+the reference already contains them. Original recipes remain in provenance.

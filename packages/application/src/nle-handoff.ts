@@ -348,6 +348,16 @@ export class NleHandoffService {
       }[] = [];
       const exchange = structuredClone(composition);
       const bakedAssets: MediaAsset[] = [];
+      const visualOwners = new Set([
+        ...composition.tracks
+          .filter((t) => !["audio", "music"].includes(t.type))
+          .flatMap((t) => [t.id, ...t.clips.map((c) => c.id)]),
+        ...(composition.graphicScenes ?? []).map((scene) => scene.id),
+        ...(
+          composition.captionTracks?.find((t) => t.id === plan.captionTrackId)
+            ?.cues ?? []
+        ).map((cue) => cue.id),
+      ]);
       if (!plan.bakeAudio) {
         for (const [trackIndex, track] of composition.tracks
           .filter((t) => ["video", "overlay"].includes(t.type))
@@ -456,6 +466,13 @@ export class NleHandoffService {
         // Keep actual output and a path-free subset of its manifest as evidence.
         files.push("reference.mp4", "reference.mp4.manifest.json");
         const rate = plan.rate.numerator / plan.rate.denominator;
+        const [tbNumerator, tbDenominator] = referenceProof
+          .time_base!.split("/")
+          .map(Number);
+        if (!tbNumerator || !tbDenominator)
+          throw new Error("Reference timebase is unavailable");
+        const pts = (frame: number) =>
+          Math.round(((frame / rate) * tbDenominator) / tbNumerator);
         for (const [index, range] of plan.visualRanges.entries()) {
           const name = `media/precomp-${index}.mp4`,
             duration = (range.endFrame - range.startFrame) / rate;
@@ -464,10 +481,13 @@ export class NleHandoffService {
             [
               "-v",
               "error",
+              "-copyts",
+              "-ss",
+              String(Math.max(0, range.startFrame / rate - 1)),
               "-i",
               reference,
               "-vf",
-              `trim=start_frame=${range.startFrame}:end_frame=${range.endFrame},setpts=PTS-STARTPTS`,
+              `trim=start_pts=${pts(range.startFrame)}:end_pts=${pts(range.endFrame)},setpts=PTS-STARTPTS`,
               "-an",
               "-r",
               `${plan.rate.numerator}/${plan.rate.denominator}`,
@@ -511,6 +531,7 @@ export class NleHandoffService {
                 plan.items
                   .filter(
                     (item) =>
+                      visualOwners.has(item.ownerId) &&
                       item.startFrame < range.endFrame &&
                       item.endFrame > range.startFrame,
                   )
@@ -564,6 +585,8 @@ export class NleHandoffService {
                 assetId,
                 timelineStart: range.startFrame / rate,
                 timelineDuration: duration,
+                // The reference already contains the effective film/beat look.
+                look: { version: 1, preset: "none", strength: 1 },
                 sourceIn: 0,
                 sourceOut: duration,
               },
@@ -633,9 +656,19 @@ export class NleHandoffService {
             kind: "full-mix",
             clipId: `handoff-${id}-full-mix`,
             file: name,
-            sourceOwnerIds: composition.tracks.flatMap((t) =>
-              t.clips.map((c) => c.id),
-            ),
+            sourceOwnerIds: composition.tracks
+              .filter((t) => t.type !== "titles")
+              .flatMap((t) =>
+                t.clips
+                  .filter((c) => {
+                    const source = assets.find((a) => a.id === c.assetId);
+                    return (
+                      source &&
+                      (source.mediaType === "audio" || hasEmbeddedAudio(source))
+                    );
+                  })
+                  .map((c) => c.id),
+              ),
             startFrame: 0,
             endFrame: plan.durationFrames,
           });
@@ -690,6 +723,7 @@ export class NleHandoffService {
           exchange,
           [...originals, ...bakedAssets],
           settings,
+          { preserveConfiguredFrameRate: true },
         ).content,
       ) as { metadata: { openfilm: Record<string, unknown> } };
       timeline.metadata.openfilm.originalComposition = composition;
@@ -793,7 +827,7 @@ export class NleHandoffService {
         "v:0",
         "-count_frames",
         "-show_entries",
-        "stream=width,height,nb_read_frames,avg_frame_rate,start_time,duration",
+        "stream=width,height,nb_read_frames,avg_frame_rate,start_time,duration,time_base",
         "-of",
         "json",
         path,

@@ -266,6 +266,7 @@ export function exportTimeline(
   composition: Composition,
   assets: MediaAsset[],
   settings: ProjectSettings = { width: 1920, height: 1080, frameRate: 30 },
+  options: { preserveConfiguredFrameRate?: boolean } = {},
 ): ExportResult {
   if (!["json", "otio", "fcpxml", "edl"].includes(format))
     throw new Error(`Unsupported timeline export format: ${String(format)}.`);
@@ -348,8 +349,17 @@ export function exportTimeline(
     return {
       extension: "otio",
       content:
-        JSON.stringify(otio(composition, byId, settings, report), null, 2) +
-        "\n",
+        JSON.stringify(
+          otio(
+            composition,
+            byId,
+            settings,
+            report,
+            options.preserveConfiguredFrameRate === true,
+          ),
+          null,
+          2,
+        ) + "\n",
       warnings: report.warnings,
     };
   }
@@ -418,9 +428,12 @@ function otio(
   assets: Map<string, MediaAsset>,
   settings: ProjectSettings,
   report: OtioCompatibilityReport,
+  preserveConfiguredFrameRate = false,
 ): unknown {
   const [numerator, denominator] = rateFraction(settings.frameRate),
-    rate = numerator / denominator;
+    rate = preserveConfiguredFrameRate
+      ? settings.frameRate
+      : numerator / denominator;
   const time = (seconds: number): unknown => ({
     OTIO_SCHEMA: "RationalTime.1",
     value: seconds * rate,
