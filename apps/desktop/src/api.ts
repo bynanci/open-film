@@ -426,6 +426,14 @@ export const exportProfileAudio = (
   },
   signal?: AbortSignal,
 ): Promise<AudioProfileExport> => post("/export/audio", input, signal);
+export const audioQualityMediaUrl = (
+  reportId: string,
+  variant: "original" | "candidate",
+  projectId: string,
+): string =>
+  `${prefix}/audio-quality/${encodeURIComponent(reportId)}/${variant}?${new URLSearchParams({ projectId })}`;
+export const generatedAudioMediaUrl = (id: string, projectId: string): string =>
+  `${prefix}/audio-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
 
 async function uploadFiles(
   files: File[],

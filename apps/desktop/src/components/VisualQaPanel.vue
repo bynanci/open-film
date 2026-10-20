@@ -230,6 +230,7 @@ onBeforeUnmount(() => {
           @click="emit('navigate', sample.timestamp)"
         >
           <img
+            crossorigin="anonymous"
             :src="visualQaFrameUrl(report.id, sample.index)"
             alt=""
             loading="lazy"

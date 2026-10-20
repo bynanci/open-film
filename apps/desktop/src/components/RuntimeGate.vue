@@ -61,6 +61,16 @@ function protectRetainedDrafts(event: BeforeUnloadEvent) {
     event.returnValue = "";
   }
 }
+function protectWorkspaceShortcuts(event: KeyboardEvent) {
+  const target = event.target as Element | null;
+  if (
+    !ready.value ||
+    busy.value ||
+    closing.value ||
+    target?.closest?.(".runtime-drafts")
+  )
+    event.stopPropagation();
+}
 function downloadDraft(entry: RetainedNativeDraft) {
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(entry, null, 2)], { type: "application/json" }),
@@ -198,6 +208,7 @@ async function check() {
 }
 onMounted(() => {
   window.addEventListener("beforeunload", protectRetainedDrafts);
+  window.addEventListener("keydown", protectWorkspaceShortcuts, true);
   if (isTauri()) {
     timer = setInterval(() => {
       void check();
@@ -209,6 +220,7 @@ onBeforeUnmount(() => {
   disposed = true;
   if (timer) clearInterval(timer);
   window.removeEventListener("beforeunload", protectRetainedDrafts);
+  window.removeEventListener("keydown", protectWorkspaceShortcuts, true);
 });
 </script>
 <template>

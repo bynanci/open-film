@@ -347,6 +347,7 @@ function startPlayback() {
         v-if="selectedAsset"
         :key="`${selectedAudio.id}:${sourceIdentity}`"
         ref="player"
+        crossorigin="anonymous"
         :src="sourceUrl(selectedAsset.id, sourceIdentity)"
         controls
         preload="metadata"

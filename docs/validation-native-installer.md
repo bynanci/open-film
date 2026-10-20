@@ -202,3 +202,59 @@ absent, then passed with the same-buffer implementation. No full suite or
 browser suite was rerun in the isolated follow-up checkout; the integration
 head requires the combined gates and fresh native-shell CI. Windows/macOS and
 all other workstation gates above remain not-run.
+
+### Native I/O and global shortcut follow-up, 2026-10-20
+
+The original keyboard isolation finding also applies to window listeners:
+inert DOM alone does not prevent Timeline/Precision global keydown handlers.
+A Chromium regression runs the actual RuntimeGate template/lifecycle and exact
+production editor handlers with observable action sinks. It reproduced Delete,
+Undo and marker actions behind runtime controls. RuntimeGate now stops keydown
+propagation in the window capture phase while blocked, starting or closing, and
+when a retained-draft control owns the event during normal editing. It preserves
+default activation: Tab, Enter and Space still operate Back/Retry, Download and
+Discard, and ready workspace shortcuts resume normally.
+
+The reported audio-quality and generated-audio players now use typed URL
+helpers bound to the current native port/session and encoded project/receipt
+identity. Both use anonymous cross-origin media requests, matching the existing
+App convention and preserving the service's Origin checks. The native-origin
+Chromium regression runs both real components against an actual ephemeral
+private-session server, measures generated fixture media, decodes original and
+candidate MP4 audio and previews the explicit local mock's generated audio.
+It checks byte-range responses and rejection of the unprefixed endpoint.
+The simulated website origin receives Chromium's local-network permission in
+the fixture; this is not an observation of an installed Tauri WebView.
+
+The same contract was independently reproduced in the existing Soundtrack source
+player: changing only its live cross-origin mode enabled decoding on the same
+native URL. The bounded template audit adds anonymous CORS to 13 service-backed
+media tags in Timeline/Precision/Soundtrack, photo/title previews, timeline
+thumbnails and visual-QA frames. Existing App, AssetCard, ScenePlanner and
+Transcript media already use it. The graphics preview consumes an already
+fetched blob URL and requires no change. A permanent actual Soundtrack/TimelineClip
+browser case now checks native source decoding, four-second duration, decoded
+thumbnail dimensions and continued rejection of an attacker Origin.
+
+Owned service shutdown now registers read-only file responses before filesystem
+awaits, aborts their response/pipeline on close, checks cancellation after path
+and stat reads, and waits for their settlement. Mutation sockets keep their
+existing graceful lifetime. Real-process regressions pause a 128 MiB native
+range response under backpressure and hold another read before stat returns;
+both obtain a matching successful close acknowledgement and exit while an
+already acquired PATCH completes and persists its Story title. No force kill
+or blanket connection destruction is used for normal shutdown.
+
+A genuine service spawn failure now settles its completion and is closable
+without an acknowledgement from a process that never existed. A trusted test
+hook removes the child's working directory after verified preflight to produce
+a real ENOENT spawn error. The launcher closes successfully, and a fresh owner
+then starts and closes. Successfully spawned services retain the existing live
+acknowledgement and exit requirements.
+
+| Check                                                                                                    | Result                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused native runtime, stream/write, owned control, draft lifecycle and actual audio-player regressions | 7 files / 45 tests passed with one worker.                                                                                                                                                                                                                                      |
+| Chromium runtime keyboard and native audio/source/thumbnail playback                                     | 4 passed without default ports; media service uses an ephemeral port. Keyboard fixture mocks the App slot/IPC/action sinks while executing the real Gate and editor handlers; media fixture runs real players/thumbnails, media generation and HTTP/session boundary.           |
+| Expected failures                                                                                        | Observed background shortcut actions, all three raw audio media URLs, missing close acknowledgement with a paused response, and unclosable real spawn error before their fixes. A native-origin media isolation probe also demonstrated the required cross-origin request mode. |
+| Native module and workstation status                                                                     | Rust runtime source is unchanged from the nine-test reviewed head. Combined gates and fresh native-shell CI remain required. All native-installer workstation gates above remain not-run.                                                                                       |

@@ -454,21 +454,25 @@ async function body(
   }
 }
 
-async function streamFile(
+async function streamFileContents(
   request: IncomingMessage,
   response: ServerResponse,
   file: string,
   root: string,
   mime: string,
+  signal: AbortSignal,
 ) {
+  signal.throwIfAborted();
   const [actualFile, actualRoot] = await Promise.all([
     realpath(file),
     realpath(root),
   ]);
+  signal.throwIfAborted();
   const within = relative(actualRoot, actualFile);
   if (within.startsWith("..") || isAbsolute(within))
     throw new HttpError(403, "Media cache path is outside this project.");
   const info = await stat(actualFile);
+  signal.throwIfAborted();
   if (!info.isFile()) throw new HttpError(404, "Cached media is unavailable.");
   if (info.size === 0)
     throw new HttpError(
@@ -507,7 +511,9 @@ async function streamFile(
       ? { "Content-Range": `bytes ${start}-${end}/${info.size}` }
       : {}),
   });
-  await pipeline(createReadStream(actualFile, { start, end }), response);
+  await pipeline(createReadStream(actualFile, { start, end }), response, {
+    signal,
+  });
 }
 
 export interface ServerOptions {
@@ -594,6 +600,36 @@ export async function startServer(options: ServerOptions = {}) {
   };
   let mutationQueue = Promise.resolve();
   let closing = false;
+  const mediaStreams = new Map<AbortController, Promise<void>>();
+  const streamFile = (
+    request: IncomingMessage,
+    response: ServerResponse,
+    file: string,
+    root: string,
+    mime: string,
+  ) => {
+    const controller = new AbortController();
+    const abort = () => {
+      response.destroy();
+    };
+    controller.signal.addEventListener("abort", abort, { once: true });
+    if (closing) controller.abort();
+    // Register before filesystem awaits. Only read-only file pipelines are
+    // aborted; acquired mutation requests retain their graceful lifetime.
+    const task = streamFileContents(
+      request,
+      response,
+      file,
+      root,
+      mime,
+      controller.signal,
+    ).finally(() => {
+      controller.signal.removeEventListener("abort", abort);
+      mediaStreams.delete(controller);
+    });
+    mediaStreams.set(controller, task);
+    return task;
+  };
   const current = () => {
     if (!app)
       throw new HttpError(
@@ -3968,10 +4004,12 @@ export async function startServer(options: ServerOptions = {}) {
   const close = async () => {
     closing = true;
     cancelGraphicSceneAgentPreviews();
+    for (const controller of mediaStreams.keys()) controller.abort();
     const stopped = new Promise<void>((accept) => server.close(() => accept()));
     for (const controller of new Set(active.values())) controller.abort();
     await Promise.allSettled(tasks);
     await mutationQueue;
+    await Promise.allSettled(mediaStreams.values());
     await stopped;
     await discardUploads();
     await app?.motionGeneration.dispose();

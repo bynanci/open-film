@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { AudioQualityReport } from "@openfilm/application";
 import type { TimelineCommand } from "@openfilm/solver";
-import { api } from "../api";
+import { api, audioQualityMediaUrl } from "../api";
 const props = defineProps<{
   projectId: string;
   compositionId: string;
@@ -68,7 +68,7 @@ const level = computed(() => {
 });
 const media = computed(() =>
   report.value
-    ? `/api/audio-quality/${report.value.id}/${variant.value}?projectId=${encodeURIComponent(props.projectId)}`
+    ? audioQualityMediaUrl(report.value.id, variant.value, props.projectId)
     : "",
 );
 function format(value: number | null | undefined) {
@@ -140,6 +140,7 @@ function accept() {
       <audio
         :key="media"
         controls
+        crossorigin="anonymous"
         preload="none"
         :src="media"
         :aria-label="t('editor.audioQuality.audition')"
