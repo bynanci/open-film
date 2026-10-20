@@ -56,6 +56,53 @@ Resolve interchange; and any future remote provider's quality, license,
 retention/cost and consent verification. The local fixture remains synthetic
 camera motion with no remote upload or AI-quality claim.
 
+## Fresh review remediation (2026-10-20)
+
+Exact reviewed base: `f5625e8c0380df4bc3fa20250fb3e0dcde77e204`.
+Tested source: `9e4a163ae0339240363270266e274968abd3cc4b`.
+The commit adding this record changes documentation only. No full suite, default
+browser ports, remote provider call, push, merge or release was performed for
+this follow-up.
+
+| Finding                                                              | Disposition and proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4326967703`: injected local providers mislabeled as camera fixtures | ACCEPT / resolved. Real local-provider invocation now records additive v1 `local-generation` / `provider-declared` / `provider-cost-unknown` provenance, preserved in adopted asset metadata. The regression first observed `fixture` / `camera-derived-original`, then passed after the fix. Explicit job consent and separate manual Accept remain required; existing registry consent tests pass and the application remote-availability gate is unchanged. Built-in provenance remains unchanged. |
+| `4326967719`: imported receipt commits before candidate deletion     | ACCEPT / resolved. Injected failure after the real durable receipt write reproduces remaining bytes. Reopen and explicit cleanup now remove leftovers for imported/restored/revoked states without deleting receipt journals or managed sources. All six terminal-state/cleanup combinations pass. A prepared-state counterexample preserves byte-identical candidate and journal data, then resumes the exact replacement successfully.                                                              |
+| `4326967736`: external picker stops at 100 videos                    | ACCEPT / resolved. Bounded 100-video pages and full-Library search expose later sources. Up to three named choices survive page/search changes and can be removed off-page. Actual Vue host regressions cover pagination, search, protected videos, project/revision/source changes, cancellation and late failures; the real browser reaches/adopts Video 205.                                                                                                                                       |
+| `4326967726`: shared PhotoDepth full-Library dependencies            | Assigned to the PR #35 owner with duplicate `4326942597`. This follow-up changes no PhotoDepth source. Its independently validated dependency integration belongs to the coordinator.                                                                                                                                                                                                                                                                                                                 |
+
+Fresh exact-source verification:
+
+| Gate                                                      | Result                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Focused application/fault/provider/HTTP/CLI/picker suites | 5 files / 46 tests passed, 45.83 s; `/tmp/openfilm-v1-validation/pr40-fresh-final-focused.log`                                                                                                                                                                                                                                                               |
+| Actual synthetic media                                    | Six new cleanup cases render 4.000 s / 48 decoded video frames with original synthetic narration present. Original and managed video SHA-256 values remain unchanged. Existing frame-decode, source/fence, Undo/Redo/reopen, HTTP and CLI regressions pass.                                                                                                  |
+| Browser full-Library picker                               | 1 passed, 4.1 s total; `/tmp/openfilm-v1-validation/pr40-fresh-picker-browser-rerun.log`. 205 Library videos use regular byte-identical synthetic MP4 copies of one probed fixture. Page 3, cross-page choices/removal, search total=1, exact Video 205 receipt identity, manual Accept and Replace, Restore action availability and original hash verified. |
+| Edited-source ESLint and Prettier                         | Passed                                                                                                                                                                                                                                                                                                                                                       |
+| Complete TypeScript and Vue typecheck                     | Passed; `/tmp/openfilm-v1-validation/pr40-fresh-final-typecheck.log`                                                                                                                                                                                                                                                                                         |
+| Locale contract                                           | 1787 semantic keys and placeholders match across en-US, zh-TW and ja-JP                                                                                                                                                                                                                                                                                      |
+| Scope                                                     | Eight source/test/locale paths; no version, task, roadmap, project-schema, render-code or dependency changes                                                                                                                                                                                                                                                 |
+
+The initial browser attempt timed out on the test's exact `getByLabel` select
+locator; its trace showed the expected accessible combobox. The test now selects
+by the combobox role/name, and the unchanged runtime source passed. No behavior
+assertion was removed or weakened. The isolated harness used loopback ports
+43869/45497 and was stopped after validation; ports 4310/1420 were not used.
+
+Reproduce the application and UI host checks with the command below, followed by
+the edited-file lint/format checks and `pnpm typecheck` / `pnpm test:i18n`:
+
+```sh
+pnpm exec vitest run --maxWorkers=1 packages/application/tests/motion-faults.test.ts packages/application/tests/motion-generation.test.ts tests/unit/motion-provider.test.ts tests/unit/motion-video-picker.test.ts tests/integration/motion-generation.test.ts
+```
+
+The browser regression is `tests/e2e/motion-video-picker.spec.ts`; it runs in the
+normal browser suite or with an isolated local service/Vite harness. Final
+combined CI/browser/release gates remain with the coordinator. Manual fidelity,
+workstation/installer/display, hardware/GPU/4K, Resolve and any future remote
+provider verification remain unclaimed. Reverting the source follow-up removes
+the three corrections; existing receipts and project schema need no migration.
+
 ## Source and dependency
 
 - Main inspected: `bb2c4521ad894478893485119442a00ffd9b34cc`.
