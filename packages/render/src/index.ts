@@ -966,13 +966,12 @@ export class FFmpegRenderer {
       if (!audioOnly) {
         const finalVideoFilters = exportProfile
           ? [
+              // Pad before fps rounds the composed EOF: FFmpeg 6 can otherwise
+              // discard the only frame. Trim keeps the exact complete count.
+              "tpad=stop_mode=clone:stop=-1",
               `fps=${number(outputFrameRate)}:round=near`,
               ...outputFrameFilters(exportProfile),
               "format=yuv420p",
-              // Keep the final encoded stream at the exact complete-frame count.
-              // Some FFmpeg builds end the composed stream one frame early after
-              // applying output time limits; cloning then trimming is deterministic.
-              "tpad=stop_mode=clone:stop=-1",
               `trim=end_frame=${outputFrameCount}`,
             ]
           : ["format=yuv420p"];

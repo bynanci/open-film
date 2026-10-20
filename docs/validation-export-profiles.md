@@ -415,6 +415,40 @@ formatting and diff checks pass. Logs and synthetic evidence use the
 verification remains with the independent CLI reviewer and combined release
 gates; no browser or full suite was run for this opener-only change.
 
+## FFmpeg 6.1 complete-frame conversion follow-up — 2026-10-20
+
+Hosted CI at `0cd6b3429e58e73ab55b3f7a9cddf91385cd2819` reproduced an
+empty preview intermediate with Ubuntu's `6.1.1-3ubuntu5` FFmpeg. A two-second
+project at 0.5 fps must deliver two frames at 1 fps. The final `fps` filter could
+round away its only composed frame at EOF; the following clone padding then had
+no frame to extend. FFmpeg returned success for the empty MP4, and PNG extraction
+failed because that intermediate had no video stream. Singleton ordinary-rate
+renders and the last picture of a two-hold sequence exposed the same boundary.
+
+The existing infinite clone padding now precedes output frame-rate conversion.
+The existing final complete-frame trim remains unchanged. This preserves the
+first and last composed pictures while supplying the requested output count.
+Saved frame rates, Composition timing, crop/source/revision fences, required
+native filters and dependencies are unchanged. No browser assertion was changed.
+
+Seven permanent renderer/application regressions failed on the actual Ubuntu
+6.1 executable and matching eight libav libraries before the fix. They now pass:
+single native frames at 0.25, 0.5, 1 and 12 fps, exact output count/duration,
+decoded picture colors, red/red/blue/blue half-fps holds, first/last preview and
+PNG/MP4 pixel equality, receipts, and saved project/source identity. The original
+unchanged half-fps browser case independently reproduced CI's error 234 before
+the fix. The privately extracted toolchain uses signature/hash-verified Ubuntu
+packages with compatible host libraries; hosted CI must still rerun.
+
+On FFmpeg 6.1, the seven new media cases and four selected crop/source/revision
+guards pass (56 unrelated cases filtered). On local FFmpeg 7.1, four focused media
+files pass all 14 tests. All five unchanged export browser cases pass on each
+version, using isolated ephemeral servers. Independent 6.1 verification passes
+42 related tests and those five browser cases. TypeScript/Vue, changed-file lint,
+formatting and diff checks pass. Evidence uses the `pr41-low-fps-` and
+`pr41-independent-ci-fps-` prefixes under `/tmp/openfilm-v1-validation/`;
+the coordinator owns the new full-suite and hosted-CI gates.
+
 ## Manual gates
 
 - Review portrait and square framing with representative real photos locally;
