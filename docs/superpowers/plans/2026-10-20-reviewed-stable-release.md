@@ -36,6 +36,8 @@
 
 - [x] Reproduce the hosted FFmpeg 6.1.1 low-frame-rate output defect with the exact authenticated runtime; independently verify the minimal renderer correction on 6.1.1/7.1.5 and rerun complete final gates.
 
+- [x] Reproduce and independently fix the late ZIP saved-revision publication race; verify precommit rejection and postcommit ownership, then rerun all final gates.
+
 Final full browser/native CI, exact-head review, merge and publication are gated
 and recorded by [PR #41](https://github.com/bynanci/open-film/pull/41) and the
 [checksummed 0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).

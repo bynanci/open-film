@@ -7,9 +7,10 @@
 - [x] Verify complete combined format/i18n/lint/typecheck/unit/application/build/interchange gates and actual shared render/package parity.
 - [x] Align application/workspace/Tauri metadata at 0.4.0 while retaining project schema 1.0.0 and Apache-2.0/NOTICE.
 - [x] Close final integration review findings: installed CLI version, empty ZIP/abort/ownership, and complete native FFmpeg filter admission; rerun the combined gates.
-- [x] Independently close all 15 late feature/integration findings, including scene schema/seek, delivery/caption fences, passive NLE review and atomic directory/stem publication; verify the pinned native dependency and its license inventory.
+- [x] Independently close all 16 late feature/integration findings, including scene schema/seek, delivery/caption fences, passive NLE review and atomic directory/stem publication; verify the pinned native dependency and its license inventory.
 - [x] Preserve saved project revisions and unrelated jobs during CLI export; prove durable cross-process retries and retained source/settings rejection with the actual built executable.
 - [x] Fix supported FFmpeg 6.1.1 singleton/low-frame-rate delivery without changing saved project rates; retain the original browser case and independently verify actual decoded output on 6.1.1 and 7.1.5.
+- [x] Fence saved revisions and cancellation after real ZIP creation, publish synchronously without replacing destinations, and preserve postcommit outputs; independently verify actual archive races.
 - [ ] Resolve the existing GLib 0.18.5 / `RUSTSEC-2024-0429` native distribution gate through compatible upstream remediation and reachability review before publishing installers.
 
 Final browser/native CI, merge and publication status is recorded on

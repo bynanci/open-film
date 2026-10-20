@@ -10,7 +10,7 @@ certification is implied.
 ## Exact reviewed inputs
 
 Main baseline: `bb2c4521ad894478893485119442a00ffd9b34cc`.
-Combined implementation: `61fa596aaaf2d48dcbb3cb920e12bdfc436a7973`. Later documentation-only changes
+Combined implementation: `063a5d27e569fd29f339291d704771e093faa34b`. Later documentation-only changes
 retain the same implementation; the release evidence identifies the final head.
 Named Versions hardening: `41357e73fbb2b1686d96192664ed405b908aed5a`;
 checkpoint race: `ede62fc0dcdcfda373b0b1a7757880e36f45532a`.
@@ -122,7 +122,7 @@ The exact CLI/archive/native review commits, reproduction reports and final
 candidate identities accompany the checksummed release evidence. Independent
 review runs on frozen fixes before the combined gates.
 
-The final review readback also closes fifteen later comments across the feature
+The final review readback also closes sixteen later comments across the feature
 and integration PRs. PhotoDepth review and Visual QA sample/issue navigation can
 seek scenes without underlying clips. Validation leaves caller objects intact,
 and generic graphic budgets stay distinct from
@@ -187,13 +187,27 @@ FFmpeg 7.1.5 and an independent review also pass. No browser case, filter
 requirement, assertion or supported project rate is removed. Final full-suite
 and hosted results are read back separately for the new candidate.
 
+## ZIP publication revision fence
+
+Final review of candidate `18cb8ff346f926ac71081a81c6fafdd69bc28792`
+identified a saved-revision fence before a potentially long ZIP write. Archive
+completion now precedes the final synchronous revision/abort check and exclusive
+hard-link publication. The successful link is the commit point; subsequent
+progress observers and private cleanup cannot revoke a committed output.
+Actual held-writer controls reproduce stale publication, then verify rejection
+of saved edits and cancellation before publication. Ordinary archive verification,
+existing destinations and postcommit replacement/cancellation preserve ownership
+and original source hashes. The fix has independent frozen-commit evidence; the
+earlier 195-case browser success is retained as baseline, followed by new complete
+gates on the corrected implementation.
+
 ## Combined automated gates
 
-On implementation `61fa596aaaf2d48dcbb3cb920e12bdfc436a7973`:
+On implementation `063a5d27e569fd29f339291d704771e093faa34b`:
 
 - `pnpm format:check`, `pnpm test:i18n` (1,973 semantic keys), `pnpm lint` and
   `pnpm typecheck`: pass.
-- `pnpm test`: **247 files / 3,607 tests passed**; no weakened or disabled
+- `pnpm test`: **248 files / 3,615 tests passed**; no weakened or disabled
   assertions. Synthetic FFmpeg, HTTP/application, child-process, legacy-project
   and recovery regressions run as part of this command.
 - `pnpm build`, built CLI smoke and `pnpm test:interchange`: pass; the official

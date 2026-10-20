@@ -5,7 +5,7 @@ This maintenance pass hardens Named Versions and integrates independently
 reviewed Photo Depth, Professional Export, Collect Media, Native Installer
 candidate tooling, NLE Fidelity and Motion Candidates (PRs 35–40). Shared-source
 contracts, non-destructive editing and explicit provider consent remain intact.
-The final 15 feature/integration corrections include scene schema and seeking,
+The final 16 feature/integration corrections include scene schema and seeking,
 delivery and caption fences, passive NLE review, and atomic package/stem publication.
 Final review also covers installed CLI metadata, empty ZIP/owned cancellation
 cleanup and all 43 native FFmpeg filter capabilities. Combined basic gates and
@@ -17,6 +17,9 @@ native CI, merge and tag results accompany the
 Supported FFmpeg 6.1.1 and 7.1.5 retain singleton and low-frame-rate picture
 streams through delivery sampling; actual frame counts, picture holds and
 first/last preview pixels are regression-tested without changing project rates.
+
+Collect ZIP publication fences saved revisions/cancellation after archive creation
+and publishes synchronously without replacing existing destinations.
 
 CLI exports preserve saved revisions and unrelated jobs across durable retries.
 Native installer distribution also requires compatible remediation and reachability
