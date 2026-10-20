@@ -19,6 +19,7 @@ import {
 } from "@openfilm/catalog";
 import type { MediaAsset } from "@openfilm/core";
 import * as media from "@openfilm/media";
+import { resolveTitleFont } from "@openfilm/render";
 import { OpenFilmApplication } from "../src/index.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => ({
@@ -81,6 +82,7 @@ beforeAll(async () => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const app of apps) app.close({ requireSave: false });
   apps.clear();
 });
@@ -142,9 +144,10 @@ function addCandidate(
   path: string,
   bytes: Buffer,
   mediaType: MediaAsset["mediaType"] = "image",
+  id = "story-only",
 ) {
   const asset: MediaAsset = {
-    id: "story-only",
+    id,
     name: "photo.png",
     uri: pathToFileURL(path).href,
     mediaType,
@@ -183,7 +186,162 @@ async function collect(app: OpenFilmApplication, destination: string) {
   return prepared;
 }
 
+function renamedFont(input: Buffer): Buffer {
+  const bytes = Buffer.from(input);
+  const faces =
+    bytes.subarray(0, 4).toString() === "ttcf"
+      ? Array.from({ length: bytes.readUInt32BE(8) }, (_, index) =>
+          bytes.readUInt32BE(12 + index * 4),
+        )
+      : [0];
+  const checksum = (offset: number, length: number) => {
+    let result = 0;
+    for (let index = 0; index < length; index += 4) {
+      const word = Buffer.alloc(4);
+      bytes.copy(word, 0, offset + index, offset + Math.min(index + 4, length));
+      result = (result + word.readUInt32BE()) >>> 0;
+    }
+    return result;
+  };
+  for (const face of faces) {
+    for (let index = 0; index < bytes.readUInt16BE(face + 4); index++) {
+      const table = face + 12 + index * 16;
+      if (bytes.subarray(table, table + 4).toString() !== "name") continue;
+      const offset = bytes.readUInt32BE(table + 8);
+      const length = bytes.readUInt32BE(table + 12);
+      const strings = offset + bytes.readUInt16BE(offset + 4);
+      for (let entry = 0; entry < bytes.readUInt16BE(offset + 2); entry++) {
+        const record = offset + 6 + entry * 12;
+        if (![1, 4, 6, 16].includes(bytes.readUInt16BE(record + 6))) continue;
+        const unicode = [0, 3].includes(bytes.readUInt16BE(record));
+        const prefix = unicode
+          ? Buffer.from("Secret", "utf16le").swap16()
+          : Buffer.from("Secret");
+        if (bytes.readUInt16BE(record + 8) >= prefix.length)
+          prefix.copy(bytes, strings + bytes.readUInt16BE(record + 10));
+      }
+      bytes.writeUInt32BE(checksum(offset, length), table + 4);
+    }
+  }
+  return bytes;
+}
+
 describe("Collect Media source file safety", () => {
+  it.each(["secret-project", "password-family", "credential-project"])(
+    "collects legitimate rights resource ID %s",
+    async (id) => {
+      const { app, directory } = await fixture();
+      const path = join(directory, "candidate.png");
+      await fs.copyFile(new URL(image.uri), path);
+      addCandidate(app, path, await fs.readFile(path), "image", id);
+      const destination = join(directory, "collected.openfilm");
+      await collect(app, destination);
+      expect(await app.collectMedia.verify(destination)).toMatchObject({
+        verified: true,
+      });
+    },
+  );
+
+  it("redacts embedded local source paths from portable asset tags", async () => {
+    const { app, directory } = await fixture();
+    app.catalog.upsertAsset({
+      ...video,
+      tags: [
+        "favorite",
+        "source /Users/synthetic/private.mov",
+        "source C:\\Users\\Synthetic\\private.mov",
+        "source file:///synthetic/private.mov",
+      ],
+    });
+    const destination = join(directory, "collected.openfilm");
+    await collect(app, destination);
+    const assets = inspectCatalogSnapshot(
+      await fs.readFile(join(destination, "database.sqlite")),
+      CATALOG_SCHEMA_VERSION,
+    ).assets;
+    const tags = assets.find((asset) => asset.id === video.id)!.tags;
+    expect(tags).toContain("favorite");
+    expect(JSON.stringify(tags)).not.toContain("/Users/synthetic/");
+    expect(JSON.stringify(tags)).not.toContain("Users\\\\Synthetic");
+    expect(JSON.stringify(tags)).not.toContain("file:///synthetic/");
+  });
+
+  it("verifies and reopens a real custom font with secret-like family and PostScript names", async () => {
+    const { app, directory } = await fixture();
+    const original = await resolveTitleFont({ fontWeight: 400 });
+    const path = join(directory, "custom-font.ttf");
+    await fs.writeFile(
+      path,
+      renamedFont(await fs.readFile(original.font.path)),
+    );
+    vi.stubEnv("OPENFILM_TITLE_FONT", path);
+    const font = await resolveTitleFont({ fontWeight: 400 });
+    expect(`${font.font.family} ${font.font.postscriptName}`).toMatch(
+      /Secret/u,
+    );
+    const clip = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+    clip.title = "Hi";
+    clip.titleStyle = {
+      version: 1,
+      role: "subtitle",
+      fontFamily: font.font.family,
+      fontWeight: 400,
+      fontSize: 10,
+    };
+    await app.save();
+    const selection = { scope: "entire-project" as const };
+    const preview = await app.collectMedia.plan(selection);
+    const rightsDeclarations = preview.items.map(({ resourceId }) => ({
+      resourceId,
+      basis: "owned" as const,
+      confirmed: true as const,
+    }));
+    const prepared = await app.collectMedia.plan({
+      ...selection,
+      rightsDeclarations,
+    });
+    expect(prepared.complete).toBe(true);
+    const destination = join(directory, "custom-font.openfilm");
+    await app.collectMedia.create({
+      ...selection,
+      rightsDeclarations,
+      planId: prepared.id,
+      baseRevision: prepared.revision,
+      destination,
+      format: "directory",
+    });
+    expect(await app.collectMedia.verify(destination)).toMatchObject({
+      verified: true,
+      fontCount: 1,
+    });
+    const reopened = await OpenFilmApplication.open(destination);
+    apps.add(reopened);
+    expect(reopened.titleFontPath(clip.titleStyle)).toBeDefined();
+  });
+
+  it("rejects aggregate oversized directories before opening payload bytes", async () => {
+    const { app, directory } = await fixture();
+    const source = join(directory, "oversized.openfilm");
+    await fs.mkdir(source);
+    for (const name of ["one.bin", "two.bin", "three.bin"])
+      await fs.writeFile(join(source, name), "synthetic-size-fixture");
+    const original = fs.lstat;
+    vi.spyOn(fs, "lstat").mockImplementation(async (...args) => {
+      const info = await original(...args);
+      if (String(args[0]).startsWith(`${source}/`))
+        Object.defineProperty(info, "size", { value: 1.5 * 1024 ** 3 });
+      return info;
+    });
+    const opened = vi.spyOn(fs, "open");
+    await expect(app.collectMedia.verify(source)).rejects.toMatchObject({
+      code: "request.tooLarge",
+      status: 413,
+    });
+    expect(
+      opened.mock.calls.some(([path]) => String(path).startsWith(`${source}/`)),
+    ).toBe(false);
+  });
+
   it("retains a single-frame supported video", async () => {
     const { app, directory } = await fixture();
     const path = join(directory, "single-frame.mp4");

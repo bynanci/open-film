@@ -457,6 +457,14 @@ async function centralEntries(path: string): Promise<CentralEntry[]> {
     for (let index = 1; index < ranges.length; index++)
       if (ranges[index]!.start < ranges[index - 1]!.end)
         throw new Error("Package archive entries overlap.");
+    let accountedEnd = 0;
+    for (const range of ranges) {
+      if (range.start !== accountedEnd)
+        throw new Error("Package archive contains unaccounted bytes.");
+      accountedEnd = range.end;
+    }
+    if (accountedEnd !== centralOffset)
+      throw new Error("Package archive contains unaccounted bytes.");
     return entries;
   } finally {
     await file.close();

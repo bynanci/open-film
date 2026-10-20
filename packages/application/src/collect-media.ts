@@ -281,7 +281,12 @@ function safeMediaLibraryId(value: unknown): string | undefined {
   return value;
 }
 
-function safeText(value: unknown, where: string, maximum: number): string {
+function safeText(
+  value: unknown,
+  where: string,
+  maximum: number,
+  allowSecretWords = false,
+): string {
   if (
     typeof value !== "string" ||
     !value.trim() ||
@@ -296,7 +301,7 @@ function safeText(value: unknown, where: string, maximum: number): string {
     /(?:file:\/\/|\b[a-z]:[\\/]|\\\\|(?<![\w:])\/(?!\/)(?:[^/\s]+\/){1,}[^\s"'<>)]*)/iu.test(
       value,
     ) ||
-    SECRET_KEY.test(value)
+    (!allowSecretWords && SECRET_KEY.test(value))
   )
     fail(
       "request.invalid",
@@ -324,7 +329,9 @@ function validateRights(input: unknown): Map<string, CollectRightsDeclaration> {
         "request.invalid",
         "A rights declaration contains an unknown field.",
       );
-    const resourceId = safeText(item.resourceId, "resourceId", 300);
+    const resourceId = safeIdentifier(item.resourceId, "resourceId");
+    if (resourceId.length > 300)
+      fail("request.invalid", "Rights resource ID exceeds its length limit.");
     if (
       item.confirmed !== true ||
       !["owned", "licensed", "cc0", "public-domain", "other"].includes(
@@ -483,9 +490,9 @@ function packagedAsset(
   const asset: MediaAsset = {
     ...structuredClone(source),
     name: cleanDisplayName(source.name),
-    tags: source.tags.filter(
-      (tag) => !/^(?:file:|[a-z]:[\\/]|\\\\|\/)/iu.test(tag),
-    ),
+    tags: source.tags
+      .filter((tag) => !/^(?:file:|[a-z]:[\\/]|\\\\|\/)/iu.test(tag))
+      .map((tag) => noPrivateMetadata(tag) as string),
     uri: packageAssetUri(source.id),
     contentHash: sha256,
     metadata,
@@ -1005,6 +1012,8 @@ async function listDirectoryPackage(
   signal?: AbortSignal,
 ): Promise<CollectManifestFile[]> {
   const files: CollectManifestFile[] = [];
+  const pending: { path: string; packagePath: string; size: number }[] = [];
+  let total = 0;
   const visit = async (directory: string): Promise<void> => {
     checkAbortAndStatus(signal);
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -1021,18 +1030,28 @@ async function listDirectoryPackage(
         fail("export.failed", "Package must contain regular files only.", 422);
       const packagePath = relative(root, path).split(sep).join("/");
       await canonicalRegularFile(path);
-      if (await isNestedArchiveFile(path))
-        fail(
-          "request.invalid",
-          "Nested archives are not allowed in a package.",
-        );
-      const value = await hashRegularFile(path, signal);
-      files.push({ path: packagePath, size: value.size, sha256: value.sha256 });
-      if (files.length > MAX_SOURCE_COUNT + 300)
+      total += info.size;
+      if (total > MAX_PACKAGE_BYTES)
+        fail("request.tooLarge", "Package exceeds the size limit.", 413);
+      pending.push({ path, packagePath, size: info.size });
+      if (pending.length > MAX_SOURCE_COUNT + 300)
         fail("request.tooLarge", "Package has too many files.", 413);
     }
   };
   await visit(root);
+  for (const entry of pending) {
+    checkAbortAndStatus(signal);
+    if (await isNestedArchiveFile(entry.path))
+      fail("request.invalid", "Nested archives are not allowed in a package.");
+    const value = await hashRegularFile(entry.path, signal);
+    if (value.size !== entry.size)
+      fail("source.changed", "Package changed after its size check.", 409);
+    files.push({
+      path: entry.packagePath,
+      size: value.size,
+      sha256: value.sha256,
+    });
+  }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -1229,8 +1248,8 @@ function validateManifest(value: unknown): CollectManifest {
         "request.invalid",
         "Collect Media manifest contains an invalid font record.",
       );
-    safeText(font.family, "font family", 256);
-    safeText(font.postscriptName, "font postscript name", 256);
+    safeText(font.family, "font family", 256, true);
+    safeText(font.postscriptName, "font postscript name", 256, true);
     validatePackageRelativePath(font.path);
     if (!font.path.startsWith("fonts/"))
       fail("request.invalid", "Collected fonts must use the fonts directory.");
