@@ -1356,7 +1356,10 @@ export class TimelineEditor {
           409,
         );
       const history = this.histories.get(before.composition.id);
-      if (history?.revision === before.revision)
+      if (
+        history?.revision === before.revision ||
+        history?.revision === baseRevision
+      )
         this.histories.set(before.composition.id, {
           ...history,
           revision: after.revision,
