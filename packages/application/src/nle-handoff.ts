@@ -33,6 +33,7 @@ import {
   safeProjectCachePath,
 } from "@openfilm/media";
 import { archiveHandoff } from "./handoff-archive.js";
+import { graphicFrameRanges } from "@openfilm/render";
 export interface HandoffHost {
   directory: string;
   readonly project: OpenFilmProject;
@@ -98,6 +99,18 @@ function hasEmbeddedAudio(asset: MediaAsset): boolean {
   const probe = asset.metadata["openfilm.ffprobe"] as
     { streams?: { codec_type?: string }[] } | undefined;
   return probe?.streams?.some((s) => s.codec_type === "audio") ?? false;
+}
+function exchangeComposition(
+  composition: Composition,
+  bakeAudio: boolean,
+): Composition {
+  const exchange = structuredClone(composition);
+  // Gain is already encoded in the full mix; provenance keeps the authored recipe.
+  if (bakeAudio)
+    for (const track of exchange.tracks)
+      for (const clip of track.clips)
+        if (clip.transform) delete clip.transform.volume;
+  return exchange;
 }
 /** Exclusive bounded streaming transport; owner cancellation closes both handles. */
 export async function copyHandoffSource(
@@ -173,6 +186,21 @@ export class NleHandoffService {
           throw new Error(
             "Title placeholder source is unsupported for handoff; bind a catalog source before review",
           );
+    const assets = referencedIds(composition).map((id) => {
+      const asset = this.host.getSourceAsset(id);
+      if (!asset) throw new Error(`Missing handoff source: ${id}`);
+      return asset;
+    });
+    if (plan.visualRanges.length || plan.bakeAudio)
+      graphicFrameRanges(composition, this.host.project.settings);
+    for (const track of composition.captionTracks ?? [])
+      if (track.cues.length)
+        serializeCaptions(
+          "srt",
+          [...track.cues].sort(
+            (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
+          ),
+        );
     const rate = plan.rate.numerator / plan.rate.denominator;
     for (const track of composition.tracks.filter((t) =>
       ["video", "overlay"].includes(t.type),
@@ -203,6 +231,12 @@ export class NleHandoffService {
             : "Embedded source audio is projected to a separate Audio track; retime, gain and automation need manual recreation when authored",
         });
       }
+    exportTimeline(
+      "otio",
+      exchangeComposition(composition, plan.bakeAudio),
+      assets,
+      this.host.project.settings,
+    );
     return plan;
   }
   async publish(
@@ -240,7 +274,8 @@ export class NleHandoffService {
       if (!asset) throw new Error("Missing handoff source");
       return structuredClone(asset);
     });
-    exportTimeline("otio", composition, assets, settings);
+    const exchange = exchangeComposition(composition, plan.bakeAudio);
+    exportTimeline("otio", exchange, assets, settings);
     const id = randomUUID();
     const staging = await safeProjectCachePath(
       this.host.directory,
@@ -371,7 +406,6 @@ export class NleHandoffService {
         endFrame: number;
         file?: string;
       }[] = [];
-      const exchange = structuredClone(composition);
       const bakedAssets: MediaAsset[] = [];
       const visualOwners = new Set([
         ...composition.tracks

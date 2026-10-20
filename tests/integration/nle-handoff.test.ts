@@ -1207,6 +1207,183 @@ it("sorts sidecar copies without changing saved cue storage order", async () => 
   expect(JSON.stringify(app.project)).toBe(before);
 });
 
+it.each(["video", "overlay", "audio", "music"] as const)(
+  "rejects a missing %s catalog source before approving a handoff",
+  async (type) => {
+    const { app, composition } = await fixture();
+    composition.tracks = [
+      {
+        id: `missing-${type}`,
+        type,
+        clips: [
+          { ...composition.tracks[0]!.clips[0]!, assetId: "absent-source" },
+        ],
+      },
+    ];
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() => app.reviewHandoff(composition.id)).toThrow(
+      /missing.*source|missing media/i,
+    );
+  },
+);
+
+it.each(["aggregate", "frame-rate"] as const)(
+  "applies the renderer's %s graphic budget only when handoff rendering is required",
+  async (budget) => {
+    const { app, composition } = await fixture();
+    composition.captionTracks = [];
+    if (budget === "aggregate") {
+      app.project.settings.frameRate = 30;
+      composition.duration = 30;
+      composition.graphicScenes = Array.from({ length: 3 }, (_, index) => ({
+        ...composition.graphicScenes![0]!,
+        id: `graphic-${index}`,
+        start: 0,
+        duration: 30,
+        zIndex: index,
+        nodes: [
+          {
+            ...composition.graphicScenes![0]!.nodes[0]!,
+            id: `shape-${index}`,
+            end: 30,
+          },
+        ],
+      }));
+    } else app.project.settings.frameRate = 90;
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    expect(() =>
+      app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+    ).toThrow(/graphic.*budget/i);
+    expect(() =>
+      app.reviewHandoff(composition.id, { bakeAudio: true }),
+    ).toThrow(/graphic.*budget/i);
+  },
+);
+
+it.each(["<b>bold</b>", "00:00:00,000 --> 00:00:01,000"])(
+  "rejects SubRip-unsafe saved text before approving even an unselected caption track: %s",
+  async (text) => {
+    const { app, composition } = await fixture();
+    composition.captionTracks![0]!.cues[0]!.text = text;
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() =>
+      app.reviewHandoff(composition.id, { captionTrackId: null }),
+    ).toThrow(/SubRip/i);
+  },
+);
+
+it("bakes amplified gain into the real full mix while retaining the original recipe and neutralizing native picture gain", async () => {
+  const { app, composition, image, audio } = await fixture();
+  composition.graphicScenes = [];
+  composition.captionTracks = [];
+  app.project.timelines = [composition];
+  await app.save();
+  const hashes = await Promise.all([hashFile(image), hashFile(audio)]);
+  const publish = async () => {
+    const review = app.reviewHandoff(composition.id, { bakeAudio: true });
+    return app.exportHandoff({
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+      bakeAudio: true,
+    });
+  };
+  const rms = async (publication: Awaited<ReturnType<typeof publish>>) => {
+    const path = await app.handoff.file(
+      publication.id,
+      publication.files.findIndex((file) => file.name === "media/full-mix.wav"),
+    );
+    const { stdout } = await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-f",
+      "f32le",
+      "-ac",
+      "1",
+      "pipe:1",
+    ]);
+    let squared = 0;
+    for (let offset = 0; offset < stdout.length; offset += 4)
+      squared += stdout.readFloatLE(offset) ** 2;
+    return Math.sqrt(squared / (stdout.length / 4));
+  };
+  const nativeGain = await publish();
+  for (const track of composition.tracks)
+    for (const clip of track.clips) clip.transform = { volume: 2 };
+  app.project.timelines = [composition];
+  await app.save();
+  const before = JSON.stringify(app.project);
+  const amplified = await publish();
+  const unamplifiedRms = await rms(nativeGain),
+    amplifiedRms = await rms(amplified),
+    ratio = amplifiedRms / unamplifiedRms;
+  expect(ratio).toBeGreaterThan(1.9);
+  expect(ratio).toBeLessThan(2.1);
+  const timeline = JSON.parse(
+    await readFile(
+      await app.handoff.file(
+        amplified.id,
+        amplified.files.findIndex((file) => file.name === "timeline.otio"),
+      ),
+      "utf8",
+    ),
+  );
+  expect(timeline.metadata.openfilm.originalComposition).toEqual(composition);
+  const exchange = timeline.metadata.openfilm.composition;
+  expect(
+    exchange.tracks.find((track: { id: string }) => track.id === "picture")
+      .clips[0].transform.volume ?? 1,
+  ).toBe(1);
+  expect(
+    exchange.tracks.filter((track: { type: string }) => track.type === "audio"),
+  ).toHaveLength(1);
+  expect(
+    amplified.plan.items
+      .filter((item) => item.feature === "volume")
+      .every((item) => item.disposition === "baked"),
+  ).toBe(true);
+  expect(() => app.reviewHandoff(composition.id)).toThrow(/volume/i);
+  expect(await Promise.all([hashFile(image), hashFile(audio)])).toEqual(hashes);
+  expect(JSON.stringify(app.project)).toBe(before);
+  if (process.env.OPENFILM_HANDOFF_GAIN_QA_OUTPUT) {
+    const output = process.env.OPENFILM_HANDOFF_GAIN_QA_OUTPUT;
+    const { cp } = await import("node:fs/promises");
+    await mkdir(output, { recursive: true, mode: 0o700 });
+    for (const [name, publication] of [
+      ["unamplified", nativeGain],
+      ["amplified", amplified],
+    ] as const)
+      await cp(
+        join(app.directory, "cache", "nle-handoff-published", publication.id),
+        join(output, name),
+        { recursive: true },
+      );
+    await writeFile(
+      join(output, "gain-proof.json"),
+      JSON.stringify(
+        {
+          unamplifiedRms,
+          amplifiedRms,
+          ratio,
+          sourceHashes: hashes,
+          originalGain: 2,
+          nativePictureGain: 1,
+          projectUnchanged: true,
+        },
+        null,
+        2,
+      ) + "\n",
+      { mode: 0o600 },
+    );
+  }
+});
+
 it.each(["chunked", "content-length"] as const)(
   "does not start a queued publication after its fully sent %s request disconnects",
   async (encoding) => {
