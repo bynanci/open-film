@@ -46,6 +46,16 @@ function issueLabel(code: string): string {
     "title.overflow": "titleOverflow",
     "visual.suspected-blank": "suspectedBlank",
     "revision.stale": "staleRevision",
+    "photo-depth.mask-missing": "photoMaskMissing",
+    "photo-depth.background-missing": "photoBackgroundMissing",
+    "photo-depth.mask-invalid": "photoMaskInvalid",
+    "photo-depth.mask-mismatch": "photoMaskMismatch",
+    "photo-depth.mask-empty": "photoMaskEmpty",
+    "photo-depth.mask-holes": "photoMaskHoles",
+    "photo-depth.protected-region": "photoProtectedRegion",
+    "photo-depth.source-changed": "photoSourceChanged",
+    "photo-depth.fallback-used": "photoFallback",
+    "photo-depth.manual-review": "photoManualReview",
   };
   const key = labels[code];
   return key

@@ -647,9 +647,175 @@
           "items": {
             "$ref": "#/$defs/track"
           }
+        },
+        "graphicScenes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": { "const": 1 },
+              "photoDepth": { "$ref": "#/$defs/photoDepthRecipe" }
+            }
+          }
         }
       },
       "required": ["id", "storyId", "duration", "tracks"]
+    },
+    "photoDepthCamera": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number", "minimum": -0.05, "maximum": 0.05 },
+        "y": { "type": "number", "minimum": -0.05, "maximum": 0.05 },
+        "scale": { "type": "number", "minimum": 1, "maximum": 1.12 }
+      },
+      "required": ["x", "y", "scale"],
+      "additionalProperties": false
+    },
+    "photoDepthRecipe": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": { "const": 1 },
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "nodeId": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "mode": { "const": "parallax" },
+            "duration": { "type": "number", "minimum": 3, "maximum": 6 },
+            "sourceAssetId": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "maskAssetId": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "maskSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "background": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": { "kind": { "const": "source" } },
+                  "required": ["kind"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "const": "asset" },
+                    "assetId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                  },
+                  "required": ["kind", "assetId", "sha256"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "protectedRegion": {
+              "type": "object",
+              "properties": {
+                "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                "width": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1
+                },
+                "height": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": ["x", "y", "width", "height"],
+              "additionalProperties": false
+            },
+            "foregroundDepth": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1.35
+            },
+            "backgroundDepth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.65
+            },
+            "amplitude": { "type": "number", "minimum": 0, "maximum": 1 },
+            "camera": {
+              "type": "object",
+              "properties": {
+                "from": { "$ref": "#/$defs/photoDepthCamera" },
+                "to": { "$ref": "#/$defs/photoDepthCamera" }
+              },
+              "required": ["from", "to"],
+              "additionalProperties": false
+            },
+            "easing": {
+              "enum": ["linear", "ease-in", "ease-out", "ease-in-out"]
+            }
+          },
+          "required": [
+            "version",
+            "id",
+            "nodeId",
+            "mode",
+            "duration",
+            "sourceAssetId",
+            "sourceSha256",
+            "maskAssetId",
+            "maskSha256",
+            "background",
+            "protectedRegion",
+            "foregroundDepth",
+            "backgroundDepth",
+            "amplitude",
+            "camera",
+            "easing"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": { "const": 1 },
+            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "nodeId": { "type": "string", "minLength": 1, "pattern": "\\S" },
+            "mode": { "const": "fallback" },
+            "duration": { "type": "number", "minimum": 3, "maximum": 6 },
+            "sourceAssetId": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "fallbackReason": {
+              "enum": [
+                "mask-not-available",
+                "mask-unreliable",
+                "background-not-available",
+                "protected-subject-overlap"
+              ]
+            }
+          },
+          "required": [
+            "version",
+            "id",
+            "nodeId",
+            "mode",
+            "duration",
+            "sourceAssetId",
+            "sourceSha256",
+            "fallbackReason"
+          ],
+          "additionalProperties": false
+        }
+      ]
     },
     "event": {
       "type": "object",

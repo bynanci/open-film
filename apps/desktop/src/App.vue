@@ -3508,6 +3508,7 @@ onUnmounted(() => {
             @change="editorChanged"
             @edited="editorEdited"
             @playback="toggleRenderedPlayback"
+            @import-assets="importOpen = true"
             @activity="refreshJobs"
             @recover-analysis="recoverAnalysis"
           />

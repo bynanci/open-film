@@ -104,6 +104,7 @@ const emit = defineEmits<{
   change: [state: EditorState];
   edited: [];
   playback: [];
+  importAssets: [];
   relink: [assetId: string];
   activity: [];
   recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
@@ -316,6 +317,14 @@ const graphicLayerEditing = computed(
 );
 function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
+}
+async function previewGraphicAtTime(time: number) {
+  const restoreGraphicsInspector = inspector.value === "graphics";
+  const navigated = await navigateToTime(time);
+  if (navigated && restoreGraphicsInspector) {
+    await nextTick();
+    inspector.value = "graphics";
+  }
 }
 function setGraphicAgentBusy(value: boolean) {
   graphicAgentBusy.value = value;
@@ -2937,6 +2946,7 @@ onBeforeUnmount(() => {
             :revision="state.revision"
             :scenes="state.composition.graphicScenes ?? []"
             :duration="state.composition.duration"
+            :frame-rate="projectSettings.frameRate"
             :assets="state.assets"
             :selected-scene-id="graphicSceneSelection.sceneId"
             :selected-node-id="graphicSceneSelection.nodeId"
@@ -2956,6 +2966,8 @@ onBeforeUnmount(() => {
             "
             @command="command"
             @selection="selectGraphicLayer"
+            @preview-time="previewGraphicAtTime"
+            @import-assets="emit('importAssets')"
             @update:snapping="setGraphicSnapping"
             @update:guides="setGraphicGuides"
             @agent-busy="setGraphicAgentBusy"

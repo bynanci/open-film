@@ -128,6 +128,33 @@ Minimum observations:
 A tiny generated 4K file is useful regression data but does not satisfy this
 workstation gate.
 
+## Gate: Selective PhotoDepth
+
+Use the candidate-bound PhotoDepth contract and synthetic landscape/silhouette
+for the repeatable baseline. Real photographs stay on the private workstation;
+do not commit them, upload them to a provider, add them to CI, or include them in
+logs/PR artifacts.
+
+Minimum observations:
+
+- original, alpha-mask and fill identities/hashes remain unchanged through edit,
+  cancellation, retry, preview, export, Undo/Redo and reopen;
+- image and mask dimensions/orientation, alpha edges, protected-region behavior,
+  and the source-background ghosting trade-off;
+- actual Monitor and decoded MP4 at start/middle/end, including arbitrary seek
+  and mask/fill fallback;
+- for real people, manual face/hand/pose/contact and edge review; overlapping
+  people remain one protected foreground layer unless a person reviews a safe
+  separation;
+- sustained 4K decode/render, peak memory and any visible edge instability on
+  the target GPU/CPU and display;
+- cancellation and a fresh retry leave no stale frame, derived cache or source
+  modification.
+
+The app's mask bounds and hole checks are measurable diagnostics, not evidence
+that a human subject's appearance is unchanged. No model or AI-generated
+inpainting is used in this milestone.
+
 ## Gate: Windows installer
 
 Run on a clean supported Windows account/VM without the development checkout.

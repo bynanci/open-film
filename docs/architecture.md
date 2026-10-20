@@ -456,6 +456,21 @@ for a paused, current saved-revision frame; project/composition key changes
 unmount the editor and discard transient gestures. It does not add persistence,
 renderer state or a second layer timeline.
 
+## M8A selective PhotoDepth
+
+An optional `PhotoDepthRecipe` extends one root Image node in an existing
+GraphicScene. The recipe binds the local photo, alpha mask and optional fill by
+catalog identity and SHA-256, records a protected region and bounded camera
+parameters, and uses the node's existing Composition-time interval. Core owns
+strict version validation and pure arbitrary-seek evaluation; the renderer
+validates admitted PNG alpha/geometry and creates both layers through the same
+Monitor/FFmpeg PNG producer. Source replacement is an existing typed scene
+update that degrades the old recipe to an explicit local fallback. Existing
+locks, history, autosave, reopen and schema-1.0.0 compatibility remain the
+authoritative edit contracts. See [PhotoDepth](photo-depth.md), its
+[threat model](security/graphic-scene-threat-model.md#photodepth-v1), and
+[validation](validation-photo-depth.md).
+
 ## Creative Story Template Records
 
 Optional schema-1.0.0 `Composition.graphicSceneTemplates` binds Conversation

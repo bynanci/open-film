@@ -90,6 +90,20 @@ export default {
         "A graphic image or local font is unavailable. Check the source and try again.",
       stale: "This graphic frame is stale. Wait for the latest edit to save.",
       busy: "A graphic frame is being prepared. Try again shortly.",
+      sourceChanged:
+        "The original photo, mask or background no longer matches its saved receipt. Restore the local asset or recreate the depth setup.",
+      maskInvalid:
+        "The foreground mask can't be decoded as a supported local image. Choose another mask and try again.",
+      maskMismatch:
+        "The foreground mask dimensions don't match the original photo. Choose a same-size mask and try again.",
+      maskEmpty:
+        "The foreground mask contains no visible subject. Choose a mask with an opaque foreground.",
+      maskMissing:
+        "The foreground mask is offline. Reconnect it or choose another local mask.",
+      backgroundMissing:
+        "The background fill is offline. Reconnect it or choose another local background.",
+      protectedRegion:
+        "The protected subject would be cropped by this depth setup. Adjust the protected area or use the original photo.",
     },
     render: {
       overMaximum:

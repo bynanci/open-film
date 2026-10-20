@@ -33,6 +33,18 @@ fresh evaluated tree. Hidden nodes stay in the saved scene and layer list but
 are omitted from evaluation and output. Equal inputs produce equal output in
 any seek order.
 
+An optional M8A `photoDepth` recipe may be attached to one root Image node. The
+recipe references local source, alpha-mask and optional background assets by
+catalog ID and SHA-256, plus a normalized protected region, bounded camera
+endpoints, depth factors, easing and a 3–6 second duration equal to the Image
+node's existing local interval. The shared `evaluatePhotoDepthAtTime` evaluator
+uses Composition seconds; the same foreground/background transforms feed
+Monitor PNG and FFmpeg output. It adds no timeline or image-node animation.
+Schema-1.0.0 projects that omit this optional field continue to load unchanged.
+
+See the [PhotoDepth contract](photo-depth.md), [PhotoDepth validation](validation-photo-depth.md)
+and its [threat model](security/graphic-scene-threat-model.md#photodepth-v1).
+
 The Node adapter prepares bounded local PNG textures and creates trusted SVG
 containing numerical geometry and embedded generated PNGs only. Resvg rasterizes
 that SVG with system font discovery disabled. The Monitor requests output-frame
