@@ -137,8 +137,9 @@ generated fake credential bytes were used; no real credential files were read.
 
 Known credential locations are now rejected before opening source bytes.
 Every media source must also pass the existing file-only protocol and demuxer
-allowlist, with bounded FFprobe frame decoding and a type check based on the
-actual container and streams. Inspection is bound to an unchanged file identity
+allowlist, with safe FFprobe metadata inspection, one decoded frame from the
+required stream, and a type check based on the actual container and streams.
+Inspection is bound to an unchanged file identity
 and hash. Creation repeats this validation before copying and checks the staged
 copy; Verify inspects every asset, including Story-only candidates, before
 rendering. Valid credential-like display names remain supported.
@@ -181,6 +182,25 @@ against that baseline and pass with the fixes:
 The combined focused run passes 60 tests across the six collect, archive, HTTP
 and input-policy files. TypeScript, Vue TypeScript, lint and formatting checks
 pass. The earlier manual and cross-platform gates remain separate.
+
+## Delayed-stream compatibility follow-up — 2026-10-20
+
+Independent review found a valid six-second MP4 whose audio starts at zero and
+whose ten video frames start at five seconds. The first 32 global packets
+contain no decoded video frame, so the original bounded packet check rejected
+the otherwise valid Story candidate. The new regression fails against
+`abfdf106bbab7dc4939e0f978d985075eca7ee4a` before the fix.
+
+Metadata inspection now selects the actual required stream index. FFmpeg maps
+only that stream and decodes one video or audio frame into a frame-hash receipt;
+an empty decode is rejected. Both child processes retain the input demuxer and
+file-protocol allowlists, a 30-second timeout, bounded output and cancellation.
+Hash and file-identity checks still bind inspection to the copied bytes.
+
+The delayed candidate now plans, collects and verifies successfully. The 22
+source-safety cases preserve valid cover-art audio and single-frame video while
+rejecting forged non-media payloads. Combined focused validation passes 61
+tests in six files; typecheck, lint and formatting pass.
 
 ## Manual gates and limits
 

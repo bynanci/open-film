@@ -227,6 +227,72 @@ function renamedFont(input: Buffer): Buffer {
 }
 
 describe("Collect Media source file safety", () => {
+  it("collects and verifies a valid video stream starting after the first audio packets", async () => {
+    const { app, directory } = await fixture();
+    const path = join(directory, "合法片段 CJK.mp4");
+    await media.runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:sample_rate=48000:duration=6",
+      "-itsoffset",
+      "5",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=160x90:r=10:d=1",
+      "-map",
+      "1:v:0",
+      "-map",
+      "0:a:0",
+      "-c:v",
+      "libx264",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      "-fps_mode",
+      "passthrough",
+      "-c:a",
+      "aac",
+      path,
+    ]);
+    const probed = await media.runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-count_frames",
+      "-show_entries",
+      "stream=codec_type,start_time,nb_read_frames",
+      "-of",
+      "json",
+      path,
+    ]);
+    const streams = (
+      JSON.parse(probed.stdout.toString("utf8")) as {
+        streams: {
+          codec_type: string;
+          start_time: string;
+          nb_read_frames: string;
+        }[];
+      }
+    ).streams;
+    expect(
+      streams.find((stream) => stream.codec_type === "video"),
+    ).toMatchObject({ start_time: "5.000000", nb_read_frames: "10" });
+    expect(
+      streams.find((stream) => stream.codec_type === "audio")?.start_time,
+    ).toBe("0.000000");
+    addCandidate(app, path, await fs.readFile(path), "video");
+    const destination = join(directory, "delayed.openfilm");
+    await collect(app, destination);
+    expect(await app.collectMedia.verify(destination)).toMatchObject({
+      verified: true,
+      sourceCount: 2,
+    });
+  });
+
   it.each(["secret-project", "password-family", "credential-project"])(
     "collects legitimate rights resource ID %s",
     async (id) => {
