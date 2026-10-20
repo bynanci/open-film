@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, runProcess } from "@openfilm/media";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { initialLocale, navigate } from "./ui-helpers.js";
@@ -309,6 +310,55 @@ for (const layout of [
       }
     }
     expect(new Set(frames.map((frame) => frame.rgbaSha256)).size).toBe(3);
+    if (layout === "graphics-only" || layout === "visual-gaps") {
+      await page
+        .getByRole("button", { name: "Open Visual QA panel", exact: true })
+        .click();
+      const review = page.locator(".visual-qa-panel");
+      await review
+        .getByRole("button", { name: "Check saved edit", exact: true })
+        .click();
+      const samples = review.locator(".visual-qa-sample");
+      await expect(samples).toHaveCount(4, { timeout: 30_000 });
+      const expectSavedFrame = async (frame: number) => {
+        const preview = page.getByTestId("graphic-preview");
+        await expect(preview).toHaveAttribute("data-frame", String(frame));
+        const displayedHash = await preview.evaluate(
+          async (image: HTMLImageElement) => {
+            await image.decode();
+            const png = await (await fetch(image.src)).arrayBuffer();
+            return [
+              ...new Uint8Array(await crypto.subtle.digest("SHA-256", png)),
+            ]
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+          },
+        );
+        const expected = await request.get(
+          `${api}/compositions/${compositionId}/graphics.png?${new URLSearchParams({ projectId, revision: saved.revision, frame: String(frame) })}`,
+        );
+        expect(expected.status()).toBe(200);
+        expect(displayedHash).toBe(
+          createHash("sha256")
+            .update(await expected.body())
+            .digest("hex"),
+        );
+      };
+      await samples.nth(1).click();
+      await expectSavedFrame(90);
+      await review
+        .getByRole("button", { name: "Open Edit near 00:01.000", exact: true })
+        .click();
+      await expectSavedFrame(30);
+      await review
+        .getByRole("button", { name: "Close panel", exact: true })
+        .click();
+      expect(
+        await page
+          .locator(".editor-clip.selected")
+          .evaluateAll((nodes) => nodes.map((node) => node.id)),
+      ).toEqual(selection);
+    }
     const after = await state();
     expect(after.revision).toBe(saved.revision);
     expect(after.composition).toEqual(saved.composition);

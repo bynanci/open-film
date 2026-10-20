@@ -332,17 +332,17 @@ const graphicLayerEditing = computed(
 function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
 }
-async function previewGraphicAtTime(time: number) {
+async function previewGraphicAtTime(time: number): Promise<boolean> {
   const projectId = props.projectId;
   const compositionId = props.compositionId;
-  if (!Number.isFinite(time) || time < 0 || !(await flush())) return;
+  if (!Number.isFinite(time) || time < 0 || !(await flush())) return false;
   if (props.projectId !== projectId || props.compositionId !== compositionId)
-    return;
+    return false;
   const composition = state.value?.composition;
-  if (!composition) return;
+  if (!composition) return false;
   const rate = props.projectSettings.frameRate;
   const lastFrame = Math.floor(composition.duration * rate + 1e-7) - 1;
-  if (lastFrame < 0) return;
+  if (lastFrame < 0) return false;
   sourcePlayer.value?.pause();
   playing.value = false;
   fitPreview.value = null;
@@ -365,7 +365,7 @@ async function previewGraphicAtTime(time: number) {
     props.compositionId !== compositionId ||
     graphicPreviewTime.value !== requestedTime
   )
-    return;
+    return false;
   if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
   const player = sourcePlayer.value;
   if (player) {
@@ -377,6 +377,7 @@ async function previewGraphicAtTime(time: number) {
     pendingSourceSeek.value = undefined;
     sourceTime.value = sourceAtTime;
   }
+  return true;
 }
 function setGraphicAgentBusy(value: boolean) {
   graphicAgentBusy.value = value;
@@ -1265,19 +1266,26 @@ function configurePlayer() {
 }
 
 async function navigateToTime(time: number): Promise<boolean> {
+  const projectId = props.projectId;
+  const compositionId = props.compositionId;
   if (!Number.isFinite(time) || time < 0 || !(await flush())) return false;
+  if (props.projectId !== projectId || props.compositionId !== compositionId)
+    return false;
   const composition = state.value?.composition;
   if (!composition) return false;
   const visualClips = composition.tracks
     .filter((track) => track.type === "video" || track.type === "overlay")
     .flatMap((track) => track.clips);
+  const coveringClip = visualClips.find(
+    (item) =>
+      time >= item.timelineStart &&
+      time < item.timelineStart + item.timelineDuration,
+  );
+  if (!coveringClip && composition.graphicScenes?.length)
+    return previewGraphicAtTime(time);
   if (!visualClips.length) return false;
   const clip =
-    visualClips.find(
-      (item) =>
-        time >= item.timelineStart &&
-        time < item.timelineStart + item.timelineDuration,
-    ) ??
+    coveringClip ??
     [...visualClips].sort((left, right) => {
       const distance = (candidate: Clip) =>
         time < candidate.timelineStart
@@ -1307,6 +1315,8 @@ async function navigateToTime(time: number): Promise<boolean> {
   pendingSourceSeek.value = sourceTimeAtEdit;
   selectedClipId.value = clip.id;
   await nextTick();
+  if (props.projectId !== projectId || props.compositionId !== compositionId)
+    return false;
   if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
   const player = sourcePlayer.value;
   if (player) {

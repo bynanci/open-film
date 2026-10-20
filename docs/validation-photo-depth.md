@@ -222,18 +222,28 @@ graphics-only film, and frame 15 instead of requested frame 30 in a visual gap.
 An unchanged-production baseline with the final data fixtures has eight
 expected failing core/application/renderer controls: mutable and frozen
 admission, rejection without prior mutation, both resource budgets, and the
-mask-specific error. The independent review also reproduces a first native
-video seek returning frame 30 instead of 120, and source-clock rounding showing
-frame 208 instead of the exact requested 209. These are automated regressions,
+mask-specific error. Independent review reproduces a first native video seek
+returning frame 30 instead of 120. Our enhanced browser gate then reproduces
+source-clock rounding showing frame 208 instead of the exact requested 209.
+These are automated regressions,
 not manual-gate exceptions.
 
+The saved Visual QA contact sheet reproduces the same navigation gap: clicking
+the three-second sample leaves a graphics-only Monitor at frame 209 or moves a
+visual gap to frame 15, instead of frame 90. QA sample and issue links now reuse
+the same exact Composition preview cursor when no visual clip covers the time.
+Their decoded image is loaded and its PNG hash matches the saved frame response;
+selection, revision and Undo/Redo stay unchanged. Project and Composition owner
+checks reject navigation whose pending flush completes after switching owners.
+Films without graphics retain their existing nearest-clip navigation.
+
 The related suite passes 164 tests in eleven files. The cursor follow-up also
-passes 23 transport/Monitor tests in three files. Isolated browser cases cover
+passes 26 transport/Monitor/navigation tests in three files. Isolated browser cases cover
 graphics-only, gaps, a different covering motion photo, a real slowed native
 video, and the existing PhotoDepth authoring/import/history/reopen flow. They
 check exact frames 30/120/209, an initial Middle seek before video metadata,
 frame stepping, actual play/pause, image-to-video navigation, revision cleanup,
-unchanged selection/revision/history for preview-only actions, and reopened
+QA sample/issue links, unchanged selection/revision/history for preview-only actions, and reopened
 saved data. The local harness uses API port 42791 and UI port 47417; no shared
 default port or production Origin policy changes are involved.
 
@@ -243,7 +253,7 @@ The displayed browser RGBA SHA-256 values equal the uncompressed shared
 Monitor frames exactly; decoded MP4 mean absolute RGB errors are 0.91–1.16
 levels per channel. Source hashes remain unchanged. Synthetic source files,
 Monitor/decoded PNGs, both MP4s, manifests and measurements are retained under
-`/tmp/openfilm-v1-validation/pr35-late-render-evidence`. Existing six-second
+`/tmp/openfilm-v1-validation/pr35-late-final-render-evidence`. Existing six-second
 render, fallback/legacy, source-alpha, orientation and receipt controls also
 pass with artifacts under `pr35-late-existing-render-evidence`.
 
