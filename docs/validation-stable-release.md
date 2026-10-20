@@ -12,14 +12,14 @@ The release number follows the documented development 0.3.2 marker; old package
 metadata remained 0.1.0. Workspace/Tauri/Cargo metadata now agree on 0.4.0 without
 changing project schema 1.0.0.
 
-| PR                           | Original head                              | Reviewed remediation head                  | Result                                                 |
-| ---------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------ |
-| #35 PhotoDepth               | `e78c4e06da2eb908dc0cb4548718c83b7798a8f1` | `909c435c98bb49fc1242cf4f5a5ca52e983c824e` | 2 fixed; 7 already addressed                           |
-| #36 Professional Export      | `66941903c27c41e49a938d257efd725e11286a3f` | `ac5c5bae0579c586703c33968acb5bc442634df5` | 10 fixed                                               |
-| #37 Collect Media            | `cd537da784d73478a8d156fcc9677aafd8f79e26` | `0caff4d1444dec734eb3874970f1cb8a6fc043e5` | 9 fixed                                                |
-| #38 Native Installer tooling | `6059a7dbd1d1d40a0a5c8f10c476808407328faa` | `282321a58b3c6a457ebdae59b50beb3ef63cc2f1` | 3 fixed; 7 already addressed                           |
-| #39 NLE Fidelity             | `2dc059635b80a403aac215810fa0cda36cb329c5` | `d436b5acfd3d45c22df0e9939c51c8c7ccb832b6` | All 22 already addressed; no speculative runtime edits |
-| #40 Motion Candidates        | `1ba6c57c58d0f08f3a09ce645eb6453e43550398` | `86ca011504777b6747b3765f5e597ec4042247b0` | New orphan-cache retention defect fixed                |
+| PR                           | Original head                              | Reviewed remediation head                  | Result                                                  |
+| ---------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------- |
+| #35 PhotoDepth               | `e78c4e06da2eb908dc0cb4548718c83b7798a8f1` | `a19f54bd771b0c93f17b50e07fc6f1e70a09eedd` | 2 original + 5 fresh fixed; 7 already addressed         |
+| #36 Professional Export      | `66941903c27c41e49a938d257efd725e11286a3f` | `72cc85ae42a82106b9b80668b1ec2bdf58cdde2d` | 10 original + 4 fresh fixed; crop race fixed            |
+| #37 Collect Media            | `cd537da784d73478a8d156fcc9677aafd8f79e26` | `282379b268a1f8c144e25aa354408c2831162284` | 9 original + 5 fresh fixed; safe required-stream decode |
+| #38 Native Installer tooling | `6059a7dbd1d1d40a0a5c8f10c476808407328faa` | `b4093f392f6e58fa39f5d31d37be072dade02cbe` | 3 original + 3 fresh fixed; fenced draft recovery       |
+| #39 NLE Fidelity             | `2dc059635b80a403aac215810fa0cda36cb329c5` | `cf5400fb21201b6fcaa3a91b4e7942f2f5f1a142` | 22 original already addressed; 4 fresh fixed            |
+| #40 Motion Candidates        | `1ba6c57c58d0f08f3a09ce645eb6453e43550398` | `f5625e8c0380df4bc3fa20250fb3e0dcde77e204` | Orphan cache, idempotent adoption and prior Undo fixed  |
 
 Each feature retains its own validation document and discussion dispositions.
 The GitHub inventory covers 39 PRs/187 reviews/298 threads; this release remediates
@@ -31,8 +31,8 @@ PRs 35–40. Historical unresolved flags are not treated as confirmed defects.
 - Named Versions: new failures observed before correction, then 31 focused tests
   plus 1 browser scenario passed, including 50-version capacity recovery, receipt
   tombstones, active journals, source-change rejection and checkpoint deletion.
-- Source validation: same 1,000-reference/7-call workload,7,000 sorts → 0;
-  median 10.31 ms →2.07 ms, max 13.30 ms →3.81 ms on local Node 24.19.
+- Source validation: same 1,000-reference/7-call workload, 7,000 sorts → 0;
+  median 10.31 ms → 2.07 ms, max 13.30 ms → 3.81 ms on local Node 24.19.
   Supported 50,000-reference correctness is tested; no cross-device latency claim.
 - PhotoDepth: 213 files/2956 tests passed. Actual alpha MP4 levels
   `[0,255,0,129,65,128]` agree within 1/255 with expected alpha intersection;
@@ -43,12 +43,12 @@ PRs 35–40. Historical unresolved flags are not treated as confirmed defects.
 - Collect Media: 100 targeted tests, including 21 baseline-failing regressions.
   Retained synthetic MP4/relocated ZIP/directory/recollection proof decodes 10/10
   identical frames after original media removal; source provenance is stable.
-- Native tooling: 214 files/2928 Node tests;7 targetedNode,3 Python transport,
-  3 isolated-port browser and 5 isolatedRust tests, formatter/Clippy passed.
+- Native tooling: 214 files/2928 Node tests; 7 targeted Node, 3 Python transport,
+  3 isolated-port browser and 5 isolated Rust tests, formatter/Clippy passed.
   Full local Tauri build lacks GTK/WebKit; fresh hosted native CI remains required.
-- NLE handoff: 213 files/2960 tests;41 focused tests, format/i18n/lint/typecheck/
-  build/interchange passed. Actual 32-frame reference,16-frame precomp,
-  endpoint error below 3/255 and 192000-sample mix;12 inventory hashes/TAR entries
+- NLE handoff: 213 files/2960 tests; 41 focused tests, format/i18n/lint/typecheck/
+  build/interchange passed. Actual 32-frame reference, 16-frame precomp,
+  endpoint error below 3/255 and 192000-sample mix; 12 inventory hashes/TAR entries
   verified. Audio owners exclude silent video, stills and titles.
 - Motion: 4 files/23 tests plus typecheck/edited-file checks passed; reopen removes
   23 expired receiptless folders, retains recent work and generates 2 real previews.
@@ -65,13 +65,47 @@ output is byte-identical with an intentionally invalid host font override:
 `317e9e2f2f896ab5114df7dd4d3ff3c8f8ea5ff5927b47e189a39a873e7b3a50`.
 Offline hidden-picture originals do not block a 192,000-sample WAV.
 
-Fresh independent review reproduced three blockers beyond the original thread
-fixes: crop approval spanning asynchronous validation/publication; native Retry
-dropping unsaved local text when App remounts; and a synthetic credential file
-disguised as Story-only image media being copied and verified as a package source.
-All require additional regressions and independent rereview before merge. Fresh
-GitHub reviews of the remediation heads are also being checked against code and
-reproductions. None of these pending findings is waived by the initial green suite.
+### Fresh review follow-ups
+
+The first remediation heads received 22 additional GitHub findings. Each was
+checked against behavior and recorded in its feature validation document; all
+22 were genuine or covered by the concurrent crop correction. New regressions
+failed before their fixes. Important changes include:
+
+- PhotoDepth: fallback recreation, reopened background selection, first-fallback
+  reasons, pending mask selection and typed diagnostics for the mask pixel limit.
+- Export: exact crop-plan/source binding through pair publication and rollback;
+  PNG/frame-preview picture-only source selection; WAV/stems ignore irrelevant
+  captions; request ownership and delivery mutation fences remain cancellable.
+- Collection: reject known credential paths before reading them and inspect all
+  actual media, including Story-only references; retain legitimate identifiers
+  and fonts, redact embedded tag paths, reject aggregate oversize before payload
+  reads, and account for every ZIP byte outside the central directory.
+- Native recovery: retain authored text in bounded same-window memory, fence
+  project/path/media/saved baselines, and export/discard unresolved drafts.
+  Generated proposals, action receipts and provider consent do not transfer.
+  Runtime manifest hashing/parsing uses the same bounded buffer; dead-service
+  close uses local draft guards; the blocked workspace is inert.
+- Handoff: reject missing sources, shared graphic limits and unsupported SRT text
+  before approval. Authored amplified gain is retained in render/provenance and
+  neutralized only after full-mix baking; real output RMS ratio was 1.999606×.
+- Motion: recover a catalog-committed source after interruption using exact URI,
+  hash and original revision; preserve prior Undo history on same-editor retry.
+  Reopen, replacement Undo/Redo and a 48-frame/narration render pass.
+
+Independent crop rereview passed: the original race refuses publication, and
+PNG/MP4 match all 43,200 decoded RGB bytes of the reviewed preview. Additional
+plan/source/late-staging races and rename rollback passed (27 targeted tests).
+
+Independent review also found two defects in the first corrections. Collection
+now decodes one frame of the required stream instead of assuming the first 32
+interleaved packets contain video; a valid video starting at 5 seconds remains
+supported. Native recovery rechecks retained membership after awaits, consumes
+successfully restored entries synchronously, and installs local close guards
+before asynchronous boot/recovery. Explicit Discard never reappears or autosaves.
+Native independent final review passed 29 lifecycle cases, two separate original
+race probes and nine Rust checks. Collection final independent rereview is in
+progress; complete combined and exact-head CI gates remain required.
 
 ## Combined gates
 
