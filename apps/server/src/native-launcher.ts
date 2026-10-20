@@ -117,6 +117,37 @@ export async function preflightRuntime(
       "asetpts",
       "fps",
       "xfade",
+      // Output profiles, proxy normalization and timeline composition.
+      "pad",
+      "crop",
+      "setsar",
+      "color",
+      "rotate",
+      "tpad",
+      "colorchannelmixer",
+      "perspective",
+      // PhotoDepth foreground mattes in render/graphic-scenes.ts.
+      "split",
+      "alphaextract",
+      "blend",
+      "alphamerge",
+      // Audio timing/mixing and decoded Audio Quality evidence.
+      "atempo",
+      "adelay",
+      "alimiter",
+      "anullsrc",
+      "asetnsamples",
+      "astats",
+      "ametadata",
+      "loudnorm",
+      // Scene detection, PNG delivery and Visual QA.
+      "select",
+      "signalstats",
+      "metadata",
+      // Explicit local motion fixture and HDR preview/render conversion.
+      "zoompan",
+      "zscale",
+      "tonemap",
     ].some((filter) => !filterNames.has(filter))
   )
     throw new Error("runtime.codecs");

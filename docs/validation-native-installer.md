@@ -258,3 +258,47 @@ acknowledgement and exit requirements.
 | Chromium runtime keyboard and native audio/source/thumbnail playback                                     | 4 passed without default ports; media service uses an ephemeral port. Keyboard fixture mocks the App slot/IPC/action sinks while executing the real Gate and editor handlers; media fixture runs real players/thumbnails, media generation and HTTP/session boundary.           |
 | Expected failures                                                                                        | Observed background shortcut actions, all three raw audio media URLs, missing close acknowledgement with a paused response, and unclosable real spawn error before their fixes. A native-origin media isolation probe also demonstrated the required cross-origin request mode. |
 | Native module and workstation status                                                                     | Rust runtime source is unchanged from the nine-test reviewed head. Combined gates and fresh native-shell CI remain required. All native-installer workstation gates above remain not-run.                                                                                       |
+
+### Packaged FFmpeg filter admission follow-up, 2026-10-20
+
+The packaged launcher now requires 43 filters before starting its service. The
+previous 17-filter admission list admitted reduced runtimes that could not run
+shipped output profiles or Visual QA. The bounded production-call audit retains
+every previous requirement and adds the following actual graph dependencies:
+
+| Production workflow / graph source                                                                                         | Added required filters                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Renderer, output profiles, proxy/motion normalization (`render/index.ts`, `media/index.ts`, `application/motion-media.ts`) | `pad`, `crop`, `setsar`, `color`, `rotate`, `tpad`                                            |
+| Film looks, photo motion and PhotoDepth (`render/look-filters.ts`, `photo-filters.ts`, `graphic-scenes.ts`)                | `colorchannelmixer`, `perspective`, `split`, `alphaextract`, `blend`, `alphamerge`            |
+| Timeline audio and decoded Audio Quality (`render/index.ts`, `audio-quality.ts`)                                           | `atempo`, `adelay`, `alimiter`, `anullsrc`, `asetnsamples`, `astats`, `ametadata`, `loudnorm` |
+| Scene detection, PNG delivery and Visual QA (`media/intelligence.ts`, `application/export-profiles.ts`, `visual-qa.ts`)    | `select`, `signalstats`, `metadata`                                                           |
+| Explicit local motion fixture and HDR preview/thumbnail/render (`application/motion-provider.ts`, `media/color.ts`)        | `zoompan`, `zscale`, `tonemap`                                                                |
+
+There is no shared required-filter capability list in production. Existing
+`SOURCE_CLOCK_AUDIO_FILTER` and `AUDIO_METER_FILTER` remain the graph sources for
+waveform/Whisper timestamp normalization and decoded meters respectively. The
+audit includes them; `asetpts`/`aresample` were already required. Production has
+no `ebur128`, `silencedetect` or `showwaves` invocation. The local TTS mock writes
+WAV bytes directly, and its normalization adds no explicit filter. Test-only
+`sine`/`testsrc` generators and quality-script-only filters are not admission
+requirements. The normal nonpackaged HDR capability diagnostic remains intact.
+
+The new real-process fault-injection test stages and hash-verifies an executable
+fixture that delegates to stock FFmpeg but synthetically omits one advertised
+filter at a time. This is capability fault injection, not 43 separately compiled
+FFmpeg builds. Before the fix, omitting `pad` still reached `ready`; afterward
+each of the 43 independent omissions blocks with `runtime.codecs`, never starts
+a service and closes cleanly. A complete-advertisement fixture is accepted. The
+existing unwrapped stock-FFmpeg runtime test also starts, renders/decodes actual
+H.264/AAC output, verifies source/font/output hashes, reopens the saved project
+and preserves independent service ownership. These synthetic Linux observations
+do not qualify an installer or a Windows/macOS workstation.
+
+| Focused follow-up check                                                                     | Result                                                                                                     |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Actual native launcher, reduced-advertisement fixture and stock-FFmpeg runtime              | 3 tests passed; all 43 omissions are checked independently within the new fault-injection case.            |
+| Stock-FFmpeg Audio Quality, profiles, Visual QA, local motion, HDR and manifest regressions | 6 files / 42 tests passed with one worker, including decoded output and original-byte preservation checks. |
+| Static validation                                                                           | Focused ESLint, full TypeScript/Vue, changed-file formatting and `git diff --check` passed.                |
+
+No full test/browser suite or native OS workstation gate was rerun for this
+isolated list change; combined release validation remains separate.
