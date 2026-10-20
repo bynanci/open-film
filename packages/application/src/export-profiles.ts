@@ -23,7 +23,6 @@ import type {
   FilmLook,
   MediaAsset,
   OpenFilmProject,
-  Track,
 } from "@openfilm/core";
 import { frameAlignedDuration, validateExportProfile } from "@openfilm/core";
 import {
@@ -38,6 +37,7 @@ import {
   RenderPublicationRecoveryError,
   canonicalRenderFonts,
   canonicalRenderFontBindings,
+  audioSourceAssetIds,
   visualSourceAssetIds,
   type RenderFontEvidence,
   type RenderFontBinding,
@@ -143,7 +143,11 @@ function renderSelection(input: {
         ? { mode: "saved" as const }
         : { mode: "override" as const, value: input.lookOverride },
     captionTrackId:
-      input.captionTrackId === undefined ? "automatic" : input.captionTrackId,
+      input.captionTrackId === undefined
+        ? { mode: "automatic" as const }
+        : input.captionTrackId === null
+          ? { mode: "none" as const }
+          : { mode: "track" as const, id: input.captionTrackId },
   };
 }
 
@@ -208,25 +212,6 @@ function readFontBindings(receipt: {
       "Render receipt has no font usage bindings; render a new preview.",
     );
   return canonicalRenderFontBindings(receipt.fontBindings);
-}
-
-function audioRole(
-  track: Track,
-  clip: Composition["tracks"][number]["clips"][number],
-): AudioAutomation["role"] {
-  return (
-    clip.audioAutomation?.role ??
-    (track.type === "music" ? "music" : "dialogue")
-  );
-}
-
-function hasAudio(asset: MediaAsset): boolean {
-  if (asset.mediaType === "audio") return true;
-  const probe = asset.metadata["openfilm.ffprobe"] as
-    { streams?: { codec_type?: string }[] } | undefined;
-  return Boolean(
-    probe?.streams?.some((stream) => stream.codec_type === "audio"),
-  );
 }
 
 function checkCrop(profile: ExportProfile, confirmed: boolean): void {
@@ -999,7 +984,7 @@ export class ExportProfileService {
       const renderSources = readSources(renderReceipt);
       this.assertSourceCoverage(
         renderSources,
-        snapshot.assets.filter(hasAudio),
+        this.audioAssets(snapshot.composition, snapshot.assets),
       );
       const sourceGuards: Array<() => void> = [];
       const sources = await this.currentSourceReceipts(
@@ -1159,7 +1144,7 @@ export class ExportProfileService {
       const uniqueSources = [...sourcesById.values()];
       this.assertSourceCoverage(
         uniqueSources,
-        snapshot.assets.filter(hasAudio),
+        this.audioAssets(snapshot.composition, snapshot.assets),
       );
       const sourceGuards: Array<() => void> = [];
       const sourceReceipts = await this.currentSourceReceipts(
@@ -1267,16 +1252,9 @@ export class ExportProfileService {
     composition: Composition,
     assets: MediaAsset[],
   ): AudioAutomation["role"][] {
-    const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
-    const roles = new Set<AudioAutomation["role"]>();
-    for (const track of composition.tracks) {
-      if (track.type === "titles") continue;
-      for (const clip of track.clips) {
-        const asset = assetMap.get(clip.assetId);
-        if (asset && hasAudio(asset)) roles.add(audioRole(track, clip));
-      }
-    }
-    return STEM_ROLES.filter((role) => roles.has(role));
+    return STEM_ROLES.filter(
+      (role) => audioSourceAssetIds(composition, assets, role).size > 0,
+    );
   }
 
   private async inspectWav(path: string, signal?: AbortSignal) {
@@ -1452,7 +1430,10 @@ export class ExportProfileService {
     });
     const expectedAssets =
       profile.format === "wav" || profile.format === "audio-stems"
-        ? assets.filter(hasAudio)
+        ? this.audioAssets(
+            this.options.getComposition(manifest.compositionId as string),
+            assets,
+          )
         : profile.format === "png"
           ? this.visualAssets(
               this.options.getComposition(manifest.compositionId as string),
@@ -1469,6 +1450,14 @@ export class ExportProfileService {
       throw new Error(
         "A source size no longer matches the saved export receipt.",
       );
+  }
+
+  private audioAssets(
+    composition: Composition,
+    assets: MediaAsset[],
+  ): MediaAsset[] {
+    const ids = audioSourceAssetIds(composition, assets);
+    return assets.filter((asset) => ids.has(asset.id));
   }
 
   private visualAssets(

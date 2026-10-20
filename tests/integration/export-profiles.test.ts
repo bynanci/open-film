@@ -305,6 +305,319 @@ function manualCaptions(cueCount: number): CaptionTrack {
 }
 
 describe("professional profile exports", () => {
+  it.each(["wav", "audio-stems"] as const)(
+    "excludes an offline muted source from %s render, receipts and restart retries",
+    async (format) => {
+      const { app, composition, narrationPath, musicPath } = await fixture(1);
+      composition.tracks[1]!.clips[0]!.transform = { volume: 0 };
+      await app.save();
+      await rm(narrationPath);
+      const input = {
+        compositionId: composition.id,
+        profile: createExportProfile({ ratio: "16:9", format, frameRate: 12 }),
+        requestId: `offline-muted-${format}`,
+      };
+      const result = await app.exportProfileAudio(input);
+      expect(result.files.map((file) => file.role)).toEqual([
+        format === "wav" ? "mix" : "music",
+      ]);
+      expect(result.files[0]!.sampleCount).toBe(48_000);
+      const receipt = JSON.parse(await readFile(result.manifestPath!, "utf8"));
+      expect(
+        receipt.sources.map((source: { sha256: string }) => source.sha256),
+      ).toEqual([await hashFile(musicPath)]);
+      const hashes = await Promise.all(
+        result.files.map((file) => hashFile(file.path)),
+      );
+      const restarted = new ExportProfileService(
+        Reflect.get(app.exportProfiles, "options"),
+      );
+      const retried = await restarted.exportAudio(input);
+      expect(
+        await Promise.all(retried.files.map((file) => hashFile(file.path))),
+      ).toEqual(hashes);
+    },
+  );
+
+  it("keeps a shared source with a tiny positive audible use while omitting its muted role", async () => {
+    const { app, composition, narrationPath } = await fixture(1);
+    const voice = composition.tracks[1]!.clips[0]!;
+    voice.transform = { volume: 0 };
+    composition.tracks[2]!.clips = [];
+    composition.tracks[1]!.clips.push({
+      ...structuredClone(voice),
+      id: "audible-shared-voice",
+      transform: { volume: 0.0001 },
+      audioAutomation: { version: 1, role: "dialogue" },
+    });
+    await app.save();
+    const result = await app.exportProfileAudio({
+      compositionId: composition.id,
+      profile: createExportProfile({
+        ratio: "16:9",
+        format: "audio-stems",
+        frameRate: 12,
+      }),
+      requestId: "shared-muted-audible-001",
+    });
+    expect(result.files.map((file) => file.role)).toEqual(["dialogue"]);
+    expect(
+      JSON.parse(await readFile(result.manifestPath!, "utf8")).sources.map(
+        (source: { sha256: string }) => source.sha256,
+      ),
+    ).toEqual([await hashFile(narrationPath)]);
+  });
+
+  it("keeps all-muted mixes silent with empty source receipts and durable empty stems", async () => {
+    const { app, composition, narrationPath, musicPath } = await fixture(1);
+    for (const track of composition.tracks.slice(1))
+      track.clips[0]!.transform = { volume: 0 };
+    await app.save();
+    await rm(narrationPath);
+    await rm(musicPath);
+    for (const format of ["wav", "audio-stems"] as const) {
+      const input = {
+        compositionId: composition.id,
+        profile: createExportProfile({ ratio: "16:9", format, frameRate: 12 }),
+        requestId: `all-muted-${format}`,
+      };
+      const result = await app.exportProfileAudio(input);
+      expect(
+        JSON.parse(await readFile(result.manifestPath!, "utf8")).sources,
+      ).toEqual([]);
+      if (format === "audio-stems") {
+        expect(result.files).toEqual([]);
+        expect(
+          await readdir(
+            join(app.directory, "exports", `stems-${input.requestId}`),
+          ),
+        ).toEqual(["manifest.json"]);
+      } else {
+        expect(result.files[0]!.sampleCount).toBe(48_000);
+        const pcm = (
+          await runProcess("ffmpeg", [
+            "-v",
+            "error",
+            "-i",
+            result.files[0]!.path,
+            "-f",
+            "s16le",
+            "-acodec",
+            "pcm_s16le",
+            "pipe:1",
+          ])
+        ).stdout;
+        expect(pcm.length).toBe(48_000 * 2 * 2);
+        expect(pcm.every((value) => value === 0)).toBe(true);
+      }
+      const restarted = new ExportProfileService(
+        Reflect.get(app.exportProfiles, "options"),
+      );
+      expect((await restarted.exportAudio(input)).files).toEqual(result.files);
+    }
+  });
+
+  it.each(["automatic", "auto"])(
+    "distinguishes automatic captions from a named %s track in completed still requests",
+    async (namedId) => {
+      const { app, composition } = await fixture(1);
+      const first = manualCaptions(1);
+      first.style.fontSize = 14;
+      first.cues[0]!.text = "A";
+      const named = structuredClone(first);
+      named.id = namedId;
+      named.cues[0]!.id = "named-cue";
+      named.cues[0]!.text = "B";
+      composition.captionTracks = [first, named];
+      await app.save();
+      const input = {
+        compositionId: composition.id,
+        profile: createExportProfile({
+          ratio: "16:9",
+          format: "png",
+          width: 160,
+          height: 90,
+          frameRate: 12,
+        }),
+        requestId: "auto-caption-collision-001",
+        time: 0.25,
+      };
+      const automatic = await app.exportStill(input);
+      const explicit = await app.exportStill({
+        ...input,
+        requestId: "auto-caption-explicit-001",
+        captionTrackId: named.id,
+      });
+      expect(await decodedRgb(automatic.path)).not.toEqual(
+        await decodedRgb(explicit.path),
+      );
+      const hashes = await Promise.all([
+        hashFile(automatic.path),
+        hashFile(`${automatic.path}.manifest.json`),
+      ]);
+      await expect(
+        app.exportStill({ ...input, captionTrackId: named.id }),
+      ).rejects.toThrow(/requestId.*different/u);
+      const restarted = new ExportProfileService(
+        Reflect.get(app.exportProfiles, "options"),
+      );
+      await expect(
+        restarted.exportStill({ ...input, captionTrackId: named.id }),
+      ).rejects.toThrow(/requestId.*different/u);
+      expect(
+        await Promise.all([
+          hashFile(automatic.path),
+          hashFile(`${automatic.path}.manifest.json`),
+        ]),
+      ).toEqual(hashes);
+    },
+  );
+
+  it("requires zero-gain picture media for PNG delivery while retaining it in visual receipts", async () => {
+    const { app, composition, imagePath } = await fixture(1);
+    composition.tracks[0]!.clips[0]!.transform = { volume: 0 };
+    await app.save();
+    const profile = createExportProfile({
+      ratio: "16:9",
+      format: "png",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+    });
+    const request = {
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+      requestId: "muted-picture-still-001",
+    };
+    const still = await app.exportStill(request);
+    expect(
+      JSON.parse(
+        await readFile(`${still.path}.manifest.json`, "utf8"),
+      ).sources.map((source: { sha256: string }) => source.sha256),
+    ).toEqual([await hashFile(imagePath)]);
+    await rm(imagePath);
+    await expect(app.previewExportFrame(request)).rejects.toThrow(
+      /Missing Media/u,
+    );
+    await expect(
+      app.exportStill({ ...request, requestId: "offline-picture-still-001" }),
+    ).rejects.toThrow(/Missing Media/u);
+  });
+
+  it.each([undefined, "auto", null] as const)(
+    "hydrates distinct tagged caption selection %s and refuses its legacy untagged crop receipt",
+    async (captionTrackId) => {
+      const { app, composition } = await fixture(1);
+      const first = manualCaptions(1);
+      first.style.fontSize = 14;
+      const named = structuredClone(first);
+      named.id = "auto";
+      named.cues[0]!.text = "B";
+      composition.captionTracks = [first, named];
+      await app.save();
+      const profile = createExportProfile({
+        ratio: "9:16",
+        format: "png",
+        framing: "crop",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+      });
+      const input = {
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+        captionTrackId,
+      };
+      const preview = await app.previewExportFrame(input);
+      const path = join(
+        app.directory,
+        "cache",
+        "export-preview",
+        `${preview.token}.json`,
+      );
+      const receipt = JSON.parse(await readFile(path, "utf8"));
+      const tagged =
+        captionTrackId === undefined
+          ? { mode: "automatic" }
+          : captionTrackId === null
+            ? { mode: "none" }
+            : { mode: "track", id: captionTrackId };
+      expect(receipt.renderSelection.captionTrackId).toEqual(tagged);
+      const request = {
+        ...input,
+        confirmCrop: true,
+        cropPreviewToken: preview.token,
+      };
+      const hydrated = new ExportProfileService(
+        Reflect.get(app.exportProfiles, "options"),
+      );
+      expect(await hydrated.assertCropPreview(request)).toBeDefined();
+      receipt.renderSelection.captionTrackId =
+        captionTrackId === undefined ? "automatic" : captionTrackId;
+      await writeFile(path, JSON.stringify(receipt));
+      const legacy = new ExportProfileService(
+        Reflect.get(app.exportProfiles, "options"),
+      );
+      await expect(legacy.assertCropPreview(request)).rejects.toThrow(
+        /reviewed export frame/u,
+      );
+      expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+    },
+  );
+
+  it.each(["png", "mp4"] as const)(
+    "rejects a differently selected automatic-named %s crop before rendering",
+    async (format) => {
+      const { app, composition } = await fixture(1);
+      const first = manualCaptions(1);
+      first.style.fontSize = 14;
+      const named = structuredClone(first);
+      named.id = "automatic";
+      named.cues[0]!.text = "B";
+      composition.captionTracks = [first, named];
+      await app.save();
+      const profile = createExportProfile({
+        ratio: "9:16",
+        format,
+        framing: "crop",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+      });
+      const preview = await app.previewExportFrame({
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+      });
+      const render = vi.spyOn(FFmpegRenderer.prototype, "render");
+      try {
+        const request = {
+          compositionId: composition.id,
+          profile,
+          time: 0.25,
+          requestId: `named-caption-crop-${format}`,
+          confirmCrop: true,
+          cropPreviewToken: preview.token,
+          captionTrackId: named.id,
+        };
+        const delivered =
+          format === "png"
+            ? app.exportStill(request)
+            : app.exportMp4(composition.id, {
+                ...request,
+                exportProfile: profile,
+              });
+        await expect(delivered).rejects.toThrow(/reviewed export frame/u);
+        expect(render).not.toHaveBeenCalled();
+        expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+      } finally {
+        render.mockRestore();
+      }
+    },
+  );
+
   it.each(["png", "mp4"] as const)(
     "requires a regenerated %s crop approval for a legacy set-only font receipt",
     async (format) => {
@@ -2115,12 +2428,15 @@ describe("professional profile exports", () => {
       await readFile(`${still.path}.manifest.json`, "utf8"),
     ) as {
       frame: { time: number; index: number };
-      renderSelection: { captionTrackId: string };
+      renderSelection: { captionTrackId: { mode: "track"; id: string } };
       sources: Array<{ sha256: string }>;
       output: { sha256: string; alpha: boolean };
     };
     expect(receipt.frame).toEqual({ time: 4.5, index: 54 });
-    expect(receipt.renderSelection.captionTrackId).toBe(captions.id);
+    expect(receipt.renderSelection.captionTrackId).toEqual({
+      mode: "track",
+      id: captions.id,
+    });
     expect(receipt.output).toMatchObject({
       width: 90,
       height: 160,
