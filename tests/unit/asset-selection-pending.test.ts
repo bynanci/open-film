@@ -65,7 +65,7 @@ if (!inspector || !libraryCard || !clearRating)
 const renderInspector = renderTemplate(inspector);
 const renderLibraryCard = renderTemplate(libraryCard);
 const renderClearRating = renderTemplate(clearRating);
-const appFunctions = ["run", "toggleAsset", "rateAsset"];
+const appFunctions = ["run", "toggleAsset", "rateAsset", "inspectAsset"];
 const appCode = transformSync(
   appFunctions
     .map((name) => {
@@ -109,6 +109,9 @@ function host() {
     }),
     assets: vue.ref([remembered, exactCopy]),
     stateFilter: vue.ref(""),
+    selectedAssetId: vue.ref(""),
+    categoryDirty: vue.ref(false),
+    saveCategories: vi.fn(async () => false),
     reloadAssets: vi.fn(async () => {}),
     cacheAssets: (incoming: Asset[]) => {
       for (const asset of incoming)
@@ -138,16 +141,17 @@ function host() {
   )(dependencies) as {
     toggleAsset: (asset: Asset, key: StateKey) => Promise<void>;
     rateAsset: (asset: Asset, rating: number) => Promise<void>;
+    inspectAsset: (asset: Asset) => Promise<void>;
   };
   const t = (key: string) => key;
   function controls(asset: Asset) {
     const values = vue.proxyRefs({
       ...dependencies,
       selectedAsset: asset,
-      selectedAssetId: asset.id,
+      selectedAssetId: dependencies.selectedAssetId,
       sourceStatuses: {},
       toggleAsset: app.toggleAsset,
-      inspectAsset: vi.fn(),
+      inspectAsset: app.inspectAsset,
       rateAsset: app.rateAsset,
       t,
     });
@@ -202,6 +206,39 @@ describe("Library mutation controls during a pending asset acknowledgement", () 
       controls.clear!,
     ])
       expect(!!button.props?.disabled).toBe(false);
+  });
+
+  it.each(["savingSelection", "savingRating"])(
+    "opens read-only inspection during %s without dropping the selection",
+    async (label) => {
+      const h = host();
+      const saving =
+        label === "savingSelection"
+          ? h.toggleAsset(h.remembered, "favorite")
+          : h.rateAsset(h.remembered, 5);
+      expect(h.busy.value).toBe(label);
+      await h.inspectAsset(h.exactCopy);
+      expect(h.selectedAssetId.value).toBe(h.exactCopy.id);
+      expect(h.patch).toHaveBeenCalledTimes(1);
+      for (const button of h.controls(h.exactCopy).card)
+        expect(button.props?.disabled).toBe(true);
+      h.held.release();
+      await saving;
+      expect(h.selectedAssetId.value).toBe(h.exactCopy.id);
+    },
+  );
+
+  it("keeps project operations and unsaved category drafts fenced during inspection", async () => {
+    const h = host();
+    h.selectedAssetId.value = h.remembered.id;
+    h.busy.value = "openingProject";
+    await h.inspectAsset(h.exactCopy);
+    expect(h.selectedAssetId.value).toBe(h.remembered.id);
+    h.busy.value = "savingSelection";
+    h.categoryDirty.value = true;
+    await h.inspectAsset(h.exactCopy);
+    expect(h.saveCategories).toHaveBeenCalledTimes(1);
+    expect(h.selectedAssetId.value).toBe(h.remembered.id);
   });
 
   it.each<StateKey>(["favorite", "locked", "rejected"])(

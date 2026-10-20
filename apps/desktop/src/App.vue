@@ -1919,7 +1919,11 @@ function lastSourceFolder(uri: string): string {
   }
 }
 async function inspectAsset(asset: MediaAsset) {
-  if (busy.value || (categoryDirty.value && !(await saveCategories()))) return;
+  if (
+    (busy.value && !["savingSelection", "savingRating"].includes(busy.value)) ||
+    (categoryDirty.value && !(await saveCategories()))
+  )
+    return;
   selectedAssetId.value = asset.id;
 }
 function handleKeyboard(event: KeyboardEvent) {
