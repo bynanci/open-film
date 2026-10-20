@@ -406,3 +406,54 @@ The complete three-file handoff target passes **86 tests** in **46.41 seconds**.
 Type checking, changed-file ESLint/formatting and `git diff --check` pass. This
 follow-up changes no renderer code and adds no full-suite, browser, default-port
 or native/NLE manual verification claim.
+
+## Fractional captions, text raster admission and passive CLI follow-up
+
+Remediation base: `a48f3e911fe10db7045dfd45fb4a2d42a3012e66`, in an isolated
+clone. Three new planner cases and seven application/actual-CLI cases failed on
+this baseline before production edits. The same ten cases passed after the
+minimal fixes; a separate positive control retains unselected/zero-frame text
+behavior. No existing assertion or project schema was weakened.
+
+| Discussion   | Disposition     | Evidence and retained contract                                                                                                                                                                                                                                                                                       |
+| ------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4328183018` | Accepted, fixed | Selected baked caption millisecond edges use the same shared ceil-frame conversion as the renderer. Valid cues are clipped to complete reference frames; subframe/tail-only cues keep their original metadata and sidecars. Native timing remains fractional and non-caption visual boundaries stay strict.          |
+| `4328183029` | Accepted, fixed | The title renderer's existing output-dimension validator is shared with render-required review. Over-8K title-track, attached-title and selected-caption references fail before approval, including full mix. Exact-8K review, native metadata, non-text, unselected-caption and zero-frame controls remain allowed. |
+| `4328183034` | Accepted, fixed | CLI handoff review/export select the existing passive export opener. Actual processes in both modes preserve project bytes, complete SQLite bytes, all catalog table rows, queued/running jobs and original source hashes across both operations.                                                                    |
+
+Actual FFmpeg regressions at decimal `29.97` and rational `30000/1001` fps use a
+four-second composition with ordinary `2000–3000 ms`, end `3000–4000 ms` and
+subframe `1–2 ms` cues. Each reference decodes to **119 frames**; the merged
+caption precomp spans `[60,119)` and decodes to **59 frames**. Decoded white
+glyphs are absent on reference frame 59 and present on frames 60, 89, 90 and
+118, including the precomp's first/last frame. The SRT retains all three exact
+original millisecond intervals. Both original source hashes and the project
+remain unchanged. Test evidence retains the packages and numerical proof in
+`/tmp/openfilm-v1-validation/pr39-wave5-media-evidence` when
+`OPENFILM_HANDOFF_WAVE5_EVIDENCE` selects that directory.
+
+A probe also caught a validation edge introduced by clamping: a cue ending at
+5000 ms on a four-second composition could otherwise be hidden by clipping.
+Its separate RED/GREEN regression preserves the renderer's existing timeline-end
+tolerance before clipping; negative, nonfinite and noninteger clocks remain
+rejected. The selected-cue reference budget and maximum 5,000-cue sidecar controls
+remain covered. Larger reference batching remains a later milestone.
+
+A bounded shared renderer/export/hand-off run passed **8 files / 187 tests** in
+**100.84 seconds**. After adding the timeline-end guard, the complete handoff
+target passed **3 files / 102 tests** in **49.20 seconds**:
+
+```sh
+OPENFILM_HANDOFF_WAVE5_EVIDENCE=/tmp/openfilm-v1-validation/pr39-wave5-media-evidence pnpm exec vitest run tests/unit/handoff-plan.test.ts tests/unit/handoff-transport.test.ts tests/integration/nle-handoff.test.ts --maxWorkers=1
+```
+
+The guard is the only production change after the broader run; shared renderer
+sources are identical. Fresh type checking, changed-file ESLint/formatting,
+production build, built-CLI smoke and `git diff --check` pass. Locked/stale/source
+hash, cancellation, placeholder-title and native timing controls remain passing.
+
+RED/GREEN, focused and static logs use
+`/tmp/openfilm-v1-validation/pr39-wave5-*`. No full repository suite, browser,
+default-port service, native installation or real-NLE import was run for this
+follow-up. Workstation/native/manual gates above remain partial or not run;
+combined release verification remains with the coordinator.

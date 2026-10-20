@@ -39,6 +39,15 @@ Saved captions produce SRT and VTT. One selected language can be baked; other
 languages remain metadata/sidecars. Styles are not claimed as native NLE caption
 objects. Unsafe SRT text is rejected rather than rewritten. Segment timestamp
 precision and stale-alignment warnings are retained, not upgraded to word timing.
+Selected baked cues use the renderer's next-frame conversion for millisecond
+boundaries, clipped to the last complete reference frame. Cues with no visible
+reference frame remain metadata/sidecars. Native cue times and SRT/VTT milliseconds
+remain unchanged. Reference rendering retains its 64-selected-cue limit; choose
+no caption language or preserve editability without full mix for larger sidecars.
+
+Render-required title/caption review applies the same 33,177,600-pixel (8K)
+raster limit as publication. Native metadata exchange remains available without
+rendering; unselected or zero-frame captions do not add a text-raster requirement.
 
 ## Exchange package
 
@@ -79,6 +88,10 @@ rather than publishing a partial package when a limit or codec cannot be met.
 - CLI `handoff review --project <p> --composition <id> [--mode preserve-visual-fidelity]
 [--bake-audio] [--caption-track <id>]` prints review JSON. Save it locally and use
   `handoff export --project <p> --review <review.json>` to publish.
+
+Both CLI commands use passive export opening, preserving saved project/catalog
+state without workspace media-reference repair, interrupted-job recovery or a
+save on close. Publication still writes its owned private cache artifacts.
 
 Any project save/relink/settings change that invalidates the snapshot prevents
 publication. The final project-revision fence and rename are synchronous. Client

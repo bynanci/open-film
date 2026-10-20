@@ -54,6 +54,7 @@ export {
 } from "./manifest.js";
 export {
   createTitleOverlay,
+  validateTitleOutputDimensions,
   inspectTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
@@ -71,6 +72,7 @@ import {
   validateExportProfile,
   type AudioAutomation,
   frameAlignedDuration,
+  captionFrameRange,
   type Clip,
   type Composition,
   type MediaAsset,
@@ -904,11 +906,10 @@ export class FFmpegRenderer {
         for (let index = 0; index < cues.length; index++) {
           checkAbort(options.signal);
           const cue = cues[index]!;
-          const startFrame = Math.ceil(
-            (cue.startMs * settings.frameRate) / 1000 - 1e-9,
-          );
-          const endFrame = Math.ceil(
-            (cue.endMs * settings.frameRate) / 1000 - 1e-9,
+          const { startFrame, endFrame } = captionFrameRange(
+            cue.startMs,
+            cue.endMs,
+            settings.frameRate,
           );
           if (endFrame <= startFrame) {
             warnings.push(

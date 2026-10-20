@@ -13,6 +13,7 @@ import { extname, join } from "node:path";
 import {
   ApplicationError,
   graphicSceneAssetIds,
+  captionFrameRange,
   frameAlignedDuration,
   type Composition,
   type MediaAsset,
@@ -37,6 +38,7 @@ import { archiveHandoff } from "./handoff-archive.js";
 import {
   graphicFrameRanges,
   validateRenderClipCapabilities,
+  validateTitleOutputDimensions,
 } from "@openfilm/render";
 export interface HandoffHost {
   directory: string;
@@ -211,6 +213,21 @@ export class NleHandoffService {
         height % 2 !== 0
       )
         throw new Error("Render dimensions must be even integers");
+      const hasTitle = composition.tracks.some((track) =>
+        track.clips.some((clip) => !!clip.title),
+      );
+      const hasCaption = composition.captionTracks
+        ?.find((track) => track.id === plan.captionTrackId)
+        ?.cues.some((cue) => {
+          const { startFrame, endFrame } = captionFrameRange(
+            cue.startMs,
+            cue.endMs,
+            this.host.project.settings.frameRate,
+          );
+          return endFrame > startFrame;
+        });
+      if (hasTitle || hasCaption)
+        validateTitleOutputDimensions(this.host.project.settings);
       graphicFrameRanges(composition, this.host.project.settings);
       validateRenderClipCapabilities(composition, assets);
       const story = this.host.project.stories.find(

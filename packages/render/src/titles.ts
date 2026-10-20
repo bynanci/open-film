@@ -356,6 +356,20 @@ function paths(font: Font, layout: TitleLayout): string {
   return elements.join("");
 }
 
+/** Shared admission for the title/caption raster and render-required review. */
+export function validateTitleOutputDimensions(frame: FrameSize): void {
+  if (
+    !Number.isInteger(frame.width) ||
+    !Number.isInteger(frame.height) ||
+    frame.width <= 0 ||
+    frame.height <= 0 ||
+    frame.width * frame.height > 33_177_600
+  )
+    throw new Error(
+      "Title output dimensions must be positive integers no larger than an 8K frame.",
+    );
+}
+
 /**
  * Rasterize once from actual local font outlines. The browser and FFmpeg reuse
  * this exact full-frame PNG instead of independently wrapping or shaping text.
@@ -367,16 +381,7 @@ export async function createTitleOverlay(
   outputPath: string,
   options: { fontPath?: string } = {},
 ): Promise<TitleOverlay> {
-  if (
-    !Number.isInteger(frame.width) ||
-    !Number.isInteger(frame.height) ||
-    frame.width <= 0 ||
-    frame.height <= 0 ||
-    frame.width * frame.height > 33_177_600
-  )
-    throw new Error(
-      "Title output dimensions must be positive integers no larger than an 8K frame.",
-    );
+  validateTitleOutputDimensions(frame);
   const inspection = await inspectTitleOverlay(text, style, frame, options);
   if (inspection.status === "failed") throw new Error(inspection.message);
   const resolved = resolveTitleStyle(style, frame);

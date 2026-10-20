@@ -16,6 +16,173 @@ const cut: Composition = {
   ],
 };
 describe("HandoffPlan", () => {
+  it("still rejects selected cues beyond the composition before clipping to reference frames", () => {
+    const composition = structuredClone(cut);
+    composition.captionTracks = [
+      {
+        version: 1,
+        id: "selected",
+        name: "Selected",
+        style: { version: 1, role: "subtitle" },
+        cues: [
+          {
+            version: 1,
+            id: "invalid-end",
+            startMs: 3000,
+            endMs: 5000,
+            text: "Beyond",
+            source: { kind: "manual" },
+            manualRevision: 0,
+          },
+        ],
+      },
+    ];
+    expect(() => createHandoffPlan(composition, 24)).not.toThrow();
+    expect(() =>
+      createHandoffPlan(composition, 24, { mode: "preserve-visual-fidelity" }),
+    ).toThrow(/composition|reference|timing/i);
+  });
+
+  it.each([
+    [-1, 1000],
+    [Number.NaN, 1000],
+    [0, Infinity],
+    [1.5, 1000],
+  ])(
+    "retains selected caption clock validation for %s–%s milliseconds",
+    (startMs, endMs) => {
+      const composition = structuredClone(cut);
+      composition.captionTracks = [
+        {
+          version: 1,
+          id: "selected",
+          name: "Selected",
+          style: { version: 1, role: "subtitle" },
+          cues: [
+            {
+              version: 1,
+              id: "invalid",
+              startMs,
+              endMs,
+              text: "Invalid",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+          ],
+        },
+      ];
+      expect(() =>
+        createHandoffPlan(composition, 24, {
+          mode: "preserve-visual-fidelity",
+        }),
+      ).toThrow();
+    },
+  );
+
+  it.each([29.97, 30000 / 1001, 24])(
+    "bakes selected millisecond captions on renderer frame ticks at %s fps",
+    (rate) => {
+      const composition = structuredClone(cut);
+      composition.captionTracks = [
+        {
+          version: 1,
+          id: "selected",
+          name: "Selected",
+          style: { version: 1, role: "subtitle" },
+          cues: [
+            {
+              version: 1,
+              id: "tiny",
+              startMs: 1,
+              endMs: 2,
+              text: "Tiny",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+            {
+              version: 1,
+              id: "ordinary",
+              startMs: 2000,
+              endMs: 3000,
+              text: "Caption",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+            {
+              version: 1,
+              id: "last",
+              startMs: 3000,
+              endMs: 4000,
+              text: "Last",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+            {
+              version: 1,
+              id: "tail",
+              startMs: 3999,
+              endMs: 4000,
+              text: "Tail",
+              source: { kind: "manual" },
+              manualRevision: 0,
+            },
+          ],
+        },
+      ];
+      const native = createHandoffPlan(composition, rate);
+      expect(
+        native.items.find((item) => item.ownerId === "ordinary"),
+      ).toMatchObject({
+        disposition: "metadata-only",
+        startFrame: 2 * rate,
+        endFrame: 3 * rate,
+      });
+      const plan = createHandoffPlan(composition, rate, {
+        mode: "preserve-visual-fidelity",
+      });
+      const selected = createHandoffPlan(composition, rate, {
+        mode: "preserve-visual-fidelity",
+        captionTrackId: "selected",
+      });
+      expect(selected).toEqual(plan);
+      const [start, middle, end] = rate === 24 ? [48, 72, 96] : [60, 90, 119];
+      expect(
+        plan.items.find((item) => item.ownerId === "ordinary"),
+      ).toMatchObject({
+        disposition: "baked",
+        startFrame: start,
+        endFrame: middle,
+      });
+      expect(plan.items.find((item) => item.ownerId === "last")).toMatchObject({
+        disposition: "baked",
+        startFrame: middle,
+        endFrame: end,
+      });
+      for (const id of ["tiny", "tail"])
+        expect(
+          plan.items.find((item) => item.ownerId === id)?.disposition,
+        ).toBe("metadata-only");
+      expect(plan.visualRanges).toEqual([{ startFrame: start, endFrame: end }]);
+      expect(
+        createHandoffPlan(composition, rate, {
+          mode: "preserve-visual-fidelity",
+          captionTrackId: null,
+        }).visualRanges,
+      ).toEqual([]);
+      expect(
+        composition.captionTracks[0]!.cues.map(({ startMs, endMs }) => [
+          startMs,
+          endMs,
+        ]),
+      ).toEqual([
+        [1, 2],
+        [2000, 3000],
+        [3000, 4000],
+        [3999, 4000],
+      ]);
+    },
+  );
+
   it("never claims a title placeholder source or cut is native editable", () => {
     const composition = structuredClone(cut);
     composition.tracks.push({

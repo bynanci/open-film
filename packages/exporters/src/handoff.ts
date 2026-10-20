@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
 import {
   FRAME_BOUNDARY_TOLERANCE_SECONDS,
+  captionFrameRange,
   frameAlignedDuration,
   graphicSceneAssetIds,
   isFilmLookActive,
@@ -170,6 +171,9 @@ export function createHandoffPlan(
     options.bakeAudio === true,
   );
   if (durationFrames <= 0) throw new Error("Empty handoff timeline");
+  const referenceFrames = Math.round(
+    frameAlignedDuration(composition.duration, rate) * rate,
+  );
   for (const track of composition.tracks) {
     keys(track, ["id", "type", "timing", "clips"]);
     if (!["video", "overlay", "titles", "audio", "music"].includes(track.type))
@@ -361,14 +365,30 @@ export function createHandoffPlan(
     );
   for (const track of composition.captionTracks ?? [])
     for (const cue of track.cues) {
-      add(
-        cue.id,
-        "caption",
-        cue.startMs / 1000,
-        cue.endMs / 1000,
-        track.id === captionTrackId ? "visual" : "manual",
-        "SRT/VTT carry text/timing; style and unselected languages require manual NLE import",
-      );
+      let start = cue.startMs / 1000,
+        end = cue.endMs / 1000;
+      let kind: "visual" | "manual" =
+        track.id === captionTrackId ? "visual" : "manual";
+      let reason =
+        "SRT/VTT carry text/timing; style and unselected languages require manual NLE import";
+      if (fidelity && kind === "visual") {
+        if (cue.endMs > composition.duration * 1000 + 1e-7)
+          throw new Error(
+            `Caption cue ${cue.id} extends beyond the composition duration`,
+          );
+        const range = captionFrameRange(cue.startMs, cue.endMs, rate);
+        const first = Math.min(referenceFrames, range.startFrame),
+          last = Math.min(referenceFrames, range.endFrame);
+        if (last <= first) {
+          kind = "manual";
+          reason =
+            "Caption has no complete reference frame; original millisecond timing remains in SRT/VTT";
+        } else {
+          start = first / rate;
+          end = last / rate;
+        }
+      }
+      add(cue.id, "caption", start, end, kind, reason);
     }
   const visualRanges: HandoffRange[] = [];
   for (const item of items
@@ -409,13 +429,7 @@ export function createHandoffPlan(
     throw new Error(
       "Handoff supports at most 128 disjoint visual bake ranges; use preserve-editability or fewer ranges",
     );
-  if (
-    visualRanges.some(
-      (range) =>
-        range.endFrame >
-        Math.round(frameAlignedDuration(composition.duration, rate) * rate),
-    )
-  )
+  if (visualRanges.some((range) => range.endFrame > referenceFrames))
     throw new Error(
       "Visual bake exceeds complete reference frames; align the composition end to output frames",
     );
