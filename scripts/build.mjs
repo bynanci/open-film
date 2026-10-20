@@ -23,6 +23,15 @@ for (const app of ["cli", "server"]) {
     `dist/${app}/whisper_runner.py`,
   );
 }
+await build({
+  entryPoints: ["apps/server/src/native-entry.ts"],
+  outfile: "dist/native/launcher.mjs",
+  bundle: true,
+  platform: "node",
+  external: ["fontkit", "@resvg/resvg-js"],
+  format: "esm",
+  target: "node24",
+});
 execFileSync("pnpm", ["--filter", "@openfilm/desktop", "run", "build"], {
   stdio: "inherit",
 });

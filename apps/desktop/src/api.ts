@@ -287,7 +287,22 @@ function responseError(body: unknown, status: number): ApiError {
   );
 }
 
-const prefix = import.meta.env.DEV ? "/api" : "http://127.0.0.1:4310/api";
+let prefix = import.meta.env.DEV ? "/api" : "http://127.0.0.1:4310/api";
+/** The native bridge supplies a private endpoint only after verified startup. */
+export function configureNativeConnection(
+  port: unknown,
+  session: unknown,
+): void {
+  if (
+    !Number.isInteger(port) ||
+    Number(port) < 1 ||
+    Number(port) > 65535 ||
+    typeof session !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(session)
+  )
+    throw new Error("runtime.handshake");
+  prefix = `http://127.0.0.1:${port}/native/${session}/api`;
+}
 
 export async function request<T>(
   path: string,

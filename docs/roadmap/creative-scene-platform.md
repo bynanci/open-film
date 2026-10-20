@@ -37,13 +37,13 @@ The M7 sequence packages project recovery and delivery capabilities as separate
 changes. Each item requires its own exact-base/head evidence; completing M7A
 does not complete the remaining M7 work.
 
-| PR  | Scope                      | Dependency and acceptance                                                                                                                                                                                                                              |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 7A  | Named Versions (candidate) | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md). |
-| 7B  | Export Formats (queued)    | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                             |
-| 7C  | NLE Fidelity (queued)      | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                            |
-| 7D  | Collect Media (queued)     | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                |
-| 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                      |
+| PR  | Scope                        | Dependency and acceptance                                                                                                                                                                                                                                         |
+| --- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7A  | Named Versions (candidate)   | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md).            |
+| 7B  | Export Formats (queued)      | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                                        |
+| 7C  | NLE Fidelity (queued)        | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                       |
+| 7D  | Collect Media (queued)       | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                           |
+| 7E  | Native Installer (candidate) | M7E adds verified runtime staging, private owned startup/shutdown and candidate packaging; distribution inputs and Windows/macOS workstation evidence remain pending. See [contract](../native-installer.md) and [validation](../validation-native-installer.md). |
 
 M8 selective 2.5D photo animation follows GraphicScene, Photo Relationship and
 Visual QA contracts; it must preserve protected subjects and provide fallback
@@ -186,3 +186,10 @@ Exact gate outcomes, synthetic artifact hashes and remaining manual gates are in
 Templates followed the M1 work; since then M2/F04, M3/F01, M4/F02 and M5/F03
 have been integrated, and PR #31 implements M5/F08 on the merged Layer Editor.
 This sequence does not silently add remote processing or automatic edits.
+
+## M7E base and acceptance boundary
+
+M7E uses main `bb2c4521ad894478893485119442a00ffd9b34cc` after M7A (#34).
+M7B (#36), M7D (#37) and M8A (#35) remain independent candidates with unresolved
+review findings. Runtime/process tests and installer workflow implementation do
+not satisfy their feature gates or clean Windows/macOS installer acceptance.

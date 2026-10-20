@@ -292,12 +292,13 @@ pnpm --filter @openfilm/desktop tauri dev
 The repository pins Rust 1.99.0 with `rustfmt` and `clippy` in
 `rust-toolchain.toml`.
 
-The shell supplies native folder and file pickers. Its development command starts the
-same local service and interface. A native build can launch a supplied service
-using absolute `OPENFILM_NODE_PATH` and `OPENFILM_SERVER_PATH` paths, or connect to
-an already running service. **The native shell is not a self-contained installer:**
-Node, the service bundle, media tools, and packaging still need deployment work.
-Tauri installer bundling is disabled in this release.
+The shell supplies native folder and file pickers. The M7E candidate adds a
+verified RuntimeManifest, private owned service startup, graphical preflight and
+saved/draft-aware shutdown. An explicit target-platform installer workflow accepts
+reviewed, hash-pinned runtime inputs; the default developer build still has
+installer bundling disabled. Windows/macOS installer acceptance, signing and
+updates remain pending. See [Native Installer](docs/native-installer.md) and
+[validation](docs/validation-native-installer.md).
 
 ## Exports
 

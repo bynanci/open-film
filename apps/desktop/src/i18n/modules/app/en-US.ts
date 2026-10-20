@@ -1,5 +1,37 @@
 export default {
   app: {
+    nativeRuntime: {
+      title: "Local workspace setup",
+      starting:
+        "Checking the installed runtime and starting your local workspace…",
+      retry: "Retry setup",
+      recovery:
+        "Repair or reinstall the same verified OpenFilm candidate, then retry. Existing projects stay in their folders.",
+      local:
+        "This check uses only installed local files. No media is uploaded.",
+      errors: {
+        unsaved: "Save or resolve the pending draft before closing OpenFilm.",
+        missing: "The installed runtime is incomplete.",
+        hash: "An installed runtime file failed its integrity check.",
+        invalid: "The runtime manifest or a file path is invalid.",
+        platform: "This runtime does not match this app or computer.",
+        permissions: "A runtime executable has unsafe or missing permissions.",
+        node: "The bundled Node runtime could not start.",
+        version: "A bundled tool has an unexpected version.",
+        license: "The FFmpeg license inventory does not match its build.",
+        codecs: "The bundled FFmpeg is missing H.264 or AAC encoding.",
+        font: "The bundled CJK font could not be loaded.",
+        raster: "The local text rasterizer could not be loaded.",
+        storage: "OpenFilm cannot write to its application data folder.",
+        timeout: "The local service did not become ready in time.",
+        handshake: "The local workspace handshake failed.",
+        serviceExited:
+          "The local workspace stopped unexpectedly. Your saved projects remain available.",
+        closeFailed:
+          "The local workspace could not confirm a safe close. Keep OpenFilm open and retry.",
+        preflight: "The installed runtime could not pass its startup checks.",
+      },
+    },
     actions: {
       back: "Back",
       done: "Done",

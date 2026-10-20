@@ -4,6 +4,8 @@ import { registerOwnedProcessControl } from "./owned-process-control.js";
 const startup = startServer({
   port: Number(process.env.OPENFILM_PORT ?? 4310),
   project: process.env.OPENFILM_PROJECT,
+  nativeSession: process.env.OPENFILM_NATIVE_SESSION,
+  userDataDirectory: process.env.OPENFILM_USER_DATA_DIRECTORY,
 });
 const close = registerOwnedProcessControl(startup);
 for (const signal of ["SIGTERM", "SIGINT"] as const)

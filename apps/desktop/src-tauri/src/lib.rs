@@ -1,12 +1,9 @@
-use std::{
-    path::PathBuf,
-    process::{Child, Command, Stdio},
-    sync::Mutex,
-};
 use tauri::{Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 mod native_benchmark;
+mod native_runtime;
 use native_benchmark::{CheckpointKind, NativeBenchmark};
+use native_runtime::NativeService;
 
 fn benchmark_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     let url = window
@@ -62,7 +59,68 @@ async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     .map_err(|error| error.to_string())?
 }
 
-struct LocalService(Mutex<Option<Child>>);
+#[tauri::command]
+async fn native_runtime_start(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    service: tauri::State<'_, NativeService>,
+) -> Result<serde_json::Value, String> {
+    benchmark_window(&window)?;
+    if cfg!(debug_assertions)
+        && option_env!("OPENFILM_RUNTIME_MANIFEST_SHA256").unwrap_or("unconfigured")
+            == "unconfigured"
+    {
+        return Ok(serde_json::json!({"state":"development"}));
+    }
+    let root = app
+        .path()
+        .resource_dir()
+        .map_err(|_| "runtime.missing")?
+        .join("runtime");
+    let data = app.path().app_data_dir().map_err(|_| "runtime.storage")?;
+    let projects = app
+        .path()
+        .document_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|_| "runtime.storage")?
+        .join("OpenFilm");
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.start(root, data, projects))
+        .await
+        .map_err(|_| "runtime.preflight".into())
+}
+#[tauri::command]
+fn native_runtime_status(
+    window: tauri::WebviewWindow,
+    service: tauri::State<'_, NativeService>,
+) -> Result<serde_json::Value, String> {
+    benchmark_window(&window)?;
+    Ok(service.status())
+}
+
+#[tauri::command]
+async fn native_runtime_close(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    service: tauri::State<'_, NativeService>,
+    request_id: u64,
+    cancel: bool,
+) -> Result<(), String> {
+    benchmark_window(&window)?;
+    service.acknowledge_close(request_id)?;
+    if cancel {
+        return Ok(());
+    }
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        service.stop()?;
+        service.set_exiting();
+        app.exit(0);
+        Ok(())
+    })
+    .await
+    .map_err(|_| "runtime.closeFailed".to_string())?
+}
 
 #[tauri::command]
 async fn pick_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -100,33 +158,6 @@ async fn pick_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     .map_err(|error| error.to_string())?
 }
 
-fn configured_service() -> Result<Option<Child>, String> {
-    let Some(script) = std::env::var_os("OPENFILM_SERVER_PATH") else {
-        // Development starts the server through `pnpm dev`; an already-running
-        // loopback service is also supported. Packaging must configure a verified
-        // local Node runtime and bundled server rather than assume Node is present.
-        return Ok(None);
-    };
-    let script = PathBuf::from(script);
-    if !script.is_absolute() || !script.is_file() {
-        return Err("OPENFILM_SERVER_PATH must point to an existing absolute server script".into());
-    }
-    let executable = std::env::var_os("OPENFILM_NODE_PATH")
-        .map(PathBuf::from)
-        .ok_or("OPENFILM_NODE_PATH must name the absolute Node executable")?;
-    if !executable.is_absolute() || !executable.is_file() {
-        return Err("OPENFILM_NODE_PATH must point to an existing absolute Node executable".into());
-    }
-    Command::new(executable)
-        .arg(script)
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map(Some)
-        .map_err(|error| format!("Could not start OpenFilm's local service: {error}"))
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let origin = std::time::Instant::now();
@@ -137,30 +168,26 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(benchmark)
+        .manage(NativeService::default())
         .invoke_handler(tauri::generate_handler![
             pick_folder,
             pick_file,
             pick_files,
             native_benchmark_enabled,
-            native_checkpoint
+            native_checkpoint,
+            native_runtime_start,
+            native_runtime_status,
+            native_runtime_close
         ])
-        .setup(|app| {
-            let child = configured_service().map_err(std::io::Error::other)?;
-            app.manage(LocalService(Mutex::new(child)));
-            Ok(())
-        })
         .build(tauri::generate_context!())
         .expect("Could not initialize the OpenFilm desktop shell");
 
     app.run(|handle, event| {
-        if matches!(event, RunEvent::Exit) {
-            if let Some(service) = handle.try_state::<LocalService>() {
-                if let Ok(mut guard) = service.0.lock() {
-                    if let Some(mut child) = guard.take() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                }
+        if let RunEvent::ExitRequested { api, .. } = event {
+            let service = handle.state::<NativeService>();
+            if !service.exiting() {
+                api.prevent_exit();
+                service.request_close();
             }
         }
     });

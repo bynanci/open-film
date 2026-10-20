@@ -40,8 +40,9 @@ export function registerOwnedProcessControl(
   let closing: Promise<void> | undefined;
   const closeOnce = () =>
     (closing ??= startup.then((runtime) => runtime.close()));
+  const native = process.env.OPENFILM_NATIVE_SERVICE_CONTROL === "1";
   if (
-    process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL !== "1" ||
+    (!native && process.env.OPENFILM_BENCHMARK_SERVICE_CONTROL !== "1") ||
     !process.connected ||
     !process.send
   )
@@ -83,8 +84,13 @@ export function registerOwnedProcessControl(
     void shutdown(message.requestId);
   };
   const onDisconnect = () => {
-    // Losing IPC alone is not a request to discard a still-running workspace.
+    // Native parent disappearance closes only the service it owns. Benchmark
+    // observers retain the historical non-owning disconnect behavior.
     process.removeListener("message", onMessage);
+    if (native && !requested)
+      void closeOnce().catch(() => {
+        process.exitCode = 1;
+      });
   };
   process.on("message", onMessage);
   process.once("disconnect", onDisconnect);

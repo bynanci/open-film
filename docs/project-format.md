@@ -192,3 +192,12 @@ read/write/read verification is separate from actual NLE behavior: DaVinci Resol
 import and playback have not been verified. See
 [NLE compatibility](nle-compatibility.md) for exact feature support, metadata
 locations, and manual verification steps.
+
+## Native installer storage separation
+
+The M7E RuntimeManifest and bundled executables are app installation resources,
+not project data. Runtime staging and installer packaging do not copy or migrate
+project directories. First-run checks use app-data working storage. Manual app
+rollback preserves projects and relies on existing project/catalog compatibility
+checks; unsupported versions are refused rather than rewritten. See
+[Native Installer](native-installer.md).

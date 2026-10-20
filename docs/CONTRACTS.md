@@ -182,3 +182,15 @@ creates a named checkpoint; failure recovery uses a private project journal.
 Session Undo/Redo is unchanged and does not include project-level restore. See
 [Named Versions](named-versions.md), [project format](project-format.md#named-versions)
 and [validation](validation-named-versions.md).
+
+## M7E native runtime boundary
+
+RuntimeManifest schema v1 is independent of project schema 1.0.0. Native bridge
+commands `native_runtime_start`, `native_runtime_status` and
+`native_runtime_close` accept no media/project executable paths. Startup returns
+a ready loopback port/private session only after verification. A numbered close
+request is acknowledged or cancelled by the local window after existing draft
+protection; application save/SQLite close and owned-process exit remain required.
+Bundled transport uses `/native/<private-session>/api/...`; ordinary browser/CLI
+service behavior is unchanged. No HTTP shutdown endpoint is introduced.
+See [Native Installer](native-installer.md) for file/hash/license and update contracts.

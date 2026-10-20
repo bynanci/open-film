@@ -442,6 +442,8 @@ async function streamFile(
 
 export interface ServerOptions {
   port?: number;
+  /** Private packaged-shell capability; never accepted from HTTP. */
+  nativeSession?: string;
   project?: string;
   projectRoot?: string;
   maxUploadBytes?: number;
@@ -453,6 +455,11 @@ export interface ServerOptions {
   graphicSceneAgentProviderTimeoutMs?: number;
 }
 export async function startServer(options: ServerOptions = {}) {
+  if (
+    options.nativeSession !== undefined &&
+    !/^[a-f0-9]{64}$/u.test(options.nativeSession)
+  )
+    throw new Error("Invalid native session");
   const graphicSceneAgentProviderTimeoutMs =
     number(
       options.graphicSceneAgentProviderTimeoutMs,
@@ -564,6 +571,13 @@ export async function startServer(options: ServerOptions = {}) {
           response.setHeader("Access-Control-Allow-Origin", origin);
           response.setHeader("Vary", "Origin");
         }
+        if (
+          options.nativeSession &&
+          !(request.url ?? "").startsWith(
+            `/native/${options.nativeSession}/api/`,
+          )
+        )
+          throw new HttpError(403, "Native session is required.");
         if (request.method === "OPTIONS") {
           response.writeHead(204, {
             "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
@@ -573,7 +587,13 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
-        const route = url.pathname;
+        let route = url.pathname;
+        if (options.nativeSession) {
+          const prefix = `/native/${options.nativeSession}`;
+          if (!route.startsWith(`${prefix}/api/`))
+            throw new HttpError(403, "Native session is required.");
+          route = route.slice(prefix.length);
+        }
         const method = request.method;
         const cancellation =
           method === "POST" && /^\/api\/jobs\/[^/]+\/cancel$/.test(route);

@@ -742,13 +742,11 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## Candidate — M7A / F09 Named Versions
+## Implemented — M7A / F09 Named Versions
 
 Scope: [Named Versions contract](docs/named-versions.md),
 [architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). This branch is based on the
-latest fetched `main`; it is not merged and CI/review gates are tracked
-separately.
+[validation](docs/validation-named-versions.md). M7A is integrated in `main` through PR #34. Runtime/installer QA remains separate.
 
 - [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
       v1 records, source hashes, idempotent retries and mutable labels isolated
@@ -763,8 +761,30 @@ separately.
 - [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
       restore V2 with synthetic photos, captions, graphics, audio, frame/audio
       measurements and unchanged source hashes.
-- [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
-      workstation filesystem/permission behavior as a separate manual gate.
+- [x] Merge M7A through PR #34 after its implementation/CI gates.
+- [ ] Manual: workstation filesystem/permission behavior remains a separate gate.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+M7B (#36), M7D (#37) and M8A (#35) remain independent open PRs with unresolved review findings. M7C remains queued. M7E is the candidate below.
+
+## Candidate — M7E Native Installer / Runtime Bundle
+
+Scope: [runtime/installer contract](docs/native-installer.md),
+[implementation plan](docs/superpowers/plans/2026-10-20-native-installer.md), and
+[validation](docs/validation-native-installer.md). Based on main after M7A;
+M7B/M7D/M8A remain independent open PRs with unresolved review findings.
+
+- [x] Add RuntimeManifest v1, explicit pinned local inputs, license-file requirements,
+      SPDX inventory and safe staging without network binary downloads.
+- [x] Verify the build-embedded manifest and all runtime hashes before starting
+      the existing local service; test CJK font/raster and H.264/AAC capability.
+- [x] Use owned service processes, private sessions/ephemeral loopback ports,
+      readiness handshake and graphical first-run diagnostics.
+- [x] Preserve browser drafts and require saved/acknowledged shutdown before
+      native exit; reuse existing project/catalog/edit contracts.
+- [x] Add explicit target-platform candidate packaging and artifact receipts;
+      leave automatic updates disabled with a trusted-signature verification seam.
+- [ ] Complete exact-head regression/CI and correctness review.
+- [ ] Supply reviewed distributable runtime binaries and complete license/source
+      obligations for each target, then generate its installer artifacts.
+- [ ] Run real clean Windows/macOS install, upgrade/failure rollback and uninstall
+      with candidate SHA and source/project preservation evidence.

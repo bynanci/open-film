@@ -115,22 +115,18 @@ sound and output verification with decoded audio evidence. The staged dependenci
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 
-## Candidate — M7A named project versions
+## Implemented — M7A named project versions
 
 M7A adds immutable, local project snapshots and structural comparison through
 the shared application service. Restore requires a current revision, explicit
 confirmation, verified source identity and a fresh recovery checkpoint; it does
-not merge with session Undo/Redo or copy original media. The candidate includes
-synthetic actual-MP4 validation, while exact-head full gates and independent
-review remain required before merge. See [the contract](docs/named-versions.md)
+not merge with session Undo/Redo or copy original media. M7A is integrated in
+main through PR #34 with synthetic actual-MP4 evidence. See [the contract](docs/named-versions.md)
 and [validation](docs/validation-named-versions.md).
 
-M7B still needs still-PNG/WAV/stem and aspect-ratio presets; M7C needs an honest
-native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
-media collection and relocation evidence; M7E needs Windows/macOS workstation
-installer, dependency and rollback evidence. These are separate PRs and remain
-queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
-templates and Visual QA, but is not part of M7A.
+M7B (#36), M7D (#37) and M8A (#35) are independent open candidates with unresolved
+review findings. M7C remains queued. M7E's runtime/installer candidate and its
+separate artifact/workstation gates are described below.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 
@@ -488,3 +484,13 @@ broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## Candidate — M7E verified native runtime and installer workflow
+
+M7E introduces hash-verified runtime resources, owned service startup/shutdown,
+graphical first-run diagnostics and explicit installer candidate workflows.
+Automatic updates remain unconfigured. Candidate implementation/tests are
+separate from reviewed target runtime inputs, installer artifact builds and real
+Windows/macOS acceptance. See [the contract](docs/native-installer.md) and
+[validation](docs/validation-native-installer.md). M7B/M7D/M8A remain independent
+open candidates; this work does not merge them or certify their outstanding QA.

@@ -507,3 +507,15 @@ outputs and caches are never copied or replaced. The version diff is a
 deterministic structural comparison across existing Story, Composition,
 CaptionCue, GraphicScene/template, audio automation and source identities. See
 [Named Versions](named-versions.md) and its [validation record](validation-named-versions.md).
+
+## M7E verified native runtime
+
+The Tauri shell verifies a build-embedded RuntimeManifest digest and resource
+hashes, then owns one restricted Node launcher. The launcher checks bundled tools,
+licenses/codecs and CJK raster dependencies before starting the existing service
+on a private ephemeral loopback endpoint. Native startup status configures the
+existing Desktop API transport; application/edit/catalog logic is unchanged.
+Native close first checks browser drafts, then waits for application save and
+private acknowledged service shutdown. Installation resources, app data and
+project storage remain separate. The manifest, SPDX inventory, candidate workflow,
+update limitations and threat boundary are in [Native Installer](native-installer.md).
