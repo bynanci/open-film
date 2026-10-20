@@ -444,6 +444,80 @@ it("expires abandoned candidate files without receipts on reopen and frees their
   }
 });
 
+it.each([false, true])(
+  "preserves only matching authored Undo history after same-editor managed import retry (unrelated source changed: %s)",
+  async (unrelatedSourceChanged) => {
+    const root = await mkdtemp(join(tmpdir(), "motion-managed-history-"));
+    const f = await createMotionFixture(root);
+    try {
+      delete f.app.project.stories[0]!.beats[0]!.candidateAssetIds;
+      await f.app.save();
+      const original = f.editor.get("film");
+      const authored = await f.editor.edit("film", {
+        baseRevision: original.revision,
+        commands: [
+          {
+            type: "beat",
+            beatId: "beat",
+            patch: { intent: "Keep this earlier authored change undoable" },
+          },
+        ],
+      });
+      expect(authored.canUndo).toBe(true);
+      if (unrelatedSourceChanged) {
+        const source = f.app.catalog.getAsset(f.image.id)!;
+        source.tags = ["A later unrelated source change"];
+        f.app.catalog.upsertAsset(source);
+        expect(f.editor.get("film").canUndo).toBe(false);
+      }
+      const candidate = await commitManagedMotionBeforeJournal(f);
+      const imported = await f.app.motionGeneration.importCandidate(
+        candidate.id,
+        f.editor,
+      );
+      expect(imported.composition.tracks[0]!.clips[0]!.assetId).not.toBe(
+        f.image.id,
+      );
+      const withoutMotion = await f.editor.undo("film", imported.revision);
+      expect(withoutMotion.composition).toEqual(authored.composition);
+      expect(withoutMotion.story).toEqual(authored.story);
+      let beforeMotionRedo = withoutMotion;
+      if (unrelatedSourceChanged) {
+        expect(withoutMotion.canUndo).toBe(false);
+        await expect(
+          f.editor.undo("film", withoutMotion.revision),
+        ).rejects.toThrow("Nothing to undo");
+      } else {
+        const withoutAuthored = await f.editor.undo(
+          "film",
+          withoutMotion.revision,
+        );
+        expect(withoutAuthored.composition).toEqual(original.composition);
+        expect(withoutAuthored.story).toEqual(original.story);
+        beforeMotionRedo = await f.editor.redo(
+          "film",
+          withoutAuthored.revision,
+        );
+        expect(beforeMotionRedo.story).toEqual(authored.story);
+      }
+      const redoneMotion = await f.editor.redo(
+        "film",
+        beforeMotionRedo.revision,
+      );
+      expect(redoneMotion.composition).toEqual(imported.composition);
+      expect(redoneMotion.story).toEqual(imported.story);
+      const { hashFile } = await import("@openfilm/media");
+      expect(await hashFile(localPath(f.image.uri))).toBe(
+        candidate.sourceSha256,
+      );
+    } finally {
+      await f.app.motionGeneration.dispose();
+      f.app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 it("recovers an accepted implicit-pool candidate after its managed source committed before the prepared receipt", async () => {
   const root = await mkdtemp(join(tmpdir(), "motion-managed-commit-crash-"));
   const f = await createMotionFixture(root);
