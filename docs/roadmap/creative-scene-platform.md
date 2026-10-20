@@ -43,6 +43,14 @@ does not complete the remaining M7 work.
 | 7D  | Collect Media (candidate)  | Current independent M7D work. Collect only referenced media/dependencies with rights, hashes, path safety, ZIP validation and relocation/reopen; exclude credentials/private paths. See [contract](../collect-media.md) and [validation](../validation-collect-media.md).     |
 | 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                                             |
 
+| PR  | Scope                        | Dependency and acceptance                                                                                                                                                                                                                                         |
+| --- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7A  | Named Versions (candidate)   | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md).            |
+| 7B  | Export Formats (queued)      | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                                        |
+| 7C  | NLE Fidelity (queued)        | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                       |
+| 7D  | Collect Media (queued)       | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                           |
+| 7E  | Native Installer (candidate) | M7E adds verified runtime staging, private owned startup/shutdown and candidate packaging; distribution inputs and Windows/macOS workstation evidence remain pending. See [contract](../native-installer.md) and [validation](../validation-native-installer.md). |
+
 M8A selective 2.5D photo motion is a separate candidate stacked on M7A PR #34's
 exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`. It extends GraphicScene
 with a local hash-bound alpha mask, optional background fill, bounded deterministic
@@ -199,3 +207,10 @@ boundaries, with explicit human review/Accept/Replace/Restore. It does not enabl
 remote image-to-video or claim that M6 tone/TTS performs video generation. See
 [motion validation](../validation-motion-candidates.md) for exact evidence and
 uncompleted CI/native/remote/manual gates. No independent mainline merge claim.
+
+## M7E base and acceptance boundary
+
+M7E uses main `bb2c4521ad894478893485119442a00ffd9b34cc` after M7A (#34).
+M7B (#36), M7D (#37) and M8A (#35) remain independent candidates with unresolved
+review findings. Runtime/process tests and installer workflow implementation do
+not satisfy their feature gates or clean Windows/macOS installer acceptance.

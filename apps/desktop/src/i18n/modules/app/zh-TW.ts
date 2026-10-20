@@ -1,5 +1,34 @@
 export default {
   app: {
+    nativeRuntime: {
+      title: "設定本機工作區",
+      starting: "正在檢查已安裝的執行元件並啟動本機工作區…",
+      retry: "重試設定",
+      recovery:
+        "請修復或重新安裝相同的已驗證 OpenFilm 候選版本，再重試。現有專案會保留在原資料夾。",
+      local: "檢查只使用已安裝的本機檔案，不會上傳素材。",
+      errors: {
+        unsaved: "請先儲存或處理尚未完成的草稿，再關閉 OpenFilm。",
+        missing: "安裝的執行元件不完整。",
+        hash: "執行元件檔案未通過完整性檢查。",
+        invalid: "執行元件清單或檔案路徑無效。",
+        platform: "此執行元件與應用程式或電腦不相容。",
+        permissions: "執行檔權限不安全或缺少執行權限。",
+        node: "無法啟動內附的 Node 執行元件。",
+        version: "內附工具版本與清單不符。",
+        license: "FFmpeg 授權清單與實際組建不符。",
+        codecs: "內附 FFmpeg 缺少 H.264 或 AAC 編碼器。",
+        font: "無法載入內附的繁中字型。",
+        raster: "無法載入本機文字繪圖元件。",
+        storage: "OpenFilm 無法寫入應用程式資料夾。",
+        timeout: "本機服務未在時限內啟動完成。",
+        handshake: "本機工作區啟動握手失敗。",
+        serviceExited: "本機工作區意外停止；已儲存的專案仍可開啟。",
+        closeFailed:
+          "無法確認本機工作區已安全關閉。請保留 OpenFilm 開啟並重試。",
+        preflight: "安裝的執行元件未通過啟動檢查。",
+      },
+    },
     actions: {
       back: "返回",
       done: "完成",

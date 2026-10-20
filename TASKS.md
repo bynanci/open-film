@@ -758,6 +758,8 @@ Scope: [Named Versions contract](docs/named-versions.md),
 through PR #34. Project versions are independent of session Undo/Redo and do
 not copy original media.
 
+[validation](docs/validation-named-versions.md). M7A is integrated in `main` through PR #34. Runtime/installer QA remains separate.
+
 - [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
       v1 records, source hashes, idempotent retries and mutable labels isolated
       in private index metadata.
@@ -881,3 +883,32 @@ Scope: [portable package contract](docs/collect-media.md),
 
 M7B (Export Formats) remains an open candidate PR and has unresolved review
 findings; M7C and M7E remain queued. M7D does not implement those phases.
+
+- [x] Merge M7A through PR #34 after its implementation/CI gates.
+- [ ] Manual: workstation filesystem/permission behavior remains a separate gate.
+
+M7B (#36), M7D (#37) and M8A (#35) remain independent open PRs with unresolved review findings. M7C remains queued. M7E is the candidate below.
+
+## Candidate — M7E Native Installer / Runtime Bundle
+
+Scope: [runtime/installer contract](docs/native-installer.md),
+[implementation plan](docs/superpowers/plans/2026-10-20-native-installer.md), and
+[validation](docs/validation-native-installer.md). Based on main after M7A;
+M7B/M7D/M8A remain independent open PRs with unresolved review findings.
+
+- [x] Add RuntimeManifest v1, explicit pinned local inputs, license-file requirements,
+      SPDX inventory and safe staging without network binary downloads.
+- [x] Verify the build-embedded manifest and all runtime hashes before starting
+      the existing local service; test CJK font/raster and H.264/AAC capability.
+- [x] Use owned service processes, private sessions/ephemeral loopback ports,
+      readiness handshake and graphical first-run diagnostics.
+- [x] Preserve browser drafts and require saved/acknowledged shutdown before
+      native exit; reuse existing project/catalog/edit contracts.
+- [x] Add explicit target-platform candidate packaging and artifact receipts;
+      leave automatic updates disabled with a trusted-signature verification seam.
+- [x] Add startup-cancel, delayed close-ack, workspace recovery and safe runtime archive regressions.
+- [ ] Complete exact-head regression/CI and correctness review.
+- [ ] Supply reviewed distributable runtime binaries and complete license/source
+      obligations for each target, then generate its installer artifacts.
+- [ ] Run real clean Windows/macOS install, upgrade/failure rollback and uninstall
+      with candidate SHA and source/project preservation evidence.

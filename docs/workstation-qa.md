@@ -215,3 +215,34 @@ Keep evidence immutable once referenced from a release/PR validation record.
 Native startup and long-session memory use the separate
 [measurement runner](native-performance.md). Its versioned manifest/report
 and raw samples do not change these eight strict QA gates or certify a pass.
+
+## M7E native installer candidate
+
+Keep both clean Windows and macOS gates `not-run` until tested on an actual
+workstation/VM with a full candidate SHA. Linux Cargo or Node process tests do
+not satisfy them. Record installer/runtime-manifest/artifact SHA-256, OS/build,
+architecture, app and tool versions, signature status and evidence references.
+
+For each platform:
+
+1. Use a clean non-administrator account without developer Node, FFmpeg, fonts or
+   Perl on PATH. Confirm OS webview prerequisites and documented OS libraries.
+2. Install the candidate through the normal supported OS trust flow; do not
+   bypass Gatekeeper/SmartScreen. Check CJK/space/long install paths and read-only
+   installation resources. Record app/runtime file hashes and permissions.
+3. Start, observe first-run preflight and Service ready, create/import synthetic
+   media, edit, render, decode and reopen. Check frame/audio/source receipts.
+4. Keep a pending unsaved draft and attempt close; resolve it and verify normal
+   service exit. Crash the shell, check owned cleanup, restart and reopen.
+5. Occupy the development port and start a second app. Each service must retain
+   separate ownership/session; closing one must preserve the other.
+6. Exercise missing/corrupt/incorrect-architecture runtime and unwritable app
+   data. Diagnostics must be readable and keyboard-operable without private paths.
+7. Upgrade to the candidate, simulate failed replacement, reinstall the previous
+   verified runtime and reopen supported projects. Unsupported schema must refuse
+   without migration-by-downgrade. Keep an independent backup before testing.
+8. Uninstall and reinstall. Verify project originals, managed sources, named
+   snapshots and saved edits were retained. Record actual file observations.
+
+Signing/feed setup and any automatic update activation require their own reviewed
+configuration and failure/rollback evidence. See [Native Installer](native-installer.md).

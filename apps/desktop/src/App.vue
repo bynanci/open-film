@@ -1905,6 +1905,30 @@ function handleKeyboard(event: KeyboardEvent) {
     storyCreateOpen.value = false;
   }
 }
+/** Native close reuses the same durable editor/project gates as workspace navigation. */
+async function prepareNativeClose() {
+  if (projectSwitchBlocked.value) return false;
+  const projectId = project.value?.id;
+  const generation = analysisRecoveryGeneration;
+  if (
+    !(await flushProjectPending()) ||
+    project.value?.id !== projectId ||
+    analysisRecoveryGeneration !== generation ||
+    projectSwitchBlocked.value
+  )
+    return false;
+  if (!projectId) return true;
+  const latest = await api.jobs();
+  return (
+    project.value?.id === projectId &&
+    analysisRecoveryGeneration === generation &&
+    !projectSwitchBlocked.value &&
+    !latest.jobs.some((job) =>
+      jobBlocksProjectSwitch(job, latest.analysisRecovery?.[job.id]),
+    )
+  );
+}
+defineExpose({ prepareNativeClose });
 function protectDrafts(event: BeforeUnloadEvent) {
   if (
     categoryDirty.value ||

@@ -23,3 +23,11 @@ alone does not provide a self-contained installation: runtime/service/media-tool
 bundling, readiness/error handling, signing, updates, and platform validation
 remain delivery work. Installer bundling is disabled. Rust build checks require
 host Tauri/webview development dependencies.
+
+## M7E extension
+
+The native shell now supports build-embedded runtime integrity, explicit pinned
+staging, private ephemeral service sessions and acknowledged saved shutdown.
+The optional candidate bundling configuration is distinct from the unbundled
+developer configuration. Target distribution inputs, OS installation, signing
+and updates remain independent gates; see [the contract](../native-installer.md).

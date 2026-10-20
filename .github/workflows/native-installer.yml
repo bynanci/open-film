@@ -1,0 +1,86 @@
+name: Native installer candidate
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options: [ubuntu-24.04, windows-2022, macos-14]
+        required: true
+      runtime_run_id:
+        description: Source workflow run containing the reviewed runtime artifact
+        required: true
+      runtime_artifact_id:
+        description: Reviewed runtime artifact from this repository, staged on the target OS/architecture
+        required: true
+      manifest_sha256:
+        description: Independently reviewed runtime-manifest.json SHA-256
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  candidate:
+    runs-on: ${{ inputs.platform }}
+    timeout-minutes: 45
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - name: Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @openfilm/desktop tauri icon src-tauri/icons/icon.svg
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.runtime_run_id }}
+          artifact-ids: ${{ inputs.runtime_artifact_id }}
+          github-token: ${{ github.token }}
+          path: runtime-input
+          merge-multiple: true
+      - name: Extract permission-preserving reviewed runtime
+        shell: bash
+        run: |
+          python scripts/native/test-extract-runtime.py
+          mkdir -p apps/desktop/src-tauri/resources/runtime
+          python scripts/native/extract-runtime.py runtime-input/runtime.tar apps/desktop/src-tauri/resources/runtime
+      - name: Verify reviewed runtime and owned start/close
+        shell: bash
+        env:
+          EXPECTED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+        run: pnpm exec tsx scripts/native/verify.ts apps/desktop/src-tauri/resources/runtime "$EXPECTED_MANIFEST_SHA256"
+      - run: pnpm test:native
+      - name: Build Windows current-user candidate
+        if: runner.os == 'Windows'
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles nsis
+      - name: Build macOS candidate
+        if: runner.os == 'macOS'
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles app,dmg
+      - name: Build Linux candidate
+        if: runner.os == 'Linux'
+        run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage
+      - run: pnpm exec tsx scripts/native/receipt.ts
+      - name: Archive installer outputs with executable modes
+        shell: bash
+        run: python scripts/native/archive-candidate.py apps/desktop/src-tauri/target/release/bundle native-candidate/installers.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-candidate-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          path: |
+            native-candidate/installers.tar
+            native-candidate/installers.tar.sha256
+            apps/desktop/src-tauri/target/release/bundle/candidate.json
+            apps/desktop/src-tauri/resources/runtime/runtime-manifest.json
+            apps/desktop/src-tauri/resources/runtime/sbom.spdx.json
+          if-no-files-found: error

@@ -180,6 +180,13 @@ package by reopening it and rendering a real MP4. Exact-head gates, CI and
 independent review remain before merge; see [the contract](docs/collect-media.md)
 and [validation](docs/validation-collect-media.md).
 
+main through PR #34 with synthetic actual-MP4 evidence. See [the contract](docs/named-versions.md)
+and [validation](docs/validation-named-versions.md).
+
+M7B (#36), M7D (#37) and M8A (#35) are independent open candidates with unresolved
+review findings. M7C remains queued. M7E's runtime/installer candidate and its
+separate artifact/workstation gates are described below.
+
 ## Implemented — M1 / F07 Visual QA and contact sheets
 
 Build a saved-revision review path on top of the current Composition, renderer,
@@ -564,3 +571,15 @@ hashes and portable media in a private, atomic TAR exchange. Ordinary interchang
 is unchanged. See [contract](docs/nle-handoff.md) and [validation](docs/validation-nle-handoff.md).
 Final CI/review and actual Resolve workstation QA remain separate gates. Alpha,
 M7B stems and M8A depth are not claimed on this independent main base.
+
+## Candidate — M7E verified native runtime and installer workflow
+
+M7E introduces hash-verified runtime resources, owned service startup/shutdown,
+graphical first-run diagnostics and explicit installer candidate workflows.
+Review hardening covers startup cancellation, window close ownership, recovery
+remounting, permission-preserving archive transport and shell/runtime version checks.
+Automatic updates remain unconfigured. Candidate implementation/tests are
+separate from reviewed target runtime inputs, installer artifact builds and real
+Windows/macOS acceptance. See [the contract](docs/native-installer.md) and
+[validation](docs/validation-native-installer.md). M7B/M7D/M8A remain independent
+open candidates; this work does not merge them or certify their outstanding QA.
