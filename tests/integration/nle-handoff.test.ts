@@ -940,3 +940,55 @@ it("does not inherit the film look again on already rendered precomps", async ()
     strength: 1,
   });
 });
+
+it("CLI can explicitly omit caption burn-in and consume its maximum-caption review", async () => {
+  const { root, app, composition } = await fixture();
+  composition.duration = 625;
+  composition.captionTracks![0]!.cues = Array.from(
+    { length: 5000 },
+    (_, index) => ({
+      version: 1 as const,
+      id: `cue-${index}`,
+      startMs: index * 125,
+      endMs: index * 125 + 100,
+      text: "合成字幕",
+      source: { kind: "manual" as const },
+      manualRevision: 0,
+    }),
+  );
+  app.project.timelines = [composition];
+  await app.save();
+  const project = join(root, "Film.openfilm");
+  await app.close();
+  cleanup.pop();
+  const cli = (...args: string[]) =>
+    runProcess(process.execPath, [
+      "--import",
+      "tsx",
+      "apps/cli/src/index.ts",
+      "handoff",
+      ...args,
+      "--project",
+      project,
+    ]);
+  const omitted = JSON.parse(
+    (
+      await cli("review", "--composition", composition.id, "--no-captions")
+    ).stdout.toString(),
+  );
+  expect(omitted.plan.captionTrackId).toBeNull();
+  const review = (
+    await cli("review", "--composition", composition.id)
+  ).stdout.toString();
+  expect(Buffer.byteLength(review)).toBeGreaterThan(1024 * 1024);
+  const path = join(root, "review.json");
+  await writeFile(path, review);
+  const published = JSON.parse(
+    (await cli("export", "--review", path)).stdout.toString(),
+  );
+  expect(
+    published.plan.items.filter(
+      (item: { feature: string }) => item.feature === "caption",
+    ),
+  ).toHaveLength(5000);
+});

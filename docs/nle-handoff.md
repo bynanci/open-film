@@ -98,3 +98,9 @@ only actual bake boundaries require frame alignment. Plans allow at most 128
 disjoint visual precomps. Extraction seeks near each interval before exact
 source-PTS trimming, and rendered clips disable inherited color looks because
 the reference already contains them. Original recipes remain in provenance.
+
+CLI review supports `--caption-track <id>` or `--no-captions` (mutually exclusive).
+The default selects the first caption track; no-caption selection still retains
+sidecar captions. Review JSON is bounded to 16 MiB, including the supported
+5,000-cue plan. Visible titles on audio/music clips are explicitly unsupported:
+move them to a visual track before handoff, rather than losing them during mix.

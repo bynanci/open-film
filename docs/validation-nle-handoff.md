@@ -98,3 +98,9 @@ precise trim, and limits a plan to 128 disjoint precomps. Audio timing is classi
 as baked for full mix; picture mappings exclude audio owners and unselected cues.
 Already rendered precomps explicitly disable inherited looks while original
 Composition recipes remain intact, preventing a second color application.
+
+Final adapter regressions cover CLI `--no-captions`, a real 5,000-cue review larger
+than 1 MiB consumed by CLI export, and fail-closed titles on audio/music tracks.
+These address additional automated review findings without silently dropping
+visible content. Earlier full-suite attempts during review edits are superseded
+by the frozen final-candidate run recorded in the PR.

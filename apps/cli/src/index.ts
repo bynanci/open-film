@@ -61,7 +61,7 @@ Usage:
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
-  openfilm handoff review --project <film.openfilm> --composition <id> [--mode preserve-editability|preserve-visual-fidelity] [--bake-audio]
+  openfilm handoff review --project <film.openfilm> --composition <id> [--mode preserve-editability|preserve-visual-fidelity] [--bake-audio] [--caption-track <id> | --no-captions]
   openfilm handoff export --project <film.openfilm> --review <review.json>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
   openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
@@ -115,6 +115,7 @@ function parse(args: string[]) {
     "clear-description",
     "replace-existing",
     "bake-audio",
+    "no-captions",
   ]);
   const values = new Set([
     "project",
@@ -1028,6 +1029,8 @@ async function main() {
         }),
       });
     else if (command === "handoff") {
+      if (options["no-captions"] && value(options, "caption-track"))
+        throw new Error("Choose --caption-track or --no-captions");
       if (positional[1] === "review")
         print(
           app.reviewHandoff(
@@ -1038,9 +1041,11 @@ async function main() {
               mode: (value(options, "mode") ??
                 "preserve-editability") as import("@openfilm/exporters").HandoffMode,
               bakeAudio: options["bake-audio"] === true,
-              ...(value(options, "caption-track")
-                ? { captionTrackId: value(options, "caption-track") }
-                : {}),
+              ...(options["no-captions"]
+                ? { captionTrackId: null }
+                : value(options, "caption-track")
+                  ? { captionTrackId: value(options, "caption-track") }
+                  : {}),
             },
           ),
         );
@@ -1048,10 +1053,13 @@ async function main() {
         const path = value(options, "review");
         if (!path) throw new Error("Provide --review <review.json>");
         const info = await stat(path);
-        if (!info.isFile() || info.size > 1024 * 1024)
-          throw new Error("Review must be bounded JSON");
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error("Review must be regular JSON of at most 16 MiB");
+        const bytes = await readFile(path);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Review JSON exceeds 16 MiB");
         const review = JSON.parse(
-          await readFile(path, "utf8"),
+          bytes.toString("utf8"),
         ) as import("@openfilm/application").HandoffReview;
         print(
           await app.exportHandoff(

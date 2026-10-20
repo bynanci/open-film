@@ -232,3 +232,26 @@ it("rejects unbounded disjoint visual work before rendering", () => {
     createHandoffPlan(c, 100, { mode: "preserve-visual-fidelity" }),
   ).toThrow(/128 disjoint/i);
 });
+
+it("rejects visible titles attached to audio tracks instead of silently dropping them", () => {
+  const c = structuredClone(cut);
+  c.tracks.push({
+    id: "voice",
+    type: "audio",
+    clips: [
+      {
+        id: "voice-title",
+        assetId: "audio",
+        timelineStart: 0,
+        timelineDuration: 4,
+        title: "Visible title",
+      },
+    ],
+  });
+  expect(() =>
+    createHandoffPlan(c, 24, {
+      mode: "preserve-visual-fidelity",
+      bakeAudio: true,
+    }),
+  ).toThrow(/titles on audio/i);
+});

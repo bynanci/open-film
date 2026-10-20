@@ -202,6 +202,10 @@ export function createHandoffPlan(
           "speed",
           "volume",
         ]);
+      if (audio && (clip.title !== undefined || clip.titleStyle !== undefined))
+        throw new Error(
+          "Titles on audio tracks are unsupported for handoff; move the title to a visual track",
+        );
       const start = clip.timelineStart,
         stop = start + clip.timelineDuration;
       if (
