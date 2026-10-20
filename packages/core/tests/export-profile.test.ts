@@ -6,6 +6,20 @@ import {
 } from "../src/index.js";
 
 describe("versioned export profiles", () => {
+  it("preserves PNG intermediate encoding quality and rejects it for audio-only profiles", () => {
+    const png = createExportProfile({
+      ratio: "16:9",
+      frameRate: 12,
+      format: "png",
+      quality: "high-detail",
+    });
+    expect(png.quality).toBe("high-detail");
+    for (const format of ["wav", "audio-stems"] as const)
+      expect(() => validateExportProfile({ ...png, format })).toThrow(
+        /quality/u,
+      );
+  });
+
   it.each([
     ["16:9", 1920, 1080],
     ["9:16", 1080, 1920],

@@ -388,6 +388,7 @@ export const exportStill = (
     time: number;
     requestId: string;
     confirmCrop?: boolean;
+    cropPreviewToken?: string;
     lookOverride?: FilmLook | null;
     captionTrackId?: string | null;
   },

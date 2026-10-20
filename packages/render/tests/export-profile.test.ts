@@ -19,7 +19,7 @@ async function probe(path: string) {
     "-v",
     "error",
     "-show_entries",
-    "format=duration:stream=codec_type,codec_name,width,height,r_frame_rate,nb_frames,sample_rate",
+    "format=duration:stream=codec_type,codec_name,width,height,r_frame_rate,nb_frames,sample_rate,channels",
     "-of",
     "json",
     path,
@@ -242,6 +242,7 @@ describe("profiled FFmpeg exports", () => {
       expect(result.streams[0]).toMatchObject({
         codec_name: "pcm_s24le",
         sample_rate: "48000",
+        channels: 2,
       });
       expect(Number(result.format.duration)).toBeCloseTo(0.4, 3);
       expect(await readFile(`${path}.manifest.json`, "utf8")).toContain(

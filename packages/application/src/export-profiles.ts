@@ -6,6 +6,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  readdir,
   realpath,
   rename,
   rm,
@@ -22,7 +23,7 @@ import type {
   OpenFilmProject,
   Track,
 } from "@openfilm/core";
-import { validateExportProfile } from "@openfilm/core";
+import { frameAlignedDuration, validateExportProfile } from "@openfilm/core";
 import {
   hashFile,
   localPath,
@@ -89,6 +90,9 @@ interface PreviewEntry {
   revision: string;
   compositionId: string;
   profile: ExportProfile;
+  frameIndex: number;
+  renderSelection: ReturnType<typeof renderSelection>;
+  outputSha256: string;
   sources: NonNullable<RenderReceipt["sources"]>;
   expiresAt: number;
 }
@@ -109,6 +113,22 @@ const STEM_ROLES: readonly AudioAutomation["role"][] = [
   "ambience",
   "dialogue",
 ];
+const PREVIEW_LIFETIME_MS = 10 * 60 * 1000;
+const PREVIEW_TOKEN = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u;
+
+function renderSelection(input: {
+  lookOverride?: FilmLook | null;
+  captionTrackId?: string | null;
+}) {
+  return {
+    lookOverride:
+      input.lookOverride == null
+        ? { mode: "saved" as const }
+        : { mode: "override" as const, value: input.lookOverride },
+    captionTrackId:
+      input.captionTrackId === undefined ? "automatic" : input.captionTrackId,
+  };
+}
 
 function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -194,6 +214,7 @@ export class ExportProfileService {
       "export-preview",
       `${token}.png`,
     );
+    const receiptPath = await this.previewReceiptPath(token);
     await chmod(dirname(framePath), 0o700);
     try {
       const renderReceipt = await this.renderFrameSource(
@@ -222,15 +243,21 @@ export class ExportProfileService {
           "PNG previews are opaque; transparent/alpha export is unsupported.",
         ]),
       ];
-      this.previews.set(token, {
+      const entry: PreviewEntry = {
         path: framePath,
         projectId: snapshot.project.id,
         revision: snapshot.revision,
         compositionId: snapshot.composition.id,
         profile,
+        frameIndex,
+        renderSelection: renderSelection(input),
+        outputSha256: await hashFile(framePath, input.signal),
         sources: sourceReceipts,
-        expiresAt: Date.now() + 10 * 60 * 1000,
-      });
+        expiresAt: Date.now() + PREVIEW_LIFETIME_MS,
+      };
+      const { path: _path, ...receipt } = entry;
+      await this.writeReceipt(receiptPath, { version: 1, ...receipt });
+      this.previews.set(token, entry);
       await this.trimPreviews();
       return {
         token,
@@ -244,20 +271,24 @@ export class ExportProfileService {
       };
     } finally {
       await rm(work, { recursive: true, force: true });
+      if (!this.previews.has(token)) {
+        await rm(framePath, { force: true });
+        await rm(receiptPath, { force: true });
+      }
     }
   }
 
   async previewPath(token: string): Promise<string> {
-    const entry = this.previews.get(token);
+    const entry = await this.previewEntry(token);
     if (!entry || entry.expiresAt < Date.now()) {
       this.previews.delete(token);
-      if (entry) await rm(entry.path, { force: true });
+      if (entry) await this.removePreview(token, entry.path);
       throw new Error("Export frame preview expired; render a new preview.");
     }
     const project = this.options.getProject();
     if (project.id !== entry.projectId || digest(project) !== entry.revision) {
       this.previews.delete(token);
-      await rm(entry.path, { force: true });
+      await this.removePreview(token, entry.path);
       throw new Error("Export frame preview is stale; render a new preview.");
     }
     try {
@@ -271,7 +302,7 @@ export class ExportProfileService {
       );
     } catch (error) {
       this.previews.delete(token);
-      await rm(entry.path, { force: true });
+      await this.removePreview(token, entry.path);
       throw new Error(
         "Export frame preview source changed; render a new preview.",
         {
@@ -282,7 +313,110 @@ export class ExportProfileService {
     const info = await lstat(entry.path);
     if (info.isSymbolicLink() || !info.isFile())
       throw new Error("Export preview cache entry is not a regular file.");
+    await this.verifyOutputHash(entry.path, entry.outputSha256);
     return entry.path;
+  }
+
+  /** A crop approval is valid only for the output choices that were previewed. */
+  async assertCropPreview(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time?: number;
+    confirmCrop?: boolean;
+    cropPreviewToken?: string;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  }): Promise<void> {
+    if (input.profile.framing !== "crop") return;
+    checkCrop(input.profile, input.confirmCrop === true);
+    const invalid = () =>
+      new Error(
+        "Confirm crop with a reviewed export frame matching the current output settings.",
+      );
+    if (!input.cropPreviewToken) throw invalid();
+    await this.previewPath(input.cropPreviewToken);
+    const entry = this.previews.get(input.cropPreviewToken)!;
+    const composition = this.options.getComposition(input.compositionId);
+    const expectedFrame =
+      input.time === undefined
+        ? undefined
+        : Math.floor(
+            this.validateTime(input.time, composition, input.profile) *
+              input.profile.frameRate +
+              1e-9,
+          );
+    if (
+      entry.compositionId !== composition.id ||
+      digest({ ...entry.profile, format: "mp4" }) !==
+        digest({ ...input.profile, format: "mp4" }) ||
+      digest(entry.renderSelection) !== digest(renderSelection(input)) ||
+      (expectedFrame !== undefined && expectedFrame !== entry.frameIndex)
+    )
+      throw invalid();
+  }
+
+  private previewReceiptPath(token: string): Promise<string> {
+    if (!PREVIEW_TOKEN.test(token))
+      throw new Error("Export frame preview expired; render a new preview.");
+    return safeProjectCachePath(
+      this.options.directory,
+      "export-preview",
+      `${token}.json`,
+    );
+  }
+
+  private async previewEntry(token: string): Promise<PreviewEntry | undefined> {
+    const cached = this.previews.get(token);
+    if (cached) return cached;
+    const receiptPath = await this.previewReceiptPath(token);
+    try {
+      const info = await lstat(receiptPath);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.size > 4 * 1024 * 1024
+      )
+        throw new Error(
+          "Export preview receipt must be a bounded regular file.",
+        );
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as Omit<
+        PreviewEntry,
+        "path"
+      > & { version: number };
+      if (
+        receipt.version !== 1 ||
+        typeof receipt.projectId !== "string" ||
+        typeof receipt.revision !== "string" ||
+        typeof receipt.compositionId !== "string" ||
+        !Number.isSafeInteger(receipt.frameIndex) ||
+        receipt.frameIndex < 0 ||
+        !Number.isFinite(receipt.expiresAt) ||
+        !receipt.renderSelection ||
+        typeof receipt.outputSha256 !== "string"
+      )
+        throw new Error(
+          "Export preview receipt is invalid; render a new preview.",
+        );
+      const entry: PreviewEntry = {
+        ...receipt,
+        profile: profileMode(receipt.profile, ["mp4", "png"]),
+        path: await safeProjectCachePath(
+          this.options.directory,
+          "export-preview",
+          `${token}.png`,
+        ),
+      };
+      this.previews.set(token, entry);
+      return entry;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  private async removePreview(token: string, path: string): Promise<void> {
+    await rm(path, { force: true });
+    await rm(await this.previewReceiptPath(token), { force: true });
   }
 
   async exportStill(input: {
@@ -291,12 +425,13 @@ export class ExportProfileService {
     time: number;
     requestId: string;
     confirmCrop?: boolean;
+    cropPreviewToken?: string;
     lookOverride?: FilmLook | null;
     captionTrackId?: string | null;
     signal?: AbortSignal;
   }): Promise<ProfileExportArtifact> {
     const profile = profileMode(input.profile, ["png"]);
-    checkCrop(profile, input.confirmCrop === true);
+    await this.assertCropPreview(input);
     const requestId = safeRequestId(input.requestId);
     const snapshot = this.snapshot(input.compositionId);
     const time = this.validateTime(input.time, snapshot.composition, profile);
@@ -307,18 +442,7 @@ export class ExportProfileService {
       compositionId: snapshot.composition.id,
       profile,
       frameIndex,
-      renderSelection: {
-        lookOverride:
-          input.lookOverride === undefined
-            ? { mode: "saved" }
-            : input.lookOverride === null
-              ? { mode: "none" }
-              : { mode: "override", value: input.lookOverride },
-        captionTrackId:
-          input.captionTrackId === undefined
-            ? "automatic"
-            : input.captionTrackId,
-      },
+      renderSelection: renderSelection(input),
     });
     return this.runRequest(`png:${requestId}`, fingerprint, () =>
       this.exportStillOnce(
@@ -332,18 +456,7 @@ export class ExportProfileService {
           lookOverride: input.lookOverride,
           captionTrackId: input.captionTrackId,
         },
-        {
-          lookOverride:
-            input.lookOverride === undefined
-              ? { mode: "saved" }
-              : input.lookOverride === null
-                ? { mode: "none" }
-                : { mode: "override", value: input.lookOverride },
-          captionTrackId:
-            input.captionTrackId === undefined
-              ? "automatic"
-              : input.captionTrackId,
-        },
+        renderSelection(input),
         input.signal,
       ),
     );
@@ -541,8 +654,9 @@ export class ExportProfileService {
         "Export frame time must be within the saved Composition.",
       );
     const frameIndex = Math.floor(time * profile.frameRate + 1e-9);
-    const frameCount = Math.ceil(
-      composition.duration * profile.frameRate - 1e-9,
+    const frameCount = Math.round(
+      frameAlignedDuration(composition.duration, profile.frameRate) *
+        profile.frameRate,
     );
     if (frameIndex >= frameCount)
       throw new Error(
@@ -821,11 +935,22 @@ export class ExportProfileService {
         throw new Error(
           "Audio stems must have identical sample rates, channels and sample counts.",
         );
-      const uniqueSources = [
-        ...new Map(
-          sourceSets.map((source) => [source.assetId, source]),
-        ).values(),
-      ];
+      const sourcesById = new Map<
+        string,
+        NonNullable<RenderReceipt["sources"]>[number]
+      >();
+      for (const source of sourceSets) {
+        const previous = sourcesById.get(source.assetId);
+        if (
+          previous &&
+          (previous.sha256 !== source.sha256 || previous.size !== source.size)
+        )
+          throw new Error(
+            `Source changed between audio stem renders: ${source.name}`,
+          );
+        sourcesById.set(source.assetId, source);
+      }
+      const uniqueSources = [...sourcesById.values()];
       this.assertSourceCoverage(
         uniqueSources,
         snapshot.assets.filter(hasAudio),
@@ -1301,7 +1426,7 @@ export class ExportProfileService {
     for (const [token, entry] of this.previews) {
       if (entry.expiresAt < Date.now()) {
         this.previews.delete(token);
-        await rm(entry.path, { force: true });
+        await this.removePreview(token, entry.path);
       }
     }
     while (this.previews.size > 12) {
@@ -1309,7 +1434,41 @@ export class ExportProfileService {
       if (!token) return;
       const entry = this.previews.get(token);
       this.previews.delete(token);
-      if (entry) await rm(entry.path, { force: true });
+      if (entry) await this.removePreview(token, entry.path);
+    }
+    const probe = await safeProjectCachePath(
+      this.options.directory,
+      "export-preview",
+      "cache-probe",
+    );
+    const directory = dirname(probe);
+    const entries = [];
+    const receipts = [];
+    for (const name of await readdir(directory)) {
+      const match =
+        /^([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\.(png|json)$/u.exec(
+          name,
+        );
+      if (!match) continue;
+      const path = join(directory, name);
+      const info = await lstat(path);
+      if (!info.isFile() || info.isSymbolicLink()) continue;
+      const entry = { path, modified: info.mtimeMs, token: match[1]! };
+      if (match[2] === "png") entries.push(entry);
+      else receipts.push(entry);
+    }
+    const frameTokens = new Set(entries.map((entry) => entry.token));
+    for (const receipt of receipts)
+      if (!frameTokens.has(receipt.token)) {
+        this.previews.delete(receipt.token);
+        await rm(receipt.path, { force: true });
+      }
+    entries.sort((a, b) => b.modified - a.modified);
+    for (const [index, entry] of entries.entries()) {
+      if (index < 12 && entry.modified >= Date.now() - PREVIEW_LIFETIME_MS)
+        continue;
+      this.previews.delete(entry.token);
+      await this.removePreview(entry.token, entry.path);
     }
   }
 }

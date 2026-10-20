@@ -138,6 +138,29 @@ function clipAudioRole(
   );
 }
 
+/** Sources consumed by the audio graph, shared with application preflight. */
+export function audioSourceAssetIds(
+  composition: Composition,
+  assets: MediaAsset[],
+  role?: AudioAutomation["role"],
+): Set<string> {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  return new Set(
+    composition.tracks
+      .filter((track) => track.type !== "titles")
+      .flatMap((track) =>
+        track.clips.flatMap((clip) => {
+          const asset = assetMap.get(clip.assetId);
+          return asset &&
+            hasAudio(asset) &&
+            (!role || clipAudioRole(track.type, clip) === role)
+            ? [clip.assetId]
+            : [];
+        }),
+      ),
+  );
+}
+
 function outputFrameFilters(profile: ExportProfile): string[] {
   if (profile.framing === "contain")
     return [
@@ -162,7 +185,6 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
-    const encoding = resolveRenderQuality(options.quality);
     graphicFrameRanges(composition, settings);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
@@ -170,6 +192,9 @@ export class FFmpegRenderer {
     const exportProfile = options.exportProfile
       ? validateExportProfile(structuredClone(options.exportProfile))
       : undefined;
+    const encoding = resolveRenderQuality(
+      exportProfile?.quality ?? options.quality,
+    );
     const audioOnly = options.audioOnly ?? false;
     if (exportProfile?.format === "png")
       throw new Error(
@@ -253,31 +278,22 @@ export class FFmpegRenderer {
       Math.round(outputDuration * outputFrameRate),
     );
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
-    const usedIds = new Set(
-      composition.tracks
-        .filter((track) => track.type !== "titles")
-        .flatMap((track) =>
-          track.clips.flatMap((clip) => {
-            if (audioOnly) {
-              const asset = assetMap.get(clip.assetId);
-              if (
-                !asset ||
-                !hasAudio(asset) ||
-                (options.audioRole &&
-                  clipAudioRole(track.type, clip) !== options.audioRole)
-              )
-                return [];
-              return [clip.assetId];
-            }
-            return [
-              clip.assetId,
-              ...(clip.layout?.secondary
-                ? [clip.layout.secondary.assetId]
-                : []),
-            ];
-          }),
-        ),
-    );
+    const usedIds = audioOnly
+      ? audioSourceAssetIds(composition, assets, options.audioRole)
+      : new Set(
+          composition.tracks
+            .filter((track) => track.type !== "titles")
+            .flatMap((track) =>
+              track.clips.flatMap((clip) => {
+                return [
+                  clip.assetId,
+                  ...(clip.layout?.secondary
+                    ? [clip.layout.secondary.assetId]
+                    : []),
+                ];
+              }),
+            ),
+        );
     if (!audioOnly)
       for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
         if (!assetMap.has(id))
@@ -801,6 +817,8 @@ export class FFmpegRenderer {
           "pcm_s24le",
           "-ar",
           "48000",
+          "-ac",
+          "2",
           "-t",
           number(outputDuration),
           "-y",

@@ -65,8 +65,8 @@ Usage:
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
-  openfilm export --project <film.openfilm> --format mp4 [--ratio 16:9|9:16|1:1 --framing contain|crop --confirm-crop] [--fps <number> --width <even-px> --height <even-px>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
-  openfilm export --project <film.openfilm> --format png --ratio 16:9|9:16|1:1 --time <seconds> [--framing contain|crop --confirm-crop --request-id <id>]
+  openfilm export --project <film.openfilm> --format mp4 [--ratio 16:9|9:16|1:1 --framing contain|crop --confirm-crop --crop-preview-token <token>] [--fps <number> --width <even-px> --height <even-px>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format png --ratio 16:9|9:16|1:1 --time <seconds> [--framing contain|crop --preview --confirm-crop --crop-preview-token <token> --request-id <id>] [--quality standard|high-detail]
   openfilm export --project <film.openfilm> --format wav|audio-stems [--request-id <id>]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
@@ -89,6 +89,7 @@ Film look presets: none, soft-film, americana, clean-camera, retro, natural, spo
 Omit --look to preserve saved film/scene/clip choices. A look override changes only this MP4/preview.
 --commands reads a JSON object {baseRevision,requestId,commands} of at most 1 MiB.
 --quality changes compression only, not the saved frame, timing, audio or source detail.
+For crop output, run PNG --preview, review its returned local path, then export with --confirm-crop --crop-preview-token <token> and identical render settings within ten minutes.
 Review suggestions never change text until accepted. No language provider is configured by default.
 Transcript reads also accept transcript <asset-id> when the ID is not an action name.
 Use transcript get <asset-id> for all IDs, including edit, search, revisions, undo, redo, select and get.
@@ -118,6 +119,7 @@ function parse(args: string[]) {
     "clear-description",
     "replace-existing",
     "confirm-crop",
+    "preview",
   ]);
   const values = new Set([
     "project",
@@ -177,6 +179,7 @@ function parse(args: string[]) {
     "fps",
     "width",
     "height",
+    "crop-preview-token",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -299,20 +302,21 @@ async function main() {
   }
   const lookOutput =
     command === "render" ||
-    (command === "export" && value(options, "format") === "mp4");
+    (command === "export" &&
+      ["mp4", "png"].includes(value(options, "format") ?? ""));
   if (
     !lookOutput &&
     (Object.hasOwn(options, "look") || Object.hasOwn(options, "look-strength"))
   )
     throw new ApplicationError(
       "request.invalid",
-      "Film look overrides require render or export --format mp4; interchange keeps saved looks as metadata.",
+      "Film look overrides require render or export --format mp4/png; interchange keeps saved looks as metadata.",
     );
   const lookOverride = lookOutput ? renderLook(options) : undefined;
   if (!lookOutput && Object.hasOwn(options, "quality"))
     throw new ApplicationError(
       "request.invalid",
-      "Compression quality requires render or export --format mp4.",
+      "Compression quality requires render or export --format mp4/png.",
     );
   const quality = lookOutput
     ? resolveRenderQuality(value(options, "quality")).quality
@@ -357,6 +361,8 @@ async function main() {
     throw new Error("Use --project <film.openfilm> to select a project.");
   const app =
     command === "captions" ||
+    (command === "export" &&
+      (options["preview"] || value(options, "crop-preview-token"))) ||
     ((command === "scene-plan" || command === "direction-review") &&
       positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
@@ -1034,6 +1040,14 @@ async function main() {
       });
     else if (command === "export") {
       const format = value(options, "format") ?? "json";
+      if (options["preview"] && format !== "png")
+        throw new Error("--preview applies only to --format png.");
+      if (
+        value(options, "crop-preview-token") &&
+        format !== "png" &&
+        format !== "mp4"
+      )
+        throw new Error("--crop-preview-token applies only to MP4/PNG.");
       const ratioInput = value(options, "ratio");
       const framingInput = value(options, "framing");
       const fps = positive(options, "fps") ?? app.project.settings.frameRate;
@@ -1070,6 +1084,9 @@ async function main() {
             quality,
             ...(exportProfile ? { exportProfile } : {}),
             ...(options["confirm-crop"] ? { confirmCrop: true } : {}),
+            ...(value(options, "crop-preview-token")
+              ? { cropPreviewToken: value(options, "crop-preview-token") }
+              : {}),
             ...(value(options, "caption-track")
               ? { captionTrackId: value(options, "caption-track") }
               : {}),
@@ -1107,13 +1124,30 @@ async function main() {
           ...(height === undefined ? {} : { height }),
           framing: (framingInput ?? "contain") as ExportFraming,
           format,
-          quality: "standard",
+          quality: quality ?? "standard",
         });
         const requestId = value(options, "request-id") ?? randomUUID();
         if (format === "png") {
           const time = Number(value(options, "time"));
           if (!Number.isFinite(time) || time < 0)
             throw new Error("--time must be a nonnegative number of seconds.");
+          if (options["preview"]) {
+            const preview = await app.previewExportFrame({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              time,
+              lookOverride,
+              ...(value(options, "caption-track")
+                ? { captionTrackId: value(options, "caption-track") }
+                : {}),
+              signal: controller.signal,
+            });
+            print({
+              ...preview,
+              path: await app.exportProfiles.previewPath(preview.token),
+            });
+            return;
+          }
           print(
             await app.exportStill({
               compositionId: value(options, "composition"),
@@ -1121,6 +1155,7 @@ async function main() {
               time,
               requestId,
               confirmCrop: Boolean(options["confirm-crop"]),
+              cropPreviewToken: value(options, "crop-preview-token"),
               lookOverride,
               ...(value(options, "caption-track")
                 ? { captionTrackId: value(options, "caption-track") }

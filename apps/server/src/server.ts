@@ -3192,6 +3192,7 @@ export async function startServer(options: ServerOptions = {}) {
             "time",
             "requestId",
             "confirmCrop",
+            "cropPreviewToken",
             "lookOverride",
             "captionTrackId",
           ]);
@@ -3214,6 +3215,11 @@ export async function startServer(options: ServerOptions = {}) {
               400,
               "Confirm the center crop after reviewing its export frame.",
             );
+          if (
+            data.cropPreviewToken !== undefined &&
+            typeof data.cropPreviewToken !== "string"
+          )
+            throw new HttpError(400, "Choose a reviewed crop preview token.");
           const selection = profileRenderSelection(data);
           const result = await runProfileExport(application, (signal) =>
             application.exportStill({
@@ -3222,6 +3228,7 @@ export async function startServer(options: ServerOptions = {}) {
               time: data.time as number,
               requestId: text(data, "requestId"),
               confirmCrop: data.confirmCrop as boolean | undefined,
+              cropPreviewToken: data.cropPreviewToken as string | undefined,
               ...selection,
               signal,
             }),
@@ -3312,6 +3319,14 @@ export async function startServer(options: ServerOptions = {}) {
               "request.invalid",
               "Confirm the center crop after reviewing its export frame.",
             );
+          if (
+            data.cropPreviewToken !== undefined &&
+            (typeof data.cropPreviewToken !== "string" || !exportProfile)
+          )
+            throw new ApplicationError(
+              "request.invalid",
+              "A reviewed crop preview token requires an Export Profile.",
+            );
           const hasLookOverride = Object.hasOwn(data, "lookOverride");
           let lookOverride: FilmLook | null | undefined;
           if (hasLookOverride) {
@@ -3392,6 +3407,9 @@ export async function startServer(options: ServerOptions = {}) {
             quality,
             ...(exportProfile ? { exportProfile } : {}),
             ...(data.confirmCrop === true ? { confirmCrop: true } : {}),
+            ...(typeof data.cropPreviewToken === "string"
+              ? { cropPreviewToken: data.cropPreviewToken }
+              : {}),
             ...(hasCaptionTrackId
               ? { captionTrackId: data.captionTrackId as string | null }
               : {}),

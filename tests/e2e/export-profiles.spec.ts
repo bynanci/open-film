@@ -80,10 +80,17 @@ test("Export previews a Traditional Chinese reviewed crop and writes PNG/MP4 wit
   await ratio.selectOption("9:16");
   await framing.selectOption("crop");
   await page.getByTestId("export-frame-time").fill("0.5");
+  await page.getByTestId("export-quality").selectOption("high-detail");
   await expect(mp4).toBeDisabled();
   await expect(cropConfirmation).toBeDisabled();
 
+  const previewResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/export/frame-preview") &&
+      response.request().method() === "POST",
+  );
   await page.getByTestId("preview-export-frame").click();
+  const previewReceipt = await (await previewResponse).json();
   const preview = page.getByTestId("export-preview-image");
   await expect(preview).toBeVisible({ timeout: 30_000 });
   await expect(preview).toHaveJSProperty("naturalWidth", 1080);
@@ -96,13 +103,28 @@ test("Export previews a Traditional Chinese reviewed crop and writes PNG/MP4 wit
   await expect(still).toBeEnabled();
   await expect(mp4).toBeEnabled();
 
+  const stillResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/export/still") &&
+      response.request().method() === "POST",
+  );
   await still.click();
+  const savedResponse = await stillResponsePromise;
+  expect(savedResponse.ok()).toBe(true);
+  expect(savedResponse.request().postDataJSON()).toMatchObject({
+    cropPreviewToken: previewReceipt.token,
+    profile: { quality: "high-detail" },
+  });
   const stillLink = page.locator(".export-profile-result a").first();
   await expect(stillLink).toBeVisible({ timeout: 30_000 });
   const stillHref = await stillLink.getAttribute("href");
   const stillResponse = await request.get(new URL(stillHref!, base).toString());
   expect(stillResponse.ok()).toBe(true);
   expect((await stillResponse.body()).subarray(1, 4).toString()).toBe("PNG");
+  const previewResponseBytes = await request.get(
+    `${base}/api/export/frame-preview/${previewReceipt.token}`,
+  );
+  expect(await stillResponse.body()).toEqual(await previewResponseBytes.body());
 
   await mp4.click();
   const mp4Result = page.locator(".export-result");
@@ -123,7 +145,9 @@ test("Export previews a Traditional Chinese reviewed crop and writes PNG/MP4 wit
     width: 1080,
     height: 1920,
     framing: "crop",
+    quality: "high-detail",
   });
+  expect(manifest.encoding).toMatchObject({ quality: "high-detail", crf: 18 });
   expect(manifest.warnings).toContain(
     "Explicit center crop may trim protected subjects or subtitle safe areas; review the export frame.",
   );

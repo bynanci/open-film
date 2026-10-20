@@ -77,6 +77,7 @@ import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import {
   FFmpegRenderer,
+  audioSourceAssetIds,
   createTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
@@ -226,6 +227,7 @@ export interface FilmRenderOptions {
   audioRole?: AudioAutomation["role"];
   /** Required only when an explicit center crop is published as a video/still. */
   confirmCrop?: boolean;
+  cropPreviewToken?: string;
   requestId?: string;
 }
 export interface ImportResult {
@@ -1684,6 +1686,7 @@ export class OpenFilmApplication {
     time: number;
     requestId: string;
     confirmCrop?: boolean;
+    cropPreviewToken?: string;
     lookOverride?: FilmLook | null;
     captionTrackId?: string | null;
     signal?: AbortSignal;
@@ -1711,7 +1714,6 @@ export class OpenFilmApplication {
       compositionOverride?: Composition;
     } = {},
   ): Promise<string> {
-    const quality = resolveRenderQuality(options.quality).quality;
     let exportProfile: ExportProfile | undefined;
     try {
       if (options.exportProfile) {
@@ -1729,14 +1731,6 @@ export class OpenFilmApplication {
           throw new Error(
             "Audio role filtering requires an audio-stems Export Profile.",
           );
-        if (
-          exportFile &&
-          exportProfile.framing === "crop" &&
-          !options.confirmCrop
-        )
-          throw new Error(
-            "Confirm the visible center crop after reviewing Preview Export Frame.",
-          );
       }
     } catch (error) {
       throw new ApplicationError(
@@ -1747,6 +1741,9 @@ export class OpenFilmApplication {
         error instanceof Error ? error.message : String(error),
       );
     }
+    const quality = resolveRenderQuality(
+      exportProfile?.quality ?? options.quality,
+    ).quality;
     let lookOverride: FilmLook | null | undefined;
     try {
       lookOverride =
@@ -1765,6 +1762,12 @@ export class OpenFilmApplication {
     const composition = structuredClone(
       context.compositionOverride ?? this.composition(compositionId),
     );
+    if (exportFile && exportProfile)
+      await this.exportProfiles.assertCropPreview({
+        compositionId,
+        ...options,
+        profile: exportProfile,
+      });
     const renderSettings = { ...this.project.settings };
     const projectEvidence = {
       id: this.project.id,
@@ -1805,7 +1808,12 @@ export class OpenFilmApplication {
     if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
-      for (const asset of assets) {
+      const audioIds = options.audioOnly
+        ? audioSourceAssetIds(composition, assets, options.audioRole)
+        : undefined;
+      for (const asset of assets.filter(
+        (asset) => !audioIds || audioIds.has(asset.id),
+      )) {
         checkAbort(options.signal);
         const status = await sourceStatus(asset);
         if (status.status !== "available")

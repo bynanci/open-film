@@ -1684,6 +1684,7 @@ async function exportFilm(
   format: string,
   exportProfile?: ExportProfile,
   confirmCrop = false,
+  cropPreviewToken?: string,
 ) {
   if (!(await flushPending())) return;
   const exportingLook =
@@ -1710,6 +1711,7 @@ async function exportFilm(
         ...(format === "mp4" ? { quality: exportingQuality } : {}),
         ...(format === "mp4" && exportProfile ? { exportProfile } : {}),
         ...(format === "mp4" && confirmCrop ? { confirmCrop: true } : {}),
+        ...(format === "mp4" && cropPreviewToken ? { cropPreviewToken } : {}),
         ...(format === "mp4" && outputCaptionTrackId.value !== undefined
           ? { captionTrackId: outputCaptionTrackId.value }
           : {}),

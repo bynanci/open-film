@@ -127,8 +127,14 @@ export function validateExportProfile(value: unknown): ExportProfile {
     throw new Error("Export profile format is unsupported.");
   if (!(record.quality === "standard" || record.quality === "high-detail"))
     throw new Error("Export profile quality is unsupported.");
-  if (record.format !== "mp4" && record.quality !== "standard")
-    throw new Error("High detail quality applies to MP4 output only.");
+  if (
+    record.format !== "mp4" &&
+    record.format !== "png" &&
+    record.quality !== "standard"
+  )
+    throw new Error(
+      "High detail quality applies to MP4 and PNG frame output only.",
+    );
   return {
     version: 1,
     ratio: record.ratio,

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import {
   mkdtemp,
+  lstat,
   readFile,
+  readdir,
   rm,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,6 +24,8 @@ import {
   type ExportRatio,
 } from "@openfilm/core";
 import { OpenFilmApplication } from "@openfilm/application";
+import { ExportProfileService } from "../../packages/application/src/export-profiles.js";
+import { FFmpegRenderer } from "@openfilm/render";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
@@ -62,7 +68,7 @@ async function fixture(duration = 12) {
       "-i",
       `sine=frequency=${frequency}:sample_rate=48000:duration=${duration}`,
       "-ac",
-      "2",
+      path === narrationPath ? "1" : "2",
       "-c:a",
       "pcm_s16le",
       "-threads",
@@ -175,7 +181,9 @@ async function fixture(duration = 12) {
     app,
     root,
     projectPath,
-    composition,
+    composition: app.project.timelines.find(
+      (item) => item.id === composition.id,
+    )!,
     imagePath,
     narrationPath,
     musicPath,
@@ -263,6 +271,356 @@ const postJson = (base: string, route: string, body: unknown) =>
   });
 
 describe("professional profile exports", () => {
+  it("requires a crop preview bound to the current frame, render choices and saved revision", async () => {
+    const { app, composition, projectPath, close } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "9:16",
+      width: 90,
+      height: 160,
+      frameRate: 12,
+      framing: "crop",
+      format: "png",
+      quality: "high-detail",
+    });
+    const input = {
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+      requestId: "bound-crop-preview-001",
+      confirmCrop: true,
+      captionTrackId: null,
+    };
+    await expect(app.exportStill(input)).rejects.toThrow(
+      /reviewed export frame/u,
+    );
+    await expect(
+      app.exportMp4(composition.id, {
+        exportProfile: { ...profile, format: "mp4" },
+        confirmCrop: true,
+        captionTrackId: null,
+      }),
+    ).rejects.toThrow(/reviewed export frame/u);
+    const preview = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: input.time,
+      captionTrackId: null,
+    });
+    const reviewed = { ...input, cropPreviewToken: preview.token };
+    const changed = [
+      { time: 0.5 },
+      { profile: { ...profile, quality: "standard" as const } },
+      {
+        profile: createExportProfile({
+          ratio: "1:1",
+          width: 120,
+          height: 120,
+          frameRate: 12,
+          framing: "crop",
+          format: "png",
+          quality: "high-detail",
+        }),
+      },
+      {
+        lookOverride: {
+          version: 1 as const,
+          preset: "retro" as const,
+          strength: 1,
+        },
+      },
+      { captionTrackId: undefined },
+    ];
+    for (const difference of changed)
+      await expect(
+        app.exportStill({ ...reviewed, ...difference }),
+      ).rejects.toThrow(/reviewed export frame/u);
+    composition.defaultLook = { version: 1, preset: "natural", strength: 1 };
+    await expect(app.exportStill(reviewed)).rejects.toThrow(
+      /stale|reviewed export frame/u,
+    );
+    delete composition.defaultLook;
+    close();
+    const previewApp = await OpenFilmApplication.openForExport(projectPath);
+    const current = await previewApp.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: input.time,
+      captionTrackId: null,
+    });
+    const previewBytes = await readFile(
+      await previewApp.exportProfiles.previewPath(current.token),
+    );
+    previewApp.close();
+    const reopened = await OpenFilmApplication.openForExport(projectPath);
+    cleanup.push(() => reopened.close());
+    const saved = await reopened.exportStill({
+      ...input,
+      cropPreviewToken: current.token,
+    });
+    expect(await readFile(saved.path)).toEqual(previewBytes);
+    const mp4 = await reopened.exportMp4(composition.id, {
+      exportProfile: { ...profile, format: "mp4" },
+      confirmCrop: true,
+      cropPreviewToken: current.token,
+      captionTrackId: null,
+    });
+    expect((await probe(mp4.path)).streams[0]!.width).toBe(90);
+  });
+
+  it("exports audio with an offline picture-only source while MP4 still rejects that source", async () => {
+    const { app, composition, imagePath } = await fixture(1);
+    await rm(imagePath);
+    for (const format of ["wav", "audio-stems"] as const) {
+      const result = await app.exportProfileAudio({
+        compositionId: composition.id,
+        profile: createExportProfile({ ratio: "16:9", frameRate: 12, format }),
+        requestId: `offline-picture-${format}`,
+      });
+      expect(result.files.length).toBe(format === "wav" ? 1 : 2);
+      expect(
+        result.files.every(
+          (file) => file.channels === 2 && file.sampleCount === 48000,
+        ),
+      ).toBe(true);
+    }
+    await expect(app.exportMp4(composition.id)).rejects.toThrow(
+      /Missing Media/u,
+    );
+  });
+
+  it("uses profile quality for actual encoder settings even when a separate quality disagrees", async () => {
+    const { app, composition } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "16:9",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+      quality: "high-detail",
+    });
+    for (const quality of [undefined, "standard"] as const) {
+      const result = await app.exportMp4(composition.id, {
+        exportProfile: profile,
+        ...(quality ? { quality } : {}),
+      });
+      const receipt = JSON.parse(
+        await readFile(`${result.path}.manifest.json`, "utf8"),
+      );
+      expect(receipt.exportProfile.quality).toBe("high-detail");
+      expect(receipt.encoding.quality).toBe("high-detail");
+      expect(receipt.encoding.crf).toBe(18);
+    }
+  });
+
+  it("treats a null still look as the saved look in receipts and repeat requests", async () => {
+    const { app, composition } = await fixture(1);
+    composition.defaultLook = { version: 1, preset: "retro", strength: 1 };
+    const profile = createExportProfile({
+      ratio: "16:9",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+      format: "png",
+    });
+    const input = {
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+      requestId: "null-saved-look-001",
+    };
+    const result = await app.exportStill({ ...input, lookOverride: null });
+    const receipt = JSON.parse(
+      await readFile(`${result.path}.manifest.json`, "utf8"),
+    );
+    expect(receipt.renderSelection.lookOverride).toEqual({ mode: "saved" });
+    expect((await app.exportStill(input)).path).toBe(result.path);
+  });
+
+  it("rejects times beyond the last complete profile frame before attempting an extraction", async () => {
+    const { app, composition } = await fixture(1.05);
+    const profile = createExportProfile({
+      ratio: "16:9",
+      width: 160,
+      height: 90,
+      frameRate: 10,
+      format: "png",
+    });
+    await expect(
+      app.previewExportFrame({
+        compositionId: composition.id,
+        profile,
+        time: 1.01,
+      }),
+    ).rejects.toThrow(/final output frame/u);
+    await expect(
+      app.exportStill({
+        compositionId: composition.id,
+        profile,
+        time: 1.01,
+        requestId: "partial-last-frame-001",
+      }),
+    ).rejects.toThrow(/final output frame/u);
+    const last = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.99,
+    });
+    expect(last.frameIndex).toBe(9);
+  });
+
+  it("rejects differing hashes for a shared source across sequential real stem renders", async () => {
+    const { app, composition, narrationPath } = await fixture(1);
+    const voice = composition.tracks.find((track) => track.id === "narration")!
+      .clips[0]!;
+    composition.tracks.find((track) => track.id === "music")!.clips = [
+      {
+        ...structuredClone(voice),
+        id: "shared-music",
+        audioAutomation: { version: 1, role: "music" },
+      },
+    ];
+    const assets = app.catalog
+      .listAssets({ limit: 100 })
+      .filter(
+        (asset) => asset.id === voice.assetId || asset.mediaType === "image",
+      );
+    const service = new ExportProfileService({
+      directory: app.directory,
+      getProject: () => app.project,
+      getComposition: () => composition,
+      getAssets: () => assets,
+      render: async (id, output, options) => {
+        const result = await new FFmpegRenderer().render(
+          composition,
+          assets,
+          output,
+          app.project.settings,
+          options,
+        );
+        if (options.audioRole === "narration") {
+          const bytes = await readFile(narrationPath);
+          bytes[bytes.length - 1] = bytes[bytes.length - 1]! ^ 1;
+          await writeFile(narrationPath, bytes);
+        }
+        return result;
+      },
+    });
+    await expect(
+      service.exportAudio({
+        compositionId: composition.id,
+        profile: createExportProfile({
+          ratio: "16:9",
+          frameRate: 12,
+          format: "audio-stems",
+        }),
+        requestId: "conflicting-stem-source-001",
+      }),
+    ).rejects.toThrow(/Source changed between audio stem renders/u);
+    expect(await readdir(join(app.directory, "exports"))).not.toContain(
+      "stems-conflicting-stem-source-001",
+    );
+  });
+
+  it("prunes expired previews left by a previous service instance without following unrelated entries", async () => {
+    const { app, composition, root } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "16:9",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+    });
+    const first = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const oldPath = await app.exportProfiles.previewPath(first.token);
+    const expired = new Date(Date.now() - 11 * 60 * 1000);
+    await utimes(oldPath, expired, expired);
+    const cache = join(app.directory, "cache", "export-preview");
+    await writeFile(join(cache, "unrelated.png"), "keep");
+    const orphan = `${randomUUID()}.json`;
+    await writeFile(join(cache, orphan), "{}");
+    for (let index = 0; index < 13; index++) {
+      const path = join(cache, `${randomUUID()}.png`);
+      await writeFile(path, await readFile(oldPath));
+      const modified = new Date(Date.now() - (index + 1) * 1000);
+      await utimes(path, modified, modified);
+    }
+    const outside = join(root, "outside.png");
+    await writeFile(outside, "source stays untouched");
+    await symlink(
+      outside,
+      join(cache, "00000000-0000-4000-8000-000000000000.png"),
+    );
+    const reopened = new ExportProfileService({
+      directory: app.directory,
+      getProject: () => app.project,
+      getComposition: () => composition,
+      getAssets: () => app.catalog.listAssets({ limit: 100 }),
+      render: async (id, path, options) =>
+        new FFmpegRenderer().render(
+          composition,
+          app.catalog.listAssets({ limit: 100 }),
+          path,
+          app.project.settings,
+          options,
+        ),
+    });
+    await reopened.previewFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const names = await readdir(cache);
+    expect(names).not.toContain(`${first.token}.png`);
+    expect(names).not.toContain(`${first.token}.json`);
+    expect(names).not.toContain(orphan);
+    expect(names).toContain("unrelated.png");
+    const regularPreviews = await Promise.all(
+      names
+        .filter((name) => /^[a-f0-9-]{36}\.png$/u.test(name))
+        .map(async (name) => (await lstat(join(cache, name))).isFile()),
+    );
+    expect(regularPreviews.filter(Boolean)).toHaveLength(12);
+    expect(await readFile(outside, "utf8")).toBe("source stays untouched");
+  });
+
+  it("expires a persisted crop approval before it can publish a still", async () => {
+    const { app, composition } = await fixture(1);
+    const profile = createExportProfile({
+      ratio: "9:16",
+      width: 90,
+      height: 160,
+      frameRate: 12,
+      framing: "crop",
+      format: "png",
+    });
+    const preview = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60 * 1000);
+    try {
+      await expect(
+        app.exportStill({
+          compositionId: composition.id,
+          profile,
+          time: 0.25,
+          requestId: "expired-crop-proof-001",
+          confirmCrop: true,
+          cropPreviewToken: preview.token,
+        }),
+      ).rejects.toThrow(/expired/u);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(
+      await readdir(join(app.directory, "cache", "export-preview")),
+    ).not.toContain(`${preview.token}.json`);
+  });
+
   it("renders a real 12-second MP4 in all three ratios without changing Composition or source files", async () => {
     const { app, composition, imagePath, narrationPath, musicPath } =
       await fixture();
@@ -624,6 +982,7 @@ describe("professional profile exports", () => {
       time: 0.25,
       requestId: "http-still-profile-001",
       confirmCrop: true,
+      cropPreviewToken: preview.token,
       captionTrackId: null,
     });
     expect(stillResponse.status).toBe(200);
@@ -840,6 +1199,64 @@ describe("professional profile exports", () => {
         "cli-crop-profile-001",
       ]),
     ).rejects.toThrow();
+    await expect(
+      cli([
+        "export",
+        "--format",
+        "png",
+        "--ratio",
+        "9:16",
+        "--width",
+        "90",
+        "--height",
+        "160",
+        "--fps",
+        "12",
+        "--time",
+        "0.25",
+        "--framing",
+        "crop",
+        "--confirm-crop",
+        "--request-id",
+        "cli-unreviewed-crop-001",
+      ]),
+    ).rejects.toThrow();
+    const cropArgs = [
+      "export",
+      "--format",
+      "png",
+      "--ratio",
+      "9:16",
+      "--width",
+      "90",
+      "--height",
+      "160",
+      "--fps",
+      "12",
+      "--time",
+      "0.25",
+      "--framing",
+      "crop",
+      "--quality",
+      "high-detail",
+    ];
+    const preview = JSON.parse(
+      (await cli([...cropArgs, "--preview"])).stdout,
+    ) as { token: string; path: string };
+    expect((await probe(preview.path)).streams[0]!.codec_name).toBe("png");
+    const cropped = JSON.parse(
+      (
+        await cli([
+          ...cropArgs,
+          "--confirm-crop",
+          "--crop-preview-token",
+          preview.token,
+          "--request-id",
+          "cli-reviewed-crop-001",
+        ])
+      ).stdout,
+    ) as { path: string };
+    expect(await readFile(cropped.path)).toEqual(await readFile(preview.path));
     expect(await hashFile(join(root, "合成原圖 # &.png"))).toBe(sourceHash);
     const persisted = JSON.parse(
       await readFile(join(projectPath, "project.json"), "utf8"),

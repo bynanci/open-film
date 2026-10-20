@@ -43,7 +43,12 @@ const props = defineProps<{
   captionTrackId?: string | null;
 }>();
 const emit = defineEmits<{
-  export: [format: string, profile?: ExportProfile, confirmCrop?: boolean];
+  export: [
+    format: string,
+    profile?: ExportProfile,
+    confirmCrop?: boolean,
+    cropPreviewToken?: string,
+  ];
   look: [look: FilmLook | undefined];
   quality: [value: "standard" | "high-detail"];
   captionTrack: [value: string | null | undefined];
@@ -257,12 +262,15 @@ async function saveStill() {
     frameRate: props.projectSettings.frameRate,
     framing: framing.value,
     format: "png",
+    quality: props.quality ?? "standard",
   });
   const key = JSON.stringify({
     projectId: props.projectId,
     composition: props.composition,
     profile,
     time: frameTime.value,
+    lookOverride: props.lookOverride,
+    captionTrackId: props.captionTrackId,
   });
   const requestId = keyedRequestId("still", key);
   await runProfileAction(
@@ -275,6 +283,7 @@ async function saveStill() {
           time: frameTime.value,
           requestId,
           confirmCrop: cropConfirmed.value,
+          cropPreviewToken: framePreview.value?.token,
           lookOverride: props.lookOverride,
           captionTrackId: props.captionTrackId,
         },
@@ -373,7 +382,9 @@ onUnmounted(() => {
         class="primary"
         data-testid="export-profile-mp4"
         :disabled="busy || !canExportCropped"
-        @click="emit('export', 'mp4', mp4Profile, cropConfirmed)"
+        @click="
+          emit('export', 'mp4', mp4Profile, cropConfirmed, framePreview?.token)
+        "
       >
         <Icon name="download" />{{ t("app.export.saveMp4") }}
       </button>

@@ -50,7 +50,7 @@ for (const [path, frequency] of [
     "-i",
     `sine=frequency=${frequency}:sample_rate=48000:duration=12`,
     "-ac",
-    "2",
+    path === narrationPath ? "1" : "2",
     "-c:a",
     "pcm_s16le",
     "-threads",
@@ -260,6 +260,7 @@ try {
     const rendered = await app.exportMp4(composition.id, {
       exportProfile: profile,
       confirmCrop: cropConfirmed,
+      cropPreviewToken: preview.token,
       captionTrackId: captions.id,
     });
     const metadata = await probe(rendered.path);
@@ -325,6 +326,7 @@ try {
     time: 4.57,
     requestId: "m7b-synthetic-still-001",
     confirmCrop: true,
+    cropPreviewToken: stillPreview.token,
     captionTrackId: captions.id,
   });
   if (!(await decodedRgb(previewPath)).equals(await decodedRgb(still.path)))

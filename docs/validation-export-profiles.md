@@ -2,13 +2,71 @@
 
 ## Status
 
-The current branch implements the shared versioned Export Profile path across
-Application, FFmpeg, HTTP, CLI and Desktop. Automated regression and real
-synthetic FFmpeg outputs pass. The branch is based on `main` at
-`bb2c4521ad894478893485119442a00ffd9b34cc`; GitHub CI is rerunning after a
-frame-count correction. Real-person framing, workstation playback, sustained
-high-resolution rendering, and target NLE behavior remain manual gates;
-synthetic fixtures do not establish those properties.
+The shared versioned Export Profile path spans Application, FFmpeg, HTTP, CLI
+and Desktop. The PR review remediation below was verified from baseline
+`66941903c27c41e49a938d257efd725e11286a3f`; the earlier M7B validation record
+is retained afterward as historical evidence. Real-person framing, workstation
+playback, sustained high-resolution rendering, and target NLE behavior remain
+manual gates; synthetic fixtures do not establish those properties.
+
+## PR 36 review remediation — 2026-10-20
+
+All ten review findings were reproduced or confirmed at the baseline and fixed.
+The regressions were observed failing before their causal changes, including an
+actual FFmpeg stem export with mono narration and stereo music. That export
+previously failed the identical-channel check.
+
+| Review thread | Disposition and regression                                                                                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4322173617`  | Fixed: the audio-only renderer forces stereo; real mono/stereo mix and stems have identical channels, sample rates and sample counts.                                                                                      |
+| `4322173624`  | Fixed: preflight uses the renderer's audio/role source selection. Offline picture-only media allows WAV/stems; MP4 still rejects the missing picture.                                                                      |
+| `4322173633`  | Fixed: differing hashes or sizes for the same asset across role receipts abort before publication. A real sequential FFmpeg test changes one shared source between renders.                                                |
+| `4322173637`  | Fixed: Desktop still request identity includes look and caption choices; unchanged retries retain their ID.                                                                                                                |
+| `4322173641`  | Fixed: validated profile quality determines application and renderer encoding even if a separate quality option disagrees.                                                                                                 |
+| `4322173645`  | Fixed: cache pruning enumerates prior-session owned files, expires old previews, removes orphan receipts and caps regular previews at twelve without following symlinks.                                                   |
+| `4322173650`  | Fixed: null and omitted look overrides share saved-look receipt and idempotency semantics.                                                                                                                                 |
+| `4322334041`  | Fixed: crop publication requires a live preview token bound to revision, profile/quality, look/captions, sources and the still frame. Application, HTTP, CLI and Desktop pass the proof; a standalone boolean is rejected. |
+| `4322334055`  | Fixed: frame validation shares complete-frame duration calculation with the renderer; 1.05 seconds at 10 fps rejects frame 10 and permits frame 9.                                                                         |
+| `4322334067`  | Fixed: PNG profiles retain the selected intermediate encoding quality. Desktop preview and still requests share high-detail quality.                                                                                       |
+
+The CLI adds `export --format png --preview` and `--crop-preview-token` for a
+review-then-export workflow across processes. Private preview receipts expire
+after ten minutes and include an output hash. They are validated against the
+current project and source identities before use; this does not claim that a
+human actually inspected the frame.
+
+Focused verification passed in 21 files / 145 tests, covering all renderer
+suites, profile and quality HTTP/CLI integration, film looks, core profiles and
+Desktop component behavior. The complete `pnpm test --maxWorkers=1` run passed
+213 files / 2,951 tests in 293.60 seconds. `pnpm lint`, `pnpm typecheck`,
+`pnpm format:check`, and `pnpm build` passed; the build retains the existing
+Vite chunk-size advisory. The built CLI advertises both crop review flags. The updated
+Playwright crop regression was discovered with `--list`; browser execution is
+reserved for the coordinated integration run. It checks the submitted preview
+token, high-detail encoding, equal preview/still PNG bytes, and unchanged saved
+Composition geometry.
+
+Fresh real FFmpeg evidence was generated with
+`OPENFILM_EXPORT_PROFILES_QA_OUTPUT=/tmp/openfilm-review-audit/pr36/render-evidence pnpm exec tsx scripts/export-profiles-quality.ts`.
+The report is local at `/tmp/openfilm-v1-validation/pr36-render-evidence.log`,
+with synthetic-only outputs under
+`/tmp/openfilm-review-audit/pr36/render-evidence/fb5f4870-98b1-47af-adc2-41e79b89a033`.
+All three MP4 ratios contain 144 decoded frames at 12 fps and last 12 seconds;
+their output hashes match their manifests. The 90×160 still and preview at
+4.5 seconds decode identically. The run preserves the Composition and all
+synthetic source hashes.
+
+The updated fixture deliberately uses mono narration with stereo music. The
+full mix and both stems are stereo 48 kHz, 24-bit PCM, 576,000 samples and
+12.000 seconds:
+
+| Output    | SHA-256                                                            |
+| --------- | ------------------------------------------------------------------ |
+| Mix       | `79888cf3f84af7a8981a94627f5b054d112a189923821a64f772b83010e8259d` |
+| Narration | `f57274dc203485511d5d4e0626b4da4b8fd98d567905bf8c1f6c3d70cb108e22` |
+| Music     | `8a329dfdd442693fc301d1b84e128a5f5287b08cb66e7e46d1909f89ac8adf94` |
+
+## Earlier M7B validation record
 
 ## Contract coverage
 
