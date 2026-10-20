@@ -20,7 +20,9 @@ film.openfilm/
   analysis/
     events.json
     duplicates.json
-  sources/               browser-selected managed source copies
+  sources/               browser copies or collected hash-addressed media
+  fonts/                 hash-addressed fonts in a collected package
+  collect-manifest.json  package hashes, scope and rights receipts only
   versions/              immutable named project snapshots and private index
     index.json           mutable labels and idempotency receipts only
     <version-id>/
@@ -31,16 +33,28 @@ film.openfilm/
     thumbnails/
     proxies/
     preview.mp4
+    export-preview/        short-lived private profile-frame PNG cache
+    export-work/           private staged MP4/PNG/WAV render work
   exports/
     timeline.json | timeline.otio | timeline.fcpxml | timeline.edl
     timeline.<format>.report.json
     film-<unique-id>.mp4  finished playable exports
+    still-<request-id>.png + manifest
+    mix-<request-id>.wav + manifest
+    stems-<request-id>/    aligned role WAVs and manifest
 ```
 
 SQLite may also have active `database.sqlite-wal` and `database.sqlite-shm` files.
 Analysis/cache/export files appear when their workflow runs. Stories and timelines
 currently live in `project.json`; creating the reserved directories does not mean
 they already contain separate canonical documents.
+
+Profile outputs are derived files. Their versioned Export Profile and receipts
+bind output dimensions, frame/time or sample measurements, source hashes and
+warnings without changing Composition/project settings or project schema
+1.0.0. See [Export Profiles](export-profiles.md). Private previews expire and
+can be regenerated; exported stills and WAVs remain in `exports/` until removed
+by the user.
 
 ## Manifest and catalog
 
@@ -49,6 +63,13 @@ they already contain separate canonical documents.
 URI, and display name. Settings contain width, height, and frame rate; new projects
 default to 1920 × 1080 at 30 fps. Stories reference candidate/selected media IDs;
 compositions contain tracks and clips referencing catalog media IDs.
+
+Compositions may also contain additive `graphicScenes`; a scene may include a
+version-1 `photoDepth` recipe tied to a root Image node. Its source, alpha mask
+and optional background remain ordinary local catalog assets with content
+hashes. This optional extension retains project schema 1.0.0: legacy projects
+without scenes or PhotoDepth need no migration, and no derived image bytes are
+embedded in `project.json`.
 
 Optional `projectContentLocale` (`en-US`, `zh-TW`, `ja-JP`) and `filmSettings`
 (`templateId`, `targetDuration`, `maxDuration`) describe new-film defaults without
@@ -160,6 +181,20 @@ external file stays external. IDs and original provenance remain stable. Source
 paths must remain within `sources/`; project cache or arbitrary metadata paths are
 never imported as managed media.
 
+Collect Media packages use the same managed-source boundary. Their optional
+`collect-manifest.json` records selected Stories/Compositions, relative paths,
+content hashes/sizes, required font bindings, explicit rights declarations and
+digests of original URIs. The project catalog contains only referenced assets
+and their selected transcript data; unrelated Library assets, caches, jobs,
+provider credentials and named-version snapshots are not included. Each distinct
+source byte sequence is stored once beneath `sources/<hash-prefix>/`; asset URIs
+remain unique and opaque while their `openfilm.managedSource.relativePath` points
+to the shared source bytes. Font files and their resolver bindings are stored in
+`fonts/` and checked by hash when a collected project opens. These package
+receipts live outside schema 1.0.0 and catalog schema v5; projects without them
+continue to open as before. See [Collect Media](collect-media.md) for the
+directory/ZIP and Verify contract.
+
 ## Validation and migration
 
 `validateProject` checks the current schema and structural/value constraints.
@@ -192,3 +227,12 @@ read/write/read verification is separate from actual NLE behavior: DaVinci Resol
 import and playback have not been verified. See
 [NLE compatibility](nle-compatibility.md) for exact feature support, metadata
 locations, and manual verification steps.
+
+## Native installer storage separation
+
+The M7E RuntimeManifest and bundled executables are app installation resources,
+not project data. Runtime staging and installer packaging do not copy or migrate
+project directories. First-run checks use app-data working storage. Manual app
+rollback preserves projects and relies on existing project/catalog compatibility
+checks; unsupported versions are refused rather than rewritten. See
+[Native Installer](native-installer.md).

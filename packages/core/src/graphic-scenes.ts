@@ -17,6 +17,7 @@ export const GRAPHIC_SCENE_LIMITS = Object.freeze({
   texturePixels: 33_177_600,
   textureBytes: 64 * 1024 * 1024,
   sequenceBytes: 256 * 1024 * 1024,
+  photoMaskPixels: 8_294_400,
 });
 
 export type GraphicEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out";
@@ -56,6 +57,53 @@ export interface GraphicImageNode extends GraphicNodeBase {
   type: "image";
   assetId: string;
 }
+export interface PhotoDepthCamera {
+  /** Normalized composition-space camera offset, bounded to +/- 5%. */
+  x: number;
+  y: number;
+  /** Camera zoom; 1 is neutral and the maximum is 1.12. */
+  scale: number;
+}
+export interface PhotoDepthRegion {
+  /** Normalized coordinates in the original photo. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+interface PhotoDepthBase {
+  version: 1;
+  id: string;
+  nodeId: string;
+  /** Must equal the linked image node's existing scene-local duration. */
+  duration: number;
+  sourceAssetId: string;
+  sourceSha256: string;
+}
+export interface PhotoDepthParallaxRecipe extends PhotoDepthBase {
+  mode: "parallax";
+  maskAssetId: string;
+  maskSha256: string;
+  background:
+    { kind: "source" } | { kind: "asset"; assetId: string; sha256: string };
+  protectedRegion: PhotoDepthRegion;
+  foregroundDepth: number;
+  backgroundDepth: number;
+  amplitude: number;
+  camera: { from: PhotoDepthCamera; to: PhotoDepthCamera };
+  easing: GraphicEasing;
+  fallbackReason?: never;
+}
+export interface PhotoDepthFallbackRecipe extends PhotoDepthBase {
+  mode: "fallback";
+  fallbackReason:
+    | "mask-not-available"
+    | "mask-unreliable"
+    | "background-not-available"
+    | "protected-subject-overlap";
+}
+export type PhotoDepthRecipe =
+  PhotoDepthParallaxRecipe | PhotoDepthFallbackRecipe;
 export interface GraphicTextNode extends GraphicNodeBase {
   type: "text";
   text: string;
@@ -83,6 +131,8 @@ export interface GraphicScene {
   duration: number;
   zIndex: number;
   nodes: GraphicNode[];
+  /** Optional M8A extension. Omitted legacy scenes retain their v1 behavior. */
+  photoDepth?: PhotoDepthRecipe;
 }
 export interface EvaluatedGraphicNode extends GraphicValues {
   id: string;
@@ -292,6 +342,205 @@ function animation(value: unknown, path: string, length: number): void {
   if (total > length + 1e-9) bad(path, "enter and exit durations overlap");
 }
 
+function photoDepth(
+  value: unknown,
+  path: string,
+  scene: Data,
+): PhotoDepthRecipe {
+  const data = record(value, path, [
+    "version",
+    "id",
+    "nodeId",
+    "mode",
+    "duration",
+    "sourceAssetId",
+    "sourceSha256",
+    "maskAssetId",
+    "maskSha256",
+    "background",
+    "protectedRegion",
+    "foregroundDepth",
+    "backgroundDepth",
+    "amplitude",
+    "camera",
+    "easing",
+    "fallbackReason",
+  ]);
+  if (data.version !== 1)
+    bad(`${path}.version`, "unsupported PhotoDepth version");
+  identifier(data.id, `${path}.id`);
+  const nodeId = identifier(data.nodeId, `${path}.nodeId`);
+  const duration = numeric(data.duration, `${path}.duration`, 3, 6);
+  const node = (scene.nodes as GraphicNode[]).find(
+    (item) => item.id === nodeId && item.type === "image",
+  ) as GraphicImageNode | undefined;
+  if (!node) bad(path, "PhotoDepth must reference an image node in this scene");
+  if (Math.abs(node.end - node.start - duration) > 1e-7)
+    bad(`${path}.duration`, "must match the linked image node duration");
+  const sourceAssetId = identifier(data.sourceAssetId, `${path}.sourceAssetId`);
+  if (sourceAssetId !== node.assetId)
+    bad(`${path}.sourceAssetId`, "must match the linked image node source");
+  const hash = (input: unknown, hashPath: string) => {
+    if (typeof input !== "string" || !/^[a-f0-9]{64}$/u.test(input))
+      bad(hashPath, "expected a lowercase SHA-256 digest");
+    return input;
+  };
+  const sourceSha256 = hash(data.sourceSha256, `${path}.sourceSha256`);
+  if (data.mode === "fallback") {
+    for (const field of [
+      "maskAssetId",
+      "maskSha256",
+      "background",
+      "protectedRegion",
+      "foregroundDepth",
+      "backgroundDepth",
+      "amplitude",
+      "camera",
+      "easing",
+    ])
+      if (Object.hasOwn(data, field))
+        bad(
+          `${path}.${field}`,
+          "fallback recipes cannot include parallax fields",
+        );
+    if (
+      data.fallbackReason !== "mask-not-available" &&
+      data.fallbackReason !== "mask-unreliable" &&
+      data.fallbackReason !== "background-not-available" &&
+      data.fallbackReason !== "protected-subject-overlap"
+    )
+      bad(`${path}.fallbackReason`, "expected a supported fallback reason");
+    return {
+      version: 1,
+      id: data.id as string,
+      nodeId,
+      mode: "fallback",
+      duration,
+      sourceAssetId,
+      sourceSha256,
+      fallbackReason: data.fallbackReason,
+    };
+  }
+  if (data.mode !== "parallax") bad(`${path}.mode`, "unknown PhotoDepth mode");
+  if (node.rotation && Math.abs(node.rotation) > 1e-9)
+    bad(path, "PhotoDepth image nodes cannot be rotated in v1");
+  if (node.animation)
+    bad(
+      path,
+      "PhotoDepth camera motion cannot be combined with image-node animation in v1",
+    );
+  if (Object.hasOwn(data, "fallbackReason"))
+    bad(
+      `${path}.fallbackReason`,
+      "parallax recipes cannot carry a fallback reason",
+    );
+  const maskAssetId = identifier(data.maskAssetId, `${path}.maskAssetId`);
+  if (maskAssetId === sourceAssetId)
+    bad(`${path}.maskAssetId`, "mask must be a separate local asset");
+  const maskSha256 = hash(data.maskSha256, `${path}.maskSha256`);
+  const backgroundData = record(data.background, `${path}.background`, [
+    "kind",
+    "assetId",
+    "sha256",
+  ]);
+  let background: PhotoDepthParallaxRecipe["background"];
+  if (backgroundData.kind === "source") {
+    if (Object.keys(backgroundData).some((key) => key !== "kind"))
+      bad(`${path}.background`, "source background accepts only its kind");
+    background = { kind: "source" };
+  } else if (backgroundData.kind === "asset") {
+    const assetId = identifier(
+      backgroundData.assetId,
+      `${path}.background.assetId`,
+    );
+    if (assetId === maskAssetId)
+      bad(
+        `${path}.background.assetId`,
+        "background and mask must be separate assets",
+      );
+    background = {
+      kind: "asset",
+      assetId,
+      sha256: hash(backgroundData.sha256, `${path}.background.sha256`),
+    };
+  } else bad(`${path}.background.kind`, "expected source or asset");
+  const regionData = record(data.protectedRegion, `${path}.protectedRegion`, [
+    "x",
+    "y",
+    "width",
+    "height",
+  ]);
+  const region = {
+    x: numeric(regionData.x, `${path}.protectedRegion.x`, 0, 1),
+    y: numeric(regionData.y, `${path}.protectedRegion.y`, 0, 1),
+    width: numeric(
+      regionData.width,
+      `${path}.protectedRegion.width`,
+      Number.MIN_VALUE,
+      1,
+    ),
+    height: numeric(
+      regionData.height,
+      `${path}.protectedRegion.height`,
+      Number.MIN_VALUE,
+      1,
+    ),
+  };
+  if (region.x + region.width > 1 + 1e-9 || region.y + region.height > 1 + 1e-9)
+    bad(`${path}.protectedRegion`, "region exceeds the original photo bounds");
+  const foregroundDepth = numeric(
+    data.foregroundDepth,
+    `${path}.foregroundDepth`,
+    1,
+    1.35,
+  );
+  const backgroundDepth = numeric(
+    data.backgroundDepth,
+    `${path}.backgroundDepth`,
+    0,
+    0.65,
+  );
+  if (foregroundDepth <= backgroundDepth)
+    bad(`${path}.foregroundDepth`, "foreground must be nearer than background");
+  const amplitude = numeric(data.amplitude, `${path}.amplitude`, 0, 1);
+  if (
+    !["linear", "ease-in", "ease-out", "ease-in-out"].includes(
+      String(data.easing),
+    )
+  )
+    bad(`${path}.easing`, "unknown easing");
+  const cameraData = record(data.camera, `${path}.camera`, ["from", "to"]);
+  const cameraPoint = (input: unknown, pointPath: string): PhotoDepthCamera => {
+    const point = record(input, pointPath, ["x", "y", "scale"]);
+    return {
+      x: numeric(point.x, `${pointPath}.x`, -0.05, 0.05),
+      y: numeric(point.y, `${pointPath}.y`, -0.05, 0.05),
+      scale: numeric(point.scale, `${pointPath}.scale`, 1, 1.12),
+    };
+  };
+  return {
+    version: 1,
+    id: data.id as string,
+    nodeId,
+    mode: "parallax",
+    duration,
+    sourceAssetId,
+    sourceSha256,
+    maskAssetId,
+    maskSha256,
+    background,
+    protectedRegion: region,
+    foregroundDepth,
+    backgroundDepth,
+    amplitude,
+    camera: {
+      from: cameraPoint(cameraData.from, `${path}.camera.from`),
+      to: cameraPoint(cameraData.to, `${path}.camera.to`),
+    },
+    easing: data.easing as GraphicEasing,
+  };
+}
+
 /** Strict data admission, bounded before recursive traversal or cloning. */
 export function validateGraphicScenes(
   value: unknown,
@@ -311,6 +560,7 @@ export function validateGraphicScenes(
       "duration",
       "zIndex",
       "nodes",
+      "photoDepth",
     ]);
     if (scene.version !== 1)
       bad(`${path}.version`, "unsupported graphic scene version");
@@ -414,6 +664,8 @@ export function validateGraphicScenes(
       }
     };
     visit(scene.nodes, `${path}.nodes`, 1);
+    if (Object.hasOwn(scene, "photoDepth"))
+      photoDepth(scene.photoDepth, `${path}.photoDepth`, scene);
   }
   return structuredClone(entries) as GraphicScene[];
 }
@@ -431,7 +683,14 @@ export function graphicSceneAssetIds(
       if (node.type === "group") visit(node.children);
     }
   };
-  for (const scene of scenes) visit(scene.nodes);
+  for (const scene of scenes) {
+    visit(scene.nodes);
+    if (scene.photoDepth?.mode === "parallax") {
+      ids.add(scene.photoDepth.maskAssetId!);
+      if (scene.photoDepth.background?.kind === "asset")
+        ids.add(scene.photoDepth.background.assetId);
+    }
+  }
   return [...ids];
 }
 
@@ -442,6 +701,60 @@ export function graphicEasing(easing: GraphicEasing, progress: number): number {
   if (easing === "ease-in-out")
     return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
   return t;
+}
+
+export interface EvaluatedPhotoDepth {
+  progress: number;
+  camera: PhotoDepthCamera;
+  foreground: { x: number; y: number; scale: number };
+  background: { x: number; y: number; scale: number };
+}
+
+/** Pure frame(t) camera interpolation tied to the image node's existing time range. */
+export function evaluatePhotoDepthAtTime(
+  scene: GraphicScene,
+  time: number,
+): EvaluatedPhotoDepth | null {
+  const recipe = scene.photoDepth;
+  if (!recipe || recipe.mode !== "parallax") return null;
+  const find = (
+    nodes: readonly GraphicNode[],
+  ): GraphicImageNode | undefined => {
+    for (const node of nodes) {
+      if (node.id === recipe.nodeId && node.type === "image") return node;
+      if (node.type === "group") {
+        const child = find(node.children);
+        if (child) return child;
+      }
+    }
+    return undefined;
+  };
+  const node = find(scene.nodes);
+  if (!node) return null;
+  numeric(time, "time", 0, Number.MAX_VALUE);
+  const elapsed = time - scene.start - node.start;
+  if (elapsed < 0 || elapsed >= recipe.duration) return null;
+  const progress = graphicEasing(recipe.easing!, elapsed / recipe.duration);
+  const interpolate = (from: number, to: number) =>
+    (from + (to - from) * progress) * recipe.amplitude!;
+  const camera = {
+    x: interpolate(recipe.camera!.from.x, recipe.camera!.to.x),
+    y: interpolate(recipe.camera!.from.y, recipe.camera!.to.y),
+    scale:
+      1 +
+      interpolate(recipe.camera!.from.scale - 1, recipe.camera!.to.scale - 1),
+  };
+  const layer = (depth: number) => ({
+    x: camera.x * depth,
+    y: camera.y * depth,
+    scale: 1 + (camera.scale - 1) * depth,
+  });
+  return {
+    progress,
+    camera,
+    foreground: layer(recipe.foregroundDepth!),
+    background: layer(recipe.backgroundDepth!),
+  };
 }
 
 /** Pure frame(t) over admitted data: no clock, accumulated state or platform IO. */

@@ -196,3 +196,12 @@ files` folder if the bundle moved between machines.
    by the automated gate.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## M7C optional fidelity exchange
+
+The ordinary exports described above remain metadata-only for advanced edits.
+The additional [reviewed handoff](nle-handoff.md) offers explicit opaque precomp
+ranges, aligned full mix, native embedded video audio projection and caption
+sidecars with original effect/source provenance. This does not reconstruct native
+Resolve keyframes or establish actual NLE import success. See the [separate
+M7C workstation gate](validation-nle-handoff.md#resolve-workstation-gate--not-run).

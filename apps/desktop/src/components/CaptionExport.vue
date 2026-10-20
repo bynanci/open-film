@@ -7,6 +7,7 @@ import type {
   CaptionSnapshotPage,
 } from "@openfilm/application";
 import { api, ApiError, captionDownloadUrl } from "../api";
+import LocalDownload from "./LocalDownload.vue";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 
 const props = defineProps<{
@@ -499,17 +500,19 @@ function issueText(issue: CaptionIssue) {
         <p>{{ t("captions.saved") }}</p>
         <code>{{ publication.fileName }}</code>
         <div class="caption-actions">
-          <a
+          <LocalDownload
             data-testid="caption-download"
             :href="captionDownloadUrl(publication.id, projectId, 'captions')"
-            download
-            >{{ t("captions.download") }}</a
+            :filename="publication.fileName"
+            :owner="projectId"
+            >{{ t("captions.download") }}</LocalDownload
           >
-          <a
+          <LocalDownload
             data-testid="caption-manifest"
             :href="captionDownloadUrl(publication.id, projectId, 'manifest')"
-            download
-            >{{ t("captions.downloadManifest") }}</a
+            filename="captions.manifest.json"
+            :owner="projectId"
+            >{{ t("captions.downloadManifest") }}</LocalDownload
           >
         </div>
       </div>

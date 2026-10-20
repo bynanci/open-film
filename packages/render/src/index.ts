@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -23,6 +24,11 @@ export {
   type RenderQuality,
   type RenderQualityProfile,
 } from "./quality.js";
+export {
+  publishRenderPair,
+  validateRenderTargets,
+  RenderPublicationRecoveryError,
+} from "./publication.js";
 import {
   publishRenderPair,
   validateRenderTargets,
@@ -32,12 +38,23 @@ import {
   captureRenderSources,
   verifyRenderSources,
   writeRenderManifest,
+  canonicalRenderFonts,
+  canonicalRenderFontBindings,
+  type RenderFontBinding,
   type RenderFontEvidence,
   type RenderProjectEvidence,
   type RenderLookEvidence,
 } from "./manifest.js";
 export {
+  canonicalRenderFonts,
+  canonicalRenderFontBindings,
+  type RenderFontEvidence,
+  type RenderFontBinding,
+  type RenderFontUsage,
+} from "./manifest.js";
+export {
   createTitleOverlay,
+  validateTitleOutputDimensions,
   inspectTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
@@ -51,13 +68,19 @@ import {
   CAPTION_LIMITS,
   isCaptionTextValid,
   type FilmLook,
+  type ExportProfile,
+  validateExportProfile,
+  type AudioAutomation,
   frameAlignedDuration,
+  captionFrameRange,
   type Clip,
   type Composition,
   type MediaAsset,
+  type TitleStyle,
 } from "@openfilm/core";
 import {
   checkAbort,
+  hashFile,
   localPath,
   runProcess,
   previewVideoFilters,
@@ -70,6 +93,20 @@ export interface RenderSettings {
   height: number;
   frameRate: number;
 }
+/** An application-approved immutable plan, checked again at publication. */
+export interface RenderSnapshot {
+  compositionSha256: string;
+  settingsSha256: string;
+  assetsSha256: string;
+  sources?: ReadonlyArray<{ assetId: string; sha256: string; size: number }>;
+  /** A reviewed picture approves visual inputs; a delivered MP4 also captures audio. */
+  sourceScope?: "visual";
+  /** Actual reviewed font files/faces; paths may change when media is collected. */
+  fonts?: ReadonlyArray<RenderFontEvidence>;
+  /** Actual file/face for every title, caption cue and scene text node. */
+  fontBindings?: ReadonlyArray<RenderFontBinding>;
+  assertCurrent: () => void;
+}
 export interface RenderOptions {
   signal?: AbortSignal;
   onProgress?: (progress: number) => void;
@@ -80,6 +117,19 @@ export interface RenderOptions {
   quality?: RenderQuality;
   /** Renders one native caption language; omitted selects the first saved track. */
   captionTrackId?: string | null;
+  /** Optional package-local font resolver; callers must supply hash-verified paths. */
+  fontPathForStyle?: (style: TitleStyle | undefined) => string | undefined;
+
+  /** Render-only output framing; saved Composition geometry is not changed. */
+  exportProfile?: ExportProfile;
+  /** Exports the exact existing audio mix graph as PCM WAV. */
+  audioOnly?: boolean;
+  /** Internal picture-only intermediate for frame previews and PNG delivery. */
+  videoOnly?: boolean;
+  /** Optional role filter for a separate WAV stem. */
+  audioRole?: AudioAutomation["role"];
+  /** Internal snapshot binding for a reviewed preview and its delivered pixels. */
+  snapshot?: RenderSnapshot;
 }
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
@@ -115,6 +165,136 @@ function hasAudio(asset: MediaAsset): boolean {
   );
 }
 
+function clipAudioRole(
+  trackType: Composition["tracks"][number]["type"],
+  clip: Clip,
+): AudioAutomation["role"] {
+  return (
+    clip.audioAutomation?.role ?? (trackType === "music" ? "music" : "dialogue")
+  );
+}
+
+/** Sources consumed by the audio graph, shared with application preflight. */
+export function audioSourceAssetIds(
+  composition: Composition,
+  assets: MediaAsset[],
+  role?: AudioAutomation["role"],
+): Set<string> {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  return new Set(
+    composition.tracks
+      .filter((track) => track.type !== "titles")
+      .flatMap((track) =>
+        track.clips.flatMap((clip) => {
+          const asset = assetMap.get(clip.assetId);
+          return asset &&
+            (clip.transform?.volume ?? 1) !== 0 &&
+            hasAudio(asset) &&
+            (!role || clipAudioRole(track.type, clip) === role)
+            ? [clip.assetId]
+            : [];
+        }),
+      ),
+  );
+}
+
+/** Sources consumed by the picture graph, shared with frame-export preflight. */
+export function visualSourceAssetIds(
+  composition: Composition,
+  assets: MediaAsset[],
+): Set<string> {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  return new Set([
+    ...composition.tracks
+      .filter(
+        (track) =>
+          track.type !== "titles" &&
+          track.type !== "audio" &&
+          track.type !== "music",
+      )
+      .flatMap((track) =>
+        track.clips.flatMap((clip) =>
+          assetMap.get(clip.assetId)?.mediaType === "audio"
+            ? []
+            : [
+                clip.assetId,
+                ...(clip.layout?.secondary
+                  ? [clip.layout.secondary.assetId]
+                  : []),
+              ],
+        ),
+      ),
+    ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+  ]);
+}
+
+function outputFrameFilters(profile: ExportProfile): string[] {
+  if (profile.framing === "contain")
+    return [
+      `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease`,
+      `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black`,
+      "setsar=1",
+    ];
+  return [
+    `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`,
+    `crop=${profile.width}:${profile.height}`,
+    "setsar=1",
+  ];
+}
+
+/** Static source/track capabilities shared by rendering and render-required review. */
+export function validateRenderClipCapabilities(
+  composition: Composition,
+  assets: readonly MediaAsset[],
+  options: Pick<RenderOptions, "audioOnly" | "videoOnly" | "audioRole"> = {},
+): void {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  for (const track of composition.tracks)
+    for (const clip of track.clips) {
+      if (options.audioOnly && track.type === "titles") continue;
+      if (track.type === "titles") {
+        if (clip.layout || clip.motion || clip.audioAutomation)
+          throw new Error(
+            `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
+          );
+        continue;
+      }
+      const asset = assetMap.get(clip.assetId);
+      if (!asset)
+        throw new Error(
+          `Clip ${clip.id} references missing asset ${clip.assetId}`,
+        );
+      if (
+        options.videoOnly &&
+        (track.type === "audio" ||
+          track.type === "music" ||
+          asset.mediaType === "audio")
+      )
+        continue;
+      if (
+        options.audioOnly &&
+        ((clip.transform?.volume ?? 1) === 0 ||
+          !hasAudio(asset) ||
+          (options.audioRole &&
+            clipAudioRole(track.type, clip) !== options.audioRole))
+      )
+        continue;
+      const issue = previewIssue(asset);
+      if (issue) throw new Error(`${asset.name}: ${issue}`);
+      if (
+        (clip.layout || clip.motion) &&
+        (asset.mediaType !== "image" || track.type !== "video")
+      )
+        throw new Error(
+          `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
+        );
+      if (clip.audioAutomation && !hasAudio(asset))
+        throw new Error(
+          `Clip ${clip.id}: audio automation requires an audio stream.`,
+        );
+    }
+}
+
 /** A preview adapter; originals are inputs and all editing is expressed as filters. */
 export class FFmpegRenderer {
   async render(
@@ -125,19 +305,71 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
-    const encoding = resolveRenderQuality(options.quality);
     graphicFrameRanges(composition, settings);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
+    const snapshot = options.snapshot
+      ? {
+          ...options.snapshot,
+          sources:
+            options.snapshot.sources &&
+            structuredClone(options.snapshot.sources),
+          fonts:
+            options.snapshot.fonts && structuredClone(options.snapshot.fonts),
+          fontBindings:
+            options.snapshot.fontBindings &&
+            structuredClone(options.snapshot.fontBindings),
+        }
+      : undefined;
+    snapshot?.assertCurrent();
+    if (snapshot?.fonts && !snapshot.fontBindings)
+      throw new Error(
+        "Crop approval has no font usage bindings; render a new export frame.",
+      );
+    const sha256 = (value: unknown) =>
+      createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    if (
+      snapshot &&
+      (snapshot.compositionSha256 !== sha256(composition) ||
+        snapshot.settingsSha256 !== sha256(settings) ||
+        snapshot.assetsSha256 !== sha256(assets))
+    )
+      throw new Error(
+        "Render plan changed after crop approval; review a new export frame.",
+      );
+    const exportProfile = options.exportProfile
+      ? validateExportProfile(structuredClone(options.exportProfile))
+      : undefined;
+    const encoding = resolveRenderQuality(
+      exportProfile?.quality ?? options.quality,
+    );
+    const audioOnly = options.audioOnly ?? false;
+    const videoOnly = options.videoOnly ?? false;
+    if (audioOnly && videoOnly)
+      throw new Error("A render cannot be both audio-only and picture-only.");
+    if (exportProfile?.format === "png")
+      throw new Error(
+        "Still PNG export requires an application-selected frame time.",
+      );
+    if (
+      (exportProfile?.format === "wav" ||
+        exportProfile?.format === "audio-stems") !== audioOnly
+    )
+      throw new Error(
+        "WAV and stem profiles require the audio-only export path.",
+      );
+    if (options.audioRole && !audioOnly)
+      throw new Error("Audio role filtering is only available for WAV stems.");
     const project = options.project ? { ...options.project } : undefined;
     const lookOverride =
       options.lookOverride == null
         ? null
         : validateFilmLook(structuredClone(options.lookOverride));
     const nativeCaptionTracks = composition.captionTracks ?? [];
-    const selectedCaptionTrackId =
-      options.captionTrackId === undefined
+    const selectedCaptionTrackId = audioOnly
+      ? undefined
+      : options.captionTrackId === undefined
         ? nativeCaptionTracks[0]?.id
         : (options.captionTrackId ?? undefined);
     const selectedCaptionTrack = selectedCaptionTrackId
@@ -185,31 +417,57 @@ export class FFmpegRenderer {
       settings.height % 2
     )
       throw new Error("Render dimensions must be even integers");
-    const outputDuration = frameAlignedDuration(
-      composition.duration,
-      settings.frameRate,
+    const outputFrameRate = Number(
+      number(exportProfile?.frameRate ?? settings.frameRate),
     );
-    const outputFrameRate = Number(number(settings.frameRate));
+    const renderFrameRate = Number(number(settings.frameRate));
+    const outputDuration = audioOnly
+      ? composition.duration
+      : frameAlignedDuration(composition.duration, outputFrameRate);
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
-    const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
-    const usedIds = new Set(
-      composition.tracks
-        .filter((track) => track.type !== "titles")
-        .flatMap((track) =>
-          track.clips.flatMap((clip) => [
-            clip.assetId,
-            ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
-          ]),
-        ),
+    const outputFrameCount = Math.max(
+      1,
+      Math.round(outputDuration * outputFrameRate),
     );
-    for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
-      if (!assetMap.has(id))
-        throw new Error("Graphic image is unavailable in the local catalog.");
-      usedIds.add(id);
-    }
+    const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+    const usedIds = audioOnly
+      ? audioSourceAssetIds(composition, assets, options.audioRole)
+      : videoOnly
+        ? visualSourceAssetIds(composition, assets)
+        : new Set(
+            composition.tracks
+              .filter((track) => track.type !== "titles")
+              .flatMap((track) =>
+                track.clips.flatMap((clip) => {
+                  return [
+                    clip.assetId,
+                    ...(clip.layout?.secondary
+                      ? [clip.layout.secondary.assetId]
+                      : []),
+                  ];
+                }),
+              ),
+          );
+    if (!audioOnly)
+      for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
+        if (!assetMap.has(id))
+          throw new Error("Graphic image is unavailable in the local catalog.");
+        usedIds.add(id);
+      }
     const fonts: RenderFontEvidence[] = [];
+    const fontBindings: RenderFontBinding[] = [];
     const warnings: string[] = [];
+    if (!audioOnly && exportProfile) {
+      const savedRatio = settings.width / settings.height;
+      const outputRatio = exportProfile.width / exportProfile.height;
+      if (Math.abs(savedRatio - outputRatio) > 0.00001)
+        warnings.push(
+          exportProfile.framing === "contain"
+            ? "Profile letterboxes the saved Composition frame with black padding."
+            : "Explicit center crop may trim protected subjects or subtitle safe areas; review the export frame.",
+        );
+    }
     const output = resolve(outputPath);
     for (const asset of assets) {
       if (
@@ -221,20 +479,30 @@ export class FFmpegRenderer {
     }
     // Capability checks precede source IO, preserving actionable unsupported-360
     // errors even when the original source has not been mounted.
+    validateRenderClipCapabilities(composition, assets, {
+      audioOnly,
+      videoOnly,
+      audioRole: options.audioRole,
+    });
     for (const track of composition.tracks)
       for (const clip of track.clips) {
-        if (track.type === "titles") {
-          if (clip.layout || clip.motion || clip.audioAutomation)
-            throw new Error(
-              `Clip ${clip.id}: title tracks do not support photo layout, photo motion or audio automation.`,
-            );
+        if (track.type === "titles") continue;
+        const asset = assetMap.get(clip.assetId)!;
+        if (
+          videoOnly &&
+          (track.type === "audio" ||
+            track.type === "music" ||
+            asset.mediaType === "audio")
+        )
           continue;
-        }
-        const asset = assetMap.get(clip.assetId);
-        if (!asset)
-          throw new Error(
-            `Clip ${clip.id} references missing asset ${clip.assetId}`,
-          );
+        if (
+          audioOnly &&
+          ((clip.transform?.volume ?? 1) === 0 ||
+            !hasAudio(asset) ||
+            (options.audioRole &&
+              clipAudioRole(track.type, clip) !== options.audioRole))
+        )
+          continue;
         if (
           track.type !== "audio" &&
           track.type !== "music" &&
@@ -256,24 +524,39 @@ export class FFmpegRenderer {
             matrix: filmLookMatrix(effective.look),
           });
         }
-        const issue = previewIssue(asset);
-        if (issue) throw new Error(`${asset.name}: ${issue}`);
-        if (
-          (clip.layout || clip.motion) &&
-          (asset.mediaType !== "image" || track.type !== "video")
-        )
-          throw new Error(
-            `Clip ${clip.id}: photo layout and motion require a still image on a story video track.`,
-          );
-        if (clip.audioAutomation && !hasAudio(asset))
-          throw new Error(
-            `Clip ${clip.id}: audio automation requires an audio stream.`,
-          );
       }
     const sources = await captureRenderSources(
       assets.filter((asset) => usedIds.has(asset.id)),
       options.signal,
     );
+    if (snapshot?.sources) {
+      const expected = new Map(
+        snapshot.sources.map((source) => [source.assetId, source]),
+      );
+      const visualIds =
+        snapshot.sourceScope === "visual"
+          ? visualSourceAssetIds(composition, assets)
+          : undefined;
+      const approvedSources = visualIds
+        ? sources.filter((source) => visualIds.has(source.assetId))
+        : sources;
+      if (
+        expected.size !== snapshot.sources.length ||
+        expected.size !== approvedSources.length ||
+        approvedSources.some((source) => {
+          const approved = expected.get(source.assetId);
+          return (
+            !approved ||
+            approved.sha256 !== source.sha256 ||
+            approved.size !== source.size
+          );
+        })
+      )
+        throw new Error(
+          "Source changed after crop approval; review a new export frame.",
+        );
+    }
+    snapshot?.assertCurrent();
     await mkdir(dirname(output), { recursive: true });
     await validateRenderTargets(output);
     // Different paths can still name one original file (hard links or a parent
@@ -306,7 +589,7 @@ export class FFmpegRenderer {
     }
     const work = join(dirname(output), `.render-${randomUUID()}`);
     await mkdir(work);
-    const temporaryOutput = join(work, "preview.mp4");
+    const temporaryOutput = join(work, audioOnly ? "mix.wav" : "preview.mp4");
     const args: string[] = [
       "-v",
       "error",
@@ -317,9 +600,11 @@ export class FFmpegRenderer {
       "pipe:1",
       "-nostats",
     ];
-    const filters: string[] = [
-      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
-    ];
+    const filters: string[] = audioOnly
+      ? []
+      : [
+          `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
+        ];
     const audioLabels: string[] = [];
     let videoLabel = "base";
     let inputIndex = 0;
@@ -328,6 +613,7 @@ export class FFmpegRenderer {
     const pendingTitles: Array<() => Promise<void>> = [];
     try {
       for (const track of composition.tracks) {
+        if (audioOnly && track.type === "titles") continue;
         const clips = [...track.clips].sort(
           (a, b) => a.timelineStart - b.timelineStart,
         );
@@ -335,13 +621,13 @@ export class FFmpegRenderer {
           const clip = clips[clipIndex]!;
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
-          const startFrame = Math.round(start * outputFrameRate);
+          const startFrame = Math.round(start * renderFrameRate);
           // Gate by rounded output ticks: 111/30 can compare below literal 3.7.
           // FFmpeg 6 evaluates enable on both inputs, whose n counters differ;
           // their shifted timestamps share the same output timeline.
           const outputFrame = `round(t*${number(settings.frameRate)})`;
           const endFrame = (length: number) =>
-            startFrame + Math.ceil((length - 1e-9) * outputFrameRate);
+            startFrame + Math.ceil((length - 1e-9) * renderFrameRate);
           const duration = clip.timelineDuration;
           const suffix = sequence++;
           const addTitle = async () => {
@@ -352,11 +638,18 @@ export class FFmpegRenderer {
               clip.titleStyle,
               settings,
               titleFile,
+              {
+                fontPath: options.fontPathForStyle?.(clip.titleStyle),
+              },
             );
             fonts.push({
               family: title.font.family,
               postscriptName: title.font.postscriptName,
               sha256: title.font.sha256,
+            });
+            fontBindings.push({
+              ...fonts.at(-1)!,
+              usage: ["title", track.id, clip.id],
             });
             warnings.push(...title.warnings);
             args.push(
@@ -402,6 +695,23 @@ export class FFmpegRenderer {
             throw new Error(
               `Clip ${clip.id} references missing asset ${clip.assetId}`,
             );
+          if (
+            videoOnly &&
+            (track.type === "audio" ||
+              track.type === "music" ||
+              asset.mediaType === "audio")
+          ) {
+            pendingTitles.push(addTitle);
+            continue;
+          }
+          if (
+            audioOnly &&
+            ((clip.transform?.volume ?? 1) === 0 ||
+              !hasAudio(asset) ||
+              (options.audioRole &&
+                clipAudioRole(track.type, clip) !== options.audioRole))
+          )
+            continue;
           const issue = previewIssue(asset);
           if (issue) throw new Error(`${asset.name}: ${issue}`);
           const sourceIn = clip.sourceIn ?? 0;
@@ -416,6 +726,7 @@ export class FFmpegRenderer {
           if (asset.duration && sourceOut > asset.duration + 0.05)
             throw new Error(`Clip ${clip.id} trim exceeds the source duration`);
           const visual =
+            !audioOnly &&
             track.type !== "audio" &&
             track.type !== "music" &&
             asset.mediaType !== "audio";
@@ -522,8 +833,8 @@ export class FFmpegRenderer {
             );
             videoLabel = merged;
           }
-          pendingTitles.push(addTitle);
-          if (hasAudio(asset)) {
+          if (!audioOnly) pendingTitles.push(addTitle);
+          if (!videoOnly && hasAudio(asset)) {
             const label = `audio${suffix}`;
             const audioFilters = [
               `atrim=start=${number(sourceIn)}:end=${number(sourceOut)}`,
@@ -540,47 +851,53 @@ export class FFmpegRenderer {
           }
         }
       }
-      for (const addTitle of pendingTitles) await addTitle();
-      const graphics = await prepareGraphicScenes(
-        composition,
-        assets,
-        settings,
-        work,
-        { signal: options.signal },
-      );
-      for (const source of graphics.sources)
-        if (
-          sources.find((item) => item.assetId === source.assetId)?.sha256 !==
-          source.sha256
-        )
-          throw new Error(
-            "Graphic source changed between manifest capture and image preparation.",
+      if (!audioOnly) {
+        for (const addTitle of pendingTitles) await addTitle();
+        const graphics = await prepareGraphicScenes(
+          composition,
+          assets,
+          settings,
+          work,
+          {
+            signal: options.signal,
+            fontPathForStyle: options.fontPathForStyle,
+          },
+        );
+        for (const source of graphics.sources)
+          if (
+            sources.find((item) => item.assetId === source.assetId)?.sha256 !==
+            source.sha256
+          )
+            throw new Error(
+              "Graphic source changed between manifest capture and image preparation.",
+            );
+        fonts.push(...graphics.fonts);
+        fontBindings.push(...graphics.fontBindings);
+        warnings.push(...graphics.warnings);
+        for (const [index, sequence] of (
+          await writeGraphicSequences(graphics, work, options)
+        ).entries()) {
+          args.push(
+            "-framerate",
+            number(settings.frameRate),
+            "-threads",
+            "1",
+            "-i",
+            sequence.pattern,
           );
-      fonts.push(...graphics.fonts);
-      warnings.push(...graphics.warnings);
-      for (const [index, sequence] of (
-        await writeGraphicSequences(graphics, work, options)
-      ).entries()) {
-        args.push(
-          "-framerate",
-          number(settings.frameRate),
-          "-threads",
-          "1",
-          "-i",
-          sequence.pattern,
-        );
-        const input = inputIndex++;
-        const label = `graphic${index}`;
-        filters.push(
-          `[${input}:v]format=rgba,setpts=PTS-STARTPTS+${sequence.start}[${label}-source]`,
-        );
-        filters.push(
-          `[${videoLabel}][${label}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(round(t*${number(settings.frameRate)}),${sequence.start})*lt(round(t*${number(settings.frameRate)}),${sequence.end})'[${label}]`,
-        );
-        videoLabel = label;
+          const input = inputIndex++;
+          const label = `graphic${index}`;
+          filters.push(
+            `[${input}:v]format=rgba,setpts=PTS-STARTPTS+${sequence.start}[${label}-source]`,
+          );
+          filters.push(
+            `[${videoLabel}][${label}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(round(t*${number(settings.frameRate)}),${sequence.start})*lt(round(t*${number(settings.frameRate)}),${sequence.end})'[${label}]`,
+          );
+          videoLabel = label;
+        }
+        await graphics.verifySources();
       }
-      await graphics.verifySources();
-      if (selectedCaptionTrack) {
+      if (!audioOnly && selectedCaptionTrack) {
         const outputFrame = `round(t*${number(settings.frameRate)})`;
         const cues = [...selectedCaptionTrack.cues].sort(
           (first, second) =>
@@ -589,11 +906,10 @@ export class FFmpegRenderer {
         for (let index = 0; index < cues.length; index++) {
           checkAbort(options.signal);
           const cue = cues[index]!;
-          const startFrame = Math.ceil(
-            (cue.startMs * settings.frameRate) / 1000 - 1e-9,
-          );
-          const endFrame = Math.ceil(
-            (cue.endMs * settings.frameRate) / 1000 - 1e-9,
+          const { startFrame, endFrame } = captionFrameRange(
+            cue.startMs,
+            cue.endMs,
+            settings.frameRate,
           );
           if (endFrame <= startFrame) {
             warnings.push(
@@ -607,11 +923,18 @@ export class FFmpegRenderer {
             selectedCaptionTrack.style,
             settings,
             join(work, `${suffix}.png`),
+            {
+              fontPath: options.fontPathForStyle?.(selectedCaptionTrack.style),
+            },
           );
           fonts.push({
             family: title.font.family,
             postscriptName: title.font.postscriptName,
             sha256: title.font.sha256,
+          });
+          fontBindings.push({
+            ...fonts.at(-1)!,
+            usage: ["caption", selectedCaptionTrack.id, cue.id],
           });
           warnings.push(...title.warnings);
           for (const warning of cue.warnings ?? [])
@@ -640,12 +963,25 @@ export class FFmpegRenderer {
           videoLabel = suffix;
         }
       }
-      filters.push(`[${videoLabel}]format=yuv420p[vout]`);
-      if (audioLabels.length)
+      if (!audioOnly) {
+        const finalVideoFilters = exportProfile
+          ? [
+              // Pad before fps rounds the composed EOF: FFmpeg 6 can otherwise
+              // discard the only frame. Trim keeps the exact complete count.
+              "tpad=stop_mode=clone:stop=-1",
+              `fps=${number(outputFrameRate)}:round=near`,
+              ...outputFrameFilters(exportProfile),
+              "format=yuv420p",
+              `trim=end_frame=${outputFrameCount}`,
+            ]
+          : ["format=yuv420p"];
+        filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
+      }
+      if (!videoOnly && audioLabels.length)
         filters.push(
           `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=${number(composition.duration)}[aout]`,
         );
-      else
+      else if (!videoOnly)
         filters.push(
           `anullsrc=r=48000:cl=stereo,atrim=duration=${number(composition.duration)}[aout]`,
         );
@@ -654,33 +990,49 @@ export class FFmpegRenderer {
         "1",
         "-filter_complex",
         filters.join(";"),
-        "-map",
-        "[vout]",
-        "-map",
-        "[aout]",
-        "-c:v",
-        encoding.video,
-        "-threads",
-        "1",
-        "-preset",
-        encoding.preset,
-        "-crf",
-        String(encoding.crf),
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        number(settings.frameRate),
-        "-c:a",
-        "aac",
-        "-ar",
-        "48000",
-        "-t",
-        number(outputDuration),
-        "-movflags",
-        "+faststart",
-        "-y",
-        temporaryOutput,
       );
+      if (!audioOnly)
+        args.push(
+          "-map",
+          "[vout]",
+          "-c:v",
+          encoding.video,
+          "-threads",
+          "1",
+          "-preset",
+          encoding.preset,
+          "-crf",
+          String(encoding.crf),
+          "-pix_fmt",
+          "yuv420p",
+          "-r",
+          number(outputFrameRate),
+        );
+      if (!videoOnly) args.push("-map", "[aout]");
+      if (audioOnly)
+        args.push(
+          "-vn",
+          "-c:a",
+          "pcm_s24le",
+          "-ar",
+          "48000",
+          "-ac",
+          "2",
+          "-t",
+          number(outputDuration),
+          "-y",
+          temporaryOutput,
+        );
+      else
+        args.push(
+          ...(videoOnly ? ["-an"] : ["-c:a", "aac", "-ar", "48000"]),
+          "-t",
+          number(outputDuration),
+          "-movflags",
+          "+faststart",
+          "-y",
+          temporaryOutput,
+        );
       let progressBuffer = "";
       let lastProgress = -1;
       const publishProgress = (value: number) => {
@@ -693,6 +1045,22 @@ export class FFmpegRenderer {
           /* Progress observers do not own the render operation. */
         }
       };
+      if (
+        snapshot?.fontBindings &&
+        sha256(canonicalRenderFontBindings(fontBindings)) !==
+          sha256(canonicalRenderFontBindings(snapshot.fontBindings))
+      )
+        throw new Error(
+          "Rendered font assignments changed after crop approval; render a new export frame.",
+        );
+      if (
+        snapshot?.fonts &&
+        sha256(canonicalRenderFonts(fonts)) !==
+          sha256(canonicalRenderFonts(snapshot.fonts))
+      )
+        throw new Error(
+          "Rendered fonts changed after crop approval; render a new export frame.",
+        );
       await runProcess("ffmpeg", args, {
         signal: options.signal,
         timeoutMs: 1800000,
@@ -719,7 +1087,6 @@ export class FFmpegRenderer {
         },
       });
       checkAbort(options.signal);
-      await graphics.verifySources();
       await verifyRenderSources(sources);
       const manifestPath = join(work, "manifest.json");
       await writeRenderManifest(
@@ -734,8 +1101,37 @@ export class FFmpegRenderer {
         project,
         { override: lookOverride, clips: looks },
         encoding,
+        {
+          format: audioOnly ? "wav" : "mp4",
+          fontBindings,
+          ...(videoOnly ? { videoOnly } : {}),
+          ...(exportProfile ? { exportProfile } : {}),
+          ...(options.audioRole ? { audioRole: options.audioRole } : {}),
+        },
       );
-      await publishRenderPair(temporaryOutput, manifestPath, output, work);
+      if (snapshot?.sources)
+        for (const source of sources)
+          if (
+            (await hashFile(localPath(source.uri), options.signal)) !==
+            source.sha256
+          )
+            throw new Error(`Source changed during render: ${source.name}`);
+      await publishRenderPair(temporaryOutput, manifestPath, output, work, {
+        assertCurrent:
+          snapshot &&
+          (() => {
+            checkAbort(options.signal);
+            snapshot.assertCurrent();
+            for (const source of sources) {
+              const current = statSync(localPath(source.uri));
+              if (
+                current.size !== source.size ||
+                current.mtime.toISOString() !== source.modifiedAt
+              )
+                throw new Error(`Source changed during render: ${source.name}`);
+            }
+          }),
+      });
       return output;
     } catch (error) {
       retainWork = error instanceof RenderPublicationRecoveryError;

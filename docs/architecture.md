@@ -456,6 +456,21 @@ for a paused, current saved-revision frame; project/composition key changes
 unmount the editor and discard transient gestures. It does not add persistence,
 renderer state or a second layer timeline.
 
+## M8A selective PhotoDepth
+
+An optional `PhotoDepthRecipe` extends one root Image node in an existing
+GraphicScene. The recipe binds the local photo, alpha mask and optional fill by
+catalog identity and SHA-256, records a protected region and bounded camera
+parameters, and uses the node's existing Composition-time interval. Core owns
+strict version validation and pure arbitrary-seek evaluation; the renderer
+validates admitted PNG alpha/geometry and creates both layers through the same
+Monitor/FFmpeg PNG producer. Source replacement is an existing typed scene
+update that degrades the old recipe to an explicit local fallback. Existing
+locks, history, autosave, reopen and schema-1.0.0 compatibility remain the
+authoritative edit contracts. See [PhotoDepth](photo-depth.md), its
+[threat model](security/graphic-scene-threat-model.md#photodepth-v1), and
+[validation](validation-photo-depth.md).
+
 ## Creative Story Template Records
 
 Optional schema-1.0.0 `Composition.graphicSceneTemplates` binds Conversation
@@ -507,3 +522,85 @@ outputs and caches are never copied or replaced. The version diff is a
 deterministic structural comparison across existing Story, Composition,
 CaptionCue, GraphicScene/template, audio automation and source identities. See
 [Named Versions](named-versions.md) and its [validation record](validation-named-versions.md).
+
+### M8B local motion candidates
+
+`MotionGenerationService` is the shared CLI/HTTP/Desktop application boundary;
+`motion-generation` is a ProviderRegistry byte port, separate from audio/TTS.
+Only local camera fixture and explicit Library-video import execute. The service
+validates hashes, source/target identity and saved revisions, normalizes/decodes
+MP4, and stores private v1 receipts/request claims. Explicit review/acceptance is
+separate from catalog import and existing typed replacement/restoration commands.
+Prepared journal + expected-document identity recover interrupted/lost responses
+without a second timeline or project schema migration. Desktop reuses its existing
+navigation/history barrier; completed preview cache supports multi-process CLI
+review with expiry and explicit discard. See [contract](motion-candidates.md) and
+[threat model](security/motion-candidates-threat-model.md).
+
+## M7C NLE handoff
+
+`exporters/handoff.ts` is a browser-safe feature/range planner over Composition.
+`application/nle-handoff.ts` binds it to the saved project and source hashes,
+uses the existing renderer for full context and short opaque precomps, projects
+embedded video audio to native Audio tracks or an explicit full mix, and publishes
+one atomic project-private exchange directory. A bounded USTAR writer packages
+only generated relative names. CLI/HTTP/Desktop call the same application service;
+project schema, editing/history, autosave and originals are unchanged. No alpha
+profile or real NLE application acceptance is inferred. See [contract](nle-handoff.md).
+
+## M7D Collect Media packages
+
+`CollectMediaService` is shared by Desktop, loopback HTTP and CLI. It selects
+only saved Story/Composition references, hashes sources and resolved fonts,
+requires explicit rights receipts, and binds each plan to the saved project and
+catalog revision. The package writer captures the manifest and a SQLite-consistent
+image under the catalog writer fence, filters unselected catalog rows and
+VACUUMs the result so deleted asset data is not left in free pages. It excludes
+versions, caches, jobs and credentials without changing project schema 1.0.0 or
+the existing edit/history model.
+
+ZIP and directory outputs use hash-addressed source/font files, private staging,
+per-destination locks, source rehashing and revision checks before publication.
+The verifier rejects unsafe paths, links, nested archives and invalid ZIP
+records, unpacks into a private temporary root, validates receipts, reopens the
+package, renders a preview and MP4, and decodes/checks the actual output. Font
+lookup is package-relative and hash-checked when a collected project reopens.
+The verifier reports representative render evidence for the first Composition;
+cross-platform workstation and NLE checks remain manual. See the
+[Collect Media contract](collect-media.md) and
+[validation record](validation-collect-media.md).
+
+## M7E verified native runtime
+
+The Tauri shell verifies a build-embedded RuntimeManifest digest and resource
+hashes, then owns one restricted Node launcher. The launcher checks bundled tools,
+licenses/codecs and CJK raster dependencies before starting the existing service
+on a private ephemeral loopback endpoint. Native startup status configures the
+existing Desktop API transport; application/edit/catalog logic is unchanged.
+Native close first checks browser drafts, then waits for application save and
+private acknowledged service shutdown. Installation resources, app data and
+project storage remain separate. The manifest, SPDX inventory, candidate workflow,
+update limitations and threat boundary are in [Native Installer](native-installer.md).
+
+## M7B versioned Export Profiles
+
+`ExportProfileService` is the shared Application boundary for Desktop, HTTP and
+CLI. It snapshots the current saved Composition, project revision and source
+hashes, then calls the existing FFmpeg renderer with a validated render-only
+ratio/frame/quality profile. Contain letterboxes the saved frame; explicit
+center crop is previewed before confirmation. A preview renders an actual
+temporary MP4 and extracts the requested frame, so PNG stills and MP4 share the
+same renderer, look/caption selection and output geometry. Short-lived tokens
+are revision/source-bound and served from a private project cache.
+
+Full-mix and role-stem WAV output is also produced by the existing renderer
+audio graph, including saved mute/visibility, trims, gain, fades and ducking.
+Stems are independently rendered with role filters, then checked for matching
+sample rate, channels, sample count and duration before one directory is
+atomically published. Manifests record versioned profile, project/Composition
+hashes, source/output hashes, selected frame or audio measures, and warnings.
+Private staging, path/symlink checks, output hash verification and request-ID
+idempotency protect cancellation, retries and project changes. No profile field
+is written into project settings or composition history. See the
+[Export Profile contract](export-profiles.md) and
+[validation](validation-export-profiles.md).

@@ -25,6 +25,15 @@ const digest = async (file) =>
     .update(await readFile(file))
     .digest("hex");
 try {
+  const { version } = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const reportedVersion = await execute(
+    process.execPath,
+    [resolve("dist/cli/index.mjs"), "--version"],
+    { cwd: root },
+  );
+  assert.equal(reportedVersion.stdout.trim(), `OpenFilm ${version}`);
   const originals = await generateSampleMedia(join(root, "media"));
   const before = await Promise.all(originals.map(digest));
   await command("create", project, "--title", "Built CLI integration");
@@ -277,7 +286,7 @@ try {
   );
   assert.deepEqual(await Promise.all(originals.map(digest)), before);
   console.log(
-    "Built CLI: real import, Story, local FFmpeg waveform/scenes, paged protocol-fixture words/markers, missing-model failure, bounded playable MP4, local CJK title raster/native packaging, exports and reopen passed; Story/composition and original hashes unchanged by intelligence. Protocol fixture is not ASR QA.",
+    "Built CLI: package version, real import, Story, local FFmpeg waveform/scenes, paged protocol-fixture words/markers, missing-model failure, bounded playable MP4, local CJK title raster/native packaging, exports and reopen passed; Story/composition and original hashes unchanged by intelligence. Protocol fixture is not ASR QA.",
   );
 } finally {
   await rm(root, { recursive: true, force: true });

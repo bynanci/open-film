@@ -1,0 +1,23 @@
+# M8B motion candidate threat model
+
+Boundary: untrusted project/media and external generated video → trusted local
+adapters/FFmpeg → private candidate cache → explicit human review → existing typed
+editing commands. The local OS/user account and installed FFmpeg binary are
+trusted. Cache journals are not cryptographically authenticated against another
+process running as the same OS user. No project HTML/JS executes.
+
+| Threat                                                  | Enforcement / evidence                                                                                                                                                                        | Remaining gate                                                                                                       |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Accidental private upload or invented AI support        | No remote executable motion adapter; local fixture explicitly non-AI; import reads explicit catalog IDs; ProviderRegistry data-kind consent regression                                        | A future remote adapter requires separate API/terms/cost/retention review                                            |
+| URL/playlist/SVG/network input, symlink, changed source | Existing local media admission, fixed PNG/JPEG/mov demuxers, file protocol only, O_NOFOLLOW regular bounded reads, content/URI hashes                                                         | Hostile same-user races and FFmpeg vulnerabilities are outside an app-only sandbox                                   |
+| Huge or malformed response/decode                       | 64 MiB bytes/signature bound before write, source header checks before full decode, dimension/rate/duration/SDR bounds, allocation/thread/process deadlines, actual post-normalization decode | OS-level process memory sandbox remains future defense in depth                                                      |
+| Audio or timing changes hidden in replacement           | Drop candidate audio, exact project frames, preserve target duration and narration through existing solver commands                                                                           | Color appearance and artistic quality are manual                                                                     |
+| Lock/required selection bypass                          | Existing solver simulation before reading source and again before replacement; current revision/source checks                                                                                 | No automatic workaround for protected content                                                                        |
+| Late output, revoke, retry, stale project               | UUID pending claim, abort race, batch tombstones, saved revision/settings/source/project-generation fences; late/cancel/timeout/429/500 regressions                                           | New UUID required after interruption; no paid retry loop                                                             |
+| Lost acknowledgment / process crash                     | Private prepared journal, rederived whitelisted commands, expected-document hash; recover before or after commit and after reopen; idempotent Restore                                         | Later edits conflict explicitly; use history/Named Versions                                                          |
+| Cache leakage / quotas                                  | Private POSIX modes, scoped media route, no raw prompt persistence or upstream error bodies, explicit discard, 24-hour lazy expiry sweep at open/new preview/access                           | Closed projects have no cleanup daemon; adopted media retained for history; platform permissions need workstation QA |
+| Model deforms a person or real detail                   | Conservative warning, explicit manual review receipt, Original/M8A/candidate comparison, separate Accept and Replace, Restore                                                                 | No automated identity/pose/contact guarantee; real people remain manual review                                       |
+
+Only synthetic landscape/test patterns and synthetic tone are used in tests and
+recorded evidence. No private photo, chat, credential, remote key or paid request
+belongs in repository, CI logs or artifacts. Apache-2.0 and NOTICE are unchanged.

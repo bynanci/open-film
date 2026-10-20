@@ -1,5 +1,13 @@
+import { MotionGenerationService } from "./motion-generation.js";
+export * from "./motion-generation.js";
+
+import { NleHandoffService, type HandoffRequest } from "./nle-handoff.js";
+import type { HandoffOptions } from "@openfilm/exporters";
 import { AudioGenerationService } from "./audio-generation.js";
-import type { AudioGenerationProvider } from "@openfilm/plugin-sdk";
+import type {
+  AudioGenerationProvider,
+  MotionGenerationProvider,
+} from "@openfilm/plugin-sdk";
 export * from "./audio-generation.js";
 import { AudioQualityService } from "./audio-quality.js";
 export * from "./audio-quality.js";
@@ -44,6 +52,7 @@ import {
   migrateProject,
   validateProject,
   validateFilmLook,
+  validateExportProfile,
   type Composition,
   type Event,
   type Job,
@@ -54,6 +63,9 @@ import {
   type FilmSettings,
   type FilmLook,
   type ProjectContentLocale,
+  type TitleStyle,
+  type ExportProfile,
+  type AudioAutomation,
 } from "@openfilm/core";
 import { GraphicSceneService } from "./graphic-scenes.js";
 import { TimelineEditor } from "./editor.js";
@@ -74,11 +86,14 @@ import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import {
   FFmpegRenderer,
+  audioSourceAssetIds,
+  visualSourceAssetIds,
   createTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
   resolveRenderQuality,
   type RenderQuality,
+  type RenderOptions,
 } from "@openfilm/render";
 export { resolveRenderQuality, type RenderQuality } from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
@@ -107,6 +122,33 @@ import {
 } from "@openfilm/media";
 import { portableCacheUri } from "./portable-cache.js";
 import { ProjectVersionService } from "./project-versions.js";
+import {
+  CollectMediaService,
+  collectFontPathForStyle,
+  loadCollectedFontBindings,
+} from "./collect-media.js";
+export {
+  CollectMediaService,
+  CollectMediaError,
+  type CollectMediaCreateInput,
+  type CollectMediaCreateResult,
+  type CollectMediaPlan,
+  type CollectPlanInput,
+  type CollectMediaPlanItem,
+  type CollectMediaScope,
+  type CollectMediaVerifyResult,
+  type CollectRightsDeclaration,
+  type CollectRightsBasis,
+} from "./collect-media.js";
+
+import { ExportProfileService } from "./export-profiles.js";
+export {
+  ExportProfileService,
+  type ProfileFramePreview,
+  type ProfileExportArtifact,
+  type AudioExportFile,
+  type AudioProfileExport,
+} from "./export-profiles.js";
 import { isInside, managedSourceUri } from "./path-safety.js";
 import {
   MediaIntelligence,
@@ -190,6 +232,8 @@ export type {
 } from "./scene-plan.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions & {
   audioGenerationProvider?: AudioGenerationProvider;
+  motionGenerationProvider?: MotionGenerationProvider;
+  motionGenerationTimeoutMs?: number;
 };
 
 export interface ImportOptions {
@@ -207,6 +251,17 @@ export interface FilmRenderOptions {
   quality?: RenderQuality;
   /** Render one saved native caption language; omitted selects the first. */
   captionTrackId?: string | null;
+  /** Render-only delivery geometry; never saved into the Composition. */
+  exportProfile?: ExportProfile;
+  /** Internal shared WAV/stem route; uses AudioAutomation and existing clips. */
+  audioOnly?: boolean;
+  /** Internal picture-only intermediate; standalone audio is not an input. */
+  videoOnly?: boolean;
+  audioRole?: AudioAutomation["role"];
+  /** Required only when an explicit center crop is published as a video/still. */
+  confirmCrop?: boolean;
+  cropPreviewToken?: string;
+  requestId?: string;
 }
 export interface ImportResult {
   job: Job;
@@ -271,9 +326,14 @@ export class OpenFilmApplication {
   readonly knowledge: KnowledgeService;
   readonly sceneScriptReview: SceneScriptReviewService;
   readonly visualQa: VisualQaService;
+  readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
   readonly audioGeneration: AudioGenerationService;
+  readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
+  readonly collectMedia: CollectMediaService;
+
+  readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -284,6 +344,10 @@ export class OpenFilmApplication {
     public project: OpenFilmProject,
     runtime: OpenFilmRuntimeOptions = {},
     private readonly intent: "workspace" | "export" = "workspace",
+    private readonly packageFontBindings: ReadonlyMap<
+      string,
+      string
+    > = new Map(),
   ) {
     // Bind the baseline to the loaded state, never a second disk read that
     // could have advanced while open() was awaiting filesystem work.
@@ -291,6 +355,35 @@ export class OpenFilmApplication {
     this.catalog = new ProjectCatalog(directory);
     try {
       this.versions = new ProjectVersionService(this);
+      this.collectMedia = new CollectMediaService(this);
+
+      this.exportProfiles = new ExportProfileService({
+        directory,
+        getProject: () => this.project,
+        getComposition: (id) => this.composition(id),
+        getAssets: (composition) => this.compositionAssets(composition),
+        render: (compositionId, outputPath, options: RenderOptions) =>
+          this.renderFilm(
+            compositionId,
+            {
+              signal: options.signal,
+              quality: options.quality,
+              lookOverride: options.lookOverride,
+              exportProfile: options.exportProfile,
+              captionTrackId: options.captionTrackId,
+              audioOnly: options.audioOnly,
+              videoOnly: options.videoOnly,
+              audioRole: options.audioRole,
+            },
+            false,
+            {
+              outputPath,
+              recordJob: false,
+              trackActiveJob: false,
+              snapshot: options.snapshot,
+            },
+          ),
+      });
       this.graphics = new GraphicSceneService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
@@ -315,6 +408,11 @@ export class OpenFilmApplication {
         this,
         runtime.audioGenerationProvider,
       );
+      this.motionGeneration = new MotionGenerationService(
+        this,
+        runtime.motionGenerationProvider,
+        runtime.motionGenerationTimeoutMs,
+      );
       this.audioQuality = new AudioQualityService(
         this,
         (composition, outputPath, signal) =>
@@ -326,6 +424,20 @@ export class OpenFilmApplication {
           }),
       );
       const readProject = () => this.project;
+      this.handoff = new NleHandoffService({
+        directory: this.directory,
+        get project() {
+          return readProject();
+        },
+        getSourceAsset: (id) => this.getSourceAsset(id),
+        render: (composition, outputPath, signal, captionTrackId) =>
+          this.renderFilm(composition.id, { signal, captionTrackId }, false, {
+            outputPath,
+            recordJob: false,
+            trackActiveJob: false,
+            compositionOverride: composition,
+          }),
+      });
       this.visualQa = new VisualQaService({
         directory: this.directory,
         catalog: this.catalog,
@@ -396,6 +508,10 @@ export class OpenFilmApplication {
       JSON.parse(await readFile(join(path, "project.json"), "utf8")),
     );
     const canonical = await realpath(path);
+    const packageFontBindings = await loadCollectedFontBindings(
+      canonical,
+      project,
+    );
     for (const name of ["story", "timeline", "analysis", "cache", "exports"]) {
       try {
         safeDirectorySync(join(canonical, name));
@@ -409,6 +525,7 @@ export class OpenFilmApplication {
       project,
       runtime,
       options.intent,
+      packageFontBindings,
     );
     try {
       application.versions.recoverInterruptedRestore();
@@ -455,6 +572,7 @@ export class OpenFilmApplication {
       }
       application.knowledge.recoverInterruptedReviews();
       application.intelligence.recoverInterruptedJobs();
+      await application.motionGeneration.expirePreviews();
       return application;
     } catch (error) {
       application.catalog.close();
@@ -488,6 +606,15 @@ export class OpenFilmApplication {
     return uri && uri !== asset.uri ? { ...asset, uri } : asset;
   }
 
+  /** Package-owned fonts are hash-checked and resolved by requested family/weight. */
+  titleFontPath(style: TitleStyle | undefined): string | undefined {
+    return collectFontPathForStyle(
+      this.packageFontBindings,
+      style,
+      this.project.settings,
+    );
+  }
+
   private repairMediaReferences(): void {
     this.catalog.withProjectWrite(() => {
       let next: OpenFilmProject | undefined;
@@ -500,7 +627,41 @@ export class OpenFilmApplication {
         if (uri) {
           const managedRoot = join(this.directory, "sources");
           const rootUri = pathToFileURL(managedRoot).href;
-          const reference = referenceFor(asset, this.project.mediaLibraries);
+          const packageReference = asset.metadata["openfilm.reference"] as
+            Record<string, unknown> | undefined;
+          const reference = asset.uri.startsWith("openfilm-package://")
+            ? {
+                originalUri:
+                  typeof packageReference?.originalUri === "string"
+                    ? packageReference.originalUri
+                    : asset.uri,
+                filename:
+                  typeof packageReference?.filename === "string"
+                    ? packageReference.filename
+                    : asset.name,
+                mediaLibraryId:
+                  typeof packageReference?.mediaLibraryId === "string"
+                    ? packageReference.mediaLibraryId
+                    : `legacy:${asset.id}`,
+                relativePath:
+                  typeof packageReference?.relativePath === "string"
+                    ? packageReference.relativePath
+                    : typeof managed?.relativePath === "string"
+                      ? managed.relativePath
+                      : `sources/${asset.id}`,
+                volumeId:
+                  typeof packageReference?.volumeId === "string"
+                    ? packageReference.volumeId
+                    : "collected-package",
+                rootUri,
+                ...(typeof packageReference?.contentHash === "string"
+                  ? { contentHash: packageReference.contentHash }
+                  : {}),
+                ...(typeof packageReference?.fileSize === "number"
+                  ? { fileSize: packageReference.fileSize }
+                  : {}),
+              }
+            : referenceFor(asset, this.project.mediaLibraries);
           const relativePath = relative(managedRoot, localPath(uri))
             .split(sep)
             .join("/");
@@ -515,7 +676,15 @@ export class OpenFilmApplication {
               metadata: {
                 ...asset.metadata,
                 "openfilm.managedSource": { ...managed, uri },
-                "openfilm.reference": { ...reference, rootUri, relativePath },
+                "openfilm.reference": {
+                  ...reference,
+                  ...(typeof packageReference?.originalUriDigest === "string" &&
+                  /^[a-f0-9]{64}$/u.test(packageReference.originalUriDigest)
+                    ? { originalUriDigest: packageReference.originalUriDigest }
+                    : {}),
+                  rootUri,
+                  relativePath,
+                },
               },
             };
             this.catalog.upsertAsset(asset);
@@ -622,6 +791,24 @@ export class OpenFilmApplication {
     this.saveSync();
   }
 
+  async runMotionGeneration(
+    input: Parameters<MotionGenerationService["preview"]>[0],
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs && !this.motionGeneration.hasRequest(input.requestId))
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.motionGeneration.preview(input, signal);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
   async runAudioGeneration(
     input: Parameters<AudioGenerationService["preview"]>[0],
     signal?: AbortSignal,
@@ -660,6 +847,24 @@ export class OpenFilmApplication {
         revision,
         signal,
       );
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  reviewHandoff(compositionId: string, options: HandoffOptions = {}) {
+    return this.handoff.review(compositionId, options);
+  }
+  async exportHandoff(input: HandoffRequest, signal?: AbortSignal) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for active project jobs",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.handoff.publish(input, signal);
     } finally {
       this.activeJobs--;
     }
@@ -861,6 +1066,7 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
+    void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
     this.catalog.close();
   }
@@ -1550,7 +1756,11 @@ export class OpenFilmApplication {
         404,
       );
     const settings = { ...this.project.settings };
-    const { font } = await resolveTitleFont(clip.titleStyle);
+    const fontPath = this.titleFontPath(clip.titleStyle);
+    const { font } = await resolveTitleFont(
+      clip.titleStyle,
+      fontPath ? { fontPath } : undefined,
+    );
     const key = titleOverlayCacheKey({
       text: clip.title,
       style: clip.titleStyle,
@@ -1579,6 +1789,7 @@ export class OpenFilmApplication {
         clip.titleStyle,
         settings,
         temporary,
+        fontPath ? { fontPath } : undefined,
       );
       await rename(temporary, path);
     } finally {
@@ -1621,6 +1832,40 @@ export class OpenFilmApplication {
     return { path, report: { format: "mp4", warnings: manifest.warnings } };
   }
 
+  previewExportFrame(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.previewFrame(input);
+  }
+
+  exportStill(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    requestId: string;
+    confirmCrop?: boolean;
+    cropPreviewToken?: string;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.exportStill(input);
+  }
+
+  exportProfileAudio(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    requestId: string;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.exportAudio(input);
+  }
+
   private async renderFilm(
     compositionId: string | undefined,
     options: FilmRenderOptions,
@@ -1630,9 +1875,39 @@ export class OpenFilmApplication {
       recordJob?: boolean;
       trackActiveJob?: boolean;
       compositionOverride?: Composition;
+      snapshot?: RenderOptions["snapshot"];
     } = {},
   ): Promise<string> {
-    const quality = resolveRenderQuality(options.quality).quality;
+    let exportProfile: ExportProfile | undefined;
+    try {
+      if (options.exportProfile) {
+        exportProfile = validateExportProfile(options.exportProfile);
+        if (
+          options.audioOnly
+            ? exportProfile.format !== "wav" &&
+              exportProfile.format !== "audio-stems"
+            : exportProfile.format !== "mp4"
+        )
+          throw new Error(
+            "Renderer format does not match the selected Export Profile.",
+          );
+        if (options.audioRole && exportProfile.format !== "audio-stems")
+          throw new Error(
+            "Audio role filtering requires an audio-stems Export Profile.",
+          );
+      }
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose a valid render-only Export Profile and confirm any explicit crop.",
+        400,
+        undefined,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    const quality = resolveRenderQuality(
+      exportProfile?.quality ?? options.quality,
+    ).quality;
     let lookOverride: FilmLook | null | undefined;
     try {
       lookOverride =
@@ -1659,6 +1934,15 @@ export class OpenFilmApplication {
         .update(JSON.stringify(this.project))
         .digest("hex"),
     };
+    const approved =
+      exportFile && exportProfile
+        ? await this.exportProfiles.assertCropPreview({
+            compositionId,
+            ...options,
+            profile: exportProfile,
+          })
+        : context.snapshot;
+    approved?.assertCurrent();
     const story = this.project.stories.find(
       (item) => item.id === composition.storyId,
     );
@@ -1691,7 +1975,14 @@ export class OpenFilmApplication {
     if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
-      for (const asset of assets) {
+      const sourceIds = options.audioOnly
+        ? audioSourceAssetIds(composition, assets, options.audioRole)
+        : options.videoOnly
+          ? visualSourceAssetIds(composition, assets)
+          : undefined;
+      for (const asset of assets.filter(
+        (asset) => !sourceIds || sourceIds.has(asset.id),
+      )) {
         checkAbort(options.signal);
         const status = await sourceStatus(asset);
         if (status.status !== "available")
@@ -1742,6 +2033,13 @@ export class OpenFilmApplication {
           lookOverride,
           quality,
           captionTrackId: options.captionTrackId,
+          fontPathForStyle: (style) => this.titleFontPath(style),
+
+          exportProfile,
+          audioOnly: options.audioOnly,
+          videoOnly: options.videoOnly,
+          audioRole: options.audioRole,
+          snapshot: approved,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));
@@ -1869,3 +2167,9 @@ export {
   type RelinkPlanInput,
   type RelinkApplyInput,
 } from "./relink.js";
+
+export type {
+  HandoffRequest,
+  HandoffPublication,
+  HandoffReview,
+} from "./nle-handoff.js";

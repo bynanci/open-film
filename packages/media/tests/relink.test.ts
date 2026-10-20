@@ -215,6 +215,19 @@ describe("source availability", () => {
     });
     expect(await readFile(source, "utf8")).toBe("source bytes");
   });
+  it("accepts only the private stable identity fragment used by content-deduplicated package assets", async () => {
+    const source = await file("deduplicated-source.jpg", "source bytes");
+    const packageAsset = asset(
+      `${uri(source)}#openfilm-asset=${"a".repeat(24)}`,
+    );
+    expect(await sourceStatus(packageAsset)).toEqual({
+      assetId: "asset-original",
+      status: "available",
+    });
+    expect(
+      await sourceStatus(asset(`${uri(source)}#private-fragment`)),
+    ).toMatchObject({ status: "inaccessible" });
+  });
   it("rejects final-file symlinks and symlinked parent directories", async () => {
     const source = await file("real/source.jpg", "bytes");
     const linked = join(directory, "source-link.jpg"),

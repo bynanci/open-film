@@ -108,4 +108,58 @@ test("creates, compares, renames, and explicitly restores a saved version", asyn
     page.getByLabel("Saved project versions", { exact: true }),
   ).toBeVisible();
   expect(uiText("en-US", "app.navigation.versions")).toBe("Versions");
+  const checkpoint = panel
+    .locator(".version-card")
+    .filter({ hasText: "Before restore:" });
+  await checkpoint
+    .getByRole("button", { name: "Delete…", exact: true })
+    .click();
+  const deletion = page.getByRole("alertdialog", {
+    name: /Delete “Before restore:/,
+  });
+  await expect(deletion).toContainText(
+    "Original media and the current project stay unchanged",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(panel.getByTestId(/^version-/)).toHaveCount(3);
+  await checkpoint
+    .getByRole("button", { name: "Delete…", exact: true })
+    .click();
+  await expect(
+    deletion.getByRole("button", { name: "Delete saved version", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByTestId(/^version-/)).toHaveCount(2);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  expect(
+    (await (await request.get(`${api}/project`)).json()).project.stories[0]
+      .title,
+  ).toBe("Synthetic story");
+  let deleteRequests = 0;
+  page.on("request", (sent) => {
+    if (sent.method() === "DELETE" && sent.url().includes("/api/versions/"))
+      deleteRequests++;
+  });
+  await firstCard.getByRole("button", { name: "Delete…", exact: true }).click();
+  await page.route("**/api/versions/revision", (route) =>
+    route.fulfill({
+      json: { projectId: "another-project", revision: "0".repeat(64) },
+    }),
+  );
+  const wrongProject = page.waitForResponse("**/api/versions/revision");
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Delete saved version", exact: true })
+    .click();
+  await wrongProject;
+  await expect(
+    page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Delete saved version", exact: true }),
+  ).toBeEnabled();
+  expect(deleteRequests).toBe(0);
+  await expect(panel.getByTestId(/^version-/)).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  await page.unroute("**/api/versions/revision");
 });

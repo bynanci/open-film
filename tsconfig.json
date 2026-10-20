@@ -43,6 +43,7 @@
     "playwright.config.ts",
     "scripts/benchmark-transcript-productivity.ts",
     "scripts/photo-film-quality.ts",
+    "scripts/native/**/*.ts",
     "scripts/benchmark-review-selection.ts"
   ],
   "exclude": ["node_modules", "**/dist", "apps/desktop/src-tauri"]

@@ -1,5 +1,45 @@
 export default {
   app: {
+    nativeRuntime: {
+      title: "Local workspace setup",
+      starting:
+        "Checking the installed runtime and starting your local workspace…",
+      retry: "Retry setup",
+      draftsRetained: "Local drafts retained",
+      draftsHint:
+        "These drafts stay only in this window. Reopen their original project to restore unchanged drafts. For changed or missing content, download a copy before discarding it; saved projects are never overwritten automatically.",
+      reopenDraftProject: "Reopen original project",
+      downloadDraft: "Download draft",
+      discardDraft: "Discard retained draft",
+      recovery:
+        "Repair or reinstall the same verified OpenFilm candidate, then retry. Existing projects stay in their folders.",
+      local:
+        "This check uses only installed local files. No media is uploaded.",
+      errors: {
+        unsaved: "Save or resolve the pending draft before closing OpenFilm.",
+        recoveryFull:
+          "Draft recovery storage is full. Go back to copy the current draft, or download and discard retained drafts before retrying.",
+        missing: "The installed runtime is incomplete.",
+        hash: "An installed runtime file failed its integrity check.",
+        invalid: "The runtime manifest or a file path is invalid.",
+        platform: "This runtime does not match this app or computer.",
+        permissions: "A runtime executable has unsafe or missing permissions.",
+        node: "The bundled Node runtime could not start.",
+        version: "A bundled tool has an unexpected version.",
+        license: "The FFmpeg license inventory does not match its build.",
+        codecs: "The bundled FFmpeg is missing H.264 or AAC encoding.",
+        font: "The bundled CJK font could not be loaded.",
+        raster: "The local text rasterizer could not be loaded.",
+        storage: "OpenFilm cannot write to its application data folder.",
+        timeout: "The local service did not become ready in time.",
+        handshake: "The local workspace handshake failed.",
+        serviceExited:
+          "The local workspace stopped unexpectedly. Your saved projects remain available.",
+        closeFailed:
+          "The local workspace could not confirm a safe close. Keep OpenFilm open and retry.",
+        preflight: "The installed runtime could not pass its startup checks.",
+      },
+    },
     actions: {
       back: "Back",
       done: "Done",
@@ -111,6 +151,13 @@ export default {
       },
     },
     versions: {
+      delete: "Delete…",
+      deleteEyebrow: "DELETE SAVED SNAPSHOT",
+      deleteTitle: "Delete “{name}”?",
+      deleteDescription:
+        "This permanently removes only the saved version “{name}” and frees version storage. Original media and the current project stay unchanged. This cannot be undone.",
+      confirmDelete: "Delete saved version",
+      deleting: "Deleting…",
       eyebrow: "RECOVERABLE PROJECT SNAPSHOTS",
       title: "Named versions",
       description:
@@ -249,6 +296,96 @@ export default {
       headingDescription:
         "Watch your film, or bring an editable timeline into your editing room.",
       footer: "Made of your moments.",
+    },
+    collect: {
+      eyebrow: "PORTABLE PROJECT PACKAGE",
+      title: "Collect media",
+      description:
+        "Review the files your saved story uses, then make a package that can reopen on another computer.",
+      privacy:
+        "OpenFilm copies selected files and leaves originals untouched. The package omits unused library media, private absolute paths, caches, and named version snapshots.",
+      scope: "What to include",
+      currentFilm: "Used in this film",
+      currentFilmHint:
+        "Include references from one saved story and composition.",
+      entireProject: "All referenced project media",
+      entireProjectHint:
+        "Include references from every saved story and composition.",
+      composition: "Saved composition",
+      format: "Package format",
+      zip: "ZIP archive",
+      directory: "OpenFilm package folder",
+      review: "Review package",
+      refreshReview: "Refresh review",
+      cancel: "Cancel",
+      planning: "Checking sources and calculating package size…",
+      creating: "Copying and verifying selected files…",
+      verifying: "Opening the package and rendering a test MP4…",
+      reviewStale:
+        "The scope or rights changed. Review the package again before creating it.",
+      referencedFiles: "Referenced media files",
+      packageSize: "Estimated package size",
+      uniqueSources: "Unique media bytes after deduplication",
+      versions: "Named versions",
+      versionsExcluded: "Not included",
+      resources: "Package contents and rights",
+      kind: { media: "Media source", font: "Font required by this film" },
+      unavailable: "Unavailable",
+      rights: "Rights declaration",
+      confirmRights:
+        "I have the right to include this file in a portable package.",
+      rightsBasis: "Rights basis",
+      chooseRightsBasis: "Choose a basis",
+      basis: {
+        owned: "I own this work",
+        licensed: "Licensed for reuse",
+        cc0: "CC0",
+        publicDomain: "Public domain",
+        other: "Other permission",
+      },
+      licenseName: "License or permission name",
+      attribution: "Attribution (optional)",
+      rightsMissing:
+        "Declare rights for {count} remaining file(s) before packaging.",
+      rightsIncomplete:
+        "Choose a rights basis and name the license for each confirmed file.",
+      packageBlocked:
+        "Resolve every blocking issue before creating a complete package.",
+      create: "Create package",
+      verify: "Verify package and render MP4",
+      created: "Package created",
+      savedInProject:
+        "Saved in this film’s exports folder. The ZIP can be downloaded here.",
+      download: "Download package",
+      manifestHash: "Manifest SHA-256",
+      verified: "Package verification passed",
+      verifySummary: "Checked {count} media source(s) and {fonts} font(s).",
+      renderEvidence:
+        "Rendered MP4: {width} × {height}, {frames} frames, {duration}s at {frameRate} fps.",
+      audioEvidence:
+        "Decoded audio: {codec}, {sampleRate} Hz, {channels} channel(s).",
+      renderWarnings:
+        "The render reported {count} warning(s). Review the film after opening it on the target workstation.",
+      previewHash: "Preview SHA-256",
+      outputHash: "MP4 SHA-256",
+      issues: {
+        sourceUnsupportedUri: "This source is not a supported local file.",
+        sourceNestedArchive: "Nested archives cannot be collected.",
+        sourceHashMismatch:
+          "The current file does not match its saved source hash.",
+        sourceTooLarge: "This source exceeds the per-file package limit.",
+        sourceChanged: "The source changed while it was being checked.",
+        sourceUnsafeOrMissing:
+          "The file is missing or contains an unsafe path component.",
+        sourceUnavailable: "The source could not be read.",
+        rightsRequired: "A rights declaration is required.",
+        fontFallback:
+          "The renderer selected a fallback font; review typography after reopening.",
+        fontUnavailable: "A font required by this film could not be found.",
+        packageTooLarge: "The package exceeds the ZIP32 size limit.",
+        scopeNoMedia: "This selection has no referenced media files.",
+        unknown: "This item cannot be included in the package.",
+      },
     },
     library: {
       eyebrow: "YOUR COLLECTION",

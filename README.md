@@ -4,7 +4,7 @@ An open-source, local-first, story-first media composer. OpenFilm turns a local
 collection of photos, video and audio into organized memories, a story and an
 editable film. Original files are never modified.
 
-**The current development tree includes OpenFilm 0.3.2 Shared Visual Geometry.** It builds on the localized product workflow and combines a Vue desktop workspace,
+**OpenFilm 0.4.0 integrates the creative-scene platform and reviewed recovery/export workflows.** It builds on the localized product workflow and combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 
@@ -28,6 +28,12 @@ stays unchanged; defaults preserve older projects. See [native text controls](do
 Choose Standard or High detail compression without changing timing, geometry or
 music. High detail takes longer and usually produces a larger file; it does not
 restore missing source detail. See [output quality](docs/export-quality.md).
+
+**Export Profiles** preview contain or reviewed center-crop framing for 16:9,
+9:16 and 1:1 outputs, then save a still PNG, aligned WAV mix or role stems. Export
+profiles do not rewrite the Composition; unsupported PNG transparency and
+potential crop/safe-area loss are reported. See the
+[profile contract](docs/export-profiles.md).
 
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
@@ -66,6 +72,8 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   target suggestions, and recover autosave failures without dropping the draft.
 - Save immutable named project versions, compare story/edit/source changes, and
   explicitly restore a version after a durable pre-restore checkpoint.
+- Preview profile-specific MP4 framing before exporting PNG stills, WAV mixes or
+  aligned narration/music/ambience/dialogue stems with source receipts.
 - Keep editing missing media, reconnect a moved folder or single file, and move
   projects with their cached thumbnails and proxies.
 - Import Pixel metadata and Insta360 flat exports, recognize raw360 associations,
@@ -149,6 +157,13 @@ validation and a current-state checkpoint. Original media stays in place;
 session Undo/Redo remains separate. See [the contract](docs/named-versions.md),
 [format notes](docs/project-format.md#named-versions) and
 [validation record](docs/validation-named-versions.md).
+
+**Collect Media** packages only the media and fonts referenced by a saved film
+or project, with per-item rights review, content hashes and ZIP/folder output.
+Verify relocates the package into a private temporary project, reopens it, renders
+a preview and decodes a real MP4. Unused Library assets, named versions,
+credentials and original absolute paths are excluded. See the [package
+contract](docs/collect-media.md) and [validation record](docs/validation-collect-media.md).
 
 **Scene-script planning:** use saved media
 categories or chronology to draft editable scenes, narration and visual direction,
@@ -292,12 +307,13 @@ pnpm --filter @openfilm/desktop tauri dev
 The repository pins Rust 1.99.0 with `rustfmt` and `clippy` in
 `rust-toolchain.toml`.
 
-The shell supplies native folder and file pickers. Its development command starts the
-same local service and interface. A native build can launch a supplied service
-using absolute `OPENFILM_NODE_PATH` and `OPENFILM_SERVER_PATH` paths, or connect to
-an already running service. **The native shell is not a self-contained installer:**
-Node, the service bundle, media tools, and packaging still need deployment work.
-Tauri installer bundling is disabled in this release.
+The shell supplies native folder and file pickers. The M7E candidate adds a
+verified RuntimeManifest, private owned service startup, graphical preflight and
+saved/draft-aware shutdown. An explicit target-platform installer workflow accepts
+reviewed, hash-pinned runtime inputs; the default developer build still has
+installer bundling disabled. Windows/macOS installer acceptance, signing and
+updates remain pending. See [Native Installer](docs/native-installer.md) and
+[validation](docs/validation-native-installer.md).
 
 ## Exports
 

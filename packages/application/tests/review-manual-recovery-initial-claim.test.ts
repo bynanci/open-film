@@ -1,9 +1,11 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { OpenFilmApplication } from "../src/index.js";
 import { hashFile } from "@openfilm/media";
@@ -13,6 +15,58 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const fn of cleanup.splice(0).reverse()) await fn();
 });
+
+async function waitForKernelStop(child: ChildProcess, stderr: () => string) {
+  const deadline = performance.now() + 10_000;
+  let state = "unknown";
+  const diagnostic = () =>
+    `PID ${child.pid}, state ${state}, exit ${child.exitCode}, signal ${child.signalCode}: ${stderr()}`;
+  while (performance.now() < deadline) {
+    if (!child.pid || child.exitCode !== null || child.signalCode !== null)
+      throw new Error(
+        `Review child exited before kernel stop; ${diagnostic()}`,
+      );
+    let status: string;
+    try {
+      status = await readFile(`/proc/${child.pid}/status`, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        throw new Error(
+          `Review child disappeared before kernel stop; ${diagnostic()}`,
+          { cause: error },
+        );
+      throw error;
+    }
+    state = /^State:\s+(\S+)/mu.exec(status)?.[1] ?? "unknown";
+    if (state === "T") return;
+    if (state === "Z" || state === "X")
+      throw new Error(
+        `Review child exited before kernel stop; ${diagnostic()}`,
+      );
+    await delay(10);
+  }
+  throw new Error(`Review child did not reach kernel stop; ${diagnostic()}`);
+}
+
+it("fails kernel-stop synchronization promptly if the review child already exited", async () => {
+  const child = spawn(process.execPath, ["-e", "process.exit(7)"], {
+    stdio: "ignore",
+  });
+  const exit = new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  cleanup.push(async () => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+    await exit;
+  });
+  expect(await exit).toBe(7);
+  await expect(waitForKernelStop(child, () => "fixture exit")).rejects.toThrow(
+    /exited before kernel stop;.*exit 7.*fixture exit/u,
+  );
+});
+
 it.skipIf(process.platform !== "linux").each(["language", "glossary"] as const)(
   "manual recovery fences initial %s batch insertion from a resumed previous process",
   async (source) => {
@@ -59,16 +113,18 @@ it.skipIf(process.platform !== "linux").each(["language", "glossary"] as const)(
       })),
     });
     const childFile = join(root, "paused-review.mts");
+    const stopGate = join(root, "allow-kernel-stop");
     await writeFile(
       childFile,
       `
  import {OpenFilmApplication} from ${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)};
- const [directory,userDataDirectory,source]=process.argv.slice(2);
+ import {existsSync} from 'node:fs';
+ const [directory,userDataDirectory,source,stopGate]=process.argv.slice(2);
  const app=await OpenFilmApplication.open(directory,{userDataDirectory});
  let providerCalls=0;
  app.knowledge.registerLanguageProvider({id:'fixture',name:'Fixture',kind:'language',execution:'local',dataKinds:['text','transcripts'],async generate(){providerCalls++;return '{"suggestions":[]}';}});
  let paused=false;
- try { await app.runKnowledgeReview('source',{source,jobId:'initial-review',batchSize:1,onJob(job){if(!paused && job.status==='queued'){paused=true;process.send({type:'paused',job});process.kill(process.pid,'SIGSTOP');}}});process.send({type:'finished'}); }
+ try { await app.runKnowledgeReview('source',{source,jobId:'initial-review',batchSize:1,onJob(job){if(!paused && job.status==='queued'){paused=true;process.send({type:'paused',job});while(!existsSync(stopGate)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);process.kill(process.pid,'SIGSTOP');}}});process.send({type:'finished'}); }
  catch(error){process.send({type:'failed',error:String(error),providerCalls,batches:app.knowledge.batches('initial-review')});}
  finally {app.close();process.disconnect();}
  `,
@@ -82,10 +138,12 @@ it.skipIf(process.platform !== "linux").each(["language", "glossary"] as const)(
         directory,
         runtime.userDataDirectory,
         source,
+        stopGate,
       ],
       { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] },
     );
     let stderr = "";
+    child.stdout!.resume();
     child.stderr!.on("data", (b) => (stderr += String(b)));
     const messages: Array<Record<string, unknown>> = [];
     child.on("message", (message) =>
@@ -106,6 +164,11 @@ it.skipIf(process.platform !== "linux").each(["language", "glossary"] as const)(
         timeout: 10000,
       })
       .toBeDefined();
+    // Force the announcement to arrive before SIGSTOP. Without the kernel
+    // handshake, SIGCONT runs before this microtask releases the child and is
+    // lost; its subsequent stop then hangs until the unchanged test timeout.
+    queueMicrotask(() => writeFileSync(stopGate, "stop"));
+    await waitForKernelStop(child, () => stderr);
     const job = messages.find((item) => item.type === "paused")!.job as Job;
     expect(job.reviewOwner!.pid).toBe(child.pid);
     expect(app.knowledge.batches(job.id)).toEqual([]);

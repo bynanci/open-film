@@ -1,4 +1,8 @@
-import type { AudioGenerationReceipt } from "@openfilm/application";
+import type {
+  MotionRequest,
+  MotionGenerationReceipt,
+  AudioGenerationReceipt,
+} from "@openfilm/application";
 import type {
   MediaAsset,
   OpenFilmProject,
@@ -24,6 +28,8 @@ import type {
   SceneScriptReviewSuggestion,
   ProjectVersionDiff,
   ProjectVersionRecord,
+  ExportProfile,
+  FilmLook,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -38,6 +44,13 @@ import type {
   ProjectVersionCreateInput,
   ProjectVersionRestoreInput,
   ProjectVersionRestoreResult,
+  CollectMediaPlan,
+  CollectPlanInput,
+  CollectMediaCreateResult,
+  CollectMediaVerifyResult,
+  ProfileFramePreview,
+  ProfileExportArtifact,
+  AudioProfileExport,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -45,6 +58,9 @@ export type {
   GraphicSceneAgentAcceptance,
   GraphicSceneAgentPlan,
   GraphicSceneAgentRequest,
+  ProfileFramePreview,
+  ProfileExportArtifact,
+  AudioProfileExport,
 } from "@openfilm/application";
 export type { SceneDirectionOptions } from "@openfilm/solver";
 import type { SceneDirectionOptions } from "@openfilm/solver";
@@ -287,7 +303,22 @@ function responseError(body: unknown, status: number): ApiError {
   );
 }
 
-const prefix = import.meta.env.DEV ? "/api" : "http://127.0.0.1:4310/api";
+let prefix = import.meta.env.DEV ? "/api" : "http://127.0.0.1:4310/api";
+/** The native bridge supplies a private endpoint only after verified startup. */
+export function configureNativeConnection(
+  port: unknown,
+  session: unknown,
+): void {
+  if (
+    !Number.isInteger(port) ||
+    Number(port) < 1 ||
+    Number(port) > 65535 ||
+    typeof session !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(session)
+  )
+    throw new Error("runtime.handshake");
+  prefix = `http://127.0.0.1:${port}/native/${session}/api`;
+}
 
 export async function request<T>(
   path: string,
@@ -361,6 +392,84 @@ export const captionDownloadUrl = (
   `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
+/** Fetch local artifacts with CORS Origin semantics, never a native navigation.
+ * Callers own cancellation and publication of the resulting window-local blob.
+ */
+export async function fetchDownloadBlob(
+  url: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const connection = prefix;
+  if (!url.startsWith(`${connection}/`))
+    throw new ApiError("The download belongs to another workspace.", 409, {
+      code: "workspace.invalidResponse",
+    });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      signal,
+      redirect: "error",
+      credentials: "omit",
+    });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new ApiError("The local film workspace is unavailable.", 0, {
+      code: "workspace.unavailable",
+    });
+  }
+  if (!response.ok)
+    throw responseError(
+      await response.json().catch(() => null),
+      response.status,
+    );
+  const blob = await response.blob();
+  signal.throwIfAborted();
+  if (prefix !== connection)
+    throw new DOMException("The local connection changed.", "AbortError");
+  return blob;
+}
+export const exportFramePreviewUrl = (token: string): string =>
+  `${prefix}/export/frame-preview/${encodeURIComponent(token)}`;
+export const previewExportFrame = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<ProfileFramePreview> => post("/export/frame-preview", input, signal);
+export const exportStill = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    requestId: string;
+    confirmCrop?: boolean;
+    cropPreviewToken?: string;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<ProfileExportArtifact & { filename: string }> =>
+  post("/export/still", input, signal);
+export const exportProfileAudio = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    requestId: string;
+  },
+  signal?: AbortSignal,
+): Promise<AudioProfileExport> => post("/export/audio", input, signal);
+export const audioQualityMediaUrl = (
+  reportId: string,
+  variant: "original" | "candidate",
+  projectId: string,
+): string =>
+  `${prefix}/audio-quality/${encodeURIComponent(reportId)}/${variant}?${new URLSearchParams({ projectId })}`;
+export const generatedAudioMediaUrl = (id: string, projectId: string): string =>
+  `${prefix}/audio-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
 
 async function uploadFiles(
   files: File[],
@@ -500,6 +609,18 @@ export const api = {
       `/versions/${encodeURIComponent(id)}`,
       body,
     ),
+  deleteProjectVersion: (
+    id: string,
+    body: { baseRevision: string; confirmed: boolean },
+  ) =>
+    request<{ removedVersionId: string }>(
+      `/versions/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
   restoreProjectVersion: (id: string, body: ProjectVersionRestoreInput) =>
     post<
       ProjectVersionRestoreResult & {
@@ -507,6 +628,23 @@ export const api = {
         generation: number;
       }
     >(`/versions/${encodeURIComponent(id)}/restore`, body),
+  collectMediaPlan: (body: CollectPlanInput, signal?: AbortSignal) =>
+    post<{ plan: CollectMediaPlan }>("/collect/plan", body, signal),
+  createCollectedMedia: (
+    body: CollectPlanInput & {
+      planId: string;
+      baseRevision: string;
+      format: "directory" | "zip";
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: CollectMediaCreateResult }>("/collect/create", body, signal),
+  verifyCollectedMedia: (packageName: string, signal?: AbortSignal) =>
+    post<{ result: CollectMediaVerifyResult }>(
+      "/collect/verify",
+      { packageName },
+      signal,
+    ),
   captionContext: (
     projectId: string,
     compositionId: string,
@@ -774,6 +912,40 @@ export const api = {
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
   jobs: () => request<JobsState>("/jobs"),
+  clearMotion: (projectId: string) =>
+    post<{ ok: boolean }>("/motion-generation/clear", { projectId }),
+  motionProviders: () =>
+    request<{ id: string; name: string; available: boolean }[]>(
+      "/motion-generation/providers",
+    ),
+  previewMotion: (
+    { compositionId, ...input }: MotionRequest,
+    signal: AbortSignal,
+  ) =>
+    post<MotionGenerationReceipt[]>(
+      `/compositions/${encodeURIComponent(compositionId)}/motion-generation`,
+      input,
+      signal,
+    ),
+  motionReceipt: (id: string, projectId: string) =>
+    request<MotionGenerationReceipt>(
+      `/motion-generation/${encodeURIComponent(id)}/receipt?${new URLSearchParams({ projectId })}`,
+    ),
+  acceptMotion: (id: string, projectId: string, reviewed: boolean) =>
+    post<MotionGenerationReceipt>(
+      `/motion-generation/${encodeURIComponent(id)}/accept`,
+      { projectId, reviewed },
+    ),
+  applyMotion: (id: string, projectId: string, action: "import" | "restore") =>
+    post<{ revision: string; receipt: MotionGenerationReceipt }>(
+      `/motion-generation/${encodeURIComponent(id)}/${action}`,
+      { projectId },
+    ),
+  revokeMotion: (id: string, projectId: string) =>
+    post<{ ok: boolean }>(
+      `/motion-generation/requests/${encodeURIComponent(id)}/revoke`,
+      { projectId },
+    ),
   audioGenerationProviders: () =>
     request<
       { id: string; name: string; execution: string; endpoint?: string }[]
@@ -997,3 +1169,14 @@ export async function graphicFrame(
     });
   return response.blob();
 }
+
+export function motionMediaUrl(id: string, projectId: string) {
+  return `${prefix}/motion-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
+}
+
+export const handoffDownloadUrl = (
+  projectId: string,
+  id: string,
+  index: number,
+) =>
+  `${prefix}/handoff/file?projectId=${encodeURIComponent(projectId)}&id=${encodeURIComponent(id)}&index=${index}`;

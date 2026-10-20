@@ -8,11 +8,12 @@ import {
 } from "node:fs/promises";
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { runProcess, inspectMedia, hashFile } from "@openfilm/media";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MediaAsset } from "@openfilm/core";
+import type { GraphicScene, MediaAsset } from "@openfilm/core";
 import * as render from "@openfilm/render";
 import {
   createConversationCard,
@@ -92,6 +93,380 @@ async function fixture() {
 }
 
 describe("durable GraphicScene editing", () => {
+  const dependencyScene = (): GraphicScene =>
+    graphicScene({
+      nodes: [
+        {
+          id: "photo",
+          type: "image",
+          assetId: "depth-source",
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 180,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+      photoDepth: {
+        version: 1,
+        id: "depth",
+        nodeId: "photo",
+        mode: "parallax",
+        duration: 6,
+        sourceAssetId: "depth-source",
+        sourceSha256: "a".repeat(64),
+        maskAssetId: "depth-mask",
+        maskSha256: "b".repeat(64),
+        background: {
+          kind: "asset",
+          assetId: "depth-background",
+          sha256: "c".repeat(64),
+        },
+        protectedRegion: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+        foregroundDepth: 1.2,
+        backgroundDepth: 0.25,
+        amplitude: 0.5,
+        camera: {
+          from: { x: 0, y: 0, scale: 1 },
+          to: { x: 0.02, y: 0, scale: 1.04 },
+        },
+        easing: "ease-in-out",
+      },
+    });
+  const addDepthAssets = (app: OpenFilmApplication) => {
+    for (const [index, name] of [
+      "source",
+      "mask",
+      "background",
+      "unselected",
+    ].entries())
+      app.catalog.upsertAsset({
+        id: `depth-${name}`,
+        name: `${name}.png`,
+        uri: `file:///synthetic/${name}.png`,
+        mediaType: "image",
+        contentHash: "abcd"[index]!.repeat(64),
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+  };
+
+  it.each([false, true])(
+    "preserves caller-owned PhotoDepth command data through admission and history (frozen=%s)",
+    async (frozen) => {
+      const { app, editor } = await fixture();
+      addDepthAssets(app);
+      const before = editor.get("composition");
+      const scene = dependencyScene();
+      const recipe = scene.photoDepth;
+      const command = { type: "graphic.scene.upsert" as const, scene };
+      const snapshot = structuredClone(command);
+      if (frozen) {
+        Object.freeze(command);
+        Object.freeze(scene);
+        Object.freeze(recipe);
+        Object.freeze(scene.nodes);
+        scene.nodes.forEach(Object.freeze);
+      }
+
+      const accepted = await editor.edit("composition", {
+        baseRevision: before.revision,
+        commands: [command],
+      });
+      expect(command).toEqual(snapshot);
+      expect(command.scene).toBe(scene);
+      expect(command.scene.photoDepth).toBe(recipe);
+      expect(accepted.composition.graphicScenes).toEqual([snapshot.scene]);
+      expect(accepted.composition.graphicScenes![0]).not.toBe(scene);
+      const undone = await editor.undo("composition", accepted.revision);
+      expect(undone.composition).toEqual(before.composition);
+      const redone = await editor.redo("composition", undone.revision);
+      expect(redone.composition).toEqual(accepted.composition);
+      expect(command.scene.photoDepth).toBe(recipe);
+      expect(command).toEqual(snapshot);
+    },
+  );
+
+  it.each(
+    ["mask", "background"].flatMap((name) =>
+      ["https://synthetic.invalid", "file://remote-host"].map((origin) => ({
+        name,
+        origin,
+      })),
+    ),
+  )(
+    "rejects a non-local PhotoDepth $name from $origin at command admission without changing saved state or history",
+    async ({ name, origin }) => {
+      const { app, editor } = await fixture();
+      addDepthAssets(app);
+      const before = editor.get("composition");
+      // Normal imports already reject non-file URIs. A portable catalog is
+      // untrusted input, so command admission must also check its stored data.
+      const database = new DatabaseSync(join(app.directory, "database.sqlite"));
+      try {
+        database
+          .prepare(
+            "UPDATE assets SET data=json_set(data, '$.uri', ?) WHERE id=?",
+          )
+          .run(`${origin}/${name}.png`, `depth-${name}`);
+      } finally {
+        database.close();
+      }
+      await expect(
+        editor.edit("composition", {
+          baseRevision: before.revision,
+          commands: [
+            { type: "graphic.scene.upsert", scene: dependencyScene() },
+          ],
+        }),
+      ).rejects.toThrow(/local.*image|image.*local/i);
+      expect(editor.get("composition")).toEqual(before);
+      const directory = app.directory;
+      app.close();
+      apps.delete(app);
+      const reopened = await OpenFilmApplication.open(directory);
+      apps.add(reopened);
+      expect(reopened.project.timelines[0]!.graphicScenes).toBeUndefined();
+    },
+  );
+
+  it("admits only explicitly chosen depth dependencies without changing story pools, required selections or unrelated-import history", async () => {
+    const { app, editor } = await fixture();
+    app.project.stories[0]!.beats[0]!.constraints = [
+      { type: "must-include", assetIds: ["source"] },
+    ];
+    await app.save();
+    const before = editor.get("composition");
+    addDepthAssets(app);
+    await app.save();
+    expect(editor.get("composition")).toEqual(before);
+    const chosen = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: dependencyScene() }],
+    });
+    expect(chosen.story).toEqual(before.story);
+    expect(chosen.assets.map((asset) => asset.id).sort()).toEqual([
+      "depth-background",
+      "depth-mask",
+      "depth-source",
+      "source",
+    ]);
+    expect(chosen.canUndo).toBe(true);
+    app.catalog.upsertAsset({
+      ...app.catalog.getAsset("depth-unselected")!,
+      id: "another-import",
+      uri: "file:///synthetic/another.png",
+    });
+    await app.save();
+    expect(editor.get("composition")).toEqual(chosen);
+    const undone = await editor.undo("composition", chosen.revision);
+    expect(undone.composition).toEqual(before.composition);
+    expect(undone.story).toEqual(before.story);
+    expect(undone.canRedo).toBe(true);
+    const redone = await editor.redo("composition", undone.revision);
+    expect(redone.composition).toEqual(chosen.composition);
+    expect(redone.story).toEqual(before.story);
+  });
+
+  it("rejects PhotoDepth recipes whose bound source hashes differ from catalog assets", async () => {
+    const { app, editor } = await fixture();
+    for (const [id, contentHash] of [
+      ["photo-original", "a".repeat(64)],
+      ["photo-mask", "b".repeat(64)],
+      ["photo-background", "c".repeat(64)],
+    ] as const)
+      app.catalog.upsertAsset({
+        id,
+        uri: `file:///synthetic/${id}.png`,
+        name: id,
+        mediaType: "image",
+        contentHash,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+    const before = editor.get("composition");
+    const scene = graphicScene({
+      id: "photo-depth-source-fence",
+      nodes: [
+        {
+          id: "photo-node",
+          type: "image",
+          assetId: "photo-original",
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 180,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+      photoDepth: {
+        version: 1,
+        id: "photo-depth-recipe",
+        nodeId: "photo-node",
+        mode: "parallax",
+        duration: 6,
+        sourceAssetId: "photo-original",
+        sourceSha256: "d".repeat(64),
+        maskAssetId: "photo-mask",
+        maskSha256: "b".repeat(64),
+        background: {
+          kind: "asset",
+          assetId: "photo-background",
+          sha256: "c".repeat(64),
+        },
+        protectedRegion: { x: 0.25, y: 0.1, width: 0.5, height: 0.8 },
+        foregroundDepth: 1.2,
+        backgroundDepth: 0.25,
+        amplitude: 0.5,
+        camera: {
+          from: { x: 0, y: 0, scale: 1 },
+          to: { x: 0.02, y: 0, scale: 1.04 },
+        },
+        easing: "ease-in-out",
+      },
+    });
+    await expect(
+      editor.edit("composition", {
+        baseRevision: before.revision,
+        commands: [{ type: "graphic.scene.upsert", scene }],
+      }),
+    ).rejects.toMatchObject({ code: "graphics.sourceChanged" });
+    expect(editor.get("composition").revision).toBe(before.revision);
+
+    const boundScene = structuredClone(scene);
+    boundScene.photoDepth!.sourceSha256 = "a".repeat(64);
+    const accepted = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: boundScene }],
+    });
+    const rebindToLocked = structuredClone(
+      accepted.composition.graphicScenes![0]!,
+    );
+    rebindToLocked.nodes.push({
+      ...rebindToLocked.nodes[0]!,
+      id: "locked-photo-node",
+      x: 20,
+      locked: true,
+    });
+    rebindToLocked.photoDepth!.nodeId = "locked-photo-node";
+    await expect(
+      editor.edit("composition", {
+        baseRevision: accepted.revision,
+        commands: [{ type: "graphic.scene.upsert", scene: rebindToLocked }],
+      }),
+    ).rejects.toThrow(/locked.*locked-photo-node.*PhotoDepth/i);
+
+    const lockedScene = structuredClone(
+      accepted.composition.graphicScenes![0]!,
+    );
+    lockedScene.nodes[0]!.locked = true;
+    const locked = await editor.edit("composition", {
+      baseRevision: accepted.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: lockedScene }],
+    });
+    const changed = structuredClone(locked.composition.graphicScenes![0]!);
+    if (changed.photoDepth?.mode === "parallax")
+      changed.photoDepth.amplitude = 0.75;
+    await expect(
+      editor.edit("composition", {
+        baseRevision: locked.revision,
+        commands: [{ type: "graphic.scene.upsert", scene: changed }],
+      }),
+    ).rejects.toThrow(/locked.*PhotoDepth/i);
+  });
+
+  it("keeps PhotoDepth recipes in the typed edit history and reopens the same saved revision", async () => {
+    const { app, editor } = await fixture();
+    const identities = {
+      photo: { id: "depth-photo", hash: "a".repeat(64) },
+      mask: { id: "depth-mask", hash: "b".repeat(64) },
+      background: { id: "depth-background", hash: "c".repeat(64) },
+    };
+    for (const [name, { id, hash }] of Object.entries(identities))
+      app.catalog.upsertAsset({
+        id,
+        uri: `file:///synthetic/${name}.png`,
+        name,
+        mediaType: "image",
+        contentHash: hash,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+    const before = editor.get("composition");
+    const scene = graphicScene({
+      id: "photo-depth-history",
+      nodes: [
+        {
+          id: "depth-image",
+          type: "image",
+          assetId: identities.photo.id,
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 180,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+      photoDepth: {
+        version: 1,
+        id: "depth-history-recipe",
+        nodeId: "depth-image",
+        mode: "parallax",
+        duration: 6,
+        sourceAssetId: identities.photo.id,
+        sourceSha256: identities.photo.hash,
+        maskAssetId: identities.mask.id,
+        maskSha256: identities.mask.hash,
+        background: {
+          kind: "asset",
+          assetId: identities.background.id,
+          sha256: identities.background.hash,
+        },
+        protectedRegion: { x: 0.2, y: 0.1, width: 0.6, height: 0.8 },
+        foregroundDepth: 1.2,
+        backgroundDepth: 0.25,
+        amplitude: 0.5,
+        camera: {
+          from: { x: 0, y: 0, scale: 1 },
+          to: { x: 0.02, y: 0, scale: 1.04 },
+        },
+        easing: "ease-in-out",
+      },
+    });
+    const added = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene }],
+    });
+    const undo = await editor.undo("composition", added.revision);
+    expect(undo.composition.graphicScenes).toBeUndefined();
+    const redo = await editor.redo("composition", undo.revision);
+    expect(redo.composition.graphicScenes?.[0]?.photoDepth).toEqual(
+      scene.photoDepth,
+    );
+    const directory = app.directory;
+    app.close();
+    apps.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    apps.add(reopened);
+    const saved = new TimelineEditor(reopened).get("composition");
+    expect(saved.composition.graphicScenes?.[0]?.photoDepth).toEqual(
+      scene.photoDepth,
+    );
+    expect(saved.revision).toBe(redo.revision);
+  });
+
   it("saves stable scene/node IDs through update, Undo/Redo, retry and reopen", async () => {
     const { app, editor } = await fixture();
     const before = editor.get("composition");

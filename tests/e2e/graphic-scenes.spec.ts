@@ -1,8 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
+import { hashFile, runProcess } from "@openfilm/media";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { initialLocale, navigate } from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
-const api = "http://127.0.0.1:4310/api";
+const api = process.env.OPENFILM_E2E_API ?? "http://127.0.0.1:4310/api";
 const compositionId = "graphic-film";
 let fixture: Awaited<ReturnType<typeof createDesktopFixture>> | undefined;
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -18,6 +22,449 @@ test.afterEach(async ({ request }) => {
   await fixture?.cleanup();
   fixture = undefined;
 });
+
+for (const layout of [
+  "graphics-only",
+  "visual-gaps",
+  "covered-other-clip",
+  "covered-video",
+] as const) {
+  test(`previews exact PhotoDepth start/middle/end frames in ${layout} without changing selection or saved edits`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    fixture = await createDesktopFixture(0);
+    const maskPath = join(fixture.media, "synthetic-seek-mask.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "nullsrc=s=320x180,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,40,139)*between(Y,30,149),255,0)'",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "rgba",
+      maskPath,
+    ]);
+    const maskHash = await hashFile(maskPath);
+    const app = await OpenFilmApplication.create(
+      fixture.project,
+      `Synthetic ${layout} depth`,
+    );
+    try {
+      await app.importFolder(fixture.media);
+      const assets = app.catalog.listAssets({ limit: 100 });
+      const photo = assets.find((asset) => asset.name === "01-photo.png")!;
+      const other = assets.find((asset) => asset.name === "03-evening.png")!;
+      const motion = assets.find((asset) => asset.name === "04-motion.mp4")!;
+      const mask = assets.find(
+        (asset) => asset.name === "synthetic-seek-mask.png",
+      )!;
+      app.project.settings = { width: 320, height: 180, frameRate: 30 };
+      const story = app.generateStory({
+        title: `Synthetic ${layout}`,
+        template: "blank",
+        assetIds: [photo.id, other.id],
+        targetDuration: 8,
+        maxDuration: 8,
+      });
+      const composition = app.compose(story.id);
+      composition.id = compositionId;
+      composition.duration = 8;
+      composition.tracks =
+        layout === "graphics-only"
+          ? []
+          : [
+              {
+                id: "gap-video",
+                type: "video",
+                clips: [
+                  {
+                    id: "gap-first",
+                    assetId: other.id,
+                    beatId: story.beats[0]!.id,
+                    sourceIn: 0,
+                    sourceOut: 0.5,
+                    timelineStart: 0,
+                    timelineDuration: 0.5,
+                  },
+                  {
+                    id: "gap-last",
+                    assetId:
+                      layout === "covered-other-clip" ? motion.id : other.id,
+                    beatId: story.beats[0]!.id,
+                    sourceIn: 0,
+                    sourceOut: 0.5,
+                    timelineStart: 7.5,
+                    timelineDuration: 0.5,
+                  },
+                  ...(layout === "covered-other-clip"
+                    ? [
+                        {
+                          id: "covering-photo",
+                          assetId: photo.id,
+                          beatId: story.beats[0]!.id,
+                          sourceIn: 0,
+                          sourceOut: 6,
+                          timelineStart: 1,
+                          timelineDuration: 6,
+                          motion: {
+                            version: 1 as const,
+                            preset: "push-in" as const,
+                            easing: "linear" as const,
+                            from: { scale: 1, x: 0, y: 0 },
+                            to: { scale: 1.08, x: 0, y: 0 },
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(layout === "covered-video"
+                    ? [
+                        {
+                          id: "covering-video",
+                          assetId: motion.id,
+                          beatId: story.beats[0]!.id,
+                          sourceIn: 0,
+                          sourceOut: 3,
+                          timelineStart: 1,
+                          timelineDuration: 6,
+                          transform: { speed: 0.5 },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            ];
+      composition.graphicScenes = [
+        {
+          version: 1,
+          id: "seek-depth-scene",
+          name: "Synthetic seek",
+          start: 1,
+          duration: 6,
+          zIndex: 0,
+          nodes: [
+            {
+              id: "seek-photo",
+              type: "image",
+              assetId: photo.id,
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              opacity: 1,
+              zIndex: 0,
+              start: 0,
+              end: 6,
+            },
+          ],
+          photoDepth: {
+            version: 1,
+            id: "seek-depth",
+            nodeId: "seek-photo",
+            mode: "parallax",
+            duration: 6,
+            sourceAssetId: photo.id,
+            sourceSha256: photo.contentHash!,
+            maskAssetId: mask.id,
+            maskSha256: mask.contentHash!,
+            background: { kind: "source" },
+            protectedRegion: { x: 0.12, y: 0.16, width: 0.33, height: 0.68 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0.5,
+            camera: {
+              from: { x: -0.02, y: 0, scale: 1 },
+              to: { x: 0.02, y: 0, scale: 1.04 },
+            },
+            easing: "ease-in-out",
+          },
+        },
+      ];
+      app.project.timelines[app.project.timelines.length - 1] = composition;
+      await app.save();
+    } finally {
+      app.close();
+    }
+    expect(
+      (
+        await request.post(`${api}/project/open`, {
+          data: { path: fixture.project },
+        })
+      ).ok(),
+    ).toBe(true);
+    const state = async () =>
+      (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+    const saved = await state();
+    const projectId = (await (await request.get(`${api}/project`)).json())
+      .project.id;
+    const validFrame = await request.get(
+      `${api}/compositions/${compositionId}/graphics.png?${new URLSearchParams({ projectId, revision: saved.revision, frame: "30" })}`,
+    );
+    expect(validFrame.status()).toBe(200);
+    await initialLocale(page);
+    await page.goto("/");
+    await navigate(page, "edit");
+    await page.getByTestId("graphic-inspector-tab").click();
+    const panel = page.locator(".graphic-inspector");
+    await panel
+      .getByRole("button", { name: "Select layer seek-photo", exact: true })
+      .click();
+    const controls = panel.getByTestId("photo-depth-controls");
+    const selection = await page
+      .locator(".editor-clip.selected")
+      .evaluateAll((nodes) => nodes.map((node) => node.id));
+    const frames = [];
+    const seekOrder =
+      layout === "covered-video"
+        ? ([
+            ["Preview middle", 120],
+            ["Preview start", 30],
+            ["Preview end", 209],
+          ] as const)
+        : ([
+            ["Preview start", 30],
+            ["Preview middle", 120],
+            ["Preview end", 209],
+          ] as const);
+    for (const [label, frame] of seekOrder) {
+      await controls.getByRole("button", { name: label, exact: true }).click();
+      const preview = page.getByTestId("graphic-preview");
+      await expect(preview).toBeVisible();
+      await expect(preview).toHaveAttribute("data-frame", String(frame));
+      if (layout === "covered-video") {
+        const video = page.locator(".editor-source-screen video");
+        await expect
+          .poll(() =>
+            video.evaluate(
+              (element: HTMLVideoElement) => element.readyState >= 2,
+            ),
+          )
+          .toBe(true);
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeCloseTo((frame / 30 - 1) * 0.5, 3);
+        await expect(preview).toHaveAttribute("data-frame", String(frame));
+      }
+      expect(
+        await page
+          .locator(".editor-clip.selected")
+          .evaluateAll((nodes) => nodes.map((node) => node.id)),
+      ).toEqual(selection);
+      await expect(page.getByTestId("graphic-inspector-tab")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      const pixels = await preview.evaluate(async (image: HTMLImageElement) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const rgba = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+        return [...new Uint8Array(await crypto.subtle.digest("SHA-256", rgba))]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      });
+      frames.push({ frame, rgbaSha256: pixels });
+      if (layout === "covered-video" && frame === 120) {
+        const video = page.locator(".editor-source-screen video");
+        await page
+          .getByRole("button", { name: "Step forward one frame", exact: true })
+          .click();
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeCloseTo(37 / 24, 3);
+        await expect(preview).toHaveAttribute("data-frame", "122");
+        await controls
+          .getByRole("button", { name: "Preview middle", exact: true })
+          .click();
+        await expect(preview).toHaveAttribute("data-frame", "120");
+        await video.evaluate((element: HTMLVideoElement) => element.play());
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeGreaterThan(1.6);
+        await video.evaluate((element: HTMLVideoElement) => element.pause());
+        const sourceTime = await video.evaluate(
+          (element: HTMLVideoElement) => element.currentTime,
+        );
+        await expect(preview).toHaveAttribute(
+          "data-frame",
+          String(Math.floor((1 + sourceTime / 0.5) * 30 + 1e-9)),
+        );
+      }
+    }
+    expect(new Set(frames.map((frame) => frame.rgbaSha256)).size).toBe(3);
+    if (layout === "graphics-only" || layout === "visual-gaps") {
+      await page
+        .getByRole("button", { name: "Open Visual QA panel", exact: true })
+        .click();
+      const review = page.locator(".visual-qa-panel");
+      await review
+        .getByRole("button", { name: "Check saved edit", exact: true })
+        .click();
+      const samples = review.locator(".visual-qa-sample");
+      await expect(samples).toHaveCount(4, { timeout: 30_000 });
+      const expectSavedFrame = async (frame: number) => {
+        const preview = page.getByTestId("graphic-preview");
+        await expect(preview).toHaveAttribute("data-frame", String(frame));
+        const displayedHash = await preview.evaluate(
+          async (image: HTMLImageElement) => {
+            await image.decode();
+            const png = await (await fetch(image.src)).arrayBuffer();
+            return [
+              ...new Uint8Array(await crypto.subtle.digest("SHA-256", png)),
+            ]
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+          },
+        );
+        const expected = await request.get(
+          `${api}/compositions/${compositionId}/graphics.png?${new URLSearchParams({ projectId, revision: saved.revision, frame: String(frame) })}`,
+        );
+        expect(expected.status()).toBe(200);
+        expect(displayedHash).toBe(
+          createHash("sha256")
+            .update(await expected.body())
+            .digest("hex"),
+        );
+      };
+      await samples.nth(1).click();
+      await expectSavedFrame(90);
+      await review
+        .getByRole("button", { name: "Open Edit near 00:01.000", exact: true })
+        .click();
+      await expectSavedFrame(30);
+      await review
+        .getByRole("button", { name: "Close panel", exact: true })
+        .click();
+      expect(
+        await page
+          .locator(".editor-clip.selected")
+          .evaluateAll((nodes) => nodes.map((node) => node.id)),
+      ).toEqual(selection);
+    }
+    const after = await state();
+    expect(after.revision).toBe(saved.revision);
+    expect(after.composition).toEqual(saved.composition);
+    expect(after.story).toEqual(saved.story);
+    expect([after.canUndo, after.canRedo]).toEqual([
+      saved.canUndo,
+      saved.canRedo,
+    ]);
+    if (layout === "covered-other-clip") {
+      await controls
+        .getByRole("button", { name: "Preview middle", exact: true })
+        .click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "120",
+      );
+      await page.locator("#clip-gap-last").click();
+      const video = page.locator(".editor-source-screen video");
+      await expect
+        .poll(() =>
+          video.evaluate(
+            (element: HTMLVideoElement) => element.readyState >= 2,
+          ),
+        )
+        .toBe(true);
+      await expect
+        .poll(() =>
+          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+        )
+        .toBe(0);
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "225",
+      );
+      await page.locator("#clip-gap-first").click();
+      await page.getByTestId("graphic-inspector-tab").click();
+      await panel
+        .getByRole("button", { name: "Select layer seek-photo", exact: true })
+        .click();
+      await controls
+        .getByRole("button", { name: "Preview end", exact: true })
+        .click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "209",
+      );
+    }
+    await page.getByTestId("graphic-node-opacity").fill("0.9");
+    await page.getByTestId("graphic-node-opacity").press("Tab");
+    await expect
+      .poll(async () => (await state()).revision)
+      .not.toBe(saved.revision);
+    await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+    await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+      "data-frame",
+      "0",
+    );
+    await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+    await expect
+      .poll(async () => (await state()).composition)
+      .toEqual(saved.composition);
+    if (layout !== "graphics-only") {
+      await page.locator("#clip-gap-first").click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "0",
+      );
+    }
+    expect(
+      (await request.post(`${api}/project/close`, { data: {} })).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await request.post(`${api}/project/open`, {
+          data: { path: fixture.project },
+        })
+      ).ok(),
+    ).toBe(true);
+    await page.reload();
+    await navigate(page, "edit");
+    await page.getByTestId("graphic-inspector-tab").click();
+    await panel
+      .getByRole("button", { name: "Select layer seek-photo", exact: true })
+      .click();
+    await controls
+      .getByRole("button", { name: "Preview middle", exact: true })
+      .click();
+    await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+      "data-frame",
+      "120",
+    );
+    expect((await state()).revision).toBe(saved.revision);
+    expect(await hashFile(maskPath)).toBe(maskHash);
+    expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+    await testInfo.attach("exact-depth-seeks", {
+      body: JSON.stringify({
+        layout,
+        frames,
+        revision: saved.revision,
+        selection,
+      }),
+      contentType: "application/json",
+    });
+  });
+}
+
 test("authors all primitives, seeks exact shared frames and preserves history and reopen", async ({
   page,
   request,
@@ -693,4 +1140,369 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await page.reload();
   await navigate(page, "edit");
   expect((await state()).composition.graphicSceneTemplates).toEqual(templates);
+});
+
+test("authors local PhotoDepth layers, previews shared frames, and preserves undo/reopen", async ({
+  page,
+  request,
+}) => {
+  fixture = await createDesktopFixture(0);
+  const dependencies = join(fixture.root, "depth-layers");
+  await mkdir(dependencies);
+  const maskPath = join(dependencies, "synthetic-depth-mask.png");
+  const backgroundPath = join(dependencies, "synthetic-depth-background.png");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "nullsrc=s=320x180,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,40,139)*between(Y,30,149),255,0)'",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    "-pix_fmt",
+    "rgba",
+    "-y",
+    maskPath,
+  ]);
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x1d694b:s=320x180",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    "-y",
+    backgroundPath,
+  ]);
+  const importedHashes = await Promise.all(
+    [maskPath, backgroundPath].map((path) => hashFile(path)),
+  );
+  const app = await OpenFilmApplication.create(
+    fixture.project,
+    "Synthetic PhotoDepth film",
+  );
+  let sourceHash: string;
+  let replacementId: string;
+  let replacementHash: string;
+  try {
+    await app.importFolder(fixture.media);
+    const assets = app.catalog.listAssets({ limit: 100 });
+    const photo = assets.find((asset) => asset.name === "01-photo.png")!;
+    const replacementPhoto = assets.find(
+      (asset) => asset.name === "02-photo-copy.png",
+    )!;
+    sourceHash = photo.contentHash!;
+    replacementId = replacementPhoto.id;
+    replacementHash = replacementPhoto.contentHash!;
+    app.project.settings = { width: 320, height: 180, frameRate: 30 };
+    const story = app.generateStory({
+      title: "Synthetic parallax",
+      template: "blank",
+      assetIds: [photo.id, replacementPhoto.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    story.beats[0]!.constraints = [
+      { type: "must-include", assetIds: [photo.id] },
+    ];
+    const composition = app.compose(story.id);
+    composition.id = compositionId;
+    composition.duration = 6;
+    composition.tracks = [
+      {
+        id: "photo-track",
+        type: "video",
+        clips: [
+          {
+            id: "photo-clip",
+            assetId: photo.id,
+            beatId: story.beats[0]!.id,
+            sourceIn: 0,
+            sourceOut: 6,
+            timelineStart: 0,
+            timelineDuration: 6,
+          },
+        ],
+      },
+    ];
+    composition.graphicScenes = [
+      {
+        version: 1,
+        id: "photo-depth-scene",
+        name: "Synthetic depth",
+        start: 0,
+        duration: 6,
+        zIndex: 0,
+        nodes: [
+          {
+            id: "photo-depth-image",
+            type: "image",
+            assetId: photo.id,
+            x: 0,
+            y: 0,
+            width: 320,
+            height: 180,
+            opacity: 1,
+            zIndex: 0,
+            start: 0,
+            end: 6,
+          },
+        ],
+      },
+    ];
+    app.project.timelines[app.project.timelines.length - 1] = composition;
+    await app.save();
+  } finally {
+    app.close();
+  }
+  expect(
+    (
+      await request.post(`${api}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await initialLocale(page);
+  await page.goto("/");
+  await navigate(page, "edit");
+  await page.getByTestId("graphic-inspector-tab").click();
+  const panel = page.locator(".graphic-inspector");
+  await panel
+    .getByRole("button", {
+      name: "Select layer photo-depth-image",
+      exact: true,
+    })
+    .click();
+  const controls = panel.getByTestId("photo-depth-controls");
+  await expect(controls).toBeVisible();
+  const state = async () =>
+    (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+  await page.getByTestId("graphic-node-opacity").fill("0.9");
+  await page.getByTestId("graphic-node-opacity").press("Tab");
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  const beforeImport = await state();
+  expect(beforeImport.canUndo).toBe(true);
+  expect(
+    beforeImport.story.beats.every((beat: { candidateAssetIds?: string[] }) =>
+      Array.isArray(beat.candidateAssetIds),
+    ),
+  ).toBe(true);
+  await controls
+    .getByRole("button", { name: "Import local photo layers", exact: true })
+    .click();
+  await expect(page.locator(".import-panel")).toBeVisible();
+  await page.locator(".import-actions .primary").click();
+  await page.locator("input[name='media-folder']").fill(dependencies);
+  await page.locator(".import-folder-form .primary").click();
+  await expect(
+    controls.getByLabel("Foreground alpha mask (PNG)"),
+  ).toContainText("synthetic-depth-mask.png");
+  const imported = await (
+    await request.get(`${api}/assets?mediaType=image&limit=200`)
+  ).json();
+  const mask = imported.assets.find(
+    (asset: { name: string }) => asset.name === "synthetic-depth-mask.png",
+  );
+  const background = imported.assets.find(
+    (asset: { name: string }) =>
+      asset.name === "synthetic-depth-background.png",
+  );
+  const maskId = mask.id;
+  const maskHash = mask.contentHash;
+  const backgroundId = background.id;
+  expect(mask.state.locked).not.toBe(true);
+  expect(background.state.locked).not.toBe(true);
+  const afterImport = await state();
+  expect(afterImport.revision).toBe(beforeImport.revision);
+  expect(afterImport.canUndo).toBe(true);
+  expect(afterImport.story).toEqual(beforeImport.story);
+  expect(
+    afterImport.assets.some((asset: { id: string }) =>
+      [maskId, backgroundId].includes(asset.id),
+    ),
+  ).toBe(false);
+  await controls.getByLabel("Foreground alpha mask (PNG)").selectOption(maskId);
+  await controls.getByLabel("Background source").selectOption("asset");
+  await controls.getByLabel("Background fill image").selectOption(backgroundId);
+  await controls
+    .getByRole("button", { name: "Create photo motion", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  const recipe = (await state()).composition.graphicScenes[0].photoDepth;
+  expect(recipe).toMatchObject({
+    mode: "parallax",
+    sourceAssetId: expect.any(String),
+    maskAssetId: expect.any(String),
+    background: { kind: "asset", assetId: backgroundId },
+    duration: 6,
+  });
+  expect(recipe.sourceSha256).toBe(sourceHash);
+  expect(recipe.maskSha256).toBe(maskHash);
+  expect((await state()).story).toEqual(beforeImport.story);
+  await page.getByTestId("graphic-node-end").fill("4.5");
+  await page.getByTestId("graphic-node-end").press("Tab");
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth.duration,
+    )
+    .toBe(4.5);
+  await page.getByTestId("graphic-node-start").fill("1.5");
+  await page.getByTestId("graphic-node-start").press("Tab");
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth.duration,
+    )
+    .toBe(3);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth.duration,
+    )
+    .toBe(4.5);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth.duration,
+    )
+    .toBe(6);
+  const projectId = (await (await request.get(`${api}/project`)).json()).project
+    .id;
+  const saved = await state();
+  const frameUrl = `${api}/compositions/${compositionId}/graphics.png?projectId=${encodeURIComponent(projectId)}&revision=${encodeURIComponent(saved.revision)}&frame=90`;
+  let frame = await request.get(frameUrl);
+  await expect
+    .poll(async () => {
+      if (
+        frame.status() === 409 &&
+        (await frame.json()).code === "graphics.busy"
+      )
+        frame = await request.get(frameUrl);
+      return frame.status();
+    })
+    .toBe(200);
+  if (!frame.ok())
+    throw new Error(
+      `Graphic preview returned HTTP ${frame.status()}: ${await frame.text()}`,
+    );
+  expect(frame.headers()["content-type"]).toContain("image/png");
+  const frameBytes = await frame.body();
+  expect(frameBytes.readUInt32BE(16)).toBe(320);
+  expect(frameBytes.readUInt32BE(20)).toBe(180);
+  await controls
+    .getByRole("button", { name: "Preview middle", exact: true })
+    .click();
+  await expect(page.locator(".graphic-preview-status")).toHaveCount(0);
+  await expect(page.getByTestId("graphic-preview")).toBeVisible();
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  const sourcePicker = panel.getByTestId("graphic-node-image-asset");
+  await expect(sourcePicker).toBeEnabled();
+  await sourcePicker.selectOption(replacementId, { timeout: 5_000 });
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+  expect((await state()).composition.graphicScenes[0].photoDepth).toMatchObject(
+    {
+      sourceAssetId: replacementId,
+      fallbackReason: "mask-unreliable",
+    },
+  );
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth?.sourceSha256,
+    )
+    .toBe(replacementHash);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.id,
+    )
+    .toBe(recipe.id);
+  expect(
+    await Promise.all([maskPath, backgroundPath].map((path) => hashFile(path))),
+  ).toEqual(importedHashes);
+  await request.post(`${api}/project/close`, { data: {} });
+  expect(
+    (
+      await request.post(`${api}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await page.getByTestId("graphic-inspector-tab").click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.id,
+    )
+    .toBe(recipe.id);
+  await expect(
+    page.locator("[data-testid='photo-depth-controls']"),
+  ).toBeVisible();
+
+  await panel
+    .getByRole("button", {
+      name: "Select layer photo-depth-image",
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByRole("button", { name: "Remove layer", exact: true })
+    .click();
+  await expect
+    .poll(async () => {
+      const current = (await state()).composition.graphicScenes[0];
+      return {
+        hasPhotoLayer: current.nodes.some(
+          (node: { id: string }) => node.id === "photo-depth-image",
+        ),
+        recipe: current.photoDepth,
+      };
+    })
+    .toEqual({ hasPhotoLayer: false, recipe: undefined });
 });

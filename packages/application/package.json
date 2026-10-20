@@ -1,6 +1,6 @@
 {
   "name": "@openfilm/application",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -21,7 +21,8 @@
     "@openfilm/source-pixel": "workspace:*",
     "@openfilm/source-insta360": "workspace:*",
     "@openfilm/analysis": "workspace:*",
-    "@openfilm/provider-whisper": "workspace:*"
+    "@openfilm/provider-whisper": "workspace:*",
+    "koffi": "3.3.3"
   },
   "license": "Apache-2.0",
   "openfilmModificationNotice": "Modified by OpenFilm contributors on 2026-10-18; preexisting Apache-2.0 grants retained. See LICENSE and NOTICE."

@@ -128,6 +128,33 @@ Minimum observations:
 A tiny generated 4K file is useful regression data but does not satisfy this
 workstation gate.
 
+## Gate: Selective PhotoDepth
+
+Use the candidate-bound PhotoDepth contract and synthetic landscape/silhouette
+for the repeatable baseline. Real photographs stay on the private workstation;
+do not commit them, upload them to a provider, add them to CI, or include them in
+logs/PR artifacts.
+
+Minimum observations:
+
+- original, alpha-mask and fill identities/hashes remain unchanged through edit,
+  cancellation, retry, preview, export, Undo/Redo and reopen;
+- image and mask dimensions/orientation, alpha edges, protected-region behavior,
+  and the source-background ghosting trade-off;
+- actual Monitor and decoded MP4 at start/middle/end, including arbitrary seek
+  and mask/fill fallback;
+- for real people, manual face/hand/pose/contact and edge review; overlapping
+  people remain one protected foreground layer unless a person reviews a safe
+  separation;
+- sustained 4K decode/render, peak memory and any visible edge instability on
+  the target GPU/CPU and display;
+- cancellation and a fresh retry leave no stale frame, derived cache or source
+  modification.
+
+The app's mask bounds and hole checks are measurable diagnostics, not evidence
+that a human subject's appearance is unchanged. No model or AI-generated
+inpainting is used in this milestone.
+
 ## Gate: Windows installer
 
 Run on a clean supported Windows account/VM without the development checkout.
@@ -188,3 +215,34 @@ Keep evidence immutable once referenced from a release/PR validation record.
 Native startup and long-session memory use the separate
 [measurement runner](native-performance.md). Its versioned manifest/report
 and raw samples do not change these eight strict QA gates or certify a pass.
+
+## M7E native installer candidate
+
+Keep both clean Windows and macOS gates `not-run` until tested on an actual
+workstation/VM with a full candidate SHA. Linux Cargo or Node process tests do
+not satisfy them. Record installer/runtime-manifest/artifact SHA-256, OS/build,
+architecture, app and tool versions, signature status and evidence references.
+
+For each platform:
+
+1. Use a clean non-administrator account without developer Node, FFmpeg, fonts or
+   Perl on PATH. Confirm OS webview prerequisites and documented OS libraries.
+2. Install the candidate through the normal supported OS trust flow; do not
+   bypass Gatekeeper/SmartScreen. Check CJK/space/long install paths and read-only
+   installation resources. Record app/runtime file hashes and permissions.
+3. Start, observe first-run preflight and Service ready, create/import synthetic
+   media, edit, render, decode and reopen. Check frame/audio/source receipts.
+4. Keep a pending unsaved draft and attempt close; resolve it and verify normal
+   service exit. Crash the shell, check owned cleanup, restart and reopen.
+5. Occupy the development port and start a second app. Each service must retain
+   separate ownership/session; closing one must preserve the other.
+6. Exercise missing/corrupt/incorrect-architecture runtime and unwritable app
+   data. Diagnostics must be readable and keyboard-operable without private paths.
+7. Upgrade to the candidate, simulate failed replacement, reinstall the previous
+   verified runtime and reopen supported projects. Unsupported schema must refuse
+   without migration-by-downgrade. Keep an independent backup before testing.
+8. Uninstall and reinstall. Verify project originals, managed sources, named
+   snapshots and saved edits were retained. Record actual file observations.
+
+Signing/feed setup and any automatic update activation require their own reviewed
+configuration and failure/rollback evidence. See [Native Installer](native-installer.md).

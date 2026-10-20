@@ -21,3 +21,9 @@ Noto CJK fonts, when installed separately, are SIL Open Font License 1.1.
 No operating-system fonts or private photographic material are redistributed
 as part of this implementation.
 --------------------------------------------
+
+Atomic directory publication uses Koffi 3.3.3 under MIT, copyright 2026
+Niels Martignène. Its bundled Node API headers carry separate MIT notices
+for the Node.js API collaborators (2017) and Node.js (2021). Installed
+packages and staged runtimes retain all three complete upstream notices;
+see docs/third-party.md.

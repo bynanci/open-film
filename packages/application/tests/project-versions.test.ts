@@ -7,6 +7,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,15 +105,46 @@ describe("named project versions", () => {
         "-y",
         path,
       ]);
-      const asset = await inspectMedia({
-        path,
-        uri: pathToFileURL(path).href,
-        name: `${id}.png`,
-      });
+      const asset = {
+        ...(await inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${id}.png`,
+        })),
+        contentHash: await hashFile(path),
+      };
       app.catalog.upsertAsset(asset);
       photos.push(asset);
       sourcePaths.set(asset.id, path);
     }
+
+    const maskPath = join(directory, "synthetic-photo-mask.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "nullsrc=s=96x54,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,10,75)*between(Y,5,48),255,0)'",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "rgba",
+      "-y",
+      maskPath,
+    ]);
+    const photoMask = {
+      ...(await inspectMedia({
+        path: maskPath,
+        uri: pathToFileURL(maskPath).href,
+        name: "Synthetic photo mask",
+      })),
+      contentHash: await hashFile(maskPath),
+    };
+    app.catalog.upsertAsset(photoMask);
+    sourcePaths.set(photoMask.id, maskPath);
 
     app.project.settings = { width: 320, height: 180, frameRate: 12 };
     app.project.stories.push({
@@ -197,7 +229,43 @@ describe("named project versions", () => {
           id: "version-shape",
           name: "Versioned shape",
           duration: 4,
-          nodes: [graphicNode({ id: "versioned-red-shape", end: 4 })],
+          nodes: [
+            graphicNode({ id: "versioned-red-shape", end: 4 }),
+            {
+              id: "versioned-photo-depth-image",
+              type: "image" as const,
+              assetId: photos[0]!.id,
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              opacity: 1,
+              zIndex: 1,
+              start: 0,
+              end: 4,
+            },
+          ],
+          photoDepth: {
+            version: 1,
+            id: "versioned-photo-depth-recipe",
+            nodeId: "versioned-photo-depth-image",
+            mode: "parallax" as const,
+            duration: 4,
+            sourceAssetId: photos[0]!.id,
+            sourceSha256: photos[0]!.contentHash!,
+            maskAssetId: photoMask.id,
+            maskSha256: photoMask.contentHash!,
+            background: { kind: "source" as const },
+            protectedRegion: { x: 0.09, y: 0.07, width: 0.72, height: 0.85 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0.35,
+            camera: {
+              from: { x: 0, y: 0, scale: 1 },
+              to: { x: 0.02, y: 0, scale: 1.04 },
+            },
+            easing: "ease-in-out" as const,
+          },
         }),
         photoScene.scene,
       ],
@@ -264,6 +332,11 @@ describe("named project versions", () => {
     const restored = app.project.timelines[0]!;
     expect(restored.captionTracks?.[0]?.cues[0]?.text).toBe("Original caption");
     expect(restored.graphicScenes?.[0]?.nodes[0]?.x).toBe(0);
+    expect(restored.graphicScenes?.[0]?.photoDepth).toMatchObject({
+      mode: "parallax",
+      sourceAssetId: photos[0]!.id,
+      maskAssetId: photoMask.id,
+    });
     expect(restored.graphicSceneTemplates?.[0]).toEqual(photoScene.record);
     expect(
       restored.tracks[0]?.clips[0]?.audioAutomation?.points?.[0]?.gain,
@@ -459,6 +532,7 @@ describe("named project versions", () => {
       baseRevision: firstRevision,
       requestId: "10000000-0000-4000-8000-000000000001",
     });
+    expect(first.softwareVersion).toBe("0.4.0");
     const immutableRecord = await readFile(
       join(directory, "versions", first.id, "record.json"),
       "utf8",
@@ -1115,5 +1189,197 @@ describe("named project versions", () => {
     await mkdir(outside);
     await symlink(outside, join(directory, "versions"));
     expect(() => app.versions.list()).toThrow("versions folder is unsafe");
+  });
+  it("frees an explicitly chosen slot at capacity before restoring with a durable checkpoint", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-capacity-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    let app = await OpenFilmApplication.create(directory, "Synthetic capacity");
+    cleanup.push(() => app.close());
+    const ids: string[] = [];
+    for (let index = 0; index < 50; index++) {
+      const record = await app.versions.create({
+        name: `Version ${index}`,
+        baseRevision: app.versions.currentRevision(),
+        requestId: randomUUID(),
+      });
+      ids.push(record.id);
+    }
+    const request = {
+      baseRevision: app.versions.currentRevision(),
+      confirmed: true,
+    };
+    expect(() =>
+      app.versions.remove(ids[1]!, { ...request, confirmed: false }),
+    ).toThrow(/confirm/i);
+    expect(() =>
+      app.versions.remove(ids[1]!, {
+        ...request,
+        baseRevision: "0".repeat(64),
+      }),
+    ).toThrow(/changed/i);
+    expect(app.versions.list()).toHaveLength(50);
+    expect(app.versions.remove(ids[1]!, request)).toEqual({
+      removedVersionId: ids[1],
+    });
+    expect(app.versions.remove(ids[1]!, request)).toEqual({
+      removedVersionId: ids[1],
+    });
+    expect(app.versions.list().map((record) => record.id)).toEqual(
+      ids.filter((id) => id !== ids[1]),
+    );
+    await expect(
+      readFile(join(directory, "versions", ids[1]!, "record.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    const restored = await app.versions.restore(ids[0]!, {
+      ...request,
+      requestId: randomUUID(),
+    });
+    expect(app.versions.list()).toHaveLength(50);
+    expect(
+      app.versions.inspect(restored.checkpointVersionId).summary.title,
+    ).toBe("Synthetic capacity");
+    app.close();
+    app = await OpenFilmApplication.open(directory);
+    expect(app.versions.list()).toHaveLength(50);
+    expect(app.versions.list().some((record) => record.id === ids[1])).toBe(
+      false,
+    );
+    expect(app.project.title).toBe("Synthetic capacity");
+  });
+
+  it("rejects target-only media changed while the recovery checkpoint is created", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-target-source-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const source = join(root, "synthetic.png");
+    await writeFile(source, "synthetic original bytes");
+    const app = await OpenFilmApplication.create(
+      directory,
+      "Synthetic source fencing",
+    );
+    cleanup.push(() => app.close());
+    app.catalog.upsertAsset({
+      id: "photo",
+      uri: pathToFileURL(source).href,
+      name: "Synthetic",
+      mediaType: "image",
+      contentHash: await hashFile(source),
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    app.project.stories = [
+      {
+        id: "story",
+        title: "Story",
+        beats: [{ id: "beat", title: "Beat", selectedAssetIds: ["photo"] }],
+      },
+    ];
+    await app.save();
+    const target = await app.versions.create({
+      name: "Target",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    });
+    app.project.stories = [];
+    app.project.title = "Current project must survive";
+    await app.save();
+    const manifest = await readFile(join(directory, "project.json"));
+    const revision = app.versions.currentRevision();
+    const create = app.versions.create.bind(app.versions);
+    vi.spyOn(app.versions, "create").mockImplementation(async (input) => {
+      const checkpoint = await create(input);
+      await writeFile(source, "synthetic modified bytes");
+      return checkpoint;
+    });
+    await expect(
+      app.versions.restore(target.id, {
+        baseRevision: revision,
+        requestId: randomUUID(),
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "media.missing" });
+    expect(app.versions.currentRevision()).toBe(revision);
+    expect(await readFile(join(directory, "project.json"))).toEqual(manifest);
+    expect(app.project.title).toBe("Current project must survive");
+    expect(await readFile(source, "utf8")).toBe("synthetic modified bytes");
+  });
+  it("keeps deleted create receipts as tombstones and protects active recovery snapshots", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-delete-recovery-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(
+      directory,
+      "Synthetic deletion",
+    );
+    cleanup.push(() => app.close());
+    const input = {
+      name: "Keep receipt",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    };
+    const version = await app.versions.create(input);
+    const manifest = await readFile(join(directory, "project.json"));
+    const removal = { baseRevision: input.baseRevision, confirmed: true };
+    const journal = join(directory, "versions", "restore-journal.json");
+    await writeFile(journal, "{}");
+    expect(() => app.versions.remove(version.id, removal)).toThrow(/recovery/i);
+    expect(app.versions.list()).toHaveLength(1);
+    await rm(journal);
+    app.versions.remove(version.id, removal);
+    await expect(app.versions.create(input)).rejects.toMatchObject({
+      status: 404,
+      code: "request.notFound",
+    });
+    expect(app.versions.list()).toEqual([]);
+    expect(await readFile(join(directory, "project.json"))).toEqual(manifest);
+    expect(app.versions.currentRevision()).toBe(input.baseRevision);
+  });
+  it("aborts before restore publication if its recovery checkpoint was explicitly deleted", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-checkpoint-deletion-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Target state");
+    cleanup.push(() => app.close());
+    const target = await app.versions.create({
+      name: "Target",
+      baseRevision: app.versions.currentRevision(),
+      requestId: randomUUID(),
+    });
+    app.project.title = "Current state must retain a recovery snapshot";
+    await app.save();
+    const manifest = await readFile(join(directory, "project.json"));
+    const baseRevision = app.versions.currentRevision();
+    const create = app.versions.create.bind(app.versions);
+    vi.spyOn(app.versions, "create").mockImplementation(async (input) => {
+      const checkpoint = await create(input);
+      app.versions.remove(checkpoint.id, { baseRevision, confirmed: true });
+      return checkpoint;
+    });
+    await expect(
+      app.versions.restore(target.id, {
+        baseRevision,
+        requestId: randomUUID(),
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ status: 404, code: "request.notFound" });
+    expect(await readFile(join(directory, "project.json"))).toEqual(manifest);
+    expect(app.versions.currentRevision()).toBe(baseRevision);
+    expect(app.project.title).toBe(
+      "Current state must retain a recovery snapshot",
+    );
+    expect(app.versions.list().map((version) => version.id)).toEqual([
+      target.id,
+    ]);
+    await expect(
+      readFile(join(directory, "versions", "restore-journal.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

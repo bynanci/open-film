@@ -29,12 +29,14 @@ import AppSettings from "./components/AppSettings.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
+import CollectMediaPanel from "./components/CollectMediaPanel.vue";
 import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
 import type {
   MediaAsset,
   FilmLook,
+  ExportProfile,
   OpenFilmProject,
   Story,
   StoryBeat,
@@ -62,6 +64,16 @@ import SourceDetails from "./components/SourceDetails.vue";
 import AnalysisJobActions from "./components/AnalysisJobActions.vue";
 import type { AnalysisJobRecoveryState, AnalysisRecoveryInput } from "./api";
 import { nativeBenchmark } from "./nativeBenchmark";
+import type {
+  NativeLocalDraft,
+  RetainedNativeDraft,
+} from "./native-draft-recovery";
+
+const props = defineProps<{
+  nativeDrafts?: RetainedNativeDraft[];
+  nativeGeneration?: number;
+}>();
+const emit = defineEmits<{ nativeDraftsRestored: [ids: number[]] }>();
 
 const { t } = useI18n();
 const interfaceLocales = [
@@ -93,6 +105,7 @@ const projectGeneration = ref(0);
 const connected = ref(false);
 const loading = ref(true);
 const busy = ref("");
+const collectBusy = ref(false);
 const error = ref<unknown>("");
 const errorMessage = computed(() => uiMessage(error.value));
 const errorDetails = computed(() => errorDetail(error.value));
@@ -176,6 +189,7 @@ watch(
   { flush: "sync" },
 );
 const scenePlannerOpen = ref(false);
+const scenePlanner = ref<InstanceType<typeof ScenePlanner> | null>(null);
 const scenePlanDraftPresent = ref(false);
 let projectMutationVersion = 0;
 const libraryView = ref<"all" | "events" | "duplicates">("all");
@@ -241,6 +255,7 @@ function jobBlocksProjectSwitch(job: Job, recovery?: AnalysisJobRecoveryState) {
 const projectSwitchBlocked = computed(
   () =>
     !!busy.value ||
+    collectBusy.value ||
     storyReviewBusy.value ||
     storyReviewPending.value ||
     relinkBusy.value ||
@@ -892,6 +907,7 @@ async function resetProjectView() {
   tab.value = "library";
   restoreScriptReviewTarget();
   rememberProject();
+  await restoreNativeDrafts();
 }
 async function createFilm(value: FilmCreation) {
   if (analysisRecoveryPending.value || !(await flushProjectPending())) return;
@@ -1679,7 +1695,12 @@ async function renderPreview() {
     notice.value = message("feedback.previewReady");
   });
 }
-async function exportFilm(format: string) {
+async function exportFilm(
+  format: string,
+  exportProfile?: ExportProfile,
+  confirmCrop = false,
+  cropPreviewToken?: string,
+) {
   if (!(await flushPending())) return;
   const exportingLook =
     format === "mp4" && lookOverride.value
@@ -1703,6 +1724,9 @@ async function exportFilm(format: string) {
         compositionId: composition.id,
         ...(exportingLook ? { lookOverride: exportingLook } : {}),
         ...(format === "mp4" ? { quality: exportingQuality } : {}),
+        ...(format === "mp4" && exportProfile ? { exportProfile } : {}),
+        ...(format === "mp4" && confirmCrop ? { confirmCrop: true } : {}),
+        ...(format === "mp4" && cropPreviewToken ? { cropPreviewToken } : {}),
         ...(format === "mp4" && outputCaptionTrackId.value !== undefined
           ? { captionTrackId: outputCaptionTrackId.value }
           : {}),
@@ -1747,6 +1771,10 @@ async function exportFilm(format: string) {
     exportStale.value = exportingEdit !== editSerial;
     notice.value = message("feedback.exported");
   });
+}
+function exportProfileBusy(active: boolean) {
+  if (active && !busy.value) busy.value = "exportingTimeline";
+  else if (!active && busy.value === "exportingTimeline") busy.value = "";
 }
 function jobTitle(job: Job): string {
   if (job.type === "scene-script-review")
@@ -1857,6 +1885,7 @@ async function changeWorkspace() {
     if (
       !current() ||
       relinkBusy.value ||
+      collectBusy.value ||
       analysisRecoveryPending.value ||
       latest.jobs.some((job) =>
         jobBlocksProjectSwitch(job, latest.analysisRecovery?.[job.id]),
@@ -1890,7 +1919,11 @@ function lastSourceFolder(uri: string): string {
   }
 }
 async function inspectAsset(asset: MediaAsset) {
-  if (busy.value || (categoryDirty.value && !(await saveCategories()))) return;
+  if (
+    (busy.value && !["savingSelection", "savingRating"].includes(busy.value)) ||
+    (categoryDirty.value && !(await saveCategories()))
+  )
+    return;
   selectedAssetId.value = asset.id;
 }
 function handleKeyboard(event: KeyboardEvent) {
@@ -1901,6 +1934,213 @@ function handleKeyboard(event: KeyboardEvent) {
     storyCreateOpen.value = false;
   }
 }
+/** Native close reuses the same durable editor/project gates as workspace navigation. */
+async function prepareNativeClose() {
+  if (projectSwitchBlocked.value) return false;
+  const projectId = project.value?.id;
+  const generation = analysisRecoveryGeneration;
+  if (
+    !(await flushProjectPending()) ||
+    project.value?.id !== projectId ||
+    analysisRecoveryGeneration !== generation ||
+    projectSwitchBlocked.value
+  )
+    return false;
+  if (!projectId) return true;
+  const latest = await api.jobs();
+  return (
+    project.value?.id === projectId &&
+    analysisRecoveryGeneration === generation &&
+    !projectSwitchBlocked.value &&
+    !latest.jobs.some((job) =>
+      jobBlocksProjectSwitch(job, latest.analysisRecovery?.[job.id]),
+    )
+  );
+}
+function categoryBaseline(asset: MediaAsset): string {
+  return JSON.stringify({
+    uri: asset.uri,
+    contentHash: asset.contentHash ?? null,
+    mediaType: asset.mediaType,
+    tags: asset.tags,
+  });
+}
+function beatBaseline(beat: StoryBeat): string {
+  return JSON.stringify({
+    title: beat.title,
+    intent: beat.intent ?? "",
+    targetDuration: beat.targetDuration ?? 0,
+    selectedAssetIds: beat.selectedAssetIds ?? [],
+    candidateAssetIds: beat.candidateAssetIds ?? [],
+    narration: beat.script?.narration ?? "",
+    visualDirection: beat.script?.visualDirection ?? "",
+  });
+}
+function plannerBaseline(): string {
+  return JSON.stringify({
+    title: project.value?.title,
+    templateId: project.value?.filmSettings?.templateId,
+    targetDuration: project.value?.filmSettings?.targetDuration,
+    maxDuration: project.value?.filmSettings?.maxDuration,
+  });
+}
+function captureNativeDrafts(): NativeLocalDraft[] {
+  const current = project.value;
+  const path = projectPath.value;
+  if (!current || !path) return [];
+  const owner = {
+    projectId: current.id,
+    projectPath: path,
+    projectTitle: current.title,
+  };
+  const drafts: NativeLocalDraft[] = [];
+  if (beatDirty.value && activeStory.value && activeBeat.value)
+    drafts.push({
+      ...owner,
+      kind: "beat",
+      entityId: activeBeat.value.id,
+      storyId: activeStory.value.id,
+      label: activeBeat.value.title,
+      baseline: beatBaseline(activeBeat.value),
+      value: JSON.parse(JSON.stringify(beatDraft.value)),
+    });
+  if (categoryDirty.value && selectedAsset.value)
+    drafts.push({
+      ...owner,
+      kind: "category",
+      entityId: selectedAsset.value.id,
+      label: selectedAsset.value.name,
+      baseline: categoryBaseline(selectedAsset.value),
+      value: [...categoryDraft.value],
+    });
+  const planner = scenePlanner.value?.captureNativeDraft();
+  if (planner) {
+    drafts.push({
+      ...owner,
+      kind: "planner",
+      entityId: "planner",
+      label: current.title,
+      baseline: plannerBaseline(),
+      value: planner.inputs,
+    });
+    if (planner.text.length)
+      drafts.push({
+        ...owner,
+        kind: "planner-text",
+        entityId: "planner-text",
+        label: current.title,
+        baseline: plannerBaseline(),
+        value: planner.text,
+      });
+  }
+  return drafts;
+}
+let nativeRecoveryAttempt = 0;
+async function restoreNativeDrafts() {
+  const attempt = ++nativeRecoveryAttempt;
+  const current = project.value;
+  const path = projectPath.value;
+  const generation = props.nativeGeneration ?? 0;
+  if (!current || !path) return;
+  const owned = () =>
+    !nativeDisposed &&
+    attempt === nativeRecoveryAttempt &&
+    project.value === current &&
+    projectPath.value === path &&
+    props.nativeGeneration === generation;
+  const retained = (entry: RetainedNativeDraft) =>
+    props.nativeDrafts?.some((item) => item.id === entry.id) === true;
+  const entries = [...(props.nativeDrafts ?? [])].sort(
+    (left, right) => right.generation - left.generation || right.id - left.id,
+  );
+  for (const entry of entries) {
+    if (!owned()) break;
+    if (
+      !retained(entry) ||
+      entry.generation >= generation ||
+      entry.projectId !== current.id ||
+      entry.projectPath !== path
+    )
+      continue;
+    if (entry.kind === "beat") {
+      const story = current.stories.find((item) => item.id === entry.storyId);
+      const index =
+        story?.beats.findIndex((beat) => beat.id === entry.entityId) ?? -1;
+      if (
+        !story ||
+        index < 0 ||
+        beatDirty.value ||
+        beatBaseline(story.beats[index]!) !== entry.baseline
+      )
+        continue;
+      activeStoryId.value = story.id;
+      activeBeatIndex.value = index;
+      await nextTick();
+      if (
+        !owned() ||
+        !retained(entry) ||
+        beatDirty.value ||
+        activeStory.value?.id !== story.id ||
+        activeBeat.value?.id !== entry.entityId ||
+        beatBaseline(activeBeat.value) !== entry.baseline
+      )
+        continue;
+      beatDraft.value = JSON.parse(JSON.stringify(entry.value));
+      beatDirty.value = true;
+      tab.value = "story";
+      // Consume in the same turn as applying, before another entry can await.
+      emit("nativeDraftsRestored", [entry.id]);
+    } else if (entry.kind === "category" && !categoryDirty.value) {
+      const selectedBefore = selectedAssetId.value;
+      try {
+        const result = await api.assets(
+          new URLSearchParams({ ids: entry.entityId, limit: "1" }),
+        );
+        const asset = result.assets.find((item) => item.id === entry.entityId);
+        if (
+          !owned() ||
+          !retained(entry) ||
+          categoryDirty.value ||
+          selectedAssetId.value !== selectedBefore ||
+          !asset ||
+          categoryBaseline(asset) !== entry.baseline
+        )
+          continue;
+        cacheAssets([asset]);
+        selectedAssetId.value = asset.id;
+        categoryDraft.value = [...entry.value];
+        categoryDirty.value = true;
+        emit("nativeDraftsRestored", [entry.id]);
+      } catch {
+        /* Keep the only recovery copy until a fresh read can validate it. */
+      }
+    } else if (
+      entry.kind === "planner" &&
+      !scenePlanDraftPresent.value &&
+      plannerBaseline() === entry.baseline
+    ) {
+      scenePlannerOpen.value = true;
+      tab.value = "story";
+      await nextTick();
+      if (
+        !owned() ||
+        !retained(entry) ||
+        scenePlanDraftPresent.value ||
+        !scenePlanner.value ||
+        plannerBaseline() !== entry.baseline
+      )
+        continue;
+      scenePlanner.value.restoreNativeDraft(entry.value);
+      emit("nativeDraftsRestored", [entry.id]);
+    }
+    // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
+  }
+}
+defineExpose({
+  prepareNativeClose,
+  captureNativeDrafts,
+  openNativeDraftProject: openProject,
+});
 function protectDrafts(event: BeforeUnloadEvent) {
   if (
     categoryDirty.value ||
@@ -1914,12 +2154,14 @@ function protectDrafts(event: BeforeUnloadEvent) {
   }
 }
 onMounted(async () => {
+  window.addEventListener("beforeunload", protectDrafts);
   await boot();
+  await restoreNativeDrafts();
+  if (nativeDisposed) return;
   poll = setInterval(() => {
     void pollJobs();
   }, 1000);
   window.addEventListener("keydown", handleKeyboard);
-  window.addEventListener("beforeunload", protectDrafts);
 });
 onUnmounted(() => {
   nativeDisposed = true;
@@ -1958,7 +2200,7 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
-          :disabled="!!busy || relinkBusy"
+          :disabled="!!busy || relinkBusy || collectBusy"
           @click="changeTab(item)"
         >
           {{ t(`app.navigation.${item}`) }}
@@ -2113,6 +2355,7 @@ onUnmounted(() => {
         v-if="scenePlannerOpen"
         v-show="tab === 'story'"
         :key="project.id"
+        ref="scenePlanner"
         :title="project.title"
         :target-duration="
           project.filmSettings?.targetDuration ?? targetDuration
@@ -3448,6 +3691,15 @@ onUnmounted(() => {
             @quality="changeOutputQuality"
             @caption-track="changeOutputCaptionTrack"
             @export="exportFilm"
+            @profile-busy="exportProfileBusy"
+          />
+          <CollectMediaPanel
+            v-if="tab === 'export'"
+            :key="`${project.id}:${projectGeneration}`"
+            :project="project"
+            :composition="activeComposition"
+            :disabled="!!busy || relinkBusy || activeJobs.length > 0"
+            @busy="collectBusy = $event"
           />
           <button
             v-if="previewVersion && tab === 'edit'"
@@ -3508,6 +3760,7 @@ onUnmounted(() => {
             @change="editorChanged"
             @edited="editorEdited"
             @playback="toggleRenderedPlayback"
+            @import-assets="importOpen = true"
             @activity="refreshJobs"
             @recover-analysis="recoverAnalysis"
           />

@@ -1,4 +1,5 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE and NOTICE.
+import applicationManifest from "../package.json" with { type: "json" };
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -856,10 +857,16 @@ export class ProjectVersionService {
       fingerprint,
       "create",
     );
-    if (prior)
-      return this.publicRecord(
-        before.entries.find((entry) => entry.id === prior.versionId)!,
-      );
+    if (prior) {
+      const entry = before.entries.find((item) => item.id === prior.versionId);
+      if (!entry)
+        fail(
+          "request.notFound",
+          "This named version was explicitly deleted.",
+          404,
+        );
+      return this.publicRecord(entry);
+    }
     const snapshot = this.capture();
     if (snapshot.revision !== baseRevision)
       fail(
@@ -894,7 +901,7 @@ export class ProjectVersionService {
       projectHash: snapshot.projectHash,
       catalogHash: snapshot.catalogHash,
       catalogSchemaVersion: snapshot.schemaVersion,
-      softwareVersion: "0.1.0",
+      softwareVersion: applicationManifest.version,
       sourceReferences,
     });
     const recordBytes = Buffer.from(
@@ -981,6 +988,12 @@ export class ProjectVersionService {
           "create",
         );
         if (existing) {
+          if (!latest.entries.some((item) => item.id === existing.versionId))
+            fail(
+              "request.notFound",
+              "This named version was explicitly deleted.",
+              404,
+            );
           resolvedId = existing.versionId;
           return;
         }
@@ -1029,6 +1042,62 @@ export class ProjectVersionService {
         rmSync(staging, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  /** Explicit deletion frees capacity without changing the saved project or media. */
+  remove(
+    id: string,
+    input: { baseRevision: string; confirmed: boolean },
+  ): { removedVersionId: string } {
+    const versionId = uuid(id, "version ID");
+    const data = plain(input, "Delete version input");
+    if (
+      Object.keys(data).some(
+        (field) => !["baseRevision", "confirmed"].includes(field),
+      )
+    )
+      fail("request.invalid", "Unsupported delete-version field.");
+    if (data.confirmed !== true)
+      fail(
+        "request.invalid",
+        "Deleting a named version requires explicit confirmation.",
+      );
+    const baseRevision = revision(data.baseRevision, "baseRevision");
+    const before = this.capture();
+    if (before.revision !== baseRevision)
+      fail(
+        "story.planConflict",
+        "The project changed. Refresh before deleting a version.",
+        409,
+      );
+    this.app.catalog.withProjectWrite(() => {
+      this.assertRestoreBaseline(before, () => {});
+      if (existsSync(this.journalPath))
+        fail(
+          "jobs.busy",
+          "Finish restore recovery before deleting a version.",
+          409,
+        );
+      const index = this.readIndex();
+      const directory = this.packagePath(versionId);
+      if (!existsSync(directory)) {
+        if (index.entries.some((entry) => entry.id === versionId))
+          fail("request.invalid", "The named version folder is missing.");
+        return;
+      }
+      const info = lstatSync(directory);
+      if (!info.isDirectory() || info.isSymbolicLink())
+        fail("request.invalid", "The named version folder is unsafe.");
+      // Publish the index first: interrupted cleanup cannot leave a live entry
+      // pointing at a partially removed snapshot. Request receipts remain tombstones.
+      atomicJson(this.indexPath, {
+        ...index,
+        entries: index.entries.filter((entry) => entry.id !== versionId),
+      });
+      rmSync(directory, { recursive: true, force: true });
+      syncDirectory(this.root);
+    });
+    return { removedVersionId: versionId };
   }
 
   list(): ProjectVersionRecord[] {
@@ -1303,6 +1372,9 @@ export class ProjectVersionService {
       baseRevision,
       requestId: randomUUID(),
     });
+    // Checkpoint capture can hash a different set of assets for a long time.
+    // Recheck target-only dependencies before any destructive publication.
+    await this.verifySources(target, rebasedTarget.assets);
     const checkpointId = checkpoint.id;
     const receipt: VersionReceipt = {
       requestId,
@@ -1311,13 +1383,25 @@ export class ProjectVersionService {
       versionId,
       checkpointVersionId: checkpointId,
     };
-    this.writeJournal({
-      version: 1,
-      targetVersionId: versionId,
-      checkpointVersionId: checkpointId,
-      requestId,
-      fingerprint,
-      stage: "applying",
+    // Deletion shares this lock. Either it finishes first and aborts restore,
+    // or the published journal protects the live recovery checkpoint from removal.
+    this.app.catalog.withProjectWrite(() => {
+      this.assertRestoreBaseline(before, () => {});
+      const recovery = this.load(checkpointId);
+      if (recovery.record.projectRevision !== before.revision)
+        fail(
+          "story.planConflict",
+          "The recovery checkpoint no longer matches the current project.",
+          409,
+        );
+      this.writeJournal({
+        version: 1,
+        targetVersionId: versionId,
+        checkpointVersionId: checkpointId,
+        requestId,
+        fingerprint,
+        stage: "applying",
+      });
     });
     let staleDuringRestore = false;
     let restoreManifestPublished = false;

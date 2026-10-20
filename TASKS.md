@@ -1,3 +1,26 @@
+## 0.4.0 release — review remediation and integration
+
+- [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.
+- [x] Add explicit confirmed deletion through shared application/API/CLI/Desktop to free bounded version capacity without automatic pruning.
+- [x] Cover stale/confirmation/retry/recovery/reopen and synthetic source-change regressions.
+- [x] Fix and independently review all six feature PRs 35–40; preserve their ancestry on integration PR #41.
+- [x] Verify complete combined format/i18n/lint/typecheck/unit/application/build/interchange gates and actual shared render/package parity.
+- [x] Align application/workspace/Tauri metadata at 0.4.0 while retaining project schema 1.0.0 and Apache-2.0/NOTICE.
+- [x] Close final integration review findings: installed CLI version, empty ZIP/abort/ownership, and complete native FFmpeg filter admission; rerun the combined gates.
+- [x] Independently close all 16 late feature/integration findings, including scene schema/seek, delivery/caption fences, passive NLE review and atomic directory/stem publication; verify the pinned native dependency and its license inventory.
+- [x] Preserve saved project revisions and unrelated jobs during CLI export; prove durable cross-process retries and retained source/settings rejection with the actual built executable.
+- [x] Fix supported FFmpeg 6.1.1 singleton/low-frame-rate delivery without changing saved project rates; retain the original browser case and independently verify actual decoded output on 6.1.1 and 7.1.5.
+- [x] Fence saved revisions and cancellation after real ZIP creation, publish synchronously without replacing destinations, and preserve postcommit outputs; independently verify actual archive races.
+- [x] Remediate the failed JavaScript advisory gate with exact Vite 8.2.4, verified registry/provenance, zero-audit and bounded launcher/build/native/browser controls; see [validation](docs/validation-vite-security.md).
+- [ ] Resolve the existing GLib 0.18.5 / `RUSTSEC-2024-0429` native distribution gate through compatible upstream remediation and reachability review before publishing installers.
+
+The Vite-patched candidate must repeat every combined/browser/hosted gate before
+merge or release. Final browser/native CI, merge and publication status is recorded on
+[integration PR #41](https://github.com/bynanci/open-film/pull/41) and the
+[0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+Exact base/head/merge identities, changed paths and completed gates accompany the
+checksummed release evidence. Installer/workstation/manual gates remain open.
+
 ## M6 — Audio Quality and Provider Generation
 
 - [x] Reuse existing AudioAutomation and typed volume edits.
@@ -19,7 +42,7 @@ F05 photo-framing expansion stays deferred; this does not relabel it as complete
 
 # Task status
 
-This checklist describes implementation in the 0.1.0 source tree. A checked item
+This checklist describes implementation in the 0.4.0 source tree. A checked item
 means behavior or a concrete artifact exists; it does not certify every operating
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -742,29 +765,95 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## Candidate — M7A / F09 Named Versions
+## Implemented — M7A / F09 Named Versions
 
-Scope: [Named Versions contract](docs/named-versions.md),
-[architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). This branch is based on the
-latest fetched `main`; it is not merged and CI/review gates are tracked
-separately.
+PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
+[Contract](docs/named-versions.md) · [validation](docs/validation-named-versions.md).
 
-- [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
-      v1 records, source hashes, idempotent retries and mutable labels isolated
-      in private index metadata.
-- [x] Compare Story, Composition, Captions, GraphicScenes/templates, audio and
-      source identities without exposing source paths.
-- [x] Restore only after revision/confirmation/source/lock checks, first create
-      a named checkpoint, recover interrupted publication and invalidate stale
-      Desktop editor state across project generations.
-- [x] Share application behavior across HTTP, CLI and localized keyboard-
-      accessible Desktop; old projects open without a versions directory.
-- [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
-      restore V2 with synthetic photos, captions, graphics, audio, frame/audio
-      measurements and unchanged source hashes.
-- [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
-      workstation filesystem/permission behavior as a separate manual gate.
+- [x] Immutable private manifest/SQLite snapshots, stable IDs, source receipts,
+      idempotent requests, mutable labels and cross-session comparison/restore.
+- [x] Explicit checkpointed restore with revision/source/lock fences and recovery.
+- [x] Confirmed snapshot deletion through shared service/API/CLI/Desktop; bounded
+      storage, receipt tombstones and journal-protected recovery checkpoints.
+- [x] Collision-free ordered diffs and linear source-manifest validation.
+- [ ] Manual: Windows/macOS filesystem, permissions and forced-exit recovery.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+## Integrated — M7B / F10 Professional Export (#36)
+
+[Contract](docs/export-profiles.md) · [validation](docs/validation-export-profiles.md).
+
+- [x] Render-only 16:9, 9:16 and 1:1 profiles; actual MP4, PNG, WAV and role stems.
+- [x] Preview-bound crop confirmation, selected look/caption/quality identity,
+      complete-frame time bounds, private bounded cache and stale/cancel handling.
+- [x] Uniform stereo stems, role-specific preflight and conflicting-source rejection;
+      preserve original Composition, source hashes and audio curves.
+- [x] Shared Application/Desktop/HTTP/CLI and real 12-second/three-ratio evidence.
+- [ ] Manual: real-photo framing, target-player/NLE and sustained 4K validation.
+
+## Integrated — M7C / F11 NLE Fidelity (#39)
+
+[Contract](docs/nle-handoff.md) · [validation](docs/validation-nle-handoff.md).
+
+- [x] Versioned native/metadata/baked/unsupported reports bound to saved source
+      identity, options, rational frame boundaries and explicit acceptance.
+- [x] Private portable TAR, native cuts/dialogue, scoped opaque precomps, optional
+      full mix/caption sidecars and actual decoded frame/sample/hash evidence.
+- [x] Verify all 22 review threads; retain already-correct cancellation and source fences.
+- [ ] Manual: real Resolve/NLE import, relink, playback, color and channel checks.
+- [ ] Future: transparent overlays and separately editable baked effects/stems.
+
+## Integrated — M7D / F12 Collect Media (#37)
+
+[Contract](docs/collect-media.md) · [validation](docs/validation-collect-media.md).
+
+- [x] Plan only referenced Story/Composition media and font dependencies, with
+      explicit rights, immutable source receipts and revision-bound publication.
+- [x] Safe ZIP/directory paths, SQLite-consistent filtered catalog, no credentials,
+      full reference/font validation and stable original provenance after relocation.
+- [x] Verify exact dimensions and embedded audio, cancel both hash scans, reopen
+      and compare actual MP4 after original sources are removed.
+- [ ] Manual: target-workstation filesystems, typography/licensing and cross-machine QA.
+
+## Partial — M7E / F13 Native Installer tooling (#38)
+
+[Contract](docs/native-installer.md) · [validation](docs/validation-native-installer.md).
+
+- [x] Hash-verified runtime staging, version agreement, private owned-service
+      startup/shutdown, flush/close handshake, recovery remount and diagnostics.
+- [x] Signed-manifest bytes pinned during verification; permission-preserving
+      runtime/installer archives; portable Node/Vite build invocation.
+- [x] Manual candidate workflow; bundling disabled by default, no automatic-update feed.
+- [ ] Complete audited per-platform runtime inputs and license/dependency review.
+- [ ] Obtain Windows/macOS clean-machine installer, first-run, signing/notarization,
+      update and rollback evidence before distributing native installers.
+
+## Integrated — M8A local PhotoDepth (#35)
+
+[Contract](docs/photo-depth.md) · [validation](docs/validation-photo-depth.md).
+
+- [x] Versioned local original/mask/fill/protected-subject recipe on GraphicScene;
+      bounded parallax/easing, fallback and shared arbitrary-seek Monitor/FFmpeg.
+- [x] Typed edits, locks, required selection, Undo/Redo, autosave, reopen and
+      Named Versions remain on the existing Composition/history path.
+- [x] Preserve source alpha when masking; typed stale-fallback QA; actual 6-second/
+      180-frame source-hash/seek/edge/parity evidence.
+- [ ] Manual: real protected subjects, edge aesthetics, physical color and sustained 4K.
+
+## Integrated — M8B reviewable Motion Candidates (#40)
+
+[Contract](docs/motion-candidates.md) · [validation](docs/validation-motion-candidates.md).
+
+- [x] Local camera fixture and explicitly imported video candidates, declared
+      provenance/cost/consent, compare, human review, explicit Accept/Replace/Restore.
+- [x] Existing typed commands/history; narration/duration/source protection,
+      stale/cancel/retry and prepared-journal/lost-response recovery.
+- [x] Actual synthetic MP4/seeks/source receipts; private expiry/discard, including
+      aged receiptless crash folders while preserving recent/prepared/imported work.
+- [ ] Remote image-to-video remains disabled; future adapters require verified API,
+      terms/license/cost/retention/download safety and explicit provider consent.
+- [ ] Manual: human/detail fidelity, physical color and native presentation.
+
+The six PR heads are combined with ancestry preserved in the 0.4.0 release
+candidate. [Combined validation](docs/validation-stable-release.md) owns final
+full-suite, browser, interchange, native CI and merge/release evidence; feature
+validation records retain their original branch identities and historical runs.

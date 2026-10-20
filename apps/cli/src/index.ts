@@ -3,10 +3,14 @@
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
+import packageInfo from "../package.json" with { type: "json" };
 import {
   ApplicationError,
   errorInfo,
   validateFilmLook,
+  createExportProfile,
+  type ExportRatio,
+  type ExportFraming,
   type FilmLook,
   type GlossaryInput,
 } from "@openfilm/core";
@@ -18,6 +22,7 @@ import {
   resolveRenderQuality,
   type ScenePlanAcceptance,
   type DirectionReviewPlan,
+  type CollectRightsDeclaration,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -60,9 +65,15 @@ Usage:
   openfilm direction-review accept <composition-id> --project <film.openfilm> --plan <preview.json> --request-id <id> [--actions <action-id,...> | --actions-json <JSON-array>]
   openfilm compose --project <film.openfilm> [--story <id>]
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm motion providers|preview|receipt|accept|import|restore|revoke|clear --project <film.openfilm> [--id <candidate-id>]
+  openfilm motion preview --project <film.openfilm> --composition <id> --clip <id> --request-id <uuid> --motion-consent --motion-prompt <text> --motion-negative <constraints> [--motion-provider local-motion-fixture|local-motion-import] [--motion-count 2|3] [--motion-candidates <id,id>] [--contains-people|--environment-only] [--motion-scene <id>]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
+  openfilm handoff review --project <film.openfilm> --composition <id> [--mode preserve-editability|preserve-visual-fidelity] [--bake-audio] [--caption-track <id> | --no-captions]
+  openfilm handoff export --project <film.openfilm> --review <review.json>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
-  openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format mp4 [--ratio 16:9|9:16|1:1 --framing contain|crop --confirm-crop --crop-preview-token <token>] [--fps <number> --width <even-px> --height <even-px>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format png --ratio 16:9|9:16|1:1 --time <seconds> [--framing contain|crop --preview --confirm-crop --crop-preview-token <token> --request-id <id>] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format wav|audio-stems [--request-id <id>]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
@@ -73,7 +84,11 @@ Usage:
   openfilm versions inspect <version-id> --project <film.openfilm>
   openfilm versions diff <before-id> <after-id> --project <film.openfilm>
   openfilm versions rename <version-id> --project <film.openfilm> --name "New name" [--description "..."|--clear-description]
+  openfilm versions delete <version-id> --project <film.openfilm> --base-revision <sha256> --confirm
   openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
+  openfilm collect plan --project <film.openfilm> --scope current-film|entire-project [--composition <id>] [--rights <declarations.json>]
+  openfilm collect create --project <film.openfilm> --scope current-film|entire-project --plan-id <sha256> --base-revision <sha256> --format directory|zip --destination <new-path> [--composition <id>] [--rights <declarations.json>]
+  openfilm collect verify --project <film.openfilm> --package <directory-or-zip>
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
 Original media stays unchanged. No network service or AI account is required.
@@ -84,6 +99,7 @@ Film look presets: none, soft-film, americana, clean-camera, retro, natural, spo
 Omit --look to preserve saved film/scene/clip choices. A look override changes only this MP4/preview.
 --commands reads a JSON object {baseRevision,requestId,commands} of at most 1 MiB.
 --quality changes compression only, not the saved frame, timing, audio or source detail.
+For crop output, run PNG --preview, review its returned local path, then export with --confirm-crop --crop-preview-token <token> and identical render settings within ten minutes.
 Review suggestions never change text until accepted. No language provider is configured by default.
 Transcript reads also accept transcript <asset-id> when the ID is not an action name.
 Use transcript get <asset-id> for all IDs, including edit, search, revisions, undo, redo, select and get.
@@ -112,9 +128,28 @@ function parse(args: string[]) {
     "confirm",
     "clear-description",
     "replace-existing",
+    "motion-consent",
+    "contains-people",
+    "environment-only",
+    "reviewed",
+    "bake-audio",
+    "no-captions",
+
+    "confirm-crop",
+    "preview",
   ]);
   const values = new Set([
     "project",
+    "clip",
+    "motion-provider",
+    "motion-count",
+    "motion-candidates",
+    "motion-prompt",
+    "motion-negative",
+    "motion-scene",
+    "review",
+    "mode",
+    "caption-track",
     "title",
     "name",
     "description",
@@ -166,6 +201,17 @@ function parse(args: string[]) {
     "look",
     "look-strength",
     "quality",
+    "destination",
+    "rights",
+    "plan-id",
+    "package",
+
+    "ratio",
+    "framing",
+    "fps",
+    "width",
+    "height",
+    "crop-preview-token",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -279,7 +325,7 @@ async function main() {
   const { positional, options } = parse(process.argv.slice(2));
   const command = positional[0];
   if (options.version) {
-    console.log("OpenFilm 0.1.0");
+    console.log(`OpenFilm ${packageInfo.version}`);
     return;
   }
   if (!command || options.help) {
@@ -288,20 +334,21 @@ async function main() {
   }
   const lookOutput =
     command === "render" ||
-    (command === "export" && value(options, "format") === "mp4");
+    (command === "export" &&
+      ["mp4", "png"].includes(value(options, "format") ?? ""));
   if (
     !lookOutput &&
     (Object.hasOwn(options, "look") || Object.hasOwn(options, "look-strength"))
   )
     throw new ApplicationError(
       "request.invalid",
-      "Film look overrides require render or export --format mp4; interchange keeps saved looks as metadata.",
+      "Film look overrides require render or export --format mp4/png; interchange keeps saved looks as metadata.",
     );
   const lookOverride = lookOutput ? renderLook(options) : undefined;
   if (!lookOutput && Object.hasOwn(options, "quality"))
     throw new ApplicationError(
       "request.invalid",
-      "Compression quality requires render or export --format mp4.",
+      "Compression quality requires render or export --format mp4/png.",
     );
   const quality = lookOutput
     ? resolveRenderQuality(value(options, "quality")).quality
@@ -344,8 +391,11 @@ async function main() {
   const project = value(options, "project") ?? process.env.OPENFILM_PROJECT;
   if (!project)
     throw new Error("Use --project <film.openfilm> to select a project.");
+  // Deriving exports must not save the source project or recover other jobs.
   const app =
     command === "captions" ||
+    command === "handoff" ||
+    command === "export" ||
     ((command === "scene-plan" || command === "direction-review") &&
       positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
@@ -358,7 +408,75 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    if (command === "versions") {
+    if (command === "collect") {
+      const action = positional[1];
+      if (action === "verify") {
+        const packagePath = value(options, "package");
+        if (!packagePath)
+          throw new Error("Specify --package <directory-or-zip>.");
+        print(
+          await app.collectMedia.verify(
+            resolve(packagePath),
+            controller.signal,
+          ),
+        );
+      } else {
+        const scope = value(options, "scope");
+        if (scope !== "current-film" && scope !== "entire-project")
+          throw new Error("Choose --scope current-film or entire-project.");
+        const compositionId = value(options, "composition");
+        if (scope === "current-film" && !compositionId)
+          throw new Error("current-film scope requires --composition <id>.");
+        let rightsDeclarations: CollectRightsDeclaration[] | undefined;
+        const rightsPath = value(options, "rights");
+        if (rightsPath) {
+          const parsed: unknown = JSON.parse(
+            await readFile(resolve(rightsPath), "utf8"),
+          );
+          if (!Array.isArray(parsed))
+            throw new Error(
+              "--rights must point to a JSON array of confirmed declarations.",
+            );
+          rightsDeclarations = parsed as CollectRightsDeclaration[];
+        }
+        const base = {
+          scope,
+          ...(compositionId ? { compositionId } : {}),
+          ...(rightsDeclarations ? { rightsDeclarations } : {}),
+        } as const;
+        if (action === "plan") {
+          print(await app.collectMedia.plan(base, controller.signal));
+        } else if (action === "create") {
+          const planId = value(options, "plan-id");
+          const baseRevision = value(options, "base-revision");
+          const destination = value(options, "destination");
+          const format = value(options, "format");
+          if (!planId || !baseRevision || !destination)
+            throw new Error(
+              "create requires --plan-id, --base-revision, and --destination.",
+            );
+          if (format !== "directory" && format !== "zip")
+            throw new Error("Choose --format directory or zip.");
+          print(
+            await app.collectMedia.create({
+              ...base,
+              planId,
+              baseRevision,
+              destination: resolve(destination),
+              format,
+              signal: controller.signal,
+              onProgress(progress) {
+                console.error(
+                  JSON.stringify({ event: "collect.progress", progress }),
+                );
+              },
+            }),
+          );
+        } else {
+          throw new Error("Choose collect plan|create|verify.");
+        }
+      }
+    } else if (command === "versions") {
       const action = positional[1];
       if (action === "revision") {
         print({
@@ -402,6 +520,14 @@ async function main() {
                 : { description: value(options, "description")! }),
           }),
         });
+      } else if (action === "delete") {
+        const id = positional[2];
+        const baseRevision = value(options, "base-revision");
+        if (!id || !baseRevision)
+          throw new Error("Specify a version ID and --base-revision.");
+        if (options.confirm !== true)
+          throw new Error("Deleting requires the explicit --confirm flag.");
+        print(app.versions.remove(id, { baseRevision, confirmed: true }));
       } else if (action === "restore") {
         const id = positional[2];
         const baseRevision = value(options, "base-revision");
@@ -420,7 +546,7 @@ async function main() {
         );
       } else {
         throw new Error(
-          "Choose versions revision|list|create|inspect|diff|rename|restore.",
+          "Choose versions revision|list|create|inspect|diff|rename|delete|restore.",
         );
       }
     } else if (command === "import") {
@@ -981,7 +1107,77 @@ async function main() {
         );
     } else if (command === "compose")
       print({ composition: app.compose(value(options, "story")) });
-    else if (command === "audio-quality") {
+    else if (command === "motion") {
+      const action = positional[1],
+        id = value(options, "id");
+      if (action === "providers") print(app.motionGeneration.list());
+      else if (action === "clear") {
+        await app.motionGeneration.clearPreviews();
+        print({ cleared: true });
+      } else if (action === "preview") {
+        const compositionId = value(options, "composition"),
+          clipId = value(options, "clip"),
+          requestId = value(options, "request-id");
+        if (!compositionId || !clipId || !requestId)
+          throw new Error(
+            "Choose --composition, --clip and a stable --request-id UUID.",
+          );
+        print(
+          await app.runMotionGeneration(
+            {
+              projectId: app.project.id,
+              compositionId,
+              clipId,
+              requestId,
+              baseRevision: new TimelineEditor(app).get(compositionId).revision,
+              providerId:
+                value(options, "motion-provider") ?? "local-motion-fixture",
+              count: Number(value(options, "motion-count") ?? "2"),
+              ...(value(options, "motion-candidates")
+                ? {
+                    candidateAssetIds: value(
+                      options,
+                      "motion-candidates",
+                    )!.split(","),
+                  }
+                : {}),
+              ...(value(options, "motion-scene")
+                ? { sceneId: value(options, "motion-scene") }
+                : {}),
+              prompt: value(options, "motion-prompt") ?? "",
+              negativeConstraints: value(options, "motion-negative") ?? "",
+              consent: options["motion-consent"] === true,
+              containsPeople:
+                options["environment-only"] !== true ||
+                options["contains-people"] === true,
+            },
+            controller.signal,
+          ),
+        );
+      } else {
+        if (!id)
+          throw new Error("Provide --id for the motion candidate or request.");
+        if (action === "receipt") print(await app.motionGeneration.receipt(id));
+        else if (action === "accept")
+          print(
+            await app.motionGeneration.accept(id, options.reviewed === true),
+          );
+        else if (action === "revoke") {
+          await app.motionGeneration.revoke(id);
+          print({ revoked: true });
+        } else if (action === "import" || action === "restore") {
+          const editor = new TimelineEditor(app);
+          const state =
+            action === "import"
+              ? await app.motionGeneration.importCandidate(id, editor)
+              : await app.motionGeneration.restore(id, editor);
+          print({
+            revision: state.revision,
+            receipt: await app.motionGeneration.receipt(id),
+          });
+        } else throw new Error("Choose a supported motion action.");
+      }
+    } else if (command === "audio-quality") {
       const compositionId =
         value(options, "composition") ?? app.project.timelines[0]?.id;
       const clipId = value(options, "clip");
@@ -1021,22 +1217,202 @@ async function main() {
             : {}),
         }),
       });
-    else if (command === "export") {
+    else if (command === "handoff") {
+      if (options["no-captions"] && value(options, "caption-track"))
+        throw new Error("Choose --caption-track or --no-captions");
+      if (positional[1] === "review")
+        print(
+          app.reviewHandoff(
+            value(options, "composition") ??
+              app.project.timelines.at(-1)?.id ??
+              "",
+            {
+              mode: (value(options, "mode") ??
+                "preserve-editability") as import("@openfilm/exporters").HandoffMode,
+              bakeAudio: options["bake-audio"] === true,
+              ...(options["no-captions"]
+                ? { captionTrackId: null }
+                : value(options, "caption-track")
+                  ? { captionTrackId: value(options, "caption-track") }
+                  : {}),
+            },
+          ),
+        );
+      else if (positional[1] === "export") {
+        const path = value(options, "review");
+        if (!path) throw new Error("Provide --review <review.json>");
+        const info = await stat(path);
+        if (!info.isFile() || info.size > 16 * 1024 * 1024)
+          throw new Error("Review must be regular JSON of at most 16 MiB");
+        const bytes = await readFile(path);
+        if (bytes.length > 16 * 1024 * 1024)
+          throw new Error("Review JSON exceeds 16 MiB");
+        const review = JSON.parse(
+          bytes.toString("utf8"),
+        ) as import("@openfilm/application").HandoffReview;
+        print(
+          await app.exportHandoff(
+            {
+              projectId: review.projectId,
+              compositionId: review.plan.compositionId,
+              revision: review.revision,
+              mode: review.plan.mode,
+              bakeAudio: review.plan.bakeAudio,
+              captionTrackId: review.plan.captionTrackId,
+            },
+            controller.signal,
+          ),
+        );
+      } else throw new Error("Choose handoff review or export");
+    } else if (command === "export") {
       const format = value(options, "format") ?? "json";
-      if (format === "mp4")
+      if (options["preview"] && format !== "png")
+        throw new Error("--preview applies only to --format png.");
+      if (
+        value(options, "crop-preview-token") &&
+        format !== "png" &&
+        format !== "mp4"
+      )
+        throw new Error("--crop-preview-token applies only to MP4/PNG.");
+      const ratioInput = value(options, "ratio");
+      const framingInput = value(options, "framing");
+      const fps = positive(options, "fps") ?? app.project.settings.frameRate;
+      const width = positive(options, "width");
+      const height = positive(options, "height");
+      const profileFlags = ["ratio", "framing", "fps", "width", "height"].some(
+        (key) => Object.hasOwn(options, key),
+      );
+      if (format === "mp4") {
+        if (
+          options["confirm-crop"] &&
+          (!profileFlags || framingInput !== "crop")
+        )
+          throw new Error(
+            "--confirm-crop requires --framing crop on an MP4 profile.",
+          );
+        const exportProfile = profileFlags
+          ? createExportProfile({
+              ratio: (ratioInput ?? "16:9") as ExportRatio,
+              frameRate: fps,
+              ...(width === undefined ? {} : { width }),
+              ...(height === undefined ? {} : { height }),
+              framing: (framingInput ?? "contain") as ExportFraming,
+              format: "mp4",
+              quality: quality ?? "standard",
+            })
+          : undefined;
+        if (value(options, "time") !== undefined)
+          throw new Error("--time applies only to --format png.");
         print(
           await app.exportMp4(value(options, "composition"), {
             signal: controller.signal,
             lookOverride,
             quality,
+            ...(exportProfile ? { exportProfile } : {}),
+            ...(options["confirm-crop"] ? { confirmCrop: true } : {}),
+            ...(value(options, "crop-preview-token")
+              ? { cropPreviewToken: value(options, "crop-preview-token") }
+              : {}),
             ...(value(options, "caption-track")
               ? { captionTrackId: value(options, "caption-track") }
               : {}),
           }),
         );
-      else {
+      } else if (
+        format === "png" ||
+        format === "wav" ||
+        format === "audio-stems"
+      ) {
+        if (format === "png" && value(options, "time") === undefined)
+          throw new Error("--format png requires --time <seconds>.");
+        if (format !== "png" && value(options, "time") !== undefined)
+          throw new Error("--time applies only to --format png.");
+        if (
+          format === "png" &&
+          options["confirm-crop"] &&
+          framingInput !== "crop"
+        )
+          throw new Error("--confirm-crop requires --framing crop.");
+        if (
+          format !== "png" &&
+          (quality !== undefined ||
+            lookOverride !== undefined ||
+            value(options, "caption-track") !== undefined ||
+            options["confirm-crop"])
+        )
+          throw new Error(
+            "Quality, looks, captions and crop confirmation apply only to MP4/PNG.",
+          );
+        const exportProfile = createExportProfile({
+          ratio: (ratioInput ?? "16:9") as ExportRatio,
+          frameRate: fps,
+          ...(width === undefined ? {} : { width }),
+          ...(height === undefined ? {} : { height }),
+          framing: (framingInput ?? "contain") as ExportFraming,
+          format,
+          quality: quality ?? "standard",
+        });
+        const requestId = value(options, "request-id") ?? randomUUID();
+        if (format === "png") {
+          const time = Number(value(options, "time"));
+          if (!Number.isFinite(time) || time < 0)
+            throw new Error("--time must be a nonnegative number of seconds.");
+          if (options["preview"]) {
+            const preview = await app.previewExportFrame({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              time,
+              lookOverride,
+              ...(value(options, "caption-track")
+                ? { captionTrackId: value(options, "caption-track") }
+                : {}),
+              signal: controller.signal,
+            });
+            print({
+              ...preview,
+              path: await app.exportProfiles.previewPath(preview.token),
+            });
+            return;
+          }
+          print(
+            await app.exportStill({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              time,
+              requestId,
+              confirmCrop: Boolean(options["confirm-crop"]),
+              cropPreviewToken: value(options, "crop-preview-token"),
+              lookOverride,
+              ...(value(options, "caption-track")
+                ? { captionTrackId: value(options, "caption-track") }
+                : {}),
+              signal: controller.signal,
+            }),
+          );
+        } else {
+          print(
+            await app.exportProfileAudio({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              requestId,
+              signal: controller.signal,
+            }),
+          );
+        }
+      } else {
+        if (
+          profileFlags ||
+          value(options, "time") !== undefined ||
+          options["confirm-crop"] ||
+          value(options, "request-id")
+        )
+          throw new Error(
+            "Profile export options require --format mp4, png, wav or audio-stems.",
+          );
         if (!["json", "otio", "fcpxml", "edl"].includes(format))
-          throw new Error("Choose mp4, json, otio, fcpxml, or edl.");
+          throw new Error(
+            "Choose mp4, png, wav, audio-stems, json, otio, fcpxml, or edl.",
+          );
         print(
           await app.exportWithReport(
             format as "json" | "otio" | "fcpxml" | "edl",

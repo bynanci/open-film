@@ -8,6 +8,9 @@ import {
   type AIProvider,
   type AudioGenerationProvider,
   type AudioGenerationResult,
+  type MotionGenerationProvider,
+  type MotionGenerationInput,
+  type MotionGenerationResult,
   type EmbeddingProvider,
   type LanguageProvider,
   type OperationOptions,
@@ -61,6 +64,7 @@ export class ProviderRegistry {
       transcription: "transcribe",
       language: "generate",
       "audio-generation": "generateAudio",
+      "motion-generation": "generateMotion",
     } as const;
     const method = methods[provider.kind];
     if (
@@ -213,6 +217,22 @@ export class ProviderRegistry {
       "text",
     ]) as AudioGenerationProvider;
     return provider.generateAudio(text, options);
+  }
+
+  async generateMotion(
+    providerId: string,
+    input: MotionGenerationInput,
+    options?: OperationOptions,
+  ): Promise<MotionGenerationResult> {
+    const kinds: ProviderDataKind[] = ["text"];
+    if (input.image) kinds.push("images");
+    if (input.video) kinds.push("video");
+    const provider = this.authorized(
+      providerId,
+      "motion-generation",
+      kinds,
+    ) as MotionGenerationProvider;
+    return provider.generateMotion(input, options);
   }
 
   private authorized(

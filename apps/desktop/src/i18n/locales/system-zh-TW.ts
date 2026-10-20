@@ -73,6 +73,16 @@ export default {
       unavailable: "圖像來源或本機字型無法使用。請檢查來源後重試。",
       stale: "這個圖像影格已過期。請等待最新編輯儲存完成。",
       busy: "正在準備圖像影格，請稍後重試。",
+      sourceChanged:
+        "原始照片、遮罩或補景已與儲存的來源紀錄不符。請還原本機素材，或重新設定景深效果。",
+      maskInvalid: "無法解碼這個前景遮罩。請選擇其他支援的本機圖片遮罩後重試。",
+      maskMismatch: "前景遮罩尺寸與原始照片不同。請選擇相同尺寸的遮罩後重試。",
+      maskEmpty: "前景遮罩沒有可見主體。請選擇包含不透明前景的遮罩。",
+      maskMissing: "前景遮罩目前無法使用。請重新連接素材，或選擇其他本機遮罩。",
+      backgroundMissing:
+        "補景目前無法使用。請重新連接素材，或選擇其他本機背景。",
+      protectedRegion:
+        "這項景深設定會裁切受保護的主體。請調整保護區，或改用原始照片。",
     },
     render: {
       overMaximum:
@@ -81,6 +91,10 @@ export default {
     },
     import: { failed: "部分回憶無法加入。請檢查檔案位置與格式後再試一次。" },
     export: {
+      directoryUnavailable:
+        "無法在此位置發佈資料夾封裝。請選擇 ZIP 封裝或其他磁碟。",
+      stemsUnavailable:
+        "無法在此位置發佈分軌資料夾。請選擇 WAV 混音或其他磁碟。",
       failed: "無法匯出影片。請檢查儲存位置、可用空間與素材後再試一次。",
     },
     source: {

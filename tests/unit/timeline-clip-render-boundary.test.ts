@@ -17,6 +17,7 @@ import {
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import { canCreatePhotoDepth } from "../../apps/desktop/src/photo-depth-controls";
 import {
   clampFrameStep,
   formatTimecode,
@@ -59,6 +60,7 @@ interface HostNode {
 interface EditorProxy {
   reload: () => Promise<void>;
   hasPending: boolean;
+  navigateToTime: (time: number) => Promise<boolean>;
 }
 interface HostApp {
   mount: (root: HostNode) => EditorProxy;
@@ -307,6 +309,7 @@ async function mountTimeline(
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "../api": io,
+    "../photo-depth-controls": { canCreatePhotoDepth },
     "../i18n": i18n,
     "../duration": { durationStatus },
     "../nativeBenchmark": {
@@ -483,11 +486,38 @@ async function mountTimeline(
     buttons,
     click,
     reload,
+    navigateToTime: (time: number) => editor.navigateToTime(time),
     assertReadOnly,
   };
 }
 
 describe("Timeline clip render boundary", () => {
+  it("keeps nearest-clip navigation for a visual gap without graphics", async () => {
+    const state = fixture(2);
+    state.composition.duration = 10;
+    state.composition.tracks[0]!.clips[1]!.timelineStart = 6;
+    const view = await mountTimeline(state);
+    expect(await view.navigateToTime(5.5)).toBe(true);
+    await settle();
+    expect(view.button(1).props["aria-pressed"]).toBe(true);
+    expect(view.button(0).props["aria-pressed"]).toBe(false);
+    view.assertReadOnly();
+  });
+
+  it.each(["projectId", "compositionId"] as const)(
+    "rejects navigation from before a %s switch while flushing",
+    async (ownerKey) => {
+      const view = await mountTimeline(fixture(2));
+      const navigation = view.navigateToTime(5);
+      view.props[ownerKey] = "another-owner";
+      expect(await navigation).toBe(false);
+      await settle();
+      expect(view.button(0).props["aria-pressed"]).toBe(true);
+      expect(view.button(1).props["aria-pressed"]).toBe(false);
+      view.assertReadOnly();
+    },
+  );
+
   it("previews native text fade against the Fit candidate without changing the selected saved clip", async () => {
     const state = fixture(1);
     state.story.targetDuration = 2;

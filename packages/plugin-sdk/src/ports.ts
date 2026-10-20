@@ -268,12 +268,38 @@ export interface AudioGenerationProvider extends AIProviderDescriptor {
   ): Promise<AudioGenerationResult>;
 }
 
+/** Trusted adapter port. Bytes only: output URLs and project-authored code are never accepted. */
+export interface MotionGenerationInput {
+  image?: Uint8Array;
+  video?: Uint8Array;
+  width: number;
+  height: number;
+  frameRate: number;
+  duration: number;
+  variant: number;
+  prompt: string;
+  negativeConstraints: string;
+}
+export interface MotionGenerationResult {
+  bytes: Uint8Array;
+  model: string;
+  mock: boolean;
+}
+export interface MotionGenerationProvider extends AIProviderDescriptor {
+  kind: "motion-generation";
+  generateMotion(
+    input: MotionGenerationInput,
+    options?: OperationOptions,
+  ): Promise<MotionGenerationResult>;
+}
+
 export type AIProvider =
   | VisionProvider
   | EmbeddingProvider
   | TranscriptionProvider
   | LanguageProvider
-  | AudioGenerationProvider;
+  | AudioGenerationProvider
+  | MotionGenerationProvider;
 
 /** Consent is scoped to a named provider and its disclosed data classes. */
 export interface RemoteProviderConsent {

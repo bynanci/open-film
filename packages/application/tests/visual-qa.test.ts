@@ -12,8 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import { hashFile, inspectMedia, localPath, runProcess } from "@openfilm/media";
 import * as media from "@openfilm/media";
+import { GRAPHIC_SCENE_LIMITS } from "@openfilm/core";
+import { prepareGraphicScenes } from "@openfilm/render";
 import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
 import { OpenFilmApplication } from "../src/index.js";
 
@@ -75,6 +77,539 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it.each(["frame-work", "source-bytes"] as const)(
+    "reports the %s resource budget without blaming a valid PhotoDepth mask",
+    async (budget) => {
+      const { app } = await fixture("0x305070");
+      const large = budget === "source-bytes";
+      const images = [];
+      for (const [name, color] of [
+        ["budget-source", "0x305070"],
+        ["budget-mask", "white"],
+        ["budget-background", "0x208060"],
+      ]) {
+        const path = join(app.directory, `${name}.png`);
+        const size = large ? "2700x2700" : "96x54";
+        const filter =
+          name === "budget-mask"
+            ? `nullsrc=s=${size},format=rgba,geq=r='255':g='255':b='255':a='if(between(X,W/4,W*3/4)*between(Y,H/4,H*3/4),255,0)'`
+            : `color=c=${color}:s=${size}`;
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          filter,
+          "-frames:v",
+          "1",
+          "-threads",
+          "1",
+          "-pix_fmt",
+          large ? "rgba64be" : "rgba",
+          "-compression_level",
+          large ? "0" : "6",
+          path,
+        ]);
+        const asset = {
+          ...(await inspectMedia({
+            path,
+            uri: pathToFileURL(path).href,
+            name: `${name}.png`,
+          })),
+          contentHash: await hashFile(path),
+        };
+        app.catalog.upsertAsset(asset);
+        images.push(asset);
+      }
+      const [source, mask, background] = images;
+      expect(
+        mask!.dimensions!.width * mask!.dimensions!.height,
+      ).toBeLessThanOrEqual(GRAPHIC_SCENE_LIMITS.photoMaskPixels);
+      if (large) {
+        const sizes = await Promise.all(
+          images.map((asset) => stat(new URL(asset.uri))),
+        );
+        expect(
+          sizes.every((info) => info.size < GRAPHIC_SCENE_LIMITS.sourceBytes),
+        ).toBe(true);
+        expect(sizes.reduce((sum, info) => sum + info.size, 0)).toBeGreaterThan(
+          GRAPHIC_SCENE_LIMITS.sourceBytes * 2,
+        );
+      }
+      app.project.settings =
+        budget === "frame-work"
+          ? { width: 3840, height: 2160, frameRate: 60 }
+          : { width: 160, height: 90, frameRate: 8 };
+      const story = app.generateStory({
+        title: "Synthetic resource budget",
+        template: "blank",
+        assetIds: [source!.id],
+        targetDuration: 6,
+        maxDuration: 6,
+      });
+      const composition = app.compose(story.id);
+      const node = {
+        id: "budget-photo",
+        type: "image" as const,
+        assetId: source!.id,
+        x: 0,
+        y: 0,
+        width: 160,
+        height: 90,
+        opacity: 1,
+        zIndex: 0,
+        start: 0,
+        end: 6,
+      };
+      app.project.timelines[app.project.timelines.length - 1] = {
+        ...composition,
+        duration: 6,
+        tracks: [],
+        graphicScenes: [
+          graphicScene({
+            id: "budget-depth-scene",
+            nodes: [node],
+            photoDepth: {
+              version: 1,
+              id: "budget-depth-recipe",
+              nodeId: node.id,
+              mode: "parallax",
+              duration: 6,
+              sourceAssetId: source!.id,
+              sourceSha256: source!.contentHash,
+              maskAssetId: mask!.id,
+              maskSha256: mask!.contentHash,
+              background: {
+                kind: "asset",
+                assetId: background!.id,
+                sha256: background!.contentHash,
+              },
+              protectedRegion: { x: 0, y: 0, width: 1, height: 1 },
+              foregroundDepth: 1.2,
+              backgroundDepth: 0.25,
+              amplitude: 0,
+              camera: {
+                from: { x: 0, y: 0, scale: 1 },
+                to: { x: 0, y: 0, scale: 1 },
+              },
+              easing: "linear",
+            },
+          }),
+        ],
+      };
+      await app.save();
+
+      // Prove the same mask passes actual decoding and subject validation when
+      // the frame work and combined-source budgets are within their bounds.
+      const control = structuredClone(app.project.timelines.at(-1)!);
+      const recipe = control.graphicScenes![0]!.photoDepth;
+      if (recipe?.mode !== "parallax") throw new Error("Expected parallax");
+      recipe.background = { kind: "source" };
+      const work = await mkdtemp(join(tmpdir(), "openfilm-qa-valid-mask-"));
+      projects.push(work);
+      const prepared = await prepareGraphicScenes(
+        control,
+        [source!, mask!],
+        { width: 160, height: 90, frameRate: 8 },
+        work,
+      );
+      expect(prepared.photoDepthFindings).toHaveLength(1);
+      await prepared.verifySources();
+
+      const report = await app.runVisualQa(composition.id);
+      expect(report.status).toBe("incomplete");
+      expect(report.samples).toEqual([]);
+      expect(report.output).toBeUndefined();
+      expect(report.issues).toContainEqual(
+        expect.objectContaining({
+          code: "graphics.resource-limit",
+          severity: "error",
+          graphicSceneId: "budget-depth-scene",
+          nodeId: node.id,
+        }),
+      );
+      const finding = report.issues.find(
+        (entry) => entry.code === "graphics.resource-limit",
+      )!;
+      expect(finding.assetId).toBeUndefined();
+      expect(finding.photoDepthPart).toBeUndefined();
+      expect(
+        report.issues.some((entry) =>
+          ["photo-depth.mask-invalid", "asset.unsupported"].includes(
+            entry.code,
+          ),
+        ),
+      ).toBe(false);
+      for (const asset of images) {
+        expect(report.sources).toContainEqual({
+          assetId: asset.id,
+          sha256: asset.contentHash,
+        });
+        expect(await hashFile(localPath(asset.uri))).toBe(asset.contentHash);
+      }
+    },
+  );
+
+  it("returns an incomplete typed mask finding when decoded PhotoDepth pixels exceed the mask budget", async () => {
+    const { app } = await fixture("0x305070");
+    const images = [];
+    for (const [name, filter] of [
+      ["large-source", "color=c=0x305070:s=3000x3000,format=rgba"],
+      [
+        "large-mask",
+        "nullsrc=s=3000x3000,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,100,2900)*between(Y,100,2900),255,0)'",
+      ],
+    ]) {
+      const path = join(app.directory, `${name}.png`);
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        filter!,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-pix_fmt",
+        "rgba",
+        "-y",
+        path,
+      ]);
+      const asset = {
+        ...(await inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${name}.png`,
+        })),
+        contentHash: await hashFile(path),
+      };
+      app.catalog.upsertAsset(asset);
+      images.push(asset);
+    }
+    const [original, mask] = images;
+    const story = app.generateStory({
+      title: "Synthetic mask budget",
+      template: "blank",
+      assetIds: [original!.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const composition = app.compose(story.id);
+    const imageNode = {
+      id: "large-photo",
+      type: "image" as const,
+      assetId: original!.id,
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 90,
+      opacity: 1,
+      zIndex: 0,
+      start: 0,
+      end: 6,
+    };
+    app.project.timelines[app.project.timelines.length - 1] = {
+      ...composition,
+      duration: 6,
+      tracks: [],
+      graphicScenes: [
+        graphicScene({
+          id: "large-depth-scene",
+          nodes: [imageNode],
+          photoDepth: {
+            version: 1,
+            id: "large-depth-recipe",
+            nodeId: imageNode.id,
+            mode: "parallax",
+            duration: 6,
+            sourceAssetId: original!.id,
+            sourceSha256: original!.contentHash,
+            maskAssetId: mask!.id,
+            maskSha256: mask!.contentHash,
+            background: { kind: "source" },
+            protectedRegion: { x: 0, y: 0, width: 1, height: 1 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0,
+            camera: {
+              from: { x: 0, y: 0, scale: 1 },
+              to: { x: 0, y: 0, scale: 1 },
+            },
+            easing: "linear",
+          },
+        }),
+      ],
+    };
+    await app.save();
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("incomplete");
+    expect(report.samples).toEqual([]);
+    expect(report.output).toBeUndefined();
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: "photo-depth.mask-invalid",
+        severity: "error",
+        graphicSceneId: "large-depth-scene",
+        nodeId: imageNode.id,
+        assetId: mask!.id,
+        photoDepthPart: "mask",
+      }),
+    );
+    expect(await hashFile(join(app.directory, "large-source.png"))).toBe(
+      original!.contentHash,
+    );
+    expect(await hashFile(join(app.directory, "large-mask.png"))).toBe(
+      mask!.contentHash,
+    );
+  });
+
+  it("returns a typed PhotoDepth source finding when a fallback receipt predates a catalog relink", async () => {
+    const { app, asset, source } = await fixture("0x27a6c8");
+    const sourceSha256 = await hashFile(source);
+    app.catalog.upsertAsset({ ...asset, contentHash: sourceSha256 });
+    const story = app.generateStory({
+      title: "Synthetic fallback QA",
+      template: "blank",
+      assetIds: [asset.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const composition = app.compose(story.id);
+    const imageNode = {
+      id: "fallback-photo-node",
+      type: "image" as const,
+      assetId: asset.id,
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 90,
+      opacity: 1,
+      zIndex: 0,
+      start: 0,
+      end: 6,
+    };
+    app.project.timelines[app.project.timelines.length - 1] = {
+      ...composition,
+      duration: 6,
+      tracks: [],
+      graphicScenes: [
+        graphicScene({
+          id: "fallback-depth-scene",
+          nodes: [imageNode],
+          photoDepth: {
+            version: 1,
+            id: "fallback-depth-recipe",
+            nodeId: imageNode.id,
+            mode: "fallback",
+            duration: 6,
+            sourceAssetId: asset.id,
+            sourceSha256,
+            fallbackReason: "mask-not-available",
+          },
+        }),
+      ],
+    };
+    await app.save();
+    const valid = await app.runVisualQa(composition.id);
+    expect(valid.status).toBe("complete");
+    expect(valid.output?.frameCount).toBe(48);
+    expect(valid.issues).toContainEqual(
+      expect.objectContaining({ code: "photo-depth.fallback-used" }),
+    );
+
+    const replacement = await fixture("red");
+    const replacementSha256 = await hashFile(replacement.source);
+    expect(replacementSha256).not.toBe(sourceSha256);
+    app.catalog.upsertAsset({
+      ...asset,
+      uri: replacement.asset.uri,
+      contentHash: replacementSha256,
+    });
+    const changed = await app.runVisualQa(composition.id);
+    expect(changed.status).toBe("incomplete");
+    expect(changed.samples).toEqual([]);
+    expect(changed.output).toBeUndefined();
+    expect(changed.sources).toContainEqual({
+      assetId: asset.id,
+      sha256: replacementSha256,
+    });
+    expect(changed.issues).toContainEqual(
+      expect.objectContaining({
+        code: "photo-depth.source-changed",
+        severity: "error",
+        graphicSceneId: "fallback-depth-scene",
+        nodeId: imageNode.id,
+        assetId: asset.id,
+      }),
+    );
+    expect(changed.issues).toContainEqual(
+      expect.objectContaining({ code: "photo-depth.fallback-used" }),
+    );
+    expect(await hashFile(source)).toBe(sourceSha256);
+    expect(await hashFile(replacement.source)).toBe(replacementSha256);
+  });
+
+  it("reports deterministic PhotoDepth diagnostics and manual review for a real local mask", async () => {
+    const { app, asset, source } = await fixture("0x305070");
+    const originalHash = await hashFile(source);
+    const originalAsset = { ...asset, contentHash: originalHash };
+    app.catalog.upsertAsset(originalAsset);
+    const maskPath = join(app.directory, "synthetic-photo-mask.png");
+    const createMask = async (filter: string) => {
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        filter,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-pix_fmt",
+        "rgba",
+        "-y",
+        maskPath,
+      ]);
+      const mask = {
+        ...(await inspectMedia({
+          path: maskPath,
+          uri: pathToFileURL(maskPath).href,
+          name: "Synthetic alpha mask",
+        })),
+        contentHash: await hashFile(maskPath),
+      };
+      app.catalog.upsertAsset(mask);
+      return mask;
+    };
+    const mask = await createMask(
+      "nullsrc=s=96x54,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,30,65)*between(Y,10,43)*not(between(X,40,55)*between(Y,20,32)),255,0)'",
+    );
+    const imageNode = {
+      id: "qa-photo-node",
+      type: "image" as const,
+      assetId: originalAsset.id,
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 90,
+      opacity: 1,
+      zIndex: 0,
+      start: 0,
+      end: 6,
+    };
+    const unrelatedMissingImageNode = {
+      id: "unrelated-missing-image-node",
+      type: "image" as const,
+      assetId: "unrelated-missing-image-asset",
+      x: 70,
+      y: 0,
+      width: 24,
+      height: 24,
+      opacity: 1,
+      zIndex: 1,
+      start: 0,
+      end: 6,
+    };
+    const story = app.generateStory({
+      title: "Synthetic depth QA",
+      template: "blank",
+      assetIds: [originalAsset.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const depthComposition = app.compose(story.id);
+    app.project.timelines[app.project.timelines.length - 1] = {
+      ...depthComposition,
+      duration: 6,
+      tracks: [],
+      graphicScenes: [
+        graphicScene({
+          id: "qa-photo-depth-scene",
+          duration: 6,
+          nodes: [imageNode, unrelatedMissingImageNode],
+          photoDepth: {
+            version: 1,
+            id: "qa-photo-depth-recipe",
+            nodeId: imageNode.id,
+            mode: "parallax",
+            duration: 6,
+            sourceAssetId: originalAsset.id,
+            sourceSha256: originalHash,
+            maskAssetId: mask.id,
+            maskSha256: mask.contentHash!,
+            background: { kind: "source" },
+            protectedRegion: { x: 0.3, y: 0.15, width: 0.4, height: 0.7 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0.35,
+            camera: {
+              from: { x: 0, y: 0, scale: 1 },
+              to: { x: 0.02, y: 0, scale: 1.04 },
+            },
+            easing: "ease-in-out",
+          },
+        }),
+      ],
+    };
+    await app.save();
+
+    const reviewed = await app.runVisualQa(depthComposition.id);
+    expect(reviewed.status).toBe("incomplete");
+    expect(reviewed.sources).toEqual(
+      expect.arrayContaining([
+        { assetId: originalAsset.id, sha256: originalHash },
+        { assetId: mask.id, sha256: mask.contentHash },
+      ]),
+    );
+    expect(reviewed.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "photo-depth.manual-review",
+          severity: "manual-review",
+          graphicSceneId: "qa-photo-depth-scene",
+        }),
+        expect.objectContaining({
+          code: "asset.missing",
+          severity: "error",
+          assetId: "unrelated-missing-image-asset",
+          nodeId: "unrelated-missing-image-node",
+        }),
+        expect.objectContaining({
+          code: "photo-depth.mask-holes",
+          severity: "warning",
+          photoDepthPart: "mask",
+        }),
+      ]),
+    );
+
+    const emptyMask = await createMask(
+      "nullsrc=s=96x54,format=rgba,geq=r='255':g='255':b='255':a='0'",
+    );
+    const current = app.project.timelines.find(
+      (item) => item.id === depthComposition.id,
+    )!;
+    const recipe = current.graphicScenes![0]!.photoDepth;
+    if (recipe?.mode !== "parallax")
+      throw new Error("Expected parallax recipe");
+    recipe.maskSha256 = emptyMask.contentHash!;
+    await app.save();
+    const invalid = await app.runVisualQa(depthComposition.id);
+    expect(invalid.status).toBe("incomplete");
+    expect(invalid.issues).toContainEqual(
+      expect.objectContaining({
+        code: "photo-depth.mask-empty",
+        severity: "error",
+        graphicSceneId: "qa-photo-depth-scene",
+        photoDepthPart: "mask",
+      }),
+    );
+  }, 60000);
+
   it("keeps ordinary BMP clips supported while diagnosing graphic BMP bytes", async () => {
     const { app, composition } = await fixture("0x27a6c8");
     const path = join(app.directory, "synthetic.bmp");

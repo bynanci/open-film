@@ -61,6 +61,7 @@ import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
 import AudioGenerationPanel from "./AudioGenerationPanel.vue";
+import MotionGenerationPanel from "./MotionGenerationPanel.vue";
 import AudioQualityPanel from "./AudioQualityPanel.vue";
 const audioQualityOpen = ref(false);
 import { sourcePresentation } from "../sourcePresentation";
@@ -104,6 +105,7 @@ const emit = defineEmits<{
   change: [state: EditorState];
   edited: [];
   playback: [];
+  importAssets: [];
   relink: [assetId: string];
   activity: [];
   recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
@@ -303,6 +305,19 @@ const titlePreviewRetry = ref(0);
 const unsupportedSpeedMessage = "speed";
 const playing = ref(false);
 const graphicSceneSelection = ref({ sceneId: "", nodeId: "" });
+const graphicPreviewTime = ref<number>();
+watch(
+  [
+    () => props.projectId,
+    () => props.compositionId,
+    () => state.value?.revision,
+    () => props.projectSettings.frameRate,
+  ],
+  () => {
+    graphicPreviewTime.value = undefined;
+    pendingSourceSeek.value = undefined;
+  },
+);
 const graphicSnapping = ref(true);
 const graphicGuides = ref(true);
 const graphicLayerEditing = computed(
@@ -316,6 +331,53 @@ const graphicLayerEditing = computed(
 );
 function selectGraphicLayer(selection: { sceneId: string; nodeId: string }) {
   graphicSceneSelection.value = selection;
+}
+async function previewGraphicAtTime(time: number): Promise<boolean> {
+  const projectId = props.projectId;
+  const compositionId = props.compositionId;
+  if (!Number.isFinite(time) || time < 0 || !(await flush())) return false;
+  if (props.projectId !== projectId || props.compositionId !== compositionId)
+    return false;
+  const composition = state.value?.composition;
+  if (!composition) return false;
+  const rate = props.projectSettings.frameRate;
+  const lastFrame = Math.floor(composition.duration * rate + 1e-7) - 1;
+  if (lastFrame < 0) return false;
+  sourcePlayer.value?.pause();
+  playing.value = false;
+  fitPreview.value = null;
+  directionPreview.value = null;
+  editMode.value = "story";
+  inspectorOpen.value = true;
+  inspector.value = "graphics";
+  const requestedTime =
+    Math.min(lastFrame, Math.floor(time * rate + 1e-9)) / rate;
+  graphicPreviewTime.value = requestedTime;
+  const clip = playbackClip.value;
+  const localTime = clip ? graphicPreviewTime.value - clip.timelineStart : 0;
+  const sourceAtTime = clip
+    ? (clip.sourceIn ?? 0) + localTime * (clip.transform?.speed ?? 1)
+    : 0;
+  pendingSourceSeek.value = clip ? sourceAtTime : undefined;
+  await nextTick();
+  if (
+    props.projectId !== projectId ||
+    props.compositionId !== compositionId ||
+    graphicPreviewTime.value !== requestedTime
+  )
+    return false;
+  if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
+  const player = sourcePlayer.value;
+  if (player) {
+    player.pause();
+    // A newly mounted video must retain this seek until loadedmetadata.
+    if (player.readyState >= 1) configurePlayer();
+    else sourceTime.value = sourceAtTime;
+  } else {
+    pendingSourceSeek.value = undefined;
+    sourceTime.value = sourceAtTime;
+  }
+  return true;
 }
 function setGraphicAgentBusy(value: boolean) {
   graphicAgentBusy.value = value;
@@ -355,6 +417,46 @@ async function importGeneratedAudio(
       return;
     }
     complete(compositionCommand(result.command, result.assets));
+  } catch (error) {
+    if (owns()) reportError(error);
+    complete(false);
+  } finally {
+    if (owns()) generationImportBusy.value = false;
+  }
+}
+async function applyMotion(
+  id: string,
+  action: "import" | "restore",
+  complete: (ok: boolean) => void,
+) {
+  if (hasPending.value || historyBusy.value) {
+    complete(false);
+    return;
+  }
+  generationImportBusy.value = true;
+  const owner = {
+    projectId: props.projectId,
+    compositionId: props.compositionId,
+    epoch: ++generationImportEpoch,
+  };
+  const owns = () =>
+    !generationImportDisposed &&
+    owner.projectId === props.projectId &&
+    owner.compositionId === props.compositionId &&
+    owner.epoch === generationImportEpoch;
+  try {
+    const result = await api.applyMotion(id, owner.projectId, action);
+    if (!owns()) {
+      complete(false);
+      return;
+    }
+    await load();
+    if (!owns() || state.value?.revision !== result.revision) {
+      complete(false);
+      return;
+    }
+    emit("edited");
+    complete(true);
   } catch (error) {
     if (owns()) reportError(error);
     complete(false);
@@ -739,6 +841,8 @@ function chooseClip(clip: Clip, openInspector = true) {
   applyClipSelection(clip, openInspector);
 }
 function applyClipSelection(clip: Clip, openInspector = true) {
+  graphicPreviewTime.value = undefined;
+  pendingSourceSeek.value = undefined;
   fitPreview.value = null;
   directionPreview.value = null;
   if (openInspector) inspectorOpen.value = true;
@@ -992,16 +1096,24 @@ function previewNumber(
     : fallback;
 }
 const previewGeometry = computed(() => {
-  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  const graphics = graphicPreviewTime.value !== undefined;
+  const committed = resolveClipGeometry(
+    (graphics ? playbackClip.value : selectedClip.value)?.transform,
+  );
   return resolvePreviewClipGeometry(
-    {
-      scale: previewNumber(clipFields.value.scale, committed.scale, true),
-      rotation: previewNumber(clipFields.value.rotation, committed.rotation),
-      x: previewNumber(clipFields.value.x, committed.x),
-      y: previewNumber(clipFields.value.y, committed.y),
-    },
+    graphics
+      ? committed
+      : {
+          scale: previewNumber(clipFields.value.scale, committed.scale, true),
+          rotation: previewNumber(
+            clipFields.value.rotation,
+            committed.rotation,
+          ),
+          x: previewNumber(clipFields.value.x, committed.x),
+          y: previewNumber(clipFields.value.y, committed.y),
+        },
     sourcePreviewSize.value ??
-      selectedAsset.value?.dimensions ??
+      (graphics ? playbackAsset.value : selectedAsset.value)?.dimensions ??
       props.projectSettings,
     props.projectSettings,
     sourceViewport.value,
@@ -1154,19 +1266,26 @@ function configurePlayer() {
 }
 
 async function navigateToTime(time: number): Promise<boolean> {
+  const projectId = props.projectId;
+  const compositionId = props.compositionId;
   if (!Number.isFinite(time) || time < 0 || !(await flush())) return false;
+  if (props.projectId !== projectId || props.compositionId !== compositionId)
+    return false;
   const composition = state.value?.composition;
   if (!composition) return false;
   const visualClips = composition.tracks
     .filter((track) => track.type === "video" || track.type === "overlay")
     .flatMap((track) => track.clips);
+  const coveringClip = visualClips.find(
+    (item) =>
+      time >= item.timelineStart &&
+      time < item.timelineStart + item.timelineDuration,
+  );
+  if (!coveringClip && composition.graphicScenes?.length)
+    return previewGraphicAtTime(time);
   if (!visualClips.length) return false;
   const clip =
-    visualClips.find(
-      (item) =>
-        time >= item.timelineStart &&
-        time < item.timelineStart + item.timelineDuration,
-    ) ??
+    coveringClip ??
     [...visualClips].sort((left, right) => {
       const distance = (candidate: Clip) =>
         time < candidate.timelineStart
@@ -1186,6 +1305,7 @@ async function navigateToTime(time: number): Promise<boolean> {
     Math.min(sourceOut, sourceIn + localTime * (clip.transform?.speed ?? 1)),
   );
   sourcePlayer.value?.pause();
+  graphicPreviewTime.value = undefined;
   fitPreview.value = null;
   directionPreview.value = null;
   editMode.value = "story";
@@ -1195,6 +1315,8 @@ async function navigateToTime(time: number): Promise<boolean> {
   pendingSourceSeek.value = sourceTimeAtEdit;
   selectedClipId.value = clip.id;
   await nextTick();
+  if (props.projectId !== projectId || props.compositionId !== compositionId)
+    return false;
   if (photoPresentationActive.value) photoPlayer.value?.seekTo(localTime);
   const player = sourcePlayer.value;
   if (player) {
@@ -1208,7 +1330,7 @@ async function navigateToTime(time: number): Promise<boolean> {
 function stopAtOut() {
   const player = sourcePlayer.value;
   const clip = playbackClip.value;
-  const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+  const sourceOut = clip?.sourceOut ?? playbackAsset.value?.duration;
   if (!player) return;
   const action = playbackBoundaryAction({
     playing: !player.paused,
@@ -1247,11 +1369,27 @@ function updateSourceTime() {
       evaluateAudioGain(clip.audioAutomation, time, clip.timelineDuration);
   }
   stopAtOut();
+  if (graphicPreviewTime.value !== undefined && clip) {
+    const time =
+      clip.timelineStart +
+      (sourceTime.value - (clip.sourceIn ?? 0)) / (clip.transform?.speed ?? 1);
+    // Native clocks round seeks to microseconds; keep the exact requested frame.
+    if (Math.abs(time - graphicPreviewTime.value) > 1e-5)
+      graphicPreviewTime.value = Math.max(
+        clip.timelineStart,
+        Math.min(
+          clip.timelineStart +
+            clip.timelineDuration -
+            1 / props.projectSettings.frameRate,
+          time,
+        ),
+      );
+  }
 }
 function sourcePlaybackStarted() {
   const player = sourcePlayer.value;
   const clip = playbackClip.value;
-  const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+  const sourceOut = clip?.sourceOut ?? playbackAsset.value?.duration;
   if (player && clip && playbackBoundaryHandled) {
     const restart = restartTimeAtClipBoundary({
       boundaryHandled: playbackBoundaryHandled,
@@ -1271,10 +1409,10 @@ function sourcePlaybackStarted() {
 function stepSourceFrame(direction: -1 | 1) {
   const player = sourcePlayer.value;
   const clip = playbackClip.value;
-  if (!player || selectedAsset.value?.mediaType !== "video" || !clip) return;
+  if (!player || playbackAsset.value?.mediaType !== "video" || !clip) return;
   const minimum = clip.sourceIn ?? 0;
   const maximum =
-    clip.sourceOut ?? selectedAsset.value.duration ?? player.duration;
+    clip.sourceOut ?? playbackAsset.value.duration ?? player.duration;
   const next = clampFrameStep(
     player.currentTime,
     direction,
@@ -1305,7 +1443,7 @@ function toggleMonitorGuides() {
   showSafeFrame.value = next;
 }
 function togglePlayback() {
-  if (selectedSourceInfo.value?.previewSupported === false) return;
+  if (playbackSourceInfo.value?.previewSupported === false) return;
   if (photoPresentationActive.value) {
     photoPlayer.value?.toggle();
     return;
@@ -1317,7 +1455,7 @@ function togglePlayback() {
   }
   if (player.paused) {
     const clip = playbackClip.value;
-    const sourceOut = clip?.sourceOut ?? selectedAsset.value?.duration;
+    const sourceOut = clip?.sourceOut ?? playbackAsset.value?.duration;
     if (
       clip &&
       sourceOut !== undefined &&
@@ -1475,9 +1613,19 @@ const fitPreviewAfter = computed(() => {
     return undefined;
   }
 });
-const playbackClip = computed(
-  () => directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value,
-);
+const playbackClip = computed(() => {
+  const time = graphicPreviewTime.value;
+  if (time !== undefined)
+    return state.value?.composition.tracks
+      .filter((track) => track.type === "video" || track.type === "overlay")
+      .flatMap((track) => track.clips)
+      .find(
+        (clip) =>
+          time >= clip.timelineStart &&
+          time < clip.timelineStart + clip.timelineDuration,
+      );
+  return directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value;
+});
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -2227,6 +2375,7 @@ onBeforeUnmount(() => {
                 <div v-if="playbackUnavailable" class="editor-missing-source">
                   <img
                     v-if="playbackAsset.thumbnailUri"
+                    crossorigin="anonymous"
                     :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
@@ -2247,6 +2396,7 @@ onBeforeUnmount(() => {
                 >
                   <img
                     v-if="playbackAsset.thumbnailUri"
+                    crossorigin="anonymous"
                     :src="thumbnailUrl(playbackAsset.id)"
                     alt=""
                   />
@@ -2316,6 +2466,7 @@ onBeforeUnmount(() => {
                 >
                   <img
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :alt="playbackAsset.name"
                     :style="[previewMediaStyle, playbackLookStyle]"
@@ -2353,9 +2504,10 @@ onBeforeUnmount(() => {
                       active && editMode === 'story' && status === 'saved'
                     "
                     :time="
+                      graphicPreviewTime ??
                       playbackClip.timelineStart +
-                      (sourceTime - (playbackClip.sourceIn ?? 0)) /
-                        (playbackClip.transform?.speed ?? 1)
+                        (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                          (playbackClip.transform?.speed ?? 1)
                     "
                     :playing="playing"
                     :scenes="state.composition.graphicScenes ?? []"
@@ -2378,6 +2530,7 @@ onBeforeUnmount(() => {
                     v-if="active && editMode === 'story'"
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     controls
                     preload="metadata"
@@ -2397,6 +2550,7 @@ onBeforeUnmount(() => {
                   <video
                     ref="sourcePlayer"
                     :key="sourcePlaybackKey"
+                    crossorigin="anonymous"
                     :src="sourceUrl(playbackAsset.id, sourcePlaybackKey)"
                     :poster="
                       playbackAsset.thumbnailUri
@@ -2449,9 +2603,10 @@ onBeforeUnmount(() => {
                       active && editMode === 'story' && status === 'saved'
                     "
                     :time="
+                      graphicPreviewTime ??
                       playbackClip.timelineStart +
-                      (sourceTime - (playbackClip.sourceIn ?? 0)) /
-                        (playbackClip.transform?.speed ?? 1)
+                        (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                          (playbackClip.transform?.speed ?? 1)
                     "
                     :playing="playing"
                     :scenes="state.composition.graphicScenes ?? []"
@@ -2467,6 +2622,33 @@ onBeforeUnmount(() => {
                   />
                 </div>
               </template>
+              <div
+                v-else-if="state.composition.graphicScenes?.length"
+                class="editor-composition-frame"
+                :style="previewFrameStyle"
+              >
+                <GraphicScenePreview
+                  :composition-id="compositionId"
+                  :project-id="projectId"
+                  :revision="state.revision"
+                  :source-version="sourceVersion"
+                  :frame-rate="projectSettings.frameRate"
+                  :duration="state.composition.duration"
+                  :active="active && editMode === 'story' && status === 'saved'"
+                  :time="graphicPreviewTime ?? 0"
+                  :playing="false"
+                  :scenes="state.composition.graphicScenes"
+                  :frame-width="projectSettings.width"
+                  :frame-height="projectSettings.height"
+                  :selected-scene-id="graphicSceneSelection.sceneId"
+                  :selected-node-id="graphicSceneSelection.nodeId"
+                  :editing="graphicLayerEditing"
+                  :snapping="graphicSnapping"
+                  :guides="graphicGuides"
+                  @select="selectGraphicLayer"
+                  @command="command"
+                />
+              </div>
               <div v-else class="editor-source-empty">
                 <Icon name="film" :size="30" /><span>{{
                   t("editor.source.choose")
@@ -2555,6 +2737,17 @@ onBeforeUnmount(() => {
                   }}</small
                 ></span
               >
+              <div
+                v-if="!playbackAsset && state.composition.graphicScenes?.length"
+                class="editor-monitor-transport"
+              >
+                <time :aria-label="t('editor.monitor.timecode')">{{
+                  formatTimecode(
+                    graphicPreviewTime ?? 0,
+                    projectSettings.frameRate,
+                  )
+                }}</time>
+              </div>
               <div
                 v-show="photoPresentationActive"
                 :id="`photo-transport-${compositionId}`"
@@ -2937,7 +3130,18 @@ onBeforeUnmount(() => {
             :revision="state.revision"
             :scenes="state.composition.graphicScenes ?? []"
             :duration="state.composition.duration"
+            :frame-rate="projectSettings.frameRate"
             :assets="state.assets"
+            :dependency-version="
+              (jobs ?? [])
+                .filter(
+                  (job) =>
+                    job.type === 'import' &&
+                    ['completed', 'failed', 'cancelled'].includes(job.status),
+                )
+                .map((job) => `${job.id}:${job.status}`)
+                .join('|')
+            "
             :selected-scene-id="graphicSceneSelection.sceneId"
             :selected-node-id="graphicSceneSelection.nodeId"
             :snapping="graphicSnapping"
@@ -2956,6 +3160,8 @@ onBeforeUnmount(() => {
             "
             @command="command"
             @selection="selectGraphicLayer"
+            @preview-time="previewGraphicAtTime"
+            @import-assets="emit('importAssets')"
             @update:snapping="setGraphicSnapping"
             @update:guides="setGraphicGuides"
             @agent-busy="setGraphicAgentBusy"
@@ -3285,6 +3491,29 @@ onBeforeUnmount(() => {
                 />
               </fieldset>
             </fieldset>
+            <MotionGenerationPanel
+              v-if="
+                selectedAsset.mediaType === 'image' ||
+                selectedAsset.metadata?.['openfilm.motionGeneration']
+              "
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :state="state"
+              :clip="selectedClip"
+              :asset="selectedAsset"
+              :frame="projectSettings"
+              :source-version="sourceVersion"
+              :disabled="
+                !!selectedClip.locked ||
+                clipSourceLocked ||
+                !!sourceUnavailable ||
+                historyBusy ||
+                hasPending ||
+                generationImportBusy
+              "
+              :flush-inputs="flushInputs"
+              @apply="applyMotion"
+            />
             <SceneDirectionReview
               v-if="
                 selectedAsset.mediaType === 'image' && photoPresentationAllowed

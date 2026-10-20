@@ -29,6 +29,7 @@ const editingId = ref("");
 const editName = ref("");
 const editDescription = ref("");
 const restoreTarget = ref<ProjectVersionRecord>();
+const confirmationAction = ref<"restore" | "delete">("restore");
 const pendingCreateRequestId = ref("");
 const pendingRestore = ref<{
   versionId: string;
@@ -154,8 +155,10 @@ async function saveRename() {
 async function askRestore(
   version: ProjectVersionRecord,
   trigger: HTMLButtonElement,
+  action: "restore" | "delete" = "restore",
 ) {
   if (props.disabled || saving.value) return;
+  confirmationAction.value = action;
   restoreTarget.value = version;
   restoreTrigger.value = trigger;
   if (pendingRestore.value?.versionId !== version.id)
@@ -191,7 +194,27 @@ async function confirmRestore() {
   if (!target || props.disabled || saving.value) return;
   saving.value = true;
   error.value = "";
+  const projectId = props.projectId;
+  const request = generation;
   try {
+    if (confirmationAction.value === "delete") {
+      const current = await api.projectVersionRevision();
+      if (
+        current.projectId !== projectId ||
+        props.projectId !== projectId ||
+        request !== generation
+      )
+        return;
+      await api.deleteProjectVersion(target.id, {
+        baseRevision: current.revision,
+        confirmed: true,
+      });
+      if (props.projectId !== projectId || request !== generation) return;
+      restoreTarget.value = undefined;
+      pendingRestore.value = undefined;
+      await load();
+      return;
+    }
     if (!pendingRestore.value) {
       const current = await api.projectVersionRevision();
       if (current.projectId !== props.projectId)
@@ -207,10 +230,11 @@ async function confirmRestore() {
       requestId: pendingRestore.value.requestId,
       confirmed: true,
     });
+    if (props.projectId !== projectId || request !== generation) return;
     pendingRestore.value = undefined;
     restoreTarget.value = undefined;
     await load();
-    emit("restored", restored.project);
+    if (props.projectId === projectId) emit("restored", restored.project);
   } catch (cause) {
     showError(cause);
   } finally {
@@ -228,6 +252,7 @@ watch(
     restoreTarget.value = undefined;
     pendingRestore.value = undefined;
     pendingCreateRequestId.value = "";
+    saving.value = false;
     void load();
   },
 );
@@ -353,6 +378,19 @@ onMounted(() => void load());
             >
               {{ t("app.versions.restore") }}
             </button>
+            <button
+              class="text-button"
+              :disabled="disabled || saving"
+              @click="
+                askRestore(
+                  version,
+                  $event.currentTarget as HTMLButtonElement,
+                  'delete',
+                )
+              "
+            >
+              {{ t("app.versions.delete") }}
+            </button>
           </div>
         </article>
       </section>
@@ -428,13 +466,33 @@ onMounted(() => void load());
         aria-labelledby="versions-confirm-title"
         aria-describedby="versions-confirm-description"
       >
-        <p class="eyebrow">{{ t("app.versions.confirmEyebrow") }}</p>
+        <p class="eyebrow">
+          {{
+            t(
+              confirmationAction === "delete"
+                ? "app.versions.deleteEyebrow"
+                : "app.versions.confirmEyebrow",
+            )
+          }}
+        </p>
         <h2 id="versions-confirm-title">
-          {{ t("app.versions.confirmTitle", { name: restoreTarget.name }) }}
+          {{
+            t(
+              confirmationAction === "delete"
+                ? "app.versions.deleteTitle"
+                : "app.versions.confirmTitle",
+              { name: restoreTarget.name },
+            )
+          }}
         </h2>
         <p id="versions-confirm-description">
           {{
-            t("app.versions.confirmDescription", { name: restoreTarget.name })
+            t(
+              confirmationAction === "delete"
+                ? "app.versions.deleteDescription"
+                : "app.versions.confirmDescription",
+              { name: restoreTarget.name },
+            )
           }}
         </p>
         <div class="versions-confirm-actions">
@@ -449,8 +507,16 @@ onMounted(() => void load());
           >
             {{
               saving
-                ? t("app.versions.restoring")
-                : t("app.versions.confirmRestore")
+                ? t(
+                    confirmationAction === "delete"
+                      ? "app.versions.deleting"
+                      : "app.versions.restoring",
+                  )
+                : t(
+                    confirmationAction === "delete"
+                      ? "app.versions.confirmDelete"
+                      : "app.versions.confirmRestore",
+                  )
             }}
           </button>
         </div>

@@ -49,6 +49,7 @@ const name = computed(
   >
     <img
       v-if="thumbnailSrc"
+      crossorigin="anonymous"
       :src="thumbnailSrc"
       alt=""
       loading="lazy"

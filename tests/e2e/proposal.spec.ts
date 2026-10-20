@@ -111,15 +111,53 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     path: projectPath,
   });
   await importFolder(page, fixture.mediaDirectory, true);
-  await page
-    .getByRole("button", {
-      name: "Favorite 06-pixel-portrait.jpg",
-      exact: true,
-    })
-    .click();
-  await page
-    .getByRole("button", { name: "Inspect 06-pixel-portrait.jpg", exact: true })
-    .click();
+  // Hold the real selection acknowledgement so Inspect is exercised while
+  // the mutation is still pending, rather than depending on network timing.
+  let releaseFavorite!: () => void;
+  let favoriteHeld = false;
+  const favoriteAcknowledgement = new Promise<void>((resolve) => {
+    releaseFavorite = resolve;
+  });
+  const holdFavorite = async (route: Route) => {
+    if (
+      route.request().method() === "PATCH" &&
+      route.request().postDataJSON()?.state?.favorite === true
+    ) {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      favoriteHeld = true;
+      await favoriteAcknowledgement;
+      await route.fulfill({ response });
+    } else await route.continue();
+  };
+  await page.route("**/api/assets/**", holdFavorite);
+  try {
+    await page
+      .getByRole("button", {
+        name: "Favorite 06-pixel-portrait.jpg",
+        exact: true,
+      })
+      .click();
+    await expect.poll(() => favoriteHeld).toBe(true);
+    await page
+      .getByRole("button", {
+        name: "Inspect 06-pixel-portrait.jpg",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Rate 5 stars", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Rate 5 stars", exact: true }),
+    ).toBeDisabled();
+  } finally {
+    releaseFavorite();
+  }
+  await expect(
+    page.getByRole("button", { name: "Rate 5 stars", exact: true }),
+  ).toBeEnabled();
+  await page.unroute("**/api/assets/**", holdFavorite);
   await page.getByRole("button", { name: "Rate 5 stars", exact: true }).click();
   const sourceDetails = page.getByRole("region", {
     name: "Source format and preview",

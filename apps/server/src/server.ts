@@ -50,10 +50,13 @@ import {
   type GraphicSceneAgentAcceptance,
   type ProjectVersionCreateInput,
   type ProjectVersionRestoreInput,
+  type CollectPlanInput,
+  type CollectMediaCreateInput,
 } from "@openfilm/application";
 import {
   validateProject,
   validateFilmLook,
+  validateExportProfile,
   migrateProject,
   validateStory,
   validateTranscriptSegmentId,
@@ -63,6 +66,7 @@ import {
   type ApplicationErrorCode,
   type Job,
   type FilmLook,
+  type ExportProfile,
   type MediaAsset,
   type Story,
   type GlossaryInput,
@@ -231,6 +235,72 @@ function safeFilename(name: string): boolean {
     name !== ".."
   );
 }
+function safeExportName(name: string): boolean {
+  if (safeFilename(name)) return true;
+  const parts = name.split("/");
+  if (parts.length !== 2) return false;
+  const [directory, filename] = parts;
+  return (
+    /^stems-[A-Za-z0-9][A-Za-z0-9_-]{7,95}$/u.test(directory!) &&
+    (/^(narration|music|ambience|dialogue)\.wav$/u.test(filename!) ||
+      filename === "manifest.json")
+  );
+}
+function profileRenderSelection(data: Body): {
+  lookOverride?: FilmLook | null;
+  captionTrackId?: string | null;
+} {
+  const selection: {
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  } = {};
+  if (Object.hasOwn(data, "lookOverride")) {
+    try {
+      selection.lookOverride =
+        data.lookOverride === null ? null : validateFilmLook(data.lookOverride);
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose a supported film look with strength between zero and one.",
+        400,
+        undefined,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  if (Object.hasOwn(data, "captionTrackId")) {
+    if (data.captionTrackId !== null && typeof data.captionTrackId !== "string")
+      throw new ApplicationError(
+        "request.invalid",
+        "A caption track selection must be a saved track ID or null.",
+      );
+    selection.captionTrackId = data.captionTrackId as string | null;
+  }
+  return selection;
+}
+function parseProfileForFormats(
+  value: unknown,
+  formats: readonly ExportProfile["format"][],
+): ExportProfile {
+  let profile: ExportProfile;
+  try {
+    profile = validateExportProfile(value);
+  } catch (error) {
+    throw new ApplicationError(
+      "request.invalid",
+      "Choose a supported versioned Export Profile.",
+      400,
+      undefined,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  if (!formats.includes(profile.format))
+    throw new ApplicationError(
+      "request.invalid",
+      `This export operation supports ${formats.join(" or ")} profiles.`,
+    );
+  return profile;
+}
 function projectFolderTitle(title: string): string {
   const clean = [...title]
     .filter((char) => char.charCodeAt(0) >= 32)
@@ -384,21 +454,25 @@ async function body(
   }
 }
 
-async function streamFile(
+async function streamFileContents(
   request: IncomingMessage,
   response: ServerResponse,
   file: string,
   root: string,
   mime: string,
+  signal: AbortSignal,
 ) {
+  signal.throwIfAborted();
   const [actualFile, actualRoot] = await Promise.all([
     realpath(file),
     realpath(root),
   ]);
+  signal.throwIfAborted();
   const within = relative(actualRoot, actualFile);
   if (within.startsWith("..") || isAbsolute(within))
     throw new HttpError(403, "Media cache path is outside this project.");
   const info = await stat(actualFile);
+  signal.throwIfAborted();
   if (!info.isFile()) throw new HttpError(404, "Cached media is unavailable.");
   if (info.size === 0)
     throw new HttpError(
@@ -437,11 +511,15 @@ async function streamFile(
       ? { "Content-Range": `bytes ${start}-${end}/${info.size}` }
       : {}),
   });
-  await pipeline(createReadStream(actualFile, { start, end }), response);
+  await pipeline(createReadStream(actualFile, { start, end }), response, {
+    signal,
+  });
 }
 
 export interface ServerOptions {
   port?: number;
+  /** Private packaged-shell capability; never accepted from HTTP. */
+  nativeSession?: string;
   project?: string;
   projectRoot?: string;
   maxUploadBytes?: number;
@@ -453,6 +531,11 @@ export interface ServerOptions {
   graphicSceneAgentProviderTimeoutMs?: number;
 }
 export async function startServer(options: ServerOptions = {}) {
+  if (
+    options.nativeSession !== undefined &&
+    !/^[a-f0-9]{64}$/u.test(options.nativeSession)
+  )
+    throw new Error("Invalid native session");
   const graphicSceneAgentProviderTimeoutMs =
     number(
       options.graphicSceneAgentProviderTimeoutMs,
@@ -517,6 +600,36 @@ export async function startServer(options: ServerOptions = {}) {
   };
   let mutationQueue = Promise.resolve();
   let closing = false;
+  const mediaStreams = new Map<AbortController, Promise<void>>();
+  const streamFile = (
+    request: IncomingMessage,
+    response: ServerResponse,
+    file: string,
+    root: string,
+    mime: string,
+  ) => {
+    const controller = new AbortController();
+    const abort = () => {
+      response.destroy();
+    };
+    controller.signal.addEventListener("abort", abort, { once: true });
+    if (closing) controller.abort();
+    // Register before filesystem awaits. Only read-only file pipelines are
+    // aborted; acquired mutation requests retain their graceful lifetime.
+    const task = streamFileContents(
+      request,
+      response,
+      file,
+      root,
+      mime,
+      controller.signal,
+    ).finally(() => {
+      controller.signal.removeEventListener("abort", abort);
+      mediaStreams.delete(controller);
+    });
+    mediaStreams.set(controller, task);
+    return task;
+  };
   const current = () => {
     if (!app)
       throw new HttpError(
@@ -564,6 +677,13 @@ export async function startServer(options: ServerOptions = {}) {
           response.setHeader("Access-Control-Allow-Origin", origin);
           response.setHeader("Vary", "Origin");
         }
+        if (
+          options.nativeSession &&
+          !(request.url ?? "").startsWith(
+            `/native/${options.nativeSession}/api/`,
+          )
+        )
+          throw new HttpError(403, "Native session is required.");
         if (request.method === "OPTIONS") {
           response.writeHead(204, {
             "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
@@ -573,13 +693,21 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
-        const route = url.pathname;
+        let route = url.pathname;
+        if (options.nativeSession) {
+          const prefix = `/native/${options.nativeSession}`;
+          if (!route.startsWith(`${prefix}/api/`))
+            throw new HttpError(403, "Native session is required.");
+          route = route.slice(prefix.length);
+        }
         const method = request.method;
         const cancellation =
           method === "POST" && /^\/api\/jobs\/[^/]+\/cancel$/.test(route);
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
+        const nonMutatingExportPreview =
+          method === "POST" && route === "/api/export/frame-preview";
         const acquireMutation = async () => {
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -613,6 +741,81 @@ export async function startServer(options: ServerOptions = {}) {
             );
           await acquireMutation();
         }
+        const runProfileExport = async <T>(
+          application: OpenFilmApplication,
+          operation: (signal: AbortSignal) => Promise<T>,
+        ): Promise<T> => {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for the active project job before exporting.",
+            );
+          const controller = new AbortController();
+          const jobId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          const job: Job = {
+            id: jobId,
+            type: "render",
+            status: "queued",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          };
+          application.catalog.saveJob(job);
+          active.set(jobId, controller);
+          // A preview reserves project ownership through its body read and job
+          // registration. Deliveries keep edits queued through publication.
+          if (nonMutatingExportPreview) {
+            releaseMutation?.();
+            releaseMutation = undefined;
+          }
+          const running: Job = {
+            ...job,
+            status: "running",
+            updatedAt: new Date().toISOString(),
+          };
+          application.catalog.saveJob(running);
+          const operationPromise = Promise.resolve().then(() =>
+            operation(controller.signal),
+          );
+          const handled = operationPromise
+            .then((result) => {
+              application.catalog.saveJob({
+                ...running,
+                status: "completed",
+                progress: 1,
+                updatedAt: new Date().toISOString(),
+              });
+              return result;
+            })
+            .catch((error: unknown) => {
+              application.catalog.saveJob({
+                ...running,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                updatedAt: new Date().toISOString(),
+                errors: [
+                  {
+                    uri: "",
+                    stage: "profile-export",
+                    message:
+                      error instanceof Error ? error.message : String(error),
+                    ...errorInfo(error, "export.failed"),
+                  },
+                ],
+              });
+              throw error;
+            })
+            .finally(() => tasks.delete(handled));
+          tasks.add(handled);
+          try {
+            return await handled;
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+        };
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
           return;
@@ -822,6 +1025,24 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        if (versionRoute && method === "DELETE" && !versionRoute[2]) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for project jobs to finish before deleting a version.",
+            );
+          const data = await body(request);
+          keys(data, ["baseRevision", "confirmed"]);
+          const result = application.versions.remove(
+            decodeURIComponent(versionRoute[1]!),
+            {
+              baseRevision: text(data, "baseRevision"),
+              confirmed: data.confirmed === true,
+            },
+          );
+          json(response, 200, result);
+          return;
+        }
         if (versionRoute && method === "PATCH" && !versionRoute[2]) {
           const data = await body(request);
           keys(data, ["name", "description"]);
@@ -871,6 +1092,193 @@ export async function startServer(options: ServerOptions = {}) {
             generation: application.projectGeneration,
           });
           return;
+        }
+        if (
+          method === "POST" &&
+          (route === "/api/handoff/review" || route === "/api/handoff/export")
+        ) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for running jobs before NLE handoff.",
+            );
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "compositionId",
+            "revision",
+            "mode",
+            "bakeAudio",
+            "captionTrackId",
+          ]);
+          if (data.projectId !== application.project.id)
+            throw new HttpError(409, "The handoff project changed.");
+          const compositionId = text(data, "compositionId");
+          const options = {
+            ...(data.mode !== undefined ? { mode: data.mode } : {}),
+            ...(data.bakeAudio !== undefined
+              ? { bakeAudio: data.bakeAudio }
+              : {}),
+            ...(data.captionTrackId !== undefined
+              ? { captionTrackId: data.captionTrackId }
+              : {}),
+          } as import("@openfilm/exporters").HandoffOptions;
+          if (route.endsWith("/review")) {
+            json(
+              response,
+              200,
+              application.reviewHandoff(compositionId, options),
+            );
+            return;
+          }
+          const controller = new AbortController(),
+            requestId = `handoff:${randomUUID()}`;
+          let done!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            done = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const result = await application.exportHandoff(
+              {
+                projectId: application.project.id,
+                compositionId,
+                revision: text(data, "revision"),
+                ...options,
+              },
+              controller.signal,
+            );
+            json(response, 200, result);
+          } finally {
+            response.off("close", disconnected);
+            active.delete(requestId);
+            done();
+            tasks.delete(completed);
+          }
+          return;
+        }
+        if (method === "GET" && route === "/api/handoff/file") {
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(409, "The handoff project changed.");
+          const index = Number(url.searchParams.get("index"));
+          const file = await application.handoff.file(
+            url.searchParams.get("id") ?? "",
+            index,
+          );
+          response.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${basename(file)}"`,
+          );
+          await streamFile(
+            request,
+            response,
+            file,
+            join(application.directory, "cache", "nle-handoff-published"),
+            "application/octet-stream",
+          );
+          return;
+        }
+        if (
+          method === "POST" &&
+          [
+            "/api/collect/plan",
+            "/api/collect/create",
+            "/api/collect/verify",
+          ].includes(route)
+        ) {
+          const controller = new AbortController();
+          const requestId = `collect:${randomUUID()}`;
+          let completeRequest!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            completeRequest = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const abortRequest = () => {
+            request.destroy();
+            response.destroy();
+          };
+          controller.signal.addEventListener("abort", abortRequest, {
+            once: true,
+          });
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const data = await body(request);
+            if (route === "/api/collect/plan") {
+              keys(data, ["scope", "compositionId", "rightsDeclarations"]);
+              const plan = await application.collectMedia.plan(
+                data as unknown as CollectPlanInput,
+                controller.signal,
+              );
+              json(response, 200, { plan });
+              return;
+            }
+            if (route === "/api/collect/create") {
+              keys(data, [
+                "scope",
+                "compositionId",
+                "rightsDeclarations",
+                "planId",
+                "baseRevision",
+                "format",
+              ]);
+              const format =
+                data.format === "zip"
+                  ? "zip"
+                  : data.format === "directory"
+                    ? "directory"
+                    : undefined;
+              if (!format)
+                throw new HttpError(
+                  400,
+                  "Choose a folder or ZIP package format.",
+                );
+              const extension = format === "zip" ? ".zip" : ".openfilm";
+              const destination = join(
+                application.directory,
+                "exports",
+                `openfilm-collect-${randomUUID()}${extension}`,
+              );
+              const result = await application.collectMedia.create({
+                ...data,
+                destination,
+                signal: controller.signal,
+              } as unknown as CollectMediaCreateInput);
+              json(response, 200, { result });
+              return;
+            }
+            keys(data, ["packageName"]);
+            const packageName = text(data, "packageName");
+            if (!safeFilename(packageName))
+              throw new HttpError(
+                400,
+                "Choose a package name inside this film's exports folder.",
+              );
+            const packagePath = join(
+              application.directory,
+              "exports",
+              packageName,
+            );
+            const result = await application.collectMedia.verify(
+              packagePath,
+              controller.signal,
+            );
+            json(response, 200, { result });
+          } finally {
+            response.removeListener("close", disconnected);
+            controller.signal.removeEventListener("abort", abortRequest);
+            active.delete(requestId);
+            tasks.delete(completed);
+            completeRequest();
+          }
         }
         if (route.startsWith("/api/captions/")) {
           errorContext = "captions.failed";
@@ -2174,6 +2582,201 @@ export async function startServer(options: ServerOptions = {}) {
           }
           return;
         }
+        if (method === "GET" && route === "/api/motion-generation/providers") {
+          json(response, 200, application.motionGeneration.list());
+          return;
+        }
+        const motionPreview =
+          /^\/api\/compositions\/([^/]+)\/motion-generation$/.exec(route);
+        if (method === "POST" && motionPreview) {
+          const data = await body(request);
+          keys(data, [
+            "requestId",
+            "projectId",
+            "baseRevision",
+            "clipId",
+            "sceneId",
+            "providerId",
+            "count",
+            "candidateAssetIds",
+            "prompt",
+            "negativeConstraints",
+            "consent",
+            "containsPeople",
+          ]);
+          const requestId = text(data, "requestId");
+          if (
+            active.size &&
+            !application.motionGeneration.hasRequest(requestId)
+          )
+            throw new HttpError(409, "Wait for the active project job.");
+          if (data.count !== undefined && typeof data.count !== "number")
+            throw new HttpError(400, "Invalid motion candidate count.");
+          if (
+            data.candidateAssetIds !== undefined &&
+            (!Array.isArray(data.candidateAssetIds) ||
+              data.candidateAssetIds.length > 3 ||
+              data.candidateAssetIds.some(
+                (id) => typeof id !== "string" || !id || id.length > 256,
+              ))
+          )
+            throw new HttpError(400, "Invalid local candidate selection.");
+          if (
+            typeof data.containsPeople !== "boolean" ||
+            (data.sceneId !== undefined &&
+              data.sceneId !== null &&
+              (typeof data.sceneId !== "string" ||
+                !data.sceneId ||
+                data.sceneId.length > 256))
+          )
+            throw new HttpError(
+              400,
+              "Explicit subject and valid scene selection required.",
+            );
+          const input: import("@openfilm/application").MotionRequest = {
+            projectId: text(data, "projectId"),
+            requestId,
+            compositionId: decodeURIComponent(motionPreview[1]!),
+            baseRevision: text(data, "baseRevision"),
+            clipId: text(data, "clipId"),
+            providerId: text(data, "providerId"),
+            ...(data.sceneId !== undefined
+              ? { sceneId: data.sceneId as string | null }
+              : {}),
+            ...(data.count !== undefined
+              ? { count: data.count as number }
+              : {}),
+            ...(data.candidateAssetIds !== undefined
+              ? { candidateAssetIds: data.candidateAssetIds as string[] }
+              : {}),
+            prompt: text(data, "prompt"),
+            negativeConstraints: text(data, "negativeConstraints"),
+            consent: data.consent === true,
+            containsPeople: data.containsPeople === true,
+          };
+          const controller = new AbortController(),
+            jobId = `motion:${randomUUID()}`;
+          let done!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            done = resolve;
+          });
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          if (response.destroyed || request.aborted) controller.abort();
+          active.set(jobId, controller);
+          tasks.add(completed);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const receipts = await application.runMotionGeneration(
+              input,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (controller.signal.aborted || app !== application) {
+              await application.motionGeneration.revoke(requestId);
+              throw new HttpError(409, "Motion owner changed or cancelled.");
+            }
+            json(response, 200, receipts);
+          } finally {
+            response.off("close", disconnected);
+            active.delete(jobId);
+            done();
+            tasks.delete(completed);
+          }
+          return;
+        }
+        if (method === "POST" && route === "/api/motion-generation/clear") {
+          const data = await body(request);
+          keys(data, ["projectId"]);
+          if (text(data, "projectId") !== application.project.id)
+            throw new HttpError(409, "Motion project changed.");
+          await application.motionGeneration.clearPreviews();
+          json(response, 200, { ok: true });
+          return;
+        }
+        const motionRevoke =
+          /^\/api\/motion-generation\/requests\/([a-f0-9-]{36})\/revoke$/.exec(
+            route,
+          );
+        if (method === "POST" && motionRevoke) {
+          const data = await body(request);
+          keys(data, ["projectId"]);
+          if (text(data, "projectId") !== application.project.id)
+            throw new HttpError(409, "Motion project changed.");
+          await application.motionGeneration.revoke(motionRevoke[1]!);
+          json(response, 200, { ok: true });
+          return;
+        }
+        const motionAction =
+          /^\/api\/motion-generation\/([a-f0-9-]{36})\/(receipt|media|accept|import|restore)$/.exec(
+            route,
+          );
+        if (motionAction) {
+          const id = motionAction[1]!,
+            action = motionAction[2]!;
+          if (method === "GET" && ["receipt", "media"].includes(action)) {
+            if (url.searchParams.get("projectId") !== application.project.id)
+              throw new HttpError(409, "Motion project changed.");
+            if (action === "receipt")
+              json(
+                response,
+                200,
+                await application.motionGeneration.receipt(id),
+              );
+            else
+              await streamFile(
+                request,
+                response,
+                await application.motionGeneration.media(id),
+                join(application.directory, "cache"),
+                "video/mp4",
+              );
+            return;
+          }
+          if (
+            method === "POST" &&
+            ["accept", "import", "restore"].includes(action)
+          ) {
+            const data = await body(request);
+            keys(
+              data,
+              action === "accept" ? ["projectId", "reviewed"] : ["projectId"],
+            );
+            if (text(data, "projectId") !== application.project.id)
+              throw new HttpError(409, "Motion project changed.");
+            if (active.size)
+              throw new HttpError(409, "Wait for the active project job.");
+            if (action === "accept")
+              json(
+                response,
+                200,
+                await application.motionGeneration.accept(
+                  id,
+                  data.reviewed === true,
+                ),
+              );
+            else {
+              const state =
+                action === "import"
+                  ? await application.motionGeneration.importCandidate(
+                      id,
+                      editorFor(application),
+                    )
+                  : await application.motionGeneration.restore(
+                      id,
+                      editorFor(application),
+                    );
+              json(response, 200, {
+                revision: state.revision,
+                receipt: await application.motionGeneration.receipt(id),
+              });
+            }
+            return;
+          }
+        }
         if (method === "GET" && route === "/api/audio-generation/providers") {
           json(response, 200, application.audioGeneration.list());
           return;
@@ -3009,6 +3612,116 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, { composition });
           return;
         }
+        if (method === "POST" && route === "/api/export/frame-preview") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, [
+            "compositionId",
+            "profile",
+            "time",
+            "lookOverride",
+            "captionTrackId",
+          ]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, ["mp4", "png"]);
+          if (typeof data.time !== "number" || !Number.isFinite(data.time))
+            throw new HttpError(400, "Choose a finite export preview time.");
+          const selection = profileRenderSelection(data);
+          const result = await runProfileExport(application, (signal) =>
+            application.previewExportFrame({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              time: data.time as number,
+              ...selection,
+              signal,
+            }),
+          );
+          json(response, 200, result);
+          return;
+        }
+        if (method === "POST" && route === "/api/export/still") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, [
+            "compositionId",
+            "profile",
+            "time",
+            "requestId",
+            "confirmCrop",
+            "cropPreviewToken",
+            "lookOverride",
+            "captionTrackId",
+          ]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, ["png"]);
+          if (typeof data.time !== "number" || !Number.isFinite(data.time))
+            throw new HttpError(400, "Choose a finite still frame time.");
+          if (
+            data.confirmCrop !== undefined &&
+            typeof data.confirmCrop !== "boolean"
+          )
+            throw new HttpError(400, "Crop confirmation must be boolean.");
+          if (profile.framing === "crop" && data.confirmCrop !== true)
+            throw new HttpError(
+              400,
+              "Confirm the center crop after reviewing its export frame.",
+            );
+          if (
+            data.cropPreviewToken !== undefined &&
+            typeof data.cropPreviewToken !== "string"
+          )
+            throw new HttpError(400, "Choose a reviewed crop preview token.");
+          const selection = profileRenderSelection(data);
+          const result = await runProfileExport(application, (signal) =>
+            application.exportStill({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              time: data.time as number,
+              requestId: text(data, "requestId"),
+              confirmCrop: data.confirmCrop as boolean | undefined,
+              cropPreviewToken: data.cropPreviewToken as string | undefined,
+              ...selection,
+              signal,
+            }),
+          );
+          json(response, 200, { ...result, filename: basename(result.path) });
+          return;
+        }
+        if (method === "POST" && route === "/api/export/audio") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, ["compositionId", "profile", "requestId"]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, [
+            "wav",
+            "audio-stems",
+          ]);
+          const result = await runProfileExport(application, (signal) =>
+            application.exportProfileAudio({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              requestId: text(data, "requestId"),
+              signal,
+            }),
+          );
+          json(response, 200, result);
+          return;
+        }
         if (
           method === "POST" &&
           (route === "/api/render" || route === "/api/export")
@@ -3025,6 +3738,56 @@ export async function startServer(options: ServerOptions = {}) {
           const quality = hasQuality
             ? resolveRenderQuality(data.quality).quality
             : undefined;
+          const hasExportProfile = Object.hasOwn(data, "exportProfile");
+          let exportProfile:
+            ReturnType<typeof validateExportProfile> | undefined;
+          if (hasExportProfile) {
+            if (!exporting || data.format !== "mp4")
+              throw new ApplicationError(
+                "request.invalid",
+                "Delivery profiles apply to MP4 export only.",
+              );
+            try {
+              exportProfile = validateExportProfile(data.exportProfile);
+            } catch (error) {
+              throw new ApplicationError(
+                "request.invalid",
+                "Choose a supported versioned Export Profile.",
+                400,
+                undefined,
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+            if (exportProfile.format !== "mp4")
+              throw new ApplicationError(
+                "request.invalid",
+                "MP4 export requires an MP4 Export Profile.",
+              );
+          }
+          const hasCropConfirmation = Object.hasOwn(data, "confirmCrop");
+          if (hasCropConfirmation && typeof data.confirmCrop !== "boolean")
+            throw new ApplicationError(
+              "request.invalid",
+              "Crop confirmation must be boolean.",
+            );
+          if (hasCropConfirmation && !hasExportProfile)
+            throw new ApplicationError(
+              "request.invalid",
+              "Crop confirmation requires an Export Profile.",
+            );
+          if (exportProfile?.framing === "crop" && data.confirmCrop !== true)
+            throw new ApplicationError(
+              "request.invalid",
+              "Confirm the center crop after reviewing its export frame.",
+            );
+          if (
+            data.cropPreviewToken !== undefined &&
+            (typeof data.cropPreviewToken !== "string" || !exportProfile)
+          )
+            throw new ApplicationError(
+              "request.invalid",
+              "A reviewed crop preview token requires an Export Profile.",
+            );
           const hasLookOverride = Object.hasOwn(data, "lookOverride");
           let lookOverride: FilmLook | null | undefined;
           if (hasLookOverride) {
@@ -3103,6 +3866,11 @@ export async function startServer(options: ServerOptions = {}) {
             jobId,
             lookOverride,
             quality,
+            ...(exportProfile ? { exportProfile } : {}),
+            ...(data.confirmCrop === true ? { confirmCrop: true } : {}),
+            ...(typeof data.cropPreviewToken === "string"
+              ? { cropPreviewToken: data.cropPreviewToken }
+              : {}),
             ...(hasCaptionTrackId
               ? { captionTrackId: data.captionTrackId as string | null }
               : {}),
@@ -3156,23 +3924,42 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        const exportFramePreview =
+          /^\/api\/export\/frame-preview\/([a-f\d-]{36})$/iu.exec(route);
+        if (method === "GET" && exportFramePreview) {
+          const token = exportFramePreview[1]!.toLowerCase();
+          const file = await application.exportProfiles.previewPath(token);
+          await streamFile(
+            request,
+            response,
+            file,
+            resolve(application.directory, "cache/export-preview"),
+            "image/png",
+          );
+          return;
+        }
         if (method === "GET" && route === "/api/export/file") {
           const name = url.searchParams.get("name") ?? "";
-          if (!safeFilename(name))
+          if (!safeExportName(name))
             throw new HttpError(400, "Choose an exported file name.");
           const root = join(application.directory, "exports");
           response.setHeader(
             "Content-Disposition",
-            `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+            `attachment; filename*=UTF-8''${encodeURIComponent(basename(name))}`,
           );
           await streamFile(
             request,
             response,
             join(root, name),
             root,
-            extname(name).toLowerCase() === ".mp4"
-              ? "video/mp4"
-              : "application/octet-stream",
+            (
+              {
+                ".mp4": "video/mp4",
+                ".png": "image/png",
+                ".wav": "audio/wav",
+                ".json": "application/json",
+              } as Record<string, string>
+            )[extname(name).toLowerCase()] ?? "application/octet-stream",
           );
           return;
         }
@@ -3217,12 +4004,15 @@ export async function startServer(options: ServerOptions = {}) {
   const close = async () => {
     closing = true;
     cancelGraphicSceneAgentPreviews();
+    for (const controller of mediaStreams.keys()) controller.abort();
     const stopped = new Promise<void>((accept) => server.close(() => accept()));
     for (const controller of new Set(active.values())) controller.abort();
     await Promise.allSettled(tasks);
     await mutationQueue;
+    await Promise.allSettled(mediaStreams.values());
     await stopped;
     await discardUploads();
+    await app?.motionGeneration.dispose();
     app?.close({ requireSave: true });
   };
   return { server, port, close };
