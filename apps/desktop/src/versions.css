@@ -1,0 +1,280 @@
+.project-versions {
+  display: grid;
+  gap: var(--of-space-6);
+  max-width: 1480px;
+  margin-inline: auto;
+  padding: var(--of-space-5) 0 var(--of-space-10);
+}
+.versions-heading,
+.versions-diff-heading,
+.diff-entry-heading,
+.versions-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--of-space-4);
+}
+.versions-heading > div,
+.versions-list,
+.versions-diff,
+.versions-create label,
+.version-rename label,
+.versions-diff-heading label {
+  display: grid;
+  gap: var(--of-space-3);
+}
+.versions-heading h2,
+.versions-heading p,
+.versions-empty h3,
+.versions-empty p,
+.versions-confirm-dialog h2,
+.versions-confirm-dialog p {
+  margin: 0;
+}
+.versions-heading > div > p:last-child,
+.versions-private-note,
+.version-description,
+.versions-diff-caption,
+.versions-empty p {
+  color: var(--of-text-secondary);
+  line-height: 1.6;
+}
+.versions-heading .eyebrow,
+.versions-confirm-dialog .eyebrow {
+  margin: 0;
+  color: var(--of-accent);
+  font-size: var(--of-font-caption);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.versions-create {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr) auto;
+  align-items: end;
+  gap: var(--of-space-4);
+  padding: var(--of-space-5);
+  background: var(--of-surface-2);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+}
+.versions-create label,
+.version-rename label,
+.versions-diff-heading label {
+  min-width: 0;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+}
+.versions-create input,
+.version-rename input,
+.versions-diff-heading select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: var(--of-space-3);
+  color: var(--of-text-primary);
+  background: var(--of-surface-1);
+  border: 1px solid var(--of-border-strong);
+  border-radius: var(--of-radius-sm);
+  font: inherit;
+}
+.versions-create button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+.versions-private-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--of-font-caption);
+}
+.versions-empty {
+  display: grid;
+  gap: var(--of-space-2);
+  padding: var(--of-space-8);
+  text-align: center;
+  background: var(--of-surface-2);
+  border: 1px dashed var(--of-border-strong);
+  border-radius: var(--of-radius-md);
+}
+.versions-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.4fr);
+  align-items: start;
+  gap: var(--of-space-6);
+}
+.versions-list,
+.versions-diff {
+  min-width: 0;
+  gap: var(--of-space-3);
+}
+.versions-list > h3,
+.versions-diff-heading > h3 {
+  margin: 0;
+  font-size: var(--of-font-heading-sm);
+}
+.version-card {
+  min-width: 0;
+  padding: var(--of-space-4);
+  background: var(--of-surface-2);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+}
+.version-card.selected {
+  border-color: var(--of-accent);
+  box-shadow: inset 3px 0 0 var(--of-accent);
+}
+.version-select {
+  display: grid;
+  gap: var(--of-space-2);
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.version-select strong,
+.version-diff-list code {
+  overflow-wrap: anywhere;
+}
+.version-select time {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  font-variant-numeric: tabular-nums;
+}
+.version-description {
+  margin: var(--of-space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.version-actions,
+.version-rename {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--of-space-3);
+  margin-top: var(--of-space-3);
+}
+.version-rename {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+}
+.version-rename > button {
+  justify-self: start;
+}
+.versions-diff {
+  padding: var(--of-space-5);
+  background: var(--of-surface-2);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+}
+.versions-diff-heading {
+  align-items: end;
+}
+.versions-diff-heading label {
+  width: min(100%, 280px);
+}
+.versions-diff-caption,
+.versions-empty-inline {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.versions-empty-inline {
+  color: var(--of-text-secondary);
+}
+.version-diff-list {
+  display: grid;
+  gap: var(--of-space-3);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+.version-diff-list > li {
+  min-width: 0;
+  padding: var(--of-space-4);
+  background: var(--of-surface-1);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-sm);
+}
+.diff-entry-heading {
+  justify-content: flex-start;
+  font-size: var(--of-font-caption);
+}
+.diff-category {
+  padding: 2px var(--of-space-2);
+  color: var(--of-accent-ink);
+  background: var(--of-accent);
+  border-radius: var(--of-radius-sm);
+}
+.version-diff-list code {
+  display: block;
+  margin-block: var(--of-space-2);
+  color: var(--of-text-secondary);
+  white-space: pre-wrap;
+}
+.diff-values {
+  display: grid;
+  gap: var(--of-space-2);
+}
+.diff-values p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+.diff-values strong {
+  display: block;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+}
+.versions-dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--of-space-5);
+  background: #0009;
+}
+.versions-confirm-dialog {
+  display: grid;
+  gap: var(--of-space-4);
+  width: min(100%, 540px);
+  padding: var(--of-space-6);
+  color: var(--of-text-primary);
+  background: var(--of-surface-1);
+  border: 1px solid var(--of-border-strong);
+  border-radius: var(--of-radius-lg);
+  box-shadow: var(--of-shadow-dialog);
+}
+.versions-confirm-dialog > p:not(.eyebrow) {
+  color: var(--of-text-secondary);
+  line-height: 1.7;
+}
+.versions-confirm-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: var(--of-space-2);
+}
+@media (max-width: 900px) {
+  .versions-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 650px) {
+  .versions-create,
+  .version-rename {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .versions-diff-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .versions-diff-heading label {
+    width: 100%;
+  }
+  .versions-confirm-actions > button {
+    flex: 1;
+  }
+}

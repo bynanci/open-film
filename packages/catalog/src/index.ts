@@ -1,6 +1,15 @@
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, lstatSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { validateMediaAsset, type Job, type MediaAsset } from "@openfilm/core";
 import {
   CATALOG_SCHEMA_VERSION,
@@ -54,6 +63,125 @@ export interface CatalogRelinkChange {
   reference: Record<string, unknown>;
   /** Fresh technical metadata for a confirmed relink with no prior content hash. */
   inspected?: MediaAsset;
+}
+
+export const CATALOG_SNAPSHOT_MAX_BYTES = 256 * 1024 * 1024;
+
+export interface CatalogSnapshotInspection {
+  schemaVersion: number;
+  logicalRevision: string;
+  assets: MediaAsset[];
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+function withSnapshotDatabase<T>(
+  image: Uint8Array,
+  read: (database: DatabaseSync) => T,
+): T {
+  if (image.length === 0 || image.length > CATALOG_SNAPSHOT_MAX_BYTES)
+    throw new Error("Catalog snapshot exceeds its size limit.");
+  const directory = mkdtempSync(join(tmpdir(), "openfilm-catalog-snapshot-"));
+  const path = join(directory, "database.sqlite");
+  let copy: DatabaseSync | undefined;
+  try {
+    writeFileSync(path, image, { flag: "wx", mode: 0o600 });
+    copy = new DatabaseSync(path);
+    return read(copy);
+  } finally {
+    try {
+      copy?.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+
+function validateCatalogDatabase(
+  database: DatabaseSync,
+  expectedSchemaVersion: number,
+): void {
+  const integrity = database.prepare("PRAGMA integrity_check").all();
+  if (
+    integrity.length !== 1 ||
+    integrity[0]?.integrity_check !== "ok" ||
+    Number(database.prepare("PRAGMA user_version").get()?.user_version ?? 0) !==
+      expectedSchemaVersion
+  )
+    throw new Error("Catalog snapshot failed its integrity or schema check.");
+  if (database.prepare("PRAGMA foreign_key_check").all().length)
+    throw new Error("Catalog snapshot has invalid foreign-key references.");
+}
+
+function logicalCatalogRevision(database: DatabaseSync): string {
+  const schema = database
+    .prepare(
+      "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
+    )
+    .all();
+  const tables = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
+    .all()
+    .map((row) => String(row.name));
+  const rows = tables.map((table) => {
+    const quoted = `"${table.replaceAll('"', '""')}"`;
+    return [
+      table,
+      database
+        .prepare(`SELECT * FROM ${quoted}`)
+        .all()
+        .map((row) => JSON.stringify(row))
+        .sort(),
+    ];
+  });
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        schema,
+        rows,
+        version: database.prepare("PRAGMA user_version").get(),
+      }),
+    )
+    .digest("hex");
+}
+
+/** Read a saved image through a private file-backed SQLite connection. */
+export function inspectCatalogSnapshot(
+  image: Uint8Array,
+  expectedSchemaVersion: number,
+): CatalogSnapshotInspection {
+  return withSnapshotDatabase(image, (database) => {
+    validateCatalogDatabase(database, expectedSchemaVersion);
+    const schemaVersion = Number(
+      database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+    );
+    const assets = database
+      .prepare("SELECT data FROM assets ORDER BY id")
+      .all()
+      .map((row) => JSON.parse(String(row.data)) as MediaAsset);
+    return {
+      schemaVersion,
+      logicalRevision: logicalCatalogRevision(database),
+      assets,
+    };
+  });
+}
+
+function validateCatalogImage(
+  image: Buffer,
+  expectedSchemaVersion: number,
+): void {
+  withSnapshotDatabase(image, (database) =>
+    validateCatalogDatabase(database, expectedSchemaVersion),
+  );
 }
 
 function relinkError(
@@ -176,6 +304,7 @@ function assetFilter(
 /** SQLite is an adapter, never a dependency of the portable domain. */
 export class ProjectCatalog {
   private database: DatabaseSync;
+  private readonly databasePath: string;
   readonly intelligence: CatalogIntelligenceStore;
   readonly transcripts: CatalogTranscriptEditorStore;
   readonly knowledge: CatalogKnowledgeStore;
@@ -192,6 +321,7 @@ export class ProjectCatalog {
       (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile())
     )
       throw new Error("Catalog database must be a regular file");
+    this.databasePath = path;
     this.database = new DatabaseSync(path);
     try {
       const version = Number(
@@ -249,6 +379,244 @@ export class ProjectCatalog {
       this.database.close();
       throw error;
     }
+  }
+
+  /**
+   * Capture the saved catalog while blocking project readers and writers.
+   * Switching out of WAL checkpoints committed pages into the main file; an
+   * exclusive transaction then keeps that file stable while it is copied.
+   * The callback must be synchronous and may only read this catalog; publish
+   * the result only after this method returns successfully.
+   */
+  withConsistentSnapshot<T>(
+    capture: (image: Buffer, schemaVersion: number) => T,
+  ): T {
+    if (this.database.isTransaction)
+      throw new Error("Cannot capture a nested catalog snapshot.");
+    const previousMode = String(
+      this.database.prepare("PRAGMA journal_mode").get()?.journal_mode ?? "",
+    ).toLowerCase();
+    let transaction = false;
+    let result: T;
+    const cleanup = () => {
+      const errors: unknown[] = [];
+      try {
+        if (transaction && this.database.isTransaction)
+          this.database.exec("ROLLBACK");
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        if (previousMode === "wal") {
+          const mode = String(
+            this.database.prepare("PRAGMA journal_mode=WAL").get()
+              ?.journal_mode ?? "",
+          ).toLowerCase();
+          if (mode !== "wal")
+            throw new Error("Project catalog could not return to WAL mode.");
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length)
+        throw new AggregateError(errors, "Catalog snapshot cleanup failed.");
+    };
+    try {
+      if (previousMode === "wal") {
+        const mode = String(
+          this.database.prepare("PRAGMA journal_mode=DELETE").get()
+            ?.journal_mode ?? "",
+        ).toLowerCase();
+        if (mode !== "delete")
+          throw new Error("Another process is using the project catalog.");
+      }
+      this.database.exec("BEGIN EXCLUSIVE");
+      transaction = true;
+      const schemaVersion = Number(
+        this.database.prepare("PRAGMA user_version").get()?.user_version ?? 0,
+      );
+      if (schemaVersion !== CATALOG_SCHEMA_VERSION)
+        throw new Error("Catalog schema changed before snapshot capture.");
+      const info = lstatSync(this.databasePath);
+      if (
+        info.isSymbolicLink() ||
+        !info.isFile() ||
+        info.size <= 0 ||
+        info.size > CATALOG_SNAPSHOT_MAX_BYTES
+      )
+        throw new Error("Catalog snapshot exceeds its size limit.");
+      const image = readFileSync(this.databasePath);
+      validateCatalogImage(image, schemaVersion);
+      const captured = capture(Buffer.from(image), schemaVersion);
+      if (isPromiseLike(captured))
+        throw new Error("Catalog snapshot callback must be synchronous.");
+      result = captured;
+    } catch (error) {
+      try {
+        cleanup();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          "Catalog snapshot capture and cleanup failed.",
+          { cause: cleanupError },
+        );
+      }
+      throw error;
+    }
+    cleanup();
+    return result;
+  }
+
+  /** Replace catalog rows in the current connection inside one SQLite transaction. */
+  restoreFromSnapshot(
+    snapshotPath: string,
+    publishManifest?: () => void,
+    assertCurrent?: () => void,
+  ): void {
+    if (this.database.isTransaction)
+      throw new Error("Cannot restore a nested catalog snapshot.");
+    if (resolve(snapshotPath) === resolve(this.databasePath))
+      throw new Error("A project catalog cannot restore itself.");
+    const snapshotInfo = lstatSync(snapshotPath);
+    if (snapshotInfo.isSymbolicLink() || !snapshotInfo.isFile())
+      throw new Error("Catalog snapshot must be a regular file.");
+    if (
+      snapshotInfo.size <= 0 ||
+      snapshotInfo.size > CATALOG_SNAPSHOT_MAX_BYTES
+    )
+      throw new Error("Catalog snapshot exceeds its size limit.");
+    const image = readFileSync(snapshotPath);
+    validateCatalogImage(image, CATALOG_SCHEMA_VERSION);
+
+    const previousMode = String(
+      this.database.prepare("PRAGMA journal_mode").get()?.journal_mode ?? "",
+    ).toLowerCase();
+    let transaction = false;
+    let attached = false;
+    let foreignKeysDisabled = false;
+    const cleanup = () => {
+      const errors: unknown[] = [];
+      try {
+        if (transaction && this.database.isTransaction)
+          this.database.exec("ROLLBACK");
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        if (attached) this.database.exec("DETACH DATABASE version_snapshot");
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        if (foreignKeysDisabled) this.database.exec("PRAGMA foreign_keys=ON");
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        if (previousMode === "wal") {
+          const mode = String(
+            this.database.prepare("PRAGMA journal_mode=WAL").get()
+              ?.journal_mode ?? "",
+          ).toLowerCase();
+          if (mode !== "wal")
+            throw new Error("Project catalog could not return to WAL mode.");
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length)
+        throw new AggregateError(errors, "Catalog restore cleanup failed.");
+    };
+    try {
+      this.database.exec("PRAGMA foreign_keys=OFF");
+      foreignKeysDisabled = true;
+      if (previousMode === "wal") {
+        const mode = String(
+          this.database.prepare("PRAGMA journal_mode=DELETE").get()
+            ?.journal_mode ?? "",
+        ).toLowerCase();
+        if (mode !== "delete")
+          throw new Error("Another process is using the project catalog.");
+      }
+      this.database.exec("BEGIN EXCLUSIVE");
+      transaction = true;
+      this.database
+        .prepare("ATTACH DATABASE ? AS version_snapshot")
+        .run(snapshotPath);
+      attached = true;
+
+      const schema = (database: "main" | "version_snapshot") =>
+        this.database
+          .prepare(
+            `SELECT type,name,tbl_name,sql FROM ${database}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
+          )
+          .all();
+      if (
+        JSON.stringify(schema("main")) !==
+        JSON.stringify(schema("version_snapshot"))
+      )
+        throw new Error("Catalog snapshot schema does not match this project.");
+
+      if (assertCurrent) {
+        const result = (assertCurrent as () => unknown)();
+        if (isPromiseLike(result))
+          throw new Error("Restore baseline validation must be synchronous.");
+      }
+
+      const tables = this.database
+        .prepare(
+          "SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .all()
+        .map((row) => String(row.name));
+      const quoteIdentifier = (identifier: string) =>
+        `"${identifier.replaceAll('"', '""')}"`;
+      for (const table of tables) {
+        const quoted = quoteIdentifier(table);
+        const columns = this.database
+          .prepare(`PRAGMA main.table_info(${quoted})`)
+          .all()
+          .map((column) => String(column.name));
+        if (!columns.length)
+          throw new Error(`Catalog snapshot table has no columns: ${table}`);
+        const projection = columns.map(quoteIdentifier).join(",");
+        this.database.exec(`DELETE FROM main.${quoted}`);
+        this.database.exec(
+          `INSERT INTO main.${quoted} (${projection}) SELECT ${projection} FROM version_snapshot.${quoted}`,
+        );
+      }
+      if (
+        this.database.prepare("PRAGMA main.integrity_check").get()
+          ?.integrity_check !== "ok"
+      )
+        throw new Error("Restored catalog failed its integrity check.");
+      if (this.database.prepare("PRAGMA main.foreign_key_check").all().length)
+        throw new Error("Restored catalog has invalid foreign-key references.");
+      if (publishManifest) {
+        const result = (publishManifest as () => unknown)();
+        if (isPromiseLike(result))
+          throw new Error("Project manifest publication must be synchronous.");
+      }
+      this.database.exec("COMMIT");
+      transaction = false;
+    } catch (error) {
+      try {
+        cleanup();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          "Catalog restore and cleanup failed.",
+          { cause: cleanupError },
+        );
+      }
+      throw error;
+    }
+    cleanup();
+  }
+
+  /** Logical row revision is stable across WAL/rollback journal header changes. */
+  logicalRevision(): string {
+    return logicalCatalogRevision(this.database);
   }
 
   /** Serialize manifest baseline checks and publication with all catalog writers.

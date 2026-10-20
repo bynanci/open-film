@@ -48,6 +48,8 @@ import {
   type ScenePlanOptions,
   type DirectionReviewAcceptance,
   type GraphicSceneAgentAcceptance,
+  type ProjectVersionCreateInput,
+  type ProjectVersionRestoreInput,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -65,6 +67,8 @@ import {
   type Story,
   type GlossaryInput,
   type ReviewSuggestion,
+  type ProjectVersionDiff,
+  type ProjectVersionRecord,
 } from "@openfilm/core";
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
@@ -760,6 +764,114 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route === "/api/versions/revision" && method === "GET") {
+          json(response, 200, {
+            projectId: application.project.id,
+            revision: application.versions.currentRevision(),
+          });
+          return;
+        }
+        if (route === "/api/versions" && method === "GET") {
+          json(response, 200, { versions: application.versions.list() });
+          return;
+        }
+        if (route === "/api/versions" && method === "POST") {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for project jobs to finish before capturing a version.",
+            );
+          const data = await body(request);
+          keys(data, ["name", "description", "baseRevision", "requestId"]);
+          if (
+            data.description !== undefined &&
+            typeof data.description !== "string"
+          )
+            throw new HttpError(400, "description must be text.");
+          const version = await application.versions.create({
+            name: text(data, "name"),
+            ...(typeof data.description === "string"
+              ? { description: data.description }
+              : {}),
+            baseRevision: text(data, "baseRevision"),
+            requestId: text(data, "requestId"),
+          } satisfies ProjectVersionCreateInput);
+          json(response, 200, { version });
+          return;
+        }
+        if (route === "/api/versions/diff" && method === "GET") {
+          const before = url.searchParams.get("before") ?? "";
+          const after = url.searchParams.get("after") ?? "";
+          if (!before || !after)
+            throw new HttpError(400, "Specify before and after version IDs.");
+          const diff: ProjectVersionDiff = application.versions.diff(
+            before,
+            after,
+          );
+          json(response, 200, { diff });
+          return;
+        }
+        const versionRoute = /^\/api\/versions\/([^/]+)(?:\/(restore))?$/u.exec(
+          route,
+        );
+        if (versionRoute && method === "GET" && !versionRoute[2]) {
+          json(
+            response,
+            200,
+            application.versions.inspect(decodeURIComponent(versionRoute[1]!)),
+          );
+          return;
+        }
+        if (versionRoute && method === "PATCH" && !versionRoute[2]) {
+          const data = await body(request);
+          keys(data, ["name", "description"]);
+          if (
+            data.description !== undefined &&
+            data.description !== null &&
+            typeof data.description !== "string"
+          )
+            throw new HttpError(400, "description must be text or null.");
+          const version: ProjectVersionRecord = application.versions.rename(
+            decodeURIComponent(versionRoute[1]!),
+            {
+              name: text(data, "name"),
+              ...(data.description === undefined
+                ? {}
+                : { description: data.description as string | null }),
+            },
+          );
+          json(response, 200, { version });
+          return;
+        }
+        if (
+          versionRoute &&
+          method === "POST" &&
+          versionRoute[2] === "restore"
+        ) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for project jobs to finish before restoring a version.",
+            );
+          const data = await body(request);
+          keys(data, ["baseRevision", "requestId", "confirmed"]);
+          const input: ProjectVersionRestoreInput = {
+            baseRevision: text(data, "baseRevision"),
+            requestId: text(data, "requestId"),
+            confirmed: data.confirmed === true,
+          };
+          const result = await application.versions.restore(
+            decodeURIComponent(versionRoute[1]!),
+            input,
+          );
+          editors.delete(application);
+          json(response, 200, {
+            ...result,
+            project: application.project,
+            generation: application.projectGeneration,
+          });
+          return;
+        }
         if (route.startsWith("/api/captions/")) {
           errorContext = "captions.failed";
           const controller = new AbortController();

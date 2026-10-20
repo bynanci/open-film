@@ -741,3 +741,30 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 - [ ] Manual: subtitle playback in a real NLE/player remains separate from format-parser validation.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## Candidate — M7A / F09 Named Versions
+
+Scope: [Named Versions contract](docs/named-versions.md),
+[architecture](docs/architecture.md#m7a-named-project-versions), and
+[validation](docs/validation-named-versions.md). This branch is based on the
+latest fetched `main`; it is not merged and CI/review gates are tracked
+separately.
+
+- [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
+      v1 records, source hashes, idempotent retries and mutable labels isolated
+      in private index metadata.
+- [x] Compare Story, Composition, Captions, GraphicScenes/templates, audio and
+      source identities without exposing source paths.
+- [x] Restore only after revision/confirmation/source/lock checks, first create
+      a named checkpoint, recover interrupted publication and invalidate stale
+      Desktop editor state across project generations.
+- [x] Share application behavior across HTTP, CLI and localized keyboard-
+      accessible Desktop; old projects open without a versions directory.
+- [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
+      restore V2 with synthetic photos, captions, graphics, audio, frame/audio
+      measurements and unchanged source hashes.
+- [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
+      workstation filesystem/permission behavior as a separate manual gate.
+
+M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
+queued until independently scoped and reviewed. M7A does not implement them.

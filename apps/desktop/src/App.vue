@@ -29,6 +29,7 @@ import AppSettings from "./components/AppSettings.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
+import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
 import type {
@@ -84,10 +85,11 @@ function uiMessage(value: unknown) {
   return localizeError(value);
 }
 type AssetState = "favorite" | "rejected" | "locked";
-const tabs: Tab[] = ["library", "story", "edit", "export"];
+const tabs: Tab[] = ["library", "story", "edit", "export", "versions"];
 const tab = ref<Tab>("library");
 const project = ref<OpenFilmProject | null>(null);
 const projectPath = ref<string | null>(null);
+const projectGeneration = ref(0);
 const connected = ref(false);
 const loading = ref(true);
 const busy = ref("");
@@ -452,6 +454,40 @@ async function changeComposition(event: globalThis.Event) {
   previewVersion.value = 0;
   previewStale.value = false;
   clearExport();
+}
+
+async function projectVersionRestored(restored: OpenFilmProject) {
+  projectMutationVersion++;
+  projectGeneration.value++;
+  project.value = restored;
+  activeStoryId.value = restored.stories[0]?.id ?? "";
+  activeCompositionId.value = restored.timelines[0]?.id ?? "";
+  storyTitle.value = restored.title;
+  storyTemplate.value = restored.filmSettings?.templateId ?? "blank";
+  targetDuration.value = restored.filmSettings?.targetDuration ?? 120;
+  maxDuration.value = restored.filmSettings?.maxDuration ?? 180;
+  beatDirty.value = false;
+  categoryDirty.value = false;
+  selectedAssetId.value = "";
+  assetCache.value = {};
+  assets.value = [];
+  sourceVersion.value++;
+  previewVersion.value = 0;
+  previewStale.value = false;
+  showRenderedPreview.value = false;
+  clearExport();
+  for (const composition of restored.timelines) {
+    try {
+      localStorage.removeItem(
+        `openfilm:editor:${restored.id}:${composition.id}`,
+      );
+    } catch {
+      // The restored project is already saved; browser recovery keys are local hints.
+    }
+  }
+  editorMountRequested.value = true;
+  tab.value = "versions";
+  await refreshInitialMedia();
 }
 function toggleRenderedPlayback() {
   const player = renderedPlayer.value;
@@ -2004,13 +2040,18 @@ onUnmounted(() => {
                 ? project.title
                 : tab === "story"
                   ? t("app.story.heading")
-                  : t("app.export.heading")
+                  : tab === "export"
+                    ? t("app.export.heading")
+                    : t("app.versions.title")
             }}
           </h1>
           <p v-if="tab === 'library'">{{ t("app.library.description") }}</p>
           <p v-if="tab === 'story'">{{ t("app.story.description") }}</p>
           <p v-if="tab === 'export'">
             {{ t("app.export.headingDescription") }}
+          </p>
+          <p v-if="tab === 'versions'">
+            {{ t("app.versions.description") }}
           </p>
         </div>
         <div class="project-heading-actions">
@@ -2059,6 +2100,14 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+
+      <ProjectVersionsPanel
+        v-if="tab === 'versions'"
+        :key="`${project.id}:${projectGeneration}`"
+        :project-id="project.id"
+        :disabled="!!busy || relinkBusy || activeJobs.length > 0"
+        @restored="projectVersionRestored"
+      />
 
       <ScenePlanner
         v-if="scenePlannerOpen"
@@ -3443,7 +3492,7 @@ onUnmounted(() => {
           <TimelineEditor
             v-if="editorMountRequested"
             v-show="tab === 'edit'"
-            :key="`${project.id}:${activeComposition.id}`"
+            :key="`${project.id}:${activeComposition.id}:${projectGeneration}`"
             ref="timelineEditor"
             :project-id="project.id"
             :composition-id="activeComposition.id"

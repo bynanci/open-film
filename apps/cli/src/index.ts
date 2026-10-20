@@ -1,6 +1,7 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import {
   ApplicationError,
@@ -67,6 +68,12 @@ Usage:
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
   openfilm captions add-track <snapshot-id> --project <film.openfilm> --name "繁體中文" [--language zh-TW --track-id stable-id]
   openfilm captions export <snapshot-id> --project <film.openfilm> --format srt|vtt
+  openfilm versions revision|list --project <film.openfilm>
+  openfilm versions create --project <film.openfilm> --name "Version name" [--description "..."] [--base-revision <sha256>] [--request-id <uuid>]
+  openfilm versions inspect <version-id> --project <film.openfilm>
+  openfilm versions diff <before-id> <after-id> --project <film.openfilm>
+  openfilm versions rename <version-id> --project <film.openfilm> --name "New name" [--description "..."|--clear-description]
+  openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
 Original media stays unchanged. No network service or AI account is required.
@@ -102,11 +109,15 @@ function parse(args: string[]) {
     "enable",
     "disable",
     "confirm-stopped",
+    "confirm",
+    "clear-description",
     "replace-existing",
   ]);
   const values = new Set([
     "project",
     "title",
+    "name",
+    "description",
     "offset",
     "limit",
     "issue-offset",
@@ -347,7 +358,72 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    if (command === "import") {
+    if (command === "versions") {
+      const action = positional[1];
+      if (action === "revision") {
+        print({
+          projectId: app.project.id,
+          revision: app.versions.currentRevision(),
+        });
+      } else if (action === "list") {
+        print({ versions: app.versions.list() });
+      } else if (action === "create") {
+        const name = value(options, "name");
+        if (!name) throw new Error("Specify --name for the named version.");
+        print({
+          version: await app.versions.create({
+            name,
+            ...(value(options, "description") === undefined
+              ? {}
+              : { description: value(options, "description")! }),
+            baseRevision:
+              value(options, "base-revision") ?? app.versions.currentRevision(),
+            requestId: value(options, "request-id") ?? randomUUID(),
+          }),
+        });
+      } else if (action === "inspect") {
+        if (!positional[2]) throw new Error("Specify a version ID to inspect.");
+        print(app.versions.inspect(positional[2]));
+      } else if (action === "diff") {
+        if (!positional[2] || !positional[3])
+          throw new Error("Specify before and after version IDs.");
+        print({ diff: app.versions.diff(positional[2], positional[3]) });
+      } else if (action === "rename") {
+        const id = positional[2];
+        const name = value(options, "name");
+        if (!id || !name) throw new Error("Specify a version ID and --name.");
+        print({
+          version: app.versions.rename(id, {
+            name,
+            ...(options["clear-description"] === true
+              ? { description: null }
+              : value(options, "description") === undefined
+                ? {}
+                : { description: value(options, "description")! }),
+          }),
+        });
+      } else if (action === "restore") {
+        const id = positional[2];
+        const baseRevision = value(options, "base-revision");
+        if (!id || !baseRevision || !value(options, "request-id"))
+          throw new Error(
+            "Specify a version ID, --base-revision and --request-id.",
+          );
+        if (options.confirm !== true)
+          throw new Error("Restoring requires the explicit --confirm flag.");
+        print(
+          await app.versions.restore(id, {
+            baseRevision,
+            requestId: value(options, "request-id")!,
+            confirmed: true,
+          }),
+        );
+      } else {
+        throw new Error(
+          "Choose versions revision|list|create|inspect|diff|rename|restore.",
+        );
+      }
+    } else if (command === "import") {
       if (!positional[1]) throw new Error("Specify a source folder to import.");
       const result = await app.importFolder(resolve(positional[1]), {
         signal: controller.signal,

@@ -1,4 +1,4 @@
-export type WorkspaceId = "library" | "story" | "edit" | "export";
+export type WorkspaceId = "library" | "story" | "edit" | "export" | "versions";
 export type FilmLocale = "en-US" | "zh-TW" | "ja-JP";
 export interface FilmCreation {
   title: string;

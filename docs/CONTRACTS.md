@@ -154,3 +154,31 @@ Ordinary existing volume/audio commands remain valid. Provider-generated WAVs ar
 managed sources with opaque provenance metadata; Undo removes the overlay while
 retaining accepted media. Private receipt files support pending edit recovery,
 not remote provider authenticity or speech-quality certification.
+
+## M7A named project versions
+
+`ProjectVersionRecord` v1 is an application-side record and does not change
+project schema 1.0.0 or catalog schema v5. It binds a stable version ID,
+project ID, request ID, saved project revision, manifest/catalog SHA-256,
+catalog schema version, software version and a sorted source-reference manifest
+containing only asset IDs, hashes, sizes, media types and managed/external kind.
+Absolute media paths and credentials are excluded. Version content is immutable;
+renaming changes only private index metadata.
+
+`app.versions` exposes `currentRevision()`, `create()`, `list()`, `inspect()`,
+`diff()`, `rename()`, `restore()` and startup recovery. Create/list/inspect/diff/
+rename/restore are shared by API and CLI through this service. HTTP routes are
+`GET /api/versions/revision`, `GET|POST /api/versions`,
+`GET /api/versions/diff?before=<id>&after=<id>`,
+`GET|PATCH /api/versions/:id`, and `POST /api/versions/:id/restore`.
+The CLI uses `openfilm versions revision|list|create|inspect|diff|rename|restore`.
+Create and restore require request IDs for lost-response idempotency; restore
+also requires the current base revision and `confirmed: true`.
+
+Catalog snapshots are bounded SQLite-consistent images. Restore refuses stale
+revisions, active jobs, unsafe storage, catalog/schema/hash failures, missing or
+changed sources, and current locked asset/clip conflicts. Before publication it
+creates a named checkpoint; failure recovery uses a private project journal.
+Session Undo/Redo is unchanged and does not include project-level restore. See
+[Named Versions](named-versions.md), [project format](project-format.md#named-versions)
+and [validation](validation-named-versions.md).

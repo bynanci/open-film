@@ -9,7 +9,9 @@ the behavior present in `main` at M5 integration base
 (PR #30) are integrated. PR #31 implements M5/F08 Reviewable Agent Editing on
 this base; implementation validation and remaining CI/manual gates are recorded
 in `docs/validation-agent-editing.md`.
-Audio/output review remains M6.
+Audio/output review remains M6. M7A Named Versions is now a candidate on current
+`main`; its exact-head validation and review are recorded separately in
+`docs/validation-named-versions.md`.
 
 ## Capability gap crosswalk
 
@@ -28,6 +30,25 @@ Audio/output review remains M6.
 | F11 | Shared application logic across entry points                  | Complete foundation | Desktop and CLI use `@openfilm/application`; loopback HTTP adapts the same services. New QA behavior must remain behind that boundary.                                                                                                                                     |
 | F12 | Privacy, security, licensing and accessible localized UX      | Partial             | Apache-2.0/NOTICE, local-only sources, API guards, project-local caches, three locales and keyboard-tested Edit controls exist. QA images and reports still need explicit cache isolation, path-safe serving and localized keyboard navigation.                            |
 | F13 | Reproducible validation and real-world release evidence       | Partial             | Synthetic media, actual FFmpeg regressions and manual Resolve/workstation gates are documented. Hardware, private-film quality, camera, 4K and NLE sign-off cannot be inferred from fixture success.                                                                       |
+
+## M7 delivery route
+
+The M7 sequence packages project recovery and delivery capabilities as separate
+changes. Each item requires its own exact-base/head evidence; completing M7A
+does not complete the remaining M7 work.
+
+| PR  | Scope                      | Dependency and acceptance                                                                                                                                                                                                                              |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 7A  | Named Versions (candidate) | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md). |
+| 7B  | Export Formats (queued)    | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                             |
+| 7C  | NLE Fidelity (queued)      | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                            |
+| 7D  | Collect Media (queued)     | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                |
+| 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                      |
+
+M8 selective 2.5D photo animation follows GraphicScene, Photo Relationship and
+Visual QA contracts; it must preserve protected subjects and provide fallback
+to the original image when layer quality is uncertain. It is not implemented by
+the M7A version store.
 
 ## Dependencies and PR route
 
