@@ -31,16 +31,28 @@ film.openfilm/
     thumbnails/
     proxies/
     preview.mp4
+    export-preview/        short-lived private profile-frame PNG cache
+    export-work/           private staged MP4/PNG/WAV render work
   exports/
     timeline.json | timeline.otio | timeline.fcpxml | timeline.edl
     timeline.<format>.report.json
     film-<unique-id>.mp4  finished playable exports
+    still-<request-id>.png + manifest
+    mix-<request-id>.wav + manifest
+    stems-<request-id>/    aligned role WAVs and manifest
 ```
 
 SQLite may also have active `database.sqlite-wal` and `database.sqlite-shm` files.
 Analysis/cache/export files appear when their workflow runs. Stories and timelines
 currently live in `project.json`; creating the reserved directories does not mean
 they already contain separate canonical documents.
+
+Profile outputs are derived files. Their versioned Export Profile and receipts
+bind output dimensions, frame/time or sample measurements, source hashes and
+warnings without changing Composition/project settings or project schema
+1.0.0. See [Export Profiles](export-profiles.md). Private previews expire and
+can be regenerated; exported stills and WAVs remain in `exports/` until removed
+by the user.
 
 ## Manifest and catalog
 

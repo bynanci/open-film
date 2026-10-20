@@ -182,3 +182,29 @@ creates a named checkpoint; failure recovery uses a private project journal.
 Session Undo/Redo is unchanged and does not include project-level restore. See
 [Named Versions](named-versions.md), [project format](project-format.md#named-versions)
 and [validation](validation-named-versions.md).
+
+## M7B versioned Export Profiles
+
+`ExportProfile` v1 is a strict render-only record. It selects 16:9, 9:16 or
+1:1 output dimensions, frame rate, contain or explicitly confirmed center crop,
+subtitle review strategy, MP4/PNG/WAV/stems format, and the existing MP4 quality
+choice. Dimensions are even, ratio-consistent, 64–4096 pixels and capped at
+8.3 MP; frame rate is 1–60 fps. The record is not added to Composition or saved
+project settings, so legacy schema-1.0.0 projects open unchanged.
+
+Desktop, CLI and HTTP call `ExportProfileService`; stills and MP4 use the shared
+FFmpeg renderer and selected existing look/caption contract. Preview tokens bind
+the project ID/revision, Composition, profile, and source hashes; they expire
+and are served only from private project cache. Crop requires a preview and
+explicit confirmation. PNG is opaque and reports unsupported alpha. WAV mix and
+role stems use the existing clip/`AudioAutomation` renderer graph and produce
+aligned 48 kHz 24-bit PCM; unavailable roles produce no placeholder file.
+
+Receipts record profile, saved revision and Composition hash, selected frame or
+audio measurements, source hashes, warnings, and output hashes. Publication is
+staged and atomic. Project export/cache directories reject symlinks, IDs are
+path-safe, outputs are mode-restricted, and lost-response retries verify the
+existing receipt and output bytes. Export jobs never mutate source files,
+Composition geometry, project schema, or editing history. See
+[Export Profiles](export-profiles.md) and the
+[M7B validation record](validation-export-profiles.md).

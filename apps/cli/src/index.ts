@@ -7,6 +7,9 @@ import {
   ApplicationError,
   errorInfo,
   validateFilmLook,
+  createExportProfile,
+  type ExportRatio,
+  type ExportFraming,
   type FilmLook,
   type GlossaryInput,
 } from "@openfilm/core";
@@ -62,7 +65,9 @@ Usage:
   openfilm render --project <film.openfilm> [--composition <id>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
   openfilm audio-quality --project <film.openfilm> --composition <id> --clip <id>
   openfilm visual-qa --project <film.openfilm> [--composition <id>]
-  openfilm export --project <film.openfilm> --format mp4 [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format mp4 [--ratio 16:9|9:16|1:1 --framing contain|crop --confirm-crop] [--fps <number> --width <even-px> --height <even-px>] [--caption-track <id>] [--look <preset> --look-strength 0..1] [--quality standard|high-detail]
+  openfilm export --project <film.openfilm> --format png --ratio 16:9|9:16|1:1 --time <seconds> [--framing contain|crop --confirm-crop --request-id <id>]
+  openfilm export --project <film.openfilm> --format wav|audio-stems [--request-id <id>]
   openfilm export --project <film.openfilm> --format otio
   openfilm captions prepare --project <film.openfilm> --composition <id> --track <id>
   openfilm captions get <snapshot-id> --project <film.openfilm> [--offset 0 --limit 100] [--issue-offset 0 --issue-limit 200] [--source-offset 0 --source-limit 200] [--clip-offset 0 --clip-limit 200]
@@ -112,6 +117,7 @@ function parse(args: string[]) {
     "confirm",
     "clear-description",
     "replace-existing",
+    "confirm-crop",
   ]);
   const values = new Set([
     "project",
@@ -166,6 +172,11 @@ function parse(args: string[]) {
     "look",
     "look-strength",
     "quality",
+    "ratio",
+    "framing",
+    "fps",
+    "width",
+    "height",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -1023,20 +1034,124 @@ async function main() {
       });
     else if (command === "export") {
       const format = value(options, "format") ?? "json";
-      if (format === "mp4")
+      const ratioInput = value(options, "ratio");
+      const framingInput = value(options, "framing");
+      const fps = positive(options, "fps") ?? app.project.settings.frameRate;
+      const width = positive(options, "width");
+      const height = positive(options, "height");
+      const profileFlags = ["ratio", "framing", "fps", "width", "height"].some(
+        (key) => Object.hasOwn(options, key),
+      );
+      if (format === "mp4") {
+        if (
+          options["confirm-crop"] &&
+          (!profileFlags || framingInput !== "crop")
+        )
+          throw new Error(
+            "--confirm-crop requires --framing crop on an MP4 profile.",
+          );
+        const exportProfile = profileFlags
+          ? createExportProfile({
+              ratio: (ratioInput ?? "16:9") as ExportRatio,
+              frameRate: fps,
+              ...(width === undefined ? {} : { width }),
+              ...(height === undefined ? {} : { height }),
+              framing: (framingInput ?? "contain") as ExportFraming,
+              format: "mp4",
+              quality: quality ?? "standard",
+            })
+          : undefined;
+        if (value(options, "time") !== undefined)
+          throw new Error("--time applies only to --format png.");
         print(
           await app.exportMp4(value(options, "composition"), {
             signal: controller.signal,
             lookOverride,
             quality,
+            ...(exportProfile ? { exportProfile } : {}),
+            ...(options["confirm-crop"] ? { confirmCrop: true } : {}),
             ...(value(options, "caption-track")
               ? { captionTrackId: value(options, "caption-track") }
               : {}),
           }),
         );
-      else {
+      } else if (
+        format === "png" ||
+        format === "wav" ||
+        format === "audio-stems"
+      ) {
+        if (format === "png" && value(options, "time") === undefined)
+          throw new Error("--format png requires --time <seconds>.");
+        if (format !== "png" && value(options, "time") !== undefined)
+          throw new Error("--time applies only to --format png.");
+        if (
+          format === "png" &&
+          options["confirm-crop"] &&
+          framingInput !== "crop"
+        )
+          throw new Error("--confirm-crop requires --framing crop.");
+        if (
+          format !== "png" &&
+          (quality !== undefined ||
+            lookOverride !== undefined ||
+            value(options, "caption-track") !== undefined ||
+            options["confirm-crop"])
+        )
+          throw new Error(
+            "Quality, looks, captions and crop confirmation apply only to MP4/PNG.",
+          );
+        const exportProfile = createExportProfile({
+          ratio: (ratioInput ?? "16:9") as ExportRatio,
+          frameRate: fps,
+          ...(width === undefined ? {} : { width }),
+          ...(height === undefined ? {} : { height }),
+          framing: (framingInput ?? "contain") as ExportFraming,
+          format,
+          quality: "standard",
+        });
+        const requestId = value(options, "request-id") ?? randomUUID();
+        if (format === "png") {
+          const time = Number(value(options, "time"));
+          if (!Number.isFinite(time) || time < 0)
+            throw new Error("--time must be a nonnegative number of seconds.");
+          print(
+            await app.exportStill({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              time,
+              requestId,
+              confirmCrop: Boolean(options["confirm-crop"]),
+              lookOverride,
+              ...(value(options, "caption-track")
+                ? { captionTrackId: value(options, "caption-track") }
+                : {}),
+              signal: controller.signal,
+            }),
+          );
+        } else {
+          print(
+            await app.exportProfileAudio({
+              compositionId: value(options, "composition"),
+              profile: exportProfile,
+              requestId,
+              signal: controller.signal,
+            }),
+          );
+        }
+      } else {
+        if (
+          profileFlags ||
+          value(options, "time") !== undefined ||
+          options["confirm-crop"] ||
+          value(options, "request-id")
+        )
+          throw new Error(
+            "Profile export options require --format mp4, png, wav or audio-stems.",
+          );
         if (!["json", "otio", "fcpxml", "edl"].includes(format))
-          throw new Error("Choose mp4, json, otio, fcpxml, or edl.");
+          throw new Error(
+            "Choose mp4, png, wav, audio-stems, json, otio, fcpxml, or edl.",
+          );
         print(
           await app.exportWithReport(
             format as "json" | "otio" | "fcpxml" | "edl",

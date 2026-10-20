@@ -115,22 +115,52 @@ sound and output verification with decoded audio evidence. The staged dependenci
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 
-## Candidate — M7A named project versions
+## Merged — M7A named project versions (PR #34)
 
 M7A adds immutable, local project snapshots and structural comparison through
 the shared application service. Restore requires a current revision, explicit
 confirmation, verified source identity and a fresh recovery checkpoint; it does
 not merge with session Undo/Redo or copy original media. The candidate includes
-synthetic actual-MP4 validation, while exact-head full gates and independent
-review remain required before merge. See [the contract](docs/named-versions.md)
-and [validation](docs/validation-named-versions.md).
+synthetic actual-MP4 validation. PR #34 is integrated into `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`. See
+[the contract](docs/named-versions.md) and
+[validation](docs/validation-named-versions.md).
 
-M7B still needs still-PNG/WAV/stem and aspect-ratio presets; M7C needs an honest
-native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
-media collection and relocation evidence; M7E needs Windows/macOS workstation
-installer, dependency and rollback evidence. These are separate PRs and remain
-queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
-templates and Visual QA, but is not part of M7A.
+## Candidate — M7B Export Profiles and professional exports
+
+M7B adds render-only 16:9, 9:16 and 1:1 profiles; reviewed crop/contain preview;
+PNG stills; and an aligned WAV mix and role stems through the existing renderer.
+It does not rewrite Composition geometry or the project schema. A synthetic
+12-second run produced and decoded actual MP4s at all three ratios, plus an
+opaque PNG and aligned 48 kHz WAV outputs. Full latest-main gates, PR review and
+CI remain pending. See [Export Profiles](docs/export-profiles.md) and
+[validation](docs/validation-export-profiles.md).
+
+M7C needs an honest native/baked/metadata/unsupported NLE report; M7D needs
+path-safe, license-aware media collection and relocation evidence; M7E needs
+Windows/macOS workstation installer, dependency and rollback evidence. These
+are separate PRs and remain queued. M8A selective 2.5D photo motion is a
+separate open PR, #35, based on current `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`; it is not a dependency of M7B.
+
+## Candidate — M8A selective 2.5D PhotoDepth
+
+M8A extends the saved GraphicScene Image node with a local, hash-bound
+foreground mask and optional background fill. A bounded camera/easing evaluator
+drives Monitor and FFmpeg from the existing Composition clock; explicit
+fallback, lock/history/reopen behavior and typed Visual QA findings preserve
+the local-first editing contract. See [PhotoDepth](docs/photo-depth.md), the
+[threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1), and
+[validation](docs/validation-photo-depth.md).
+
+Automated evidence passed on the M8A source tree based on current `main`:
+2,941 unit/integration tests, all 169 E2E tests, build, interchange and the
+actual 6-second synthetic MP4 with decoded frame and Monitor parity measurements.
+See [the validation record](docs/validation-photo-depth.md). Independent PR
+review and latest-main CI are pending; one TypeScript/media job remains in
+progress. Real-photo subject stability, sustained 4K
+rendering, physical display, Windows/macOS behavior and NLE review remain manual
+gates.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 

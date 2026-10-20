@@ -742,13 +742,12 @@ Reference evidence and candidate priorities: [OpenCut gap matrix](docs/opencut-r
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## Candidate — M7A / F09 Named Versions
+## Merged — M7A / F09 Named Versions (PR #34)
 
 Scope: [Named Versions contract](docs/named-versions.md),
 [architecture](docs/architecture.md#m7a-named-project-versions), and
-[validation](docs/validation-named-versions.md). This branch is based on the
-latest fetched `main`; it is not merged and CI/review gates are tracked
-separately.
+[validation](docs/validation-named-versions.md). PR #34 is merged into `main`
+at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 
 - [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
       v1 records, source hashes, idempotent retries and mutable labels isolated
@@ -763,8 +762,72 @@ separately.
 - [x] Verify V1 → edits → V2 → reopen/diff → restore V1 → actual MP4 → reopen/
       restore V2 with synthetic photos, captions, graphics, audio, frame/audio
       measurements and unchanged source hashes.
-- [ ] Complete exact-head full test matrix, independent review, CI and PR; keep
-      workstation filesystem/permission behavior as a separate manual gate.
+- [x] Complete PR #34 review and merge. Named Versions is integrated on `main`.
 
-M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
-queued until independently scoped and reviewed. M7A does not implement them.
+## Candidate — M7B / F10 Export Profiles and Professional Exports
+
+Scope: [Export Profiles contract](docs/export-profiles.md),
+[architecture](docs/architecture.md#m7b-versioned-export-profiles), and
+[validation](docs/validation-export-profiles.md). This work is independent of
+the still-open M8A PR and targets fetched `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`.
+
+- [x] Add strict render-only profile v1 for 16:9, 9:16 and 1:1 with bounded
+      dimensions/fps, contain or explicit center crop, quality and format;
+      leave saved project settings and Composition geometry untouched.
+- [x] Add revision/source-bound Preview Export Frame and PNG still output using
+      the FFmpeg renderer, selected look/captions, warnings and versioned hash
+      receipts; crop requires preview and confirmation.
+- [x] Export full WAV mix and available narration/music/ambience/dialogue stems
+      through existing AudioAutomation, aligned at 48 kHz/24-bit PCM; do not
+      fabricate files for roles with no source audio.
+- [x] Share profile logic through Application, Desktop, HTTP and CLI with
+      cancellation, retry, stale result fencing, path safety and private cache.
+- [x] Produce and decode synthetic 12-second MP4s at all three ratios, verify
+      first/middle/last frames, output/source hashes, warnings, PNG parity and
+      aligned audio in the validation record.
+- [ ] Complete latest-main full test matrix, independent review, exact-head CI
+      and PR checks before considering merge.
+- [ ] Complete workstation review of real-photo framing, target-player/NLE
+      playback and sustained full-resolution rendering.
+
+M7C–M7E remain separate queued work packages:
+
+- [ ] M7C — classify NLE-native/editable, metadata-only, baked and unsupported
+      behavior with optional pre-rendering and a compatibility report.
+- [ ] M7D — add a previewable Collect Plan for selected used media, generated
+      assets and required dependencies; verify hashes, safe relative paths,
+      SQLite-consistent project snapshots, ZIP/directory safety, relocation,
+      reopen, preview and actual MP4 output. Report missing rights/dependencies
+      and block incomplete packages from claiming completeness.
+- [ ] M7E — package Tauri, Node service, FFmpeg and fonts with first-run and
+      update/rollback evidence on Windows and macOS workstations.
+
+## Candidate — M8A selective 2.5D PhotoDepth
+
+Scope: [PhotoDepth contract](docs/photo-depth.md), [threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1),
+[validation record](docs/validation-photo-depth.md), [GraphicScene contract](docs/graphic-scenes.md).
+PR #35 targets current `main` at `bb2c4521ad894478893485119442a00ffd9b34cc`;
+its exact head is `0ffde64949f59289939904aa6cf537de47eb9467`.
+
+- [x] Add a strict optional `PhotoDepthRecipe` to the existing GraphicScene
+      Image contract with stable IDs, source/mask/fill hashes, protected region,
+      bounded camera/depth/easing and explicit fallback.
+- [x] Share one arbitrary-seek evaluator and prepared foreground/background
+      textures across Monitor PNG and FFmpeg output; keep the image-node interval
+      as the only clock and preserve legacy projects.
+- [x] Use the existing local media importer, validate PNG dimensions/alpha/source
+      hashes, and keep typed edit, lock, source replacement, history/autosave and
+      reopen semantics in the current command path.
+- [x] Add Visual QA diagnostics for unavailable/changed sources, invalid or
+      empty/mismatched masks, enclosed transparent regions, protected-region
+      failures, explicit fallback and manual subject/edge review.
+- [x] Complete a real 6-second/180-frame synthetic MP4, shuffled decoded seeks,
+      Monitor parity, Visual QA, named-version restore/reopen and Desktop browser
+      regressions; record hashes and measurements in the validation file.
+- [x] Pass format, i18n, lint, typecheck, unit/integration, build, all 169 E2E
+      tests and interchange validation on the M8A source tree.
+- [ ] Complete the latest-main CI and independent PR review. Rust/native checks are
+      unavailable because this environment has no Rust toolchain. Real people,
+      sustained 4K, physical display and Resolve/NLE behavior remain
+      candidate-bound workstation gates.

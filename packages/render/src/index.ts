@@ -23,6 +23,11 @@ export {
   type RenderQuality,
   type RenderQualityProfile,
 } from "./quality.js";
+export {
+  publishRenderPair,
+  validateRenderTargets,
+  RenderPublicationRecoveryError,
+} from "./publication.js";
 import {
   publishRenderPair,
   validateRenderTargets,
@@ -51,6 +56,9 @@ import {
   CAPTION_LIMITS,
   isCaptionTextValid,
   type FilmLook,
+  type ExportProfile,
+  validateExportProfile,
+  type AudioAutomation,
   frameAlignedDuration,
   type Clip,
   type Composition,
@@ -80,6 +88,12 @@ export interface RenderOptions {
   quality?: RenderQuality;
   /** Renders one native caption language; omitted selects the first saved track. */
   captionTrackId?: string | null;
+  /** Render-only output framing; saved Composition geometry is not changed. */
+  exportProfile?: ExportProfile;
+  /** Exports the exact existing audio mix graph as PCM WAV. */
+  audioOnly?: boolean;
+  /** Optional role filter for a separate WAV stem. */
+  audioRole?: AudioAutomation["role"];
 }
 export const RENDER_CAPTION_CUE_LIMIT = 5_000;
 const defaults: RenderSettings = { width: 1280, height: 720, frameRate: 30 };
@@ -115,6 +129,29 @@ function hasAudio(asset: MediaAsset): boolean {
   );
 }
 
+function clipAudioRole(
+  trackType: Composition["tracks"][number]["type"],
+  clip: Clip,
+): AudioAutomation["role"] {
+  return (
+    clip.audioAutomation?.role ?? (trackType === "music" ? "music" : "dialogue")
+  );
+}
+
+function outputFrameFilters(profile: ExportProfile): string[] {
+  if (profile.framing === "contain")
+    return [
+      `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease`,
+      `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black`,
+      "setsar=1",
+    ];
+  return [
+    `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`,
+    `crop=${profile.width}:${profile.height}`,
+    "setsar=1",
+  ];
+}
+
 /** A preview adapter; originals are inputs and all editing is expressed as filters. */
 export class FFmpegRenderer {
   async render(
@@ -130,6 +167,23 @@ export class FFmpegRenderer {
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
+    const exportProfile = options.exportProfile
+      ? validateExportProfile(structuredClone(options.exportProfile))
+      : undefined;
+    const audioOnly = options.audioOnly ?? false;
+    if (exportProfile?.format === "png")
+      throw new Error(
+        "Still PNG export requires an application-selected frame time.",
+      );
+    if (
+      (exportProfile?.format === "wav" ||
+        exportProfile?.format === "audio-stems") !== audioOnly
+    )
+      throw new Error(
+        "WAV and stem profiles require the audio-only export path.",
+      );
+    if (options.audioRole && !audioOnly)
+      throw new Error("Audio role filtering is only available for WAV stems.");
     const project = options.project ? { ...options.project } : undefined;
     const lookOverride =
       options.lookOverride == null
@@ -185,11 +239,13 @@ export class FFmpegRenderer {
       settings.height % 2
     )
       throw new Error("Render dimensions must be even integers");
-    const outputDuration = frameAlignedDuration(
-      composition.duration,
-      settings.frameRate,
+    const outputFrameRate = Number(
+      number(exportProfile?.frameRate ?? settings.frameRate),
     );
-    const outputFrameRate = Number(number(settings.frameRate));
+    const renderFrameRate = Number(number(settings.frameRate));
+    const outputDuration = audioOnly
+      ? composition.duration
+      : frameAlignedDuration(composition.duration, outputFrameRate);
     if (outputDuration <= 0)
       throw new Error("Composition must last at least one output frame");
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
@@ -197,19 +253,45 @@ export class FFmpegRenderer {
       composition.tracks
         .filter((track) => track.type !== "titles")
         .flatMap((track) =>
-          track.clips.flatMap((clip) => [
-            clip.assetId,
-            ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
-          ]),
+          track.clips.flatMap((clip) => {
+            if (audioOnly) {
+              const asset = assetMap.get(clip.assetId);
+              if (
+                !asset ||
+                !hasAudio(asset) ||
+                (options.audioRole &&
+                  clipAudioRole(track.type, clip) !== options.audioRole)
+              )
+                return [];
+              return [clip.assetId];
+            }
+            return [
+              clip.assetId,
+              ...(clip.layout?.secondary
+                ? [clip.layout.secondary.assetId]
+                : []),
+            ];
+          }),
         ),
     );
-    for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
-      if (!assetMap.has(id))
-        throw new Error("Graphic image is unavailable in the local catalog.");
-      usedIds.add(id);
-    }
+    if (!audioOnly)
+      for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
+        if (!assetMap.has(id))
+          throw new Error("Graphic image is unavailable in the local catalog.");
+        usedIds.add(id);
+      }
     const fonts: RenderFontEvidence[] = [];
     const warnings: string[] = [];
+    if (!audioOnly && exportProfile) {
+      const savedRatio = settings.width / settings.height;
+      const outputRatio = exportProfile.width / exportProfile.height;
+      if (Math.abs(savedRatio - outputRatio) > 0.00001)
+        warnings.push(
+          exportProfile.framing === "contain"
+            ? "Profile letterboxes the saved Composition frame with black padding."
+            : "Explicit center crop may trim protected subjects or subtitle safe areas; review the export frame.",
+        );
+    }
     const output = resolve(outputPath);
     for (const asset of assets) {
       if (
@@ -223,6 +305,7 @@ export class FFmpegRenderer {
     // errors even when the original source has not been mounted.
     for (const track of composition.tracks)
       for (const clip of track.clips) {
+        if (audioOnly && track.type === "titles") continue;
         if (track.type === "titles") {
           if (clip.layout || clip.motion || clip.audioAutomation)
             throw new Error(
@@ -235,6 +318,13 @@ export class FFmpegRenderer {
           throw new Error(
             `Clip ${clip.id} references missing asset ${clip.assetId}`,
           );
+        if (
+          audioOnly &&
+          (!hasAudio(asset) ||
+            (options.audioRole &&
+              clipAudioRole(track.type, clip) !== options.audioRole))
+        )
+          continue;
         if (
           track.type !== "audio" &&
           track.type !== "music" &&
@@ -306,7 +396,7 @@ export class FFmpegRenderer {
     }
     const work = join(dirname(output), `.render-${randomUUID()}`);
     await mkdir(work);
-    const temporaryOutput = join(work, "preview.mp4");
+    const temporaryOutput = join(work, audioOnly ? "mix.wav" : "preview.mp4");
     const args: string[] = [
       "-v",
       "error",
@@ -317,9 +407,11 @@ export class FFmpegRenderer {
       "pipe:1",
       "-nostats",
     ];
-    const filters: string[] = [
-      `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
-    ];
+    const filters: string[] = audioOnly
+      ? []
+      : [
+          `color=c=black:s=${settings.width}x${settings.height}:r=${number(settings.frameRate)}:d=${number(composition.duration)},format=rgba[base]`,
+        ];
     const audioLabels: string[] = [];
     let videoLabel = "base";
     let inputIndex = 0;
@@ -328,6 +420,7 @@ export class FFmpegRenderer {
     const pendingTitles: Array<() => Promise<void>> = [];
     try {
       for (const track of composition.tracks) {
+        if (audioOnly && track.type === "titles") continue;
         const clips = [...track.clips].sort(
           (a, b) => a.timelineStart - b.timelineStart,
         );
@@ -335,13 +428,13 @@ export class FFmpegRenderer {
           const clip = clips[clipIndex]!;
           validateClip(clip, composition.duration);
           const start = clip.timelineStart;
-          const startFrame = Math.round(start * outputFrameRate);
+          const startFrame = Math.round(start * renderFrameRate);
           // Gate by rounded output ticks: 111/30 can compare below literal 3.7.
           // FFmpeg 6 evaluates enable on both inputs, whose n counters differ;
           // their shifted timestamps share the same output timeline.
           const outputFrame = `round(t*${number(settings.frameRate)})`;
           const endFrame = (length: number) =>
-            startFrame + Math.ceil((length - 1e-9) * outputFrameRate);
+            startFrame + Math.ceil((length - 1e-9) * renderFrameRate);
           const duration = clip.timelineDuration;
           const suffix = sequence++;
           const addTitle = async () => {
@@ -402,6 +495,13 @@ export class FFmpegRenderer {
             throw new Error(
               `Clip ${clip.id} references missing asset ${clip.assetId}`,
             );
+          if (
+            audioOnly &&
+            (!hasAudio(asset) ||
+              (options.audioRole &&
+                clipAudioRole(track.type, clip) !== options.audioRole))
+          )
+            continue;
           const issue = previewIssue(asset);
           if (issue) throw new Error(`${asset.name}: ${issue}`);
           const sourceIn = clip.sourceIn ?? 0;
@@ -416,6 +516,7 @@ export class FFmpegRenderer {
           if (asset.duration && sourceOut > asset.duration + 0.05)
             throw new Error(`Clip ${clip.id} trim exceeds the source duration`);
           const visual =
+            !audioOnly &&
             track.type !== "audio" &&
             track.type !== "music" &&
             asset.mediaType !== "audio";
@@ -522,7 +623,7 @@ export class FFmpegRenderer {
             );
             videoLabel = merged;
           }
-          pendingTitles.push(addTitle);
+          if (!audioOnly) pendingTitles.push(addTitle);
           if (hasAudio(asset)) {
             const label = `audio${suffix}`;
             const audioFilters = [
@@ -540,47 +641,49 @@ export class FFmpegRenderer {
           }
         }
       }
-      for (const addTitle of pendingTitles) await addTitle();
-      const graphics = await prepareGraphicScenes(
-        composition,
-        assets,
-        settings,
-        work,
-        { signal: options.signal },
-      );
-      for (const source of graphics.sources)
-        if (
-          sources.find((item) => item.assetId === source.assetId)?.sha256 !==
-          source.sha256
-        )
-          throw new Error(
-            "Graphic source changed between manifest capture and image preparation.",
+      if (!audioOnly) {
+        for (const addTitle of pendingTitles) await addTitle();
+        const graphics = await prepareGraphicScenes(
+          composition,
+          assets,
+          settings,
+          work,
+          { signal: options.signal },
+        );
+        for (const source of graphics.sources)
+          if (
+            sources.find((item) => item.assetId === source.assetId)?.sha256 !==
+            source.sha256
+          )
+            throw new Error(
+              "Graphic source changed between manifest capture and image preparation.",
+            );
+        fonts.push(...graphics.fonts);
+        warnings.push(...graphics.warnings);
+        for (const [index, sequence] of (
+          await writeGraphicSequences(graphics, work, options)
+        ).entries()) {
+          args.push(
+            "-framerate",
+            number(settings.frameRate),
+            "-threads",
+            "1",
+            "-i",
+            sequence.pattern,
           );
-      fonts.push(...graphics.fonts);
-      warnings.push(...graphics.warnings);
-      for (const [index, sequence] of (
-        await writeGraphicSequences(graphics, work, options)
-      ).entries()) {
-        args.push(
-          "-framerate",
-          number(settings.frameRate),
-          "-threads",
-          "1",
-          "-i",
-          sequence.pattern,
-        );
-        const input = inputIndex++;
-        const label = `graphic${index}`;
-        filters.push(
-          `[${input}:v]format=rgba,setpts=PTS-STARTPTS+${sequence.start}[${label}-source]`,
-        );
-        filters.push(
-          `[${videoLabel}][${label}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(round(t*${number(settings.frameRate)}),${sequence.start})*lt(round(t*${number(settings.frameRate)}),${sequence.end})'[${label}]`,
-        );
-        videoLabel = label;
+          const input = inputIndex++;
+          const label = `graphic${index}`;
+          filters.push(
+            `[${input}:v]format=rgba,setpts=PTS-STARTPTS+${sequence.start}[${label}-source]`,
+          );
+          filters.push(
+            `[${videoLabel}][${label}-source]overlay=x=0:y=0:format=rgb:eval=init:eof_action=pass:repeatlast=0:enable='gte(round(t*${number(settings.frameRate)}),${sequence.start})*lt(round(t*${number(settings.frameRate)}),${sequence.end})'[${label}]`,
+          );
+          videoLabel = label;
+        }
+        await graphics.verifySources();
       }
-      await graphics.verifySources();
-      if (selectedCaptionTrack) {
+      if (!audioOnly && selectedCaptionTrack) {
         const outputFrame = `round(t*${number(settings.frameRate)})`;
         const cues = [...selectedCaptionTrack.cues].sort(
           (first, second) =>
@@ -640,7 +743,16 @@ export class FFmpegRenderer {
           videoLabel = suffix;
         }
       }
-      filters.push(`[${videoLabel}]format=yuv420p[vout]`);
+      if (!audioOnly) {
+        const finalVideoFilters = exportProfile
+          ? [
+              `fps=${number(outputFrameRate)}:round=near`,
+              ...outputFrameFilters(exportProfile),
+              "format=yuv420p",
+            ]
+          : ["format=yuv420p"];
+        filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
+      }
       if (audioLabels.length)
         filters.push(
           `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=${number(composition.duration)}[aout]`,
@@ -654,33 +766,50 @@ export class FFmpegRenderer {
         "1",
         "-filter_complex",
         filters.join(";"),
-        "-map",
-        "[vout]",
-        "-map",
-        "[aout]",
-        "-c:v",
-        encoding.video,
-        "-threads",
-        "1",
-        "-preset",
-        encoding.preset,
-        "-crf",
-        String(encoding.crf),
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        number(settings.frameRate),
-        "-c:a",
-        "aac",
-        "-ar",
-        "48000",
-        "-t",
-        number(outputDuration),
-        "-movflags",
-        "+faststart",
-        "-y",
-        temporaryOutput,
       );
+      if (!audioOnly)
+        args.push(
+          "-map",
+          "[vout]",
+          "-c:v",
+          encoding.video,
+          "-threads",
+          "1",
+          "-preset",
+          encoding.preset,
+          "-crf",
+          String(encoding.crf),
+          "-pix_fmt",
+          "yuv420p",
+          "-r",
+          number(outputFrameRate),
+        );
+      args.push("-map", "[aout]");
+      if (audioOnly)
+        args.push(
+          "-vn",
+          "-c:a",
+          "pcm_s24le",
+          "-ar",
+          "48000",
+          "-t",
+          number(outputDuration),
+          "-y",
+          temporaryOutput,
+        );
+      else
+        args.push(
+          "-c:a",
+          "aac",
+          "-ar",
+          "48000",
+          "-t",
+          number(outputDuration),
+          "-movflags",
+          "+faststart",
+          "-y",
+          temporaryOutput,
+        );
       let progressBuffer = "";
       let lastProgress = -1;
       const publishProgress = (value: number) => {
@@ -719,7 +848,6 @@ export class FFmpegRenderer {
         },
       });
       checkAbort(options.signal);
-      await graphics.verifySources();
       await verifyRenderSources(sources);
       const manifestPath = join(work, "manifest.json");
       await writeRenderManifest(
@@ -734,6 +862,11 @@ export class FFmpegRenderer {
         project,
         { override: lookOverride, clips: looks },
         encoding,
+        {
+          format: audioOnly ? "wav" : "mp4",
+          ...(exportProfile ? { exportProfile } : {}),
+          ...(options.audioRole ? { audioRole: options.audioRole } : {}),
+        },
       );
       await publishRenderPair(temporaryOutput, manifestPath, output, work);
       return output;

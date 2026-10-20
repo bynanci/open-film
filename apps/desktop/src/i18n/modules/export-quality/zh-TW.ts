@@ -18,4 +18,48 @@ export default {
     frameUnchanged: "畫質選項只調整壓縮，不會改變已儲存的畫框或剪輯。",
     limits: "無法補回原本缺少的細節，也無法還原照片放大時已流失的細節。",
   },
+  exportProfiles: {
+    heading: "輸出畫面規格",
+    description:
+      "選擇輸出比例，不會更動已儲存的 Composition。預覽使用實際算繪影格。",
+    ratio: "畫面比例",
+    framing: "畫面適配",
+    contain: "完整保留並加黑邊",
+    crop: "置中裁切",
+    frameTime: "預覽時間（秒）",
+    outputFrameRate: "每秒 {frameRate} 格",
+    cropWarning:
+      "置中裁切可能切到人物、圖卡或字幕安全區。請先預覽實際影格，再確認輸出。",
+    letterboxWarning:
+      "完整保留已儲存的 Composition 畫面，並以黑邊補足輸出比例。",
+    alphaWarning: "PNG 輸出為不透明影像，不支援透明背景。",
+    noAudioRoles:
+      "目前沒有適用的旁白、音樂、環境音或對白片段，因此不會建立分軌檔案。",
+    previewFrame: "預覽輸出影格",
+    renderingPreview: "正在算繪預覽…",
+    saveStill: "儲存 PNG 靜態影格",
+    cancel: "取消輸出",
+    confirmCrop: "我已檢查預覽，並確認要輸出此置中裁切畫面。",
+    previewAlt: "{time} 秒的實際輸出影格",
+    previewDetails: "{width} × {height} · {time} 秒 · 第 {frame} 格",
+    stillSaved: "靜態影格已儲存",
+    downloadStill: "下載 {filename}",
+    downloadReceipt: "下載來源與算繪記錄",
+    audioHeading: "音訊輸出",
+    audioDescription:
+      "WAV 混音與角色分軌沿用目前片段、淡入淡出、增益、靜音與閃避設定；檔案共用 Composition 時間範圍。",
+    saveMix: "儲存完整混音 WAV",
+    saveStems: "儲存角色分軌",
+    exportingAudio: "正在輸出音訊…",
+    audioSaved: "音訊輸出已就緒",
+    audioFile:
+      "{role}：{filename} · {duration} 秒 · {sampleRate} Hz · {channels} 聲道 · {samples} 個樣本",
+    roles: {
+      mix: "完整混音",
+      narration: "旁白",
+      music: "音樂",
+      ambience: "環境音",
+      dialogue: "對白",
+    },
+  },
 };

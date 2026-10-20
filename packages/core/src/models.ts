@@ -61,6 +61,20 @@ export interface ProjectSettings {
   frameRate: number;
 }
 
+/** Render-only output intent; never persisted in project settings or edit history. */
+export interface ExportProfile {
+  version: 1;
+  ratio: "16:9" | "9:16" | "1:1";
+  width: number;
+  height: number;
+  frameRate: number;
+  framing: "contain" | "crop";
+  /** Crop explicitly requests human review because captions may leave the safe area. */
+  subtitleStrategy: "preserve" | "review-crop";
+  format: "mp4" | "png" | "wav" | "audio-stems";
+  quality: "standard" | "high-detail";
+}
+
 /** Film content is independent of the desktop interface language. */
 export const PROJECT_CONTENT_LOCALES = ["en-US", "zh-TW", "ja-JP"] as const;
 export type ProjectContentLocale = (typeof PROJECT_CONTENT_LOCALES)[number];

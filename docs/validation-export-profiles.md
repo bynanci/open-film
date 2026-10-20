@@ -1,0 +1,83 @@
+# M7B Export Profiles validation
+
+## Status
+
+The current branch implements the shared versioned Export Profile path across
+Application, FFmpeg, HTTP, CLI and Desktop. Automated regression and a real
+synthetic FFmpeg output pass are recorded below. Full exact-head gates and PR
+checks remain pending. Real-person framing, workstation playback, sustained
+high-resolution rendering, and target NLE behavior are manual gates; synthetic
+fixtures do not establish those properties.
+
+## Contract coverage
+
+| Area               | Evidence                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Profile validation | Strict version, ratio/dimension/fps/pixel limits, framing/related subtitle strategy, format and quality validation; malformed and unsupported input rejected.                                           |
+| Rendering          | Existing saved Composition and renderer produce contain/letterbox and explicit center crop; output geometry is not persisted to project settings. Crop requires a reviewed preview and confirmation.    |
+| PNG preview/still  | A real intermediate MP4 is decoded at a frame-aligned timestamp. Still and preview receipts bind revision, look/caption selection, source hashes, dimensions, warnings and output hash.                 |
+| Audio              | Existing clip audio automation produces full mix and role stems as aligned 48 kHz 24-bit PCM WAV. Missing roles produce a warning and no placeholder file.                                              |
+| Safety/recovery    | Cancellation, retry/idempotency, stale revision/source fencing, path traversal, symlink collision, project switch, atomic publication and private file modes have application/HTTP/browser regressions. |
+| Compatibility      | No project or SQLite schema change. Existing MP4 settings and legacy Composition remain valid.                                                                                                          |
+
+## Actual FFmpeg evidence
+
+Generated on 2026-10-20 UTC with
+`pnpm exec tsx scripts/export-profiles-quality.ts`. The script creates only
+synthetic landscape, narration, music and Traditional Chinese caption content;
+all output remains under `/tmp/openfilm-export-profiles-qa/` and is not committed
+or uploaded as an artifact.
+
+Run directory:
+`/tmp/openfilm-export-profiles-qa/7b54f38b-44a6-4087-a5cf-7bc5cd14d24d`.
+Each H.264 MP4 decoded to the requested dimensions, 144 frames at 12 fps and
+12.000 seconds. FFprobe and SHA-256 receipts were checked by the script.
+
+| Profile                  | Output                                          | MP4 SHA-256                                                        | Decoded first/middle/last RGB SHA-256                                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 16:9 contain, 320×180    | `film-6f217fdf-6b68-458d-b482-c4dfa47c727c.mp4` | `40118d464d969995bbd91f0deb383bf766a25f334cef08a70bca1c1ac10f1722` | `fe9b66c555715cea3fbe0b33abb897216a637258331ad96a711a2d67a675fc86`; `58c5548f66005c65f26288c97a3eff1cb22d690fab100ec267774aaa137c6065`; `440d34eb3a01080386f04ff0f1c46f703a2bc470f012a89ac7975ffb7537650b` |
+| 9:16 contain, 180×320    | `film-bdbcbef2-208c-4ea8-b90a-2bdcf8a13413.mp4` | `97209daa28d42738ec946d9aa0a3d06550112b4e02c91e4d85683a1a5d3e4551` | `c2f32fc5ec89dcf023c8e20ff4f60690c5be0606e47a27582c01f853b8af5af8`; `4888a3c5c895658a54131bc7c68f0d813f34ec5a7b20c1c4da9b61ae537386c1`; `dca9b064b36219e242d5f63023d15b760f4c69ace81421102ca3b63f223afe82` |
+| 1:1 center crop, 240×240 | `film-a893d07f-2170-4e48-bd77-92b0f42d439a.mp4` | `e94cd12dd09ef3bde3d1e59da294f3520b289564708d5b17f3c893613bbf1798` | `fc1f5c20822bb54e5e64cd4ab48f174556f32070b66d2fca3a48ddd1dc07a206`; `756f83119e824ed716cc77372689f41867e673426b7d70d113b4d5b724b39729`; `e05253098b783ea747a1478d504d0e8cf8eaa047f1742e35910f4982cbe2b473` |
+
+The portrait output recorded the expected black-letterbox warning. The square
+crop recorded the explicit center-crop/subtitle-safe-area warning. MP4 manifest
+output hashes matched the file hashes. A 90×160 PNG preview at 4.5 seconds and
+the still output decoded to identical RGB pixels; the PNG receipt reports
+`alpha: false` and warns that transparency is unsupported.
+
+The full WAV and narration/music stems were all 48 kHz, stereo, 576,000 samples
+and 12.000 seconds. Their hashes were:
+
+| Output         | SHA-256                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| Full mix       | `c2d82b7d1e7e5c794da22c577c687bb77b67cd0ef39616a5f2d07eca0fe45afc` |
+| Narration stem | `fd92f6425b14e69fbc76c60a8327acbbd48d6422686f7e61f90b79799e9651a0` |
+| Music stem     | `8a329dfdd442693fc301d1b84e128a5f5287b08cb66e7e46d1909f89ac8adf94` |
+
+The synthetic source hashes were unchanged during output:
+
+| Source        | SHA-256                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| Landscape PNG | `3cf6829a9b2b4dd904f55771cfb08ac53b256e67a78db88aff1c296e1721e005` |
+| Narration WAV | `b8455214fa68eddd920294c8d32e56dc8ee76f0d9576f4977e10a1bec2c6fe99` |
+| Music WAV     | `63e1c65e5181a33f528dc69db78b3b32cc71ae783a9a3feef97232f5a21ecb`   |
+
+The final report also confirmed the in-memory saved Composition/project remained
+unchanged. The run used synthetic media only.
+
+## Automated test runs
+
+Exact-head verification is being rerun after the M7B branch is placed on the
+latest fetched `main`. Results will be updated before PR creation.
+
+## Manual gates
+
+- Review portrait and square framing with representative real photos locally;
+  verify faces, hands, paired subjects, GraphicScene overlays, and subtitle
+  safe areas remain visible. Never attach private source material to the repo,
+  logs, CI or PR.
+- Compare preview and exports on Windows/macOS displays and a normal player.
+- Measure sustained full-resolution/4K renders, memory and cancellation on
+  target workstations.
+- Import stills/audio and the rendered MP4 into the intended downstream NLE and
+  record actual compatibility behavior.

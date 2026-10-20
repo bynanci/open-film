@@ -1,0 +1,1315 @@
+// Modified by OpenFilm contributors on 2026-10-20. See LICENSE/NOTICE.
+import { createHash, randomUUID } from "node:crypto";
+import {
+  copyFile,
+  chmod,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import type {
+  AudioAutomation,
+  Composition,
+  ExportProfile,
+  FilmLook,
+  MediaAsset,
+  OpenFilmProject,
+  Track,
+} from "@openfilm/core";
+import { validateExportProfile } from "@openfilm/core";
+import {
+  hashFile,
+  localPath,
+  runProcess,
+  safeProjectCachePath,
+} from "@openfilm/media";
+import { publishRenderPair, type RenderOptions } from "@openfilm/render";
+
+export interface ProfileFramePreview {
+  token: string;
+  url: string;
+  time: number;
+  frameIndex: number;
+  width: number;
+  height: number;
+  profile: ExportProfile;
+  warnings: string[];
+}
+
+export interface ProfileExportArtifact {
+  path: string;
+  filename: string;
+  profile: ExportProfile;
+  warnings: string[];
+  requestId: string;
+  time?: number;
+  frameIndex?: number;
+}
+
+export interface AudioExportFile {
+  role: AudioAutomation["role"] | "mix";
+  path: string;
+  filename: string;
+  sha256: string;
+  sampleRate: number;
+  channels: number;
+  sampleCount: number;
+  duration: number;
+}
+
+export interface AudioProfileExport {
+  requestId: string;
+  profile: ExportProfile;
+  files: AudioExportFile[];
+  manifestPath?: string;
+  warnings: string[];
+}
+
+export interface ExportProfileServiceOptions {
+  directory: string;
+  getProject: () => OpenFilmProject;
+  getComposition: (id?: string) => Composition;
+  getAssets: (composition: Composition) => MediaAsset[];
+  render: (
+    compositionId: string,
+    outputPath: string,
+    options: RenderOptions,
+  ) => Promise<string>;
+}
+
+interface PreviewEntry {
+  path: string;
+  projectId: string;
+  revision: string;
+  compositionId: string;
+  profile: ExportProfile;
+  sources: NonNullable<RenderReceipt["sources"]>;
+  expiresAt: number;
+}
+
+interface RenderReceipt {
+  warnings?: string[];
+  sources?: Array<{
+    assetId: string;
+    name: string;
+    sha256: string;
+    size: number;
+  }>;
+}
+
+const STEM_ROLES: readonly AudioAutomation["role"][] = [
+  "narration",
+  "music",
+  "ambience",
+  "dialogue",
+];
+
+function digest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function safeRequestId(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{7,95}$/u.test(value))
+    throw new Error("Export requestId must be 8–96 safe ASCII characters.");
+  return value;
+}
+
+function profileMode(
+  profile: ExportProfile,
+  formats: readonly ExportProfile["format"][],
+): ExportProfile {
+  const validated = validateExportProfile(profile);
+  if (!formats.includes(validated.format))
+    throw new Error(
+      `This export operation does not support ${validated.format}.`,
+    );
+  return validated;
+}
+
+function readSources(receipt: unknown): NonNullable<RenderReceipt["sources"]> {
+  if (!receipt || typeof receipt !== "object") return [];
+  const sources = (receipt as RenderReceipt).sources;
+  return Array.isArray(sources) ? sources : [];
+}
+
+function audioRole(
+  track: Track,
+  clip: Composition["tracks"][number]["clips"][number],
+): AudioAutomation["role"] {
+  return (
+    clip.audioAutomation?.role ??
+    (track.type === "music" ? "music" : "dialogue")
+  );
+}
+
+function hasAudio(asset: MediaAsset): boolean {
+  if (asset.mediaType === "audio") return true;
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    { streams?: { codec_type?: string }[] } | undefined;
+  return Boolean(
+    probe?.streams?.some((stream) => stream.codec_type === "audio"),
+  );
+}
+
+function checkCrop(profile: ExportProfile, confirmed: boolean): void {
+  if (profile.framing === "crop" && !confirmed)
+    throw new Error(
+      "Confirm the visible center crop after reviewing Preview Export Frame.",
+    );
+}
+
+export class ExportProfileService {
+  private readonly previews = new Map<string, PreviewEntry>();
+  private readonly requests = new Map<
+    string,
+    { fingerprint: string; promise: Promise<unknown> }
+  >();
+
+  constructor(private readonly options: ExportProfileServiceOptions) {}
+
+  async previewFrame(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }): Promise<ProfileFramePreview> {
+    const profile = profileMode(input.profile, ["mp4", "png"]);
+    const snapshot = this.snapshot(input.compositionId);
+    const time = this.validateTime(input.time, snapshot.composition, profile);
+    const frameIndex = Math.floor(time * profile.frameRate + 1e-9);
+    const frameTime = frameIndex / profile.frameRate;
+    const token = randomUUID();
+    const work = await this.workDirectory(token);
+    const videoPath = join(work, "preview.mp4");
+    const framePath = await safeProjectCachePath(
+      this.options.directory,
+      "export-preview",
+      `${token}.png`,
+    );
+    await chmod(dirname(framePath), 0o700);
+    try {
+      const renderReceipt = await this.renderFrameSource(
+        snapshot.composition.id,
+        videoPath,
+        profile,
+        input.signal,
+        {
+          lookOverride: input.lookOverride,
+          captionTrackId: input.captionTrackId,
+        },
+      );
+      const previewSources = readSources(renderReceipt);
+      this.assertSourceCoverage(previewSources, snapshot.assets);
+      const sourceReceipts = await this.currentSourceReceipts(
+        previewSources,
+        snapshot.assets,
+        input.signal,
+      );
+      await this.extractFrame(videoPath, framePath, frameIndex, input.signal);
+      await chmod(framePath, 0o600);
+      this.assertCurrent(snapshot);
+      const warnings = [
+        ...new Set([
+          ...(renderReceipt.warnings ?? []),
+          "PNG previews are opaque; transparent/alpha export is unsupported.",
+        ]),
+      ];
+      this.previews.set(token, {
+        path: framePath,
+        projectId: snapshot.project.id,
+        revision: snapshot.revision,
+        compositionId: snapshot.composition.id,
+        profile,
+        sources: sourceReceipts,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
+      await this.trimPreviews();
+      return {
+        token,
+        url: `/api/export/frame-preview/${token}`,
+        time: frameTime,
+        frameIndex,
+        width: profile.width,
+        height: profile.height,
+        profile,
+        warnings,
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+
+  async previewPath(token: string): Promise<string> {
+    const entry = this.previews.get(token);
+    if (!entry || entry.expiresAt < Date.now()) {
+      this.previews.delete(token);
+      if (entry) await rm(entry.path, { force: true });
+      throw new Error("Export frame preview expired; render a new preview.");
+    }
+    const project = this.options.getProject();
+    if (project.id !== entry.projectId || digest(project) !== entry.revision) {
+      this.previews.delete(token);
+      await rm(entry.path, { force: true });
+      throw new Error("Export frame preview is stale; render a new preview.");
+    }
+    try {
+      const composition = this.options.getComposition(entry.compositionId);
+      const assets = this.options.getAssets(composition);
+      this.assertSourceCoverage(entry.sources, assets);
+      await this.verifyManifestSources(
+        { sources: entry.sources },
+        assets,
+        entry.profile,
+      );
+    } catch (error) {
+      this.previews.delete(token);
+      await rm(entry.path, { force: true });
+      throw new Error(
+        "Export frame preview source changed; render a new preview.",
+        {
+          cause: error,
+        },
+      );
+    }
+    const info = await lstat(entry.path);
+    if (info.isSymbolicLink() || !info.isFile())
+      throw new Error("Export preview cache entry is not a regular file.");
+    return entry.path;
+  }
+
+  async exportStill(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    requestId: string;
+    confirmCrop?: boolean;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }): Promise<ProfileExportArtifact> {
+    const profile = profileMode(input.profile, ["png"]);
+    checkCrop(profile, input.confirmCrop === true);
+    const requestId = safeRequestId(input.requestId);
+    const snapshot = this.snapshot(input.compositionId);
+    const time = this.validateTime(input.time, snapshot.composition, profile);
+    const frameIndex = Math.floor(time * profile.frameRate + 1e-9);
+    const frameTime = frameIndex / profile.frameRate;
+    const fingerprint = digest({
+      projectRevision: snapshot.revision,
+      compositionId: snapshot.composition.id,
+      profile,
+      frameIndex,
+      renderSelection: {
+        lookOverride:
+          input.lookOverride === undefined
+            ? { mode: "saved" }
+            : input.lookOverride === null
+              ? { mode: "none" }
+              : { mode: "override", value: input.lookOverride },
+        captionTrackId:
+          input.captionTrackId === undefined
+            ? "automatic"
+            : input.captionTrackId,
+      },
+    });
+    return this.runRequest(`png:${requestId}`, fingerprint, () =>
+      this.exportStillOnce(
+        snapshot,
+        profile,
+        requestId,
+        frameIndex,
+        frameTime,
+        fingerprint,
+        {
+          lookOverride: input.lookOverride,
+          captionTrackId: input.captionTrackId,
+        },
+        {
+          lookOverride:
+            input.lookOverride === undefined
+              ? { mode: "saved" }
+              : input.lookOverride === null
+                ? { mode: "none" }
+                : { mode: "override", value: input.lookOverride },
+          captionTrackId:
+            input.captionTrackId === undefined
+              ? "automatic"
+              : input.captionTrackId,
+        },
+        input.signal,
+      ),
+    );
+  }
+
+  private async exportStillOnce(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+    profile: ExportProfile,
+    requestId: string,
+    frameIndex: number,
+    frameTime: number,
+    fingerprint: string,
+    selection: {
+      lookOverride?: FilmLook | null;
+      captionTrackId?: string | null;
+    },
+    receiptSelection: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<ProfileExportArtifact> {
+    const directory = await this.exportDirectory();
+    const path = join(directory, `still-${requestId}.png`);
+    const manifestPath = `${path}.manifest.json`;
+    const existing = await this.existing(
+      path,
+      manifestPath,
+      requestId,
+      fingerprint,
+      snapshot.assets,
+      profile,
+      signal,
+    );
+    if (existing) return existing as ProfileExportArtifact;
+    const work = await this.workDirectory(randomUUID());
+    const videoPath = join(work, "render.mp4");
+    const stagedPng = join(work, "still.png");
+    const stagedManifest = join(work, "manifest.json");
+    try {
+      const renderReceipt = await this.renderFrameSource(
+        snapshot.composition.id,
+        videoPath,
+        profile,
+        signal,
+        selection,
+      );
+      await this.extractFrame(videoPath, stagedPng, frameIndex, signal);
+      await this.assertPngDimensions(
+        stagedPng,
+        profile.width,
+        profile.height,
+        signal,
+      );
+      this.assertCurrent(snapshot);
+      const warnings = [
+        ...new Set([
+          ...(renderReceipt.warnings ?? []),
+          "PNG stills are opaque; transparent/alpha export is unsupported.",
+        ]),
+      ];
+      const outputSha256 = await hashFile(stagedPng, signal);
+      const renderSources = readSources(renderReceipt);
+      this.assertSourceCoverage(renderSources, snapshot.assets);
+      const sourceReceipts = await this.currentSourceReceipts(
+        renderSources,
+        snapshot.assets,
+        signal,
+      );
+      await this.writeReceipt(stagedManifest, {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        requestId,
+        fingerprint,
+        project: {
+          id: snapshot.project.id,
+          schemaVersion: snapshot.project.schemaVersion,
+          revision: snapshot.revision,
+        },
+        compositionId: snapshot.composition.id,
+        compositionSha256: digest(snapshot.composition),
+        profile,
+        renderSelection: receiptSelection,
+        frame: { time: frameTime, index: frameIndex },
+        output: {
+          format: "png",
+          width: profile.width,
+          height: profile.height,
+          alpha: false,
+          sha256: outputSha256,
+        },
+        sources: sourceReceipts,
+        warnings,
+      });
+      this.assertCurrent(snapshot);
+      await chmod(stagedPng, 0o600);
+      await publishRenderPair(stagedPng, stagedManifest, path, work);
+      return {
+        path,
+        filename: basename(path),
+        profile,
+        warnings,
+        requestId,
+        time: frameTime,
+        frameIndex,
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+
+  async exportAudio(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    requestId: string;
+    signal?: AbortSignal;
+  }): Promise<AudioProfileExport> {
+    const profile = profileMode(input.profile, ["wav", "audio-stems"]);
+    const requestId = safeRequestId(input.requestId);
+    const snapshot = this.snapshot(input.compositionId);
+    const fingerprint = digest({
+      projectRevision: snapshot.revision,
+      compositionId: snapshot.composition.id,
+      profile,
+    });
+    return this.runRequest(`${profile.format}:${requestId}`, fingerprint, () =>
+      profile.format === "wav"
+        ? this.exportMix(
+            snapshot,
+            profile,
+            requestId,
+            fingerprint,
+            input.signal,
+          )
+        : this.exportStems(
+            snapshot,
+            profile,
+            requestId,
+            fingerprint,
+            input.signal,
+          ),
+    );
+  }
+
+  private runRequest<T>(
+    key: string,
+    fingerprint: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const pending = this.requests.get(key);
+    if (pending) {
+      if (pending.fingerprint !== fingerprint)
+        throw new Error(
+          "Export requestId is already running for different project content or settings.",
+        );
+      return pending.promise as Promise<T>;
+    }
+    const promise = Promise.resolve().then(action);
+    const entry = { fingerprint, promise };
+    this.requests.set(key, entry);
+    void promise
+      .finally(() => {
+        if (this.requests.get(key) === entry) this.requests.delete(key);
+      })
+      .catch(() => {});
+    return promise;
+  }
+
+  private snapshot(compositionId?: string) {
+    const project = this.options.getProject();
+    const composition = structuredClone(
+      this.options.getComposition(compositionId),
+    );
+    const assets = this.options.getAssets(composition);
+    return { project, composition, assets, revision: digest(project) };
+  }
+
+  private assertCurrent(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+  ): void {
+    const current = this.options.getProject();
+    if (
+      current.id !== snapshot.project.id ||
+      digest(current) !== snapshot.revision
+    )
+      throw new Error(
+        "Project or Composition changed during profile export; retry from the current revision.",
+      );
+  }
+
+  private validateTime(
+    time: number,
+    composition: Composition,
+    profile: ExportProfile,
+  ): number {
+    if (!Number.isFinite(time) || time < 0 || time >= composition.duration)
+      throw new Error(
+        "Export frame time must be within the saved Composition.",
+      );
+    const frameIndex = Math.floor(time * profile.frameRate + 1e-9);
+    const frameCount = Math.ceil(
+      composition.duration * profile.frameRate - 1e-9,
+    );
+    if (frameIndex >= frameCount)
+      throw new Error(
+        "Export frame time resolves beyond the final output frame.",
+      );
+    return time;
+  }
+
+  private async renderFrameSource(
+    compositionId: string,
+    outputPath: string,
+    profile: ExportProfile,
+    signal?: AbortSignal,
+    selection: {
+      lookOverride?: FilmLook | null;
+      captionTrackId?: string | null;
+    } = {},
+  ): Promise<RenderReceipt> {
+    const renderProfile: ExportProfile = {
+      ...profile,
+      format: "mp4",
+      quality: profile.quality,
+    };
+    await this.options.render(compositionId, outputPath, {
+      signal,
+      quality: profile.quality,
+      exportProfile: renderProfile,
+      ...(selection.lookOverride === undefined
+        ? {}
+        : { lookOverride: selection.lookOverride }),
+      ...(selection.captionTrackId === undefined
+        ? {}
+        : { captionTrackId: selection.captionTrackId }),
+    });
+    return JSON.parse(
+      await readFile(`${outputPath}.manifest.json`, "utf8"),
+    ) as RenderReceipt;
+  }
+
+  private async extractFrame(
+    videoPath: string,
+    outputPath: string,
+    frameIndex: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await runProcess(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-nostdin",
+        "-i",
+        videoPath,
+        "-vf",
+        `select=eq(n\\,${frameIndex})`,
+        "-vsync",
+        "0",
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-y",
+        outputPath,
+      ],
+      { signal, timeoutMs: 1800000 },
+    );
+    const info = await lstat(outputPath);
+    if (info.isSymbolicLink() || !info.isFile() || info.size < 32)
+      throw new Error("FFmpeg did not produce a valid PNG export frame.");
+  }
+
+  private async assertPngDimensions(
+    path: string,
+    width: number,
+    height: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const result = await runProcess(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height",
+        "-of",
+        "json",
+        path,
+      ],
+      { signal, timeoutMs: 15000 },
+    );
+    const stream = (
+      JSON.parse(result.stdout.toString("utf8")) as {
+        streams?: Array<{
+          codec_name?: string;
+          width?: number;
+          height?: number;
+        }>;
+      }
+    ).streams?.[0];
+    if (
+      stream?.codec_name !== "png" ||
+      stream.width !== width ||
+      stream.height !== height
+    )
+      throw new Error(
+        "Still export dimensions do not match the selected profile.",
+      );
+  }
+
+  private async exportMix(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+    profile: ExportProfile,
+    requestId: string,
+    fingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProfileExport> {
+    const directory = await this.exportDirectory();
+    const path = join(directory, `mix-${requestId}.wav`);
+    const manifestPath = `${path}.manifest.json`;
+    const existing = await this.existing(
+      path,
+      manifestPath,
+      requestId,
+      fingerprint,
+      snapshot.assets,
+      profile,
+      signal,
+    );
+    if (existing) return existing as AudioProfileExport;
+    const work = await this.workDirectory(randomUUID());
+    const stagedWav = join(work, "mix.wav");
+    const stagedRenderManifest = `${stagedWav}.manifest.json`;
+    const stagedManifest = join(work, "manifest.json");
+    try {
+      await this.options.render(snapshot.composition.id, stagedWav, {
+        signal,
+        audioOnly: true,
+        exportProfile: profile,
+      });
+      this.assertCurrent(snapshot);
+      const renderReceipt = JSON.parse(
+        await readFile(stagedRenderManifest, "utf8"),
+      ) as RenderReceipt;
+      const audio = await this.inspectWav(stagedWav, signal);
+      const fileHash = await hashFile(stagedWav, signal);
+      const renderSources = readSources(renderReceipt);
+      this.assertSourceCoverage(
+        renderSources,
+        snapshot.assets.filter(hasAudio),
+      );
+      const sources = await this.currentSourceReceipts(
+        renderSources,
+        snapshot.assets,
+        signal,
+      );
+      const warnings = [...new Set(renderReceipt.warnings ?? [])];
+      await this.writeReceipt(stagedManifest, {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        requestId,
+        fingerprint,
+        project: {
+          id: snapshot.project.id,
+          schemaVersion: snapshot.project.schemaVersion,
+          revision: snapshot.revision,
+        },
+        compositionId: snapshot.composition.id,
+        compositionSha256: digest(snapshot.composition),
+        profile,
+        output: {
+          format: "wav",
+          codec: "pcm_s24le",
+          ...audio,
+          sha256: fileHash,
+        },
+        sources,
+        warnings,
+      });
+      this.assertCurrent(snapshot);
+      await chmod(stagedWav, 0o600);
+      await publishRenderPair(stagedWav, stagedManifest, path, work);
+      return {
+        requestId,
+        profile,
+        files: [
+          {
+            role: "mix",
+            path,
+            filename: basename(path),
+            sha256: fileHash,
+            ...audio,
+          },
+        ],
+        manifestPath,
+        warnings,
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+
+  private async exportStems(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+    profile: ExportProfile,
+    requestId: string,
+    fingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProfileExport> {
+    const roles = this.availableRoles(snapshot.composition, snapshot.assets);
+    const warnings: string[] = [];
+    if (!roles.length)
+      return {
+        requestId,
+        profile,
+        files: [],
+        warnings: [
+          "No dialogue, narration, music or ambience audio roles apply to this Composition; no stem files were created.",
+        ],
+      };
+    const directory = await this.exportDirectory();
+    const target = join(directory, `stems-${requestId}`);
+    const existing = await this.existingDirectory(
+      target,
+      requestId,
+      fingerprint,
+      snapshot.assets,
+      profile,
+      signal,
+    );
+    if (existing) return existing as AudioProfileExport;
+    const work = await this.workDirectory(randomUUID());
+    const staging = join(directory, `.stems-${requestId}-${randomUUID()}.tmp`);
+    await mkdir(staging, { mode: 0o700 });
+    try {
+      const files: AudioExportFile[] = [];
+      const sourceSets: RenderReceipt["sources"] = [];
+      for (const role of roles) {
+        const stagedWav = join(work, `${role}.wav`);
+        const renderProfile = { ...profile, format: "audio-stems" as const };
+        await this.options.render(snapshot.composition.id, stagedWav, {
+          signal,
+          audioOnly: true,
+          audioRole: role,
+          exportProfile: renderProfile,
+        });
+        this.assertCurrent(snapshot);
+        const receipt = JSON.parse(
+          await readFile(`${stagedWav}.manifest.json`, "utf8"),
+        ) as RenderReceipt;
+        warnings.push(...(receipt.warnings ?? []));
+        sourceSets.push(...readSources(receipt));
+        const audio = await this.inspectWav(stagedWav, signal);
+        const sha256 = await hashFile(stagedWav, signal);
+        const name = `${role}.wav`;
+        await copyFile(stagedWav, join(staging, name));
+        await chmod(join(staging, name), 0o600);
+        files.push({
+          role,
+          path: join(target, name),
+          filename: name,
+          sha256,
+          ...audio,
+        });
+      }
+      const audioReference = files[0]!;
+      if (
+        files.some(
+          (file) =>
+            file.sampleRate !== audioReference.sampleRate ||
+            file.channels !== audioReference.channels ||
+            file.sampleCount !== audioReference.sampleCount,
+        )
+      )
+        throw new Error(
+          "Audio stems must have identical sample rates, channels and sample counts.",
+        );
+      const uniqueSources = [
+        ...new Map(
+          sourceSets.map((source) => [source.assetId, source]),
+        ).values(),
+      ];
+      this.assertSourceCoverage(
+        uniqueSources,
+        snapshot.assets.filter(hasAudio),
+      );
+      const sourceReceipts = await this.currentSourceReceipts(
+        uniqueSources,
+        snapshot.assets,
+        signal,
+      );
+      const manifestPath = join(staging, "manifest.json");
+      await this.writeReceipt(manifestPath, {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        requestId,
+        fingerprint,
+        project: {
+          id: snapshot.project.id,
+          schemaVersion: snapshot.project.schemaVersion,
+          revision: snapshot.revision,
+        },
+        compositionId: snapshot.composition.id,
+        compositionSha256: digest(snapshot.composition),
+        profile,
+        outputs: files.map(
+          ({
+            role,
+            filename,
+            sha256,
+            sampleRate,
+            channels,
+            sampleCount,
+            duration,
+          }) => ({
+            role,
+            filename,
+            sha256,
+            sampleRate,
+            channels,
+            sampleCount,
+            duration,
+          }),
+        ),
+        sources: sourceReceipts,
+        warnings: [...new Set(warnings)],
+      });
+      this.assertCurrent(snapshot);
+      try {
+        await rename(staging, target);
+      } catch (error) {
+        if (
+          ["EEXIST", "ENOTEMPTY"].includes(
+            (error as NodeJS.ErrnoException).code ?? "",
+          )
+        ) {
+          const prior = await this.existingDirectory(
+            target,
+            requestId,
+            fingerprint,
+            snapshot.assets,
+            profile,
+            signal,
+          );
+          if (prior) return prior as AudioProfileExport;
+        }
+        throw error;
+      }
+      const published = files.map((file) => ({
+        ...file,
+        path: join(target, file.filename),
+      }));
+      return {
+        requestId,
+        profile,
+        files: published,
+        manifestPath: join(target, "manifest.json"),
+        warnings: [...new Set(warnings)],
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+      await rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  private availableRoles(
+    composition: Composition,
+    assets: MediaAsset[],
+  ): AudioAutomation["role"][] {
+    const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+    const roles = new Set<AudioAutomation["role"]>();
+    for (const track of composition.tracks) {
+      if (track.type === "titles") continue;
+      for (const clip of track.clips) {
+        const asset = assetMap.get(clip.assetId);
+        if (asset && hasAudio(asset)) roles.add(audioRole(track, clip));
+      }
+    }
+    return STEM_ROLES.filter((role) => roles.has(role));
+  }
+
+  private async inspectWav(path: string, signal?: AbortSignal) {
+    const result = await runProcess(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_name,sample_rate,channels,duration_ts,time_base,duration",
+        "-of",
+        "json",
+        path,
+      ],
+      { signal },
+    );
+    const payload = JSON.parse(result.stdout.toString("utf8")) as {
+      streams?: Array<{
+        codec_name?: string;
+        sample_rate?: string;
+        channels?: number;
+        duration_ts?: string;
+        time_base?: string;
+        duration?: string;
+      }>;
+    };
+    const audio = payload.streams?.[0];
+    const sampleRate = Number(audio?.sample_rate);
+    const channels = Number(audio?.channels);
+    const durationTs = Number(audio?.duration_ts);
+    const timeBase = audio?.time_base?.split("/").map(Number);
+    if (
+      audio?.codec_name !== "pcm_s24le" ||
+      sampleRate !== 48000 ||
+      !Number.isInteger(channels) ||
+      !Number.isFinite(durationTs) ||
+      !timeBase?.[0] ||
+      !timeBase[1]
+    )
+      throw new Error(
+        "WAV export must contain decodable 48 kHz 24-bit PCM audio.",
+      );
+    const duration = (durationTs * timeBase[0]!) / timeBase[1]!;
+    const sampleCount = Math.round(duration * sampleRate);
+    return { sampleRate, channels, sampleCount, duration };
+  }
+
+  private async currentSourceReceipts(
+    sources: NonNullable<RenderReceipt["sources"]>,
+    assets: MediaAsset[],
+    signal?: AbortSignal,
+  ) {
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    const result: Array<{
+      assetId: string;
+      name: string;
+      sha256: string;
+      size: number;
+    }> = [];
+    for (const source of sources) {
+      const asset = byId.get(source.assetId);
+      if (!asset)
+        throw new Error(
+          "An exported source is no longer in the current Composition.",
+        );
+      const before = await stat(localPath(asset.uri));
+      const sha256 = await hashFile(localPath(asset.uri), signal);
+      const after = await stat(localPath(asset.uri));
+      if (
+        before.size !== after.size ||
+        before.mtimeMs !== after.mtimeMs ||
+        sha256 !== source.sha256
+      )
+        throw new Error(`Source changed during export: ${source.name}`);
+      result.push({
+        assetId: source.assetId,
+        name: source.name,
+        sha256,
+        size: after.size,
+      });
+    }
+    return result;
+  }
+
+  private assertSourceCoverage(
+    sources: NonNullable<RenderReceipt["sources"]>,
+    assets: MediaAsset[],
+  ): void {
+    const captured = new Set(sources.map((source) => source.assetId));
+    if (
+      captured.size !== sources.length ||
+      captured.size !== assets.length ||
+      assets.some((asset) => !captured.has(asset.id))
+    )
+      throw new Error(
+        "Render source receipts do not cover the saved Composition assets.",
+      );
+  }
+
+  private async exportDirectory(): Promise<string> {
+    const root = await realpath(this.options.directory);
+    const directory = join(root, "exports");
+    try {
+      await mkdir(directory, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const info = await lstat(directory);
+    if (info.isSymbolicLink() || !info.isDirectory())
+      throw new Error(
+        "Project exports must be a real directory without symlinks.",
+      );
+    if ((await realpath(directory)) !== directory)
+      throw new Error(
+        "Project exports cannot resolve outside the project directory.",
+      );
+    await chmod(directory, 0o700);
+    return directory;
+  }
+
+  private async workDirectory(id: string): Promise<string> {
+    const marker = await safeProjectCachePath(
+      this.options.directory,
+      "export-work",
+      id,
+      "marker.tmp",
+    );
+    const directory = dirname(marker);
+    const info = await lstat(directory);
+    if (info.isSymbolicLink() || !info.isDirectory())
+      throw new Error(
+        "Private export staging must remain inside the project cache.",
+      );
+    await chmod(directory, 0o700);
+    return directory;
+  }
+
+  private async verifyManifestSources(
+    manifest: Record<string, unknown>,
+    assets: MediaAsset[],
+    profile: ExportProfile,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!Array.isArray(manifest.sources))
+      throw new Error("Export manifest has no source identity receipt.");
+    const sources = manifest.sources.map((value) => {
+      if (!value || typeof value !== "object")
+        throw new Error("Export manifest contains an invalid source receipt.");
+      const source = value as Record<string, unknown>;
+      if (
+        typeof source.assetId !== "string" ||
+        typeof source.name !== "string" ||
+        typeof source.sha256 !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(source.sha256) ||
+        !Number.isSafeInteger(source.size) ||
+        Number(source.size) < 0
+      )
+        throw new Error("Export manifest contains an invalid source identity.");
+      return {
+        assetId: source.assetId,
+        name: source.name,
+        sha256: source.sha256,
+        size: Number(source.size),
+      };
+    });
+    const expectedAssets =
+      profile.format === "wav" || profile.format === "audio-stems"
+        ? assets.filter(hasAudio)
+        : assets;
+    this.assertSourceCoverage(sources, expectedAssets);
+    const current = await this.currentSourceReceipts(
+      sources,
+      expectedAssets,
+      signal,
+    );
+    if (current.some((source, index) => source.size !== sources[index]!.size))
+      throw new Error(
+        "A source size no longer matches the saved export receipt.",
+      );
+  }
+
+  private async verifyOutputHash(
+    path: string,
+    expected: unknown,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (typeof expected !== "string" || !/^[a-f0-9]{64}$/u.test(expected))
+      throw new Error("Export manifest has an invalid output hash.");
+    const actual = await hashFile(path, signal);
+    if (actual !== expected)
+      throw new Error(
+        "Existing export output no longer matches its saved hash.",
+      );
+    return actual;
+  }
+
+  private async existing(
+    path: string,
+    manifestPath: string,
+    requestId: string,
+    fingerprint: string,
+    assets: MediaAsset[],
+    expectedProfile: ExportProfile,
+    signal?: AbortSignal,
+  ): Promise<ProfileExportArtifact | AudioProfileExport | undefined> {
+    const outputExists = await this.existsRegular(path);
+    const manifestExists = await this.existsRegular(manifestPath);
+    if (!outputExists && !manifestExists) return undefined;
+    if (!outputExists || !manifestExists)
+      throw new Error(
+        "An incomplete export already uses this requestId; preserve its recovery files and choose a new requestId.",
+      );
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    if (
+      manifest.requestId !== requestId ||
+      manifest.fingerprint !== fingerprint
+    )
+      throw new Error(
+        "Export requestId was already used for different project content or settings.",
+      );
+    const profile = validateExportProfile(manifest.profile);
+    if (digest(profile) !== digest(expectedProfile))
+      throw new Error(
+        "Existing export profile no longer matches its request receipt.",
+      );
+    await this.verifyManifestSources(manifest, assets, profile, signal);
+    const output = manifest.output as Record<string, unknown> | undefined;
+    if (!output)
+      throw new Error("Export request manifest has no output receipt.");
+    const outputSha256 = await this.verifyOutputHash(
+      path,
+      output.sha256,
+      signal,
+    );
+    if (
+      "frame" in manifest &&
+      typeof manifest.frame === "object" &&
+      manifest.frame
+    ) {
+      const frame = manifest.frame as { time: number; index: number };
+      return {
+        path,
+        filename: basename(path),
+        profile,
+        warnings: Array.isArray(manifest.warnings)
+          ? (manifest.warnings as string[])
+          : [],
+        requestId,
+        time: frame.time,
+        frameIndex: frame.index,
+      };
+    }
+    const audio = await this.inspectWav(path, signal);
+    return {
+      requestId,
+      profile,
+      files: [
+        {
+          role: "mix",
+          path,
+          filename: basename(path),
+          sha256: outputSha256,
+          ...audio,
+        },
+      ],
+      manifestPath,
+      warnings: Array.isArray(manifest.warnings)
+        ? (manifest.warnings as string[])
+        : [],
+    };
+  }
+
+  private async existingDirectory(
+    directory: string,
+    requestId: string,
+    fingerprint: string,
+    assets: MediaAsset[],
+    expectedProfile: ExportProfile,
+    signal?: AbortSignal,
+  ): Promise<AudioProfileExport | undefined> {
+    try {
+      const info = await lstat(directory);
+      if (info.isSymbolicLink() || !info.isDirectory())
+        throw new Error("Stem export target must be a regular directory.");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+    const manifestPath = join(directory, "manifest.json");
+    const info = await lstat(manifestPath);
+    if (info.isSymbolicLink() || !info.isFile())
+      throw new Error("Stem export manifest must be a regular file.");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    if (
+      manifest.requestId !== requestId ||
+      manifest.fingerprint !== fingerprint
+    )
+      throw new Error(
+        "Export requestId was already used for different project content or settings.",
+      );
+    const profile = validateExportProfile(manifest.profile);
+    if (digest(profile) !== digest(expectedProfile))
+      throw new Error(
+        "Existing stem profile no longer matches its request receipt.",
+      );
+    await this.verifyManifestSources(manifest, assets, profile, signal);
+    const outputs = Array.isArray(manifest.outputs)
+      ? (manifest.outputs as Array<Record<string, unknown>>)
+      : [];
+    if (!outputs.length)
+      throw new Error("Stem export receipt contains no audio outputs.");
+    const files: AudioExportFile[] = [];
+    for (const output of outputs) {
+      const name = String(output.filename ?? "");
+      if (!/^(narration|music|ambience|dialogue)\.wav$/u.test(name))
+        throw new Error(
+          "Stem export manifest contains an unsafe output filename.",
+        );
+      if (output.role !== name.slice(0, -4))
+        throw new Error("Stem export receipt does not match its output role.");
+      const path = join(directory, name);
+      const fileInfo = await lstat(path);
+      if (fileInfo.isSymbolicLink() || !fileInfo.isFile())
+        throw new Error("Stem output must be a regular file.");
+      const sha256 = await this.verifyOutputHash(path, output.sha256, signal);
+      const audio = await this.inspectWav(path, signal);
+      files.push({
+        role: output.role as AudioExportFile["role"],
+        path,
+        filename: name,
+        sha256,
+        ...audio,
+      });
+    }
+    return {
+      requestId,
+      profile,
+      files,
+      manifestPath,
+      warnings: Array.isArray(manifest.warnings)
+        ? (manifest.warnings as string[])
+        : [],
+    };
+  }
+
+  private async existsRegular(path: string): Promise<boolean> {
+    try {
+      const info = await lstat(path);
+      if (info.isSymbolicLink() || !info.isFile())
+        throw new Error(
+          "Export target must be a regular file, not a symlink or directory.",
+        );
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  private async writeReceipt(path: string, value: unknown): Promise<void> {
+    await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, {
+      flag: "wx",
+      mode: 0o600,
+    });
+  }
+
+  private async trimPreviews(): Promise<void> {
+    for (const [token, entry] of this.previews) {
+      if (entry.expiresAt < Date.now()) {
+        this.previews.delete(token);
+        await rm(entry.path, { force: true });
+      }
+    }
+    while (this.previews.size > 12) {
+      const token = this.previews.keys().next().value as string | undefined;
+      if (!token) return;
+      const entry = this.previews.get(token);
+      this.previews.delete(token);
+      if (entry) await rm(entry.path, { force: true });
+    }
+  }
+}
