@@ -75,6 +75,121 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it("returns an incomplete typed mask finding when decoded PhotoDepth pixels exceed the mask budget", async () => {
+    const { app } = await fixture("0x305070");
+    const images = [];
+    for (const [name, filter] of [
+      ["large-source", "color=c=0x305070:s=3000x3000,format=rgba"],
+      [
+        "large-mask",
+        "nullsrc=s=3000x3000,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,100,2900)*between(Y,100,2900),255,0)'",
+      ],
+    ]) {
+      const path = join(app.directory, `${name}.png`);
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        filter!,
+        "-frames:v",
+        "1",
+        "-threads",
+        "1",
+        "-pix_fmt",
+        "rgba",
+        "-y",
+        path,
+      ]);
+      const asset = {
+        ...(await inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${name}.png`,
+        })),
+        contentHash: await hashFile(path),
+      };
+      app.catalog.upsertAsset(asset);
+      images.push(asset);
+    }
+    const [original, mask] = images;
+    const story = app.generateStory({
+      title: "Synthetic mask budget",
+      template: "blank",
+      assetIds: [original!.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const composition = app.compose(story.id);
+    const imageNode = {
+      id: "large-photo",
+      type: "image" as const,
+      assetId: original!.id,
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 90,
+      opacity: 1,
+      zIndex: 0,
+      start: 0,
+      end: 6,
+    };
+    app.project.timelines[app.project.timelines.length - 1] = {
+      ...composition,
+      duration: 6,
+      tracks: [],
+      graphicScenes: [
+        graphicScene({
+          id: "large-depth-scene",
+          nodes: [imageNode],
+          photoDepth: {
+            version: 1,
+            id: "large-depth-recipe",
+            nodeId: imageNode.id,
+            mode: "parallax",
+            duration: 6,
+            sourceAssetId: original!.id,
+            sourceSha256: original!.contentHash,
+            maskAssetId: mask!.id,
+            maskSha256: mask!.contentHash,
+            background: { kind: "source" },
+            protectedRegion: { x: 0, y: 0, width: 1, height: 1 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0,
+            camera: {
+              from: { x: 0, y: 0, scale: 1 },
+              to: { x: 0, y: 0, scale: 1 },
+            },
+            easing: "linear",
+          },
+        }),
+      ],
+    };
+    await app.save();
+    const report = await app.runVisualQa(composition.id);
+    expect(report.status).toBe("incomplete");
+    expect(report.samples).toEqual([]);
+    expect(report.output).toBeUndefined();
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: "photo-depth.mask-invalid",
+        severity: "error",
+        graphicSceneId: "large-depth-scene",
+        nodeId: imageNode.id,
+        assetId: mask!.id,
+        photoDepthPart: "mask",
+      }),
+    );
+    expect(await hashFile(join(app.directory, "large-source.png"))).toBe(
+      original!.contentHash,
+    );
+    expect(await hashFile(join(app.directory, "large-mask.png"))).toBe(
+      mask!.contentHash,
+    );
+  });
+
   it("returns a typed PhotoDepth source finding when a fallback receipt predates a catalog relink", async () => {
     const { app, asset, source } = await fixture("0x27a6c8");
     const sourceSha256 = await hashFile(source);
