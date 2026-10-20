@@ -124,7 +124,7 @@ adjust the affected cue first so authored text and timing remain explicit.
 M6 Audio Quality and Provider Generation, M7A Named Versions and the reviewed
 M7B–M8B feature heads share the existing application boundary. Named Versions
 now includes explicit capacity management and stronger recovery/source fences.
-The0.4.0 integration below combines the six feature PRs; workstation and native
+The 0.4.0 integration below combines the six feature PRs; workstation and native
 distribution gates remain independent of synthetic correctness tests.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets

@@ -2,7 +2,7 @@
 
 **Goal:** Fix the confirmed findings from the review audit and fresh independent/GitHub reviews, merge verified changes, and publish a truthful 0.4.0 source release.
 **Architecture:** Keep Composition, the project schema, SQLite storage, locks and editing history intact. Use the existing named-version service for explicit snapshot deletion, and the existing renderer for stem channel normalization. Each feature retains its own reviewed candidate; one integration branch preserves all six PR heads and validates the combined result.
-**Spec:** User-authorized remediation of PR34 review5579974422 and the confirmed review audit; user explicitly authorized merge and publication; later clarified all six PRs35–40 must be integrated and the version is the next stable version, not necessarily1.0.0.
+**Spec:** User-authorized remediation of PR34 review5579974422 and the confirmed review audit; user explicitly authorized merge and publication; later clarified all six PRs 35–40 must be integrated and the version is the next stable version, not necessarily1.0.0.
 **Tools:** Vue3, TypeScript, SQLite, FFmpeg, Vitest, Playwright, pnpm11/Node24.
 
 ## Scope and invariants
@@ -10,8 +10,8 @@
 - Do not silently prune snapshots, overwrite original media, or execute project code.
 - Source changes must reject restore before modifying the working project.
 - Deletion requires confirmation and a fresh revision; protect active recovery journals.
-- Keep the 50-version / 2GiB storage limits and project schema1.0.0.
-- No dependency updates, unrelated feature merges outside PRs35–40 or unverified native installer claims.
+- Keep the 50-version / 2GiB storage limits and project schema 1.0.0.
+- No dependency updates, unrelated feature merges outside PRs 35–40 or unverified native installer claims.
 
 ## Optimization ledger
 
@@ -29,13 +29,13 @@
 - [x] Add failing core and application regressions; record RED output.
 - [x] Fix tuple identity/order, sorted-order validation, and post-checkpoint source verification; prove GREEN.
 - [x] Add explicit bounded version deletion across application/API/CLI/Desktop, including keyboard confirmation and i18n; prove unit/integration/browser behavior.
-- [x] Update validation, TASKS, ROADMAP and0.4.0 release metadata/notes; retain unfinished platform gates.
+- [x] Update validation, TASKS, ROADMAP and 0.4.0 release metadata/notes; retain unfinished platform gates.
 - [x] Independently repair/review all six feature heads; integrate them with ancestry preserved.
 - [x] Run combined format/i18n/lint/typecheck/test/build/interchange, built CLI smoke and actual shared render regressions.
 
 Final full browser/native CI, exact-head review, merge and publication are gated
-and recorded by [PR#41](https://github.com/bynanci/open-film/pull/41) and the
-[checksummed0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+and recorded by [PR #41](https://github.com/bynanci/open-film/pull/41) and the
+[checksummed 0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
 No merge/publication occurs while a correctness blocker or failed required gate remains.
 Installer distribution, workstation QA and remote provider enablement stay open.
 

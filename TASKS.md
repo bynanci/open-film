@@ -3,12 +3,12 @@
 - [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.
 - [x] Add explicit confirmed deletion through shared application/API/CLI/Desktop to free bounded version capacity without automatic pruning.
 - [x] Cover stale/confirmation/retry/recovery/reopen and synthetic source-change regressions.
-- [x] Fix and independently review all six feature PRs35–40; preserve their ancestry on integration PR#41.
+- [x] Fix and independently review all six feature PRs 35–40; preserve their ancestry on integration PR #41.
 - [x] Verify complete combined format/i18n/lint/typecheck/unit/application/build/interchange gates and actual shared render/package parity.
-- [x] Align application/workspace/Tauri metadata at0.4.0 while retaining project schema1.0.0 and Apache-2.0/NOTICE.
+- [x] Align application/workspace/Tauri metadata at 0.4.0 while retaining project schema 1.0.0 and Apache-2.0/NOTICE.
 
 Final browser/native CI, merge and publication status is recorded on
-[integration PR#41](https://github.com/bynanci/open-film/pull/41) and the
+[integration PR #41](https://github.com/bynanci/open-film/pull/41) and the
 [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
 Exact base/head/merge identities, changed paths and completed gates accompany the
 checksummed release evidence. Installer/workstation/manual gates remain open.
