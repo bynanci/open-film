@@ -1,4 +1,12 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -352,6 +360,56 @@ it("recovers a prepared precommit import after reopen, and physically expires un
       expect(
         await readdir(join(app.directory, "cache/motion-candidates")),
       ).not.toContain(r.id);
+    } finally {
+      await app.motionGeneration.dispose();
+      app.close();
+    }
+  } finally {
+    if (!closed) {
+      await f.app.motionGeneration.dispose();
+      f.app.close();
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("expires abandoned candidate files without receipts on reopen and frees their preview quota", async () => {
+  const root = await mkdtemp(join(tmpdir(), "motion-orphan-expiry-"));
+  const f = await createMotionFixture(root);
+  let closed = false;
+  try {
+    const candidates = join(f.app.directory, "cache/motion-candidates");
+    const input = request(f);
+    const image = await readFile(localPath(f.image.uri));
+    const expired = new Date(Date.now() - 86401000);
+    const recentId = randomUUID();
+    for (const id of [
+      ...Array.from({ length: 23 }, () => randomUUID()),
+      recentId,
+    ]) {
+      const directory = join(candidates, id);
+      await mkdir(directory, { recursive: true });
+      // A crash while checking the source leaves bytes before its receipt exists.
+      await writeFile(join(directory, "source.image"), image);
+      if (id !== recentId) await utimes(directory, expired, expired);
+    }
+    await f.app.motionGeneration.dispose();
+    f.app.close();
+    closed = true;
+    const { OpenFilmApplication, TimelineEditor } =
+      await import("../src/index.js");
+    const app = await OpenFilmApplication.open(join(root, "film.openfilm"));
+    try {
+      expect(await readdir(candidates)).toEqual([recentId]);
+      expect(
+        await readFile(join(candidates, recentId, "source.image")),
+      ).toEqual(image);
+      expect(
+        await app.motionGeneration.preview({
+          ...input,
+          baseRevision: new TimelineEditor(app).get("film").revision,
+        }),
+      ).toHaveLength(2);
     } finally {
       await app.motionGeneration.dispose();
       app.close();

@@ -713,7 +713,18 @@ export class MotionGenerationService {
       try {
         record = await this.record(id);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          // Interrupted validation/normalization can leave private bytes before
+          // the receipt is published. Age those folders without expiring a
+          // recent job or touching prepared/adopted recovery records.
+          const directory = dirname(
+            await this.path("motion-candidates", id, "preview.mp4"),
+          );
+          const info = await lstat(directory);
+          if (Date.now() - info.mtimeMs > 86400000)
+            await rm(directory, { recursive: true, force: true });
+          continue;
+        }
         throw error;
       }
       if (!["preview", "accepted"].includes(record.receipt.state)) continue;
