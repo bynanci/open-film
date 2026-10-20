@@ -4,14 +4,12 @@ This roadmap adapts the product goals to the current `main` source tree. The
 checked-in `TASKS.md`, `ROADMAP.md`, README and architecture documents do not
 define an F01–F13 catalogue; the crosswalk below is a new planning aid, not a
 claim that these labels were previously accepted or completed. Status describes
-the behavior present in `main` at M5 integration base
-`a33340c43d40f82825bc788e1c82625883e6acbb`. M1–M4 and M5/F03 Layer Editor
-(PR #30) are integrated. PR #31 implements M5/F08 Reviewable Agent Editing on
-this base; implementation validation and remaining CI/manual gates are recorded
-in `docs/validation-agent-editing.md`.
-Audio/output review remains M6. M7A Named Versions is now a candidate on current
-`main`; its exact-head validation and review are recorded separately in
-`docs/validation-named-versions.md`.
+the behavior present in `main` at M7A integration base
+`bb2c4521ad894478893485119442a00ffd9b34cc`. M1–M6 and M7A are integrated; M7A
+merged through PR #34. M7B Export Formats remains an open candidate PR (#36)
+with unresolved code-review findings. M7D is the current independent candidate;
+its local evidence and workstation gates are recorded in
+`docs/validation-collect-media.md`.
 
 ## Capability gap crosswalk
 
@@ -37,13 +35,13 @@ The M7 sequence packages project recovery and delivery capabilities as separate
 changes. Each item requires its own exact-base/head evidence; completing M7A
 does not complete the remaining M7 work.
 
-| PR  | Scope                      | Dependency and acceptance                                                                                                                                                                                                                              |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 7A  | Named Versions (candidate) | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md). |
-| 7B  | Export Formats (queued)    | Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent.                                                                                                             |
-| 7C  | NLE Fidelity (queued)      | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                            |
-| 7D  | Collect Media (queued)     | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                |
-| 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                      |
+| PR  | Scope                      | Dependency and acceptance                                                                                                                                                                                                                                                     |
+| --- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7A  | Named Versions (merged)    | Merged through PR #34. Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md). |
+| 7B  | Export Formats (candidate) | Open PR #36. Reuse Composition/render state; still PNG, WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent. Unresolved review findings remain.                                                                                    |
+| 7C  | NLE Fidelity (queued)      | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                                   |
+| 7D  | Collect Media (candidate)  | Current independent M7D work. Collect only referenced media/dependencies with rights, hashes, path safety, ZIP validation and relocation/reopen; exclude credentials/private paths. See [contract](../collect-media.md) and [validation](../validation-collect-media.md).     |
+| 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                                             |
 
 M8A selective 2.5D photo motion is a separate candidate stacked on M7A PR #34's
 exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`. It extends GraphicScene

@@ -50,6 +50,8 @@ import {
   type GraphicSceneAgentAcceptance,
   type ProjectVersionCreateInput,
   type ProjectVersionRestoreInput,
+  type CollectPlanInput,
+  type CollectMediaCreateInput,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -979,6 +981,103 @@ export async function startServer(options: ServerOptions = {}) {
             "application/octet-stream",
           );
           return;
+        }
+        if (
+          method === "POST" &&
+          [
+            "/api/collect/plan",
+            "/api/collect/create",
+            "/api/collect/verify",
+          ].includes(route)
+        ) {
+          const controller = new AbortController();
+          const requestId = `collect:${randomUUID()}`;
+          let completeRequest!: () => void;
+          const completed = new Promise<void>((resolve) => {
+            completeRequest = resolve;
+          });
+          active.set(requestId, controller);
+          tasks.add(completed);
+          const abortRequest = () => {
+            request.destroy();
+            response.destroy();
+          };
+          controller.signal.addEventListener("abort", abortRequest, {
+            once: true,
+          });
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          try {
+            const data = await body(request);
+            if (route === "/api/collect/plan") {
+              keys(data, ["scope", "compositionId", "rightsDeclarations"]);
+              const plan = await application.collectMedia.plan(
+                data as unknown as CollectPlanInput,
+                controller.signal,
+              );
+              json(response, 200, { plan });
+              return;
+            }
+            if (route === "/api/collect/create") {
+              keys(data, [
+                "scope",
+                "compositionId",
+                "rightsDeclarations",
+                "planId",
+                "baseRevision",
+                "format",
+              ]);
+              const format =
+                data.format === "zip"
+                  ? "zip"
+                  : data.format === "directory"
+                    ? "directory"
+                    : undefined;
+              if (!format)
+                throw new HttpError(
+                  400,
+                  "Choose a folder or ZIP package format.",
+                );
+              const extension = format === "zip" ? ".zip" : ".openfilm";
+              const destination = join(
+                application.directory,
+                "exports",
+                `openfilm-collect-${randomUUID()}${extension}`,
+              );
+              const result = await application.collectMedia.create({
+                ...data,
+                destination,
+                signal: controller.signal,
+              } as unknown as CollectMediaCreateInput);
+              json(response, 200, { result });
+              return;
+            }
+            keys(data, ["packageName"]);
+            const packageName = text(data, "packageName");
+            if (!safeFilename(packageName))
+              throw new HttpError(
+                400,
+                "Choose a package name inside this film's exports folder.",
+              );
+            const packagePath = join(
+              application.directory,
+              "exports",
+              packageName,
+            );
+            const result = await application.collectMedia.verify(
+              packagePath,
+              controller.signal,
+            );
+            json(response, 200, { result });
+          } finally {
+            response.removeListener("close", disconnected);
+            controller.signal.removeEventListener("abort", abortRequest);
+            active.delete(requestId);
+            tasks.delete(completed);
+            completeRequest();
+          }
         }
         if (route.startsWith("/api/captions/")) {
           errorContext = "captions.failed";

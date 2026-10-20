@@ -103,6 +103,7 @@ function host(
     storyReviewPending: vue.ref(false),
     storyScriptReview: vue.ref(null),
     relinkBusy: vue.ref(false),
+    collectBusy: vue.ref(false),
     analysisRecoveryPending: vue.ref(false),
     timelineEditor: vue.ref({ flush }),
     beatDirty: vue.ref(false),
@@ -428,6 +429,23 @@ describe("project navigation during analysis owned by another process", () => {
       jobs: [analysisJob()],
       analysisRecovery: { "foreign-analysis": foreignRecovery() },
     });
+    await closing;
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.project.value).not.toBeNull();
+  });
+
+  it("keeps the project open when Collect Media starts during the authoritative read", async () => {
+    const h = host([]);
+    const read = deferred<{
+      jobs: Job[];
+      analysisRecovery: Record<string, AnalysisJobRecoveryState>;
+    }>();
+    h.api.jobs.mockImplementation(() => read.promise);
+    const closing = h.changeWorkspace();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(h.api.jobs).toHaveBeenCalledOnce();
+    h.collectBusy.value = true;
+    read.release({ jobs: [], analysisRecovery: {} });
     await closing;
     expect(h.post).not.toHaveBeenCalled();
     expect(h.project.value).not.toBeNull();

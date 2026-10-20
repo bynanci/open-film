@@ -20,7 +20,9 @@ film.openfilm/
   analysis/
     events.json
     duplicates.json
-  sources/               browser-selected managed source copies
+  sources/               browser copies or collected hash-addressed media
+  fonts/                 hash-addressed fonts in a collected package
+  collect-manifest.json  package hashes, scope and rights receipts only
   versions/              immutable named project snapshots and private index
     index.json           mutable labels and idempotency receipts only
     <version-id>/
@@ -166,6 +168,20 @@ rebases only assets still pointing at their managed source; an explicitly relink
 external file stays external. IDs and original provenance remain stable. Source
 paths must remain within `sources/`; project cache or arbitrary metadata paths are
 never imported as managed media.
+
+Collect Media packages use the same managed-source boundary. Their optional
+`collect-manifest.json` records selected Stories/Compositions, relative paths,
+content hashes/sizes, required font bindings, explicit rights declarations and
+digests of original URIs. The project catalog contains only referenced assets
+and their selected transcript data; unrelated Library assets, caches, jobs,
+provider credentials and named-version snapshots are not included. Each distinct
+source byte sequence is stored once beneath `sources/<hash-prefix>/`; asset URIs
+remain unique and opaque while their `openfilm.managedSource.relativePath` points
+to the shared source bytes. Font files and their resolver bindings are stored in
+`fonts/` and checked by hash when a collected project opens. These package
+receipts live outside schema 1.0.0 and catalog schema v5; projects without them
+continue to open as before. See [Collect Media](collect-media.md) for the
+directory/ZIP and Verify contract.
 
 ## Validation and migration
 

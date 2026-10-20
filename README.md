@@ -150,6 +150,13 @@ session Undo/Redo remains separate. See [the contract](docs/named-versions.md),
 [format notes](docs/project-format.md#named-versions) and
 [validation record](docs/validation-named-versions.md).
 
+**Collect Media** packages only the media and fonts referenced by a saved film
+or project, with per-item rights review, content hashes and ZIP/folder output.
+Verify relocates the package into a private temporary project, reopens it, renders
+a preview and decodes a real MP4. Unused Library assets, named versions,
+credentials and original absolute paths are excluded. See the [package
+contract](docs/collect-media.md) and [validation record](docs/validation-collect-media.md).
+
 **Scene-script planning:** use saved media
 categories or chronology to draft editable scenes, narration and visual direction,
 then review an actual solver-generated cut against the film's time limit. Accepting

@@ -29,6 +29,7 @@ import AppSettings from "./components/AppSettings.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
+import CollectMediaPanel from "./components/CollectMediaPanel.vue";
 import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
@@ -93,6 +94,7 @@ const projectGeneration = ref(0);
 const connected = ref(false);
 const loading = ref(true);
 const busy = ref("");
+const collectBusy = ref(false);
 const error = ref<unknown>("");
 const errorMessage = computed(() => uiMessage(error.value));
 const errorDetails = computed(() => errorDetail(error.value));
@@ -241,6 +243,7 @@ function jobBlocksProjectSwitch(job: Job, recovery?: AnalysisJobRecoveryState) {
 const projectSwitchBlocked = computed(
   () =>
     !!busy.value ||
+    collectBusy.value ||
     storyReviewBusy.value ||
     storyReviewPending.value ||
     relinkBusy.value ||
@@ -1857,6 +1860,7 @@ async function changeWorkspace() {
     if (
       !current() ||
       relinkBusy.value ||
+      collectBusy.value ||
       analysisRecoveryPending.value ||
       latest.jobs.some((job) =>
         jobBlocksProjectSwitch(job, latest.analysisRecovery?.[job.id]),
@@ -1958,7 +1962,7 @@ onUnmounted(() => {
           :key="item"
           :class="{ current: tab === item }"
           :aria-current="tab === item ? 'page' : undefined"
-          :disabled="!!busy || relinkBusy"
+          :disabled="!!busy || relinkBusy || collectBusy"
           @click="changeTab(item)"
         >
           {{ t(`app.navigation.${item}`) }}
@@ -3448,6 +3452,14 @@ onUnmounted(() => {
             @quality="changeOutputQuality"
             @caption-track="changeOutputCaptionTrack"
             @export="exportFilm"
+          />
+          <CollectMediaPanel
+            v-if="tab === 'export'"
+            :key="`${project.id}:${projectGeneration}`"
+            :project="project"
+            :composition="activeComposition"
+            :disabled="!!busy || relinkBusy || activeJobs.length > 0"
+            @busy="collectBusy = $event"
           />
           <button
             v-if="previewVersion && tab === 'edit'"

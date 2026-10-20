@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { inspectCatalogSnapshot, ProjectCatalog } from "../src/index.js";
+import {
+  createPortableCatalogSnapshot,
+  inspectCatalogSnapshot,
+  ProjectCatalog,
+} from "../src/index.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -45,6 +49,37 @@ describe("consistent project catalog snapshots", () => {
     } finally {
       check.close();
     }
+  });
+
+  it("projects only selected media into a portable catalog image", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-portable-catalog-test-"),
+    );
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const catalog = new ProjectCatalog(directory);
+    cleanup.push(() => catalog.close());
+    const asset = (id: string) => ({
+      id,
+      uri: `file:///private/${id}.png`,
+      name: `${id}.png`,
+      mediaType: "image" as const,
+      contentHash: "a".repeat(64),
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    catalog.upsertAsset(asset("selected"));
+    catalog.upsertAsset(asset("unselected-private-name"));
+    const image = catalog.withConsistentSnapshot((value) => Buffer.from(value));
+    const packaged = {
+      ...asset("selected"),
+      uri: "openfilm-package://sources/selected.png",
+    };
+    const filtered = createPortableCatalogSnapshot(image, 5, [packaged]);
+    const snapshot = inspectCatalogSnapshot(filtered, 5);
+    expect(snapshot.assets).toEqual([packaged]);
+    expect(filtered.toString("utf8")).not.toContain("unselected-private-name");
+    expect(filtered.toString("utf8")).not.toContain("file:///private");
   });
 
   it("restores all catalog rows in place from a validated saved snapshot", async () => {

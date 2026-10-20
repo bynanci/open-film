@@ -126,15 +126,14 @@ sound and output verification with decoded audio evidence. The staged dependenci
 and acceptance evidence are recorded in the
 [creative-scene platform roadmap](docs/roadmap/creative-scene-platform.md).
 
-## Candidate — M7A named project versions
+## Implemented — M7A named project versions
 
 M7A adds immutable, local project snapshots and structural comparison through
 the shared application service. Restore requires a current revision, explicit
 confirmation, verified source identity and a fresh recovery checkpoint; it does
-not merge with session Undo/Redo or copy original media. The candidate includes
-synthetic actual-MP4 validation, while exact-head full gates and independent
-review remain required before merge. See [the contract](docs/named-versions.md)
-and [validation](docs/validation-named-versions.md).
+not merge with session Undo/Redo or copy original media. M7A is integrated in
+`main` through PR #34. See [the contract](docs/named-versions.md) and
+[validation](docs/validation-named-versions.md).
 
 M7B still needs still-PNG/WAV/stem and aspect-ratio presets; M7C needs an honest
 native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
@@ -162,6 +161,24 @@ See [the validation record](docs/validation-photo-depth.md). Independent PR
 review and stacked CI are pending. Real-photo subject stability, sustained 4K
 rendering, physical display, Windows/macOS behavior and NLE review remain manual
 gates.
+
+M7B is an open Export Formats candidate PR (#36) with unresolved review findings.
+M7C remains queued. M7D is in development as a separate Collect Media candidate;
+its validation record separates synthetic relocation/render results from
+Windows/macOS workstation gates. M7E still needs native installer, dependency
+and rollback evidence. M8 selective 2.5D photo animation is separate from M7A.
+
+## Candidate — M7D Collect Media
+
+Collect only assets referenced by a chosen saved Composition or by the project
+stories/compositions. The shared application service previews hashes, size,
+font dependencies and explicit rights declarations, then writes a filtered
+project manifest and SQLite snapshot plus hash-addressed media/font files. It
+supports ZIP and directory output, rejects unsafe paths and links, excludes
+versions/caches/credentials/private source paths, and verifies a relocated
+package by reopening it and rendering a real MP4. Exact-head gates, CI and
+independent review remain before merge; see [the contract](docs/collect-media.md)
+and [validation](docs/validation-collect-media.md).
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 

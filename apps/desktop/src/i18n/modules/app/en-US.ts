@@ -257,6 +257,96 @@ export default {
         "Watch your film, or bring an editable timeline into your editing room.",
       footer: "Made of your moments.",
     },
+    collect: {
+      eyebrow: "PORTABLE PROJECT PACKAGE",
+      title: "Collect media",
+      description:
+        "Review the files your saved story uses, then make a package that can reopen on another computer.",
+      privacy:
+        "OpenFilm copies selected files and leaves originals untouched. The package omits unused library media, private absolute paths, caches, and named version snapshots.",
+      scope: "What to include",
+      currentFilm: "Used in this film",
+      currentFilmHint:
+        "Include references from one saved story and composition.",
+      entireProject: "All referenced project media",
+      entireProjectHint:
+        "Include references from every saved story and composition.",
+      composition: "Saved composition",
+      format: "Package format",
+      zip: "ZIP archive",
+      directory: "OpenFilm package folder",
+      review: "Review package",
+      refreshReview: "Refresh review",
+      cancel: "Cancel",
+      planning: "Checking sources and calculating package size…",
+      creating: "Copying and verifying selected files…",
+      verifying: "Opening the package and rendering a test MP4…",
+      reviewStale:
+        "The scope or rights changed. Review the package again before creating it.",
+      referencedFiles: "Referenced media files",
+      packageSize: "Estimated package size",
+      uniqueSources: "Unique media bytes after deduplication",
+      versions: "Named versions",
+      versionsExcluded: "Not included",
+      resources: "Package contents and rights",
+      kind: { media: "Media source", font: "Font required by this film" },
+      unavailable: "Unavailable",
+      rights: "Rights declaration",
+      confirmRights:
+        "I have the right to include this file in a portable package.",
+      rightsBasis: "Rights basis",
+      chooseRightsBasis: "Choose a basis",
+      basis: {
+        owned: "I own this work",
+        licensed: "Licensed for reuse",
+        cc0: "CC0",
+        publicDomain: "Public domain",
+        other: "Other permission",
+      },
+      licenseName: "License or permission name",
+      attribution: "Attribution (optional)",
+      rightsMissing:
+        "Declare rights for {count} remaining file(s) before packaging.",
+      rightsIncomplete:
+        "Choose a rights basis and name the license for each confirmed file.",
+      packageBlocked:
+        "Resolve every blocking issue before creating a complete package.",
+      create: "Create package",
+      verify: "Verify package and render MP4",
+      created: "Package created",
+      savedInProject:
+        "Saved in this film’s exports folder. The ZIP can be downloaded here.",
+      download: "Download package",
+      manifestHash: "Manifest SHA-256",
+      verified: "Package verification passed",
+      verifySummary: "Checked {count} media source(s) and {fonts} font(s).",
+      renderEvidence:
+        "Rendered MP4: {width} × {height}, {frames} frames, {duration}s at {frameRate} fps.",
+      audioEvidence:
+        "Decoded audio: {codec}, {sampleRate} Hz, {channels} channel(s).",
+      renderWarnings:
+        "The render reported {count} warning(s). Review the film after opening it on the target workstation.",
+      previewHash: "Preview SHA-256",
+      outputHash: "MP4 SHA-256",
+      issues: {
+        sourceUnsupportedUri: "This source is not a supported local file.",
+        sourceNestedArchive: "Nested archives cannot be collected.",
+        sourceHashMismatch:
+          "The current file does not match its saved source hash.",
+        sourceTooLarge: "This source exceeds the per-file package limit.",
+        sourceChanged: "The source changed while it was being checked.",
+        sourceUnsafeOrMissing:
+          "The file is missing or contains an unsafe path component.",
+        sourceUnavailable: "The source could not be read.",
+        rightsRequired: "A rights declaration is required.",
+        fontFallback:
+          "The renderer selected a fallback font; review typography after reopening.",
+        fontUnavailable: "A font required by this film could not be found.",
+        packageTooLarge: "The package exceeds the ZIP32 size limit.",
+        scopeNoMedia: "This selection has no referenced media files.",
+        unknown: "This item cannot be included in the package.",
+      },
+    },
     library: {
       eyebrow: "YOUR COLLECTION",
       description: "A place for the moments you want to remember.",

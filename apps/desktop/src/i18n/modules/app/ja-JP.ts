@@ -252,6 +252,98 @@ export default {
         "フィルムを見たり、編集用タイムラインを別のソフトへ渡したりできます。",
       footer: "あなたの瞬間からできています。",
     },
+    collect: {
+      eyebrow: "ポータブルプロジェクトパッケージ",
+      title: "メディアを収集",
+      description:
+        "保存済みストーリーが使うファイルを確認し、別のパソコンで開けるパッケージを作成します。",
+      privacy:
+        "OpenFilm は選択したファイルをコピーし、元のファイルは変更しません。未使用のライブラリメディア、非公開の絶対パス、キャッシュ、名前付きバージョンスナップショットは含まれません。",
+      scope: "含める範囲",
+      currentFilm: "このフィルムで使用中",
+      currentFilmHint:
+        "1つの保存済みストーリーとコンポジションの参照を含めます。",
+      entireProject: "プロジェクト全体の参照メディア",
+      entireProjectHint:
+        "すべての保存済みストーリーとコンポジションの参照を含めます。",
+      composition: "保存済みコンポジション",
+      format: "パッケージ形式",
+      zip: "ZIP アーカイブ",
+      directory: "OpenFilm パッケージフォルダー",
+      review: "内容を確認",
+      refreshReview: "確認し直す",
+      cancel: "キャンセル",
+      planning: "ソースを確認してサイズを計算中…",
+      creating: "選択したファイルをコピーして検証中…",
+      verifying: "パッケージを開き、テスト MP4 をレンダリング中…",
+      reviewStale:
+        "範囲または権利の申告が変更されました。作成前にもう一度確認してください。",
+      referencedFiles: "参照メディアファイル",
+      packageSize: "パッケージの推定サイズ",
+      uniqueSources: "重複排除後のメディアサイズ",
+      versions: "名前付きバージョン",
+      versionsExcluded: "含まれません",
+      resources: "パッケージ内容と権利",
+      kind: { media: "メディアソース", font: "このフィルムで必要なフォント" },
+      unavailable: "利用できません",
+      rights: "権利の申告",
+      confirmRights:
+        "このファイルをポータブルパッケージに含める権利があります。",
+      rightsBasis: "権利の根拠",
+      chooseRightsBasis: "根拠を選択",
+      basis: {
+        owned: "自分が所有する作品",
+        licensed: "再利用ライセンスを取得済み",
+        cc0: "CC0",
+        publicDomain: "パブリックドメイン",
+        other: "その他の許可",
+      },
+      licenseName: "ライセンスまたは許可の名称",
+      attribution: "クレジット表記（任意）",
+      rightsMissing:
+        "パッケージ化する前に、残り {count} 個のファイルの権利を申告してください。",
+      rightsIncomplete:
+        "確認済みファイルごとに権利の根拠とライセンス名を入力してください。",
+      packageBlocked:
+        "完全なパッケージを作る前に、すべての阻害項目を解決してください。",
+      create: "パッケージを作成",
+      verify: "検証して MP4 をレンダリング",
+      created: "パッケージを作成しました",
+      savedInProject:
+        "このフィルムの書き出しフォルダーに保存しました。ZIP はここからダウンロードできます。",
+      download: "パッケージをダウンロード",
+      manifestHash: "マニフェスト SHA-256",
+      verified: "パッケージの検証に成功しました",
+      verifySummary:
+        "メディアソース {count} 個、フォント {fonts} 個を確認しました。",
+      renderEvidence:
+        "レンダリング MP4：{width} × {height}、{frames} フレーム、{duration} 秒、{frameRate} fps。",
+      audioEvidence:
+        "デコードした音声：{codec}、{sampleRate} Hz、{channels} チャンネル。",
+      renderWarnings:
+        "レンダリングで警告が {count} 件ありました。対象のワークステーションで開き直して確認してください。",
+      previewHash: "プレビュー SHA-256",
+      outputHash: "MP4 SHA-256",
+      issues: {
+        sourceUnsupportedUri:
+          "このソースは対応するローカルファイルではありません。",
+        sourceNestedArchive: "アーカイブを含むファイルは収集できません。",
+        sourceHashMismatch:
+          "現在のファイルが保存済みのソースハッシュと一致しません。",
+        sourceTooLarge: "ソースがファイル単位の上限を超えています。",
+        sourceChanged: "確認中にソースが変更されました。",
+        sourceUnsafeOrMissing:
+          "ファイルがないか、パスに安全でない要素があります。",
+        sourceUnavailable: "ソースを読み取れませんでした。",
+        rightsRequired: "権利の申告が必要です。",
+        fontFallback:
+          "代替フォントが選択されました。開き直した後に文字表示を確認してください。",
+        fontUnavailable: "このフィルムに必要なフォントが見つかりません。",
+        packageTooLarge: "パッケージが ZIP32 のサイズ上限を超えています。",
+        scopeNoMedia: "選択範囲に参照メディアファイルがありません。",
+        unknown: "この項目はパッケージに含められません。",
+      },
+    },
     library: {
       eyebrow: "あなたのコレクション",
       description: "覚えていたい瞬間を集める場所。",

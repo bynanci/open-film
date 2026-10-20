@@ -18,6 +18,7 @@ import {
   type GraphicImageNode,
   type MediaAsset,
   type PhotoDepthParallaxRecipe,
+  type TitleStyle,
 } from "@openfilm/core";
 import { checkAbort, hashFile, localPath, runProcess } from "@openfilm/media";
 import { createTitleOverlay } from "./titles.js";
@@ -513,7 +514,10 @@ export async function prepareGraphicScenes(
   assets: readonly MediaAsset[],
   settings: RenderSettings,
   work: string,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    signal?: AbortSignal;
+    fontPathForStyle?: (style: TitleStyle | undefined) => string | undefined;
+  } = {},
 ): Promise<PreparedGraphicScenes> {
   // Validate before copying: do not invoke accessors in a caller's scene object.
   const ranges = graphicFrameRanges(composition, settings);
@@ -686,21 +690,23 @@ export async function prepareGraphicScenes(
         fail("Graphic textures exceed the pixel budget.", true);
       const path = join(work, `graphic-texture-${index++}.png`);
       if (node.type === "text") {
+        const style: TitleStyle = {
+          version: 1,
+          role: "scene-statement",
+          fontSize: node.fontSize,
+          fontFamily: node.fontFamily,
+          fontWeight: node.fontWeight,
+          background: "none",
+          position: "center",
+          maxWidth: width,
+          safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
+        };
         const title = await createTitleOverlay(
           node.text,
-          {
-            version: 1,
-            role: "scene-statement",
-            fontSize: node.fontSize,
-            fontFamily: node.fontFamily,
-            fontWeight: node.fontWeight,
-            background: "none",
-            position: "center",
-            maxWidth: width,
-            safeArea: { left: 0, right: 0, top: 0, bottom: 0 },
-          },
+          style,
           { width, height },
           path,
+          { fontPath: options.fontPathForStyle?.(style) },
         );
         fonts.push({
           family: title.font.family,

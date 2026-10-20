@@ -1,4 +1,5 @@
 import { lstatSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
 import * as nativePath from "node:path";
 import { pathToFileURL } from "node:url";
 import type { MediaAsset } from "@openfilm/core";
@@ -68,7 +69,20 @@ export function managedSourceUri(
       )
         return undefined;
     }
-    return pathToFileURL(path).href;
+    const uri = pathToFileURL(path).href;
+    const reference = asset.metadata["openfilm.reference"] as
+      { originalUri?: unknown } | undefined;
+    if (
+      typeof reference?.originalUri === "string" &&
+      reference.originalUri.startsWith("openfilm-origin:")
+    ) {
+      const identity = createHash("sha256")
+        .update(asset.id)
+        .digest("hex")
+        .slice(0, 24);
+      return `${uri}#openfilm-asset=${identity}`;
+    }
+    return uri;
   } catch {
     return undefined;
   }
