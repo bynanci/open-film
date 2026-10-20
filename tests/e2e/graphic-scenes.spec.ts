@@ -26,6 +26,7 @@ for (const layout of [
   "graphics-only",
   "visual-gaps",
   "covered-other-clip",
+  "covered-video",
 ] as const) {
   test(`previews exact PhotoDepth start/middle/end frames in ${layout} without changing selection or saved edits`, async ({
     page,
@@ -58,6 +59,7 @@ for (const layout of [
       const assets = app.catalog.listAssets({ limit: 100 });
       const photo = assets.find((asset) => asset.name === "01-photo.png")!;
       const other = assets.find((asset) => asset.name === "03-evening.png")!;
+      const motion = assets.find((asset) => asset.name === "04-motion.mp4")!;
       const mask = assets.find(
         (asset) => asset.name === "synthetic-seek-mask.png",
       )!;
@@ -91,7 +93,8 @@ for (const layout of [
                   },
                   {
                     id: "gap-last",
-                    assetId: other.id,
+                    assetId:
+                      layout === "covered-other-clip" ? motion.id : other.id,
                     beatId: story.beats[0]!.id,
                     sourceIn: 0,
                     sourceOut: 0.5,
@@ -115,6 +118,20 @@ for (const layout of [
                             from: { scale: 1, x: 0, y: 0 },
                             to: { scale: 1.08, x: 0, y: 0 },
                           },
+                        },
+                      ]
+                    : []),
+                  ...(layout === "covered-video"
+                    ? [
+                        {
+                          id: "covering-video",
+                          assetId: motion.id,
+                          beatId: story.beats[0]!.id,
+                          sourceIn: 0,
+                          sourceOut: 3,
+                          timelineStart: 1,
+                          timelineDuration: 6,
+                          transform: { speed: 0.5 },
                         },
                       ]
                     : []),
@@ -201,15 +218,39 @@ for (const layout of [
       .locator(".editor-clip.selected")
       .evaluateAll((nodes) => nodes.map((node) => node.id));
     const frames = [];
-    for (const [label, frame] of [
-      ["Preview start", 30],
-      ["Preview middle", 120],
-      ["Preview end", 209],
-    ] as const) {
+    const seekOrder =
+      layout === "covered-video"
+        ? ([
+            ["Preview middle", 120],
+            ["Preview start", 30],
+            ["Preview end", 209],
+          ] as const)
+        : ([
+            ["Preview start", 30],
+            ["Preview middle", 120],
+            ["Preview end", 209],
+          ] as const);
+    for (const [label, frame] of seekOrder) {
       await controls.getByRole("button", { name: label, exact: true }).click();
       const preview = page.getByTestId("graphic-preview");
       await expect(preview).toBeVisible();
       await expect(preview).toHaveAttribute("data-frame", String(frame));
+      if (layout === "covered-video") {
+        const video = page.locator(".editor-source-screen video");
+        await expect
+          .poll(() =>
+            video.evaluate(
+              (element: HTMLVideoElement) => element.readyState >= 2,
+            ),
+          )
+          .toBe(true);
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeCloseTo((frame / 30 - 1) * 0.5, 3);
+        await expect(preview).toHaveAttribute("data-frame", String(frame));
+      }
       expect(
         await page
           .locator(".editor-clip.selected")
@@ -236,6 +277,36 @@ for (const layout of [
           .join("");
       });
       frames.push({ frame, rgbaSha256: pixels });
+      if (layout === "covered-video" && frame === 120) {
+        const video = page.locator(".editor-source-screen video");
+        await page
+          .getByRole("button", { name: "Step forward one frame", exact: true })
+          .click();
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeCloseTo(37 / 24, 3);
+        await expect(preview).toHaveAttribute("data-frame", "122");
+        await controls
+          .getByRole("button", { name: "Preview middle", exact: true })
+          .click();
+        await expect(preview).toHaveAttribute("data-frame", "120");
+        await video.evaluate((element: HTMLVideoElement) => element.play());
+        await expect
+          .poll(() =>
+            video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          )
+          .toBeGreaterThan(1.6);
+        await video.evaluate((element: HTMLVideoElement) => element.pause());
+        const sourceTime = await video.evaluate(
+          (element: HTMLVideoElement) => element.currentTime,
+        );
+        await expect(preview).toHaveAttribute(
+          "data-frame",
+          String(Math.floor((1 + sourceTime / 0.5) * 30 + 1e-9)),
+        );
+      }
     }
     expect(new Set(frames.map((frame) => frame.rgbaSha256)).size).toBe(3);
     const after = await state();
@@ -246,6 +317,59 @@ for (const layout of [
       saved.canUndo,
       saved.canRedo,
     ]);
+    if (layout === "covered-other-clip") {
+      await controls
+        .getByRole("button", { name: "Preview middle", exact: true })
+        .click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "120",
+      );
+      await page.locator("#clip-gap-last").click();
+      const video = page.locator(".editor-source-screen video");
+      await expect
+        .poll(() =>
+          video.evaluate(
+            (element: HTMLVideoElement) => element.readyState >= 2,
+          ),
+        )
+        .toBe(true);
+      await expect
+        .poll(() =>
+          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+        )
+        .toBe(0);
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "225",
+      );
+      await page.locator("#clip-gap-first").click();
+      await page.getByTestId("graphic-inspector-tab").click();
+      await panel
+        .getByRole("button", { name: "Select layer seek-photo", exact: true })
+        .click();
+      await controls
+        .getByRole("button", { name: "Preview end", exact: true })
+        .click();
+      await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+        "data-frame",
+        "209",
+      );
+    }
+    await page.getByTestId("graphic-node-opacity").fill("0.9");
+    await page.getByTestId("graphic-node-opacity").press("Tab");
+    await expect
+      .poll(async () => (await state()).revision)
+      .not.toBe(saved.revision);
+    await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+    await expect(page.getByTestId("graphic-preview")).toHaveAttribute(
+      "data-frame",
+      "0",
+    );
+    await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+    await expect
+      .poll(async () => (await state()).composition)
+      .toEqual(saved.composition);
     if (layout !== "graphics-only") {
       await page.locator("#clip-gap-first").click();
       await expect(page.getByTestId("graphic-preview")).toHaveAttribute(

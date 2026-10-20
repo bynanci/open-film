@@ -205,6 +205,53 @@ semantic keys) pass. No full suite, native installer or real-photo manual gate
 is inferred from these focused checks; combined integration gates remain with
 the coordinator.
 
+## Late PR #35 readback in the PR #41 integration — 2026-10-20
+
+Reviewed base: `9ccc082d0f724294b724296eea7aa4fd48e59349`. The previous
+PR #35 branch remains frozen; this follow-up is isolated for PR #41 integration.
+
+| Discussion ID | Disposition and regression evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4327435195    | Fixed: graphics preview owns an exact Composition seek independently of clip selection. Graphics-only films render on the existing canvas; gaps retain their requested time. A covering clip supplies only the preview background. Saved revisions, project/Composition changes, frame-rate changes and clip navigation clear stale ephemeral seeks. Native metadata retains its pending seek; native transport updates the cursor while microsecond source-clock rounding preserves an exact requested frame. No dummy source, clip, second timeline, preview command or history entry is created. |
+| 4327435201    | Fixed: strict recipe validation no longer assigns into the caller's scene. Literal-data and accessor checks still precede the detached clone. Mutable and frozen caller scenes/commands retain object identity through validation, rejection and application Undo/Redo.                                                                                                                                                                                                                                                                                                                             |
+| 4327435212    | Fixed: only the mask decoded-pixel cap raises the existing mask-specific error. Other preparation budgets produce `graphics.resource-limit`, without a mask asset or part identity. The localized UI describes a graphics resource limit. Actual 4K/60 frame work and three individually admitted 2700×2700 RGBA16 PNGs exceeding the combined source-byte budget reproduce the distinction. The exact source/mask pair first passes decoding, alpha/subject checks and source verification at safe settings.                                                                                       |
+
+The corrected baseline browser fixture first obtains a successful saved
+`graphics.png` frame response. It then reproduces no Monitor image in a
+graphics-only film, and frame 15 instead of requested frame 30 in a visual gap.
+An unchanged-production baseline with the final data fixtures has eight
+expected failing core/application/renderer controls: mutable and frozen
+admission, rejection without prior mutation, both resource budgets, and the
+mask-specific error. The independent review also reproduces a first native
+video seek returning frame 30 instead of 120, and source-clock rounding showing
+frame 208 instead of the exact requested 209. These are automated regressions,
+not manual-gate exceptions.
+
+The related suite passes 164 tests in eleven files. The cursor follow-up also
+passes 23 transport/Monitor tests in three files. Isolated browser cases cover
+graphics-only, gaps, a different covering motion photo, a real slowed native
+video, and the existing PhotoDepth authoring/import/history/reopen flow. They
+check exact frames 30/120/209, an initial Middle seek before video metadata,
+frame stepping, actual play/pause, image-to-video navigation, revision cleanup,
+unchanged selection/revision/history for preview-only actions, and reopened
+saved data. The local harness uses API port 42791 and UI port 47417; no shared
+default port or production Origin policy changes are involved.
+
+Actual FFmpeg controls render both eight-second films to 320×180 H.264 MP4s
+with 240 decoded frames at 30 fps. Shuffled seeks 209/30/120/209 are repeatable.
+The displayed browser RGBA SHA-256 values equal the uncompressed shared
+Monitor frames exactly; decoded MP4 mean absolute RGB errors are 0.91–1.16
+levels per channel. Source hashes remain unchanged. Synthetic source files,
+Monitor/decoded PNGs, both MP4s, manifests and measurements are retained under
+`/tmp/openfilm-v1-validation/pr35-late-render-evidence`. Existing six-second
+render, fallback/legacy, source-alpha, orientation and receipt controls also
+pass with artifacts under `pr35-late-existing-render-evidence`.
+
+TypeScript/Vue, changed-file lint, formatting, diff checks and i18n (1,971
+matching semantic keys) pass. Exact source commits, per-run results and
+independent review are recorded in `/tmp/openfilm-v1-validation/pr35-late-*`.
+Full combined release checks and the manual gates below remain separate.
+
 ## Manual gates
 
 - Test representative real photographs only on a local workstation. Check hair,
