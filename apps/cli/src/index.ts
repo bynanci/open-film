@@ -393,6 +393,7 @@ async function main() {
     throw new Error("Use --project <film.openfilm> to select a project.");
   const app =
     command === "captions" ||
+    command === "handoff" ||
     (command === "export" &&
       (options["preview"] || value(options, "crop-preview-token"))) ||
     ((command === "scene-plan" || command === "direction-review") &&

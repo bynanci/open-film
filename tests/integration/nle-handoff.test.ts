@@ -1,9 +1,12 @@
 import * as media from "@openfilm/media";
-import { FFmpegRenderer } from "@openfilm/render";
+import { FFmpegRenderer, createTitleOverlay } from "@openfilm/render";
+import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { startServer } from "../../apps/server/src/server.js";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   mkdtemp,
+  cp,
   mkdir,
   symlink,
   readFile,
@@ -181,6 +184,345 @@ async function fixture() {
   await app.save();
   return { root, app, composition, image, audio };
 }
+it.each(["title-track", "attached-title", "caption"])(
+  "rejects an over-8K %s reference before review approval while retaining native metadata",
+  async (kind) => {
+    const { root, app, composition } = await fixture();
+    composition.graphicScenes = [];
+    if (kind !== "caption") {
+      composition.captionTracks = [];
+      if (kind === "title-track")
+        composition.tracks.push({
+          id: "title-track",
+          type: "titles",
+          clips: [
+            {
+              id: "title",
+              assetId: composition.tracks[0]!.clips[0]!.assetId,
+              timelineStart: 0,
+              timelineDuration: 4,
+              title: "Title",
+            },
+          ],
+        });
+      else composition.tracks[0]!.clips[0]!.title = "Title";
+    }
+    app.project.settings.width = 7682;
+    app.project.settings.height = 4320;
+    app.project.timelines = [composition];
+    await app.save();
+    expect(app.project.timelines[0]!.graphicScenes).toEqual([]);
+    await expect(
+      createTitleOverlay(
+        "Title",
+        undefined,
+        app.project.settings,
+        join(root, "oversize.png"),
+      ),
+    ).rejects.toThrow(/8K/u);
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    for (const options of [
+      { mode: "preserve-visual-fidelity" as const },
+      { bakeAudio: true },
+    ])
+      expect(() => app.reviewHandoff(composition.id, options)).toThrow(/8K/u);
+    expect(await readdir(join(app.directory, "cache"))).not.toContain(
+      "nle-handoff",
+    );
+    app.project.settings.width = 7680;
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() =>
+      app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+    ).not.toThrow();
+    expect(() =>
+      app.reviewHandoff(composition.id, { bakeAudio: true }),
+    ).not.toThrow();
+    app.project.settings.width = 7682;
+    composition.tracks = composition.tracks.filter(
+      (track) => track.type !== "titles",
+    );
+    for (const track of composition.tracks)
+      for (const clip of track.clips) delete clip.title;
+    composition.captionTracks = [];
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() =>
+      app.reviewHandoff(composition.id, { bakeAudio: true }),
+    ).not.toThrow();
+  },
+);
+
+it.each(["preserve-editability", "preserve-visual-fidelity"] as const)(
+  "CLI %s review/export preserve project bytes, asset rows and another owner's queued/running jobs",
+  async (mode) => {
+    const { root, app, composition, image, audio } = await fixture();
+    const directory = app.directory;
+    app.catalog.saveJob({
+      id: "other-running",
+      type: "render",
+      status: "running",
+      progress: 0.25,
+      createdAt: "2026-10-20T00:00:00.000Z",
+    });
+    app.catalog.saveJob({
+      id: "other-queued",
+      type: "import",
+      status: "queued",
+      progress: 0,
+      createdAt: "2026-10-20T00:00:00.000Z",
+    });
+    await app.save();
+    app.close();
+    cleanup.pop();
+    const projectPath = join(directory, "project.json"),
+      databasePath = join(directory, "database.sqlite");
+    const beforeProject = await readFile(projectPath),
+      beforeDatabase = await readFile(databasePath);
+    const sourceHashes = await Promise.all([hashFile(image), hashFile(audio)]);
+    const catalog = () => {
+      const database = new DatabaseSync(databasePath, { readOnly: true });
+      try {
+        const tables = database
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+          )
+          .all() as { name: string }[];
+        return JSON.stringify(
+          tables.map(({ name }) => [
+            name,
+            database
+              .prepare(
+                `SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`,
+              )
+              .all(),
+          ]),
+        );
+      } finally {
+        database.close();
+      }
+    };
+    const beforeCatalog = catalog();
+    const cli = (...args: string[]) =>
+      runProcess(process.execPath, [
+        "--import",
+        "tsx",
+        "apps/cli/src/index.ts",
+        "handoff",
+        ...args,
+        "--project",
+        directory,
+      ]);
+    const review = JSON.parse(
+      (
+        await cli("review", "--composition", composition.id, "--mode", mode)
+      ).stdout.toString(),
+    );
+    expect.soft(await readFile(projectPath)).toEqual(beforeProject);
+    expect.soft(catalog()).toEqual(beforeCatalog);
+    expect.soft(await readFile(databasePath)).toEqual(beforeDatabase);
+    const reviewPath = join(root, "passive-review.json");
+    await writeFile(reviewPath, JSON.stringify(review));
+    const publication = JSON.parse(
+      (await cli("export", "--review", reviewPath)).stdout.toString(),
+    );
+    expect(publication.plan).toEqual(review.plan);
+    expect.soft(await readFile(projectPath)).toEqual(beforeProject);
+    expect.soft(catalog()).toEqual(beforeCatalog);
+    expect.soft(await readFile(databasePath)).toEqual(beforeDatabase);
+    expect(await Promise.all([hashFile(image), hashFile(audio)])).toEqual(
+      sourceHashes,
+    );
+    if (process.env.OPENFILM_HANDOFF_WAVE5_EVIDENCE) {
+      const evidence = join(
+        process.env.OPENFILM_HANDOFF_WAVE5_EVIDENCE,
+        `cli-${mode}`,
+      );
+      await mkdir(evidence, { recursive: true });
+      const sha256 = (bytes: Buffer | string) =>
+        createHash("sha256").update(bytes).digest("hex");
+      await writeFile(
+        join(evidence, "immutability.json"),
+        JSON.stringify(
+          {
+            mode,
+            projectSha256: sha256(beforeProject),
+            databaseSha256: sha256(beforeDatabase),
+            allCatalogTablesSha256: sha256(beforeCatalog),
+            sourceHashes,
+            publicationPlan: publication.plan,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  },
+);
+
+it("does not impose the text raster cap on unselected or zero-frame captions", async () => {
+  const { app, composition } = await fixture();
+  composition.graphicScenes = [];
+  app.project.settings.width = 7682;
+  app.project.settings.height = 4320;
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() =>
+    app.reviewHandoff(composition.id, {
+      bakeAudio: true,
+      captionTrackId: null,
+    }),
+  ).not.toThrow();
+  const cue = composition.captionTracks![0]!.cues[0]!;
+  cue.startMs = 1;
+  cue.endMs = 2;
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() =>
+    app.reviewHandoff(composition.id, { bakeAudio: true }),
+  ).not.toThrow();
+  expect(
+    app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }).plan
+      .visualRanges,
+  ).toEqual([]);
+});
+
+it.each([29.97, 30000 / 1001])(
+  "publishes fractional %s caption precomps matching decoded reference frames and exact SRT times",
+  async (rate) => {
+    const { app, composition, image, audio } = await fixture();
+    composition.graphicScenes = [];
+    app.project.settings.frameRate = rate;
+    const track = composition.captionTracks![0]!;
+    track.cues = [
+      { ...track.cues[0]!, id: "tiny", startMs: 1, endMs: 2, text: "Tiny" },
+      {
+        ...track.cues[0]!,
+        id: "ordinary",
+        startMs: 2000,
+        endMs: 3000,
+        text: "Caption",
+      },
+      {
+        ...track.cues[0]!,
+        id: "last",
+        startMs: 3000,
+        endMs: 4000,
+        text: "Last",
+      },
+    ];
+    app.project.timelines = [composition];
+    await app.save();
+    const before = JSON.stringify(app.project);
+    const sourceHashes = await Promise.all([hashFile(image), hashFile(audio)]);
+    const review = app.reviewHandoff(composition.id, {
+      mode: "preserve-visual-fidelity",
+    });
+    expect(review.plan.visualRanges).toEqual([
+      { startFrame: 60, endFrame: 119 },
+    ]);
+    const publication = await app.exportHandoff({
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+      mode: review.plan.mode,
+    });
+    const file = (name: string) =>
+      app.handoff.file(
+        publication.id,
+        publication.files.findIndex((item) => item.name === name),
+      );
+    const reference = await file("reference.mp4"),
+      precomp = await file("media/precomp-0.mp4");
+    const frames = async (path: string) =>
+      JSON.parse(
+        (
+          await runProcess("ffprobe", [
+            "-v",
+            "error",
+            "-count_frames",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=nb_read_frames",
+            "-of",
+            "json",
+            path,
+          ])
+        ).stdout.toString(),
+      ).streams[0].nb_read_frames;
+    expect(await frames(reference)).toBe("119");
+    expect(await frames(precomp)).toBe("59");
+    const whitePixels = async (path: string, frame: number) => {
+      const pixels = (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          path,
+          "-vf",
+          `select=eq(n\\,${frame})`,
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "rgb24",
+          "-f",
+          "rawvideo",
+          "-",
+        ])
+      ).stdout;
+      expect(pixels.length).toBe(160 * 90 * 3);
+      let count = 0;
+      for (let i = 0; i < pixels.length; i += 3)
+        if (pixels[i]! > 180 && pixels[i + 1]! > 180 && pixels[i + 2]! > 180)
+          count++;
+      return count;
+    };
+    const referenceWhites: Record<number, number> = {};
+    for (const index of [59, 60, 89, 90, 118])
+      referenceWhites[index] = await whitePixels(reference, index);
+    expect(referenceWhites[59]).toBe(0);
+    for (const index of [60, 89, 90, 118])
+      expect(referenceWhites[index]).toBeGreaterThan(0);
+    expect(await whitePixels(precomp, 0)).toBeGreaterThan(0);
+    expect(await whitePixels(precomp, 58)).toBeGreaterThan(0);
+    const sidecar = await readFile(await file("captions-0.srt"), "utf8");
+    expect(sidecar).toContain("00:00:00,001 --> 00:00:00,002");
+    expect(sidecar).toContain("00:00:02,000 --> 00:00:03,000");
+    expect(sidecar).toContain("00:00:03,000 --> 00:00:04,000");
+    expect(JSON.stringify(app.project)).toBe(before);
+    expect(await Promise.all([hashFile(image), hashFile(audio)])).toEqual(
+      sourceHashes,
+    );
+    if (process.env.OPENFILM_HANDOFF_WAVE5_EVIDENCE) {
+      const evidence = join(
+        process.env.OPENFILM_HANDOFF_WAVE5_EVIDENCE,
+        `fractional-${rate}`,
+      );
+      await cp(
+        join(app.directory, "cache", "nle-handoff-published", publication.id),
+        evidence,
+        { recursive: true },
+      );
+      await writeFile(
+        join(evidence, "timing-proof.json"),
+        JSON.stringify(
+          {
+            rate,
+            referenceFrames: 119,
+            precompFrames: 59,
+            referenceWhites,
+            sourceHashes,
+            plan: publication.plan,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  },
+);
+
 it("hands off native cuts plus measured graphic/caption precomps and an aligned full mix", async () => {
   const processSpy = vi.spyOn(media, "runProcess");
   const { root, app, composition, image, audio } = await fixture();
