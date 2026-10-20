@@ -4,6 +4,58 @@ Validation date: 2026-10-20, Linux cloud, Node 24.19.0, pinned pnpm 11.11.0,
 FFmpeg/ffprobe 7.1.5-0+deb13u1 available locally. No paid or real remote generation was called.
 Recorded hashes identify this run, not a cross-platform codec golden.
 
+## Independent recovery follow-up (2026-10-20)
+
+The focused follow-up preserves reviewed PhotoDepth dependency history. Its exact
+base is `86ca011504777b6747b3765f5e597ec4042247b0`; the managed-import correction is
+`737170a7a8c9cd189d855b6ca0bddf059a4746dd`, followed by the same-editor history
+correction `0ffb6b32cbf01ac3d3a0586dfe9d3a893fce4783`. This validation update changes
+documentation only after that tested source. No browser, full suite, external
+provider or physical workstation test was run for this follow-up; combined
+integration gates belong to the release coordinator.
+
+Review comment `4326629423` is resolved. A fault injected after the real
+`importManagedSources` catalog commit and before the prepared receipt reproduced
+an accepted candidate that could not recover after reopening an implicit-pool
+project. Recovery now finds only the expected managed URI, verifies its safe
+location, content hash and actual bytes, and proves the original reviewed
+document and all other sources remain unchanged before adopting that one asset.
+Explicit Accept, source/target locks, original-source hash and stale revision
+checks still apply. Recovery reuses the committed asset and finishes once.
+
+A second regression reproduced losing an earlier authored Undo entry when that
+same crash was retried without reopening the editor. History now rebases only
+from the verified original preview revision or its current revision. The test
+performs an authored beat edit, real preview, explicit Accept, injected commit
+failure, same-editor retry, two Undo operations and two Redo operations. A paired
+case changes another source before preview and proves unrelated history stays
+invalidated.
+
+| Follow-up evidence                                                        | Result                                                                                                                                                                           |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `737170a` focused motion application, fault, provider and HTTP/CLI suites | 4 files / 30 tests passed, 41.04 s; result recorded in the PR delivery                                                                                                           |
+| Same-editor history regression before correction                          | Failed with `Nothing to undo`; `/tmp/openfilm-v1-validation/pr40-same-editor-history-red.log`                                                                                    |
+| `0ffb6b3` same four focused suites                                        | 4 files / 32 tests passed, 40.05 s; `/tmp/openfilm-v1-validation/pr40-history-focused-green.log`                                                                                 |
+| Source/output proof in the recovery tests                                 | Original PNG SHA-256 unchanged; actual adopted render has 48 decoded video frames, 4.000 s duration and original synthetic narration audio; no duplicate managed video           |
+| Recovery counterexamples                                                  | Changed target, original/managed locks, altered original/managed bytes and unrelated pool-source changes rejected without changing the project or consuming the accepted receipt |
+| Edited source formatting and ESLint                                       | Passed                                                                                                                                                                           |
+| Complete TypeScript and Vue typecheck                                     | Passed; `/tmp/openfilm-v1-validation/pr40-history-typecheck.log`                                                                                                                 |
+
+Reproduce the final focused source checks with:
+
+```sh
+pnpm exec vitest run --maxWorkers=1 packages/application/tests/motion-faults.test.ts packages/application/tests/motion-generation.test.ts tests/unit/motion-provider.test.ts tests/integration/motion-generation.test.ts
+pnpm exec prettier --check packages/application/src/editor.ts packages/application/src/motion-generation.ts packages/application/tests/motion-faults.test.ts
+pnpm exec eslint packages/application/src/editor.ts packages/application/src/motion-generation.ts packages/application/tests/motion-faults.test.ts
+pnpm typecheck
+```
+
+Remaining manual gates are unchanged: human/detail deformation, edges and color;
+physical Windows/macOS installation/display; hardware/GPU and sustained 4K; real
+Resolve interchange; and any future remote provider's quality, license,
+retention/cost and consent verification. The local fixture remains synthetic
+camera motion with no remote upload or AI-quality claim.
+
 ## Source and dependency
 
 - Main inspected: `bb2c4521ad894478893485119442a00ffd9b34cc`.
