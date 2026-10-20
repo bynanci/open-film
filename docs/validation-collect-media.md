@@ -202,6 +202,36 @@ source-safety cases preserve valid cover-art audio and single-frame video while
 rejecting forged non-media payloads. Combined focused validation passes 61
 tests in six files; typecheck, lint and formatting pass.
 
+## Empty ZIP entry follow-up — 2026-10-20
+
+Review finding `4327721357` was reproduced from
+`ed76f1a17d9a00adbadf67f148ec00e0683ca4d7`: the stored ZIP writer emitted
+valid zero-byte entries, but extraction constructed a read range whose end was
+before its start. Empty entries now feed an empty stream through the existing
+exclusive file creation and CRC pipeline. Central-directory bounds, descriptors,
+inventory, private file modes and cancellation checks remain active.
+The writer also checks cancellation before opening its output and after syncing,
+passes the signal to its output stream, and waits for close before removing only
+an output it created. This preserves prior files after an exclusive-create
+collision and prevents cancellation from leaving a late output, including an
+empty archive with no entry pipeline.
+
+Seven focused cases cover an empty file's SHA-256, mixed empty/nonempty UTF-8
+entries, tampered size and local-header bounds, a forged empty CRC, existing
+target preservation and cancelled extraction. Three writer cases cover existing
+archive preservation and cancellation while real opens are deliberately held
+pending for empty and nonempty roots. Four empty-entry cases and two writer
+controls have causal failing runs; all eighteen archive cases pass afterward.
+Independent delayed-open and real-sync cancellation probes also reject without
+leaving an output after the operation returns. Synthetic
+round-trip artifacts and local verification logs are retained under
+`/tmp/openfilm-v1-validation/pr41-empty-zip-*`.
+
+Final focused verification passes 64 tests in five collect, archive, source
+safety and HTTP files with one Vitest worker. TypeScript/Vue checks, changed-file
+lint, formatting and diff checks pass. This follow-up runs no full or browser
+suite; combined release gates remain with the coordinator.
+
 ## Manual gates and limits
 
 - Run relocation/reopen on real Windows and macOS filesystems, including path
