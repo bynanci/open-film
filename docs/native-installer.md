@@ -136,3 +136,7 @@ rollback/uninstall behavior must pass the workstation checklist before release.
 
 See [validation](validation-native-installer.md) and
 [workstation QA](workstation-qa.md#m7e-native-installer-candidate).
+
+### Reviewed artifact transport
+
+Upload the staged runtime as `runtime.tar` (archive its contents, preserving executable modes), inside an Actions artifact. Dispatch with both its source workflow run ID and artifact ID. The workflow validates archive paths and rejects links before extraction, then checks the independent manifest digest, complete file hashes, shell version and checkout build bytes. Rust is selected through `RUSTUP_TOOLCHAIN=1.99.0`.

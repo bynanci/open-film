@@ -41,8 +41,11 @@ export function runtimeEnvironment(
     OPENFILM_NATIVE_SERVICE_CONTROL: "1",
   };
 }
-export async function preflightRuntime(root: string): Promise<RuntimeManifest> {
-  const manifest = await verifyRuntimeBundle(root);
+export async function preflightRuntime(
+  root: string,
+  signal?: AbortSignal,
+): Promise<RuntimeManifest> {
+  const manifest = await verifyRuntimeBundle(root, { signal });
   const runningNode = await realpath(process.execPath);
   const bundledNode = await realpath(runtimePath(root, manifest.entries.node));
   const identity = (path: string) =>
@@ -57,6 +60,7 @@ export async function preflightRuntime(root: string): Promise<RuntimeManifest> {
     execute(runtimePath(root, manifest.entries[entry]), args, {
       env,
       windowsHide: true,
+      signal,
       timeout: 15000,
       maxBuffer: 2 * 1024 ** 2,
     });
@@ -146,6 +150,7 @@ export async function runNativeLauncher(
   root: string,
   dataDirectory: string,
   projectsDirectory: string,
+  options: { beforeSpawn?: () => Promise<void> } = {},
 ): Promise<void> {
   root = resolve(root);
   dataDirectory = resolve(dataDirectory);
@@ -155,9 +160,11 @@ export async function runNativeLauncher(
   let closing = false;
   let closeOwned: (() => Promise<void>) | undefined;
   let startupCancelled = false;
+  const startup = new AbortController();
   const lines = createInterface({ input: process.stdin });
   const stop = async () => {
     startupCancelled = true;
+    startup.abort();
     if (closing) return;
     closing = true;
     try {
@@ -187,7 +194,7 @@ export async function runNativeLauncher(
       void stop();
     });
   try {
-    const manifest = await preflightRuntime(root);
+    const manifest = await preflightRuntime(root, startup.signal);
     if (startupCancelled) return;
     try {
       await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
@@ -203,6 +210,9 @@ export async function runNativeLauncher(
     } catch {
       throw new Error("runtime.storage");
     }
+    // Trusted host hook used to exercise cancellation during storage startup.
+    await options.beforeSpawn?.();
+    if (startupCancelled) return;
     // Projects are created only through the existing explicit application flow.
     const token = randomBytes(32).toString("hex");
     const env = runtimeEnvironment(root, dataDirectory, projectsDirectory);
@@ -251,7 +261,7 @@ export async function runNativeLauncher(
           },
         );
       });
-    closeOwned = async () => {
+    const closeService = async () => {
       expectedExit = true;
       if (child.exitCode !== null || child.signalCode !== null) {
         if (child.exitCode !== 0 || !acknowledged)
@@ -280,6 +290,14 @@ export async function runNativeLauncher(
       await wait(ack, 30000);
       const code = await wait(exited, 10000);
       if (code !== 0) throw new Error("runtime.closeFailed");
+    };
+    let closingService: Promise<void> | undefined;
+    closeOwned = () => {
+      closingService ??= closeService().catch((error: unknown) => {
+        closingService = undefined;
+        throw error;
+      });
+      return closingService;
     };
     const ready = new Promise<number>((accept, reject) => {
       let port: number | undefined;
@@ -336,7 +354,7 @@ export async function runNativeLauncher(
     const port = await wait(ready, 30000);
     const prefix = `http://127.0.0.1:${port}/native/${token}/api`;
     const response = await fetch(`${prefix}/workspace`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.any([startup.signal, AbortSignal.timeout(5000)]),
     });
     if (!response.ok) throw new Error("runtime.handshake");
     await response.json();
@@ -352,6 +370,7 @@ export async function runNativeLauncher(
     });
     // Keep the private owner channel alive until acknowledged close.
   } catch (error) {
+    if (startupCancelled) return;
     const code =
       error instanceof Error && /^runtime\.[a-zA-Z]+$/u.test(error.message)
         ? error.message

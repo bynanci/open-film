@@ -1,5 +1,5 @@
 import { runtimeEnvironment } from "../../apps/server/src/native-launcher.js";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -19,6 +19,19 @@ if ((await runtimeHash(join(root, "runtime-manifest.json"))) !== expected)
   throw new Error("Runtime manifest does not match the reviewed digest");
 const manifest = await verifyRuntimeBundle(root);
 assertDistributableRuntime(manifest);
+const config = JSON.parse(
+  await readFile(resolve("apps/desktop/src-tauri/tauri.conf.json"), "utf8"),
+) as { version: string };
+const cargo = await readFile(
+  resolve("apps/desktop/src-tauri/Cargo.toml"),
+  "utf8",
+);
+const cargoVersion = /^version\s*=\s*"([^"]+)"/mu.exec(cargo)?.[1];
+if (
+  manifest.appVersion !== config.version ||
+  manifest.appVersion !== cargoVersion
+)
+  throw new Error("Runtime app version does not match the desktop shell");
 for (const [entry, source] of [
   ["service", "dist/server/index.mjs"],
   ["launcher", "dist/native/launcher.mjs"],

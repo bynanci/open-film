@@ -167,6 +167,15 @@ pub fn run() {
     });
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let service = window.state::<NativeService>();
+                if !service.exiting() {
+                    api.prevent_close();
+                    service.request_close();
+                }
+            }
+        })
         .manage(benchmark)
         .manage(NativeService::default())
         .invoke_handler(tauri::generate_handler![

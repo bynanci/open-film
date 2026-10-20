@@ -489,6 +489,8 @@ _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party m
 
 M7E introduces hash-verified runtime resources, owned service startup/shutdown,
 graphical first-run diagnostics and explicit installer candidate workflows.
+Review hardening covers startup cancellation, window close ownership, recovery
+remounting, permission-preserving archive transport and shell/runtime version checks.
 Automatic updates remain unconfigured. Candidate implementation/tests are
 separate from reviewed target runtime inputs, installer artifact builds and real
 Windows/macOS acceptance. See [the contract](docs/native-installer.md) and

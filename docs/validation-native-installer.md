@@ -92,3 +92,7 @@ Follow [the candidate-bound checklist](workstation-qa.md#m7e-native-installer-ca
 Do not change a gate to passed without observations, artifact hashes and the
 candidate SHA. CI and correctness-review results are tracked on the M7E PR;
 green Cargo/Node/browser checks never substitute for these workstation gates.
+
+### Follow-up correctness review
+
+Full local browser suite passed 170 tests. Added a real-process regression that pauses after storage preflight, closes the owner and resumes startup; no service may start after the closed acknowledgement. Startup probes are abortable and concurrent service-close callers share one shutdown promise. Review fixes also prevent destruction of the main window before draft flushing, wait for the stdout reader before evaluating close acknowledgement, remount the workspace on a new connection, preserve executable permissions in safe archive transport and require matching shell/runtime versions. Final exact-head CI and remaining review findings are tracked in PR #38. Native workstation gates above remain not-run.

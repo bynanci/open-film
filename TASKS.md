@@ -783,6 +783,7 @@ M7B/M7D/M8A remain independent open PRs with unresolved review findings.
       native exit; reuse existing project/catalog/edit contracts.
 - [x] Add explicit target-platform candidate packaging and artifact receipts;
       leave automatic updates disabled with a trusted-signature verification seam.
+- [x] Add startup-cancel, delayed close-ack, workspace recovery and safe runtime archive regressions.
 - [ ] Complete exact-head regression/CI and correctness review.
 - [ ] Supply reviewed distributable runtime binaries and complete license/source
       obligations for each target, then generate its installer artifacts.

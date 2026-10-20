@@ -15,6 +15,7 @@ import { configureNativeConnection } from "../api";
 const { t } = useI18n();
 const workspace = ref<InstanceType<typeof App> | null>(null);
 const opened = ref(!isTauri());
+const connectionGeneration = ref(0);
 const ready = ref(!isTauri());
 const busy = ref(false);
 const closing = ref(false);
@@ -63,6 +64,7 @@ async function start() {
       configureNativeConnection(result.port, result.session);
     if (result.state !== "ready" && result.state !== "development")
       throw new Error(result.code ?? "runtime.preflight");
+    connectionGeneration.value += 1;
     opened.value = true;
     ready.value = true;
     if (!timer)
@@ -146,7 +148,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div v-if="opened" :inert="closing" class="runtime-workspace">
-    <App ref="workspace" />
+    <App :key="connectionGeneration" ref="workspace" />
   </div>
   <main
     v-if="!ready || closing"

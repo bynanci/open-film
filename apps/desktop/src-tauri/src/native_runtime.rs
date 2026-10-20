@@ -186,6 +186,7 @@ struct Inner {
     child: Mutex<Option<Child>>,
     status: Arc<Mutex<Value>>,
     operation: Mutex<()>,
+    reader_done: Arc<AtomicBool>,
     pub exiting: AtomicBool,
     pending_close: AtomicU64,
     close_sequence: AtomicU64,
@@ -198,6 +199,7 @@ impl Default for NativeService {
             child: Mutex::new(None),
             status: Arc::new(Mutex::new(json!({"state":"starting"}))),
             operation: Mutex::new(()),
+            reader_done: Arc::new(AtomicBool::new(true)),
             exiting: AtomicBool::new(false),
             pending_close: AtomicU64::new(0),
             close_sequence: AtomicU64::new(0),
@@ -268,6 +270,13 @@ impl NativeService {
                 .as_mut()
                 .is_some_and(|owned| matches!(owned.try_wait(), Ok(Some(_))))
             {
+                let deadline = Instant::now();
+                while !self.0.reader_done.load(Ordering::SeqCst) {
+                    if deadline.elapsed() > Duration::from_secs(5) {
+                        return self.blocked("runtime.timeout");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
                 *child = None;
             }
         }
@@ -325,6 +334,8 @@ impl NativeService {
         let stdout = child.stdout.take().ok_or("runtime.handshake")?;
         *self.0.child.lock().map_err(|_| "runtime.preflight")? = Some(child);
         let status = self.0.status.clone();
+        let reader_done = self.0.reader_done.clone();
+        reader_done.store(false, Ordering::SeqCst);
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
@@ -354,6 +365,7 @@ impl NativeService {
                     *current = json!({"state":"blocked","code":"runtime.serviceExited"});
                 }
             }
+            reader_done.store(true, Ordering::SeqCst);
         });
         receiver
             .recv_timeout(Duration::from_secs(60))
@@ -371,6 +383,10 @@ impl NativeService {
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(45) {
             if let Some(code) = child.try_wait().map_err(|_| "runtime.closeFailed")? {
+                if !self.0.reader_done.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
                 let closed = self.status()["state"] == "closed";
                 *guard = None;
                 return if code.success() && closed {
@@ -416,6 +432,26 @@ mod tests {
         assert!(second > first);
         assert!(service.acknowledge_close(first).is_err());
         assert!(service.acknowledge_close(second).is_ok());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn close_waits_for_delayed_stdout_ack_after_process_exit() {
+        let service = NativeService::default();
+        let child = Command::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .spawn()
+            .unwrap();
+        *service.0.child.lock().unwrap() = Some(child);
+        service.0.reader_done.store(false, Ordering::SeqCst);
+        let reader = service.clone();
+        let thread = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            *reader.0.status.lock().unwrap() = json!({"state":"closed"});
+            reader.0.reader_done.store(true, Ordering::SeqCst);
+        });
+        assert!(service.stop().is_ok());
+        thread.join().unwrap();
+        assert!(!service.has_child());
     }
     #[test]
     fn stopping_without_owned_child_is_safe() {

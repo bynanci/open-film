@@ -158,15 +158,14 @@ async function bundle(root: string) {
   ).rejects.toThrow("hash mismatch");
   return { output, manifest };
 }
-function launch(root: string, bundle: string) {
+function launch(
+  root: string,
+  bundle: string,
+  entry = join(bundle, "launcher.mjs"),
+) {
   const child = spawn(
     join(bundle, "bin/node"),
-    [
-      join(bundle, "launcher.mjs"),
-      bundle,
-      join(root, "data"),
-      join(root, "projects"),
-    ],
+    [entry, bundle, join(root, "data"), join(root, "projects")],
     { env: {}, stdio: ["pipe", "pipe", "pipe"] },
   );
   children.push(child);
@@ -220,6 +219,46 @@ it("starts a relocated verified runtime, edits/renders/reopens synthetic media a
   const root = await mkdtemp(join(tmpdir(), "openfilm-native-runtime-"));
   roots.push(root);
   const { output, manifest } = await bundle(root);
+  // Pause after the storage probe, then close the owner before spawning.
+  // The harness is trusted test code outside the verified runtime bundle.
+  const harness = join(root, "cancel-launcher.mjs");
+  const release = join(root, "release-startup");
+  await build({
+    stdin: {
+      contents: `import {runNativeLauncher} from ${JSON.stringify(resolve("apps/server/src/native-launcher.ts"))};
+        import {access} from 'node:fs/promises';
+        await runNativeLauncher(...process.argv.slice(2), {beforeSpawn: async () => {
+          console.log(JSON.stringify({state:'paused'}));
+          for (;;) { try { await access(${JSON.stringify(release)}); break; }
+            catch { await new Promise(done => setTimeout(done, 10)); } }
+        }});`,
+      resolveDir: resolve("."),
+      sourcefile: "trusted-cancel-harness.ts",
+    },
+    outfile: harness,
+    bundle: true,
+    platform: "node",
+    target: "node24",
+    format: "esm",
+    external: ["@resvg/resvg-js", "fontkit"],
+  });
+  const cancelled = launch(join(root, "cancelled"), output, harness);
+  await eventually(() =>
+    cancelled.messages.find((value) => value.state === "paused"),
+  );
+  cancelled.child.stdin.write('{"type":"shutdown"}\n');
+  await eventually(() =>
+    cancelled.messages.find((value) => value.state === "closed"),
+  );
+  const cancelledExit = new Promise<number | null>((done) =>
+    cancelled.child.once("exit", done),
+  );
+  await writeFile(release, "release");
+  expect(await cancelledExit).toBe(0);
+  expect(cancelled.messages.map((value) => value.state)).toEqual([
+    "paused",
+    "closed",
+  ]);
   expect(manifest.files.some((file) => file.path === "sbom.spdx.json")).toBe(
     true,
   );

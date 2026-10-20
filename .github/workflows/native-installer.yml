@@ -6,6 +6,9 @@ on:
         type: choice
         options: [ubuntu-24.04, windows-2022, macos-14]
         required: true
+      runtime_run_id:
+        description: Source workflow run containing the reviewed runtime artifact
+        required: true
       runtime_artifact_id:
         description: Reviewed runtime artifact from this repository, staged on the target OS/architecture
         required: true
@@ -19,6 +22,8 @@ jobs:
   candidate:
     runs-on: ${{ inputs.platform }}
     timeout-minutes: 45
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -39,10 +44,17 @@ jobs:
       - run: pnpm --filter @openfilm/desktop tauri icon src-tauri/icons/icon.svg
       - uses: actions/download-artifact@v4
         with:
+          run-id: ${{ inputs.runtime_run_id }}
           artifact-ids: ${{ inputs.runtime_artifact_id }}
           github-token: ${{ github.token }}
-          path: apps/desktop/src-tauri/resources/runtime
+          path: runtime-input
           merge-multiple: true
+      - name: Extract permission-preserving reviewed runtime
+        shell: bash
+        run: |
+          python scripts/native/test-extract-runtime.py
+          mkdir -p apps/desktop/src-tauri/resources/runtime
+          python scripts/native/extract-runtime.py runtime-input/runtime.tar apps/desktop/src-tauri/resources/runtime
       - name: Verify reviewed runtime and owned start/close
         shell: bash
         env:
