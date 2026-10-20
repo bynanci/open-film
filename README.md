@@ -29,6 +29,12 @@ Choose Standard or High detail compression without changing timing, geometry or
 music. High detail takes longer and usually produces a larger file; it does not
 restore missing source detail. See [output quality](docs/export-quality.md).
 
+**Export Profiles** preview contain or reviewed center-crop framing for 16:9,
+9:16 and 1:1 outputs, then save a still PNG, aligned WAV mix or role stems. Export
+profiles do not rewrite the Composition; unsupported PNG transparency and
+potential crop/safe-area loss are reported. See the
+[profile contract](docs/export-profiles.md).
+
 ```text
 Create Film → Add Media → Organize → Story → Edit → Preview → Export
 ```
@@ -66,6 +72,8 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   target suggestions, and recover autosave failures without dropping the draft.
 - Save immutable named project versions, compare story/edit/source changes, and
   explicitly restore a version after a durable pre-restore checkpoint.
+- Preview profile-specific MP4 framing before exporting PNG stills, WAV mixes or
+  aligned narration/music/ambience/dialogue stems with source receipts.
 - Keep editing missing media, reconnect a moved folder or single file, and move
   projects with their cached thumbnails and proxies.
 - Import Pixel metadata and Insta360 flat exports, recognize raw360 associations,

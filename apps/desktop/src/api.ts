@@ -28,6 +28,8 @@ import type {
   SceneScriptReviewSuggestion,
   ProjectVersionDiff,
   ProjectVersionRecord,
+  ExportProfile,
+  FilmLook,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -46,6 +48,9 @@ import type {
   CollectPlanInput,
   CollectMediaCreateResult,
   CollectMediaVerifyResult,
+  ProfileFramePreview,
+  ProfileExportArtifact,
+  AudioProfileExport,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -53,6 +58,9 @@ export type {
   GraphicSceneAgentAcceptance,
   GraphicSceneAgentPlan,
   GraphicSceneAgentRequest,
+  ProfileFramePreview,
+  ProfileExportArtifact,
+  AudioProfileExport,
 } from "@openfilm/application";
 export type { SceneDirectionOptions } from "@openfilm/solver";
 import type { SceneDirectionOptions } from "@openfilm/solver";
@@ -384,6 +392,40 @@ export const captionDownloadUrl = (
   `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
+export const exportFramePreviewUrl = (token: string): string =>
+  `${prefix}/export/frame-preview/${encodeURIComponent(token)}`;
+export const previewExportFrame = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<ProfileFramePreview> => post("/export/frame-preview", input, signal);
+export const exportStill = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    requestId: string;
+    confirmCrop?: boolean;
+    cropPreviewToken?: string;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<ProfileExportArtifact & { filename: string }> =>
+  post("/export/still", input, signal);
+export const exportProfileAudio = (
+  input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    requestId: string;
+  },
+  signal?: AbortSignal,
+): Promise<AudioProfileExport> => post("/export/audio", input, signal);
 
 async function uploadFiles(
   files: File[],

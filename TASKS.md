@@ -760,6 +760,13 @@ not copy original media.
 
 [validation](docs/validation-named-versions.md). M7A is integrated in `main` through PR #34. Runtime/installer QA remains separate.
 
+## Merged — M7A / F09 Named Versions (PR #34)
+
+Scope: [Named Versions contract](docs/named-versions.md),
+[architecture](docs/architecture.md#m7a-named-project-versions), and
+[validation](docs/validation-named-versions.md). PR #34 is merged into `main`
+at `bb2c4521ad894478893485119442a00ffd9b34cc`.
+
 - [x] Save immutable, bounded project-manifest and SQLite snapshots with stable
       v1 records, source hashes, idempotent retries and mutable labels isolated
       in private index metadata.
@@ -780,12 +787,56 @@ not copy original media.
 M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
 queued until independently scoped and reviewed. M7A does not implement them.
 
+- [x] Complete PR #34 review and merge. Named Versions is integrated on `main`.
+
+## Candidate — M7B / F10 Export Profiles and Professional Exports
+
+Scope: [Export Profiles contract](docs/export-profiles.md),
+[architecture](docs/architecture.md#m7b-versioned-export-profiles), and
+[validation](docs/validation-export-profiles.md). This work is independent of
+the still-open M8A PR and targets fetched `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`.
+
+- [x] Add strict render-only profile v1 for 16:9, 9:16 and 1:1 with bounded
+      dimensions/fps, contain or explicit center crop, quality and format;
+      leave saved project settings and Composition geometry untouched.
+- [x] Add revision/source-bound Preview Export Frame and PNG still output using
+      the FFmpeg renderer, selected look/captions, warnings and versioned hash
+      receipts; crop requires preview and confirmation.
+- [x] Export full WAV mix and available narration/music/ambience/dialogue stems
+      through existing AudioAutomation, aligned at 48 kHz/24-bit PCM; do not
+      fabricate files for roles with no source audio.
+- [x] Share profile logic through Application, Desktop, HTTP and CLI with
+      cancellation, retry, stale result fencing, path safety and private cache.
+- [x] Produce and decode synthetic 12-second MP4s at all three ratios, verify
+      first/middle/last frames, output/source hashes, warnings, PNG parity and
+      aligned audio in the validation record.
+- [ ] Complete latest-main full test matrix, independent review, exact-head CI
+      and PR checks before considering merge.
+- [ ] Complete workstation review of real-photo framing, target-player/NLE
+      playback and sustained full-resolution rendering.
+
+M7C–M7E remain separate queued work packages:
+
+- [ ] M7C — classify NLE-native/editable, metadata-only, baked and unsupported
+      behavior with optional pre-rendering and a compatibility report.
+- [ ] M7D — add a previewable Collect Plan for selected used media, generated
+      assets and required dependencies; verify hashes, safe relative paths,
+      SQLite-consistent project snapshots, ZIP/directory safety, relocation,
+      reopen, preview and actual MP4 output. Report missing rights/dependencies
+      and block incomplete packages from claiming completeness.
+- [ ] M7E — package Tauri, Node service, FFmpeg and fonts with first-run and
+      update/rollback evidence on Windows and macOS workstations.
+
 ## Candidate — M8A selective 2.5D PhotoDepth
 
 Scope: [PhotoDepth contract](docs/photo-depth.md), [threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1),
 [validation record](docs/validation-photo-depth.md), [GraphicScene contract](docs/graphic-scenes.md).
 This branch is stacked on M7A PR #34's exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`;
 it is not merged and must be retargeted if that dependency changes.
+
+PR #35 targets current `main` at `bb2c4521ad894478893485119442a00ffd9b34cc`;
+its exact head is `0ffde64949f59289939904aa6cf537de47eb9467`.
 
 - [x] Add a strict optional `PhotoDepthRecipe` to the existing GraphicScene
       Image contract with stable IDs, source/mask/fill hashes, protected region,
@@ -912,3 +963,8 @@ M7B/M7D/M8A remain independent open PRs with unresolved review findings.
       obligations for each target, then generate its installer artifacts.
 - [ ] Run real clean Windows/macOS install, upgrade/failure rollback and uninstall
       with candidate SHA and source/project preservation evidence.
+
+- [ ] Complete the latest-main CI and independent PR review. Rust/native checks are
+      unavailable because this environment has no Rust toolchain. Real people,
+      sustained 4K, physical display and Resolve/NLE behavior remain
+      candidate-bound workstation gates.

@@ -11,6 +11,8 @@ import {
   type Composition,
   type MediaAsset,
   type FilmLook,
+  type ExportProfile,
+  type AudioAutomation,
 } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "@openfilm/media";
 import type { RenderSettings } from "./index.js";
@@ -129,6 +131,11 @@ export async function writeRenderManifest(
   project?: RenderProjectEvidence,
   looks: RenderLookConfiguration = { override: null, clips: [] },
   encoding: RenderQualityProfile = resolveRenderQuality(),
+  outputConfig: {
+    format: "mp4" | "wav";
+    exportProfile?: ExportProfile;
+    audioRole?: AudioAutomation["role"];
+  } = { format: "mp4" },
 ): Promise<void> {
   const json = JSON.stringify(composition);
   const registry = FILM_LOOK_PRESETS.map(({ id, matrix }) => ({ id, matrix }));
@@ -186,12 +193,41 @@ export async function writeRenderManifest(
       },
       ...looks,
     },
-    encoding: {
-      ...encoding,
-      pixelFormat: "yuv420p",
-      audio: "aac",
-      sampleRate: 48000,
+    exportProfile: outputConfig.exportProfile ?? null,
+    output: {
+      format: outputConfig.format,
+      codec: outputConfig.format === "wav" ? "pcm_s24le" : encoding.video,
+      width:
+        outputConfig.format === "mp4"
+          ? (outputConfig.exportProfile?.width ?? settings.width)
+          : null,
+      height:
+        outputConfig.format === "mp4"
+          ? (outputConfig.exportProfile?.height ?? settings.height)
+          : null,
+      frameRate:
+        outputConfig.format === "mp4"
+          ? (outputConfig.exportProfile?.frameRate ?? settings.frameRate)
+          : null,
+      audioRole: outputConfig.audioRole ?? null,
     },
+    encoding:
+      outputConfig.format === "wav"
+        ? {
+            quality: "standard",
+            video: null,
+            preset: null,
+            crf: null,
+            pixelFormat: null,
+            audio: "pcm_s24le",
+            sampleRate: 48000,
+          }
+        : {
+            ...encoding,
+            pixelFormat: "yuv420p",
+            audio: "aac",
+            sampleRate: 48000,
+          },
     sources,
     fonts,
     warnings: [...new Set(warnings)],

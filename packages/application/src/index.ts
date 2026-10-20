@@ -52,6 +52,7 @@ import {
   migrateProject,
   validateProject,
   validateFilmLook,
+  validateExportProfile,
   type Composition,
   type Event,
   type Job,
@@ -63,6 +64,8 @@ import {
   type FilmLook,
   type ProjectContentLocale,
   type TitleStyle,
+  type ExportProfile,
+  type AudioAutomation,
 } from "@openfilm/core";
 import { GraphicSceneService } from "./graphic-scenes.js";
 import { TimelineEditor } from "./editor.js";
@@ -83,11 +86,13 @@ import { exportTimeline, otioCompatibilityReport } from "@openfilm/exporters";
 import { proposalTemplate } from "@openfilm/template-proposal";
 import {
   FFmpegRenderer,
+  audioSourceAssetIds,
   createTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
   resolveRenderQuality,
   type RenderQuality,
+  type RenderOptions,
 } from "@openfilm/render";
 export { resolveRenderQuality, type RenderQuality } from "@openfilm/render";
 import { enrichPixelAsset, inspectPixelDng } from "@openfilm/source-pixel";
@@ -134,6 +139,15 @@ export {
   type CollectRightsDeclaration,
   type CollectRightsBasis,
 } from "./collect-media.js";
+
+import { ExportProfileService } from "./export-profiles.js";
+export {
+  ExportProfileService,
+  type ProfileFramePreview,
+  type ProfileExportArtifact,
+  type AudioExportFile,
+  type AudioProfileExport,
+} from "./export-profiles.js";
 import { isInside, managedSourceUri } from "./path-safety.js";
 import {
   MediaIntelligence,
@@ -236,6 +250,15 @@ export interface FilmRenderOptions {
   quality?: RenderQuality;
   /** Render one saved native caption language; omitted selects the first. */
   captionTrackId?: string | null;
+  /** Render-only delivery geometry; never saved into the Composition. */
+  exportProfile?: ExportProfile;
+  /** Internal shared WAV/stem route; uses AudioAutomation and existing clips. */
+  audioOnly?: boolean;
+  audioRole?: AudioAutomation["role"];
+  /** Required only when an explicit center crop is published as a video/still. */
+  confirmCrop?: boolean;
+  cropPreviewToken?: string;
+  requestId?: string;
 }
 export interface ImportResult {
   job: Job;
@@ -306,6 +329,8 @@ export class OpenFilmApplication {
   readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
   readonly collectMedia: CollectMediaService;
+
+  readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
   private persistedProject: string;
   private persistenceConflict = false;
@@ -328,6 +353,32 @@ export class OpenFilmApplication {
     try {
       this.versions = new ProjectVersionService(this);
       this.collectMedia = new CollectMediaService(this);
+
+      this.exportProfiles = new ExportProfileService({
+        directory,
+        getProject: () => this.project,
+        getComposition: (id) => this.composition(id),
+        getAssets: (composition) => this.compositionAssets(composition),
+        render: (compositionId, outputPath, options: RenderOptions) =>
+          this.renderFilm(
+            compositionId,
+            {
+              signal: options.signal,
+              quality: options.quality,
+              lookOverride: options.lookOverride,
+              exportProfile: options.exportProfile,
+              captionTrackId: options.captionTrackId,
+              audioOnly: options.audioOnly,
+              audioRole: options.audioRole,
+            },
+            false,
+            {
+              outputPath,
+              recordJob: false,
+              trackActiveJob: false,
+            },
+          ),
+      });
       this.graphics = new GraphicSceneService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
@@ -1776,6 +1827,40 @@ export class OpenFilmApplication {
     return { path, report: { format: "mp4", warnings: manifest.warnings } };
   }
 
+  previewExportFrame(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.previewFrame(input);
+  }
+
+  exportStill(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    time: number;
+    requestId: string;
+    confirmCrop?: boolean;
+    cropPreviewToken?: string;
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.exportStill(input);
+  }
+
+  exportProfileAudio(input: {
+    compositionId?: string;
+    profile: ExportProfile;
+    requestId: string;
+    signal?: AbortSignal;
+  }) {
+    return this.exportProfiles.exportAudio(input);
+  }
+
   private async renderFilm(
     compositionId: string | undefined,
     options: FilmRenderOptions,
@@ -1787,7 +1872,36 @@ export class OpenFilmApplication {
       compositionOverride?: Composition;
     } = {},
   ): Promise<string> {
-    const quality = resolveRenderQuality(options.quality).quality;
+    let exportProfile: ExportProfile | undefined;
+    try {
+      if (options.exportProfile) {
+        exportProfile = validateExportProfile(options.exportProfile);
+        if (
+          options.audioOnly
+            ? exportProfile.format !== "wav" &&
+              exportProfile.format !== "audio-stems"
+            : exportProfile.format !== "mp4"
+        )
+          throw new Error(
+            "Renderer format does not match the selected Export Profile.",
+          );
+        if (options.audioRole && exportProfile.format !== "audio-stems")
+          throw new Error(
+            "Audio role filtering requires an audio-stems Export Profile.",
+          );
+      }
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose a valid render-only Export Profile and confirm any explicit crop.",
+        400,
+        undefined,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    const quality = resolveRenderQuality(
+      exportProfile?.quality ?? options.quality,
+    ).quality;
     let lookOverride: FilmLook | null | undefined;
     try {
       lookOverride =
@@ -1806,6 +1920,12 @@ export class OpenFilmApplication {
     const composition = structuredClone(
       context.compositionOverride ?? this.composition(compositionId),
     );
+    if (exportFile && exportProfile)
+      await this.exportProfiles.assertCropPreview({
+        compositionId,
+        ...options,
+        profile: exportProfile,
+      });
     const renderSettings = { ...this.project.settings };
     const projectEvidence = {
       id: this.project.id,
@@ -1846,7 +1966,12 @@ export class OpenFilmApplication {
     if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
-      for (const asset of assets) {
+      const audioIds = options.audioOnly
+        ? audioSourceAssetIds(composition, assets, options.audioRole)
+        : undefined;
+      for (const asset of assets.filter(
+        (asset) => !audioIds || audioIds.has(asset.id),
+      )) {
         checkAbort(options.signal);
         const status = await sourceStatus(asset);
         if (status.status !== "available")
@@ -1898,6 +2023,10 @@ export class OpenFilmApplication {
           quality,
           captionTrackId: options.captionTrackId,
           fontPathForStyle: (style) => this.titleFontPath(style),
+
+          exportProfile,
+          audioOnly: options.audioOnly,
+          audioRole: options.audioRole,
           onProgress: (progress) => {
             const previous = job?.progress ?? 0;
             const next = Math.min(0.99, Math.max(previous, progress));

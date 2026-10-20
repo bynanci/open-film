@@ -128,6 +128,8 @@ and acceptance evidence are recorded in the
 
 ## Implemented — M7A named project versions
 
+## Merged — M7A named project versions (PR #34)
+
 M7A adds immutable, local project snapshots and structural comparison through
 the shared application service. Restore requires a current revision, explicit
 confirmation, verified source identity and a fresh recovery checkpoint; it does
@@ -143,6 +145,29 @@ queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
 templates and Visual QA and is tracked as a separate stacked M8A candidate on
 M7A PR #34's exact head. It is not part of the M7A snapshot and must be
 retargeted if that dependency changes.
+
+not merge with session Undo/Redo or copy original media. The candidate includes
+synthetic actual-MP4 validation. PR #34 is integrated into `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`. See
+[the contract](docs/named-versions.md) and
+[validation](docs/validation-named-versions.md).
+
+## Candidate — M7B Export Profiles and professional exports
+
+M7B adds render-only 16:9, 9:16 and 1:1 profiles; reviewed crop/contain preview;
+PNG stills; and an aligned WAV mix and role stems through the existing renderer.
+It does not rewrite Composition geometry or the project schema. A synthetic
+12-second run produced and decoded actual MP4s at all three ratios, plus an
+opaque PNG and aligned 48 kHz WAV outputs. Full latest-main gates, PR review and
+CI remain pending. See [Export Profiles](docs/export-profiles.md) and
+[validation](docs/validation-export-profiles.md).
+
+M7C needs an honest native/baked/metadata/unsupported NLE report; M7D needs
+path-safe, license-aware media collection and relocation evidence; M7E needs
+Windows/macOS workstation installer, dependency and rollback evidence. These
+are separate PRs and remain queued. M8A selective 2.5D photo motion is a
+separate open PR, #35, based on current `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`; it is not a dependency of M7B.
 
 ## Candidate — M8A selective 2.5D PhotoDepth
 
@@ -186,6 +211,15 @@ and [validation](docs/validation-named-versions.md).
 M7B (#36), M7D (#37) and M8A (#35) are independent open candidates with unresolved
 review findings. M7C remains queued. M7E's runtime/installer candidate and its
 separate artifact/workstation gates are described below.
+
+Automated evidence passed on the M8A source tree based on current `main`:
+2,941 unit/integration tests, all 169 E2E tests, build, interchange and the
+actual 6-second synthetic MP4 with decoded frame and Monitor parity measurements.
+See [the validation record](docs/validation-photo-depth.md). Independent PR
+review and latest-main CI are pending; one TypeScript/media job remains in
+progress. Real-photo subject stability, sustained 4K
+rendering, physical display, Windows/macOS behavior and NLE review remain manual
+gates.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 

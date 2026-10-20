@@ -56,6 +56,7 @@ import {
 import {
   validateProject,
   validateFilmLook,
+  validateExportProfile,
   migrateProject,
   validateStory,
   validateTranscriptSegmentId,
@@ -65,6 +66,7 @@ import {
   type ApplicationErrorCode,
   type Job,
   type FilmLook,
+  type ExportProfile,
   type MediaAsset,
   type Story,
   type GlossaryInput,
@@ -232,6 +234,72 @@ function safeFilename(name: string): boolean {
     name !== "." &&
     name !== ".."
   );
+}
+function safeExportName(name: string): boolean {
+  if (safeFilename(name)) return true;
+  const parts = name.split("/");
+  if (parts.length !== 2) return false;
+  const [directory, filename] = parts;
+  return (
+    /^stems-[A-Za-z0-9][A-Za-z0-9_-]{7,95}$/u.test(directory!) &&
+    (/^(narration|music|ambience|dialogue)\.wav$/u.test(filename!) ||
+      filename === "manifest.json")
+  );
+}
+function profileRenderSelection(data: Body): {
+  lookOverride?: FilmLook | null;
+  captionTrackId?: string | null;
+} {
+  const selection: {
+    lookOverride?: FilmLook | null;
+    captionTrackId?: string | null;
+  } = {};
+  if (Object.hasOwn(data, "lookOverride")) {
+    try {
+      selection.lookOverride =
+        data.lookOverride === null ? null : validateFilmLook(data.lookOverride);
+    } catch (error) {
+      throw new ApplicationError(
+        "request.invalid",
+        "Choose a supported film look with strength between zero and one.",
+        400,
+        undefined,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  if (Object.hasOwn(data, "captionTrackId")) {
+    if (data.captionTrackId !== null && typeof data.captionTrackId !== "string")
+      throw new ApplicationError(
+        "request.invalid",
+        "A caption track selection must be a saved track ID or null.",
+      );
+    selection.captionTrackId = data.captionTrackId as string | null;
+  }
+  return selection;
+}
+function parseProfileForFormats(
+  value: unknown,
+  formats: readonly ExportProfile["format"][],
+): ExportProfile {
+  let profile: ExportProfile;
+  try {
+    profile = validateExportProfile(value);
+  } catch (error) {
+    throw new ApplicationError(
+      "request.invalid",
+      "Choose a supported versioned Export Profile.",
+      400,
+      undefined,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  if (!formats.includes(profile.format))
+    throw new ApplicationError(
+      "request.invalid",
+      `This export operation supports ${formats.join(" or ")} profiles.`,
+    );
+  return profile;
 }
 function projectFolderTitle(title: string): string {
   const clean = [...title]
@@ -602,6 +670,8 @@ export async function startServer(options: ServerOptions = {}) {
         const nonMutatingGraphicAgentPreview =
           method === "POST" &&
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
+        const nonMutatingExportPreview =
+          method === "POST" && route === "/api/export/frame-preview";
         const acquireMutation = async () => {
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -617,6 +687,7 @@ export async function startServer(options: ServerOptions = {}) {
           (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
           !nonMutatingGraphicAgentPreview &&
+          !nonMutatingExportPreview &&
           route !== "/api/projects/availability"
         ) {
           if (
@@ -635,6 +706,77 @@ export async function startServer(options: ServerOptions = {}) {
             );
           await acquireMutation();
         }
+        const runProfileExport = async <T>(
+          application: OpenFilmApplication,
+          operation: (signal: AbortSignal) => Promise<T>,
+        ): Promise<T> => {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for the active project job before exporting.",
+            );
+          const controller = new AbortController();
+          const jobId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          const job: Job = {
+            id: jobId,
+            type: "render",
+            status: "queued",
+            progress: 0,
+            createdAt: new Date().toISOString(),
+          };
+          application.catalog.saveJob(job);
+          active.set(jobId, controller);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          const running: Job = {
+            ...job,
+            status: "running",
+            updatedAt: new Date().toISOString(),
+          };
+          application.catalog.saveJob(running);
+          const operationPromise = Promise.resolve().then(() =>
+            operation(controller.signal),
+          );
+          const handled = operationPromise
+            .then((result) => {
+              application.catalog.saveJob({
+                ...running,
+                status: "completed",
+                progress: 1,
+                updatedAt: new Date().toISOString(),
+              });
+              return result;
+            })
+            .catch((error: unknown) => {
+              application.catalog.saveJob({
+                ...running,
+                status: controller.signal.aborted ? "cancelled" : "failed",
+                updatedAt: new Date().toISOString(),
+                errors: [
+                  {
+                    uri: "",
+                    stage: "profile-export",
+                    message:
+                      error instanceof Error ? error.message : String(error),
+                    ...errorInfo(error, "export.failed"),
+                  },
+                ],
+              });
+              throw error;
+            })
+            .finally(() => tasks.delete(handled));
+          tasks.add(handled);
+          try {
+            return await handled;
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+        };
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
           return;
@@ -3431,6 +3573,116 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, { composition });
           return;
         }
+        if (method === "POST" && route === "/api/export/frame-preview") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, [
+            "compositionId",
+            "profile",
+            "time",
+            "lookOverride",
+            "captionTrackId",
+          ]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, ["mp4", "png"]);
+          if (typeof data.time !== "number" || !Number.isFinite(data.time))
+            throw new HttpError(400, "Choose a finite export preview time.");
+          const selection = profileRenderSelection(data);
+          const result = await runProfileExport(application, (signal) =>
+            application.previewExportFrame({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              time: data.time as number,
+              ...selection,
+              signal,
+            }),
+          );
+          json(response, 200, result);
+          return;
+        }
+        if (method === "POST" && route === "/api/export/still") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, [
+            "compositionId",
+            "profile",
+            "time",
+            "requestId",
+            "confirmCrop",
+            "cropPreviewToken",
+            "lookOverride",
+            "captionTrackId",
+          ]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, ["png"]);
+          if (typeof data.time !== "number" || !Number.isFinite(data.time))
+            throw new HttpError(400, "Choose a finite still frame time.");
+          if (
+            data.confirmCrop !== undefined &&
+            typeof data.confirmCrop !== "boolean"
+          )
+            throw new HttpError(400, "Crop confirmation must be boolean.");
+          if (profile.framing === "crop" && data.confirmCrop !== true)
+            throw new HttpError(
+              400,
+              "Confirm the center crop after reviewing its export frame.",
+            );
+          if (
+            data.cropPreviewToken !== undefined &&
+            typeof data.cropPreviewToken !== "string"
+          )
+            throw new HttpError(400, "Choose a reviewed crop preview token.");
+          const selection = profileRenderSelection(data);
+          const result = await runProfileExport(application, (signal) =>
+            application.exportStill({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              time: data.time as number,
+              requestId: text(data, "requestId"),
+              confirmCrop: data.confirmCrop as boolean | undefined,
+              cropPreviewToken: data.cropPreviewToken as string | undefined,
+              ...selection,
+              signal,
+            }),
+          );
+          json(response, 200, { ...result, filename: basename(result.path) });
+          return;
+        }
+        if (method === "POST" && route === "/api/export/audio") {
+          errorContext = "export.failed";
+          const data = await body(request);
+          keys(data, ["compositionId", "profile", "requestId"]);
+          if (
+            data.compositionId !== undefined &&
+            (typeof data.compositionId !== "string" ||
+              !data.compositionId.trim())
+          )
+            throw new HttpError(400, "Choose a saved Composition.");
+          const profile = parseProfileForFormats(data.profile, [
+            "wav",
+            "audio-stems",
+          ]);
+          const result = await runProfileExport(application, (signal) =>
+            application.exportProfileAudio({
+              compositionId: data.compositionId as string | undefined,
+              profile,
+              requestId: text(data, "requestId"),
+              signal,
+            }),
+          );
+          json(response, 200, result);
+          return;
+        }
         if (
           method === "POST" &&
           (route === "/api/render" || route === "/api/export")
@@ -3447,6 +3699,56 @@ export async function startServer(options: ServerOptions = {}) {
           const quality = hasQuality
             ? resolveRenderQuality(data.quality).quality
             : undefined;
+          const hasExportProfile = Object.hasOwn(data, "exportProfile");
+          let exportProfile:
+            ReturnType<typeof validateExportProfile> | undefined;
+          if (hasExportProfile) {
+            if (!exporting || data.format !== "mp4")
+              throw new ApplicationError(
+                "request.invalid",
+                "Delivery profiles apply to MP4 export only.",
+              );
+            try {
+              exportProfile = validateExportProfile(data.exportProfile);
+            } catch (error) {
+              throw new ApplicationError(
+                "request.invalid",
+                "Choose a supported versioned Export Profile.",
+                400,
+                undefined,
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+            if (exportProfile.format !== "mp4")
+              throw new ApplicationError(
+                "request.invalid",
+                "MP4 export requires an MP4 Export Profile.",
+              );
+          }
+          const hasCropConfirmation = Object.hasOwn(data, "confirmCrop");
+          if (hasCropConfirmation && typeof data.confirmCrop !== "boolean")
+            throw new ApplicationError(
+              "request.invalid",
+              "Crop confirmation must be boolean.",
+            );
+          if (hasCropConfirmation && !hasExportProfile)
+            throw new ApplicationError(
+              "request.invalid",
+              "Crop confirmation requires an Export Profile.",
+            );
+          if (exportProfile?.framing === "crop" && data.confirmCrop !== true)
+            throw new ApplicationError(
+              "request.invalid",
+              "Confirm the center crop after reviewing its export frame.",
+            );
+          if (
+            data.cropPreviewToken !== undefined &&
+            (typeof data.cropPreviewToken !== "string" || !exportProfile)
+          )
+            throw new ApplicationError(
+              "request.invalid",
+              "A reviewed crop preview token requires an Export Profile.",
+            );
           const hasLookOverride = Object.hasOwn(data, "lookOverride");
           let lookOverride: FilmLook | null | undefined;
           if (hasLookOverride) {
@@ -3525,6 +3827,11 @@ export async function startServer(options: ServerOptions = {}) {
             jobId,
             lookOverride,
             quality,
+            ...(exportProfile ? { exportProfile } : {}),
+            ...(data.confirmCrop === true ? { confirmCrop: true } : {}),
+            ...(typeof data.cropPreviewToken === "string"
+              ? { cropPreviewToken: data.cropPreviewToken }
+              : {}),
             ...(hasCaptionTrackId
               ? { captionTrackId: data.captionTrackId as string | null }
               : {}),
@@ -3578,23 +3885,42 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        const exportFramePreview =
+          /^\/api\/export\/frame-preview\/([a-f\d-]{36})$/iu.exec(route);
+        if (method === "GET" && exportFramePreview) {
+          const token = exportFramePreview[1]!.toLowerCase();
+          const file = await application.exportProfiles.previewPath(token);
+          await streamFile(
+            request,
+            response,
+            file,
+            resolve(application.directory, "cache/export-preview"),
+            "image/png",
+          );
+          return;
+        }
         if (method === "GET" && route === "/api/export/file") {
           const name = url.searchParams.get("name") ?? "";
-          if (!safeFilename(name))
+          if (!safeExportName(name))
             throw new HttpError(400, "Choose an exported file name.");
           const root = join(application.directory, "exports");
           response.setHeader(
             "Content-Disposition",
-            `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+            `attachment; filename*=UTF-8''${encodeURIComponent(basename(name))}`,
           );
           await streamFile(
             request,
             response,
             join(root, name),
             root,
-            extname(name).toLowerCase() === ".mp4"
-              ? "video/mp4"
-              : "application/octet-stream",
+            (
+              {
+                ".mp4": "video/mp4",
+                ".png": "image/png",
+                ".wav": "audio/wav",
+                ".json": "application/json",
+              } as Record<string, string>
+            )[extname(name).toLowerCase()] ?? "application/octet-stream",
           );
           return;
         }

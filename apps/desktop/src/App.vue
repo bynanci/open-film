@@ -36,6 +36,7 @@ import StoryScriptReview from "./components/StoryScriptReview.vue";
 import type {
   MediaAsset,
   FilmLook,
+  ExportProfile,
   OpenFilmProject,
   Story,
   StoryBeat,
@@ -1682,7 +1683,12 @@ async function renderPreview() {
     notice.value = message("feedback.previewReady");
   });
 }
-async function exportFilm(format: string) {
+async function exportFilm(
+  format: string,
+  exportProfile?: ExportProfile,
+  confirmCrop = false,
+  cropPreviewToken?: string,
+) {
   if (!(await flushPending())) return;
   const exportingLook =
     format === "mp4" && lookOverride.value
@@ -1706,6 +1712,9 @@ async function exportFilm(format: string) {
         compositionId: composition.id,
         ...(exportingLook ? { lookOverride: exportingLook } : {}),
         ...(format === "mp4" ? { quality: exportingQuality } : {}),
+        ...(format === "mp4" && exportProfile ? { exportProfile } : {}),
+        ...(format === "mp4" && confirmCrop ? { confirmCrop: true } : {}),
+        ...(format === "mp4" && cropPreviewToken ? { cropPreviewToken } : {}),
         ...(format === "mp4" && outputCaptionTrackId.value !== undefined
           ? { captionTrackId: outputCaptionTrackId.value }
           : {}),
@@ -1750,6 +1759,10 @@ async function exportFilm(format: string) {
     exportStale.value = exportingEdit !== editSerial;
     notice.value = message("feedback.exported");
   });
+}
+function exportProfileBusy(active: boolean) {
+  if (active && !busy.value) busy.value = "exportingTimeline";
+  else if (!active && busy.value === "exportingTimeline") busy.value = "";
 }
 function jobTitle(job: Job): string {
   if (job.type === "scene-script-review")
@@ -3476,6 +3489,7 @@ onUnmounted(() => {
             @quality="changeOutputQuality"
             @caption-track="changeOutputCaptionTrack"
             @export="exportFilm"
+            @profile-busy="exportProfileBusy"
           />
           <CollectMediaPanel
             v-if="tab === 'export'"

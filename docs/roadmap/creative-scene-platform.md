@@ -11,6 +11,14 @@ with unresolved code-review findings. M7D is the current independent candidate;
 its local evidence and workstation gates are recorded in
 `docs/validation-collect-media.md`.
 
+define an F01–F13 catalogue; the crosswalk below is a planning aid, not a claim
+that these labels were previously accepted or completed. M1–M6 are integrated
+on current `main`. M7A Named Versions merged as PR #34 at
+`bb2c4521ad894478893485119442a00ffd9b34cc`. M7B Export Profiles is in
+implementation on a separate branch and is independent of the still-open M8A
+PR #35. See the exact validation records for each milestone's evidence and
+remaining gates.
+
 ## Capability gap crosswalk
 
 | ID  | Capability                                                    | Main status         | Evidence and gap                                                                                                                                                                                                                                                           |
@@ -53,11 +61,25 @@ does not complete the remaining M7 work.
 
 M8A selective 2.5D photo motion is a separate candidate stacked on M7A PR #34's
 exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`. It extends GraphicScene
+
+| PR  | Scope                         | Dependency and acceptance                                                                                                                                                                                                                                          |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 7A  | Named Versions (merged #34)   | Existing project/catalog writer contracts; immutable manifest + SQLite snapshot, structured diff, confirmed checkpointed restore, CLI/API/Desktop parity, reopen and actual synthetic MP4 evidence. See [validation](../validation-named-versions.md).             |
+| 7B  | Export Profiles (in progress) | Reuse Composition/render state; actual-frame preview, still PNG, aligned WAV/stems and 16:9 / 9:16 / 1:1 presets without rewriting source framing or composition intent. See [contract](../export-profiles.md) and [validation](../validation-export-profiles.md). |
+| 7C  | NLE Fidelity (queued)         | Classify each edit native editable, metadata-only, baked or unsupported; report compatibility and make pre-rendering optional and explicit.                                                                                                                        |
+| 7D  | Collect Media (queued)        | Preview selected-use collection; package referenced media/dependencies with rights, hashes, controlled relative paths and SQLite-safe snapshots; verify archive safety, relocation, reopen, preview and real MP4 without original external URIs.                   |
+| 7E  | Native Installer (queued)     | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                                  |
+
+M8A selective 2.5D photo motion is a separate open PR #35 based on current
+`main` at `bb2c4521ad894478893485119442a00ffd9b34cc`. It extends GraphicScene
 with a local hash-bound alpha mask, optional background fill, bounded deterministic
 camera motion, explicit fallback and typed Visual QA/manual-review findings. It
 does not add another timeline or use remote image generation. The full automated
 matrix and decoded synthetic MP4 evidence passed; independent PR review and
 stacked CI are pending. Real-photo/4K/workstation gates remain separate. See
+
+latest-main CI are pending. One TypeScript/media check remains in progress.
+Real-photo/4K/workstation gates remain separate. See
 [`PhotoDepth validation`](../validation-photo-depth.md); M7A itself does not
 contain this feature.
 

@@ -581,3 +581,26 @@ Native close first checks browser drafts, then waits for application save and
 private acknowledged service shutdown. Installation resources, app data and
 project storage remain separate. The manifest, SPDX inventory, candidate workflow,
 update limitations and threat boundary are in [Native Installer](native-installer.md).
+
+## M7B versioned Export Profiles
+
+`ExportProfileService` is the shared Application boundary for Desktop, HTTP and
+CLI. It snapshots the current saved Composition, project revision and source
+hashes, then calls the existing FFmpeg renderer with a validated render-only
+ratio/frame/quality profile. Contain letterboxes the saved frame; explicit
+center crop is previewed before confirmation. A preview renders an actual
+temporary MP4 and extracts the requested frame, so PNG stills and MP4 share the
+same renderer, look/caption selection and output geometry. Short-lived tokens
+are revision/source-bound and served from a private project cache.
+
+Full-mix and role-stem WAV output is also produced by the existing renderer
+audio graph, including saved mute/visibility, trims, gain, fades and ducking.
+Stems are independently rendered with role filters, then checked for matching
+sample rate, channels, sample count and duration before one directory is
+atomically published. Manifests record versioned profile, project/Composition
+hashes, source/output hashes, selected frame or audio measures, and warnings.
+Private staging, path/symlink checks, output hash verification and request-ID
+idempotency protect cancellation, retries and project changes. No profile field
+is written into project settings or composition history. See the
+[Export Profile contract](export-profiles.md) and
+[validation](validation-export-profiles.md).
