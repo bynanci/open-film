@@ -784,7 +784,7 @@ export async function prepareGraphicScenes(
             "-i",
             mask.path,
             "-filter_complex",
-            `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0[source];[1:v]format=rgba,alphaextract,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black[matte];[source][matte]alphamerge[foreground]`,
+            `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0,split[source][sourceAlpha];[sourceAlpha]alphaextract[sourceMatte];[1:v]format=rgba,alphaextract,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black[matte];[sourceMatte][matte]blend=all_mode=multiply[alpha];[source][alpha]alphamerge[foreground]`,
             "-map",
             "[foreground]",
             "-frames:v",

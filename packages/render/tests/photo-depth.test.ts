@@ -61,18 +61,12 @@ async function imageAsset(root: string, id: string, filter: string) {
 async function fixture(
   root: string,
   maskFilter = "nullsrc=s=64x48,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,20,43)*between(Y,6,41),255,0)'",
+  sourceFilter = "color=c=0x305070:s=64x48,drawbox=x=20:y=6:w=24:h=36:color=0xffcc22:t=fill",
+  backgroundFilter = "color=c=0x176b42:s=64x48",
 ) {
-  const original = await imageAsset(
-    root,
-    "source",
-    "color=c=0x305070:s=64x48,drawbox=x=20:y=6:w=24:h=36:color=0xffcc22:t=fill",
-  );
+  const original = await imageAsset(root, "source", sourceFilter);
   const mask = await imageAsset(root, "mask", maskFilter);
-  const background = await imageAsset(
-    root,
-    "background",
-    "color=c=0x176b42:s=64x48",
-  );
+  const background = await imageAsset(root, "background", backgroundFilter);
   const node: GraphicImageNode = {
     id: "photo-node",
     type: "image",
@@ -132,6 +126,140 @@ async function fixture(
 }
 
 describe("PhotoDepth rendering", () => {
+  it("intersects source and mask alpha in Monitor pixels and the decoded FFmpeg output", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-photo-depth-alpha-"));
+    roots.push(root);
+    const { assets, composition } = await fixture(
+      root,
+      "nullsrc=s=64x48,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,20,43)*between(Y,6,41),if(gte(X,36),128,255),0)'",
+      "nullsrc=s=64x48,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,24,27),0,if(between(X,28,39),128,255))'",
+      "nullsrc=s=64x48,format=rgba,geq=r='0':g='0':b='0':a='0'",
+    );
+    const sourceHashes = await Promise.all(
+      assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
+    );
+    const recipe = composition.graphicScenes![0]!.photoDepth;
+    if (recipe?.mode !== "parallax")
+      throw new Error("Expected a parallax recipe");
+    recipe.camera = {
+      from: { x: 0, y: 0, scale: 1 },
+      to: { x: 0, y: 0, scale: 1 },
+    };
+    const settings = { width: 320, height: 180, frameRate: 8 };
+    const prepared = await prepareGraphicScenes(
+      composition,
+      assets,
+      settings,
+      root,
+    );
+    const monitor = await prepared.frame(null, 0);
+    const monitorPath = join(root, "monitor-alpha.png");
+    await writeFile(monitorPath, monitor);
+    const monitorPixels = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        monitorPath,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgba",
+        "pipe:1",
+      ])
+    ).stdout;
+    expect(monitorPixels.length).toBe(320 * 180 * 4);
+    const samples = [
+      { sourceX: 10, alpha: 0 },
+      { sourceX: 22, alpha: 255 },
+      { sourceX: 26, alpha: 0 },
+      { sourceX: 32, alpha: 128 },
+      { sourceX: 38, alpha: 64 },
+      { sourceX: 42, alpha: 128 },
+    ];
+    // The 64x48 source fits into 240x180 pixels with 40px horizontal padding.
+    const pixelIndex = (sourceX: number) =>
+      90 * 320 + Math.floor(40 + (sourceX + 0.5) * 3.75);
+    const monitorAlphas = samples.map(
+      ({ sourceX }) => monitorPixels[pixelIndex(sourceX) * 4 + 3]!,
+    );
+    for (const [index, sample] of samples.entries())
+      expect(
+        Math.abs(monitorAlphas[index]! - sample.alpha),
+      ).toBeLessThanOrEqual(1);
+
+    const output = join(root, "photo-depth-alpha.mp4");
+    await new FFmpegRenderer().render(composition, assets, output, settings);
+    const decoded = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+      ])
+    ).stdout;
+    expect(decoded.length).toBe(320 * 180 * 3);
+    const decodedRgb = samples.map(({ sourceX }) => [
+      ...decoded.subarray(pixelIndex(sourceX) * 3, pixelIndex(sourceX) * 3 + 3),
+    ]);
+    for (const [index, sample] of samples.entries())
+      for (const channel of decodedRgb[index]!)
+        expect(Math.abs(channel - sample.alpha)).toBeLessThanOrEqual(8);
+    const manifest = JSON.parse(
+      await readFile(`${output}.manifest.json`, "utf8"),
+    );
+    expect(manifest.sources).toEqual(
+      expect.arrayContaining(
+        assets.map((asset, index) =>
+          expect.objectContaining({
+            assetId: asset.id,
+            sha256: sourceHashes[index],
+          }),
+        ),
+      ),
+    );
+    expect(
+      await Promise.all(
+        assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
+      ),
+    ).toEqual(sourceHashes);
+    const evidence = process.env.OPENFILM_PHOTO_DEPTH_QA_OUTPUT;
+    if (evidence) {
+      await mkdir(evidence, { recursive: true });
+      await Promise.all([
+        copyFile(output, join(evidence, "photo-depth-alpha.mp4")),
+        copyFile(monitorPath, join(evidence, "monitor-alpha.png")),
+        copyFile(
+          `${output}.manifest.json`,
+          join(evidence, "photo-depth-alpha.manifest.json"),
+        ),
+        writeFile(
+          join(evidence, "photo-depth-alpha.measurements.json"),
+          JSON.stringify(
+            {
+              samples,
+              monitorAlphas,
+              decodedRgb,
+              sourceHashes,
+              outputSha256: await hashFile(output),
+            },
+            null,
+            2,
+          ),
+        ),
+      ]);
+    }
+  });
+
   it("renders arbitrary seeks with independent deterministic layers and source receipts", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-photo-depth-"));
     roots.push(root);

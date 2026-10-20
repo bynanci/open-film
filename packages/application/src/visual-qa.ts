@@ -698,6 +698,16 @@ export class VisualQaService {
           scene.start +
           (scene.nodes.find((node) => node.id === recipe.nodeId)?.start ?? 0);
         if (recipe.mode === "fallback") {
+          const sourceSha256 = originalHashes.get(recipe.sourceAssetId);
+          if (sourceSha256 && sourceSha256 !== recipe.sourceSha256)
+            report.issues.push(
+              issue("photo-depth.source-changed", "error", at, frameRate, {
+                graphicSceneId: scene.id,
+                nodeId: recipe.nodeId,
+                assetId: recipe.sourceAssetId,
+                detail: "changed",
+              }),
+            );
           report.issues.push(
             issue("photo-depth.fallback-used", "warning", at, frameRate, {
               graphicSceneId: scene.id,
