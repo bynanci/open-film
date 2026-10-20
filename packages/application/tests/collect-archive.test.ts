@@ -44,6 +44,52 @@ function replaceBytes(input: Buffer, before: string, after: string): Buffer {
 }
 
 describe("Collect Media ZIP archive", () => {
+  it.each(["prefix", "between-records", "before-directory"] as const)(
+    "rejects unreceipted ZIP bytes in a %s",
+    async (where) => {
+      const { root, source, destination } = await workspace();
+      await writeFile(join(source, "one.txt"), "synthetic one");
+      await writeFile(join(source, "two.txt"), "synthetic two");
+      const archive = join(root, "gap.zip");
+      await writeStoredZip(source, archive);
+      const original = await readFile(archive);
+      const end = original.length - 22;
+      const central = original.readUInt32LE(end + 16);
+      const secondEntry = central + 46 + original.readUInt16LE(central + 28);
+      const position =
+        where === "prefix"
+          ? 0
+          : where === "before-directory"
+            ? central
+            : original.readUInt32LE(secondEntry + 42);
+      const padding = Buffer.from("synthetic-unreceipted-payload");
+      const changed = Buffer.concat([
+        original.subarray(0, position),
+        padding,
+        original.subarray(position),
+      ]);
+      changed.writeUInt32LE(
+        central + padding.length,
+        end + padding.length + 16,
+      );
+      let entry = central + padding.length;
+      for (let index = 0; index < original.readUInt16LE(end + 10); index++) {
+        const offset = changed.readUInt32LE(entry + 42);
+        if (offset >= position)
+          changed.writeUInt32LE(offset + padding.length, entry + 42);
+        entry +=
+          46 +
+          changed.readUInt16LE(entry + 28) +
+          changed.readUInt16LE(entry + 30) +
+          changed.readUInt16LE(entry + 32);
+      }
+      await writeFile(archive, changed);
+      await expect(extractStoredZip(archive, destination)).rejects.toThrow(
+        /unaccounted bytes/u,
+      );
+    },
+  );
+
   it("round-trips UTF-8 CJK paths and file contents", async () => {
     const { source, destination } = await workspace();
     const nested = join(source, "素材", "家族の記録");

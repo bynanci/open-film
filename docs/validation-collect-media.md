@@ -98,8 +98,9 @@ of its embedded video soundtrack, with its output hash receipt updated; Verify
 rejects both outputs during decoded stream inspection.
 
 Both directory scans now observe cancellation while hashing. A deterministic
-test aborts on the first chunk of a 4 MiB synthetic file. The baseline read all
-4 MiB after cancellation; the candidate reads less than 512 KiB in each scan
+test aborts on the first chunk of a generated BMP larger than 4 MiB. The
+reviewed baseline read the entire original 4 MiB fixture after cancellation;
+the candidate reads less than 512 KiB in each scan
 and leaves the original package intact. This is a bounded-read correctness
 check, not a throughput benchmark.
 
@@ -156,6 +157,30 @@ compatibility checks. Focused collect/archive/HTTP/input-policy coverage totals
 51 passing tests in six files. TypeScript, Vue TypeScript, lint and formatting
 checks pass. These checks use one Vitest worker and isolated ephemeral HTTP
 ports; the full suite and browser tests are not part of this follow-up.
+
+## Additional PR37 review findings — 2026-10-20
+
+Five additional findings were confirmed against the credential fix
+`053fc337a5e7a92af9e715f3fda6438fb1ca2757`. Nine new regression cases fail
+against that baseline and pass with the fixes:
+
+- Rights resource IDs use identifier validation, so legitimate IDs containing
+  `secret`, `password` or `credential` can receive the required declaration.
+- Embedded POSIX, Windows and file-URI paths in asset tags receive the existing
+  metadata path redaction before the portable catalog is written.
+- Generated font family and PostScript identities retain safe text shape checks
+  without receipt-prose keyword filtering. A real locally renamed font verifies
+  and reopens with `Secret` in its family and PostScript names.
+- Directory verification inventories aggregate file sizes and rejects packages
+  above the ZIP32 limit before opening payload bytes. A bounded synthetic
+  metadata fixture exercises the limit without allocating gigabytes.
+- Stored ZIP extraction rejects prefix bytes, gaps between local records and
+  gaps before the central directory. Adjusted offsets and valid file CRCs do
+  not permit unreceipted payloads outside the file records.
+
+The combined focused run passes 60 tests across the six collect, archive, HTTP
+and input-policy files. TypeScript, Vue TypeScript, lint and formatting checks
+pass. The earlier manual and cross-platform gates remain separate.
 
 ## Manual gates and limits
 
