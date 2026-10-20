@@ -742,6 +742,13 @@ export class MotionGenerationService {
   }
   async media(id: string) {
     const record = await this.record(id);
+    return this.previewMedia(record);
+  }
+  private async previewMedia(
+    record: RecordData,
+    revision = record.receipt.baseRevision,
+  ) {
+    const id = record.receipt.id;
     if (
       !Number.isFinite(Date.parse(record.receipt.createdAt)) ||
       Date.now() - Date.parse(record.receipt.createdAt) > 86400000
@@ -751,11 +758,7 @@ export class MotionGenerationService {
     }
     if (!["preview", "accepted"].includes(record.receipt.state))
       fail("Motion preview expired or was imported.");
-    await this.saved(
-      record.receipt.compositionId,
-      record.receipt.baseRevision,
-      record.settings,
-    );
+    await this.saved(record.receipt.compositionId, revision, record.settings);
     const state = new TimelineEditor(this.app).get(
       record.receipt.compositionId,
     );
@@ -771,11 +774,7 @@ export class MotionGenerationService {
       (await hashFile(path)) !== record.receipt.outputSha256
     )
       fail("Motion preview bytes changed.");
-    await this.saved(
-      record.receipt.compositionId,
-      record.receipt.baseRevision,
-      record.settings,
-    );
+    await this.saved(record.receipt.compositionId, revision, record.settings);
     return path;
   }
   private serial<T>(operation: () => Promise<T>): Promise<T> {
@@ -843,8 +842,6 @@ export class MotionGenerationService {
       }
       if (receipt.state !== "accepted")
         fail("Preview and accept first, or recover the committed replacement.");
-      const path = await this.media(id),
-        before = editor.get(receipt.compositionId);
       const sources = join(this.app.directory, "sources");
       await mkdir(sources, { recursive: true, mode: 0o700 });
       if (
@@ -854,6 +851,22 @@ export class MotionGenerationService {
       )
         fail("Unsafe managed motion sources.");
       const destination = join(sources, `motion-${id}.mp4`);
+      const existing = this.app.catalog.getAssetByUri(
+        pathToFileURL(destination).href,
+      );
+      if (existing) {
+        await this.managed({ ...record, importedAssetId: existing.id });
+        editor.adoptImportedVisualSource(
+          current,
+          existing.id,
+          receipt.baseRevision,
+        );
+      }
+      const path = await this.previewMedia(
+          record,
+          existing ? current.revision : receipt.baseRevision,
+        ),
+        before = editor.get(receipt.compositionId);
       const bytes = await readFile(path);
       if (bytesHash(bytes) !== receipt.outputSha256)
         fail("Motion preview changed before import.");
@@ -867,7 +880,7 @@ export class MotionGenerationService {
         )
           throw error;
       }
-      await this.app.importManagedSources([destination]);
+      if (!existing) await this.app.importManagedSources([destination]);
       const asset = this.app.catalog.getAssetByUri(
         pathToFileURL(destination).href,
       );
@@ -877,7 +890,11 @@ export class MotionGenerationService {
         fail("Managed motion source is protected.");
       full.metadata["openfilm.motionGeneration"] = structuredClone(receipt);
       this.app.catalog.upsertAsset(full);
-      const adopted = editor.adoptImportedVisualSource(before, full.id);
+      const adopted = editor.adoptImportedVisualSource(
+        before,
+        full.id,
+        receipt.baseRevision,
+      );
       await this.source(record);
       const commands = this.commands(
         receipt.clipId,
