@@ -233,10 +233,12 @@ function outputFrameFilters(profile: ExportProfile): string[] {
 export function validateRenderClipCapabilities(
   composition: Composition,
   assets: readonly MediaAsset[],
+  options: Pick<RenderOptions, "audioOnly" | "videoOnly" | "audioRole"> = {},
 ): void {
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
   for (const track of composition.tracks)
     for (const clip of track.clips) {
+      if (options.audioOnly && track.type === "titles") continue;
       if (track.type === "titles") {
         if (clip.layout || clip.motion || clip.audioAutomation)
           throw new Error(
@@ -249,6 +251,20 @@ export function validateRenderClipCapabilities(
         throw new Error(
           `Clip ${clip.id} references missing asset ${clip.assetId}`,
         );
+      if (
+        options.videoOnly &&
+        (track.type === "audio" ||
+          track.type === "music" ||
+          asset.mediaType === "audio")
+      )
+        continue;
+      if (
+        options.audioOnly &&
+        (!hasAudio(asset) ||
+          (options.audioRole &&
+            clipAudioRole(track.type, clip) !== options.audioRole))
+      )
+        continue;
       const issue = previewIssue(asset);
       if (issue) throw new Error(`${asset.name}: ${issue}`);
       if (
@@ -441,7 +457,11 @@ export class FFmpegRenderer {
     }
     // Capability checks precede source IO, preserving actionable unsupported-360
     // errors even when the original source has not been mounted.
-    validateRenderClipCapabilities(composition, assets);
+    validateRenderClipCapabilities(composition, assets, {
+      audioOnly,
+      videoOnly,
+      audioRole: options.audioRole,
+    });
     for (const track of composition.tracks)
       for (const clip of track.clips) {
         if (track.type === "titles") continue;

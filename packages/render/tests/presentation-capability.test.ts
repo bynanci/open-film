@@ -3,13 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import type { Clip, Composition, MediaAsset, Track } from "@openfilm/core";
-import { inspectMedia, runProcess } from "@openfilm/media";
+import {
+  createExportProfile,
+  type Clip,
+  type Composition,
+  type MediaAsset,
+  type Track,
+} from "@openfilm/core";
+import { hashFile, inspectMedia, localPath, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "../src/index.js";
 
 let root: string;
 let silentVideo: MediaAsset;
 let photo: MediaAsset;
+let narration: MediaAsset;
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-presentation-capability-"));
   const videoPath = join(root, "silent.mp4");
@@ -44,6 +51,24 @@ beforeAll(async () => {
     "-y",
     photoPath,
   ]);
+  const audioPath = join(root, "narration.wav");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=660:sample_rate=48000:duration=0.4",
+    "-c:a",
+    "pcm_s16le",
+    "-y",
+    audioPath,
+  ]);
+  narration = await inspectMedia({
+    path: audioPath,
+    name: "narration.wav",
+    uri: pathToFileURL(audioPath).href,
+  });
   silentVideo = await inspectMedia({
     path: videoPath,
     name: "silent.mp4",
@@ -195,5 +220,130 @@ it.each(cases)(
     expect(
       (await readdir(root)).filter((name) => name.startsWith(".render-")),
     ).toEqual([]);
+  },
+);
+
+it.each(["audioOnly", "videoOnly"] as const)(
+  "checks only consumed graph capabilities for %s delivery",
+  async (mode) => {
+    const composition: Composition = {
+      id: "scoped-capabilities",
+      storyId: "story",
+      duration: 0.4,
+      tracks: [
+        {
+          id: "visual",
+          type: mode === "audioOnly" ? "overlay" : "video",
+          clips: [
+            {
+              id: "photo",
+              assetId: photo.id,
+              timelineStart: 0,
+              timelineDuration: 0.4,
+              ...(mode === "audioOnly" ? { layout } : {}),
+            },
+          ],
+        },
+        {
+          id: "narration",
+          type: "audio",
+          clips: [
+            {
+              id: "voice",
+              assetId: narration.id,
+              timelineStart: 0,
+              timelineDuration: 0.4,
+              ...(mode === "videoOnly" ? { motion } : {}),
+            },
+          ],
+        },
+      ],
+    };
+    const assets = [photo, narration];
+    const before = structuredClone(composition);
+    const sourceHashes = await Promise.all(
+      assets.map((asset) => hashFile(localPath(asset.uri))),
+    );
+    const renderer = new FFmpegRenderer();
+    await expect(
+      renderer.render(composition, assets, join(root, `${mode}-full.mp4`), {
+        width: 160,
+        height: 90,
+        frameRate: 30,
+      }),
+    ).rejects.toThrow(/still image|story video track/iu);
+    const output = join(
+      root,
+      `${mode}.${mode === "audioOnly" ? "wav" : "mp4"}`,
+    );
+    await renderer.render(
+      composition,
+      assets,
+      output,
+      {
+        width: 160,
+        height: 90,
+        frameRate: 30,
+      },
+      {
+        [mode]: true,
+        ...(mode === "audioOnly"
+          ? {
+              exportProfile: createExportProfile({
+                ratio: "16:9",
+                width: 160,
+                height: 90,
+                frameRate: 30,
+                format: "wav",
+              }),
+            }
+          : {}),
+      },
+    );
+    const manifest = JSON.parse(
+      await readFile(`${output}.manifest.json`, "utf8"),
+    );
+    expect(
+      manifest.sources.map((source: { assetId: string }) => source.assetId),
+    ).toEqual([mode === "audioOnly" ? narration.id : photo.id]);
+    if (mode === "audioOnly") {
+      const pcm = (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          output,
+          "-f",
+          "s24le",
+          "-ac",
+          "2",
+          "-ar",
+          "48000",
+          "-",
+        ])
+      ).stdout;
+      expect(pcm.length / 6).toBe(19200);
+      expect(pcm.some((value) => value !== 0)).toBe(true);
+    } else {
+      const streams = JSON.parse(
+        (
+          await runProcess("ffprobe", [
+            "-v",
+            "error",
+            "-count_frames",
+            "-show_entries",
+            "stream=codec_type,nb_read_frames",
+            "-of",
+            "json",
+            output,
+          ])
+        ).stdout.toString(),
+      ).streams;
+      expect(streams).toEqual([{ codec_type: "video", nb_read_frames: "12" }]);
+    }
+    expect(composition).toEqual(before);
+    expect(
+      await Promise.all(assets.map((asset) => hashFile(localPath(asset.uri)))),
+    ).toEqual(sourceHashes);
   },
 );
