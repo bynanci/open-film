@@ -650,23 +650,479 @@
         },
         "graphicScenes": {
           "type": "array",
+          "maxItems": 8,
           "items": {
-            "type": "object",
-            "properties": {
-              "version": { "const": 1 },
-              "photoDepth": { "$ref": "#/$defs/photoDepthRecipe" }
-            }
+            "$ref": "#/$defs/graphicScene"
           }
         }
       },
       "required": ["id", "storyId", "duration", "tracks"]
     },
+    "graphicIdentifier": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$"
+    },
+    "graphicLiteral": {
+      "type": "string",
+      "$comment": "Literal data only. The explicit whitespace set follows ECMAScript trim; paired supplementary characters are allowed, lone surrogates are not.",
+      "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]",
+      "not": {
+        "pattern": "[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(^|[^\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]"
+      }
+    },
+    "graphicLabel": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicLiteral"
+        }
+      ],
+      "maxLength": 128,
+      "not": {
+        "pattern": "[\\u0000-\\u001f\\u007f]"
+      }
+    },
+    "graphicText": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicLiteral"
+        }
+      ],
+      "maxLength": 512,
+      "pattern": "^[^\\n]*(?:\\n[^\\n]*){0,7}$",
+      "not": {
+        "pattern": "[\\u0000-\\u0008\\u000b-\\u001f\\u007f]"
+      }
+    },
+    "graphicCoordinate": {
+      "type": "number",
+      "minimum": -8192,
+      "maximum": 8192
+    },
+    "graphicDimension": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 4096
+    },
+    "graphicOpacity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "graphicRotation": {
+      "type": "number",
+      "minimum": -3600,
+      "maximum": 3600
+    },
+    "graphicZIndex": {
+      "type": "integer",
+      "minimum": -1000,
+      "maximum": 1000
+    },
+    "graphicEasing": {
+      "enum": ["linear", "ease-in", "ease-out", "ease-in-out"]
+    },
+    "graphicValues": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/graphicCoordinate"
+        },
+        "y": {
+          "$ref": "#/$defs/graphicCoordinate"
+        },
+        "width": {
+          "$ref": "#/$defs/graphicDimension"
+        },
+        "height": {
+          "$ref": "#/$defs/graphicDimension"
+        },
+        "opacity": {
+          "$ref": "#/$defs/graphicOpacity"
+        },
+        "rotation": {
+          "$ref": "#/$defs/graphicRotation"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "graphicAnimation": {
+      "type": "object",
+      "properties": {
+        "enter": {
+          "type": "object",
+          "properties": {
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 30
+            },
+            "easing": {
+              "$ref": "#/$defs/graphicEasing"
+            },
+            "from": {
+              "$ref": "#/$defs/graphicValues"
+            }
+          },
+          "required": ["duration", "easing", "from"],
+          "additionalProperties": false
+        },
+        "exit": {
+          "type": "object",
+          "properties": {
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 30
+            },
+            "easing": {
+              "$ref": "#/$defs/graphicEasing"
+            },
+            "to": {
+              "$ref": "#/$defs/graphicValues"
+            }
+          },
+          "required": ["duration", "easing", "to"],
+          "additionalProperties": false
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "graphicNodeData": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/graphicIdentifier"
+        },
+        "type": {
+          "enum": ["image", "text", "shape", "group"]
+        },
+        "x": {
+          "$ref": "#/$defs/graphicCoordinate"
+        },
+        "y": {
+          "$ref": "#/$defs/graphicCoordinate"
+        },
+        "width": {
+          "$ref": "#/$defs/graphicDimension"
+        },
+        "height": {
+          "$ref": "#/$defs/graphicDimension"
+        },
+        "opacity": {
+          "$ref": "#/$defs/graphicOpacity"
+        },
+        "rotation": {
+          "$ref": "#/$defs/graphicRotation"
+        },
+        "zIndex": {
+          "$ref": "#/$defs/graphicZIndex"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "end": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 30
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "animation": {
+          "$ref": "#/$defs/graphicAnimation"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "x",
+        "y",
+        "width",
+        "height",
+        "opacity",
+        "zIndex",
+        "start",
+        "end"
+      ],
+      "$comment": "Each discriminator branch restricts all property names, including the shared base, without relying on unevaluatedProperties or permissive primitive fallthrough.",
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "image"
+            },
+            "assetId": {
+              "$ref": "#/$defs/graphicIdentifier"
+            }
+          },
+          "required": ["assetId"],
+          "propertyNames": {
+            "enum": [
+              "id",
+              "type",
+              "x",
+              "y",
+              "width",
+              "height",
+              "opacity",
+              "rotation",
+              "zIndex",
+              "start",
+              "end",
+              "hidden",
+              "locked",
+              "animation",
+              "assetId"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "text"
+            },
+            "text": {
+              "$ref": "#/$defs/graphicText"
+            },
+            "fontSize": {
+              "type": "number",
+              "minimum": 6,
+              "maximum": 256
+            },
+            "fontFamily": {
+              "$ref": "#/$defs/graphicLabel"
+            },
+            "fontWeight": {
+              "enum": [400, 700]
+            }
+          },
+          "required": ["text", "fontSize"],
+          "propertyNames": {
+            "enum": [
+              "id",
+              "type",
+              "x",
+              "y",
+              "width",
+              "height",
+              "opacity",
+              "rotation",
+              "zIndex",
+              "start",
+              "end",
+              "hidden",
+              "locked",
+              "animation",
+              "text",
+              "fontSize",
+              "fontFamily",
+              "fontWeight"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "shape"
+            },
+            "shape": {
+              "enum": ["rect", "ellipse"]
+            },
+            "fill": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
+          },
+          "required": ["shape", "fill"],
+          "propertyNames": {
+            "enum": [
+              "id",
+              "type",
+              "x",
+              "y",
+              "width",
+              "height",
+              "opacity",
+              "rotation",
+              "zIndex",
+              "start",
+              "end",
+              "hidden",
+              "locked",
+              "animation",
+              "shape",
+              "fill"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "group"
+            },
+            "children": {
+              "type": "array",
+              "maxItems": 64
+            }
+          },
+          "required": ["children"],
+          "propertyNames": {
+            "enum": [
+              "id",
+              "type",
+              "x",
+              "y",
+              "width",
+              "height",
+              "opacity",
+              "rotation",
+              "zIndex",
+              "start",
+              "end",
+              "hidden",
+              "locked",
+              "animation",
+              "children"
+            ]
+          }
+        }
+      ]
+    },
+    "graphicNode": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicNodeData"
+        },
+        {
+          "properties": {
+            "children": {
+              "items": {
+                "$ref": "#/$defs/graphicNodeDepth2"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "graphicNodeDepth2": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicNodeData"
+        },
+        {
+          "properties": {
+            "children": {
+              "items": {
+                "$ref": "#/$defs/graphicNodeDepth3"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "graphicNodeDepth3": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicNodeData"
+        },
+        {
+          "properties": {
+            "children": {
+              "items": {
+                "$ref": "#/$defs/graphicNodeDepth4"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "graphicNodeDepth4": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/graphicNodeData"
+        },
+        {
+          "properties": {
+            "children": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    },
+    "graphicScene": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/graphicIdentifier"
+        },
+        "name": {
+          "$ref": "#/$defs/graphicLabel"
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 30
+        },
+        "zIndex": {
+          "$ref": "#/$defs/graphicZIndex"
+        },
+        "nodes": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/graphicNode"
+          }
+        },
+        "photoDepth": {
+          "$ref": "#/$defs/photoDepthRecipe"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "name",
+        "start",
+        "duration",
+        "zIndex",
+        "nodes"
+      ],
+      "additionalProperties": false,
+      "$comment": "validateGraphicScenes remains authoritative for Composition/node interval comparisons, unique IDs, total node/text and pixel budgets, UTF-16 text lengths, and PhotoDepth image/source/duration/region bindings. These cross-field and aggregate constraints are not expressible with standard JSON Schema data references."
+    },
     "photoDepthCamera": {
       "type": "object",
       "properties": {
-        "x": { "type": "number", "minimum": -0.05, "maximum": 0.05 },
-        "y": { "type": "number", "minimum": -0.05, "maximum": 0.05 },
-        "scale": { "type": "number", "minimum": 1, "maximum": 1.12 }
+        "x": {
+          "type": "number",
+          "minimum": -0.05,
+          "maximum": 0.05
+        },
+        "y": {
+          "type": "number",
+          "minimum": -0.05,
+          "maximum": 0.05
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1.12
+        }
       },
       "required": ["x", "y", "scale"],
       "additionalProperties": false
@@ -676,41 +1132,62 @@
         {
           "type": "object",
           "properties": {
-            "version": { "const": 1 },
-            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
-            "nodeId": { "type": "string", "minLength": 1, "pattern": "\\S" },
-            "mode": { "const": "parallax" },
-            "duration": { "type": "number", "minimum": 3, "maximum": 6 },
+            "version": {
+              "const": 1
+            },
+            "id": {
+              "$ref": "#/$defs/graphicIdentifier"
+            },
+            "nodeId": {
+              "$ref": "#/$defs/graphicIdentifier"
+            },
+            "mode": {
+              "const": "parallax"
+            },
+            "duration": {
+              "type": "number",
+              "minimum": 3,
+              "maximum": 6
+            },
             "sourceAssetId": {
-              "type": "string",
-              "minLength": 1,
-              "pattern": "\\S"
+              "$ref": "#/$defs/graphicIdentifier"
             },
-            "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "sourceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
             "maskAssetId": {
-              "type": "string",
-              "minLength": 1,
-              "pattern": "\\S"
+              "$ref": "#/$defs/graphicIdentifier"
             },
-            "maskSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "maskSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
             "background": {
               "oneOf": [
                 {
                   "type": "object",
-                  "properties": { "kind": { "const": "source" } },
+                  "properties": {
+                    "kind": {
+                      "const": "source"
+                    }
+                  },
                   "required": ["kind"],
                   "additionalProperties": false
                 },
                 {
                   "type": "object",
                   "properties": {
-                    "kind": { "const": "asset" },
-                    "assetId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
+                    "kind": {
+                      "const": "asset"
                     },
-                    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+                    "assetId": {
+                      "$ref": "#/$defs/graphicIdentifier"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
                   },
                   "required": ["kind", "assetId", "sha256"],
                   "additionalProperties": false
@@ -720,8 +1197,16 @@
             "protectedRegion": {
               "type": "object",
               "properties": {
-                "x": { "type": "number", "minimum": 0, "maximum": 1 },
-                "y": { "type": "number", "minimum": 0, "maximum": 1 },
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
                 "width": {
                   "type": "number",
                   "exclusiveMinimum": 0,
@@ -746,12 +1231,20 @@
               "minimum": 0,
               "maximum": 0.65
             },
-            "amplitude": { "type": "number", "minimum": 0, "maximum": 1 },
+            "amplitude": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
             "camera": {
               "type": "object",
               "properties": {
-                "from": { "$ref": "#/$defs/photoDepthCamera" },
-                "to": { "$ref": "#/$defs/photoDepthCamera" }
+                "from": {
+                  "$ref": "#/$defs/photoDepthCamera"
+                },
+                "to": {
+                  "$ref": "#/$defs/photoDepthCamera"
+                }
               },
               "required": ["from", "to"],
               "additionalProperties": false
@@ -783,17 +1276,30 @@
         {
           "type": "object",
           "properties": {
-            "version": { "const": 1 },
-            "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
-            "nodeId": { "type": "string", "minLength": 1, "pattern": "\\S" },
-            "mode": { "const": "fallback" },
-            "duration": { "type": "number", "minimum": 3, "maximum": 6 },
-            "sourceAssetId": {
-              "type": "string",
-              "minLength": 1,
-              "pattern": "\\S"
+            "version": {
+              "const": 1
             },
-            "sourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "id": {
+              "$ref": "#/$defs/graphicIdentifier"
+            },
+            "nodeId": {
+              "$ref": "#/$defs/graphicIdentifier"
+            },
+            "mode": {
+              "const": "fallback"
+            },
+            "duration": {
+              "type": "number",
+              "minimum": 3,
+              "maximum": 6
+            },
+            "sourceAssetId": {
+              "$ref": "#/$defs/graphicIdentifier"
+            },
+            "sourceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
             "fallbackReason": {
               "enum": [
                 "mask-not-available",

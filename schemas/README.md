@@ -28,6 +28,19 @@ addition to the structural schema. Supply `{ assetIds: catalogIds }` to check
 candidate, selection, constraint, and clip references against a catalog. Project
 manifests do not embed original media or duplicate the catalog.
 
+Optional `graphicScenes` contains complete version-1 scenes. The schema requires
+the base scene and node fields, admits only Image/Text/Shape/Group primitives,
+and bounds geometry, literal text, animations, list sizes and four nesting
+levels. PhotoDepth remains an optional extension; identifiers are catalog IDs,
+not paths or URLs. Every graphics definition resolves within this schema.
+Projects that omit graphics retain schema version `1.0.0` and need no migration.
+
+Runtime admission additionally checks scene/node/animation interval relations,
+unique IDs, aggregate node/text and pixel budgets, and PhotoDepth image/source/
+duration/protected-region bindings. JSON Schema `maxLength` counts Unicode
+characters; core also applies its UTF-16 code-unit budget. Structural schema
+validation does not replace `validateProject` or local media verification.
+
 `validateMediaAsset`, `validateStory`, `validateComposition`, and `validateJob`
 are portable runtime validators. Successful validation returns independent,
 JSON-compatible data; it never writes or changes the original object.
