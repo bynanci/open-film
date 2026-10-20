@@ -50,12 +50,21 @@ preview. The cache retains at most twelve owned PNG/receipt pairs, pruning old
 sessions and orphan receipts when another preview is generated. Receipts can be
 validated by a later service instance while their saved revision remains current.
 The last selectable frame is the last complete frame at the output frame rate.
+Preview receipts also retain the actual title, caption and GraphicScene font
+file hashes and face identities. Crop delivery checks the fonts used by its
+renderer before encoding. A changed font requires a new preview; collecting
+identical font bytes at another path preserves the approval.
 
 PNG stills use that same render path. `exports/still-<request-id>.png` is
 published with a versioned JSON manifest containing the project/revision,
 Composition hash, profile, look/caption selection, frame time/index, source
 hashes, warnings, and output hash. Repeating a request ID with the same content
 returns the verified existing result; using it for different content fails.
+Separate service/CLI instances acquire a private filesystem request lock, so a
+concurrent caller receives a busy error and cannot replace the completed winner.
+After the owner finishes, retry verifies the existing output and receipt. A
+verified dead owner's lock can be reclaimed; token and filesystem identity
+checks protect replacement owners. Unverifiable owners remain untouched.
 For a cropped still, the token must match that exact output frame and all render
 choices. For MP4, it must match the output profile and render choices; reviewing
 one frame does not establish that every shot is safely framed.
@@ -72,6 +81,9 @@ versioned manifest records each output hash, role and sample measurements plus
 the source hashes. A full mix is published as
 `exports/mix-<request-id>.wav`; stems and their manifest are published together
 under `exports/stems-<request-id>/`.
+An empty role set still publishes its manifest, reserving the request ID without
+creating any placeholder WAV. Reusing that ID after adding or removing audio
+rejects the changed content, including across service restarts.
 Audio preflight checks only sources used by the selected audio graph, so an
 offline picture-only source does not block audio delivery. Conflicting hashes
 for a source shared by successive role renders abort publication. Audio-only
@@ -118,6 +130,9 @@ are staged in private directories and atomically published. Output paths reject
 symlinks and unsafe names; manifests and outputs are hash-checked on retry. The
 application verifies source identity before publication and never rewrites the
 original media. Project schema 1.0.0 and SQLite schema are unchanged.
+If publication rollback cannot restore the previous pair, the error identifies
+retained recovery paths in a private work directory. Those files remain
+available for restoration; automatic cleanup does not delete them.
 
 This contract does not claim alpha export, automatic subject tracking, recovery
 of source detail, hardware performance, or successful import into a particular

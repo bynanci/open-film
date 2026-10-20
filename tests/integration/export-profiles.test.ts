@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { appendFileSync, existsSync, readdirSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import {
   mkdtemp,
+  copyFile,
   lstat,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   symlink,
@@ -28,6 +30,8 @@ import {
 import { OpenFilmApplication } from "@openfilm/application";
 import { ExportProfileService } from "../../packages/application/src/export-profiles.js";
 import { FFmpegRenderer } from "@openfilm/render";
+import * as renderModule from "@openfilm/render";
+import { RenderPublicationRecoveryError } from "@openfilm/render";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
@@ -300,6 +304,532 @@ function manualCaptions(cueCount: number): CaptionTrack {
 }
 
 describe("professional profile exports", () => {
+  it.each(["wav", "audio-stems"] as const)(
+    "cancels a %s request after staging its receipt and permits the same-ID retry",
+    async (format) => {
+      const { app, composition } = await fixture(1);
+      const controller = new AbortController();
+      const writer = app.exportProfiles as unknown as {
+        writeReceipt: (path: string, value: unknown) => Promise<void>;
+      };
+      const writeReceipt = writer.writeReceipt;
+      const spy = vi
+        .spyOn(writer, "writeReceipt")
+        .mockImplementation(async function (this: typeof writer, path, value) {
+          await writeReceipt.call(this, path, value);
+          controller.abort();
+        });
+      const input = {
+        compositionId: composition.id,
+        profile: createExportProfile({ ratio: "16:9", format, frameRate: 12 }),
+        requestId: `late-cancel-retry-${format}`,
+      };
+      try {
+        await expect(
+          app.exportProfileAudio({ ...input, signal: controller.signal }),
+        ).rejects.toThrow();
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+      expect(
+        await readdir(join(app.directory, "cache", "export-requests")),
+      ).toEqual([]);
+      const retried = await app.exportProfileAudio(input);
+      expect(retried.files).toHaveLength(format === "wav" ? 1 : 2);
+    },
+  );
+
+  it("binds title, caption and GraphicScene font faces without depending on an environment override", async () => {
+    const { app, composition } = await fixture(1);
+    vi.stubEnv("OPENFILM_TITLE_FONT", undefined);
+    try {
+      composition.tracks[0]!.clips[0]!.title = "A";
+      composition.tracks[0]!.clips[0]!.titleStyle = {
+        version: 1,
+        role: "film-title",
+        fontFamily: "Noto Sans CJK TC",
+        fontWeight: 400,
+        fontSize: 18,
+      };
+      const captions = manualCaptions(1);
+      captions.style.fontFamily = "Noto Serif CJK TC";
+      captions.style.fontSize = 14;
+      composition.captionTracks = [captions];
+      composition.graphicScenes = [
+        {
+          version: 1,
+          id: "font-scene",
+          name: "Font scene",
+          start: 0,
+          duration: 1,
+          zIndex: 1,
+          nodes: [
+            {
+              id: "scene-text",
+              type: "text",
+              text: "B",
+              fontSize: 14,
+              fontFamily: "Noto Serif CJK TC",
+              fontWeight: 700,
+              x: 0,
+              y: 0,
+              width: 40,
+              height: 30,
+              opacity: 1,
+              zIndex: 0,
+              start: 0,
+              end: 1,
+            },
+          ],
+        },
+      ];
+      await app.save();
+      const profile = createExportProfile({
+        ratio: "9:16",
+        format: "png",
+        framing: "crop",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+      });
+      const preview = await app.previewExportFrame({
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+      });
+      const receipt = JSON.parse(
+        await readFile(
+          join(
+            app.directory,
+            "cache",
+            "export-preview",
+            `${preview.token}.json`,
+          ),
+          "utf8",
+        ),
+      );
+      expect(
+        receipt.fonts.map((font: { sha256: string }) => font.sha256).sort(),
+      ).toEqual(
+        (
+          await Promise.all(
+            [
+              "NotoSansCJK-Regular.ttc",
+              "NotoSerifCJK-Regular.ttc",
+              "NotoSerifCJK-Bold.ttc",
+            ].map((name) =>
+              hashFile(join("/usr/share/fonts/opentype/noto", name)),
+            ),
+          )
+        ).sort(),
+      );
+      const reviewed = await decodedRgb(
+        await app.exportProfiles.previewPath(preview.token),
+      );
+      const still = await app.exportStill({
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+        requestId: "three-font-faces-001",
+        confirmCrop: true,
+        cropPreviewToken: preview.token,
+      });
+      const mp4 = await app.exportMp4(composition.id, {
+        exportProfile: { ...profile, format: "mp4" },
+        confirmCrop: true,
+        cropPreviewToken: preview.token,
+      });
+      expect(await decodedRgb(still.path)).toEqual(reviewed);
+      expect(await decodedRgb(mp4.path, 0.25)).toEqual(reviewed);
+      for (const path of [still.path, mp4.path]) {
+        const delivered = JSON.parse(
+          await readFile(`${path}.manifest.json`, "utf8"),
+        );
+        expect(renderModule.canonicalRenderFonts(delivered.fonts)).toEqual(
+          receipt.fonts,
+        );
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(["staged", "completed"] as const)(
+    "retries an actual WAV request after its process dies while %s",
+    async (phase) => {
+      const { app, composition, projectPath, close } = await fixture(1);
+      close();
+      const requestId = `process-crash-${phase}`;
+      const profile = createExportProfile({
+        ratio: "16:9",
+        format: "wav",
+        frameRate: 12,
+      });
+      const input = { compositionId: composition.id, profile, requestId };
+      const source = `import {OpenFilmApplication} from ${JSON.stringify(pathToFileURL(resolve("packages/application/src/index.ts")).href)};
+        const app=await OpenFilmApplication.openForExport(${JSON.stringify(projectPath)});
+        const service=app.exportProfiles;
+        const pause=async()=>{process.stdout.write("paused\\n");await new Promise(()=>setInterval(()=>{},1000));};
+        ${
+          phase === "staged"
+            ? 'const original=service.writeReceipt.bind(service);service.writeReceipt=async(...args)=>{await original(...args);if(args[1]?.profile?.format==="wav")await pause();};'
+            : "const original=service.exportMix.bind(service);service.exportMix=async(...args)=>{const result=await original(...args);await pause();return result;};"
+        }
+        await app.exportProfileAudio(${JSON.stringify(input)});`;
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "-e", source],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let stopped = false;
+      const exited = new Promise<void>((accept) =>
+        child.once("exit", () => {
+          stopped = true;
+          accept();
+        }),
+      );
+      let errors = "";
+      child.stderr.on("data", (chunk: Buffer) => (errors += chunk.toString()));
+      cleanup.push(async () => {
+        if (!stopped) child.kill("SIGKILL");
+        await exited;
+      });
+      await new Promise<void>((accept, reject) => {
+        child.stdout.once("data", () => accept());
+        child.once("error", reject);
+        child.once("exit", (code) =>
+          reject(new Error(`Export child exited ${code}: ${errors}`)),
+        );
+      });
+      const path = join(app.directory, "exports", `mix-${requestId}.wav`);
+      const winner =
+        phase === "completed"
+          ? await Promise.all([
+              hashFile(path),
+              hashFile(`${path}.manifest.json`),
+            ])
+          : undefined;
+      child.kill("SIGKILL");
+      await exited;
+      const reopened = await OpenFilmApplication.openForExport(projectPath);
+      cleanup.push(() => reopened.close());
+      const result = await reopened.exportProfileAudio(input);
+      expect(result.files[0]!.sampleCount).toBe(48_000);
+      if (winner)
+        expect(
+          await Promise.all([
+            hashFile(path),
+            hashFile(`${path}.manifest.json`),
+          ]),
+        ).toEqual(winner);
+      expect(
+        await readdir(join(app.directory, "cache", "export-requests")),
+      ).toEqual([]);
+    },
+  );
+
+  it.each(["png", "wav"] as const)(
+    "keeps one completed %s winner immutable across concurrent service instances",
+    async (format) => {
+      const { app, composition } = await fixture(1);
+      const first = app.exportProfiles;
+      const second = new ExportProfileService(Reflect.get(first, "options"));
+      const profile = createExportProfile({
+        ratio: "16:9",
+        format,
+        width: 160,
+        height: 90,
+        frameRate: 12,
+      });
+      const input = {
+        compositionId: composition.id,
+        profile,
+        requestId: `concurrent-winner-${format}`,
+        time: 0.25,
+      };
+      let resume!: () => void;
+      const paused = new Promise<void>((accept) => (resume = accept));
+      let staged!: () => void;
+      const receiptStaged = new Promise<void>((accept) => (staged = accept));
+      const writer = first as unknown as {
+        writeReceipt: (path: string, value: unknown) => Promise<void>;
+      };
+      const writeReceipt = writer.writeReceipt;
+      const spy = vi
+        .spyOn(writer, "writeReceipt")
+        .mockImplementation(async function (this: typeof writer, path, value) {
+          await writeReceipt.call(this, path, value);
+          staged();
+          await paused;
+        });
+      const deliver = (service: ExportProfileService, request: typeof input) =>
+        format === "png"
+          ? service.exportStill(request)
+          : service.exportAudio(request);
+      const running = deliver(first, input);
+      await receiptStaged;
+      const competingInput = {
+        ...input,
+        profile: { ...profile, frameRate: 24, width: 128, height: 72 },
+      };
+      const competing = await deliver(second, competingInput).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      const path = join(
+        app.directory,
+        "exports",
+        `${format === "png" ? "still" : "mix"}-${input.requestId}.${format}`,
+      );
+      const winnerHashes =
+        competing.status === "fulfilled"
+          ? await Promise.all([
+              hashFile(path),
+              hashFile(`${path}.manifest.json`),
+            ])
+          : undefined;
+      resume();
+      try {
+        await running;
+        if (winnerHashes)
+          expect(
+            await Promise.all([
+              hashFile(path),
+              hashFile(`${path}.manifest.json`),
+            ]),
+          ).toEqual(winnerHashes);
+        expect(competing.status).toBe("rejected");
+        if (competing.status === "rejected")
+          expect(String(competing.reason)).toMatch(
+            /requestId.*running|requestId.*different/u,
+          );
+        expect((await probe(path)).streams[0]!.codec_type).toBe(
+          format === "png" ? "video" : "audio",
+        );
+        await expect(deliver(second, input)).resolves.toBeDefined();
+      } finally {
+        resume();
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it.each(["png", "wav"] as const)(
+    "retains real %s publication backups if restoring the prior pair fails",
+    async (format) => {
+      const { app, composition } = await fixture(1);
+      const publish = renderModule.publishRenderPair;
+      let injected = false;
+      const spy = vi
+        .spyOn(renderModule, "publishRenderPair")
+        .mockImplementation(
+          async (temporary, manifest, output, work, operations) => {
+            await writeFile(output, "prior output bytes");
+            await writeFile(`${output}.manifest.json`, "prior receipt bytes");
+            injected = true;
+            return publish(temporary, manifest, output, work, {
+              ...operations,
+              rename: async (source, destination) => {
+                if (source === manifest || source.includes("previous-video-"))
+                  throw Object.assign(new Error("Injected restore failure"), {
+                    code: "EIO",
+                  });
+                await rename(source, destination);
+              },
+            });
+          },
+        );
+      let failure: unknown;
+      try {
+        const input = {
+          compositionId: composition.id,
+          profile: createExportProfile({
+            ratio: "16:9",
+            format,
+            width: 160,
+            height: 90,
+            frameRate: 12,
+          }),
+          time: 0.25,
+          requestId: `retained-backup-${format}`,
+        };
+        await (format === "png"
+          ? app.exportStill(input)
+          : app.exportProfileAudio(input));
+      } catch (error) {
+        failure = error;
+      } finally {
+        spy.mockRestore();
+      }
+      expect(injected).toBe(true);
+      expect(failure).toBeInstanceOf(RenderPublicationRecoveryError);
+      const recovery = failure as RenderPublicationRecoveryError;
+      expect(await stat(recovery.workDirectory)).toMatchObject({
+        mode: expect.any(Number),
+      });
+      expect(recovery.recoveryPaths).toHaveLength(1);
+      expect(await readFile(recovery.recoveryPaths[0]!, "utf8")).toBe(
+        "prior output bytes",
+      );
+      expect((await stat(recovery.workDirectory)).mode & 0o777).toBe(0o700);
+    },
+  );
+
+  it.each([true, false])(
+    "reserves empty stem request identities durably (empty first=%s)",
+    async (emptyFirst) => {
+      const { app, composition, projectPath, close } = await fixture(1);
+      const originalTracks = structuredClone(composition.tracks);
+      if (emptyFirst) {
+        app.project.timelines[0]!.tracks = originalTracks.filter(
+          (track) => track.type === "video",
+        );
+        await app.save();
+      }
+      const input = {
+        compositionId: composition.id,
+        profile: createExportProfile({
+          ratio: "16:9",
+          format: "audio-stems",
+          frameRate: 12,
+        }),
+        requestId: `empty-stem-request-${emptyFirst}`,
+      };
+      const first = await app.exportProfileAudio(input);
+      expect(first.files.length).toBe(emptyFirst ? 0 : 2);
+      const priorHashes = await Promise.all(
+        first.files.map((file) => hashFile(file.path)),
+      );
+      app.project.timelines[0]!.tracks = emptyFirst
+        ? originalTracks
+        : originalTracks.filter((track) => track.type === "video");
+      await app.save();
+      await expect(app.exportProfileAudio(input)).rejects.toThrow(
+        /requestId.*different/u,
+      );
+      expect(
+        await Promise.all(first.files.map((file) => hashFile(file.path))),
+      ).toEqual(priorHashes);
+      const manifest = join(
+        app.directory,
+        "exports",
+        `stems-${input.requestId}`,
+        "manifest.json",
+      );
+      expect((await stat(manifest)).mode & 0o777).toBe(0o600);
+      if (emptyFirst) {
+        expect(
+          await readdir(
+            join(app.directory, "exports", `stems-${input.requestId}`),
+          ),
+        ).toEqual(["manifest.json"]);
+        app.project.timelines[0]!.tracks = originalTracks.filter(
+          (track) => track.type === "video",
+        );
+        await app.save();
+        const emptyInput = { ...input, requestId: "durable-empty-retry-001" };
+        close();
+        const passive = await OpenFilmApplication.openForExport(projectPath);
+        const empty = await passive.exportProfileAudio(emptyInput);
+        const beforeReopen = JSON.stringify(passive.project);
+        passive.close();
+        const reopened = await OpenFilmApplication.openForExport(projectPath);
+        cleanup.push(() => reopened.close());
+        expect(JSON.stringify(reopened.project)).toBe(beforeReopen);
+        const retried = await reopened.exportProfileAudio(emptyInput);
+        expect(retried).toEqual(empty);
+        expect(retried.files).toEqual([]);
+      }
+    },
+  );
+
+  it.each(["png", "mp4"] as const)(
+    "binds a %s crop token to actual fonts across separate CLI processes",
+    async (format) => {
+      const { app, composition, root, projectPath, close } = await fixture(1);
+      composition.tracks[0]!.clips[0]!.title = "A";
+      await app.save();
+      close();
+      const sans = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
+      const serif = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc";
+      const cli = async (font: string, args: string[]) =>
+        JSON.parse(
+          (
+            await exec(
+              process.execPath,
+              [
+                "--import",
+                "tsx",
+                resolve("apps/cli/src/index.ts"),
+                "export",
+                ...args,
+                "--ratio",
+                "9:16",
+                "--width",
+                "90",
+                "--height",
+                "160",
+                "--fps",
+                "12",
+                "--framing",
+                "crop",
+                "--project",
+                projectPath,
+                "--user-data-dir",
+                join(root, "font-cli-data"),
+              ],
+              {
+                env: { ...process.env, OPENFILM_TITLE_FONT: font },
+                timeout: 30_000,
+                maxBuffer: 1024 * 1024,
+              },
+            )
+          ).stdout,
+        ) as { token: string; path: string };
+      const preview = await cli(sans, [
+        "--format",
+        "png",
+        "--time",
+        "0.25",
+        "--preview",
+      ]);
+      const changedPreview = await cli(serif, [
+        "--format",
+        "png",
+        "--time",
+        "0.25",
+        "--preview",
+      ]);
+      const reviewedPixels = await decodedRgb(preview.path);
+      expect(await decodedRgb(changedPreview.path)).not.toEqual(reviewedPixels);
+      const args = [
+        "--format",
+        format,
+        ...(format === "png" ? ["--time", "0.25"] : []),
+        "--request-id",
+        `font-crop-${format}-001`,
+        "--confirm-crop",
+        "--crop-preview-token",
+        preview.token,
+      ];
+      await expect(cli(serif, args)).rejects.toThrow(
+        /font.*changed|font.*preview/i,
+      );
+      expect(await readdir(join(projectPath, "exports"))).toEqual([]);
+      const collectedFont = join(root, "collected-title-font.ttc");
+      await copyFile(sans, collectedFont);
+      const delivered = await cli(collectedFont, args);
+      expect(
+        await decodedRgb(delivered.path, format === "mp4" ? 0.25 : undefined),
+      ).toEqual(reviewedPixels);
+      if (format === "png")
+        await expect(
+          cli(serif, [...args.slice(0, -1), changedPreview.token]),
+        ).rejects.toThrow(/requestId.*different/u);
+    },
+  );
+
   it("exports audio without applying the picture caption cue limit", async () => {
     const { app, composition } = await fixture(6);
     composition.captionTracks = [manualCaptions(5_001)];
@@ -1466,6 +1996,9 @@ describe("professional profile exports", () => {
     });
     setTimeout(() => controller.abort(), 25);
     await expect(canceled).rejects.toThrow();
+    expect(
+      await readdir(join(app.directory, "cache", "export-requests")),
+    ).toEqual([]);
     const retry = await app.exportStill({
       compositionId: composition.id,
       profile,
@@ -1473,6 +2006,9 @@ describe("professional profile exports", () => {
       requestId: "cancel-retry-profile-001",
     });
     const retryInfo = (await probe(retry.path)).streams[0]!;
+    expect(
+      await readdir(join(app.directory, "cache", "export-requests")),
+    ).toEqual([]);
     expect(retryInfo.codec_name).toBe("png");
     expect(Number(retryInfo.width)).toBe(160);
     expect(Number(retryInfo.height)).toBe(90);
