@@ -3,11 +3,12 @@
 ## Status
 
 The current branch implements the shared versioned Export Profile path across
-Application, FFmpeg, HTTP, CLI and Desktop. Automated regression and a real
-synthetic FFmpeg output pass are recorded below. Full exact-head gates and PR
-checks remain pending. Real-person framing, workstation playback, sustained
-high-resolution rendering, and target NLE behavior are manual gates; synthetic
-fixtures do not establish those properties.
+Application, FFmpeg, HTTP, CLI and Desktop. Automated regression and real
+synthetic FFmpeg outputs pass. The branch is based on `main` at
+`bb2c4521ad894478893485119442a00ffd9b34cc`; PR CI starts after publication.
+Real-person framing, workstation playback, sustained high-resolution rendering,
+and target NLE behavior remain manual gates; synthetic fixtures do not establish
+those properties.
 
 ## Contract coverage
 
@@ -29,7 +30,7 @@ all output remains under `/tmp/openfilm-export-profiles-qa/` and is not committe
 or uploaded as an artifact.
 
 Run directory:
-`/tmp/openfilm-export-profiles-qa/7b54f38b-44a6-4087-a5cf-7bc5cd14d24d`.
+`/tmp/openfilm-export-profiles-qa/64100764-5a9e-4ec7-8f17-389d4d8b133f`.
 Each H.264 MP4 decoded to the requested dimensions, 144 frames at 12 fps and
 12.000 seconds. FFprobe and SHA-256 receipts were checked by the script.
 
@@ -63,12 +64,31 @@ The synthetic source hashes were unchanged during output:
 | Music WAV     | `63e1c65e5181a33f528dc69db78b3b32cc71ae783a9a3feef97232f5a21ecb`   |
 
 The final report also confirmed the in-memory saved Composition/project remained
-unchanged. The run used synthetic media only.
+unchanged. The run used synthetic media only. The three MP4s decoded to 144
+frames each; output hashes matched their manifests. The 90×160 still and preview
+at 4.5 seconds decoded to identical RGB pixels. The WAV mix and narration/music
+stems each contain 576,000 stereo samples at 48 kHz (12 seconds).
 
 ## Automated test runs
 
-Exact-head verification is being rerun after the M7B branch is placed on the
-latest fetched `main`. Results will be updated before PR creation.
+Run date: 2026-10-20 UTC. Verification was run after rebasing M7B onto current
+`main` at `bb2c4521ad894478893485119442a00ffd9b34cc`.
+
+| Command                 | Result                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pnpm format:check`     | Passed for the final M7B files.                                                                              |
+| `pnpm test:i18n`        | Passed; 1,720 semantic keys matched across en-US, zh-TW and ja-JP.                                           |
+| `pnpm lint`             | Passed with `--max-warnings=0`.                                                                              |
+| `pnpm typecheck`        | Passed (`tsc` and `vue-tsc`).                                                                                |
+| `pnpm test`             | Passed: 213 files, 2,939 tests.                                                                              |
+| `pnpm build`            | Passed; main bundle 948.96 kB (gzip 287.69 kB), with the existing Vite chunk-size advisory.                  |
+| `pnpm test:e2e`         | Passed: 169 Playwright tests in 16.5 minutes, including the M7B browser export and cancellation regressions. |
+| `pnpm test:interchange` | Passed: 18 checks, including OTIO read-write-read, source bounds/hash, unsafe URL rejection, and relocation. |
+| `pnpm test:native`      | Not run: `rustc` and `cargo` are unavailable in this environment.                                            |
+
+The M7B PR has not yet been created, so GitHub CI is pending. The M7D Collect
+Media work package is queued in `TASKS.md` and `ROADMAP.md`; this M7B change does
+not implement it.
 
 ## Manual gates
 
