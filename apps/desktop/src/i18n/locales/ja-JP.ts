@@ -9,7 +9,10 @@ import precision from "../modules/precision/ja-JP";
 import transcript from "../modules/transcript/ja-JP";
 import system from "./system-ja-JP";
 
+import motion from "../modules/motion/ja-JP";
+
 export default {
+  ...motion,
   ...exportQuality,
   ...looks,
   ...system,

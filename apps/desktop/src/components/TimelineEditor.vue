@@ -61,6 +61,7 @@ import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
 import AudioGenerationPanel from "./AudioGenerationPanel.vue";
+import MotionGenerationPanel from "./MotionGenerationPanel.vue";
 import AudioQualityPanel from "./AudioQualityPanel.vue";
 const audioQualityOpen = ref(false);
 import { sourcePresentation } from "../sourcePresentation";
@@ -364,6 +365,46 @@ async function importGeneratedAudio(
       return;
     }
     complete(compositionCommand(result.command, result.assets));
+  } catch (error) {
+    if (owns()) reportError(error);
+    complete(false);
+  } finally {
+    if (owns()) generationImportBusy.value = false;
+  }
+}
+async function applyMotion(
+  id: string,
+  action: "import" | "restore",
+  complete: (ok: boolean) => void,
+) {
+  if (hasPending.value || historyBusy.value) {
+    complete(false);
+    return;
+  }
+  generationImportBusy.value = true;
+  const owner = {
+    projectId: props.projectId,
+    compositionId: props.compositionId,
+    epoch: ++generationImportEpoch,
+  };
+  const owns = () =>
+    !generationImportDisposed &&
+    owner.projectId === props.projectId &&
+    owner.compositionId === props.compositionId &&
+    owner.epoch === generationImportEpoch;
+  try {
+    const result = await api.applyMotion(id, owner.projectId, action);
+    if (!owns()) {
+      complete(false);
+      return;
+    }
+    await load();
+    if (!owns() || state.value?.revision !== result.revision) {
+      complete(false);
+      return;
+    }
+    emit("edited");
+    complete(true);
   } catch (error) {
     if (owns()) reportError(error);
     complete(false);
@@ -3297,6 +3338,29 @@ onBeforeUnmount(() => {
                 />
               </fieldset>
             </fieldset>
+            <MotionGenerationPanel
+              v-if="
+                selectedAsset.mediaType === 'image' ||
+                selectedAsset.metadata?.['openfilm.motionGeneration']
+              "
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :state="state"
+              :clip="selectedClip"
+              :asset="selectedAsset"
+              :frame="projectSettings"
+              :source-version="sourceVersion"
+              :disabled="
+                !!selectedClip.locked ||
+                clipSourceLocked ||
+                !!sourceUnavailable ||
+                historyBusy ||
+                hasPending ||
+                generationImportBusy
+              "
+              :flush-inputs="flushInputs"
+              @apply="applyMotion"
+            />
             <SceneDirectionReview
               v-if="
                 selectedAsset.mediaType === 'image' && photoPresentationAllowed

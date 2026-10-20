@@ -519,3 +519,20 @@ broader platforms is implemented by subtitle export. Existing workstation gates
 remain open independently of file-parser or browser success.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## Candidate — M8B reviewable local motion
+
+M8B builds on M8A PR #35 using the same Composition clock and typed edit path.
+The first release provides deterministic camera fixtures (explicitly not AI) and
+explicit external local video candidates. Original/M8A/candidate comparison,
+human review, separate Accept/Replace and explicit Restore preserve local editing
+and history. Remote image-to-video remains disabled; M6 tone/TTS is not reused or
+advertised as image-to-video. Receipt v1 and bounded decoded MP4 proofs accompany
+candidate ownership, cancellation, expiry and recovery.
+
+See [motion contract](docs/motion-candidates.md) and
+[validation/manual gates](docs/validation-motion-candidates.md). This is a stacked
+candidate, not a mainline completion claim. Native presentation, human/detail
+fidelity, third-party rights/cost/retention and paid remote generation require
+separate evidence. A future adapter must pass the existing consent/provider
+boundary plus verified official API and download safety review before enabling it.

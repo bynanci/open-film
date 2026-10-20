@@ -805,3 +805,30 @@ it is not merged and must be retargeted if that dependency changes.
       unavailable because this environment has no Rust toolchain. Real people,
       sustained 4K, physical display and Resolve/NLE behavior remain
       candidate-bound workstation gates.
+
+## Candidate — M8B reviewable local motion candidates
+
+Stacked on M8A PR #35 exact head `e78c4e06da2eb908dc0cb4548718c83b7798a8f1`.
+See [contract](docs/motion-candidates.md), [threat model](docs/security/motion-candidates-threat-model.md)
+and [validation](docs/validation-motion-candidates.md). No remote image-to-video
+provider is enabled; the deterministic camera fixture is explicitly not AI.
+
+- [x] Extend ProviderRegistry with motion bytes/data-kind consent; keep remote
+      motion disabled until a separately verified trusted adapter exists.
+- [x] Generate 2–3 local fixture candidates or admit 1–3 explicitly imported
+      local videos; validate bounded actual MP4, normalize timing/SDR/audio and
+      bind hashes, consent, cost status and human review in receipt v1.
+- [x] Share application logic across CLI/HTTP/Desktop; compare Original/M8A/video,
+      explicit Accept → Replace → Restore using existing typed commands and catalog.
+- [x] Preserve narration/duration, source locks/required selection, Undo/Redo,
+      autosave/reopen/Named Versions; fence stale/late results and recover lost
+      acknowledgments or prepared precommit imports.
+- [x] Exercise invalid/oversized bytes, 429/500, timeout/ignored abort, conflicting
+      request IDs, revoked consent, changed sources/revisions/project generation,
+      real external MP4 audio removal and private cache expiry/discard.
+- [x] Produce actual synthetic 4-second MP4s with decoded every-second samples,
+      shuffled seek comparisons, actual adopted output and immutable source hashes.
+- [ ] Final exact-head CI and stacked dependency review before merge. M8B is not
+      independently mergeable into main while M8A is open; no merge in this task.
+- [ ] Paid remote generation/API terms/license/cost/retention, human deformation,
+      color appearance and native workstation presentation remain manual/not-run.

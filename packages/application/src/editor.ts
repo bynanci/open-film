@@ -1315,10 +1315,46 @@ export class TimelineEditor {
     }
   }
 
-  /** Trusted application handoff: exactly one newly accepted audio source, no document or existing-source changes. */
+  /** Trusted source adoption: only the specified new asset may change editor context. */
   adoptImportedAudioSource(
     before: TimelineEditorState,
     assetId: string,
+  ): TimelineEditorState {
+    return this.adoptImportedSource(before, assetId, "audio");
+  }
+  adoptImportedVisualSource(
+    before: TimelineEditorState,
+    assetId: string,
+  ): TimelineEditorState {
+    const after = this.get(before.composition.id);
+    const asset = this.application.catalog.getAsset(assetId);
+    if (!asset || asset.mediaType !== "video")
+      throw new TimelineEditorError("Accepted motion video is missing.", 409);
+    // Explicit story pools do not admit a new visual asset until the replace
+    // command references it. Keep that canonical revision and supply the
+    // new descriptor only for command admission; no history reset is needed.
+    if (!after.assets.some((item) => item.id === assetId)) {
+      if (
+        digest(document(before)) !== digest(document(after)) ||
+        digest(before.assets) !== digest(after.assets)
+      )
+        throw new TimelineEditorError(
+          "Motion import changed the editing context.",
+          409,
+        );
+      return {
+        ...after,
+        assets: [...after.assets, asset].sort((a, b) =>
+          a.id.localeCompare(b.id),
+        ),
+      };
+    }
+    return this.adoptImportedSource(before, assetId, "video");
+  }
+  private adoptImportedSource(
+    before: TimelineEditorState,
+    assetId: string,
+    mediaType: "audio" | "video",
   ): TimelineEditorState {
     const after = this.get(before.composition.id);
     const added = after.assets.filter(
@@ -1327,7 +1363,7 @@ export class TimelineEditor {
     if (
       added.length !== 1 ||
       added[0]!.id !== assetId ||
-      added[0]!.mediaType !== "audio" ||
+      added[0]!.mediaType !== mediaType ||
       digest(document(before)) !== digest(document(after)) ||
       digest(before.assets) !==
         digest(after.assets.filter((a) => a.id !== assetId))

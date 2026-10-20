@@ -189,3 +189,22 @@ creates a named checkpoint; failure recovery uses a private project journal.
 Session Undo/Redo is unchanged and does not include project-level restore. See
 [Named Versions](named-versions.md), [project format](project-format.md#named-versions)
 and [validation](validation-named-versions.md).
+
+### M8B motion candidate contract
+
+- `MotionGenerationReceipt` v1 binds original/input/output hashes, target/revision,
+  provider/model/cost status, prompt/negative hashes, consent, manual review and
+  lifecycle; raw private prompt/media never belongs in logs or general artifacts.
+- Provider result is bounded bytes, never a URL or project code. All remote motion
+  descriptors are disabled. The fixture is camera motion, not AI generation.
+- Preview is not adoption. Accept requires explicit manual detail review; Import
+  uses existing managed catalog and typed commands, preserving duration/narration.
+  Locks/required selection and source/revision fences remain authoritative.
+- UUID claims, abort races, stale/project fences and durable prepared journals
+  handle duplicates, late results and lost acknowledgments. Prepared recovery
+  rederives whitelisted commands and requires the exact saved revision/document.
+- Original files never change. Cache discard/24h expiry removes unadopted previews;
+  adopted media/recovery journals remain for history/Named Versions. Expiry is
+  swept at open/new preview/expired access, with no daemon for closed projects.
+
+Details: [motion candidates](motion-candidates.md).
