@@ -37,8 +37,10 @@ import {
   publishRenderPair,
   RenderPublicationRecoveryError,
   canonicalRenderFonts,
+  canonicalRenderFontBindings,
   visualSourceAssetIds,
   type RenderFontEvidence,
+  type RenderFontBinding,
   type RenderOptions,
   type RenderSnapshot,
 } from "@openfilm/render";
@@ -106,12 +108,14 @@ interface PreviewEntry {
   outputSha256: string;
   sources: NonNullable<RenderReceipt["sources"]>;
   fonts: RenderFontEvidence[];
+  fontBindings: RenderFontBinding[];
   expiresAt: number;
 }
 
 interface RenderReceipt {
   warnings?: string[];
   fonts?: RenderFontEvidence[];
+  fontBindings?: RenderFontBinding[];
   sources?: Array<{
     assetId: string;
     name: string;
@@ -194,6 +198,16 @@ function readFonts(receipt: { fonts?: unknown }): RenderFontEvidence[] {
     };
   });
   return canonicalRenderFonts(fonts);
+}
+
+function readFontBindings(receipt: {
+  fontBindings?: unknown;
+}): RenderFontBinding[] {
+  if (!Array.isArray(receipt.fontBindings))
+    throw new Error(
+      "Render receipt has no font usage bindings; render a new preview.",
+    );
+  return canonicalRenderFontBindings(receipt.fontBindings);
 }
 
 function audioRole(
@@ -297,6 +311,7 @@ export class ExportProfileService {
         outputSha256: await hashFile(framePath, input.signal),
         sources: sourceReceipts,
         fonts: readFonts(renderReceipt),
+        fontBindings: readFontBindings(renderReceipt),
         expiresAt: Date.now() + PREVIEW_LIFETIME_MS,
       };
       const { path: _path, ...receipt } = entry;
@@ -417,7 +432,12 @@ export class ExportProfileService {
       (expectedFrame !== undefined && expectedFrame !== entry.frameIndex)
     )
       throw invalid();
-    return this.renderSnapshot(snapshot, entry.sources, entry.fonts);
+    return this.renderSnapshot(
+      snapshot,
+      entry.sources,
+      entry.fonts,
+      entry.fontBindings,
+    );
   }
 
   private previewReceiptPath(token: string): Promise<string> {
@@ -465,6 +485,7 @@ export class ExportProfileService {
       const entry: PreviewEntry = {
         ...receipt,
         fonts: readFonts(receipt),
+        fontBindings: readFontBindings(receipt),
         profile: profileMode(receipt.profile, ["mp4", "png"]),
         path: await safeProjectCachePath(
           this.options.directory,
@@ -511,7 +532,9 @@ export class ExportProfileService {
       profile,
       frameIndex,
       renderSelection: renderSelection(input),
-      ...(approved ? { fonts: approved.fonts } : {}),
+      ...(approved
+        ? { fonts: approved.fonts, fontBindings: approved.fontBindings }
+        : {}),
     });
     return this.runRequest(
       `png:${requestId}`,
@@ -629,6 +652,7 @@ export class ExportProfileService {
         },
         sources: sourceReceipts,
         fonts: readFonts(renderReceipt),
+        fontBindings: readFontBindings(renderReceipt),
         warnings,
       });
       this.assertCurrent(snapshot);
@@ -783,6 +807,7 @@ export class ExportProfileService {
     snapshot: ReturnType<ExportProfileService["snapshot"]>,
     sources?: RenderSnapshot["sources"],
     fonts?: RenderSnapshot["fonts"],
+    fontBindings?: RenderSnapshot["fontBindings"],
   ): RenderSnapshot {
     return {
       compositionSha256: digest(snapshot.composition),
@@ -790,6 +815,7 @@ export class ExportProfileService {
       assetsSha256: digest(snapshot.assets),
       sources: sources && structuredClone(sources),
       fonts: fonts && structuredClone(fonts),
+      fontBindings: fontBindings && structuredClone(fontBindings),
       sourceScope: "visual",
       assertCurrent: () => this.assertCurrent(snapshot),
     };

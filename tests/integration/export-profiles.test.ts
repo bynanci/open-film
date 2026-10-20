@@ -32,6 +32,7 @@ import { ExportProfileService } from "../../packages/application/src/export-prof
 import { FFmpegRenderer } from "@openfilm/render";
 import * as renderModule from "@openfilm/render";
 import { RenderPublicationRecoveryError } from "@openfilm/render";
+import * as titleModule from "../../packages/render/src/titles.js";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
@@ -304,6 +305,233 @@ function manualCaptions(cueCount: number): CaptionTrack {
 }
 
 describe("professional profile exports", () => {
+  it.each(["png", "mp4"] as const)(
+    "requires a regenerated %s crop approval for a legacy set-only font receipt",
+    async (format) => {
+      const { app, composition, projectPath, close } = await fixture(1);
+      composition.tracks[0]!.clips[0]!.title = "A";
+      await app.save();
+      close();
+      const reviewer = await OpenFilmApplication.openForExport(projectPath);
+      let reviewerOpen = true;
+      const closeReviewer = () => {
+        if (!reviewerOpen) return;
+        reviewerOpen = false;
+        reviewer.close();
+      };
+      cleanup.push(closeReviewer);
+      const profile = createExportProfile({
+        ratio: "9:16",
+        format,
+        framing: "crop",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+      });
+      const input = { compositionId: composition.id, profile, time: 0.25 };
+      const preview = await reviewer.previewExportFrame(input);
+      const receiptPath = join(
+        reviewer.directory,
+        "cache",
+        "export-preview",
+        `${preview.token}.json`,
+      );
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      expect(receipt.fonts).toHaveLength(1);
+      expect(receipt.fontBindings).toHaveLength(1);
+      delete receipt.fontBindings;
+      await writeFile(receiptPath, JSON.stringify(receipt));
+      closeReviewer();
+      const reopened = await OpenFilmApplication.openForExport(projectPath);
+      cleanup.push(() => reopened.close());
+      const deliver = (token: string) =>
+        format === "png"
+          ? reopened.exportStill({
+              ...input,
+              requestId: "legacy-font-use-001",
+              confirmCrop: true,
+              cropPreviewToken: token,
+            })
+          : reopened.exportMp4(composition.id, {
+              exportProfile: profile,
+              confirmCrop: true,
+              cropPreviewToken: token,
+            });
+      await expect(deliver(preview.token)).rejects.toThrow(
+        /no font usage bindings.*new preview/u,
+      );
+      expect(await readdir(join(reopened.directory, "exports"))).toEqual([]);
+      const regenerated = await reopened.previewExportFrame(input);
+      const reviewed = await decodedRgb(
+        await reopened.exportProfiles.previewPath(regenerated.token),
+      );
+      const delivered = await deliver(regenerated.token);
+      expect(
+        await decodedRgb(
+          delivered.path,
+          format === "mp4" ? input.time : undefined,
+        ),
+      ).toEqual(reviewed);
+    },
+  );
+
+  it.each(["png", "mp4"] as const)(
+    "rejects a %s crop when two fonts swap across title, caption and nested-scene uses",
+    async (format) => {
+      const { app, composition, root } = await fixture(1);
+      const sans = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
+      const serif = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc";
+      let fontA = join(root, "synthetic-title-candidate.ttc");
+      let fontB = join(root, "synthetic-caption-candidate.ttc");
+      await copyFile(sans, fontA);
+      await copyFile(serif, fontB);
+      const createTitle = titleModule.createTitleOverlay;
+      const spy = vi
+        .spyOn(titleModule, "createTitleOverlay")
+        .mockImplementation((text, style, frame, path, options = {}) =>
+          createTitle(text, style, frame, path, {
+            ...options,
+            fontPath: style?.fontFamily?.includes("Serif") ? fontB : fontA,
+          }),
+        );
+      const picture = composition.tracks[0]!;
+      picture.id = "title:track/one";
+      picture.clips[0]!.id = "clip:/one";
+      picture.clips[0]!.title = "A";
+      picture.clips[0]!.titleStyle = {
+        version: 1,
+        role: "film-title",
+        fontFamily: "Noto Sans CJK TC",
+        fontWeight: 400,
+        fontSize: 18,
+      };
+      const captions = manualCaptions(1);
+      captions.id = "captions:track/one";
+      captions.cues[0]!.id = "cue:/one";
+      captions.style.fontFamily = "Noto Serif CJK TC";
+      captions.style.fontSize = 14;
+      composition.captionTracks = [captions];
+      composition.graphicScenes = [
+        {
+          version: 1,
+          id: "scene:one",
+          name: "Nested fonts",
+          start: 0,
+          duration: 1,
+          zIndex: 1,
+          nodes: [
+            {
+              id: "group:parent",
+              type: "group",
+              x: 0,
+              y: 0,
+              width: 160,
+              height: 90,
+              opacity: 1,
+              zIndex: 0,
+              start: 0,
+              end: 1,
+              children: [
+                {
+                  id: "node:text",
+                  type: "text",
+                  text: "B",
+                  fontFamily: "Noto Sans CJK TC",
+                  fontWeight: 400,
+                  fontSize: 14,
+                  x: 20,
+                  y: -15,
+                  width: 40,
+                  height: 30,
+                  opacity: 1,
+                  zIndex: 0,
+                  start: 0,
+                  end: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ];
+      await app.save();
+      const profile = createExportProfile({
+        ratio: "9:16",
+        format,
+        framing: "crop",
+        width: 90,
+        height: 160,
+        frameRate: 12,
+      });
+      const input = { compositionId: composition.id, profile, time: 0.25 };
+      const receipt = async (token: string) =>
+        JSON.parse(
+          await readFile(
+            join(app.directory, "cache", "export-preview", `${token}.json`),
+            "utf8",
+          ),
+        );
+      try {
+        const preview = await app.previewExportFrame(input);
+        const reviewed = await decodedRgb(
+          await app.exportProfiles.previewPath(preview.token),
+        );
+        const originalReceipt = await receipt(preview.token);
+        await copyFile(serif, fontA);
+        await copyFile(sans, fontB);
+        const changed = await app.previewExportFrame(input);
+        const changedReceipt = await receipt(changed.token);
+        expect(
+          await decodedRgb(await app.exportProfiles.previewPath(changed.token)),
+        ).not.toEqual(reviewed);
+        expect(changedReceipt.fonts).toEqual(originalReceipt.fonts);
+        const request = {
+          ...input,
+          requestId: `font-assignment-${format}-001`,
+          confirmCrop: true,
+          cropPreviewToken: preview.token,
+        };
+        const deliver = () =>
+          format === "png"
+            ? app.exportStill(request)
+            : app.exportMp4(composition.id, {
+                exportProfile: profile,
+                confirmCrop: true,
+                cropPreviewToken: preview.token,
+              });
+        await expect(deliver()).rejects.toThrow(
+          /font.*assign|font.*binding|font.*changed/i,
+        );
+        expect(await readdir(join(app.directory, "exports"))).toEqual([]);
+        expect(
+          originalReceipt.fontBindings.map(
+            (binding: { usage: unknown }) => binding.usage,
+          ),
+        ).toEqual([
+          ["caption", captions.id, captions.cues[0]!.id],
+          ["graphic", composition.graphicScenes![0]!.id, "node:text"],
+          ["title", picture.id, picture.clips[0]!.id],
+        ]);
+        expect(originalReceipt.fontBindings).not.toEqual(
+          changedReceipt.fontBindings,
+        );
+        fontA = join(root, "collected-title-candidate.ttc");
+        fontB = join(root, "collected-caption-candidate.ttc");
+        await copyFile(sans, fontA);
+        await copyFile(serif, fontB);
+        const delivered = await deliver();
+        expect(
+          await decodedRgb(delivered.path, format === "mp4" ? 0.25 : undefined),
+        ).toEqual(reviewed);
+        if (format === "png")
+          await expect(
+            app.exportStill({ ...request, cropPreviewToken: changed.token }),
+          ).rejects.toThrow(/requestId.*different/u);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
   it.each(["wav", "audio-stems"] as const)(
     "cancels a %s request after staging its receipt and permits the same-ID retry",
     async (format) => {
