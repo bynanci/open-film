@@ -500,6 +500,18 @@ export const api = {
       `/versions/${encodeURIComponent(id)}`,
       body,
     ),
+  deleteProjectVersion: (
+    id: string,
+    body: { baseRevision: string; confirmed: boolean },
+  ) =>
+    request<{ removedVersionId: string }>(
+      `/versions/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
   restoreProjectVersion: (id: string, body: ProjectVersionRestoreInput) =>
     post<
       ProjectVersionRestoreResult & {

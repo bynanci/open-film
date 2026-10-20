@@ -1,3 +1,14 @@
+## Stable patch integration — in progress
+
+The next application release is0.4.0; the existing project schema stays1.0.0.
+This maintenance pass hardens Named Versions and integrates independently
+reviewed Photo Depth, Professional Export, Collect Media, Native Installer
+candidate tooling, NLE Fidelity and Motion Candidates (PRs35–40). Shared-source
+contracts, non-destructive editing and explicit provider consent remain intact.
+Exact combined tests and remaining workstation gates will be recorded in the
+release validation report before merge/publication. Native installers are not
+certified by a Linux/source release.
+
 ## M6 Audio Quality and Provider Generation
 
 PR 6A (#32) adds real-output MP4 loudness/peak measurement, sampled meters and reviewed

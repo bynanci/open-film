@@ -822,6 +822,24 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        if (versionRoute && method === "DELETE" && !versionRoute[2]) {
+          if (active.size)
+            throw new HttpError(
+              409,
+              "Wait for project jobs to finish before deleting a version.",
+            );
+          const data = await body(request);
+          keys(data, ["baseRevision", "confirmed"]);
+          const result = application.versions.remove(
+            decodeURIComponent(versionRoute[1]!),
+            {
+              baseRevision: text(data, "baseRevision"),
+              confirmed: data.confirmed === true,
+            },
+          );
+          json(response, 200, result);
+          return;
+        }
         if (versionRoute && method === "PATCH" && !versionRoute[2]) {
           const data = await body(request);
           keys(data, ["name", "description"]);

@@ -111,6 +111,13 @@ export default {
       },
     },
     versions: {
+      delete: "Delete…",
+      deleteEyebrow: "DELETE SAVED SNAPSHOT",
+      deleteTitle: "Delete “{name}”?",
+      deleteDescription:
+        "This permanently removes only the saved version “{name}” and frees version storage. Original media and the current project stay unchanged. This cannot be undone.",
+      confirmDelete: "Delete saved version",
+      deleting: "Deleting…",
       eyebrow: "RECOVERABLE PROJECT SNAPSHOTS",
       title: "Named versions",
       description:

@@ -73,6 +73,7 @@ Usage:
   openfilm versions inspect <version-id> --project <film.openfilm>
   openfilm versions diff <before-id> <after-id> --project <film.openfilm>
   openfilm versions rename <version-id> --project <film.openfilm> --name "New name" [--description "..."|--clear-description]
+  openfilm versions delete <version-id> --project <film.openfilm> --base-revision <sha256> --confirm
   openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
@@ -402,6 +403,14 @@ async function main() {
                 : { description: value(options, "description")! }),
           }),
         });
+      } else if (action === "delete") {
+        const id = positional[2];
+        const baseRevision = value(options, "base-revision");
+        if (!id || !baseRevision)
+          throw new Error("Specify a version ID and --base-revision.");
+        if (options.confirm !== true)
+          throw new Error("Deleting requires the explicit --confirm flag.");
+        print(app.versions.remove(id, { baseRevision, confirmed: true }));
       } else if (action === "restore") {
         const id = positional[2];
         const baseRevision = value(options, "base-revision");
@@ -420,7 +429,7 @@ async function main() {
         );
       } else {
         throw new Error(
-          "Choose versions revision|list|create|inspect|diff|rename|restore.",
+          "Choose versions revision|list|create|inspect|diff|rename|delete|restore.",
         );
       }
     } else if (command === "import") {

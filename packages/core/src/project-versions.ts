@@ -221,7 +221,7 @@ export function validateProjectVersionRecord(
   const ids = sourceReferences.map((source) => source.assetId);
   if (new Set(ids).size !== ids.length)
     fail("version.sourceReferences", "source asset IDs must be unique");
-  if (ids.some((value, index) => value !== [...ids].sort()[index]))
+  if (ids.some((value, index) => index > 0 && value < ids[index - 1]!))
     fail(
       "version.sourceReferences",
       "source references must be sorted by asset ID",
@@ -261,6 +261,8 @@ export function diffProjectVersions(
     key: string;
     value: unknown;
   };
+  const key = (kind: string, ...ids: string[]) =>
+    JSON.stringify([kind, ...ids]);
   const collect = (input: ProjectVersionDiffInput): Map<string, Entity> => {
     const entities = new Map<string, Entity>();
     const add = (
@@ -277,11 +279,26 @@ export function diffProjectVersions(
       projectContentLocale: project.projectContentLocale,
       filmSettings: project.filmSettings,
     });
+    add(
+      "story",
+      key("order", "stories"),
+      project.stories.map((story) => story.id),
+    );
+    add(
+      "composition",
+      key("order", "compositions"),
+      project.timelines.map((composition) => composition.id),
+    );
     for (const story of project.stories) {
       const { beats, ...storyFields } = story;
-      add("story", `story:${story.id}`, storyFields);
+      add("story", key("story", story.id), storyFields);
+      add(
+        "story",
+        key("order", "beats", story.id),
+        beats.map((beat) => beat.id),
+      );
       for (const beat of beats)
-        add("story", `beat:${story.id}:${beat.id}`, beat);
+        add("story", key("beat", story.id, beat.id), beat);
     }
     for (const composition of project.timelines) {
       const {
@@ -291,17 +308,47 @@ export function diffProjectVersions(
         graphicSceneTemplates,
         ...compositionFields
       } = composition;
-      add("composition", `composition:${composition.id}`, compositionFields);
+      add("composition", key("composition", composition.id), compositionFields);
+      add(
+        "composition",
+        key("order", "tracks", composition.id),
+        tracks.map((track) => track.id),
+      );
+      add(
+        "captions",
+        key("order", "captionTracks", composition.id),
+        (captionTracks ?? []).map((track) => track.id),
+      );
+      add(
+        "graphicScenes",
+        key("order", "scenes", composition.id),
+        (graphicScenes ?? []).map((scene) => scene.id),
+      );
+      add(
+        "templates",
+        key("order", "templates", composition.id),
+        (graphicSceneTemplates ?? []).map((template) => [
+          template.sceneId,
+          template.templateId,
+        ]),
+      );
       for (const track of tracks) {
         const { clips, ...trackFields } = track;
-        add("composition", `track:${composition.id}:${track.id}`, trackFields);
+        add("composition", key("track", composition.id, track.id), trackFields);
+        add(
+          track.type === "audio" || track.type === "music"
+            ? "audio"
+            : "composition",
+          key("order", "clips", composition.id, track.id),
+          clips.map((clip) => clip.id),
+        );
         for (const clip of clips) {
-          const key = `clip:${composition.id}:${track.id}:${clip.id}`;
+          const clipKey = key("clip", composition.id, track.id, clip.id);
           const { audioAutomation, transform, ...clipFields } = clip;
           if (track.type === "audio" || track.type === "music") {
-            add("audio", key, clip);
+            add("audio", clipKey, clip);
           } else {
-            add("composition", key, {
+            add("composition", clipKey, {
               ...clipFields,
               ...(transform === undefined
                 ? {}
@@ -317,7 +364,7 @@ export function diffProjectVersions(
               audioAutomation !== undefined ||
               transform?.volume !== undefined
             )
-              add("audio", key, {
+              add("audio", clipKey, {
                 ...(transform?.volume === undefined
                   ? {}
                   : { volume: transform.volume }),
@@ -328,28 +375,43 @@ export function diffProjectVersions(
       }
       for (const track of captionTracks ?? []) {
         const { cues, ...trackFields } = track;
-        add("captions", `track:${composition.id}:${track.id}`, trackFields);
+        add("captions", key("track", composition.id, track.id), trackFields);
+        add(
+          "captions",
+          key("order", "cues", composition.id, track.id),
+          cues.map((cue) => cue.id),
+        );
         for (const cue of cues)
-          add("captions", `cue:${composition.id}:${track.id}:${cue.id}`, cue);
+          add("captions", key("cue", composition.id, track.id, cue.id), cue);
       }
       for (const scene of graphicScenes ?? []) {
         const { nodes, ...sceneFields } = scene;
         add(
           "graphicScenes",
-          `scene:${composition.id}:${scene.id}`,
+          key("scene", composition.id, scene.id),
           sceneFields,
+        );
+        add(
+          "graphicScenes",
+          key("order", "nodes", composition.id, scene.id),
+          nodes.map((node) => node.id),
         );
         for (const node of nodes)
           add(
             "graphicScenes",
-            `node:${composition.id}:${scene.id}:${node.id}`,
+            key("node", composition.id, scene.id, node.id),
             node,
           );
       }
       for (const template of graphicSceneTemplates ?? [])
         add(
           "templates",
-          `${composition.id}:${template.sceneId}:${template.templateId}`,
+          key(
+            "template",
+            composition.id,
+            template.sceneId,
+            template.templateId,
+          ),
           template,
         );
     }

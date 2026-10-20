@@ -103,6 +103,13 @@ export default {
       },
     },
     versions: {
+      delete: "刪除…",
+      deleteEyebrow: "刪除已儲存的快照",
+      deleteTitle: "刪除「{name}」？",
+      deleteDescription:
+        "這會永久刪除已儲存的版本「{name}」並釋放版本空間。原始素材和目前專案保持不變，此操作無法復原。",
+      confirmDelete: "刪除已儲存的版本",
+      deleting: "刪除中…",
       eyebrow: "可恢復的專案快照",
       title: "命名版本",
       description:

@@ -4,7 +4,7 @@ An open-source, local-first, story-first media composer. OpenFilm turns a local
 collection of photos, video and audio into organized memories, a story and an
 editable film. Original files are never modified.
 
-**The current development tree includes OpenFilm 0.3.2 Shared Visual Geometry.** It builds on the localized product workflow and combines a Vue desktop workspace,
+**OpenFilm 0.4.0 integrates the creative-scene platform and reviewed recovery/export workflows.** It builds on the localized product workflow and combines a Vue desktop workspace,
 a CLI, browser-portable TypeScript algorithms, a local Node application service,
 and SQLite storage. No cloud account or AI provider is required.
 

@@ -95,6 +95,34 @@ describe("shared named-version API and CLI adapters", () => {
     expect(restoreRetry.body.checkpointVersionId).toBe(
       restored.body.checkpointVersionId,
     );
+    const checkpointId = restored.body.checkpointVersionId;
+    const remove = (body: unknown) =>
+      request(`/versions/${checkpointId}`, {
+        method: "DELETE",
+        body: JSON.stringify(body),
+      });
+    expect(
+      (await remove({ baseRevision: revision.revision, confirmed: false }))
+        .response.status,
+    ).toBe(400);
+    expect(
+      (await remove({ baseRevision: "0".repeat(64), confirmed: true })).response
+        .status,
+    ).toBe(409);
+    const removed = await remove({
+      baseRevision: revision.revision,
+      confirmed: true,
+    });
+    expect(removed.response.status).toBe(200);
+    expect(removed.body).toEqual({ removedVersionId: checkpointId });
+    expect(
+      (await remove({ baseRevision: revision.revision, confirmed: true }))
+        .response.status,
+    ).toBe(200);
+    expect((await request(`/versions/${checkpointId}`)).response.status).toBe(
+      404,
+    );
+    expect((await request("/versions")).body.versions).toHaveLength(1);
 
     expect(
       (
@@ -156,5 +184,26 @@ describe("shared named-version API and CLI adapters", () => {
       (error: Error) => error.message,
     );
     expect(failedConfirmation).toContain("explicit --confirm");
+    const revision = JSON.parse(
+      (await cli("revision")).stdout.toString("utf8"),
+    ).revision;
+    await expect(
+      cli("delete", created.version.id, "--base-revision", revision),
+    ).rejects.toThrow("explicit --confirm");
+    const removed = JSON.parse(
+      (
+        await cli(
+          "delete",
+          created.version.id,
+          "--base-revision",
+          revision,
+          "--confirm",
+        )
+      ).stdout.toString("utf8"),
+    );
+    expect(removed).toEqual({ removedVersionId: created.version.id });
+    expect(
+      JSON.parse((await cli("list")).stdout.toString("utf8")).versions,
+    ).toEqual([]);
   });
 });

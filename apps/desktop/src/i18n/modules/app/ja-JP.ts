@@ -108,6 +108,13 @@ export default {
       },
     },
     versions: {
+      delete: "削除…",
+      deleteEyebrow: "保存済みスナップショットの削除",
+      deleteTitle: "「{name}」を削除しますか？",
+      deleteDescription:
+        "保存済みバージョン「{name}」だけを完全に削除し、空き容量を確保します。元の素材と現在のプロジェクトは変更されません。この操作は取り消せません。",
+      confirmDelete: "保存済みバージョンを削除",
+      deleting: "削除中…",
       eyebrow: "復元可能なプロジェクトスナップショット",
       title: "名前付きバージョン",
       description:

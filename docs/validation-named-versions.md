@@ -100,3 +100,28 @@ behavior is inferred from synthetic tests.
   each target desktop OS. Never use private project data in CI artifacts.
 - Hardware performance, 4K restore/render throughput, real-film aesthetics and
   external NLE behavior are outside this candidate's automated evidence.
+
+## 2026-10-20 review remediation
+
+Baseline main: `bb2c4521ad894478893485119442a00ffd9b34cc` (merged PR34).
+Five confirmed findings are fixed: explicit capacity management, post-checkpoint
+target-source verification, sorted-reference complexity, collision-free tuple
+keys, and order-aware comparisons. Full combined release verification is recorded
+separately in the stable-release validation report; older gate counts above are
+historical and do not establish the new release's status.
+
+Before implementation, the new targeted suite failed5 tests: missing deletion,
+changed source accepted during checkpoint creation, missing ID-collision diff,
+and missing story/beat order diffs. API/CLI deletion failed2 tests; the browser
+regression reached the absent Delete button and failed. After implementation,
+30 core/application/adapter tests pass, and the full named-version browser
+scenario passes including Escape, keyboard acceptance and retained project state.
+It exercises50 snapshots, stale/unconfirmed deletion, exact slot selection,
+checkpoint durability/reopen, active-journal protection, receipt tombstones,
+50,000-source validation and track/clip/caption/scene/node reordering.
+
+Equivalent local Node24.19 benchmark, 1,000 sorted source references, 7 calls:
+full-array sort invocations7000 →0; median10.31ms →2.07ms;
+maximum13.30ms →3.81ms. Raw samples are retained in the release-validation
+workspace. These short local samples support the algorithmic change, not a
+cross-device latency promise. No locks, project schema or original bytes change.

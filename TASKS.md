@@ -1,3 +1,11 @@
+## Next stable patch — review remediation and integration
+
+- [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.
+- [x] Add explicit confirmed deletion through shared application/API/CLI/Desktop to free bounded version capacity without automatic pruning.
+- [x] Cover stale/confirmation/retry/recovery/reopen and synthetic source-change regressions.
+- [ ] Verify and optimize all six feature PRs35–40, preserve their branch ancestry, and run complete combined gates.
+- [ ] Merge the reviewed integration candidate after exact-head CI passes; publish the next stable patch0.4.0 source release with accurate platform/manual limits.
+
 ## M6 — Audio Quality and Provider Generation
 
 - [x] Reuse existing AudioAutomation and typed volume edits.
