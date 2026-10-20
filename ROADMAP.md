@@ -21,6 +21,10 @@ first/last preview pixels are regression-tested without changing project rates.
 Collect ZIP publication fences saved revisions/cancellation after archive creation
 and publishes synchronously without replacing existing destinations.
 
+Vite 8.2.4 addresses the Windows development-tool advisory
+`GHSA-698v-4r3x-3vcv`; all 290 other package records and native lifecycle
+policy remain unchanged. Full corrected-candidate gates precede merge/release.
+
 CLI exports preserve saved revisions and unrelated jobs across durable retries.
 Native installer distribution also requires compatible remediation and reachability
 review for GLib 0.18.5 / `RUSTSEC-2024-0429`; that existing gate remains open.

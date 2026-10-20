@@ -10,8 +10,11 @@ certification is implied.
 ## Exact reviewed inputs
 
 Main baseline: `bb2c4521ad894478893485119442a00ffd9b34cc`.
-Combined implementation: `063a5d27e569fd29f339291d704771e093faa34b`. Later documentation-only changes
-retain the same implementation; the release evidence identifies the final head.
+The last complete local baseline is
+`063a5d27e569fd29f339291d704771e093faa34b`, before the final Vite security
+correction. The checksummed release evidence identifies the final corrected
+candidate, tested implementation and merge, with complete results for that exact
+source. Historical runs below remain baseline evidence.
 Named Versions hardening: `41357e73fbb2b1686d96192664ed405b908aed5a`;
 checkpoint race: `ede62fc0dcdcfda373b0b1a7757880e36f45532a`.
 Workspace/Tauri/Cargo metadata agree on 0.4.0. The project schema remains 1.0.0.
@@ -201,7 +204,29 @@ and original source hashes. The fix has independent frozen-commit evidence; the
 earlier 195-case browser success is retained as baseline, followed by new complete
 gates on the corrected implementation.
 
-## Combined automated gates
+## Development-tool security correction
+
+The JavaScript advisory job for `249a57bb3fce50c3437fc3a6d29906d8c2374c61`
+reported Vite 8.2.0 / `GHSA-698v-4r3x-3vcv` (moderate). The exact Vite
+8.2.4 correction is `e2896c5fbdd6c605d3e08bf274072a1adf5e6717`. Official
+registry integrity/signatures and default-trust Sigstore publisher/source
+provenance are verified; all 36 installed files match the authenticated archive.
+All 290 non-Vite package records, Koffi 3.3.3 and its disabled install scripts
+remain unchanged. Full production/dev/optional audits change from one finding
+to zero without an exclusion or severity waiver.
+
+Six behavioral regressions execute the installed trusted dependency launcher
+with inert filesystem/child-process controls: five vulnerable percent/CR/LF
+paths change from failure to rejection, while a normal path retains escaping.
+These Linux controls do not claim Windows shell or workstation execution.
+Independent build/type, CLI/native publication and five actual browser controls
+pass. See [dependency validation](validation-vite-security.md). The corrected
+candidate must repeat all eight basic gates, the entire browser suite and hosted
+CI before merge; exact-head results accompany the checksummed release evidence.
+
+## Completed basic-gate baseline
+
+This run predates the final development-tool security correction.
 
 On implementation `063a5d27e569fd29f339291d704771e093faa34b`:
 

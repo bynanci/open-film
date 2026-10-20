@@ -38,6 +38,8 @@
 
 - [x] Reproduce and independently fix the late ZIP saved-revision publication race; verify precommit rejection and postcommit ownership, then rerun all final gates.
 
+- [x] Pin authenticated Vite 8.2.4 for the failed advisory gate, preserve all other package records and native policy, and independently verify launcher/build/export compatibility; repeat final exact-candidate gates before merge.
+
 Final full browser/native CI, exact-head review, merge and publication are gated
 and recorded by [PR #41](https://github.com/bynanci/open-film/pull/41) and the
 [checksummed 0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
