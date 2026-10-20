@@ -146,13 +146,15 @@ function compile(
   return module.exports.default!;
 }
 
-async function fixture() {
+async function fixture(initialStart?: () => Promise<unknown>) {
   let activeProject: SavedProject | null = savedProject();
   let activePath: string | null = "/synthetic/project.openfilm";
   let failed = false;
   let closeRequest = false;
   let failStart = false;
   let assetRead: (() => Promise<unknown>) | undefined;
+  let startRead = initialStart;
+  let runtimeState: string | undefined;
   const asset = {
     id: "photo",
     name: "Synthetic photo",
@@ -218,11 +220,12 @@ async function fixture() {
     })),
   };
   const invoke = vi.fn(async (command: string) => {
+    if (command === "native_runtime_start" && startRead) return startRead();
     if (command === "native_runtime_start" && failStart)
       return { state: "blocked", code: "runtime.preflight" };
     if (command === "native_runtime_status")
       return {
-        state: failed ? "blocked" : "development",
+        state: runtimeState ?? (failed ? "blocked" : "development"),
         ...(failed ? { code: "runtime.serviceExited" } : {}),
         ...(closeRequest ? { closeRequestId: 1 } : {}),
       };
@@ -355,12 +358,25 @@ async function fixture() {
     browser,
     storage,
     root: mounted.root,
+    unmount: mounted.unmount,
     setProject(value: SavedProject | null, path: string | null = activePath) {
       activeProject = value;
       activePath = path;
     },
     setAssetRead(value: () => Promise<unknown>) {
       assetRead = value;
+    },
+    setStartRead(value: () => Promise<unknown>) {
+      startRead = value;
+    },
+    setRuntimeState(value: string) {
+      runtimeState = value;
+    },
+    async beginRetry() {
+      failed = true;
+      await tick();
+      failed = false;
+      return { done: click(button("app.nativeRuntime.retry")) };
     },
     async retry() {
       failed = true;
@@ -401,6 +417,86 @@ async function fixture() {
 }
 
 describe("native recovery retains actual App local draft owners", () => {
+  it("handles an initial close request while native startup is still pending", async () => {
+    let finish!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const h = await fixture(() => pending);
+    try {
+      await h.close();
+      expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+        requestId: 1,
+        cancel: false,
+      });
+    } finally {
+      finish({ state: "ready", port: 38541, session: "e".repeat(64) });
+      await settle();
+    }
+    expect(h.owners).toHaveLength(0);
+  });
+  it("never mounts a late ready response after the Gate is disposed", async () => {
+    let finish!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const h = await fixture(() => pending);
+    h.unmount();
+    finish({ state: "ready", port: 38541, session: "e".repeat(64) });
+    await settle();
+    expect(h.owners).toHaveLength(0);
+  });
+  it("keeps a vetoed pending Retry valid and restores its exact dirty draft on completion", async () => {
+    const h = await fixture();
+    h.current.setupState.beatDraft.narration = "Still dirty after close veto";
+    h.current.setupState.beatDirty = true;
+    let finish!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      finish = resolve;
+    });
+    h.setStartRead(() => pending);
+    const retry = await h.beginRetry();
+    await h.close();
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: true,
+    });
+    finish({ state: "development" });
+    await retry.done;
+    expect(h.owners).toHaveLength(2);
+    expect(h.current.setupState.beatDraft.narration).toBe(
+      "Still dirty after close veto",
+    );
+    expect(h.current.setupState.beatDirty).toBe(true);
+    expect(h.beforeUnload().defaultPrevented).toBe(true);
+  });
+  it("keeps dirty retry drafts protected while a busy-start close request is cancelled", async () => {
+    const h = await fixture();
+    const owner = h.current;
+    owner.setupState.beatDraft.narration = "Keep this pending retry draft";
+    owner.setupState.beatDirty = true;
+    let finish!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      finish = resolve;
+    });
+    h.setStartRead(() => pending);
+    const retry = await h.beginRetry();
+    try {
+      await h.close();
+      expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+        requestId: 1,
+        cancel: true,
+      });
+      expect(owner.isUnmounted).toBe(false);
+      expect(h.beforeUnload().defaultPrevented).toBe(true);
+    } finally {
+      finish({ state: "blocked", code: "runtime.preflight" });
+      await retry.done;
+    }
+    expect(owner.setupState.beatDraft.narration).toBe(
+      "Keep this pending retry draft",
+    );
+  });
   it("remounts fresh service state without dropping unflushed beat and exact category drafts", async () => {
     const h = await fixture();
     const first = h.current;
@@ -911,5 +1007,59 @@ describe("native recovery retains actual App local draft owners", () => {
       requestId: 1,
       cancel: false,
     });
+  });
+});
+
+describe("pending Retry preserves live App close barriers", () => {
+  it("vetoes an unknown active owner without flushing against it", async () => {
+    const h = await fixture();
+    h.setRuntimeState("starting");
+    const jobs = vi.spyOn(h.api, "jobs");
+    await h.close();
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: true,
+    });
+    expect(h.patch).not.toHaveBeenCalled();
+    expect(jobs).not.toHaveBeenCalled();
+  });
+  it("keeps the existing live project job close veto during pending Retry", async () => {
+    const h = await fixture();
+    const owner = h.current;
+    h.api.jobs = async () => {
+      throw new Error("Transient jobs read failed");
+    };
+    await h.close();
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: true,
+    });
+    h.api.jobs = async () => ({ jobs: [] });
+    (owner.setupState as unknown as { jobs: unknown[] }).jobs = [
+      { id: "collecting", type: "collect-media", status: "running" },
+    ];
+    h.invoke.mockClear();
+    let finish!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      finish = resolve;
+    });
+    h.setStartRead(() => pending);
+    const retryButton = flatten(h.root).find(
+      (node) =>
+        node.tag === "button" && node.text === "app.nativeRuntime.retry",
+    );
+    expect(retryButton).toBeDefined();
+    const retryDone = (retryButton!.props.onClick as () => Promise<void>)();
+    await settle();
+    try {
+      await h.close();
+      expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+        requestId: 1,
+        cancel: true,
+      });
+    } finally {
+      finish({ state: "blocked", code: "runtime.preflight" });
+      await retryDone;
+    }
   });
 });

@@ -13,6 +13,7 @@ import {
   type ProjectSettings,
 } from "@openfilm/core";
 import NleHandoff from "./NleHandoff.vue";
+import LocalDownload from "./LocalDownload.vue";
 import CaptionExport from "./CaptionExport.vue";
 import { useI18n } from "vue-i18n";
 import { resolveCompatibility } from "@openfilm/exporters";
@@ -613,19 +614,24 @@ onUnmounted(() => {
         </figure>
         <div v-if="stillResult" class="export-profile-result" role="status">
           <strong>{{ t("exportProfiles.stillSaved") }}</strong>
-          <a :href="exportDownloadUrl(stillResult.filename)" download>
+          <LocalDownload
+            :href="exportDownloadUrl(stillResult.filename)"
+            :filename="stillResult.filename"
+            :owner="projectId"
+          >
             {{
               t("exportProfiles.downloadStill", {
                 filename: stillResult.filename,
               })
             }}
-          </a>
-          <a
+          </LocalDownload>
+          <LocalDownload
             :href="exportDownloadUrl(`${stillResult.filename}.manifest.json`)"
-            download
+            :filename="`${stillResult.filename}.manifest.json`"
+            :owner="projectId"
           >
             {{ t("exportProfiles.downloadReceipt") }}
-          </a>
+          </LocalDownload>
           <ul
             v-if="stillResult.warnings.length"
             class="export-profile-warnings"
@@ -702,7 +708,11 @@ onUnmounted(() => {
           <strong>{{ t("exportProfiles.audioSaved") }}</strong>
           <ul v-if="audioResult.files.length">
             <li v-for="file in audioResult.files" :key="file.filename">
-              <a :href="exportDownloadUrl(audioDownloadName(file))" download>
+              <LocalDownload
+                :href="exportDownloadUrl(audioDownloadName(file))"
+                :filename="file.filename"
+                :owner="projectId"
+              >
                 {{
                   t("exportProfiles.audioFile", {
                     role: t(`exportProfiles.roles.${file.role}`),
@@ -713,10 +723,10 @@ onUnmounted(() => {
                     samples: file.sampleCount,
                   })
                 }}
-              </a>
+              </LocalDownload>
             </li>
           </ul>
-          <a
+          <LocalDownload
             v-if="
               audioResult.manifestPath && audioResult.profile.format === 'wav'
             "
@@ -725,10 +735,11 @@ onUnmounted(() => {
                 `${audioResult.files[0]?.filename}.manifest.json`,
               )
             "
-            download
-            >{{ t("exportProfiles.downloadReceipt") }}</a
+            :filename="`${audioResult.files[0]?.filename}.manifest.json`"
+            :owner="projectId"
+            >{{ t("exportProfiles.downloadReceipt") }}</LocalDownload
           >
-          <a
+          <LocalDownload
             v-if="
               audioResult.manifestPath &&
               audioResult.profile.format === 'audio-stems'
@@ -736,8 +747,9 @@ onUnmounted(() => {
             :href="
               exportDownloadUrl(`stems-${audioResult.requestId}/manifest.json`)
             "
-            download
-            >{{ t("exportProfiles.downloadReceipt") }}</a
+            filename="manifest.json"
+            :owner="projectId"
+            >{{ t("exportProfiles.downloadReceipt") }}</LocalDownload
           >
         </div>
       </section>
@@ -845,24 +857,28 @@ onUnmounted(() => {
       <div>
         <strong>{{ t("app.export.saved") }}</strong
         ><code :title="path">{{ path }}</code
-        ><a
+        ><LocalDownload
           v-if="filename"
           class="secondary"
           :href="exportDownloadUrl(filename)"
-          download
+          :filename="filename"
+          :owner="projectId"
           >{{
             format === "mp4"
               ? t("app.export.downloadMp4")
               : t("app.export.downloadFile", { format: format.toUpperCase() })
-          }}</a
+          }}</LocalDownload
         >
       </div>
     </div>
     <details v-if="filename && format === 'mp4'" class="export-report-details">
       <summary>{{ t("app.export.renderDetails") }}</summary>
-      <a :href="exportDownloadUrl(`${filename}.manifest.json`)" download>{{
-        t("app.export.downloadRecipe")
-      }}</a>
+      <LocalDownload
+        :href="exportDownloadUrl(`${filename}.manifest.json`)"
+        :filename="`${filename}.manifest.json`"
+        :owner="projectId"
+        >{{ t("app.export.downloadRecipe") }}</LocalDownload
+      >
     </details>
     <p v-if="path && stale" class="preview-stale" role="status">
       {{ t("app.export.stale") }}

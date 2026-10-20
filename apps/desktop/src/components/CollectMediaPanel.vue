@@ -14,6 +14,7 @@ import type {
 import { api, exportDownloadUrl } from "../api";
 import { localizeError } from "../i18n";
 import Icon from "./Icon.vue";
+import LocalDownload from "./LocalDownload.vue";
 
 type Scope = CollectPlanInput["scope"];
 type Format = "directory" | "zip";
@@ -535,14 +536,15 @@ onBeforeUnmount(() => {
         <code>{{ created.fileName }}</code>
       </p>
       <p>{{ t("app.collect.savedInProject") }}</p>
-      <a
+      <LocalDownload
         v-if="created.format === 'zip'"
         class="secondary"
         :href="exportDownloadUrl(created.fileName)"
-        :download="created.fileName"
+        :filename="created.fileName"
+        :owner="project.id"
       >
         <Icon name="download" />{{ t("app.collect.download") }}
-      </a>
+      </LocalDownload>
       <p v-if="created.manifestSha256" class="collect-hash">
         {{ t("app.collect.manifestHash") }} ·
         <code>{{ created.manifestSha256 }}</code>

@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { existsSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   chmod,
@@ -59,7 +60,11 @@ async function eventually<T>(
   }
   throw new Error("Native fixture timeout");
 }
-async function bundle(root: string, ffmpegSource = "/usr/bin/ffmpeg") {
+async function bundle(
+  root: string,
+  ffmpegSource = "/usr/bin/ffmpeg",
+  serviceEntry = "apps/server/src/index.ts",
+) {
   const repository = join(root, "build");
   await mkdir(join(repository, "dist/server"), { recursive: true });
   await mkdir(join(repository, "dist/native"), { recursive: true });
@@ -72,7 +77,7 @@ async function bundle(root: string, ffmpegSource = "/usr/bin/ffmpeg") {
   for (const name of ["LICENSE", "NOTICE"])
     await copyFile(resolve(name), join(repository, name));
   for (const [entry, outfile] of [
-    ["apps/server/src/index.ts", "dist/server/index.mjs"],
+    [serviceEntry, "dist/server/index.mjs"],
     ["apps/server/src/native-entry.ts", "dist/native/launcher.mjs"],
   ])
     await build({
@@ -373,6 +378,52 @@ it("closes a genuine service spawn error and can launch a fresh owner afterward"
   expect(await eventually(() => failed.child.exitCode ?? undefined, 3000)).toBe(
     0,
   );
+  const recovered = launch(join(root, "recovered"), output);
+  await recovered.ready();
+  await recovered.stop();
+}, 30000);
+it("reports a real failed close, reaps its service and exits the owner for fresh startup", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-native-close-failed-"));
+  roots.push(root);
+  const entry = join(root, "close-failed-service.ts");
+  const exitedMarker = join(root, "failed-service-exited.json");
+  await writeFile(
+    entry,
+    `
+    import {startServer} from ${JSON.stringify(resolve("apps/server/src/server.ts"))};
+    import {registerOwnedProcessControl} from ${JSON.stringify(resolve("apps/server/src/owned-process-control.ts"))};
+    import {writeFileSync} from 'node:fs';
+    process.once('exit', code => writeFileSync(${JSON.stringify(exitedMarker)}, JSON.stringify({code})));
+    const startup = startServer({port:0, nativeSession:process.env.OPENFILM_NATIVE_SESSION,
+      userDataDirectory:process.env.OPENFILM_USER_DATA_DIRECTORY});
+    registerOwnedProcessControl(startup.then(runtime => ({close:async () => {
+      await runtime.close(); throw new Error('Synthetic post-close failure');
+    }})));
+    const runtime = await startup;
+    console.log(JSON.stringify({event:'server.ready',host:'127.0.0.1',port:runtime.port}));
+  `,
+  );
+  const failedBundle = await bundle(
+    join(root, "failing-runtime"),
+    undefined,
+    entry,
+  );
+  const failed = launch(join(root, "failed"), failedBundle.output);
+  const prefix = await failed.ready();
+  failed.child.stdin.write('{"type":"shutdown"}\n');
+  await eventually(() =>
+    failed.messages.find((value) => value.code === "runtime.closeFailed"),
+  );
+  await eventually(() => (existsSync(exitedMarker) ? true : undefined));
+  expect(JSON.parse(await readFile(exitedMarker, "utf8"))).toEqual({ code: 1 });
+  // The real owned process control sends close-failed, disconnects and exits1.
+  // Keep that failure visible and exit the launcher nonzero after reaping it.
+  await expect(fetch(prefix + "/workspace")).rejects.toThrow();
+  expect(await eventually(() => failed.child.exitCode ?? undefined, 3000)).toBe(
+    1,
+  );
+  expect(failed.messages.some((value) => value.state === "closed")).toBe(false);
+  const { output } = await bundle(join(root, "fresh-runtime"));
   const recovered = launch(join(root, "recovered"), output);
   await recovered.ready();
   await recovered.stop();

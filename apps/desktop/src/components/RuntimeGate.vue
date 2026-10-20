@@ -85,6 +85,8 @@ const ready = ref(!isTauri());
 const busy = ref(false);
 const closing = ref(false);
 let closeHandling = false;
+let startupSequence = 0;
+let closeAccepted = false;
 const failure = ref("");
 let disposed = false;
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -115,7 +117,8 @@ function code(value: unknown) {
   return knownCodes.has(key) ? key : "preflight";
 }
 async function start() {
-  if (busy.value) return;
+  if (busy.value || closeAccepted) return;
+  const sequence = ++startupSequence;
   busy.value = true;
   failure.value = "";
   try {
@@ -126,7 +129,7 @@ async function start() {
       session?: string;
       code?: string;
     }>("native_runtime_start");
-    if (disposed) return;
+    if (disposed || closeAccepted || sequence !== startupSequence) return;
     if (result.state === "ready")
       configureNativeConnection(result.port, result.session);
     if (result.state !== "ready" && result.state !== "development")
@@ -139,16 +142,16 @@ async function start() {
         void check();
       }, 1000);
   } catch (error) {
-    if (!disposed) {
+    if (!disposed && !closeAccepted && sequence === startupSequence) {
       ready.value = false;
       failure.value = code(error instanceof Error ? error.message : error);
     }
   } finally {
-    busy.value = false;
+    if (sequence === startupSequence) busy.value = false;
   }
 }
 async function check() {
-  if (disposed || busy.value || closeHandling) return;
+  if (disposed || closeAccepted || closeHandling) return;
   try {
     const result = await invoke<{
       state: string;
@@ -163,6 +166,11 @@ async function check() {
       try {
         if (retainedDrafts.value.length) event.preventDefault();
         if (
+          workspace.value &&
+          !["ready", "development", "blocked"].includes(result.state)
+        )
+          event.preventDefault();
+        if (
           !event.defaultPrevented &&
           result.state !== "blocked" &&
           workspace.value &&
@@ -170,6 +178,10 @@ async function check() {
         )
           event.preventDefault();
         window.dispatchEvent(event);
+        if (!event.defaultPrevented) {
+          closeAccepted = true;
+          startupSequence++;
+        }
         await invoke("native_runtime_close", {
           requestId: result.closeRequestId,
           cancel: event.defaultPrevented,
@@ -179,6 +191,8 @@ async function check() {
           failure.value = "unsaved";
         }
       } catch {
+        closeAccepted = false;
+        busy.value = false;
         try {
           await invoke("native_runtime_close", {
             requestId: result.closeRequestId,

@@ -392,6 +392,42 @@ export const captionDownloadUrl = (
   `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
+/** Fetch local artifacts with CORS Origin semantics, never a native navigation.
+ * Callers own cancellation and publication of the resulting window-local blob.
+ */
+export async function fetchDownloadBlob(
+  url: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const connection = prefix;
+  if (!url.startsWith(`${connection}/`))
+    throw new ApiError("The download belongs to another workspace.", 409, {
+      code: "workspace.invalidResponse",
+    });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      signal,
+      redirect: "error",
+      credentials: "omit",
+    });
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new ApiError("The local film workspace is unavailable.", 0, {
+      code: "workspace.unavailable",
+    });
+  }
+  if (!response.ok)
+    throw responseError(
+      await response.json().catch(() => null),
+      response.status,
+    );
+  const blob = await response.blob();
+  signal.throwIfAborted();
+  if (prefix !== connection)
+    throw new DOMException("The local connection changed.", "AbortError");
+  return blob;
+}
 export const exportFramePreviewUrl = (token: string): string =>
   `${prefix}/export/frame-preview/${encodeURIComponent(token)}`;
 export const previewExportFrame = (

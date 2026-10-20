@@ -264,10 +264,18 @@ export async function runNativeLauncher(
     });
     let expectedExit = false;
     let acknowledged = false;
+    let closeFailedAcknowledged = false;
     let spawnFailed = false;
+    const releaseFailedOwner = () => {
+      process.exitCode = 1;
+      closing = true;
+      lines.close();
+      process.stdin.destroy();
+    };
     const exited = new Promise<number | null>((accept) => {
       child.once("exit", (code) => {
-        if (!expectedExit) {
+        if (closeFailedAcknowledged) releaseFailedOwner();
+        else if (!expectedExit) {
           output({ state: "blocked", code: "runtime.serviceExited" });
           process.exitCode = 1;
           lines.close();
@@ -318,6 +326,7 @@ export async function runNativeLauncher(
             accept();
           }
           if (value.type === "openfilm.benchmark.close-failed") {
+            closeFailedAcknowledged = true;
             child.off("message", handler);
             reject(new Error("runtime.closeFailed"));
           }
@@ -326,7 +335,18 @@ export async function runNativeLauncher(
       });
       if (!child.connected) throw new Error("runtime.closeFailed");
       child.send({ type: "openfilm.benchmark.shutdown", requestId });
-      await wait(ack, 30000);
+      try {
+        await wait(ack, 30000);
+      } catch (error) {
+        if (closeFailedAcknowledged) {
+          // Preserve the failed ACK and nonzero owner exit. Reap only after
+          // the service really exits, then release the private owner channel
+          // so the shell can recover in one explicit Retry.
+          await wait(exited, 10000);
+          releaseFailedOwner();
+        }
+        throw error;
+      }
       const code = await wait(exited, 10000);
       if (code !== 0) throw new Error("runtime.closeFailed");
     };
