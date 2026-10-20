@@ -123,3 +123,8 @@ this slice: move them to Audio before handoff. Review JSON is limited to 2 MiB
 after range expansion and caption tracks to 128, leaving bounded inventory space
 within the 4 MiB downloadable receipt cap. The 5,000-cue CLI regression remains
 supported; large bake expansion must be reduced or use preserve-editability.
+
+Sidecars sort a copy of saved caption cues chronologically; original cue storage
+order is retained. A disconnected queued request cannot publish after cancellation:
+HTTP body reading happens after the mutation queue and rejects destroyed requests,
+covered for both chunked and Content-Length transport.

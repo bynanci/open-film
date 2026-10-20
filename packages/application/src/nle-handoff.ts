@@ -744,7 +744,12 @@ export class NleHandoffService {
           if (!track.cues.length) continue;
           await write(
             `captions-${index}.${format}`,
-            serializeCaptions(format, track.cues).content,
+            serializeCaptions(
+              format,
+              [...track.cues].sort(
+                (a, b) => a.startMs - b.startMs || a.endMs - b.endMs,
+              ),
+            ).content,
           );
         }
       const timeline = JSON.parse(

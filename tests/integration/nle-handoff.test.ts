@@ -1174,3 +1174,131 @@ it("rejects expanded reviews that cannot fit the downloadable receipt budget", a
     app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
   ).toThrow(/review.*limit/i);
 });
+
+it("sorts sidecar copies without changing saved cue storage order", async () => {
+  const { app, composition } = await fixture();
+  const track = composition.captionTracks![0]!;
+  track.cues.push({
+    ...track.cues[0]!,
+    id: "early",
+    startMs: 0,
+    endMs: 1000,
+    text: "較早字幕",
+  });
+  app.project.timelines = [composition];
+  await app.save();
+  const before = JSON.stringify(app.project);
+  const review = app.reviewHandoff(composition.id);
+  const result = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+  });
+  for (const format of ["srt", "vtt"]) {
+    const index = result.files.findIndex(
+      (file) => file.name === `captions-0.${format}`,
+    );
+    const text = await readFile(
+      await app.handoff.file(result.id, index),
+      "utf8",
+    );
+    expect(text.indexOf("較早字幕")).toBeLessThan(text.indexOf("合成字幕"));
+  }
+  expect(JSON.stringify(app.project)).toBe(before);
+});
+
+it.each(["chunked", "content-length"] as const)(
+  "does not start a queued publication after its fully sent %s request disconnects",
+  async (encoding) => {
+    const { app, composition } = await fixture();
+    const review = app.reviewHandoff(composition.id, {
+        mode: "preserve-visual-fidelity",
+      }),
+      directory = app.directory;
+    cleanup.pop();
+    await app.close();
+    const server = await startServer({ port: 0, project: directory });
+    cleanup.push(() => server.close());
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const exportSpy = vi.spyOn(OpenFilmApplication.prototype, "exportHandoff");
+    const original = FFmpegRenderer.prototype.render;
+    const renderer = vi
+      .spyOn(FFmpegRenderer.prototype, "render")
+      .mockImplementationOnce(async function (this: FFmpegRenderer, ...args) {
+        entered();
+        await held;
+        return original.apply(this, args);
+      });
+    const input = {
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+      mode: review.plan.mode,
+    };
+    const endpoint = `http://127.0.0.1:${server.port}/api/handoff/export`;
+    const first = fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    await started;
+    let received!: (request: import("node:http").IncomingMessage) => void,
+      disconnected!: () => void;
+    const arriving = new Promise<import("node:http").IncomingMessage>(
+      (resolve) => {
+        received = resolve;
+      },
+    );
+    const closed = new Promise<void>((resolve) => {
+      disconnected = resolve;
+    });
+    server.server.once("request", (request, response) => {
+      received(request);
+      response.once("close", disconnected);
+    });
+    const { request } = await import("node:http");
+    const queued = request(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(encoding === "content-length"
+          ? { "Content-Length": Buffer.byteLength(JSON.stringify(input)) }
+          : {}),
+      },
+    });
+    queued.on("error", () => {});
+    queued.end(JSON.stringify(input));
+    const incoming = await arriving;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    try {
+      expect(incoming.complete).toBe(true);
+      queued.destroy();
+      await closed;
+    } finally {
+      queued.destroy();
+      release();
+    }
+    expect((await first).status).toBe(200);
+    const barrier = await fetch(
+      `http://127.0.0.1:${server.port}/api/handoff/review`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
+    expect(barrier.status).toBe(200);
+    expect(renderer).toHaveBeenCalledTimes(1);
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    expect(
+      await readdir(join(directory, "cache", "nle-handoff-published")),
+    ).toHaveLength(1);
+    expect(await readdir(join(directory, "cache", "nle-handoff"))).toEqual([]);
+  },
+);

@@ -137,3 +137,13 @@ caption tracks are bounded to 128 so generated sidecars and inventory fit the
 4 MiB receipt cap. Existing 5,000-cue CLI export still passes. The b274b8c browser
 run was interrupted after 117 passes (one interrupted / 51 not run) to apply
 these findings; it is not claimed as a complete browser pass.
+
+Saved caption arrays need not be chronological. Sidecar generation now sorts a
+copy by start/end while the original project and cue storage order remain unchanged.
+The queued-disconnect concern was checked with both chunked and Content-Length
+requests: a controlled real render holds the mutation queue, the second body is
+fully received, its response closes before releasing the queue, and only the first
+request reaches application export/render or publication. The existing body read
+after queue acquisition rejects the destroyed unread request, so no server-flow
+change was needed. The 2aa1d34 browser run was interrupted after 139 passes
+(one interrupted / 29 not run) to apply the caption correction; it is not a pass.
