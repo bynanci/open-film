@@ -275,3 +275,64 @@ the existing bundle-size warning remains. No full repository suite, browser,
 default-port service, native installation or real NLE check was run for this
 follow-up. The earlier 2,960-test full-suite result belongs to its audited base;
 the release coordinator owns combined validation after integration.
+
+## Later review — render limits, source handles and frame boundaries
+
+Remediation base: `cf5400fb21201b6fcaa3a91b4e7942f2f5f1a142`.
+All four findings reproduced before production changes: fourteen failing cases,
+then two additional failures at the 65-cue boundary. The initial focused green
+run passed all 24 selected cases, including real FFmpeg publications.
+
+| Discussion   | Disposition     | Behavior and evidence                                                                                                                                                                                                                                                                                       |
+| ------------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4326905828` | Accepted, fixed | Review rejects odd width or height whenever fidelity precomps or full mix require a reference render, including projects without GraphicScenes. Native metadata exchange remains available.                                                                                                                 |
+| `4326905836` | Accepted, fixed | Reference rendering has an explicit handoff budget of at most 64 selected caption cues. Both 65 and 5,000 overlapping cues reject before approval for fidelity and full mix. The diagnostic offers no selected caption language, or native editability without full mix, followed by manual SRT/VTT import. |
+| `4326905843` | Accepted, fixed | Packaged source records use their freshly inspected duration. With deliberately stale nine-second catalog values, actual five-second video and four-second audio advertise exactly those measured OTIO handles. Original catalog values, source hashes and saved/in-memory project remain unchanged.        |
+| `4326905858` | Accepted, fixed | Bake boundaries share core's one-nanosecond tolerance and `frameAlignedDuration` conversion with the renderer. Nine off-grid cases at 24, 30 and 29.97 fps reject; six admitted near-edge cases retain frame 30. A real near-boundary 30-fps reference and derivative both retain all 30 frames.            |
+
+Independent review also reproduced an aligned clip ending at one second over a
+composition ending at 0.9999999 seconds: publication expected 30 frames but the
+reference contained only 29. An additional regression failed before its fix.
+Visual ranges now must fit within the complete reference frames computed by
+the same core helper. The new refusal, actual admitted near-edge publication
+and existing fractional-native-edge precomp control all pass; native fractional
+timing is still supported around earlier valid precomps.
+
+The caption budget applies to the selected language in each actual reference
+render, including native-editability handoffs that request full mix. It does not
+change project schemas, saved caption tracks or the existing 5,000-cue sidecar
+budget. Unselected captions remain metadata plus SRT/VTT, and an explicitly
+caption-free reference remains available. The existing CLI regression still
+publishes its review larger than 1 MiB and now independently checks all 5,000
+timestamps and texts in both actual sidecars.
+
+The allowed 64-cue case completes a real 160×90, 8-fps publication with a
+14,118-byte filter argument and a 32-frame reference. This establishes the
+documented handoff boundary on the synthetic fixture; general large-caption
+MP4 scalability is not established. Batching more than 64 selected cues per
+reference is a next-milestone item requiring measured command/input and render
+resource bounds before increasing this handoff budget.
+
+The receipt-size regression uses 128 visual tracks and 64 disjoint caption
+ranges so it reaches the independent 2 MiB guard within the selected-caption
+budget. It explicitly asserts both the range count and a serialized plan above
+2 MiB, retaining the original review-limit assertion. The separate 128-range
+planner limit and original 5,000-cue publication assertions remain intact.
+
+Validation commands use one worker:
+
+```sh
+pnpm exec vitest run tests/unit/handoff-plan.test.ts tests/unit/handoff-transport.test.ts tests/integration/nle-handoff.test.ts packages/core/tests/timing.test.ts --maxWorkers=1
+```
+
+The final complete target passed **4 files / 95 tests** in **31.88 seconds**,
+including lock, stale-revision, source-hash, unsupported-input and cancellation
+controls. Targeted ESLint, repository type checking, production build, changed
+file formatting and `git diff --check` also passed. The build retains its
+existing warning about a minified chunk larger than 500 kB. Optional
+`OPENFILM_HANDOFF_LIMIT_QA_OUTPUT` retains numerical caption-budget evidence.
+
+No full repository suite, browser, default-port service, native installation or
+real NLE check was run for this follow-up. Earlier full-suite evidence belongs
+to its stated base. The release coordinator owns combined validation; all
+workstation and native/manual gates above remain partial or not run.

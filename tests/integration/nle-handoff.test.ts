@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { OpenFilmApplication } from "@openfilm/application";
+import { createHandoffPlan } from "@openfilm/exporters";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => {
@@ -1001,6 +1002,19 @@ it("CLI can explicitly omit caption burn-in and consume its maximum-caption revi
       (item: { feature: string }) => item.feature === "caption",
     ),
   ).toHaveLength(5000);
+  for (const format of ["srt", "vtt"]) {
+    const sidecar = await readFile(
+      await app.handoff.file(
+        published.id,
+        published.files.findIndex(
+          (file: { name: string }) => file.name === `captions-0.${format}`,
+        ),
+      ),
+      "utf8",
+    );
+    expect(sidecar.match(/ --> /gu)).toHaveLength(5000);
+    expect(sidecar.match(/合成字幕/gu)).toHaveLength(5000);
+  }
 });
 
 it("rejects unresolved title placeholders during review rather than after approval", async () => {
@@ -1157,7 +1171,7 @@ it("rejects expanded reviews that cannot fit the downloadable receipt budget", a
     clips: [{ ...clip, id: `clip-${index}` }],
   }));
   composition.captionTracks![0]!.cues = Array.from(
-    { length: 128 },
+    { length: 64 },
     (_, index) => ({
       version: 1 as const,
       id: `cue-${index}`,
@@ -1170,6 +1184,13 @@ it("rejects expanded reviews that cannot fit the downloadable receipt budget", a
   );
   app.project.timelines = [composition];
   await app.save();
+  const plan = createHandoffPlan(composition, 100, {
+    mode: "preserve-visual-fidelity",
+  });
+  expect(plan.visualRanges).toHaveLength(64);
+  expect(Buffer.byteLength(JSON.stringify(plan, null, 2))).toBeGreaterThan(
+    2 * 1024 ** 2,
+  );
   expect(() =>
     app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
   ).toThrow(/review.*limit/i);
@@ -1382,6 +1403,240 @@ it("bakes amplified gain into the real full mix while retaining the original rec
       { mode: 0o600 },
     );
   }
+});
+
+it.each(["width", "height"] as const)(
+  "rejects an odd render %s before approval even without GraphicScenes",
+  async (dimension) => {
+    const { app, composition } = await fixture();
+    composition.graphicScenes = [];
+    app.project.settings[dimension]++;
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    expect(() =>
+      app.reviewHandoff(composition.id, { bakeAudio: true }),
+    ).toThrow(/even.*dimension|dimension.*even/i);
+    expect(() =>
+      app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
+    ).toThrow(/even.*dimension|dimension.*even/i);
+  },
+);
+
+it.each(
+  [65, 5000].flatMap((cueCount) => [
+    { cueCount, options: { mode: "preserve-visual-fidelity" as const } },
+    { cueCount, options: { bakeAudio: true } },
+  ]),
+)(
+  "rejects $cueCount selected render cues even when they merge into one bake range: $options",
+  async ({ cueCount, options }) => {
+    const { app, composition } = await fixture();
+    composition.graphicScenes = [];
+    const track = composition.captionTracks![0]!;
+    track.cues = Array.from({ length: cueCount }, (_, index) => ({
+      ...track.cues[0]!,
+      id: `caption-${index}`,
+      startMs: 0,
+      endMs: 1000,
+    }));
+    app.project.timelines = [composition];
+    await app.save();
+    expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+    expect(() => app.reviewHandoff(composition.id, options)).toThrow(
+      /64.*caption|caption.*64/i,
+    );
+    expect(() =>
+      app.reviewHandoff(composition.id, { ...options, captionTrackId: null }),
+    ).not.toThrow();
+  },
+);
+
+it("packages freshly measured video and audio handles while leaving stale catalog durations unchanged", async () => {
+  const { app, composition, image, audio } = await fixture();
+  const assets = composition.tracks.map((track) =>
+    app.catalog.getAsset(track.clips[0]!.assetId)!,
+  );
+  for (const asset of assets)
+    app.catalog.upsertAsset({ ...asset, duration: 9 });
+  const project = JSON.stringify(app.project),
+    hashes = await Promise.all([hashFile(image), hashFile(audio)]);
+  const review = app.reviewHandoff(composition.id);
+  const publication = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+  });
+  const timeline = JSON.parse(
+    await readFile(
+      await app.handoff.file(
+        publication.id,
+        publication.files.findIndex((file) => file.name === "timeline.otio"),
+      ),
+      "utf8",
+    ),
+  );
+  const references = timeline.tracks.children.flatMap(
+    (track: {
+      children: {
+        media_reference?: {
+          target_url: string;
+          available_range: { duration: { value: number; rate: number } };
+        };
+      }[];
+    }) =>
+      track.children.flatMap((clip) =>
+        clip.media_reference ? [clip.media_reference] : [],
+      ),
+  );
+  expect(references).toHaveLength(3);
+  for (const reference of references) {
+    const duration = reference.available_range.duration;
+    expect(duration.value / duration.rate).toBe(
+      reference.target_url.endsWith(".mp4") ? 5 : 4,
+    );
+  }
+  for (const asset of assets)
+    expect(app.catalog.getAsset(asset.id)!.duration).toBe(9);
+  expect(await Promise.all([hashFile(image), hashFile(audio)])).toEqual(hashes);
+  expect(JSON.stringify(app.project)).toBe(project);
+});
+
+it("renders the admitted 64-cue reference within the filter argument budget", async () => {
+  const { app, composition } = await fixture();
+  const processes = vi.spyOn(media, "runProcess");
+  composition.graphicScenes = [];
+  const track = composition.captionTracks![0]!;
+  track.cues = Array.from({ length: 64 }, (_, index) => ({
+    ...track.cues[0]!,
+    id: `caption-${index}`,
+    startMs: 0,
+    endMs: 1000,
+  }));
+  app.project.timelines = [composition];
+  await app.save();
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  const publication = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+  });
+  const graphs = processes.mock.calls
+    .filter(
+      ([command, args]) =>
+        command === "ffmpeg" && args.includes("-filter_complex"),
+    )
+    .map(([, args]) => args[args.indexOf("-filter_complex") + 1]!);
+  expect(graphs).toHaveLength(1);
+  expect(Buffer.byteLength(graphs[0]!)).toBeLessThan(128 * 1024);
+  expect(publication.plan.visualRanges).toEqual([
+    { startFrame: 0, endFrame: 8 },
+  ]);
+  const proof = JSON.parse(
+    await readFile(
+      await app.handoff.file(
+        publication.id,
+        publication.files.findIndex(
+          (file) => file.name === "render-evidence.json",
+        ),
+      ),
+      "utf8",
+    ),
+  );
+  expect(Number(proof.measured.nb_read_frames)).toBe(32);
+  if (process.env.OPENFILM_HANDOFF_LIMIT_QA_OUTPUT) {
+    await mkdir(process.env.OPENFILM_HANDOFF_LIMIT_QA_OUTPUT, {
+      recursive: true,
+      mode: 0o700,
+    });
+    await writeFile(
+      join(
+        process.env.OPENFILM_HANDOFF_LIMIT_QA_OUTPUT,
+        "caption-budget-proof.json",
+      ),
+      JSON.stringify(
+        {
+          selectedCues: track.cues.length,
+          filterArgumentBytes: Buffer.byteLength(graphs[0]!),
+          plan: publication.plan,
+          measured: proof.measured,
+        },
+        null,
+        2,
+      ) + "\n",
+      { mode: 0o600 },
+    );
+  }
+});
+
+it("rejects an aligned visual bake beyond the complete fractional reference duration before approval", async () => {
+  const { app, composition } = await fixture();
+  app.project.settings.frameRate = 30;
+  composition.duration = 0.9999999;
+  composition.captionTracks = [];
+  composition.graphicScenes = [];
+  for (const track of composition.tracks)
+    for (const clip of track.clips) {
+      clip.timelineDuration = 1;
+      clip.sourceOut = (clip.sourceIn ?? 0) + 1;
+    }
+  composition.tracks[0]!.clips[0]!.transform = { scale: 1.1 };
+  app.project.timelines = [composition];
+  await app.save();
+  expect(() => app.reviewHandoff(composition.id)).not.toThrow();
+  expect(() =>
+    app.reviewHandoff(composition.id, {
+      mode: "preserve-visual-fidelity",
+    }),
+  ).toThrow(/reference.*frame|frame.*reference/i);
+});
+
+it("renders a near-boundary duration admitted by the shared one-nanosecond contract with all 30 frames", async () => {
+  const { app, composition } = await fixture();
+  app.project.settings.frameRate = 30;
+  composition.duration = 1 - 5e-10;
+  composition.captionTracks = [];
+  for (const track of composition.tracks)
+    for (const clip of track.clips) {
+      clip.timelineDuration = composition.duration;
+      clip.sourceOut = (clip.sourceIn ?? 0) + composition.duration;
+    }
+  const scene = composition.graphicScenes![0]!;
+  scene.start = 0;
+  scene.duration = composition.duration;
+  scene.nodes[0]!.end = composition.duration;
+  app.project.timelines = [composition];
+  await app.save();
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+    bakeAudio: true,
+  });
+  const publication = await app.exportHandoff({
+    projectId: review.projectId,
+    compositionId: composition.id,
+    revision: review.revision,
+    mode: review.plan.mode,
+    bakeAudio: true,
+  });
+  expect(publication.plan.visualRanges).toEqual([
+    { startFrame: 0, endFrame: 30 },
+  ]);
+  expect(publication.plan.durationFrames).toBe(30);
+  const proof = JSON.parse(
+    await readFile(
+      await app.handoff.file(
+        publication.id,
+        publication.files.findIndex(
+          (file) => file.name === "render-evidence.json",
+        ),
+      ),
+      "utf8",
+    ),
+  );
+  expect(Number(proof.measured.nb_read_frames)).toBe(30);
 });
 
 it.each(["chunked", "content-length"] as const)(
