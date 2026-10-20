@@ -126,6 +126,37 @@ All ten decoded frames match the baseline after source removal and relocation;
 ZIP, directory and recollected-directory verification pass, and recollection
 retains the original source URI digest.
 
+## Referenced-source security follow-up — 2026-10-20
+
+A synthetic hostile project reproduced a source-file boundary gap in
+`0caff4d1444dec734eb3874970f1cb8a6fc043e5`: a fake `.aws/credentials` file
+declared as `photo.png`/`image` and referenced only by a Story was copied into a
+package that Verify accepted while rendering an ordinary flat video. Only
+generated fake credential bytes were used; no real credential files were read.
+
+Known credential locations are now rejected before opening source bytes.
+Every media source must also pass the existing file-only protocol and demuxer
+allowlist, with bounded FFprobe frame decoding and a type check based on the
+actual container and streams. Inspection is bound to an unchanged file identity
+and hash. Creation repeats this validation before copying and checks the staged
+copy; Verify inspects every asset, including Story-only candidates, before
+rendering. Valid credential-like display names remain supported.
+
+The focused security cases cover credential paths without byte reads,
+plaintext, truncated images, playlists disguised as media, false catalog media
+types, source replacement, symlink changes after planning, and a forged package
+whose manifest/catalog/hash receipts consistently describe non-media bytes.
+Supported single-frame videos and audio with attached cover art remain
+packageable. Existing fencing, cancellation and HTTP fixtures now use genuine
+generated media; the HTTP regression also verifies its resulting package.
+
+The source-safety suite has 15 passing cases: 12 failures reproduced against
+the reviewed candidate, one pre-existing symlink fence, and two media
+compatibility checks. Focused collect/archive/HTTP/input-policy coverage totals
+51 passing tests in six files. TypeScript, Vue TypeScript, lint and formatting
+checks pass. These checks use one Vitest worker and isolated ephemeral HTTP
+ports; the full suite and browser tests are not part of this follow-up.
+
 ## Manual gates and limits
 
 - Run relocation/reopen on real Windows and macOS filesystems, including path

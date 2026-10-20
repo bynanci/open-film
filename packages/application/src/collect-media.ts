@@ -44,7 +44,13 @@ import {
   createPortableCatalogSnapshot,
   inspectCatalogSnapshot,
 } from "@openfilm/catalog";
-import { checkAbort, hashFile, localPath, runProcess } from "@openfilm/media";
+import {
+  checkAbort,
+  hashFile,
+  localMediaInputOptions,
+  localPath,
+  runProcess,
+} from "@openfilm/media";
 import { resolveTitleFont } from "@openfilm/render";
 import { savedScriptProjectIdentity } from "./scene-script-review.js";
 import {
@@ -618,7 +624,39 @@ async function rejectSymlinkComponents(path: string): Promise<void> {
   }
 }
 
+function rejectCredentialSourcePath(path: string): void {
+  const components = resolve(path)
+    .split(/[\\/]/u)
+    .map((part) => part.toLowerCase());
+  const name = components.at(-1)!;
+  if (
+    components.some((part) =>
+      [".aws", ".ssh", ".gnupg", ".azure", ".kube"].includes(part),
+    ) ||
+    components.some(
+      (part, index) => part === "gcloud" && components[index - 1] === ".config",
+    ) ||
+    [
+      ".npmrc",
+      ".pypirc",
+      ".netrc",
+      "_netrc",
+      ".git-credentials",
+      "credentials.json",
+      "service-account.json",
+    ].includes(name) ||
+    name === ".env" ||
+    name.startsWith(".env.")
+  )
+    fail(
+      "request.forbidden",
+      "Credential source paths cannot be collected.",
+      422,
+    );
+}
+
 async function canonicalRegularFile(path: string): Promise<string> {
+  rejectCredentialSourcePath(path);
   const original = await lstat(path);
   if (!original.isFile() || original.isSymbolicLink())
     fail("export.failed", "Source is not a regular file.", 422);
@@ -627,6 +665,7 @@ async function canonicalRegularFile(path: string): Promise<string> {
   // symlinked parent directory.
   await rejectSymlinkComponents(resolve(path));
   const canonical = await realpath(path);
+  rejectCredentialSourcePath(canonical);
   await rejectSymlinkComponents(canonical);
   return canonical;
 }
@@ -683,6 +722,126 @@ async function hashRegularFile(
     await handle.close();
   }
   return { sha256: hash.digest("hex"), size };
+}
+
+async function hashSupportedMedia(
+  path: string,
+  mediaType: MediaAsset["mediaType"],
+  signal?: AbortSignal,
+): Promise<{ sha256: string; size: number }> {
+  const canonical = await canonicalRegularFile(path);
+  const before = await lstat(canonical);
+  if (await isNestedArchiveFile(canonical))
+    fail("request.unsupported", "Nested archives cannot be collected.", 422);
+  const source = await hashRegularFile(canonical, signal);
+  try {
+    const probed = await runProcess(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        ...(await localMediaInputOptions(canonical, signal)),
+        "-threads",
+        "1",
+        "-read_intervals",
+        "%+#32",
+        "-show_frames",
+        "-show_entries",
+        "format=format_name:format_tags=major_brand:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic:frame=media_type,width,height,nb_samples",
+        "-of",
+        "json",
+        canonical,
+      ],
+      { signal, timeoutMs: 30_000, maxOutputBytes: 512 * 1024 },
+    );
+    const probe = JSON.parse(probed.stdout.toString("utf8")) as {
+      format?: { format_name?: string; tags?: { major_brand?: string } };
+      streams?: {
+        codec_type?: string;
+        codec_name?: string;
+        width?: number;
+        height?: number;
+        disposition?: { attached_pic?: number };
+      }[];
+      frames?: {
+        media_type?: string;
+        width?: number;
+        height?: number;
+        nb_samples?: number;
+      }[];
+    };
+    const audio = probe.streams?.find(
+      (stream) => stream.codec_type === "audio" && stream.codec_name,
+    );
+    const visual = probe.streams?.find(
+      (stream) =>
+        stream.codec_type === "video" &&
+        stream.codec_name &&
+        Number(stream.width) > 0 &&
+        Number(stream.height) > 0 &&
+        (!audio || stream.disposition?.attached_pic !== 1),
+    );
+    const imageFormat =
+      probe.format?.format_name
+        ?.split(",")
+        .some(
+          (format) =>
+            format.endsWith("_pipe") || ["apng", "gif"].includes(format),
+        ) ||
+      (probe.format?.format_name?.split(",").includes("mov") &&
+        [
+          "heic",
+          "heix",
+          "hevc",
+          "hevx",
+          "avif",
+          "avis",
+          "mif1",
+          "msf1",
+        ].includes(
+          probe.format?.tags?.major_brand?.trim().toLowerCase() ?? "",
+        ));
+    const visualFrame = probe.frames?.some(
+      (frame) =>
+        frame.media_type === "video" &&
+        Number(frame.width) > 0 &&
+        Number(frame.height) > 0,
+    );
+    const audioFrame = probe.frames?.some(
+      (frame) => frame.media_type === "audio" && Number(frame.nb_samples) > 0,
+    );
+    if (
+      mediaType === "audio"
+        ? !audio || !audioFrame || Boolean(visual)
+        : !visual ||
+          !visualFrame ||
+          (mediaType === "image" ? !imageFormat : Boolean(imageFormat))
+    )
+      fail(
+        "request.invalid",
+        "Source bytes do not match a supported media type.",
+        422,
+      );
+  } catch (error) {
+    checkAbortAndStatus(signal);
+    if (error instanceof CollectMediaError) throw error;
+    fail(
+      "request.invalid",
+      "Source bytes are not supported self-contained media.",
+      422,
+    );
+  }
+  await rejectSymlinkComponents(canonical);
+  const after = await lstat(canonical);
+  if (
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeMs !== after.mtimeMs ||
+    before.ctimeMs !== after.ctimeMs
+  )
+    fail("source.changed", "Source changed during media inspection.", 409);
+  return source;
 }
 
 async function copyRegularFile(
@@ -861,6 +1020,7 @@ async function listDirectoryPackage(
       if (!info.isFile() || info.nlink !== 1)
         fail("export.failed", "Package must contain regular files only.", 422);
       const packagePath = relative(root, path).split(sep).join("/");
+      await canonicalRegularFile(path);
       if (await isNestedArchiveFile(path))
         fail(
           "request.invalid",
@@ -1519,25 +1679,22 @@ export class CollectMediaService {
       issues.push("source.nested-archive");
     let value: { sha256: string; size: number } | undefined;
     try {
-      value = await hashRegularFile(sourcePath, signal);
+      value = await hashSupportedMedia(sourcePath, asset.mediaType, signal);
       if (asset.contentHash && asset.contentHash.toLowerCase() !== value.sha256)
         issues.push("source.hash-mismatch");
-      if (
-        !issues.includes("source.nested-archive") &&
-        (await isNestedArchiveFile(sourcePath))
-      )
-        issues.push("source.nested-archive");
     } catch (error) {
       checkAbortAndStatus(signal);
       const code = error instanceof CollectMediaError ? error.code : undefined;
       issues.push(
-        code === "request.tooLarge"
-          ? "source.too-large"
-          : code === "source.changed"
-            ? "source.changed"
-            : code === "export.failed"
-              ? "source.unsafe-or-missing"
-              : "source.unavailable",
+        code === "request.unsupported"
+          ? "source.nested-archive"
+          : code === "request.tooLarge"
+            ? "source.too-large"
+            : code === "source.changed"
+              ? "source.changed"
+              : code === "export.failed" || code === "request.forbidden"
+                ? "source.unsafe-or-missing"
+                : "source.unavailable",
       );
     }
     if (!declaration) issues.push("rights.required");
@@ -1920,12 +2077,36 @@ export class CollectMediaService {
         const relativePath = packageSourcePath(planItem.sha256!, extension);
         const sourcePath = localPath(asset.uri);
         if (!uniqueSourcePaths.has(planItem.sha256!)) {
+          const checked = await hashSupportedMedia(
+            sourcePath,
+            asset.mediaType,
+            input.signal,
+          );
+          if (
+            checked.sha256 !== planItem.sha256 ||
+            checked.size !== planItem.size
+          )
+            fail("source.changed", "Source changed before collection.", 409);
           await copyRegularFile(
             sourcePath,
             manifestPath(stage, relativePath),
             { sha256: planItem.sha256!, size: planItem.size! },
             input.signal,
           );
+          const staged = await hashSupportedMedia(
+            manifestPath(stage, relativePath),
+            asset.mediaType,
+            input.signal,
+          );
+          if (
+            staged.sha256 !== planItem.sha256 ||
+            staged.size !== planItem.size
+          )
+            fail(
+              "source.changed",
+              "Staged source does not match its inspected media.",
+              409,
+            );
           uniqueSourcePaths.set(planItem.sha256!, relativePath);
         }
         const packageRelativePath = uniqueSourcePaths.get(planItem.sha256!)!;
@@ -2234,7 +2415,7 @@ export class CollectMediaService {
       }
       for (const item of manifest.assets) {
         const file = manifestPath(isolated, item.path);
-        const actual = await hashRegularFile(file, signal);
+        const actual = await hashSupportedMedia(file, item.mediaType, signal);
         if (actual.sha256 !== item.sha256 || actual.size !== item.size)
           fail(
             "source.changed",

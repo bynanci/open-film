@@ -452,8 +452,22 @@ describe("Collect Media review regressions", () => {
     "stops hashing promptly when cancelled during the %s directory scan",
     async (scan) => {
       const { app, directory } = await fixture();
-      const bytes = join(directory, "synthetic-bytes.image");
-      await fs.writeFile(bytes, Buffer.alloc(4 * 1024 * 1024, 42));
+      const bytes = join(directory, "synthetic-large.bmp");
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=1440x1024",
+        "-frames:v",
+        "1",
+        "-c:v",
+        "bmp",
+        "-threads",
+        "1",
+        bytes,
+      ]);
       app.catalog.upsertAsset({
         ...source,
         mediaType: "image",

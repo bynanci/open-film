@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { hashFile } from "@openfilm/media";
+import { hashFile, runProcess } from "@openfilm/media";
 import {
   OpenFilmApplication,
   type CollectRightsDeclaration,
@@ -20,15 +20,25 @@ describe("Collect Media HTTP boundary", () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-collect-http-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));
     const external = join(root, "outside-source.png");
-    await writeFile(external, "synthetic local source", {
-      flag: "wx",
-      mode: 0o600,
-    });
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=160x90",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      external,
+    ]);
     const projectPath = join(root, "project.openfilm");
     const app = await OpenFilmApplication.create(
       projectPath,
       "Collect HTTP film",
     );
+    app.project.settings = { width: 160, height: 90, frameRate: 10 };
     app.catalog.upsertAsset({
       id: "legacy-http-asset",
       uri: pathToFileURL(external).href,
@@ -139,7 +149,7 @@ describe("Collect Media HTTP boundary", () => {
       (await post("verify", { packageName: "../../outside.zip" })).status,
     ).toBe(400);
     const verified = await post("verify", { packageName: created.fileName });
-    expect(verified.status).toBe(422);
-    expect(await verified.json()).toMatchObject({ code: "export.failed" });
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({ result: { verified: true } });
   });
 });

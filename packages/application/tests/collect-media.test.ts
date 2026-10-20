@@ -432,10 +432,7 @@ describe("Collect Media portable packages", () => {
     const sourceDirectory = join(root, "physical-source");
     await mkdir(sourceDirectory);
     const external = join(sourceDirectory, "source.png");
-    await writeFile(external, "synthetic image bytes", {
-      flag: "wx",
-      mode: 0o600,
-    });
+    await imageAsset(external, "Synthetic source.png", "blue");
     const sourceAlias = join(root, "source-alias");
     await symlink(sourceDirectory, sourceAlias, "dir");
     const app = await OpenFilmApplication.create(
