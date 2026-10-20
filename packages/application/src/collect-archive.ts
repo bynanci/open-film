@@ -2,7 +2,7 @@
 import { constants, createReadStream, createWriteStream } from "node:fs";
 import { lstat, mkdir, open, readdir, rm } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
-import { Transform, Writable } from "node:stream";
+import { Readable, Transform, Writable } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
 
 const ZIP_LOCAL = 0x04034b50;
@@ -229,7 +229,19 @@ export async function writeStoredZip(
     centralSize > MAX_CENTRAL_BYTES
   )
     throw new Error("Package archive exceeds its size limit.");
-  const writer = createWriteStream(output, { flags: "wx", mode: 0o600 });
+  abort(signal);
+  const writer = createWriteStream(output, {
+    flags: "wx",
+    mode: 0o600,
+    signal,
+  });
+  let ownsOutput = false;
+  writer.once("open", () => {
+    ownsOutput = true;
+  });
+  const writerClosed = new Promise<void>((closed) => {
+    writer.once("close", closed);
+  });
   const writerFinished = finished(writer);
   void writerFinished.catch(() => {});
   const central: Buffer[] = [];
@@ -287,9 +299,11 @@ export async function writeStoredZip(
     } finally {
       await file.close();
     }
+    abort(signal);
   } catch (error) {
     writer.destroy();
-    await rm(output, { force: true });
+    await writerClosed;
+    if (ownsOutput) await rm(output, { force: true });
     throw error;
   }
 }
@@ -501,10 +515,12 @@ export async function extractStoredZip(
       const target = createWriteStream(output, { flags: "wx", mode: 0o600 });
       const integrity = crcTransform(entry.size);
       await pipeline(
-        createReadStream(archive, {
-          start: entry.dataOffset,
-          end: entry.dataEnd - 1,
-        }),
+        entry.size === 0
+          ? Readable.from([])
+          : createReadStream(archive, {
+              start: entry.dataOffset,
+              end: entry.dataEnd - 1,
+            }),
         integrity.transform,
         target,
         { signal },

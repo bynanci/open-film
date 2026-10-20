@@ -1,15 +1,20 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs";
 import {
   lstat,
   link,
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { extractStoredZip, writeStoredZip } from "../src/collect-archive.js";
 
@@ -44,6 +49,204 @@ function replaceBytes(input: Buffer, before: string, after: string): Buffer {
 }
 
 describe("Collect Media ZIP archive", () => {
+  it.each([false, true])(
+    "cancels a writer with a pending actual open before returning (empty root=%s)",
+    async (empty) => {
+      const { root, source } = await workspace();
+      if (!empty)
+        await writeFile(join(source, "source.txt"), "synthetic receipt");
+      const archive = join(root, "cancelled-pending-open.zip");
+      const controller = new AbortController();
+      const originalOpen = fs.open;
+      const originalCreate = fs.createWriteStream;
+      let releaseOpen: (() => void) | undefined;
+      let started!: () => void;
+      const openStarted = new Promise<void>((resolveOpen) => {
+        started = resolveOpen;
+      });
+      let writer: ReturnType<typeof fs.createWriteStream> | undefined;
+      fs.open = Object.assign((...args: unknown[]): void => {
+        if (String(args[0]) !== archive) {
+          Reflect.apply(originalOpen, fs, args);
+          return;
+        }
+        releaseOpen = () => {
+          Reflect.apply(originalOpen, fs, args);
+        };
+        started();
+      }, originalOpen);
+      fs.createWriteStream = (...args) => {
+        const stream = originalCreate(...args);
+        if (String(args[0]) === archive) writer = stream;
+        return stream;
+      };
+      syncBuiltinESMExports();
+      let settled = false;
+      const task = writeStoredZip(source, archive, controller.signal).then(
+        () => {
+          settled = true;
+          return undefined;
+        },
+        (error: unknown) => {
+          settled = true;
+          return error;
+        },
+      );
+      try {
+        await Promise.race([
+          openStarted,
+          task.then(() => {
+            throw new Error("ZIP writer settled before requesting its open.");
+          }),
+        ]);
+        controller.abort();
+        await nextTurn();
+        expect(settled).toBe(false);
+        releaseOpen!();
+        releaseOpen = undefined;
+        expect(await task).toMatchObject({ name: "AbortError" });
+        expect(writer?.closed).toBe(true);
+        await expect(lstat(archive)).rejects.toMatchObject({ code: "ENOENT" });
+        await nextTurn();
+        await expect(lstat(archive)).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        releaseOpen?.();
+        await task;
+        fs.open = originalOpen;
+        fs.createWriteStream = originalCreate;
+        syncBuiltinESMExports();
+      }
+    },
+  );
+
+  it("preserves an existing archive when exclusive creation fails", async () => {
+    const { root, source } = await workspace();
+    await writeFile(join(source, "source.txt"), "synthetic package receipt", {
+      flag: "wx",
+    });
+    const archive = join(root, "existing.zip");
+    await writeFile(archive, "synthetic existing archive", { flag: "wx" });
+
+    await expect(writeStoredZip(source, archive)).rejects.toMatchObject({
+      code: "EEXIST",
+    });
+    expect(await readFile(archive, "utf8")).toBe("synthetic existing archive");
+  });
+
+  it("round-trips an empty file with its empty-content hash and private mode", async () => {
+    const { root, source, destination } = await workspace();
+    await writeFile(join(source, "empty.txt"), "", { flag: "wx" });
+    const archive = join(root, "empty.zip");
+    await writeStoredZip(source, archive);
+
+    const files = await extractStoredZip(archive, destination);
+    const path = join(destination, "empty.txt");
+    expect(files).toEqual([{ path, size: 0 }]);
+    const bytes = await readFile(path);
+    expect(bytes).toHaveLength(0);
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    );
+    expect((await lstat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  it("round-trips a mixed inventory of empty, populated and nested UTF-8 files", async () => {
+    const { root, source, destination } = await workspace();
+    const entries = [
+      ["a-empty.txt", Buffer.alloc(0)],
+      ["b-data.bin", Buffer.from([0, 1, 2, 255])],
+      ["c-empty.txt", Buffer.alloc(0)],
+      ["素材/空.txt", Buffer.alloc(0)],
+      ["素材/記録.txt", Buffer.from("synthetic package receipt")],
+    ] as const;
+    await mkdir(join(source, "素材"));
+    for (const [name, bytes] of entries)
+      await writeFile(join(source, name), bytes, { flag: "wx" });
+    const archive = join(root, "mixed.zip");
+    await writeStoredZip(source, archive);
+
+    const files = await extractStoredZip(archive, destination);
+    expect(files).toHaveLength(entries.length);
+    for (const [name, bytes] of entries) {
+      const path = join(destination, name);
+      expect(files).toContainEqual({ path, size: bytes.length });
+      expect(await readFile(path)).toEqual(bytes);
+      expect((await lstat(path)).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it.each(["declared-size", "local-extra-length"] as const)(
+    "rejects an empty entry with tampered %s bounds before extracting files",
+    async (where) => {
+      const { root, source, destination } = await workspace();
+      await writeFile(join(source, "empty.txt"), "", { flag: "wx" });
+      const archive = join(root, "bounds.zip");
+      await writeStoredZip(source, archive);
+      const changed = await readFile(archive);
+      const central = changed.readUInt32LE(changed.length - 22 + 16);
+      const dataOffset = 30 + changed.readUInt16LE(26);
+      const overrun = central - dataOffset + 1;
+      if (where === "declared-size") {
+        changed.writeUInt32LE(overrun, central + 20);
+        changed.writeUInt32LE(overrun, central + 24);
+      } else changed.writeUInt16LE(overrun, 28);
+      await writeFile(archive, changed);
+
+      await expect(extractStoredZip(archive, destination)).rejects.toThrow(
+        /exceeds its data section/u,
+      );
+      expect(await readdir(destination)).toEqual([]);
+    },
+  );
+
+  it("checks an empty entry's CRC even when its descriptor agrees with the directory", async () => {
+    const { root, source, destination } = await workspace();
+    await writeFile(join(source, "empty.txt"), "", { flag: "wx" });
+    const archive = join(root, "empty-crc.zip");
+    await writeStoredZip(source, archive);
+    const changed = await readFile(archive);
+    const central = changed.readUInt32LE(changed.length - 22 + 16);
+    const dataOffset = 30 + changed.readUInt16LE(26);
+    changed.writeUInt32LE(1, central + 16);
+    changed.writeUInt32LE(1, dataOffset + 4);
+    await writeFile(archive, changed);
+
+    await expect(extractStoredZip(archive, destination)).rejects.toThrow(
+      /checksum/u,
+    );
+    expect(await readdir(destination)).toEqual([]);
+  });
+
+  it("creates empty targets exclusively and removes earlier entries after a collision", async () => {
+    const { root, source, destination } = await workspace();
+    await writeFile(join(source, "a-empty.txt"), "", { flag: "wx" });
+    await writeFile(join(source, "b-empty.txt"), "", { flag: "wx" });
+    const archive = join(root, "collision.zip");
+    await writeStoredZip(source, archive);
+    const existing = join(destination, "b-empty.txt");
+    await writeFile(existing, "synthetic existing target", { flag: "wx" });
+
+    await expect(extractStoredZip(archive, destination)).rejects.toMatchObject({
+      code: "EEXIST",
+    });
+    expect(await readFile(existing, "utf8")).toBe("synthetic existing target");
+    expect(await readdir(destination)).toEqual(["b-empty.txt"]);
+  });
+
+  it("cancels empty-entry extraction before creating a target", async () => {
+    const { root, source, destination } = await workspace();
+    await writeFile(join(source, "empty.txt"), "", { flag: "wx" });
+    const archive = join(root, "cancelled-empty.zip");
+    await writeStoredZip(source, archive);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      extractStoredZip(archive, destination, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(await readdir(destination)).toEqual([]);
+  });
+
   it.each(["prefix", "between-records", "before-directory"] as const)(
     "rejects unreceipted ZIP bytes in a %s",
     async (where) => {
