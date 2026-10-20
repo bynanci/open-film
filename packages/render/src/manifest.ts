@@ -53,6 +53,18 @@ export interface RenderFontEvidence {
   postscriptName: string;
   sha256: string;
 }
+/** Stable identities for the actual file and face, without local font paths. */
+export function canonicalRenderFonts(
+  fonts: ReadonlyArray<RenderFontEvidence>,
+): RenderFontEvidence[] {
+  const identities = new Map(
+    fonts.map(({ family, postscriptName, sha256 }) => [
+      JSON.stringify([sha256, postscriptName, family]),
+      { family, postscriptName, sha256 },
+    ]),
+  );
+  return [...identities.keys()].sort().map((key) => identities.get(key)!);
+}
 export interface RenderProjectEvidence {
   id: string;
   schemaVersion: string;

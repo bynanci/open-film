@@ -38,10 +38,12 @@ import {
   captureRenderSources,
   verifyRenderSources,
   writeRenderManifest,
+  canonicalRenderFonts,
   type RenderFontEvidence,
   type RenderProjectEvidence,
   type RenderLookEvidence,
 } from "./manifest.js";
+export { canonicalRenderFonts, type RenderFontEvidence } from "./manifest.js";
 export {
   createTitleOverlay,
   inspectTitleOverlay,
@@ -89,6 +91,8 @@ export interface RenderSnapshot {
   sources?: ReadonlyArray<{ assetId: string; sha256: string; size: number }>;
   /** A reviewed picture approves visual inputs; a delivered MP4 also captures audio. */
   sourceScope?: "visual";
+  /** Actual reviewed font files/faces; paths may change when media is collected. */
+  fonts?: ReadonlyArray<RenderFontEvidence>;
   assertCurrent: () => void;
 }
 export interface RenderOptions {
@@ -245,6 +249,8 @@ export class FFmpegRenderer {
           sources:
             options.snapshot.sources &&
             structuredClone(options.snapshot.sources),
+          fonts:
+            options.snapshot.fonts && structuredClone(options.snapshot.fonts),
         }
       : undefined;
     snapshot?.assertCurrent();
@@ -975,6 +981,14 @@ export class FFmpegRenderer {
           /* Progress observers do not own the render operation. */
         }
       };
+      if (
+        snapshot?.fonts &&
+        sha256(canonicalRenderFonts(fonts)) !==
+          sha256(canonicalRenderFonts(snapshot.fonts))
+      )
+        throw new Error(
+          "Rendered fonts changed after crop approval; render a new export frame.",
+        );
       await runProcess("ffmpeg", args, {
         signal: options.signal,
         timeoutMs: 1800000,

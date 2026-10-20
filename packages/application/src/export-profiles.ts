@@ -15,6 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { acquireExportRequestLock } from "./export-request-lock.js";
 import type {
   AudioAutomation,
   Composition,
@@ -34,7 +35,10 @@ import {
 } from "@openfilm/media";
 import {
   publishRenderPair,
+  RenderPublicationRecoveryError,
+  canonicalRenderFonts,
   visualSourceAssetIds,
+  type RenderFontEvidence,
   type RenderOptions,
   type RenderSnapshot,
 } from "@openfilm/render";
@@ -101,11 +105,13 @@ interface PreviewEntry {
   renderSelection: ReturnType<typeof renderSelection>;
   outputSha256: string;
   sources: NonNullable<RenderReceipt["sources"]>;
+  fonts: RenderFontEvidence[];
   expiresAt: number;
 }
 
 interface RenderReceipt {
   warnings?: string[];
+  fonts?: RenderFontEvidence[];
   sources?: Array<{
     assetId: string;
     name: string;
@@ -163,6 +169,31 @@ function readSources(receipt: unknown): NonNullable<RenderReceipt["sources"]> {
   if (!receipt || typeof receipt !== "object") return [];
   const sources = (receipt as RenderReceipt).sources;
   return Array.isArray(sources) ? sources : [];
+}
+
+function readFonts(receipt: { fonts?: unknown }): RenderFontEvidence[] {
+  if (!Array.isArray(receipt.fonts))
+    throw new Error(
+      "Render receipt has no font identities; render a new preview.",
+    );
+  const fonts = receipt.fonts.map((value: unknown) => {
+    if (!value || typeof value !== "object")
+      throw new Error("Render receipt has an invalid font identity.");
+    const font = value as Record<string, unknown>;
+    if (
+      typeof font.family !== "string" ||
+      typeof font.postscriptName !== "string" ||
+      typeof font.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(font.sha256)
+    )
+      throw new Error("Render receipt has an invalid font identity.");
+    return {
+      family: font.family,
+      postscriptName: font.postscriptName,
+      sha256: font.sha256,
+    };
+  });
+  return canonicalRenderFonts(fonts);
 }
 
 function audioRole(
@@ -223,6 +254,7 @@ export class ExportProfileService {
     );
     const receiptPath = await this.previewReceiptPath(token);
     await chmod(dirname(framePath), 0o700);
+    let retainWork = false;
     try {
       const renderReceipt = await this.renderFrameSource(
         snapshot.composition.id,
@@ -264,6 +296,7 @@ export class ExportProfileService {
         renderSelection: renderSelection(input),
         outputSha256: await hashFile(framePath, input.signal),
         sources: sourceReceipts,
+        fonts: readFonts(renderReceipt),
         expiresAt: Date.now() + PREVIEW_LIFETIME_MS,
       };
       const { path: _path, ...receipt } = entry;
@@ -280,8 +313,11 @@ export class ExportProfileService {
         profile,
         warnings,
       };
+    } catch (error) {
+      retainWork = error instanceof RenderPublicationRecoveryError;
+      throw error;
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainWork) await rm(work, { recursive: true, force: true });
       if (!this.previews.has(token)) {
         await rm(framePath, { force: true });
         await rm(receiptPath, { force: true });
@@ -381,7 +417,7 @@ export class ExportProfileService {
       (expectedFrame !== undefined && expectedFrame !== entry.frameIndex)
     )
       throw invalid();
-    return this.renderSnapshot(snapshot, entry.sources);
+    return this.renderSnapshot(snapshot, entry.sources, entry.fonts);
   }
 
   private previewReceiptPath(token: string): Promise<string> {
@@ -428,6 +464,7 @@ export class ExportProfileService {
         );
       const entry: PreviewEntry = {
         ...receipt,
+        fonts: readFonts(receipt),
         profile: profileMode(receipt.profile, ["mp4", "png"]),
         path: await safeProjectCachePath(
           this.options.directory,
@@ -474,23 +511,28 @@ export class ExportProfileService {
       profile,
       frameIndex,
       renderSelection: renderSelection(input),
+      ...(approved ? { fonts: approved.fonts } : {}),
     });
-    return this.runRequest(`png:${requestId}`, fingerprint, () =>
-      this.exportStillOnce(
-        snapshot,
-        profile,
-        requestId,
-        frameIndex,
-        frameTime,
-        fingerprint,
-        {
-          lookOverride: input.lookOverride,
-          captionTrackId: input.captionTrackId,
-        },
-        renderSelection(input),
-        approved,
-        input.signal,
-      ),
+    return this.runRequest(
+      `png:${requestId}`,
+      fingerprint,
+      () =>
+        this.exportStillOnce(
+          snapshot,
+          profile,
+          requestId,
+          frameIndex,
+          frameTime,
+          fingerprint,
+          {
+            lookOverride: input.lookOverride,
+            captionTrackId: input.captionTrackId,
+          },
+          renderSelection(input),
+          approved,
+          input.signal,
+        ),
+      input.signal,
     );
   }
 
@@ -526,6 +568,7 @@ export class ExportProfileService {
     const videoPath = join(work, "render.mp4");
     const stagedPng = join(work, "still.png");
     const stagedManifest = join(work, "manifest.json");
+    let retainWork = false;
     try {
       const renderReceipt = await this.renderFrameSource(
         snapshot.composition.id,
@@ -585,16 +628,24 @@ export class ExportProfileService {
           sha256: outputSha256,
         },
         sources: sourceReceipts,
+        fonts: readFonts(renderReceipt),
         warnings,
       });
       this.assertCurrent(snapshot);
       await chmod(stagedPng, 0o600);
+      const winner = await this.existing(
+        path,
+        manifestPath,
+        requestId,
+        fingerprint,
+        snapshot.assets,
+        profile,
+        signal,
+      );
+      if (winner) return winner as ProfileExportArtifact;
       await publishRenderPair(stagedPng, stagedManifest, path, work, {
-        assertCurrent: () => {
-          checkAbort(signal);
-          this.assertCurrent(snapshot);
-          for (const guard of sourceGuards) guard();
-        },
+        assertCurrent: () =>
+          this.assertPublicationCurrent(snapshot, sourceGuards, signal),
       });
       return {
         path,
@@ -605,8 +656,11 @@ export class ExportProfileService {
         time: frameTime,
         frameIndex,
       };
+    } catch (error) {
+      retainWork = error instanceof RenderPublicationRecoveryError;
+      throw error;
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainWork) await rm(work, { recursive: true, force: true });
     }
   }
 
@@ -624,22 +678,26 @@ export class ExportProfileService {
       compositionId: snapshot.composition.id,
       profile,
     });
-    return this.runRequest(`${profile.format}:${requestId}`, fingerprint, () =>
-      profile.format === "wav"
-        ? this.exportMix(
-            snapshot,
-            profile,
-            requestId,
-            fingerprint,
-            input.signal,
-          )
-        : this.exportStems(
-            snapshot,
-            profile,
-            requestId,
-            fingerprint,
-            input.signal,
-          ),
+    return this.runRequest(
+      `${profile.format}:${requestId}`,
+      fingerprint,
+      () =>
+        profile.format === "wav"
+          ? this.exportMix(
+              snapshot,
+              profile,
+              requestId,
+              fingerprint,
+              input.signal,
+            )
+          : this.exportStems(
+              snapshot,
+              profile,
+              requestId,
+              fingerprint,
+              input.signal,
+            ),
+      input.signal,
     );
   }
 
@@ -647,6 +705,7 @@ export class ExportProfileService {
     key: string,
     fingerprint: string,
     action: () => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
     const pending = this.requests.get(key);
     if (pending) {
@@ -656,7 +715,9 @@ export class ExportProfileService {
         );
       return pending.promise as Promise<T>;
     }
-    const promise = Promise.resolve().then(action);
+    const promise = Promise.resolve().then(() =>
+      this.withRequestLock(key, fingerprint, action, signal),
+    );
     const entry = { fingerprint, promise };
     this.requests.set(key, entry);
     void promise
@@ -665,6 +726,28 @@ export class ExportProfileService {
       })
       .catch(() => {});
     return promise;
+  }
+
+  private async withRequestLock<T>(
+    key: string,
+    fingerprint: string,
+    action: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    checkAbort(signal);
+    const path = await safeProjectCachePath(
+      this.options.directory,
+      "export-requests",
+      `${key.replace(":", "-")}.lock`,
+    );
+    await chmod(dirname(path), 0o700);
+    const release = acquireExportRequestLock(path, fingerprint);
+    try {
+      checkAbort(signal);
+      return await action();
+    } finally {
+      release();
+    }
   }
 
   private snapshot(compositionId?: string) {
@@ -699,15 +782,28 @@ export class ExportProfileService {
   private renderSnapshot(
     snapshot: ReturnType<ExportProfileService["snapshot"]>,
     sources?: RenderSnapshot["sources"],
+    fonts?: RenderSnapshot["fonts"],
   ): RenderSnapshot {
     return {
       compositionSha256: digest(snapshot.composition),
       settingsSha256: digest(snapshot.project.settings),
       assetsSha256: digest(snapshot.assets),
       sources: sources && structuredClone(sources),
+      fonts: fonts && structuredClone(fonts),
       sourceScope: "visual",
       assertCurrent: () => this.assertCurrent(snapshot),
     };
+  }
+
+  private assertPublicationCurrent(
+    snapshot: ReturnType<ExportProfileService["snapshot"]>,
+    sourceGuards: ReadonlyArray<() => void>,
+    signal?: AbortSignal,
+  ): void {
+    checkAbort(signal);
+    this.assertCurrent(snapshot);
+    for (const guard of sourceGuards) guard();
+    checkAbort(signal);
   }
 
   private validateTime(
@@ -861,6 +957,7 @@ export class ExportProfileService {
     const stagedWav = join(work, "mix.wav");
     const stagedRenderManifest = `${stagedWav}.manifest.json`;
     const stagedManifest = join(work, "manifest.json");
+    let retainWork = false;
     try {
       await this.options.render(snapshot.composition.id, stagedWav, {
         signal,
@@ -878,10 +975,12 @@ export class ExportProfileService {
         renderSources,
         snapshot.assets.filter(hasAudio),
       );
+      const sourceGuards: Array<() => void> = [];
       const sources = await this.currentSourceReceipts(
         renderSources,
         snapshot.assets,
         signal,
+        sourceGuards,
       );
       const warnings = [...new Set(renderReceipt.warnings ?? [])];
       await this.writeReceipt(stagedManifest, {
@@ -908,7 +1007,20 @@ export class ExportProfileService {
       });
       this.assertCurrent(snapshot);
       await chmod(stagedWav, 0o600);
-      await publishRenderPair(stagedWav, stagedManifest, path, work);
+      const winner = await this.existing(
+        path,
+        manifestPath,
+        requestId,
+        fingerprint,
+        snapshot.assets,
+        profile,
+        signal,
+      );
+      if (winner) return winner as AudioProfileExport;
+      await publishRenderPair(stagedWav, stagedManifest, path, work, {
+        assertCurrent: () =>
+          this.assertPublicationCurrent(snapshot, sourceGuards, signal),
+      });
       return {
         requestId,
         profile,
@@ -924,8 +1036,11 @@ export class ExportProfileService {
         manifestPath,
         warnings,
       };
+    } catch (error) {
+      retainWork = error instanceof RenderPublicationRecoveryError;
+      throw error;
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainWork) await rm(work, { recursive: true, force: true });
     }
   }
 
@@ -939,14 +1054,9 @@ export class ExportProfileService {
     const roles = this.availableRoles(snapshot.composition, snapshot.assets);
     const warnings: string[] = [];
     if (!roles.length)
-      return {
-        requestId,
-        profile,
-        files: [],
-        warnings: [
-          "No dialogue, narration, music or ambience audio roles apply to this Composition; no stem files were created.",
-        ],
-      };
+      warnings.push(
+        "No dialogue, narration, music or ambience audio roles apply to this Composition; no stem files were created.",
+      );
     const directory = await this.exportDirectory();
     const target = join(directory, `stems-${requestId}`);
     const existing = await this.existingDirectory(
@@ -961,6 +1071,7 @@ export class ExportProfileService {
     const work = await this.workDirectory(randomUUID());
     const staging = join(directory, `.stems-${requestId}-${randomUUID()}.tmp`);
     await mkdir(staging, { mode: 0o700 });
+    let retainWork = false;
     try {
       const files: AudioExportFile[] = [];
       const sourceSets: RenderReceipt["sources"] = [];
@@ -1024,10 +1135,12 @@ export class ExportProfileService {
         uniqueSources,
         snapshot.assets.filter(hasAudio),
       );
+      const sourceGuards: Array<() => void> = [];
       const sourceReceipts = await this.currentSourceReceipts(
         uniqueSources,
         snapshot.assets,
         signal,
+        sourceGuards,
       );
       const manifestPath = join(staging, "manifest.json");
       await this.writeReceipt(manifestPath, {
@@ -1065,10 +1178,28 @@ export class ExportProfileService {
         sources: sourceReceipts,
         warnings: [...new Set(warnings)],
       });
-      this.assertCurrent(snapshot);
+      let installed = false;
       try {
+        this.assertPublicationCurrent(snapshot, sourceGuards, signal);
         await rename(staging, target);
+        installed = true;
+        this.assertPublicationCurrent(snapshot, sourceGuards, signal);
       } catch (error) {
+        if (installed) {
+          try {
+            await rm(target, { recursive: true, force: true });
+          } catch (rollback) {
+            throw new RenderPublicationRecoveryError(
+              work,
+              [target],
+              new AggregateError(
+                [error, rollback],
+                "Stem publication rollback failed.",
+              ),
+            );
+          }
+          throw error;
+        }
         if (
           ["EEXIST", "ENOTEMPTY"].includes(
             (error as NodeJS.ErrnoException).code ?? "",
@@ -1097,8 +1228,11 @@ export class ExportProfileService {
         manifestPath: join(target, "manifest.json"),
         warnings: [...new Set(warnings)],
       };
+    } catch (error) {
+      retainWork = error instanceof RenderPublicationRecoveryError;
+      throw error;
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainWork) await rm(work, { recursive: true, force: true });
       await rm(staging, { recursive: true, force: true });
     }
   }
@@ -1453,7 +1587,14 @@ export class ExportProfileService {
     const outputs = Array.isArray(manifest.outputs)
       ? (manifest.outputs as Array<Record<string, unknown>>)
       : [];
-    if (!outputs.length)
+    if (
+      !Array.isArray(manifest.outputs) ||
+      (!outputs.length &&
+        this.availableRoles(
+          this.options.getComposition(manifest.compositionId as string),
+          assets,
+        ).length)
+    )
       throw new Error("Stem export receipt contains no audio outputs.");
     const files: AudioExportFile[] = [];
     for (const output of outputs) {

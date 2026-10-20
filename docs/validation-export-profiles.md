@@ -97,6 +97,49 @@ lint, formatting and diff checks passed. Logs use the `pr36-p2-` prefix in the
 same local validation directory. Full-suite, browser and collected-font
 integration remain with the coordinator.
 
+### Follow-up: concurrent requests, recovery files and rendered fonts
+
+The next four findings were checked from
+`72cc85ae42a82106b9b80668b1ec2bdf58cdde2d`. All four have failing actual-I/O
+regressions recorded before their causal fixes.
+
+| Review thread | Disposition and evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4326958726`  | Fixed: private per-request filesystem locks span lookup, rendering and publication across service/CLI instances, followed by a final completed-winner check. Concurrent PNG publishers previously changed the winner's pixels and receipt; WAV publishers changed its receipt. The winner remains immutable, and a later identical retry verifies it.                                                                                                                                        |
+| `4326958750`  | Fixed: callers retain work on `RenderPublicationRecoveryError`. Real injected install/restore failures leave the original bytes readable at the reported recovery paths in a mode-0700 work directory.                                                                                                                                                                                                                                                                                       |
+| `4326958767`  | Fixed: previews persist canonical actual font file/face identities and crop snapshots carry them into the renderer. Separate Noto Sans/Serif CLI processes produce different preview pixels; the wrong font now rejects both PNG/MP4 delivery before encoding/publication. Matching font bytes copied to a collected path remain valid. A separate actual-render case binds distinct title, caption and GraphicScene fonts. Crop still request fingerprints also include the reviewed fonts. |
+| `4326958778`  | Fixed: stem lookup precedes the empty-role outcome and every accepted empty request publishes a manifest-only directory. Adding or removing audio rejects reuse of the old ID; a passive service restart verifies an unchanged empty request. No placeholder WAV is created.                                                                                                                                                                                                                 |
+
+Lock owners are published as complete, mode-0600 records with an exclusive hard
+link. Recovery reuses verified local boot/PID scope, checks Linux process-start
+identity for PID reuse, and serializes reclaimers of the observed token/inode.
+Release checks both token and inode. Real live child processes cannot claim
+each other's lock. SIGKILL before or after actual WAV publication permits a
+same-ID retry; a completed winner's bytes and receipt remain unchanged. Unknown
+owner scope/liveness fails closed. Native platform liveness remains subject to
+the workstation gates above; Linux process controls are the measured evidence.
+
+Cancellation tests cover PNG during rendering and WAV/stems after receipt
+staging, followed by successful same-ID retries and empty request-lock folders.
+The late WAV test also reproduced a publication-after-abort gap. WAV pair
+publication and stem directory installation now check cancellation, revision
+and source state through publication, with rollback if the state changes.
+
+The initial request/recovery/empty-role failures are in
+`pr36-request-font-red.log`; actual cross-process font failures are in
+`pr36-font-identity-red.log`. Removing only dead-owner recovery and inode-release
+guards produced three failing lifecycle controls in
+`pr36-request-lock-causal-red.log`; those guards were restored before validation.
+The late cancellation red run is `pr36-request-late-cancel-red.log`. These logs
+remain under `/tmp/openfilm-v1-validation/`.
+
+The final focused run passed **22 files / 182 tests** in **94.96 seconds**,
+including the earlier crop, source-change and rollback regressions. The new
+request/font/lifecycle selection passed **18 cases** separately. `pnpm typecheck`,
+changed-file ESLint, formatting and diff checks passed. The final logs use
+`pr36-request-font-` prefixes. This follow-up does not run a full repository or
+browser suite; collected per-style font integration remains with the coordinator.
+
 ### Initial remediation verification
 
 At `ac5c5bae0579c586703c33968acb5bc442634df5`, focused verification passed in
