@@ -12,8 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import { hashFile, inspectMedia, localPath, runProcess } from "@openfilm/media";
 import * as media from "@openfilm/media";
+import { GRAPHIC_SCENE_LIMITS } from "@openfilm/core";
+import { prepareGraphicScenes } from "@openfilm/render";
 import { graphicScene } from "../../../tests/fixtures/graphic-scene.js";
 import { OpenFilmApplication } from "../src/index.js";
 
@@ -75,6 +77,180 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it.each(["frame-work", "source-bytes"] as const)(
+    "reports the %s resource budget without blaming a valid PhotoDepth mask",
+    async (budget) => {
+      const { app } = await fixture("0x305070");
+      const large = budget === "source-bytes";
+      const images = [];
+      for (const [name, color] of [
+        ["budget-source", "0x305070"],
+        ["budget-mask", "white"],
+        ["budget-background", "0x208060"],
+      ]) {
+        const path = join(app.directory, `${name}.png`);
+        const size = large ? "2700x2700" : "96x54";
+        const filter =
+          name === "budget-mask"
+            ? `nullsrc=s=${size},format=rgba,geq=r='255':g='255':b='255':a='if(between(X,W/4,W*3/4)*between(Y,H/4,H*3/4),255,0)'`
+            : `color=c=${color}:s=${size}`;
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          filter,
+          "-frames:v",
+          "1",
+          "-threads",
+          "1",
+          "-pix_fmt",
+          large ? "rgba64be" : "rgba",
+          "-compression_level",
+          large ? "0" : "6",
+          path,
+        ]);
+        const asset = {
+          ...(await inspectMedia({
+            path,
+            uri: pathToFileURL(path).href,
+            name: `${name}.png`,
+          })),
+          contentHash: await hashFile(path),
+        };
+        app.catalog.upsertAsset(asset);
+        images.push(asset);
+      }
+      const [source, mask, background] = images;
+      expect(
+        mask!.dimensions!.width * mask!.dimensions!.height,
+      ).toBeLessThanOrEqual(GRAPHIC_SCENE_LIMITS.photoMaskPixels);
+      if (large) {
+        const sizes = await Promise.all(
+          images.map((asset) => stat(new URL(asset.uri))),
+        );
+        expect(
+          sizes.every((info) => info.size < GRAPHIC_SCENE_LIMITS.sourceBytes),
+        ).toBe(true);
+        expect(sizes.reduce((sum, info) => sum + info.size, 0)).toBeGreaterThan(
+          GRAPHIC_SCENE_LIMITS.sourceBytes * 2,
+        );
+      }
+      app.project.settings =
+        budget === "frame-work"
+          ? { width: 3840, height: 2160, frameRate: 60 }
+          : { width: 160, height: 90, frameRate: 8 };
+      const story = app.generateStory({
+        title: "Synthetic resource budget",
+        template: "blank",
+        assetIds: [source!.id],
+        targetDuration: 6,
+        maxDuration: 6,
+      });
+      const composition = app.compose(story.id);
+      const node = {
+        id: "budget-photo",
+        type: "image" as const,
+        assetId: source!.id,
+        x: 0,
+        y: 0,
+        width: 160,
+        height: 90,
+        opacity: 1,
+        zIndex: 0,
+        start: 0,
+        end: 6,
+      };
+      app.project.timelines[app.project.timelines.length - 1] = {
+        ...composition,
+        duration: 6,
+        tracks: [],
+        graphicScenes: [
+          graphicScene({
+            id: "budget-depth-scene",
+            nodes: [node],
+            photoDepth: {
+              version: 1,
+              id: "budget-depth-recipe",
+              nodeId: node.id,
+              mode: "parallax",
+              duration: 6,
+              sourceAssetId: source!.id,
+              sourceSha256: source!.contentHash,
+              maskAssetId: mask!.id,
+              maskSha256: mask!.contentHash,
+              background: {
+                kind: "asset",
+                assetId: background!.id,
+                sha256: background!.contentHash,
+              },
+              protectedRegion: { x: 0, y: 0, width: 1, height: 1 },
+              foregroundDepth: 1.2,
+              backgroundDepth: 0.25,
+              amplitude: 0,
+              camera: {
+                from: { x: 0, y: 0, scale: 1 },
+                to: { x: 0, y: 0, scale: 1 },
+              },
+              easing: "linear",
+            },
+          }),
+        ],
+      };
+      await app.save();
+
+      // Prove the same mask passes actual decoding and subject validation when
+      // the frame work and combined-source budgets are within their bounds.
+      const control = structuredClone(app.project.timelines.at(-1)!);
+      const recipe = control.graphicScenes![0]!.photoDepth;
+      if (recipe?.mode !== "parallax") throw new Error("Expected parallax");
+      recipe.background = { kind: "source" };
+      const work = await mkdtemp(join(tmpdir(), "openfilm-qa-valid-mask-"));
+      projects.push(work);
+      const prepared = await prepareGraphicScenes(
+        control,
+        [source!, mask!],
+        { width: 160, height: 90, frameRate: 8 },
+        work,
+      );
+      expect(prepared.photoDepthFindings).toHaveLength(1);
+      await prepared.verifySources();
+
+      const report = await app.runVisualQa(composition.id);
+      expect(report.status).toBe("incomplete");
+      expect(report.samples).toEqual([]);
+      expect(report.output).toBeUndefined();
+      expect(report.issues).toContainEqual(
+        expect.objectContaining({
+          code: "graphics.resource-limit",
+          severity: "error",
+          graphicSceneId: "budget-depth-scene",
+          nodeId: node.id,
+        }),
+      );
+      const finding = report.issues.find(
+        (entry) => entry.code === "graphics.resource-limit",
+      )!;
+      expect(finding.assetId).toBeUndefined();
+      expect(finding.photoDepthPart).toBeUndefined();
+      expect(
+        report.issues.some((entry) =>
+          ["photo-depth.mask-invalid", "asset.unsupported"].includes(
+            entry.code,
+          ),
+        ),
+      ).toBe(false);
+      for (const asset of images) {
+        expect(report.sources).toContainEqual({
+          assetId: asset.id,
+          sha256: asset.contentHash,
+        });
+        expect(await hashFile(localPath(asset.uri))).toBe(asset.contentHash);
+      }
+    },
+  );
+
   it("returns an incomplete typed mask finding when decoded PhotoDepth pixels exceed the mask budget", async () => {
     const { app } = await fixture("0x305070");
     const images = [];

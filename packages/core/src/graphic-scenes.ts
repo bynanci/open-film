@@ -665,11 +665,7 @@ export function validateGraphicScenes(
     };
     visit(scene.nodes, `${path}.nodes`, 1);
     if (Object.hasOwn(scene, "photoDepth"))
-      scene.photoDepth = photoDepth(
-        scene.photoDepth,
-        `${path}.photoDepth`,
-        scene,
-      );
+      photoDepth(scene.photoDepth, `${path}.photoDepth`, scene);
   }
   return structuredClone(entries) as GraphicScene[];
 }

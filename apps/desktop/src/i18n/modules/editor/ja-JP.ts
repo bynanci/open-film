@@ -338,6 +338,8 @@ export default {
         missingAsset: "メディアがないか読み込めません",
         changedAsset: "保存後にメディアが変更されました",
         unsupportedAsset: "このメディアは確認用に出力できません",
+        graphicsResourceLimit:
+          "グラフィックスが処理可能なリソース上限を超えています",
         fontFailure: "タイトルのフォントまたは文字を読み込めません",
         titleOverflow: "測定上、タイトルがフレームからはみ出しています",
         suspectedBlank: "空白または黒のフレームの可能性があります",

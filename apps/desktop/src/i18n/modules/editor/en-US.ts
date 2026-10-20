@@ -338,6 +338,7 @@ export default {
         missingAsset: "Missing or inaccessible media",
         changedAsset: "Media changed since it was saved",
         unsupportedAsset: "Media cannot be rendered for review",
+        graphicsResourceLimit: "Graphics exceed the supported resource budget",
         fontFailure: "Title font or glyph unavailable",
         titleOverflow: "Measured title extends beyond the frame",
         suspectedBlank: "Possibly blank or black frame",
