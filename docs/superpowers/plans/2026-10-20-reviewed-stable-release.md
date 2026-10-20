@@ -29,11 +29,15 @@
 - [x] Add failing core and application regressions; record RED output.
 - [x] Fix tuple identity/order, sorted-order validation, and post-checkpoint source verification; prove GREEN.
 - [x] Add explicit bounded version deletion across application/API/CLI/Desktop, including keyboard confirmation and i18n; prove unit/integration/browser behavior.
-- [ ] Update validation, TASKS, ROADMAP and 0.4.0 release notes/version identifiers. Release only validated main content; document unfinished feature/platform gates.
-- [ ] Run format/i18n/lint/typecheck/test/build/e2e/interchange; use CI native prerequisites for native checks.
-- [ ] Review exact head, create/merge main fix PR after green exact-head CI.
-- [ ] Review and repair each of PRs35–40 on its exact branch; integrate all six heads with ancestry preserved and rerun complete combined gates.
-- [ ] Publish v0.4.0 against verified main merge SHA with checksummed source and validation evidence; read back GitHub release/tag identity.
+- [x] Update validation, TASKS, ROADMAP and0.4.0 release metadata/notes; retain unfinished platform gates.
+- [x] Independently repair/review all six feature heads; integrate them with ancestry preserved.
+- [x] Run combined format/i18n/lint/typecheck/test/build/interchange, built CLI smoke and actual shared render regressions.
+
+Final full browser/native CI, exact-head review, merge and publication are gated
+and recorded by [PR#41](https://github.com/bynanci/open-film/pull/41) and the
+[checksummed0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+No merge/publication occurs while a correctness blocker or failed required gate remains.
+Installer distribution, workstation QA and remote provider enablement stay open.
 
 ## Review focus
 

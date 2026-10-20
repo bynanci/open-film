@@ -1,159 +1,151 @@
 # 0.4.0 integrated release validation
 
-Status: integration in progress; publication and merge require fresh combined
-gates and hosted CI. No installer/workstation certification is implied.
+This record covers the reviewed source implementation. Final candidate/head,
+merge/tag identities, all changed paths, exact-head CI URLs, full browser results
+and checksums accompany the [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+[Integration PR #41](https://github.com/bynanci/open-film/pull/41) must pass all
+final checks before a merge commit and publication. No installer/workstation
+certification is implied.
 
-## Reviewed inputs
+## Exact reviewed inputs
 
 Main baseline: `bb2c4521ad894478893485119442a00ffd9b34cc`.
+Combined implementation: `42ccae24b043020a14dec844448c6f9c8bcaa6a1`. Later documentation-only changes
+retain the same implementation; the release evidence identifies the final head.
 Named Versions hardening: `41357e73fbb2b1686d96192664ed405b908aed5a`;
-checkpoint race follow-up: `ede62fc0dcdcfda373b0b1a7757880e36f45532a`.
-The release number follows the documented development 0.3.2 marker; old package
-metadata remained 0.1.0. Workspace/Tauri/Cargo metadata now agree on 0.4.0 without
-changing project schema 1.0.0.
+checkpoint race: `ede62fc0dcdcfda373b0b1a7757880e36f45532a`.
+Workspace/Tauri/Cargo metadata agree on 0.4.0. The project schema remains 1.0.0.
+The release follows the documented development 0.3.2 marker; old package metadata
+was still 0.1.0.
 
-| PR                           | Original head                              | Reviewed remediation head                  | Result                                                  |
-| ---------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------- |
-| #35 PhotoDepth               | `e78c4e06da2eb908dc0cb4548718c83b7798a8f1` | `a19f54bd771b0c93f17b50e07fc6f1e70a09eedd` | 2 original + 5 fresh fixed; 7 already addressed         |
-| #36 Professional Export      | `66941903c27c41e49a938d257efd725e11286a3f` | `72cc85ae42a82106b9b80668b1ec2bdf58cdde2d` | 10 original + 4 fresh fixed; crop race fixed            |
-| #37 Collect Media            | `cd537da784d73478a8d156fcc9677aafd8f79e26` | `282379b268a1f8c144e25aa354408c2831162284` | 9 original + 5 fresh fixed; safe required-stream decode |
-| #38 Native Installer tooling | `6059a7dbd1d1d40a0a5c8f10c476808407328faa` | `b4093f392f6e58fa39f5d31d37be072dade02cbe` | 3 original + 3 fresh fixed; fenced draft recovery       |
-| #39 NLE Fidelity             | `2dc059635b80a403aac215810fa0cda36cb329c5` | `077abf2e69e14dc02a882f9103e651ef450e2d1d` | 22 original already addressed; 8 fresh fixed            |
-| #40 Motion Candidates        | `1ba6c57c58d0f08f3a09ce645eb6453e43550398` | `f5625e8c0380df4bc3fa20250fb3e0dcde77e204` | Orphan cache, idempotent adoption and prior Undo fixed  |
+| PR                                   | Original head                              | Final reviewed branch head                 |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------ |
+| #35 PhotoDepth                       | `e78c4e06da2eb908dc0cb4548718c83b7798a8f1` | `5336295eb5991470d543d1d71b37e526d891b63c` |
+| #36 Professional Export              | `66941903c27c41e49a938d257efd725e11286a3f` | `3503ea571f910365591b59e3aa3b047066025706` |
+| #37 Collect Media                    | `cd537da784d73478a8d156fcc9677aafd8f79e26` | `282379b268a1f8c144e25aa354408c2831162284` |
+| #38 Native runtime/candidate tooling | `6059a7dbd1d1d40a0a5c8f10c476808407328faa` | `f25a2663fd736b8d1cd84c7bb77894c335bc4a92` |
+| #39 NLE Fidelity                     | `2dc059635b80a403aac215810fa0cda36cb329c5` | `b1638752e5e436bbc53eaa0b8950585ef21c724b` |
+| #40 Motion Candidates                | `1ba6c57c58d0f08f3a09ce645eb6453e43550398` | `ee0a62cfd5ae25a6b2d17033457b80259eb5a2cc` |
 
-Each feature retains its own validation document and discussion dispositions.
-The GitHub inventory covers 39 PRs/187 reviews/298 threads; this release remediates
-the five confirmed Named Versions findings plus all current review findings on
-PRs 35–40. Historical unresolved flags are not treated as confirmed defects.
+All six tips are ancestors of the integration candidate. A merge commit preserves
+their history and lets GitHub mark the six original PRs merged. Do not squash or
+rebase this integration. Each feature validation document retains its own review
+thread dispositions, reproduction and acceptance limits.
 
-## Evidence before integration
+The original GitHub inventory covered 39 PRs/187 reviews/298 threads. Historical
+unresolved flags were checked against actual behavior rather than counted as
+confirmed bugs. This pass fixes the five confirmed Named Versions findings,
+current PR35–40 findings and further independently reproduced defects.
 
-- Named Versions: new failures observed before correction, then 31 focused tests
-  plus 1 browser scenario passed, including 50-version capacity recovery, receipt
-  tombstones, active journals, source-change rejection and checkpoint deletion.
-- Source validation: same 1,000-reference/7-call workload, 7,000 sorts → 0;
-  median 10.31 ms → 2.07 ms, max 13.30 ms → 3.81 ms on local Node 24.19.
-  Supported 50,000-reference correctness is tested; no cross-device latency claim.
-- PhotoDepth: 213 files/2956 tests passed. Actual alpha MP4 levels
-  `[0,255,0,129,65,128]` agree within 1/255 with expected alpha intersection;
-  source hashes and 180-frame baseline output remain unchanged.
-- Professional Export: 213 files/2951 tests and 145 focused tests passed. Actual
-  mono/stereo sources produce stereo 48 kHz/24-bit stems with 576,000 samples each;
-  three MP4 ratios contain 144 frames / 12 seconds; preview/still pixels and source hashes match.
-- Collect Media: 100 targeted tests, including 21 baseline-failing regressions.
-  Retained synthetic MP4/relocated ZIP/directory/recollection proof decodes 10/10
-  identical frames after original media removal; source provenance is stable.
-- Native tooling: 214 files/2928 Node tests; 7 targeted Node, 3 Python transport,
-  3 isolated-port browser and 5 isolated Rust tests, formatter/Clippy passed.
-  Full local Tauri build lacks GTK/WebKit; fresh hosted native CI remains required.
-- NLE handoff: 213 files/2960 tests; 41 focused tests, format/i18n/lint/typecheck/
-  build/interchange passed. Actual 32-frame reference, 16-frame precomp,
-  endpoint error below 3/255 and 192000-sample mix; 12 inventory hashes/TAR entries
-  verified. Audio owners exclude silent video, stills and titles.
-- Motion: 4 files/23 tests plus typecheck/edited-file checks passed; reopen removes
-  23 expired receiptless folders, retains recent work and generates 2 real previews.
+## Review and regression outcomes
 
-## Independent integration review
+- Named Versions: explicit confirmed capacity deletion across application/API/CLI/
+  Desktop; preserve 50-version/2GiB limits, stale revisions and active recovery
+  journals. Target sources are rechecked after checkpoint creation; checkpoint
+  existence and applying journal share the catalog write lock. Independent
+  deletion/restore race controls, 31 focused tests and a browser flow pass.
+  Legal composite IDs and order differences are retained. The same 1,000-source/
+  seven-call workload improves 7,000 sorts to zero and local median10.31ms to
+  2.07ms; 50,000-source correctness is covered, without a cross-device claim.
+- PhotoDepth: alpha intersection, fallback controls/reasons, mask resource errors,
+  local-only dependencies, 3–6s recipe retiming and full-Library layer admission
+  are fixed. Independent58 tests and an actual folder-import/history/reopen
+  browser pass without changing explicit Story pools or required selections.
+  Recognized mask orientation matches Monitor/Output; the48-frame oriented PNG
+  test discloses a test-only display-rotation shim because FFmpeg7.1 ignores PNG
+  eXIf. It does not claim native EXIF support.
+- Export: crop approval binds captured plan, sources, actual font files/faces and
+  each typed title/caption/nested-scene use. Actual assignment swaps fail while
+  unchanged relocated font bytes reproduce pixels. Legacy set-only approvals
+  require a fresh preview. Exclusive request owners preserve completed winners,
+  use verified dead-owner/PID/token/inode recovery, retain failed-rollback backups
+  and fence late cancellation. Empty stems retain durable collision receipts.
+  Owner188 focused tests and independent71 plus actual swap/relocation probes
+  pass. Unknown/native owner liveness fails closed; Linux controls are measured.
+- Collection: credential paths reject before reads; every packaged asset is
+  inspected/decoded, including Story-only sources. Required-stream one-frame
+  decoding supports valid delayed-video/audio files. Rights IDs, embedded-path
+  redaction, valid font names, aggregate4GiB bounds and every ZIP byte are checked.
+  Independent33 safety/archive/decoder controls pass with unchanged delayed-source
+  hash and actual relocation/reopen/render parity.
+- Native: bounded authored-draft recovery protects project/path/media/revision
+  identity and explicit Discard; proposals and provider consent do not transfer.
+  Manifest verification uses the same bounded bytes. Runtime gates stop background
+  shortcuts while preserving button/Tab behavior. Prefix-aware media URLs and
+  anonymous CORS retain strict Origin/session/Host enforcement. Closing aborts
+  owned read streams before/after filesystem awaits while acquired writes drain;
+  real ENOENT child startup settles cleanup. Independent99 tests, five Chromium
+  cases and nine isolated Rust tests pass. Platform distribution stays partial.
+- NLE: review rejects missing sources, actual renderer capabilities, Story maximum,
+  odd dimensions, frame budgets, unsafe SRT and more than64 selected burn-in cues.
+  All5,000 native/unselected cues remain in SRT/VTT. Probed media handles and exact
+  complete-frame bounds drive OTIO. Title placeholders are metadata rather than
+  native picture/audio; ignored title trims do not block publication, while used
+  source bounds, hashes, inspection and provenance remain enforced. Amplified gain
+  survives baking (measured RMS1.999606×). Independent126 cases and six package
+  inventories/TARs pass; three actual references decode32 expected frames.
+- Motion: receipts distinguish fixture, declared external and local-provider
+  provenance/cost. Terminal caches reclaim crash-left private bytes while prepared
+  recovery journals stay resumable. Exact adoption retries preserve earlier Undo
+  history. A bounded searchable205-video Library picker retains at most three
+  cross-page selections and fences stale reads. Fresh46 owner/43 independent
+  tests,104 combined dependency tests and the actual205-video browser flow pass.
+- Integration: reproduce the held-Favorite-acknowledgement Inspect lost click from
+  an earlier CI failure, then allow read-only inspection during selection/rating
+  saves. Nine unit and the actual Proposal browser pass; category drafts, other
+  project operations and mutation controls remain guarded. Shared renderer
+  capability checks retain audio-only/picture-only/role scopes; independent95
+  checks include nonzero19,200-frame WAV and12-frame picture-only output.
 
-Shared render/package review passed on `ec2d245db0040fda4e41f9c716cd8c24a8f58404`;
-`8af3f5a4a95e478b6ab457f5c641d4fb56859d62` changes ancestry only and has the
-same Git tree. A cross-feature fixture combines PhotoDepth source/mask/fill,
-hidden media, accepted motion, narration, title/caption/scene text and package
-fonts. All six source receipts survive collection/handoff; relocated portrait
-output is byte-identical with an intentionally invalid host font override:
-90×160, 24 fps, 96 frames, SHA-256
+## Combined automated gates
+
+On implementation `42ccae24b043020a14dec844448c6f9c8bcaa6a1`:
+
+- `pnpm format:check`, `pnpm test:i18n` (1,970 semantic keys), `pnpm lint` and
+  `pnpm typecheck`: pass.
+- `pnpm test`: **239 files / 3,306 tests passed**; no weakened or disabled
+  assertions. Synthetic FFmpeg, HTTP/application, child-process, legacy-project
+  and recovery regressions run as part of this command.
+- `pnpm build`, built CLI smoke and `pnpm test:interchange`: pass; the official
+  independent OTIO verifier passes18 tests.
+
+The run records source/head identity and checks that the worktree stays clean at
+every gate. Earlier3,107/3,210-test combined runs are baseline evidence only.
+Final full `pnpm test:e2e` and exact candidate CI results are read back into the
+checksummed release evidence before merge/publication. Hosted CI runs the complete
+prerequisite-equipped `pnpm test:native`, Cargo build and dependency advisory
+checks. Local full Tauri validation is not run because GTK/WebKit prerequisites
+are absent; isolated Rust tests do not substitute for it.
+
+## Actual shared FFmpeg evidence
+
+The final implementation combines PhotoDepth source/mask/fill, hidden media,
+accepted motion, narration, title/caption/nested-scene text and packaged fonts.
+All six source hash receipts survive collection and handoff. A relocated portrait
+MP4 with an intentionally invalid host font override is byte-identical:
+90×160,24fps,96 decoded frames, SHA-256
 `317e9e2f2f896ab5114df7dd4d3ff3c8f8ea5ff5927b47e189a39a873e7b3a50`.
-Offline hidden-picture originals do not block a 192,000-sample WAV.
+An offline hidden picture does not block the192,000-sample WAV. Composition and
+editor revision remain unchanged; originals retain their hashes.
 
-### Fresh review follow-ups
-
-The first remediation heads received 22 additional GitHub findings. Each was
-checked against behavior and recorded in its feature validation document; all
-22 were genuine or covered by the concurrent crop correction. New regressions
-failed before their fixes. Important changes include:
-
-- PhotoDepth: fallback recreation, reopened background selection, first-fallback
-  reasons, pending mask selection and typed diagnostics for the mask pixel limit.
-- Export: exact crop-plan/source binding through pair publication and rollback;
-  PNG/frame-preview picture-only source selection; WAV/stems ignore irrelevant
-  captions; request ownership and delivery mutation fences remain cancellable.
-- Collection: reject known credential paths before reading them and inspect all
-  actual media, including Story-only references; retain legitimate identifiers
-  and fonts, redact embedded tag paths, reject aggregate oversize before payload
-  reads, and account for every ZIP byte outside the central directory.
-- Native recovery: retain authored text in bounded same-window memory, fence
-  project/path/media/saved baselines, and export/discard unresolved drafts.
-  Generated proposals, action receipts and provider consent do not transfer.
-  Runtime manifest hashing/parsing uses the same bounded buffer; dead-service
-  close uses local draft guards; the blocked workspace is inert.
-- Handoff: reject missing sources, shared graphic limits and unsupported SRT text
-  before approval. Authored amplified gain is retained in render/provenance and
-  neutralized only after full-mix baking; real output RMS ratio was 1.999606×.
-- Motion: recover a catalog-committed source after interruption using exact URI,
-  hash and original revision; preserve prior Undo history on same-editor retry.
-  Reopen, replacement Undo/Redo and a 48-frame/narration render pass.
-
-Independent crop rereview passed: the original race refuses publication, and
-PNG/MP4 match all 43,200 decoded RGB bytes of the reviewed preview. Additional
-plan/source/late-staging races and rename rollback passed (27 targeted tests).
-
-Independent review also found two defects in the first corrections. Collection
-now decodes one frame of the required stream instead of assuming the first 32
-interleaved packets contain video; a valid video starting at 5 seconds remains
-supported. Native recovery rechecks retained membership after awaits, consumes
-successfully restored entries synchronously, and installs local close guards
-before asynchronous boot/recovery. Explicit Discard never reappears or autosaves.
-Native independent final review passed 29 lifecycle cases, two separate original
-race probes and nine Rust checks. Collection independent final review passed 33 safety/archive/decoder checks.
-Complete combined and exact-head CI gates remain required.
-
-### Latest review queue
-
-A further GitHub review round is being remediated before release:
-
-| PR  | Additional scope                                                                                                    | State                                                                    |
-| --- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| #35 | Mask orientation parity, recipe retiming, local dependency admission and imported full-Library dependency selection | Reproduction/fixes in progress                                           |
-| #36 | Cross-process request-ID publication, retained recovery backups, reviewed font identities and empty-stem receipts   | Reproduction/fixes in progress                                           |
-| #38 | Native media URL prefixes, streaming shutdown, spawn-error cleanup and background global shortcuts                  | Reproduction/fixes in progress                                           |
-| #39 | Even dimensions, selected-caption budget, probed source handles and exact complete-frame bounds                     | Fixed; 95 focused tests and independent 29-case review passed            |
-| #40 | Accurate injected-provider provenance, terminal preview-byte cleanup and external-video pagination                  | Reproduction/fixes in progress; PhotoDepth picker duplicate owned by #35 |
-
-NLE reference rendering has a measured admission budget of 64 selected caption
-cues; 65 selected cues reject before approval. All 5,000 native/unselected cues
-remain in SRT/VTT sidecars. The boundary fixture renders 32 actual frames with a
-14,118-byte filter argument on Linux. This is not an arbitrary-project or
-Windows/macOS command-line capacity guarantee. Larger caption reference batching
-is a separate follow-up.
-
-## Combined gates
-
-Initial combined tree passed 231 files / 3,107 tests, format/i18n/lint/typecheck,
-production build, built CLI smoke and 18 official interchange tests. Two targeted
-browser scenarios (Traditional Chinese reviewed crop and named-version recovery)
-also passed. This run predates the independent-review follow-ups above;
-it is a baseline, not final release approval.
-
-A later combined source `c22be50ccc8b0fe04cdea65b5048441d0938ad06` passed
-234 files / 3,210 tests and all eight basic gates in 173.43 seconds for the test
-command. Eight real Chromium feature scenarios passed in 23.1 seconds; the shared
-96-frame package/render scenario retained the identical MP4 hash above. These
-results precede the latest review queue and are retained as baseline evidence.
-
-The final candidate must rerun:
-`pnpm format:check`, `pnpm test:i18n`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
-`pnpm build`, `pnpm test:e2e`, `pnpm test:interchange`, built CLI smoke and
-`pnpm test:native` in a prerequisite-equipped hosted runner. Exact source/tree
-identity, exit codes, counts and CI URLs will be read back before publication.
+The masked alpha fixture yields `[0,255,0,129,65,128]` within1/255 of expected
+intersection. Oriented-mask48-frame output SHA-256 is
+`bcb228765fc472a431b7a260315ccd945d6ec4571387710176e92b428dac15eb`.
+The64-cue reference boundary renders32 actual frames with a14,118-byte filter
+argument on Linux. That is not a Windows/macOS or arbitrary-project command-line
+capacity guarantee; larger caption-reference batching remains a follow-up.
 
 ## Manual and distribution gates
 
-Windows/macOS clean-machine installation, signing/notarization, update/rollback
-operation, real NLE import/playback/relinking, protected real subjects, typography/
-license suitability, physical color/HDR, sustained 4K/GPU and hardware listening
-remain not-run/manual. Native tooling may merge as a disabled/manual candidate
-slice; these gaps block installer distribution and related certification claims.
-Remote motion remains disabled; no paid provider or private media is used.
+Windows/macOS clean-machine installation, signing/notarization, update/rollback,
+OS WebView behavior, actual NLE import/playback/relinking, protected real subjects,
+typography/license suitability, physical HDR/color, sustained4K/GPU and hardware
+listening remain **not run/manual**. These gaps block installer distribution and
+related certification claims. Native tooling stays a disabled/manual candidate
+slice. The0.4.0 release ships source, checksums and curated validation receipts;
+no native installers, credentials, private media or automatic-update feed.
+Remote motion remains disabled; no paid provider/private media is used.
 
 Next milestone: workstation evidence and measured downstream NLE/installer
-compatibility, with separate provider review before enabling remote generation.
+compatibility, plus larger caption-reference batching and separate provider
+review before any remote generation is enabled.

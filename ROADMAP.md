@@ -1,13 +1,16 @@
-## 0.4.0 integration — in progress
+## 0.4.0 reviewed source integration
 
 The next application release is 0.4.0; the existing project schema stays 1.0.0.
 This maintenance pass hardens Named Versions and integrates independently
 reviewed Photo Depth, Professional Export, Collect Media, Native Installer
 candidate tooling, NLE Fidelity and Motion Candidates (PRs 35–40). Shared-source
 contracts, non-destructive editing and explicit provider consent remain intact.
-Exact combined tests and remaining workstation gates will be recorded in the
-release validation report before merge/publication. Native installers are not
-certified by a Linux/source release.
+Combined basic gates and actual cross-feature render/package parity pass; see
+[release validation](docs/validation-stable-release.md). Final exact-head browser,
+native CI, merge and tag results accompany the
+[0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
+Next are measured Windows/macOS/NLE workstation gates and larger caption-reference
+batching. Native installers remain unverified/manual candidates.
 
 ## M6 Audio Quality and Provider Generation
 
