@@ -386,9 +386,35 @@ function assertProtectedRegion(
   scene: GraphicScene,
   recipe: PhotoDepthParallaxRecipe,
   node: GraphicImageNode,
+  source: { width: number; height: number },
   settings: RenderSettings,
 ): void {
   const region = recipe.protectedRegion;
+  const sourceAspect = source.width / source.height;
+  const nodeAspect = node.width / node.height;
+  const contentWidth =
+    sourceAspect > nodeAspect ? node.width : node.height * sourceAspect;
+  const contentHeight =
+    sourceAspect > nodeAspect ? node.width / sourceAspect : node.height;
+  const contentLeft = -node.width / 2 + (node.width - contentWidth) / 2;
+  const contentTop = -node.height / 2 + (node.height - contentHeight) / 2;
+  const protectedLeft = contentLeft + region.x * contentWidth;
+  const protectedRight = contentLeft + (region.x + region.width) * contentWidth;
+  const protectedTop = contentTop + region.y * contentHeight;
+  const protectedBottom =
+    contentTop + (region.y + region.height) * contentHeight;
+  const backgroundBaseLeft =
+    recipe.background.kind === "source" ? contentLeft : -node.width / 2;
+  const backgroundBaseRight =
+    recipe.background.kind === "source"
+      ? contentLeft + contentWidth
+      : node.width / 2;
+  const backgroundBaseTop =
+    recipe.background.kind === "source" ? contentTop : -node.height / 2;
+  const backgroundBaseBottom =
+    recipe.background.kind === "source"
+      ? contentTop + contentHeight
+      : node.height / 2;
   const frames = Math.ceil(recipe.duration * settings.frameRate);
   for (let frame = 0; frame <= frames; frame++) {
     const time =
@@ -401,24 +427,22 @@ function assertProtectedRegion(
       settings.width / 2 +
       node.x +
       motion.foreground.x * settings.width +
-      (-node.width / 2 + region.x * node.width) * motion.foreground.scale;
+      protectedLeft * motion.foreground.scale;
     const right =
       settings.width / 2 +
       node.x +
       motion.foreground.x * settings.width +
-      (-node.width / 2 + (region.x + region.width) * node.width) *
-        motion.foreground.scale;
+      protectedRight * motion.foreground.scale;
     const top =
       settings.height / 2 +
       node.y +
       motion.foreground.y * settings.height +
-      (-node.height / 2 + region.y * node.height) * motion.foreground.scale;
+      protectedTop * motion.foreground.scale;
     const bottom =
       settings.height / 2 +
       node.y +
       motion.foreground.y * settings.height +
-      (-node.height / 2 + (region.y + region.height) * node.height) *
-        motion.foreground.scale;
+      protectedBottom * motion.foreground.scale;
     if (
       left < -0.5 ||
       top < -0.5 ||
@@ -432,23 +456,23 @@ function assertProtectedRegion(
     const backgroundLeft =
       settings.width / 2 +
       node.x +
-      motion.background.x * settings.width -
-      (node.width * motion.background.scale) / 2;
+      motion.background.x * settings.width +
+      backgroundBaseLeft * motion.background.scale;
     const backgroundRight =
       settings.width / 2 +
       node.x +
       motion.background.x * settings.width +
-      (node.width * motion.background.scale) / 2;
+      backgroundBaseRight * motion.background.scale;
     const backgroundTop =
       settings.height / 2 +
       node.y +
-      motion.background.y * settings.height -
-      (node.height * motion.background.scale) / 2;
+      motion.background.y * settings.height +
+      backgroundBaseTop * motion.background.scale;
     const backgroundBottom =
       settings.height / 2 +
       node.y +
       motion.background.y * settings.height +
-      (node.height * motion.background.scale) / 2;
+      backgroundBaseBottom * motion.background.scale;
     if (
       left < backgroundLeft - 0.5 ||
       right > backgroundRight + 0.5 ||
@@ -641,7 +665,7 @@ export async function prepareGraphicScenes(
           "PhotoDepth background hash no longer matches its saved recipe.",
         );
     }
-    assertProtectedRegion(scene, recipe, imageNode, settings);
+    assertProtectedRegion(scene, recipe, imageNode, source, settings);
   }
   const visit = async (
     scene: GraphicScene,
@@ -902,8 +926,8 @@ export async function prepareGraphicScenes(
                   bytes: string,
                   transform: { x: number; y: number; scale: number },
                 ) =>
-                  `<g transform="translate(${numeric(node.x + transform.x * settings.width)} ${numeric(node.y + transform.y * settings.height)}) rotate(${numeric(node.rotation ?? 0)}) scale(${numeric((node.width / node.baseWidth) * transform.scale)} ${numeric((node.height / node.baseHeight) * transform.scale)})" opacity="${numeric(node.opacity)}"><image x="${numeric(-node.baseWidth / 2)}" y="${numeric(-node.baseHeight / 2)}" width="${numeric(node.baseWidth)}" height="${numeric(node.baseHeight)}" href="data:image/png;base64,${bytes}"/></g>`;
-                return `${layer(layers.background, motion.background)}${layer(layers.foreground, motion.foreground)}`;
+                  `<g transform="translate(${numeric(node.x + transform.x * settings.width)} ${numeric(node.y + transform.y * settings.height)}) rotate(${numeric(node.rotation ?? 0)}) scale(${numeric((node.width / node.baseWidth) * transform.scale)} ${numeric((node.height / node.baseHeight) * transform.scale)})"><image x="${numeric(-node.baseWidth / 2)}" y="${numeric(-node.baseHeight / 2)}" width="${numeric(node.baseWidth)}" height="${numeric(node.baseHeight)}" href="data:image/png;base64,${bytes}"/></g>`;
+                return `<g opacity="${numeric(node.opacity)}">${layer(layers.background, motion.background)}${layer(layers.foreground, motion.foreground)}</g>`;
               }
             }
             const content =

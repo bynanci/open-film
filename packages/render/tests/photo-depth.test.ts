@@ -165,6 +165,94 @@ describe("PhotoDepth rendering", () => {
     expect(hash(start)).toMatch(/^[a-f0-9]{64}$/u);
   });
 
+  it("applies node opacity once to the combined foreground and background", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-photo-depth-opacity-"));
+    roots.push(root);
+    const { assets, composition } = await fixture(root);
+    const scene = composition.graphicScenes![0]!;
+    const recipe = scene.photoDepth;
+    if (recipe?.mode !== "parallax")
+      throw new Error("Expected a parallax recipe");
+    recipe.background = { kind: "source" };
+    scene.nodes[0]!.opacity = 0.5;
+    const prepared = await prepareGraphicScenes(
+      composition,
+      assets,
+      { width: 320, height: 180, frameRate: 12 },
+      root,
+    );
+    const framePath = join(root, "opacity.png");
+    await writeFile(framePath, await prepared.frame(null, 0));
+    const pixels = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        framePath,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgba",
+        "pipe:1",
+      ])
+    ).stdout;
+    expect(pixels.byteLength).toBe(320 * 180 * 4);
+    const subjectAlpha = pixels[(90 * 320 + 160) * 4 + 3]!;
+    expect(subjectAlpha).toBeGreaterThanOrEqual(126);
+    expect(subjectAlpha).toBeLessThanOrEqual(130);
+  });
+
+  it("projects protected bounds through aspect-fit padding for safe motion and source fill", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-photo-depth-aspect-fit-"),
+    );
+    roots.push(root);
+    const maskFilter =
+      "nullsrc=s=64x48,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,56,59)*between(Y,17,30),255,0)'";
+    const { assets, composition } = await fixture(root, maskFilter);
+    const scene = composition.graphicScenes![0]!;
+    const recipe = scene.photoDepth;
+    if (recipe?.mode !== "parallax")
+      throw new Error("Expected a parallax recipe");
+    recipe.protectedRegion = { x: 0.875, y: 0.1, width: 0.07, height: 0.8 };
+    recipe.background = { kind: "source" };
+    scene.nodes[0]!.x = -5;
+    await expect(
+      prepareGraphicScenes(
+        composition,
+        assets,
+        { width: 320, height: 180, frameRate: 12 },
+        root,
+      ),
+    ).rejects.toMatchObject({ code: "graphics.protectedRegion" });
+
+    const safeRecipe = scene.photoDepth;
+    if (safeRecipe?.mode !== "parallax")
+      throw new Error("Expected a parallax recipe");
+    safeRecipe.background = {
+      kind: "asset",
+      assetId: assets[2]!.id,
+      sha256: assets[2]!.contentHash!,
+    };
+    scene.nodes[0]!.x = 0;
+    scene.nodes[0]!.width = 180;
+    scene.nodes[0]!.height = 320;
+    safeRecipe.camera = {
+      from: { x: 0, y: 0, scale: 1 },
+      to: { x: 0, y: 0, scale: 1.02 },
+    };
+    await expect(
+      prepareGraphicScenes(
+        composition,
+        assets,
+        { width: 320, height: 180, frameRate: 12 },
+        root,
+      ),
+    ).resolves.toBeDefined();
+  });
+
   it("rejects a mask whose decoded dimensions differ from its source", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-photo-depth-size-"));
     roots.push(root);

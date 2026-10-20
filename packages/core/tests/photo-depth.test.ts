@@ -125,6 +125,38 @@ describe("PhotoDepth v1 admission and frame evaluation", () => {
     ).toThrow();
   });
 
+  it.each([
+    ["maskAssetId", "foreground-mask"],
+    ["maskSha256", sha("b")],
+    ["background", { kind: "source" }],
+    ["protectedRegion", { x: 0.3, y: 0.2, width: 0.4, height: 0.5 }],
+    ["foregroundDepth", 1.2],
+    ["backgroundDepth", 0.25],
+    ["amplitude", 0.5],
+    [
+      "camera",
+      { from: { x: 0, y: 0, scale: 1 }, to: { x: 0, y: 0, scale: 1 } },
+    ],
+    ["easing", "linear"],
+  ])("rejects parallax-only field %s on a fallback", (field, value) => {
+    const fallback = {
+      version: 1,
+      id: "depth-fallback",
+      nodeId: "photo-node",
+      mode: "fallback",
+      duration: 6,
+      sourceAssetId: "original",
+      sourceSha256: sha("a"),
+      fallbackReason: "mask-not-available",
+      [field]: value,
+    };
+    expect(() =>
+      core.validateComposition(composition(depthScene(fallback)), {
+        assetIds: ["original", "foreground-mask", "background-fill"],
+      }),
+    ).toThrow();
+  });
+
   it("includes parallax mask and background assets in project references", () => {
     const scenes = core.validateGraphicScenes([depthScene()], 6);
     expect(core.graphicSceneAssetIds(scenes).sort()).toEqual([

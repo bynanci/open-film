@@ -251,15 +251,19 @@ function assertGraphicSceneLocks(
     );
   const newEntries = graphicNodeLockEntries(next);
   if (!sameGraphicData(previous.photoDepth, next.photoDepth)) {
-    const photoNodeId = previous.photoDepth?.nodeId ?? next.photoDepth?.nodeId;
-    if (
-      photoNodeId &&
-      (oldEntries.get(photoNodeId)?.node.locked ||
-        newEntries.get(photoNodeId)?.node.locked)
-    )
-      fail(
-        `Locked graphic layer "${photoNodeId}" cannot change its PhotoDepth recipe.`,
-      );
+    const photoNodeIds = new Set(
+      [previous.photoDepth?.nodeId, next.photoDepth?.nodeId].filter(
+        (id): id is string => Boolean(id),
+      ),
+    );
+    for (const photoNodeId of photoNodeIds)
+      if (
+        oldEntries.get(photoNodeId)?.node.locked ||
+        newEntries.get(photoNodeId)?.node.locked
+      )
+        fail(
+          `Locked graphic layer "${photoNodeId}" cannot change its PhotoDepth recipe.`,
+        );
   }
   for (const [id, entry] of oldEntries) {
     if (!entry.node.locked) continue;

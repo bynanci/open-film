@@ -387,6 +387,22 @@ function photoDepth(
   };
   const sourceSha256 = hash(data.sourceSha256, `${path}.sourceSha256`);
   if (data.mode === "fallback") {
+    for (const field of [
+      "maskAssetId",
+      "maskSha256",
+      "background",
+      "protectedRegion",
+      "foregroundDepth",
+      "backgroundDepth",
+      "amplitude",
+      "camera",
+      "easing",
+    ])
+      if (Object.hasOwn(data, field))
+        bad(
+          `${path}.${field}`,
+          "fallback recipes cannot include parallax fields",
+        );
     if (
       data.fallbackReason !== "mask-not-available" &&
       data.fallbackReason !== "mask-unreliable" &&

@@ -167,6 +167,23 @@ describe("durable GraphicScene editing", () => {
       baseRevision: before.revision,
       commands: [{ type: "graphic.scene.upsert", scene: boundScene }],
     });
+    const rebindToLocked = structuredClone(
+      accepted.composition.graphicScenes![0]!,
+    );
+    rebindToLocked.nodes.push({
+      ...rebindToLocked.nodes[0]!,
+      id: "locked-photo-node",
+      x: 20,
+      locked: true,
+    });
+    rebindToLocked.photoDepth!.nodeId = "locked-photo-node";
+    await expect(
+      editor.edit("composition", {
+        baseRevision: accepted.revision,
+        commands: [{ type: "graphic.scene.upsert", scene: rebindToLocked }],
+      }),
+    ).rejects.toThrow(/locked.*locked-photo-node.*PhotoDepth/i);
+
     const lockedScene = structuredClone(
       accepted.composition.graphicScenes![0]!,
     );
