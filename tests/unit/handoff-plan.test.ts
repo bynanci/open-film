@@ -16,6 +16,51 @@ const cut: Composition = {
   ],
 };
 describe("HandoffPlan", () => {
+  it("never claims a title placeholder source or cut is native editable", () => {
+    const composition = structuredClone(cut);
+    composition.tracks.push({
+      id: "titles",
+      type: "titles",
+      clips: [
+        {
+          id: "title",
+          assetId: "catalog-placeholder",
+          timelineStart: 0,
+          timelineDuration: 4,
+          title: "Synthetic title",
+        },
+      ],
+    });
+    for (const mode of [
+      "preserve-editability",
+      "preserve-visual-fidelity",
+    ] as const) {
+      const plan = createHandoffPlan(composition, 24, { mode });
+      expect(
+        plan.items.filter(
+          (item) =>
+            item.ownerId === "title" &&
+            ["sourceIdentity", "cut"].includes(item.feature),
+        ),
+      ).not.toEqual([]);
+      expect(
+        plan.items
+          .filter(
+            (item) =>
+              item.ownerId === "title" &&
+              ["sourceIdentity", "cut"].includes(item.feature),
+          )
+          .every((item) => item.disposition !== "native-editable"),
+      ).toBe(true);
+      expect(
+        plan.items.find(
+          (item) =>
+            item.ownerId === "title" && item.feature === "sourceIdentity",
+        )?.reason,
+      ).toMatch(/ignored|omitted/i);
+    }
+  });
+
   it("defaults to editability and reports graphics as metadata", () => {
     const c = structuredClone(cut);
     c.graphicScenes = [

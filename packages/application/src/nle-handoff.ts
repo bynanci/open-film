@@ -11,6 +11,7 @@ import {
 import { lstat, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import {
+  ApplicationError,
   graphicSceneAssetIds,
   frameAlignedDuration,
   type Composition,
@@ -33,7 +34,10 @@ import {
   safeProjectCachePath,
 } from "@openfilm/media";
 import { archiveHandoff } from "./handoff-archive.js";
-import { graphicFrameRanges } from "@openfilm/render";
+import {
+  graphicFrameRanges,
+  validateRenderClipCapabilities,
+} from "@openfilm/render";
 export interface HandoffHost {
   directory: string;
   readonly project: OpenFilmProject;
@@ -69,6 +73,10 @@ const binding = (p: OpenFilmProject) => ({
   id: p.id,
   settings: p.settings,
   timelines: p.timelines,
+  storyMaximums: p.stories.map((story) => ({
+    id: story.id,
+    maxDuration: story.maxDuration,
+  })),
 });
 function referencedIds(composition: Composition): string[] {
   return [
@@ -105,6 +113,9 @@ function exchangeComposition(
   bakeAudio: boolean,
 ): Composition {
   const exchange = structuredClone(composition);
+  // The renderer draws generated text on these tracks and ignores assetId.
+  // Keep the authored title recipe in provenance, never as visible source cuts.
+  exchange.tracks = exchange.tracks.filter((track) => track.type !== "titles");
   // Gain is already encoded in the full mix; provenance keeps the authored recipe.
   if (bakeAudio)
     for (const track of exchange.tracks)
@@ -201,6 +212,18 @@ export class NleHandoffService {
       )
         throw new Error("Render dimensions must be even integers");
       graphicFrameRanges(composition, this.host.project.settings);
+      validateRenderClipCapabilities(composition, assets);
+      const story = this.host.project.stories.find(
+        (item) => item.id === composition.storyId,
+      );
+      if (
+        story?.maxDuration !== undefined &&
+        composition.duration > story.maxDuration + 0.00001
+      )
+        throw new ApplicationError(
+          "render.overMaximum",
+          "Timeline exceeds the story maximum duration; use Fit to Duration or shorten clips before rendering",
+        );
     }
     for (const track of composition.captionTracks ?? [])
       if (track.cues.length)
