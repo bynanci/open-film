@@ -871,8 +871,21 @@ export function applyTimelineCommand(
         ];
         for (const reference of references) {
           const asset = findAsset(assets, reference.id);
-          if (asset.mediaType !== "image")
-            fail(`PhotoDepth source "${reference.id}" must be a still image.`);
+          let localFile = false;
+          try {
+            const uri = new URL(asset.uri);
+            localFile =
+              uri.protocol === "file:" &&
+              !uri.hostname &&
+              !/%2f|%5c/iu.test(uri.pathname) &&
+              !decodeURIComponent(uri.pathname).includes("\0");
+          } catch {
+            /* Invalid source URIs cannot be rendered locally. */
+          }
+          if (asset.mediaType !== "image" || !localFile)
+            fail(
+              `PhotoDepth source "${reference.id}" must be a local still image.`,
+            );
           if (!asset.contentHash || asset.contentHash !== reference.hash)
             throw new ApplicationError(
               "graphics.sourceChanged",

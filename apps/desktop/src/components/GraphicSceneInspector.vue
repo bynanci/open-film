@@ -20,6 +20,7 @@ const props = defineProps<{
   duration: number;
   frameRate: number;
   assets: readonly MediaAsset[];
+  dependencyVersion?: string;
   disabled: boolean;
   agentDisabled: boolean;
   selectedSceneId?: string;
@@ -28,7 +29,7 @@ const props = defineProps<{
   guides: boolean;
 }>();
 const emit = defineEmits<{
-  command: [command: TimelineCommand];
+  command: [command: TimelineCommand, referencedAssets?: readonly MediaAsset[]];
   selection: [selection: { sceneId: string; nodeId: string }];
   previewTime: [time: number];
   importAssets: [];
@@ -211,6 +212,8 @@ function updateLayer(id: string, update: (node: GraphicNode) => void) {
         fallbackReason: "mask-unreliable",
       } satisfies PhotoDepthRecipe;
     } else delete next.photoDepth;
+  } else if (selected.type === "image" && next.photoDepth?.nodeId === id) {
+    next.photoDepth.duration = selected.end - selected.start;
   }
   save(next);
 }
@@ -688,13 +691,15 @@ function endpointValue(
             >
             <PhotoDepthControls
               v-if="node.type === 'image' && isRootImageNode && scene"
+              :project-id="projectId"
+              :dependency-version="dependencyVersion"
               :scene="scene"
               :node="node"
               :assets="assets"
               :duration="duration"
               :frame-rate="frameRate"
               :disabled="disabled || selectedLayerProtected"
-              @command="emit('command', $event)"
+              @command="(command, assets) => emit('command', command, assets)"
               @preview="emit('previewTime', $event)"
               @import-assets="emit('importAssets')"
             />
