@@ -10,9 +10,9 @@ concurrency:
 jobs:
   typescript-and-media:
     runs-on: ubuntu-24.04
-    # The previous exact-head run used 19 minutes, including 15 minutes of
-    # browser coverage. Retain every gate while allowing the expanded suite.
-    timeout-minutes: 30
+    # Hosted feature runs now take about 27 minutes. Keep every browser and
+    # actual-media gate while allowing the combined regression suite to finish.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
