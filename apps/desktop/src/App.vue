@@ -2125,7 +2125,7 @@ async function restoreNativeDrafts() {
     }
     // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
   }
-  if (consumed.length) emit("nativeDraftsRestored", consumed);
+  if (owned() && consumed.length) emit("nativeDraftsRestored", consumed);
 }
 defineExpose({
   prepareNativeClose,

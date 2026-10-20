@@ -620,6 +620,33 @@ describe("native recovery retains actual App local draft owners", () => {
     );
     expect(h.patch).not.toHaveBeenCalled();
   });
+  it("retains a partially applied snapshot if its project owner refreshes before recovery finishes", async () => {
+    const h = await fixture();
+    h.current.setupState.selectedAssetId = "photo";
+    h.current.setupState.categoryDraft = ["Keep pending category"];
+    h.current.setupState.categoryDirty = true;
+    h.setAssetRead(async () => ({ assets: [], total: 0 }));
+    await h.retry();
+    h.current.setupState.beatDraft.narration = "Keep partial recovery copy";
+    h.current.setupState.beatDirty = true;
+    let accept!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      accept = resolve;
+    });
+    h.setAssetRead(() => pending);
+    await h.retry();
+    expect(h.current.setupState.beatDraft.narration).toBe(
+      "Keep partial recovery copy",
+    );
+    h.current.setupState.project = savedProject();
+    await settle();
+    accept({ assets: [structuredClone(h.asset)], total: 1 });
+    await settle();
+    const retained = JSON.stringify(h.current.props.nativeDrafts ?? []);
+    expect(retained).toContain("Keep partial recovery copy");
+    expect(retained).toContain("Keep pending category");
+    expect(h.patch).not.toHaveBeenCalled();
+  });
   it("retains planner inputs and exports only authored proposal edits, never an old generated plan", async () => {
     const h = await fixture();
     h.current.setupState.scenePlannerOpen = true;
