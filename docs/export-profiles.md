@@ -21,7 +21,13 @@ FFmpeg renderer.
   `standard`. A supplied profile determines encoding quality even when a caller
   also supplies a separate quality option.
 
-The defaults use 1920×1080, 1080×1920, or 1080×1080. `contain` scales the saved
+The defaults use 1920×1080, 1080×1920, or 1080×1080. Desktop uses the saved
+frame rate when it is within 1–60 fps, otherwise the nearest boundary: a
+120-fps project delivers at 60 fps, and a 0.5-fps project delivers at 1 fps.
+The saved-frame summary retains the project rate; the delivery summary and
+frame-time selector use the output rate. Project settings remain unchanged.
+
+`contain` scales the saved
 Composition into the profile frame and pads unused space with black. `crop` uses
 an explicit center crop and warns that a protected subject or subtitle safe area
 may be cut. Crop publication requires a successful **Preview Export Frame**,
@@ -50,6 +56,10 @@ preview. The cache retains at most twelve owned PNG/receipt pairs, pruning old
 sessions and orphan receipts when another preview is generated. Receipts can be
 validated by a later service instance while their saved revision remains current.
 The last selectable frame is the last complete frame at the output frame rate.
+Changing saved width or height clears the Desktop preview and crop confirmation.
+Automatic captions, disabled captions and an explicitly named track have
+distinct tagged receipt identities, including tracks named `auto` or `automatic`.
+Legacy untagged crop receipts require a new preview.
 Preview receipts also retain the actual title, caption and GraphicScene font
 file hashes and face identities for each rendered use. Typed ID tuples bind
 titles to their track/clip, captions to their track/cue, and scene text to its
@@ -91,6 +101,11 @@ Audio preflight checks only sources used by the selected audio graph, so an
 offline picture-only source does not block audio delivery. Conflicting hashes
 for a source shared by successive role renders abort publication. Audio-only
 delivery does not select captions or apply picture-rendering caption limits.
+Zero-volume clips do not open or receipt an audio-only source or create a role
+stem. Another audible use of the same asset retains that source. An all-muted
+mix remains a silent full-duration WAV with an empty source list; all-muted
+stems retain the manifest-only request receipt. Zero audio gain does not remove
+a picture source from PNG or MP4 rendering.
 
 ## Shared entry points and safety
 

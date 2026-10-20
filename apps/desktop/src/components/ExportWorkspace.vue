@@ -121,10 +121,18 @@ let stillRequestId = "";
 let audioRequestKey = "";
 let audioRequestId = "";
 
+const deliveryFrameRate = computed(() =>
+  Math.min(60, Math.max(1, props.projectSettings.frameRate)),
+);
+const displayDeliveryFrameRate = computed(() =>
+  new Intl.NumberFormat(locale.value, { maximumFractionDigits: 3 }).format(
+    deliveryFrameRate.value,
+  ),
+);
 const mp4Profile = computed(() =>
   createExportProfile({
     ratio: ratio.value,
-    frameRate: props.projectSettings.frameRate,
+    frameRate: deliveryFrameRate.value,
     framing: framing.value,
     format: "mp4",
     quality: props.quality ?? "standard",
@@ -151,6 +159,8 @@ watch(
     // merely because an equivalent project snapshot was refreshed.
     () => JSON.stringify(props.composition),
     () => props.projectSettings.frameRate,
+    () => props.projectSettings.width,
+    () => props.projectSettings.height,
     () => JSON.stringify(props.lookOverride),
     () => props.captionTrackId,
     () => props.quality,
@@ -260,7 +270,7 @@ async function saveStill() {
   if (!canExportCropped.value) return;
   const profile = createExportProfile({
     ratio: ratio.value,
-    frameRate: props.projectSettings.frameRate,
+    frameRate: deliveryFrameRate.value,
     framing: framing.value,
     format: "png",
     quality: props.quality ?? "standard",
@@ -297,7 +307,7 @@ async function saveStill() {
 async function saveAudio(format: "wav" | "audio-stems") {
   const profile = createExportProfile({
     ratio: "16:9",
-    frameRate: props.projectSettings.frameRate,
+    frameRate: deliveryFrameRate.value,
     format,
   });
   const key = JSON.stringify({
@@ -508,12 +518,7 @@ onUnmounted(() => {
               data-testid="export-frame-time"
               type="number"
               min="0"
-              :max="
-                Math.max(
-                  0,
-                  composition.duration - 1 / projectSettings.frameRate,
-                )
-              "
+              :max="Math.max(0, composition.duration - 1 / deliveryFrameRate)"
               step="any"
               inputmode="decimal"
               :disabled="isProfileBusy"
@@ -523,7 +528,9 @@ onUnmounted(() => {
         <p class="export-profile-size" data-testid="export-profile-size">
           {{ mp4Profile.width }} × {{ mp4Profile.height }} ·
           {{
-            t("exportProfiles.outputFrameRate", { frameRate: displayFrameRate })
+            t("exportProfiles.outputFrameRate", {
+              frameRate: displayDeliveryFrameRate,
+            })
           }}
         </p>
         <p v-if="framing === 'crop'" class="export-profile-warning" role="note">

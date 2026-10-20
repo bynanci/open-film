@@ -43,6 +43,7 @@ function text(root: HostNode): string {
 async function fixture(
   locale: keyof typeof catalogs = "en-US",
   api: Record<string, unknown> = {},
+  initialSettings: Partial<ProjectSettings> = {},
 ) {
   const messages = flattenMessages(catalogs[locale]);
   const t = (key: string, params: Record<string, string | number> = {}) =>
@@ -61,6 +62,7 @@ async function fixture(
         ...api,
       },
       "./CaptionExport.vue": stub,
+      "./NleHandoff.vue": stub,
       "./ExportReport.vue": stub,
       "./Icon.vue": stub,
       "./FilmLookSelect.vue": stub,
@@ -70,6 +72,7 @@ async function fixture(
     width: 1280,
     height: 720,
     frameRate: 23.976,
+    ...initialSettings,
   };
   const composition: Composition = {
     id: "film",
@@ -132,6 +135,145 @@ async function fixture(
 }
 
 describe("MP4 output quality controls", () => {
+  it.each([
+    { saved: 120, delivery: 60 },
+    { saved: 0.5, delivery: 1 },
+  ])(
+    "keeps a valid $saved fps project usable with $delivery fps profile delivery",
+    async ({ saved, delivery }) => {
+      const requests: Array<{
+        profile: { format: string; frameRate: number };
+      }> = [];
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "image/png" },
+          }),
+      );
+      const panel = await fixture(
+        "en-US",
+        {
+          exportFramePreviewUrl: (token: string) => `/preview/${token}`,
+          previewExportFrame: async (input: (typeof requests)[number]) => {
+            requests.push(input);
+            return {
+              token: "valid-rate-preview",
+              frameIndex: 0,
+              time: 0,
+              width: 1920,
+              height: 1080,
+              profile: input.profile,
+              warnings: [],
+            };
+          },
+          exportStill: async (input: (typeof requests)[number]) => {
+            requests.push(input);
+            return {
+              filename: "still.png",
+              path: "still.png",
+              profile: input.profile,
+              warnings: [],
+            };
+          },
+          exportProfileAudio: async (input: (typeof requests)[number]) => {
+            requests.push(input);
+            return {
+              requestId: "valid-rate-audio",
+              profile: input.profile,
+              files: [],
+              warnings: [],
+            };
+          },
+        },
+        { frameRate: saved },
+      );
+      const before = JSON.stringify({
+        settings: panel.props.projectSettings,
+        composition: panel.props.composition,
+      });
+      const node = (testId: string) =>
+        panel.nodes().find((item) => item.props["data-testid"] === testId)!;
+      for (const id of [
+        "preview-export-frame",
+        "export-still",
+        "export-audio-mix",
+        "export-audio-stems",
+      ])
+        await (node(id).props.onClick as () => Promise<void>)();
+      (node("export-profile-mp4").props.onClick as () => void)();
+      expect(
+        requests.map(({ profile }) => [profile.format, profile.frameRate]),
+      ).toEqual([
+        ["mp4", delivery],
+        ["png", delivery],
+        ["wav", delivery],
+        ["audio-stems", delivery],
+      ]);
+      expect(panel.exportRequests[0]!.profile).toMatchObject({
+        frameRate: delivery,
+      });
+      expect(text(node("export-frame"))).toContain(String(saved));
+      expect(text(node("export-profile-size"))).toContain(`${delivery} fps`);
+      expect(
+        JSON.stringify({
+          settings: panel.props.projectSettings,
+          composition: panel.props.composition,
+        }),
+      ).toBe(before);
+    },
+  );
+
+  it.each(["width", "height"] as const)(
+    "clears a reviewed crop when only saved %s changes",
+    async (dimension) => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "image/png" },
+          }),
+      );
+      const panel = await fixture("en-US", {
+        exportFramePreviewUrl: (token: string) => `/preview/${token}`,
+        previewExportFrame: async (input: { profile: unknown }) => ({
+          token: "dimensions-preview",
+          frameIndex: 0,
+          time: 0,
+          width: 1920,
+          height: 1080,
+          profile: input.profile,
+          warnings: [],
+        }),
+      });
+      const node = (testId: string) =>
+        panel.nodes().find((item) => item.props["data-testid"] === testId)!;
+      (
+        node("export-framing").props["onUpdate:modelValue"] as (
+          value: string,
+        ) => void
+      )("crop");
+      await vue.nextTick();
+      await (
+        node("preview-export-frame").props.onClick as () => Promise<void>
+      )();
+      (
+        node("confirm-export-crop").props["onUpdate:modelValue"] as (
+          value: boolean,
+        ) => void
+      )(true);
+      await vue.nextTick();
+      expect(node("export-profile-mp4").props.disabled).toBe(false);
+      expect(node("export-preview-image")).toBeDefined();
+      panel.props.projectSettings[dimension] += 2;
+      await vue.nextTick();
+      expect(node("export-preview-image")).toBeUndefined();
+      expect(node("confirm-export-crop").props.disabled).toBe(true);
+      expect(node("export-profile-mp4").props.disabled).toBe(true);
+      expect(node("export-still").props.disabled).toBe(true);
+    },
+  );
+
   it("passes the reviewed crop preview token to both still and MP4 publication", async () => {
     const requests: Array<{ cropPreviewToken?: string }> = [];
     vi.stubGlobal(

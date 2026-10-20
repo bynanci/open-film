@@ -186,6 +186,7 @@ export function audioSourceAssetIds(
         track.clips.flatMap((clip) => {
           const asset = assetMap.get(clip.assetId);
           return asset &&
+            (clip.transform?.volume ?? 1) !== 0 &&
             hasAudio(asset) &&
             (!role || clipAudioRole(track.type, clip) === role)
             ? [clip.assetId]
@@ -270,7 +271,8 @@ export function validateRenderClipCapabilities(
         continue;
       if (
         options.audioOnly &&
-        (!hasAudio(asset) ||
+        ((clip.transform?.volume ?? 1) === 0 ||
+          !hasAudio(asset) ||
           (options.audioRole &&
             clipAudioRole(track.type, clip) !== options.audioRole))
       )
@@ -493,7 +495,8 @@ export class FFmpegRenderer {
           continue;
         if (
           audioOnly &&
-          (!hasAudio(asset) ||
+          ((clip.transform?.volume ?? 1) === 0 ||
+            !hasAudio(asset) ||
             (options.audioRole &&
               clipAudioRole(track.type, clip) !== options.audioRole))
         )
@@ -701,7 +704,8 @@ export class FFmpegRenderer {
           }
           if (
             audioOnly &&
-            (!hasAudio(asset) ||
+            ((clip.transform?.volume ?? 1) === 0 ||
+              !hasAudio(asset) ||
               (options.audioRole &&
                 clipAudioRole(track.type, clip) !== options.audioRole))
           )

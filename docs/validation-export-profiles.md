@@ -180,6 +180,52 @@ accepts and preserves decoded pixels. Evidence is retained in
 `pr36-independent-font-shared-ids-green/evidence.json` under the same validation
 directory. These probes only change private synthetic candidate files.
 
+### Late review readback for PR41
+
+Four later PR36 comments were reproduced against integrated baseline
+`9ccc082d0f724294b724296eea7aa4fd48e59349` in a new isolated clone. The earlier
+PR36 frozen branch and integrated checkout were left untouched.
+
+| Review thread | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `4327450649`  | Fixed. Valid 120-fps and sub-1-fps projects crashed Export profile creation. Desktop now clamps only delivery choices to 1–60 fps; preview, PNG, WAV, stems and profiled MP4 use that rate. Saved summaries/settings retain their original rate, while delivery summary and time bounds use the output rate.                                                                                                                                       |
+| `4327450668`  | Fixed. Zero-gain sources were still opened, receipted and assigned stems. The shared audio source selector, scoped renderer passes, role discovery and receipt/retry coverage now exclude only muted uses. Shared audible/tiny-positive uses remain; visual sources remain required for picture output.                                                                                                                                            |
+| `4327637390`  | Fixed. Real saved width-only/height-only changes left the reviewed crop visible and approved. Both dimensions now invalidate the preview and approval through the existing cancellation fence; equivalent polling preserves them.                                                                                                                                                                                                                  |
+| `4327637403`  | Fixed. Omitted captions and a track named `automatic` reused a completed PNG request despite different pixels. Receipt fingerprints now distinguish automatic/none/named modes with tagged values; `auto` and `automatic` remain legal IDs, and legacy untagged preview receipts fail closed. The integrated per-use font guard already prevented final mismatched crop publication; the new selection guard rejects before invoking the renderer. |
+
+The causal unit/application red run is
+`/tmp/openfilm-v1-validation/pr41-export-late-four-red.log`. It records 11
+failures from actual offline-muted audio delivery, wrong role discovery,
+different-caption PNG cache reuse, the earlier font-guard rejection path,
+out-of-range project rates and dimension invalidation. Explicit tagged receipt
+controls were also red in `pr41-export-caption-tag-red.log`.
+
+The first focused green selection passes 16 cases in two files. It includes
+actual WAV/PNG delivery, MP4 selection refusal, source hashes, fresh-service retries, all-muted PCM
+silence/manifest-only stems, shared tiny-positive gain, zero-gain picture-source
+requirements and legacy untagged receipt refusal. Real browser rate mount
+failures were recorded in `pr41-export-browser-red.log`; the corrected isolated
+HTTP fixture records causal width/height browser failures in
+`pr41-export-browser-dimensions-red.log` after valid saves reached the displayed
+settings. Initial fixture origin/polling errors are not treated as feature
+failures. Browser tests run their own ephemeral services and represent the
+existing trusted development frontend only within their fixture proxy.
+
+Final focused verification passed **23 files / 216 tests** in **127.28 seconds**,
+covering all renderer suites and prior publication, source-change, request-lock,
+cancellation and font-assignment controls. The five real HTTP/Chromium browser
+cases passed in **21.0 seconds**. They probe actual delivered MP4 frame rates
+and frame counts for 120→60 and 0.5→1 fps, exercise PNG/WAV/stem requests, retain
+saved settings/Composition, preserve an equivalent polled preview, and clear
+both dimension changes. The final logs are `pr41-export-focused.log`,
+`pr41-export-browser-green.log`, `pr41-export-typecheck.log`,
+`pr41-export-lint.log` and `pr41-export-format.log` in the same validation
+directory. Typecheck, changed-file ESLint, formatting and diff checks pass.
+
+No project schema, required-selection, request locks or per-use collected font
+bindings change. Full repository, packaged/native and general release gates
+remain with the coordinator.
+
 ### Initial remediation verification
 
 At `ac5c5bae0579c586703c33968acb5bc442634df5`, focused verification passed in
