@@ -15,9 +15,7 @@ if (!bundle || !expected || !/^[a-f0-9]{64}$/u.test(expected))
     "Usage: verify.ts <bundle> <independently-reviewed-manifest-sha256>",
   );
 const root = resolve(bundle);
-if ((await runtimeHash(join(root, "runtime-manifest.json"))) !== expected)
-  throw new Error("Runtime manifest does not match the reviewed digest");
-const manifest = await verifyRuntimeBundle(root);
+const manifest = await verifyRuntimeBundle(root, { manifestSha256: expected });
 assertDistributableRuntime(manifest);
 const config = JSON.parse(
   await readFile(resolve("apps/desktop/src-tauri/tauri.conf.json"), "utf8"),

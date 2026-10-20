@@ -96,3 +96,58 @@ green Cargo/Node/browser checks never substitute for these workstation gates.
 ### Follow-up correctness review
 
 Full local browser suite passed 170 tests. Added a real-process regression that pauses after storage preflight, closes the owner and resumes startup; no service may start after the closed acknowledgement. Startup probes are abortable and concurrent service-close callers share one shutdown promise. Review fixes also prevent destruction of the main window before draft flushing, wait for the stdout reader before evaluating close acknowledgement, remount the workspace on a new connection, preserve executable permissions in safe archive transport and require matching shell/runtime versions. Final exact-head CI and remaining review findings are tracked in PR #38. Native workstation gates above remain not-run.
+
+### PR #38 review remediation, 2026-10-20
+
+The review baseline `6059a7dbd1d1d40a0a5c8f10c476808407328faa` already handles
+`WindowEvent::CloseRequested` and calls `prevent_close()` before requesting the
+frontend handshake. It also includes the source run ID, safe runtime tar
+extraction, stdout-reader synchronization, connection remount, selected Rust
+toolchain and shell/runtime version checks. These seven findings needed
+verification rather than another implementation.
+
+The remaining three findings are corrected:
+
+- Candidate uploads wrap all installer outputs in `installers.tar`, preserving
+  AppImage/macOS executable modes and bundle links; the upload includes an
+  archive SHA-256 receipt and readable candidate identity.
+- Update verification pins full bundle validation to the exact signed manifest
+  digest. A deterministic regression replaces both the manifest and payload
+  after the signed bytes are read; the unsigned replacement is rejected. The
+  candidate verifier uses the same digest-bound read.
+- The root build runs the pinned Vite JavaScript entry point with the current
+  Node executable. It no longer depends on launching a Windows pnpm `.cmd` shim.
+  A real build fixture passes with an empty PATH and unavailable pnpm launcher;
+  this is launcher regression evidence, not a Windows workstation observation.
+
+The baseline native-shell CI passed in
+[run 39404610623](https://github.com/bynanci/open-film/actions/runs/39404610623/job/118567886352)
+and [run 39404618276](https://github.com/bynanci/open-film/actions/runs/39404618276/job/118567784064).
+Those runs cover the baseline commit only. The remediated integration head must
+pass fresh native-shell CI before merge.
+
+The remediation was validated locally with the following results. The new Node
+regressions were observed failing before their fixes; the archive regression
+first failed because the transport helper was absent.
+
+| Check                                                                | Result                                                                                                                                                     |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test --maxWorkers=1`                                           | 214 files / 2,928 tests passed in 349.56 seconds.                                                                                                          |
+| Focused manifest/update and build launcher regressions               | 7 Node tests passed; the signed-manifest replacement and missing-launcher cases failed on the baseline.                                                    |
+| Python runtime extraction and installer archiving regressions        | 3 tests passed, including executable modes, macOS bundle links and the archive SHA-256 receipt.                                                            |
+| Focused native bridge browser tests                                  | 3 passed on isolated ports 48538/18538 using Chromium; these simulate the Tauri bridge.                                                                    |
+| Rust runtime module                                                  | 5 tests passed with Rust 1.99.0; includes the delayed stdout-close acknowledgement. Full-crate formatter and isolated module Clippy passed.                |
+| `pnpm lint`, `pnpm typecheck`, `pnpm format:check`, `pnpm test:i18n` | Passed; 1,709 semantic keys match across all three locales.                                                                                                |
+| `pnpm build`                                                         | Passed with the existing >500 kB frontend chunk advisory.                                                                                                  |
+| Full local Tauri compilation                                         | Not run for this remediation: GTK 3 and WebKitGTK 4.1 development libraries are absent. Baseline native CI above passed; fresh integration CI is required. |
+
+The built CLI smoke check also passed real media import, playable MP4 output,
+local CJK title raster, exports and project reopen. Its protocol fixture remains
+separate from ASR quality evidence.
+
+The default Tauri configuration keeps bundling disabled; candidate packaging is
+manual, requires a reviewed runtime and does not publish a release. The code is
+suitable for merge as disabled candidate tooling after fresh CI passes. Native
+installer distribution remains blocked on audited target runtimes and clean
+installation observations, including Windows/macOS signing, upgrade, rollback
+and uninstall. No version, project migration or release-state claim is changed.

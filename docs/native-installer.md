@@ -140,3 +140,16 @@ See [validation](validation-native-installer.md) and
 ### Reviewed artifact transport
 
 Upload the staged runtime as `runtime.tar` (archive its contents, preserving executable modes), inside an Actions artifact. Dispatch with both its source workflow run ID and artifact ID. The workflow validates archive paths and rejects links before extraction, then checks the independent manifest digest, complete file hashes, shell version and checkout build bytes. Rust is selected through `RUSTUP_TOOLCHAIN=1.99.0`.
+
+Installer outputs are uploaded inside `installers.tar`, with an adjacent SHA-256
+receipt and a separately readable `candidate.json`. Verify the archive digest,
+then extract it to recover `bundle/` before running an AppImage or a macOS app.
+The archive preserves executable modes and macOS bundle links through Actions
+artifact transfer. Windows/macOS workstation fields remain `not-run` until the
+candidate-bound checklist has actual observations.
+
+The inactive signed-update verifier binds bundle validation to the digest of the
+exact manifest bytes verified by Ed25519. Installer admission similarly checks
+the independently reviewed digest against the same bytes it parses and uses for
+the file inventory. Replacing the manifest between reads cannot substitute an
+unsigned inventory.

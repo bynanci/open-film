@@ -1,6 +1,7 @@
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import { chmod, mkdir, copyFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 await mkdir("dist", { recursive: true });
 for (const app of ["cli", "server"]) {
@@ -32,6 +33,11 @@ await build({
   format: "esm",
   target: "node24",
 });
-execFileSync("pnpm", ["--filter", "@openfilm/desktop", "run", "build"], {
-  stdio: "inherit",
-});
+execFileSync(
+  process.execPath,
+  [resolve("node_modules/vite/bin/vite.js"), "build"],
+  {
+    cwd: "apps/desktop",
+    stdio: "inherit",
+  },
+);

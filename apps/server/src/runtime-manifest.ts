@@ -257,6 +257,7 @@ export async function verifyRuntimeBundle(
     platform?: string;
     architecture?: string;
     signal?: AbortSignal;
+    manifestSha256?: string;
   } = {},
 ): Promise<RuntimeManifest> {
   if ((await lstat(root)).isSymbolicLink()) invalid();
@@ -269,9 +270,13 @@ export async function verifyRuntimeBundle(
     manifestInfo.size > 8 * 1024 ** 2
   )
     invalid();
-  const manifest = validateRuntimeManifest(
-    JSON.parse(await readFile(manifestPath, "utf8")),
-  );
+  const bytes = await readFile(manifestPath);
+  if (
+    options.manifestSha256 &&
+    createHash("sha256").update(bytes).digest("hex") !== options.manifestSha256
+  )
+    throw new Error("runtime.hash");
+  const manifest = validateRuntimeManifest(JSON.parse(bytes.toString("utf8")));
   if (
     manifest.platform !== (options.platform ?? process.platform) ||
     manifest.architecture !== (options.architecture ?? process.arch)

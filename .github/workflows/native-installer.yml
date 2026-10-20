@@ -71,11 +71,16 @@ jobs:
         if: runner.os == 'Linux'
         run: pnpm --filter @openfilm/desktop tauri build --config src-tauri/tauri.bundle.conf.json --bundles deb,appimage
       - run: pnpm exec tsx scripts/native/receipt.ts
+      - name: Archive installer outputs with executable modes
+        shell: bash
+        run: python scripts/native/archive-candidate.py apps/desktop/src-tauri/target/release/bundle native-candidate/installers.tar
       - uses: actions/upload-artifact@v4
         with:
           name: native-candidate-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           path: |
-            apps/desktop/src-tauri/target/release/bundle/
+            native-candidate/installers.tar
+            native-candidate/installers.tar.sha256
+            apps/desktop/src-tauri/target/release/bundle/candidate.json
             apps/desktop/src-tauri/resources/runtime/runtime-manifest.json
             apps/desktop/src-tauri/resources/runtime/sbom.spdx.json
           if-no-files-found: error

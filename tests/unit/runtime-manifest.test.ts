@@ -1,4 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const manifestRace = vi.hoisted(() => ({
+  afterRead: undefined as (() => Promise<void>) | undefined,
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readFile: async (...args: Parameters<typeof actual.readFile>) => {
+      const bytes = await actual.readFile(...args);
+      if (manifestRace.afterRead) {
+        const afterRead = manifestRace.afterRead;
+        manifestRace.afterRead = undefined;
+        await afterRead();
+      }
+      return bytes;
+    },
+  };
+});
 import {
   validateRuntimeManifest,
   runtimePath,
@@ -56,6 +75,7 @@ import { verifyRuntimeUpdate } from "../../apps/server/src/runtime-update.js";
 import { runtimeEnvironment } from "../../apps/server/src/native-launcher.js";
 const roots: string[] = [];
 afterEach(async () => {
+  manifestRace.afterRead = undefined;
   await Promise.all(
     roots.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -168,6 +188,31 @@ it("requires a configured trusted update key and a valid signature before accept
   signature[0] = signature[0]! ^ 1;
   await expect(verifyRuntimeUpdate(root, signature, key)).rejects.toThrow(
     "signature",
+  );
+});
+it("rejects an unsigned replacement manifest and payload swapped after the signed bytes are read", async () => {
+  const { root, manifest } = await fixture();
+  manifest.distribution = {
+    status: "reviewed",
+    systemRequirements: ["Synthetic signed fixture"],
+    receipt: "LICENSE",
+  };
+  const manifestPath = join(root, "runtime-manifest.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const signature = sign(null, await readFile(manifestPath), privateKey);
+  const replacement = structuredClone(manifest);
+  const payload = "unsigned replacement";
+  manifestRace.afterRead = async () => {
+    await writeFile(join(root, "service"), payload);
+    const service = replacement.files.find((file) => file.path === "service")!;
+    service.sha256 = await runtimeHash(join(root, "service"));
+    service.size = Buffer.byteLength(payload);
+    await writeFile(manifestPath, JSON.stringify(replacement));
+  };
+  const key = publicKey.export({ format: "pem", type: "spki" }).toString();
+  await expect(verifyRuntimeUpdate(root, signature, key)).rejects.toThrow(
+    "runtime.hash",
   );
 });
 it("does not pass provider secrets or Node injection settings into the owned service", () => {
