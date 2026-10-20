@@ -69,6 +69,19 @@ const binding = (p: OpenFilmProject) => ({
   settings: p.settings,
   timelines: p.timelines,
 });
+function referencedIds(composition: Composition): string[] {
+  return [
+    ...new Set([
+      ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+      ...composition.tracks.flatMap((track) =>
+        track.clips.flatMap((clip) => [
+          clip.assetId,
+          ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+        ]),
+      ),
+    ]),
+  ].sort();
+}
 const uuid =
   /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 function options(input: HandoffOptions): HandoffOptions {
@@ -125,7 +138,13 @@ export class NleHandoffService {
     if (!composition) throw new Error("Handoff composition not found");
     return {
       composition: structuredClone(composition),
-      revision: digest(binding(saved)),
+      revision: digest({
+        project: binding(saved),
+        sources: referencedIds(composition).map((id) => [
+          id,
+          this.host.getSourceAsset(id) ?? null,
+        ]),
+      }),
     };
   }
   review(compositionId: string, input: HandoffOptions = {}): HandoffReview {
@@ -205,17 +224,7 @@ export class NleHandoffService {
     const settings = structuredClone(this.host.project.settings),
       plan = review.plan;
     // Validate all existing exporter bounds and scene contracts before IO/render.
-    const ids = [
-      ...new Set([
-        ...graphicSceneAssetIds(composition.graphicScenes ?? []),
-        ...composition.tracks.flatMap((t) =>
-          t.clips.flatMap((c) => [
-            c.assetId,
-            ...(c.layout?.secondary ? [c.layout.secondary.assetId] : []),
-          ]),
-        ),
-      ]),
-    ];
+    const ids = referencedIds(composition);
     const assets = ids.map((id) => {
       const asset = this.host.getSourceAsset(id);
       if (!asset) throw new Error("Missing handoff source");
@@ -508,7 +517,7 @@ export class NleHandoffService {
               "-y",
               join(staging, name),
             ],
-            { signal },
+            { signal, timeoutMs: 1800000 },
           );
           const proof = await this.probe(join(staging, name), signal);
           if (
@@ -573,6 +582,11 @@ export class NleHandoffService {
                 id: `${clip.id}-part-${index}-${i}`,
                 timelineStart: part.start,
                 timelineDuration: part.end - part.start,
+                transition:
+                  clip.transition &&
+                  part.start < start + clip.transition.duration - 1e-6
+                    ? clip.transition
+                    : undefined,
                 sourceIn:
                   (clip.sourceIn ?? 0) +
                   (part.start - start) * (clip.transform?.speed ?? 1),
@@ -618,7 +632,7 @@ export class NleHandoffService {
               "-y",
               join(staging, name),
             ],
-            { signal },
+            { signal, timeoutMs: 1800000 },
           );
           const measured = await runProcess(
             "ffprobe",
@@ -633,7 +647,7 @@ export class NleHandoffService {
               "json",
               join(staging, name),
             ],
-            { signal },
+            { signal, timeoutMs: 1800000 },
           );
           const audio = (
             JSON.parse(measured.stdout.toString()) as {
@@ -838,7 +852,7 @@ export class NleHandoffService {
         "json",
         path,
       ],
-      { signal },
+      { signal, timeoutMs: 1800000 },
     );
     return (
       (

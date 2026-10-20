@@ -269,3 +269,16 @@ it("rejects static transport limits before approving a plan", () => {
   }));
   expect(() => createHandoffPlan(c, 24)).toThrow(/resource limit/i);
 });
+
+it("bakes only the actual incoming transition interval", () => {
+  const c = structuredClone(cut);
+  c.tracks[0]!.clips[0]!.transition = { type: "crossfade", duration: 0.5 };
+  const plan = createHandoffPlan(c, 24, { mode: "preserve-visual-fidelity" });
+  expect(plan.visualRanges).toEqual([{ startFrame: 0, endFrame: 12 }]);
+  expect(
+    plan.items.filter(
+      (item) =>
+        item.feature === "cut" && item.disposition === "native-editable",
+    ),
+  ).toContainEqual(expect.objectContaining({ startFrame: 12, endFrame: 96 }));
+});

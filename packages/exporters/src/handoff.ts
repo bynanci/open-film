@@ -289,13 +289,7 @@ export function createHandoffPlan(
           "visual",
           "Track compositing semantics require manual recreation",
         );
-      for (const field of [
-        "title",
-        "titleStyle",
-        "layout",
-        "motion",
-        "transition",
-      ] as const)
+      for (const field of ["title", "titleStyle", "layout", "motion"] as const)
         if (clip[field] !== undefined)
           add(
             clip.id,
@@ -305,6 +299,15 @@ export function createHandoffPlan(
             "visual",
             "Original visual recipe is metadata; NLE does not reconstruct it",
           );
+      if (clip.transition && clip.transition.duration > 0)
+        add(
+          clip.id,
+          "transition",
+          start,
+          Math.min(stop, start + clip.transition.duration),
+          "visual",
+          "Incoming fade and outgoing tail are rendered only within the transition interval",
+        );
       if (
         ["x", "y", "rotation", "scale"].some(
           (key) =>

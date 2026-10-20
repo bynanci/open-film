@@ -1,3 +1,4 @@
+import * as media from "@openfilm/media";
 import { FFmpegRenderer } from "@openfilm/render";
 import { startServer } from "../../apps/server/src/server.js";
 import { afterEach, expect, it, vi } from "vitest";
@@ -180,6 +181,7 @@ async function fixture() {
   return { root, app, composition, image, audio };
 }
 it("hands off native cuts plus measured graphic/caption precomps and an aligned full mix", async () => {
+  const processSpy = vi.spyOn(media, "runProcess");
   const { root, app, composition, image, audio } = await fixture();
   const before = JSON.stringify(app.project),
     hashes = await Promise.all([hashFile(image), hashFile(audio)]);
@@ -194,6 +196,14 @@ it("hands off native cuts plus measured graphic/caption precomps and an aligned 
     mode: review.plan.mode,
     bakeAudio: true,
   });
+  expect(
+    processSpy.mock.calls
+      .filter(
+        ([command, args]) =>
+          command === "ffprobe" && args.includes("-count_frames"),
+      )
+      .map(([, , options]) => options?.timeoutMs),
+  ).toEqual([1800000, 1800000]);
   expect(publication.plan.visualRanges).toEqual([
     { startFrame: 8, endFrame: 24 },
   ]);
@@ -1013,4 +1023,96 @@ it("rejects unresolved title placeholders during review rather than after approv
   expect(() =>
     app.reviewHandoff(composition.id, { mode: "preserve-visual-fidelity" }),
   ).toThrow(/title.*source/i);
+});
+
+it("invalidates reviewed approval when a same-ID catalog source is refreshed", async () => {
+  const { app, composition } = await fixture();
+  const review = app.reviewHandoff(composition.id);
+  const asset = app.catalog.getAsset(composition.tracks[0]!.clips[0]!.assetId)!;
+  const refreshed = structuredClone(asset);
+  refreshed.contentHash = "f".repeat(64);
+  app.catalog.upsertAsset(refreshed);
+  expect(app.reviewHandoff(composition.id).revision).not.toBe(review.revision);
+  await expect(
+    app.exportHandoff({
+      projectId: review.projectId,
+      compositionId: composition.id,
+      revision: review.revision,
+    }),
+  ).rejects.toThrow(/stale/i);
+  app.catalog.upsertAsset(asset);
+  const metadataChanged = structuredClone(asset);
+  metadataChanged.metadata["openfilm.ffprobe"] = {
+    streams: [{ codec_type: "video" }],
+  };
+  app.catalog.upsertAsset(metadataChanged);
+  expect(app.reviewHandoff(composition.id).revision).not.toBe(review.revision);
+});
+
+it("renders only a short transition and preserves its remaining native cut without reapplying it", async () => {
+  const { app, composition } = await fixture();
+  composition.graphicScenes = [];
+  composition.captionTracks = [];
+  composition.tracks[0]!.clips[0]!.transition = {
+    type: "crossfade",
+    duration: 0.5,
+  };
+  app.project.timelines = [composition];
+  await app.save();
+  const review = app.reviewHandoff(composition.id, {
+    mode: "preserve-visual-fidelity",
+  });
+  const result = await app.exportHandoff({
+    projectId: review.projectId,
+    revision: review.revision,
+    compositionId: composition.id,
+    mode: review.plan.mode,
+  });
+  expect(result.plan.visualRanges).toEqual([{ startFrame: 0, endFrame: 4 }]);
+  const path = (name: string) =>
+    app.handoff.file(
+      result.id,
+      result.files.findIndex((file) => file.name === name),
+    );
+  const timeline = JSON.parse(
+    await readFile(await path("timeline.otio"), "utf8"),
+  );
+  const native = timeline.metadata.openfilm.composition.tracks.find(
+    (track: { id: string }) => track.id === "picture",
+  ).clips[0];
+  expect(native.timelineStart).toBe(0.5);
+  expect(native.timelineDuration).toBe(3.5);
+  expect(native.transition).toBeUndefined();
+  for (const frame of [0, 3]) {
+    const pixels = await Promise.all(
+      ["reference.mp4", "media/precomp-0.mp4"].map(
+        async (name) =>
+          (
+            await runProcess("ffmpeg", [
+              "-v",
+              "error",
+              "-i",
+              await path(name),
+              "-vf",
+              `select=eq(n\\,${frame})`,
+              "-frames:v",
+              "1",
+              "-f",
+              "rawvideo",
+              "-pix_fmt",
+              "rgb24",
+              "pipe:1",
+            ])
+          ).stdout,
+      ),
+    );
+    expect(pixels[0]!.length).toBe(160 * 90 * 3);
+    expect(pixels[1]!.length).toBe(pixels[0]!.length);
+    expect(
+      pixels[0]!.reduce(
+        (sum, value, i) => sum + Math.abs(value - pixels[1]![i]!),
+        0,
+      ) / pixels[0]!.length,
+    ).toBeLessThan(3);
+  }
 });

@@ -113,3 +113,17 @@ Dedicated planner/application regressions cover these restrictions. The prior
 04f4e37 browser run was deliberately interrupted after 156 passes to apply these
 review findings; its remaining 13 cases are not claimed as executed. The final
 candidate reruns the unchanged full browser suite.
+
+Approval revisions also hash sorted referenced catalog records (including URI,
+content hash and stream metadata). A same-ID source refresh or stream change
+invalidates the review even if Composition is unchanged; the same binding is
+checked before final publication. Source records are represented by the opaque
+revision hash, not exposed as private metadata in receipts. Full-frame FFprobe
+verification and derivative encoding/mixing use an explicit 30-minute deadline,
+matching the existing renderer's budget; this is not a 4K performance claim.
+
+Transition coverage is limited to its actual incoming duration. A real half-second
+fade yields four baked frames at 8 fps, compares first/last pixels to the reference,
+and preserves the remaining 3.5-second native cut with no repeated transition.
+The 66e2da5 browser run was interrupted after 139 passes (one interrupted / 29 not
+run) to fix these new correctness findings; final-head results supersede it.

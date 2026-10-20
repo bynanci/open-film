@@ -109,3 +109,9 @@ Review rejects timelines exceeding one hour or 256 distinct source assets.
 Title-track clips must bind an existing catalog source: unresolved synthetic
 placeholder IDs are explicitly unsupported in this handoff slice, even when
 standalone title rendering could otherwise ignore their source ID.
+
+Approval identity includes referenced catalog records as well as saved project
+settings/timelines: refreshing/reimporting a same-ID source requires a new review.
+Short transitions bake only their actual duration; the native remainder does not
+reapply the transition. Full-frame verification and derivative FFmpeg jobs have a
+30-minute upper deadline and retain cancellation support.
