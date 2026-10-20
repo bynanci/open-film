@@ -10,7 +10,6 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,6 +58,11 @@ import {
   writeStoredZip,
 } from "./collect-archive.js";
 import type { OpenFilmApplication } from "./index.js";
+import {
+  DirectoryPublicationRecoveryError,
+  directoryPublicationUnavailable,
+  publishDirectory,
+} from "./directory-publication.js";
 
 const MANIFEST_FILE = "collect-manifest.json";
 const MANIFEST_FORMAT = "openfilm.collect-media" as const;
@@ -2078,6 +2082,7 @@ export class CollectMediaService {
     const zipStage = join(temp, "package.zip");
     const outputLock = `${destination.path}.openfilm-lock`;
     let lock: Awaited<ReturnType<typeof open>> | undefined;
+    let retainTemp = false;
     try {
       lock = await open(
         outputLock,
@@ -2313,18 +2318,39 @@ export class CollectMediaService {
         }
         packageBytes = (await lstat(destination.path)).size;
       } else {
+        // Keep the safe aggregate receipt if an external replacement prevents
+        // reclaiming the published directory into our private stage.
+        await writeJson(join(temp, "recovery-manifest.json"), manifest);
         try {
-          await lstat(destination.path);
-          fail(
-            "project.destinationInvalid",
-            "Package destination appeared during collection.",
-            409,
-          );
+          await publishDirectory({
+            staging: stage,
+            destination: destination.path,
+            signal: input.signal,
+            assertCurrent: () => {
+              checkAbortAndStatus(input.signal);
+              if (this.capture().revision !== captured.revision)
+                fail(
+                  "story.planStale",
+                  "Project changed while sources were being collected.",
+                  409,
+                );
+            },
+          });
         } catch (error) {
-          if (error instanceof ApplicationError) throw error;
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if ((error as NodeJS.ErrnoException).code === "EEXIST")
+            fail(
+              "project.destinationInvalid",
+              "Package destination appeared during collection.",
+              409,
+            );
+          if (directoryPublicationUnavailable(error))
+            fail(
+              "export.directoryUnavailable",
+              "Directory publication is unavailable here. Choose a ZIP package or another disk.",
+              422,
+            );
+          throw error;
         }
-        await rename(stage, destination.path);
       }
       try {
         input.onProgress?.(1);
@@ -2343,6 +2369,14 @@ export class CollectMediaService {
         versionsIncluded: false,
       };
     } catch (error) {
+      if (error instanceof DirectoryPublicationRecoveryError) {
+        retainTemp = true;
+        return fail(
+          "export.failed",
+          `Collect Media could not reclaim its published package. Recovery metadata was retained at ${temp}.`,
+          422,
+        );
+      }
       if (error instanceof ApplicationError) throw error;
       checkAbortAndStatus(input.signal);
       return fail(
@@ -2353,7 +2387,7 @@ export class CollectMediaService {
     } finally {
       await lock?.close();
       await rm(outputLock, { force: true });
-      await rm(temp, { recursive: true, force: true });
+      if (!retainTemp) await rm(temp, { recursive: true, force: true });
     }
   }
 

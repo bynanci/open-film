@@ -232,6 +232,53 @@ safety and HTTP files with one Vitest worker. TypeScript/Vue checks, changed-fil
 lint, formatting and diff checks pass. This follow-up runs no full or browser
 suite; combined release gates remain with the coordinator.
 
+## Atomic no-overwrite directory publication — 2026-10-20
+
+Finding `4328164569` was reproduced on integrated commit
+`a48f3e911fe10db7045dfd45fb4a2d42a3012e66`: a separate real process could
+create an empty destination after the final existence check, and POSIX directory
+rename replaced its inode. Audio-stem directory publication had the same defect.
+
+Both paths now publish their complete private stage with an OS atomic no-replace
+rename through the pinned Koffi wrapper. Linux uses `renameat2` with
+`RENAME_NOREPLACE`, macOS uses `renamex_np` with `RENAME_EXCL`, and Windows uses
+`MoveFileExW` without replacement. There is no ordinary-rename fallback. The
+native loader finishes before the final source, revision and cancellation fence;
+the fence and native rename run synchronously. A stage inode receipt is captured
+before loading and checked before and after publication. Existing directories,
+files and symlinks remain untouched, and no incomplete directory is exposed.
+ZIP publication keeps its existing exclusive hardlink boundary.
+
+An unavailable native operation or unsupported filesystem produces a typed,
+localized choice to use a ZIP package or another disk. It does not attempt a
+weaker publication mode. Native library integrity, licensing, bundler externals
+and staged runtime delivery are validated separately with the wrapper changes.
+
+After a late cancellation or stale revision, rollback moves only the known owned
+directory back to its private stage through the same exclusive primitive. It
+never recursively removes the public destination. A foreign replacement or a
+raced private rollback path is preserved and reports recovery failure. Collect
+retains its safe aggregate recovery metadata; stem export retains original PCM,
+renderer receipts and its aggregate manifest in private work. A complete package
+that cannot be reclaimed is kept for explicit recovery rather than deleted.
+
+A portable directory-copy prototype was rejected after real independent tests
+found an initial ownership-adoption window and a killed-process retry regression.
+Its RED evidence is retained under `pr41-directory-copy-draft-retained` and the
+independent stem evidence; the shipped path preserves whole-directory atomic
+visibility and durable retries. The bounded regressions use synthetic media and
+real child processes, including competing inode owners, actual PCM export,
+SIGKILL/reopen with the same request ID, source hashes, final abort/revision fences
+and recovery ownership. Cross-platform native calls and filesystem behavior still
+require the manual gates below.
+
+Final local verification passes 148 tests in eight focused publication, Collect
+and export files, plus 12 core/error-localization tests. TypeScript/Vue checks,
+changed-file lint, formatting, diff checks and all 1,973 semantic localization
+keys pass. The frozen offline install applies Koffi's disabled lifecycle policy.
+Independent Collect and stem reviewers separately bind their actual-process
+checks to the final source commit; full release gates remain with the coordinator.
+
 ## Manual gates and limits
 
 - Run relocation/reopen on real Windows and macOS filesystems, including path

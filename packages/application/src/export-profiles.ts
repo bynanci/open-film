@@ -1,6 +1,6 @@
 // Modified by OpenFilm contributors on 2026-10-20. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
+import { constants, statSync } from "node:fs";
 import {
   copyFile,
   chmod,
@@ -9,13 +9,17 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { acquireExportRequestLock } from "./export-request-lock.js";
+import {
+  DirectoryPublicationRecoveryError,
+  directoryPublicationUnavailable,
+  publishDirectory,
+} from "./directory-publication.js";
 import type {
   AudioAutomation,
   Composition,
@@ -24,7 +28,11 @@ import type {
   MediaAsset,
   OpenFilmProject,
 } from "@openfilm/core";
-import { frameAlignedDuration, validateExportProfile } from "@openfilm/core";
+import {
+  ApplicationError,
+  frameAlignedDuration,
+  validateExportProfile,
+} from "@openfilm/core";
 import {
   hashFile,
   checkAbort,
@@ -1095,6 +1103,8 @@ export class ExportProfileService {
           audioRole: role,
           exportProfile: renderProfile,
         });
+        await chmod(stagedWav, 0o600);
+        await chmod(`${stagedWav}.manifest.json`, 0o600);
         this.assertCurrent(snapshot);
         const receipt = JSON.parse(
           await readFile(`${stagedWav}.manifest.json`, "utf8"),
@@ -1189,28 +1199,32 @@ export class ExportProfileService {
         sources: sourceReceipts,
         warnings: [...new Set(warnings)],
       });
-      let installed = false;
+      await copyFile(
+        manifestPath,
+        join(work, "manifest.json"),
+        constants.COPYFILE_EXCL,
+      );
       try {
-        this.assertPublicationCurrent(snapshot, sourceGuards, signal);
-        await rename(staging, target);
-        installed = true;
-        this.assertPublicationCurrent(snapshot, sourceGuards, signal);
+        await publishDirectory({
+          staging,
+          destination: target,
+          signal,
+          assertCurrent: () =>
+            this.assertPublicationCurrent(snapshot, sourceGuards, signal),
+        });
       } catch (error) {
-        if (installed) {
-          try {
-            await rm(target, { recursive: true, force: true });
-          } catch (rollback) {
-            throw new RenderPublicationRecoveryError(
-              work,
-              [target],
-              new AggregateError(
-                [error, rollback],
-                "Stem publication rollback failed.",
-              ),
-            );
-          }
-          throw error;
-        }
+        if (error instanceof DirectoryPublicationRecoveryError)
+          throw new RenderPublicationRecoveryError(
+            work,
+            [staging, target],
+            error,
+          );
+        if (directoryPublicationUnavailable(error))
+          throw new ApplicationError(
+            "export.stemsUnavailable",
+            "Stem directory publication is unavailable here. Choose a WAV mix or another disk.",
+            422,
+          );
         if (
           ["EEXIST", "ENOTEMPTY"].includes(
             (error as NodeJS.ErrnoException).code ?? "",
@@ -1243,8 +1257,10 @@ export class ExportProfileService {
       retainWork = error instanceof RenderPublicationRecoveryError;
       throw error;
     } finally {
-      if (!retainWork) await rm(work, { recursive: true, force: true });
-      await rm(staging, { recursive: true, force: true });
+      if (!retainWork) {
+        await rm(work, { recursive: true, force: true });
+        await rm(staging, { recursive: true, force: true });
+      }
     }
   }
 

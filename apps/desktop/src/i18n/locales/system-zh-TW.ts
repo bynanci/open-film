@@ -91,6 +91,10 @@ export default {
     },
     import: { failed: "部分回憶無法加入。請檢查檔案位置與格式後再試一次。" },
     export: {
+      directoryUnavailable:
+        "無法在此位置發佈資料夾封裝。請選擇 ZIP 封裝或其他磁碟。",
+      stemsUnavailable:
+        "無法在此位置發佈分軌資料夾。請選擇 WAV 混音或其他磁碟。",
       failed: "無法匯出影片。請檢查儲存位置、可用空間與素材後再試一次。",
     },
     source: {
