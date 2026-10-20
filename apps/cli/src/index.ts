@@ -391,11 +391,11 @@ async function main() {
   const project = value(options, "project") ?? process.env.OPENFILM_PROJECT;
   if (!project)
     throw new Error("Use --project <film.openfilm> to select a project.");
+  // Deriving exports must not save the source project or recover other jobs.
   const app =
     command === "captions" ||
     command === "handoff" ||
-    (command === "export" &&
-      (options["preview"] || value(options, "crop-preview-token"))) ||
+    command === "export" ||
     ((command === "scene-plan" || command === "direction-review") &&
       positional[1] === "preview")
       ? await OpenFilmApplication.openForExport(
