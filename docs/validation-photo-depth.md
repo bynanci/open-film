@@ -75,6 +75,56 @@ temporary path above; none are committed or uploaded as CI artifacts. The tests
 use synthetic data only and contain no private photos, personal paths or
 credentials.
 
+## PR #35 source-receipt and alpha review remediation
+
+The reviewed baseline is `e78c4e06da2eb908dc0cb4548718c83b7798a8f1`
+(`main` base `bb2c4521ad894478893485119442a00ffd9b34cc`). All nine review
+threads were checked against that exact head; remote thread states were not
+changed during local remediation.
+
+| Discussion ID | Disposition and evidence                                                                                                                                                                                                                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4321620390    | Already fixed: one opacity group wraps both depth layers; the renderer's subject-alpha regression passes.                                                                                                                                                       |
+| 4321620402    | Already fixed: old and new bound-node IDs both receive lock checks; application rebinding regression rejects the locked destination.                                                                                                                            |
+| 4321620405    | Already fixed: source dimensions determine the fitted content rectangle; safe-motion/source-fill regressions cover padded images.                                                                                                                               |
+| 4321620410    | Already fixed: fallback parsing rejects every parallax-only field; parameterized core tests cover the strict contract.                                                                                                                                          |
+| 4321746408    | Already fixed: the source-failure predicate matches recipe dependencies; an unrelated missing image still permits mask-hole and manual-review findings.                                                                                                         |
+| 4321746411    | Already fixed: create readiness requires hashed source/mask/background assets; unit tests cover missing hashes and other disabled states.                                                                                                                       |
+| 4321746415    | Already fixed: Desktop layer removal also removes its bound recipe; existing browser regression covers deletion and recipe cleanup.                                                                                                                             |
+| 4322253724    | Accepted and fixed: fallback QA compares the saved receipt with its already verified current source hash before skipping parallax checks. A real catalog relink returns an incomplete report with `photo-depth.source-changed`, rather than failing the QA job. |
+| 4322253730    | Accepted and fixed: foreground preparation multiplies source alpha by mask alpha. Monitor and actual decoded H.264 pixels cover transparent, opaque, half-alpha and intersected quarter-alpha samples.                                                          |
+
+Before the production changes, the two new regressions failed: fallback QA
+threw with a `graphics.sourceChanged` cause, and a source-transparent pixel
+became alpha 255. Afterward, both passed. The fallback test also renders a
+valid 48-frame fallback before the relink and checks that both local source
+files retain their original hashes.
+
+The alpha regression expects `[0, 255, 0, 128, 64, 128]` at six synthetic
+sample positions. The Monitor returned `[0, 255, 0, 129, 64, 128]`; decoded
+MP4 RGB channels returned `[0, 255, 0, 129, 65, 128]`. The declared tolerances
+are one level for Monitor alpha and eight levels for decoded H.264 RGB.
+All three source hashes remain unchanged and match the render manifest.
+The output SHA-256 is
+`73f20db517f8a2b9d902e30122f38fef000aa98d58d1d2b144b60492e19fbced`.
+Synthetic output and machine-readable measurements are retained only in
+`/tmp/openfilm-v1-validation/pr35-render-evidence`.
+
+Local checks used Node 24.19.0, pnpm 11.11.0 and FFmpeg 7.1.5. The baseline
+focused run passed 54 tests in four files; the final focused run passed 56 tests
+in the same four files. Two additional PhotoDepth application tests passed
+(12 unrelated tests were filtered out). `pnpm test --maxWorkers=1` passed all
+2,956 tests in 213 files in 391.08 seconds with no port collision. Formatting,
+i18n (1,745 matching semantic keys), lint and TypeScript/Vue type checks passed.
+Browser and native-desktop suites were not rerun for these source/render-only
+fixes. The coordinator runs the combined integration gates after collecting
+the independent PR fixes.
+
+The six-second, 180-frame render was regenerated with byte-identical parallax,
+fallback and legacy MP4 hashes to those recorded above. Repeated shuffled seeks,
+Monitor/decoded-frame parity, source receipts and protected-region regressions
+also passed.
+
 ## Manual gates
 
 - Test representative real photographs only on a local workstation. Check hair,

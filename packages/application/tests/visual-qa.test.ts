@@ -75,6 +75,92 @@ async function fixture(color: string) {
 }
 
 describe("saved-composition Visual QA", () => {
+  it("returns a typed PhotoDepth source finding when a fallback receipt predates a catalog relink", async () => {
+    const { app, asset, source } = await fixture("0x27a6c8");
+    const sourceSha256 = await hashFile(source);
+    app.catalog.upsertAsset({ ...asset, contentHash: sourceSha256 });
+    const story = app.generateStory({
+      title: "Synthetic fallback QA",
+      template: "blank",
+      assetIds: [asset.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const composition = app.compose(story.id);
+    const imageNode = {
+      id: "fallback-photo-node",
+      type: "image" as const,
+      assetId: asset.id,
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 90,
+      opacity: 1,
+      zIndex: 0,
+      start: 0,
+      end: 6,
+    };
+    app.project.timelines[app.project.timelines.length - 1] = {
+      ...composition,
+      duration: 6,
+      tracks: [],
+      graphicScenes: [
+        graphicScene({
+          id: "fallback-depth-scene",
+          nodes: [imageNode],
+          photoDepth: {
+            version: 1,
+            id: "fallback-depth-recipe",
+            nodeId: imageNode.id,
+            mode: "fallback",
+            duration: 6,
+            sourceAssetId: asset.id,
+            sourceSha256,
+            fallbackReason: "mask-not-available",
+          },
+        }),
+      ],
+    };
+    await app.save();
+    const valid = await app.runVisualQa(composition.id);
+    expect(valid.status).toBe("complete");
+    expect(valid.output?.frameCount).toBe(48);
+    expect(valid.issues).toContainEqual(
+      expect.objectContaining({ code: "photo-depth.fallback-used" }),
+    );
+
+    const replacement = await fixture("red");
+    const replacementSha256 = await hashFile(replacement.source);
+    expect(replacementSha256).not.toBe(sourceSha256);
+    app.catalog.upsertAsset({
+      ...asset,
+      uri: replacement.asset.uri,
+      contentHash: replacementSha256,
+    });
+    const changed = await app.runVisualQa(composition.id);
+    expect(changed.status).toBe("incomplete");
+    expect(changed.samples).toEqual([]);
+    expect(changed.output).toBeUndefined();
+    expect(changed.sources).toContainEqual({
+      assetId: asset.id,
+      sha256: replacementSha256,
+    });
+    expect(changed.issues).toContainEqual(
+      expect.objectContaining({
+        code: "photo-depth.source-changed",
+        severity: "error",
+        graphicSceneId: "fallback-depth-scene",
+        nodeId: imageNode.id,
+        assetId: asset.id,
+      }),
+    );
+    expect(changed.issues).toContainEqual(
+      expect.objectContaining({ code: "photo-depth.fallback-used" }),
+    );
+    expect(await hashFile(source)).toBe(sourceSha256);
+    expect(await hashFile(replacement.source)).toBe(replacementSha256);
+  });
+
   it("reports deterministic PhotoDepth diagnostics and manual review for a real local mask", async () => {
     const { app, asset, source } = await fixture("0x305070");
     const originalHash = await hashFile(source);
