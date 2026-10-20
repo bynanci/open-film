@@ -1325,11 +1325,44 @@ export class TimelineEditor {
   adoptImportedVisualSource(
     before: TimelineEditorState,
     assetId: string,
+    baseRevision = before.revision,
   ): TimelineEditorState {
     const after = this.get(before.composition.id);
     const asset = this.application.catalog.getAsset(assetId);
-    if (!asset || asset.mediaType !== "video")
+    if (
+      !asset ||
+      asset.mediaType !== "video" ||
+      asset.state.locked ||
+      asset.state.rejected
+    )
       throw new TimelineEditorError("Accepted motion video is missing.", 409);
+    const previousAssets = before.assets.filter((item) => item.id !== assetId);
+    if (revisionFor(before, previousAssets) !== baseRevision)
+      throw new TimelineEditorError(
+        "Motion import changed the editing context.",
+        409,
+      );
+    // A process may have committed this one managed source before publishing
+    // its prepared receipt. Reconcile only that addition against the original
+    // reviewed revision; all other document/source changes remain conflicts.
+    if (before.assets.some((item) => item.id === assetId)) {
+      if (
+        digest(document(before)) !== digest(document(after)) ||
+        digest(previousAssets) !==
+          digest(after.assets.filter((item) => item.id !== assetId))
+      )
+        throw new TimelineEditorError(
+          "Motion import changed the editing context.",
+          409,
+        );
+      const history = this.histories.get(before.composition.id);
+      if (history?.revision === before.revision)
+        this.histories.set(before.composition.id, {
+          ...history,
+          revision: after.revision,
+        });
+      return after;
+    }
     // Explicit story pools do not admit a new visual asset until the replace
     // command references it. Keep that canonical revision and supply the
     // new descriptor only for command admission; no history reset is needed.

@@ -45,6 +45,27 @@ function adapter(
     generateMotion,
   };
 }
+async function commitManagedMotionBeforeJournal(
+  f: Awaited<ReturnType<typeof createMotionFixture>>,
+) {
+  delete f.app.project.stories[0]!.beats[0]!.candidateAssetIds;
+  await f.app.save();
+  const [candidate] = await f.app.motionGeneration.preview(request(f));
+  await f.app.motionGeneration.accept(candidate!.id, true);
+  const importSources = f.app.importManagedSources.bind(f.app);
+  f.app.importManagedSources = async (...args) => {
+    await importSources(...args);
+    throw new Error("Synthetic crash after managed source commit");
+  };
+  try {
+    await expect(
+      f.app.motionGeneration.importCandidate(candidate!.id, f.editor),
+    ).rejects.toThrow("Synthetic crash after managed source commit");
+  } finally {
+    f.app.importManagedSources = importSources;
+  }
+  return candidate!;
+}
 for (const status of [429, 500])
   it(`sanitizes provider ${status}, clears partial outputs and permits explicit new retry`, async () => {
     const root = await mkdtemp(join(tmpdir(), "motion-fault-"));
@@ -422,3 +443,146 @@ it("expires abandoned candidate files without receipts on reopen and frees their
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("recovers an accepted implicit-pool candidate after its managed source committed before the prepared receipt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "motion-managed-commit-crash-"));
+  const f = await createMotionFixture(root);
+  let closed = false;
+  try {
+    const original = structuredClone(f.app.project.timelines[0]!);
+    const candidate = await commitManagedMotionBeforeJournal(f);
+    expect((await f.app.motionGeneration.receipt(candidate!.id)).state).toBe(
+      "accepted",
+    );
+    expect(f.app.project.timelines[0]).toEqual(original);
+    const videos = f.app.catalog
+      .listAssets({ limit: 20 })
+      .filter((asset) => asset.mediaType === "video");
+    expect(videos).toHaveLength(1);
+    await f.app.motionGeneration.dispose();
+    f.app.close();
+    closed = true;
+    const { OpenFilmApplication, TimelineEditor } =
+      await import("../src/index.js");
+    const app = await OpenFilmApplication.open(join(root, "film.openfilm"));
+    try {
+      const editor = new TimelineEditor(app);
+      const imported = await app.motionGeneration.importCandidate(
+        candidate!.id,
+        editor,
+      );
+      expect(imported.composition.tracks[0]!.clips[0]!.assetId).toBe(
+        videos[0]!.id,
+      );
+      expect(imported.composition.tracks[1]).toEqual(original.tracks[1]);
+      expect(
+        (await app.motionGeneration.importCandidate(candidate!.id, editor))
+          .revision,
+      ).toBe(imported.revision);
+      const undone = await editor.undo("film", imported.revision);
+      expect(undone.composition).toEqual(original);
+      await editor.redo("film", undone.revision);
+      const { hashFile, runProcess } = await import("@openfilm/media");
+      expect(await hashFile(localPath(f.image.uri))).toBe(
+        candidate!.sourceSha256,
+      );
+      const output = await app.render("film");
+      const proof = JSON.parse(
+        (
+          await runProcess("ffprobe", [
+            "-v",
+            "error",
+            "-count_frames",
+            "-show_entries",
+            "stream=codec_type,nb_read_frames:format=duration",
+            "-of",
+            "json",
+            output,
+          ])
+        ).stdout.toString(),
+      );
+      expect(
+        proof.streams.find(
+          (stream: { codec_type: string }) => stream.codec_type === "video",
+        ).nb_read_frames,
+      ).toBe("48");
+      expect(
+        proof.streams.some(
+          (stream: { codec_type: string }) => stream.codec_type === "audio",
+        ),
+      ).toBe(true);
+      expect(Number(proof.format.duration)).toBe(4);
+    } finally {
+      await app.motionGeneration.dispose();
+      app.close();
+    }
+  } finally {
+    if (!closed) {
+      await f.app.motionGeneration.dispose();
+      f.app.close();
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const change of [
+  "target-edit",
+  "source-lock",
+  "managed-lock",
+  "managed-bytes",
+  "original-bytes",
+  "other-pool-source",
+] as const)
+  it(`refuses ${change} while recovering a managed import without a prepared receipt`, async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "motion-managed-recovery-fence-"),
+    );
+    const f = await createMotionFixture(root);
+    try {
+      const candidate = await commitManagedMotionBeforeJournal(f);
+      const managed = f.app.catalog
+        .listAssets({ limit: 20 })
+        .find((asset) => asset.mediaType === "video")!;
+      if (change === "target-edit") {
+        f.app.project.timelines[0]!.tracks[0]!.clips[0]!.title = "Later edit";
+        await f.app.save();
+      } else if (change === "source-lock" || change === "managed-lock") {
+        const asset = f.app.catalog.getAsset(
+          change === "source-lock" ? f.image.id : managed.id,
+        )!;
+        asset.state.locked = true;
+        f.app.catalog.upsertAsset(asset);
+      } else if (change === "managed-bytes" || change === "original-bytes") {
+        const path = localPath(
+          change === "managed-bytes" ? managed.uri : f.image.uri,
+        );
+        await writeFile(
+          path,
+          Buffer.concat([await readFile(path), Buffer.from("changed")]),
+        );
+      } else {
+        const audio = f.app.catalog
+          .listAssets({ limit: 20 })
+          .find((asset) => asset.mediaType === "audio")!;
+        audio.tags = ["Changed during recovery"];
+        f.app.catalog.upsertAsset(audio);
+      }
+      const before = structuredClone(f.app.project);
+      await expect(
+        f.app.motionGeneration.importCandidate(candidate.id, f.editor),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(f.app.project).toEqual(before);
+      expect((await f.app.motionGeneration.receipt(candidate.id)).state).toBe(
+        "accepted",
+      );
+      expect(
+        f.app.catalog
+          .listAssets({ limit: 20 })
+          .filter((asset) => asset.mediaType === "video"),
+      ).toHaveLength(1);
+    } finally {
+      await f.app.motionGeneration.dispose();
+      f.app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
