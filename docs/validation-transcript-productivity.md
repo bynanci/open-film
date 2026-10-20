@@ -839,3 +839,34 @@ owner. Linux boot and PID namespace checks cover that case; live, legacy,
 foreign and permission-unknown owners are preserved. Cross-process automatic
 Windows/macOS recovery is not implemented by this proof. Unknown-owner
 checkpoints can require manual support rather than silently cancelling work.
+
+## Recovery test process synchronization follow-up
+
+The full suite at `a48f3e911fe10db7045dfd45fb4a2d42a3012e66` passed 3,359
+tests and timed out one initial language-review recovery case after 30 seconds.
+This was reproduced as a test harness signal race, with production code
+unchanged. The child announced its queued checkpoint before executing
+`SIGSTOP`; the parent could send `SIGCONT` while it was still running. That
+early continuation did not cancel the child's later stop, so awaiting its exit
+hung until the original test timeout. A controlled child gate produced exactly
+that ordering: kernel state `S` when continuation was sent, then `T` at timeout
+cleanup. The red log is
+`/tmp/openfilm-v1-validation/pr41-review-recovery-causal-red.log`.
+
+The harness now waits for the child's actual `/proc/<pid>/status` state `T`
+before manual recovery and continuation. The condition is polled within a
+bounded deadline; premature exit/disappearance fails with process diagnostics.
+The regression deliberately schedules the announcement before the real stop,
+and a separate real exited-child control verifies prompt failure. Stderr remains
+captured, unused stdout is drained, and stopped children are killed and awaited
+during cleanup. The original 30-second timeout, platform guard, queued
+checkpoint, unknown-owner recovery, exact recovered job, empty initial batches,
+zero provider calls and unchanged source hash assertions remain intact.
+
+The unmodified baseline passed seven focused runs (14 original cases). The
+fixed controlled schedule passed three cases, then six repeat runs (18 cases).
+The surrounding review/owner selection passed **4 files / 77 tests** in
+**6.31 seconds**. Typecheck, changed-file ESLint, formatting and diff checks
+passed. Evidence logs use the `pr41-review-recovery-` prefix under the same
+validation directory. This follow-up changes test synchronization and validation
+notes; it does not change application recovery behavior or rerun the full suite.
