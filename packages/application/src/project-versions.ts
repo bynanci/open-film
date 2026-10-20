@@ -386,8 +386,17 @@ async function sourceReference(
   asset: MediaAsset,
 ): Promise<ProjectVersionSourceReference> {
   let path: string;
+  const managed = asset.metadata["openfilm.managedSource"] as
+    { relativePath?: unknown; uri?: unknown } | undefined;
+  const managedUri = managedSourceUri(projectDirectory, asset);
+  if (managed?.uri === asset.uri && !managedUri)
+    fail(
+      "media.missing",
+      `Managed source ${asset.id} resolves through an unsafe or invalid project path. Relink it before creating or restoring a version.`,
+      409,
+    );
   try {
-    path = localPath(asset.uri);
+    path = localPath(managedUri ?? asset.uri);
   } catch {
     fail(
       "media.missing",
@@ -463,7 +472,7 @@ function clipMap(project: OpenFilmProject) {
   for (const composition of project.timelines)
     for (const track of composition.tracks)
       for (const clip of track.clips)
-        clips.set(`${composition.id}\u0000${clip.id}`, clip);
+        clips.set(`${composition.id}\u0000${track.id}\u0000${clip.id}`, clip);
   return clips;
 }
 

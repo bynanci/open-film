@@ -718,6 +718,73 @@ describe("named project versions", () => {
     expect(app.catalog.getAsset("locked-source")?.tags).toEqual(["after"]);
   });
 
+  it("does not restore a locked clip into a different track", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-locked-clip-track-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const source = join(root, "clip-source.png");
+    await writeFile(source, Buffer.from("locked clip source"));
+    const app = await OpenFilmApplication.create(
+      directory,
+      "Locked clip track",
+    );
+    cleanup.push(() => {
+      try {
+        app.close();
+      } catch {
+        // The test may already have closed the application.
+      }
+    });
+    app.catalog.upsertAsset({
+      id: "clip-source",
+      uri: pathToFileURL(source).href,
+      name: "Clip source",
+      mediaType: "image",
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    app.project.stories.push({ id: "story", title: "Story", beats: [] });
+    const lockedClip = {
+      id: "locked-clip",
+      assetId: "clip-source",
+      timelineStart: 0,
+      timelineDuration: 1,
+      locked: true,
+    };
+    app.project.timelines.push({
+      id: "composition",
+      storyId: "story",
+      duration: 1,
+      tracks: [
+        { id: "track-a", type: "video", clips: [lockedClip] },
+        { id: "track-b", type: "video", clips: [] },
+      ],
+    });
+    await app.save();
+    const version = await app.versions.create({
+      name: "Locked clip on track A",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "31500000-0000-4000-8000-000000000001",
+    });
+
+    app.project.timelines[0]!.tracks[0]!.clips = [];
+    app.project.timelines[0]!.tracks[1]!.clips = [lockedClip];
+    await app.save();
+
+    await expect(
+      app.versions.restore(version.id, {
+        baseRevision: app.versions.currentRevision(),
+        confirmed: true,
+        requestId: "31500000-0000-4000-8000-000000000002",
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "timeline.conflict" });
+    expect(app.project.timelines[0]!.tracks[0]!.clips).toEqual([]);
+    expect(app.project.timelines[0]!.tracks[1]!.clips).toEqual([lockedClip]);
+  });
+
   it("keeps an external manifest edit made after restore preflight instead of overwriting it", async () => {
     const root = await mkdtemp(
       join(tmpdir(), "openfilm-version-restore-race-"),
@@ -766,6 +833,148 @@ describe("named project versions", () => {
       JSON.parse(readFileSync(join(directory, "project.json"), "utf8")).title,
     ).toBe("External edit after preflight");
   });
+
+  it("rolls back staged catalog rows if the manifest changes before restore publication", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-version-restore-publish-race-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Original title");
+    cleanup.push(() => {
+      try {
+        app.close();
+      } catch {
+        // The test may already have closed the application.
+      }
+    });
+    app.catalog.upsertAsset({
+      id: "catalog-row",
+      uri: pathToFileURL(join(root, "catalog-row.png")).href,
+      name: "Catalog row",
+      mediaType: "image",
+      tags: ["version"],
+      state: {},
+      metadata: {},
+    });
+    const version = await app.versions.create({
+      name: "Original catalog row",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "32500000-0000-4000-8000-000000000001",
+    });
+    app.catalog.updateAsset("catalog-row", { tags: ["current"] });
+    app.project.title = "Current title";
+    await app.save();
+    const originalRestore = app.catalog.restoreFromSnapshot.bind(app.catalog);
+    vi.spyOn(app.catalog, "restoreFromSnapshot").mockImplementation(
+      (path, publishManifest, assertCurrent) =>
+        originalRestore(
+          path,
+          () => {
+            const external = JSON.parse(
+              readFileSync(join(directory, "project.json"), "utf8"),
+            ) as { title: string };
+            external.title = "External edit during publication";
+            writeFileSync(
+              join(directory, "project.json"),
+              `${JSON.stringify(external, null, 2)}\n`,
+            );
+            publishManifest?.();
+          },
+          assertCurrent,
+        ),
+    );
+
+    await expect(
+      app.versions.restore(version.id, {
+        baseRevision: app.versions.currentRevision(),
+        confirmed: true,
+        requestId: "32500000-0000-4000-8000-000000000002",
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "story.planConflict" });
+    expect(app.catalog.getAsset("catalog-row")?.tags).toEqual(["current"]);
+    expect(
+      JSON.parse(readFileSync(join(directory, "project.json"), "utf8")).title,
+    ).toBe("External edit during publication");
+  });
+
+  it.each(["sources", "sources/nested"])(
+    "rejects managed media reached through a symlinked %s directory",
+    async (symlinkedPath) => {
+      const root = await mkdtemp(
+        join(tmpdir(), "openfilm-version-source-symlink-"),
+      );
+      cleanup.push(() => rm(root, { recursive: true, force: true }));
+      const directory = join(root, "film.openfilm");
+      const externalDirectory = join(root, "external");
+      const sourceRelativePath = "sources/nested/synthetic.png";
+      const externalSource =
+        symlinkedPath === "sources"
+          ? join(externalDirectory, "nested/synthetic.png")
+          : join(externalDirectory, "synthetic.png");
+      const app = await OpenFilmApplication.create(
+        directory,
+        "Symlinked managed source",
+      );
+      cleanup.push(() => {
+        try {
+          app.close();
+        } catch {
+          // The test may already have closed the application.
+        }
+      });
+      await mkdir(join(externalDirectory, "nested"), { recursive: true });
+      await writeFile(externalSource, Buffer.from("outside managed source"));
+      if (symlinkedPath === "sources") {
+        await symlink(externalDirectory, join(directory, "sources"), "dir");
+      } else {
+        await mkdir(join(directory, "sources"), { recursive: true });
+        await symlink(
+          externalDirectory,
+          join(directory, "sources/nested"),
+          "dir",
+        );
+      }
+      const managedUri = pathToFileURL(
+        join(directory, sourceRelativePath),
+      ).href;
+      app.catalog.upsertAsset({
+        id: "symlinked-source",
+        uri: managedUri,
+        name: "Synthetic source",
+        mediaType: "image",
+        tags: [],
+        state: {},
+        metadata: {
+          "openfilm.managedSource": {
+            relativePath: sourceRelativePath,
+            uri: managedUri,
+          },
+        },
+      });
+      app.project.stories.push({
+        id: "story",
+        title: "Story",
+        beats: [
+          {
+            id: "beat",
+            title: "Beat",
+            candidateAssetIds: ["symlinked-source"],
+          },
+        ],
+      });
+      await app.save();
+
+      await expect(
+        app.versions.create({
+          name: "Reject symlink source",
+          baseRevision: app.versions.currentRevision(),
+          requestId: "33500000-0000-4000-8000-000000000001",
+        }),
+      ).rejects.toMatchObject({ status: 409, code: "media.missing" });
+      expect(app.versions.list()).toEqual([]);
+    },
+  );
 
   it("rebases managed sources when restoring a version after moving the project", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-version-relocation-"));

@@ -21,8 +21,11 @@ merge.
   checks, stale revision refusal, current locks, explicit confirmation,
   interrupted restore recovery, and symlink rejection. Regressions also prove
   that name-only renames keep descriptions, any field change on a locked asset
-  blocks restore, manifest edits after preflight remain on disk, and managed
-  source URIs rebase after a project directory moves.
+  blocks restore, locked clips cannot move between tracks, manifest edits both
+  before and during publication remain on disk, and staged catalog rows roll
+  back when the latter race is detected. Managed source URIs rebase after a
+  project directory moves; symlinked `sources/` roots and nested parents fail
+  closed before a managed source is hashed.
 - HTTP/CLI tests share application behavior and reject unknown request fields;
   API output omits source paths. Playwright covers create, compare, rename and
   explicit restore from the localized Versions workspace.
@@ -60,10 +63,16 @@ Local candidate verification passed:
 - `pnpm format:check`, `pnpm test:i18n` (1,686 semantic keys), `pnpm lint`,
   `pnpm typecheck`, `pnpm build`: passed. Vite reports the existing 931 kB
   minified application chunk warning; build completes successfully.
-- `pnpm test`: 210 files / 2,915 tests passed in 98.95 seconds.
-- `pnpm test:e2e`: 168 tests passed on the prior head. The full suite is
-  rerunning against this corrective working tree with Chromium from
-  `/tmp/openfilm-playwright-browsers`.
+- `pnpm test`: 210 files / 2,919 tests passed in 98.63 seconds, including the
+  current lock, symlink and publication-race regressions.
+- `pnpm test:e2e`: a complete result for the corrected working tree is pending.
+  The suite uses Chromium from `/tmp/openfilm-playwright-browsers` and
+  `PYTHONPATH=/tmp/openfilm-python-packages` for the installed OTIO parser.
+  The first run without that environment variable passed 167 tests and failed
+  only the Proposal test because `opentimelineio` was not on Python's module
+  path; Proposal and Versions browser tests then passed 2/2 with the corrected
+  environment. A corrected full-suite attempt stopped after test 44 without a
+  final Playwright report; a complete result is still pending.
 - `pnpm test:interchange`: 18 official parser tests passed; read/write/read,
   four synthetic source files, hashes/bounds, missing-source rejection and
   relocation checks passed. Real Resolve import remains unverified.
@@ -77,11 +86,11 @@ The first GitHub CI run exposed use of Node 24.19-only SQLite
 24.14. The catalog now copies the main SQLite file after WAL checkpointing and
 uses private file-backed connections for snapshot inspection. I reproduced the
 original failure under Node 24.14, then verified the catalog and named-version
-regressions pass under that exact runtime after the fix. The first browser run exposed an outdated four-item navigation assertion and
-the missing optional Python OTIO prerequisite. The navigation regression now
-expects and checks the Versions entry; the pinned parser was installed only in
-`/tmp`. The affected tests passed individually, then the complete browser suite
-passed. Exact-head CI is running after this correction. Until it completes and
+regressions pass under that exact runtime after the fix. The first browser run
+exposed an outdated four-item navigation assertion and the missing optional
+Python OTIO prerequisite. The navigation regression now expects and checks the
+Versions entry; the pinned parser was installed only in `/tmp`. Exact-head CI
+and the final full browser rerun remain pending. Until they complete and
 review is resolved, this is locally verified and not merge-approved. No
 hardware, Resolve, 4K or physical-display behavior is inferred from synthetic
 tests.
