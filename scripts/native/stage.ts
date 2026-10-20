@@ -11,11 +11,10 @@ import {
   readFile,
   readdir,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   runtimeHash,
@@ -26,6 +25,25 @@ import {
   type RuntimeFile,
   type RuntimeManifest,
 } from "../../apps/server/src/runtime-manifest.js";
+import { getExclusiveDirectoryRenamer } from "../../packages/application/src/exclusive-directory-rename.js";
+
+// Full upstream notices reviewed from the integrity-pinned Koffi3.3.3 tarball.
+// The host binary package omits these texts; ship its matching MIT receipt and
+// both Node API header notices from the complete core package.
+const koffiNotices = [
+  [
+    "LICENSE.txt",
+    "22bcbbbacd739b026a8dc484f62a31484ce4c4e31f3408b60b29b4e41d62b290",
+  ],
+  [
+    "vendor/node-addon-api/LICENSE.md",
+    "89024017b88a9f2b763f79b941a4f2db3b4428edfcacdc0b23866b2da633ad0c",
+  ],
+  [
+    "vendor/node-api-headers/LICENSE",
+    "a553508f516031c91f3af1148d44970cb81bbae6c4f091be6835d39cc252238c",
+  ],
+] as const;
 interface InputFile {
   source: string;
   sha256: string;
@@ -57,6 +75,7 @@ export async function stageRuntime(
     inputs.architecture !== process.arch
   )
     throw new Error("Stage on the target platform/architecture");
+  const renameDirectory = await getExclusiveDirectoryRenamer();
   output = resolve(output);
   if (output === repository || repository.startsWith(`${output}/`))
     throw new Error("Invalid bundle destination");
@@ -191,10 +210,25 @@ export async function stageRuntime(
         optionalDependencies?: Record<string, string>;
       };
       const names = await readdir(root);
+      const koffiNativeId = `@koromix/koffi-${inputs.platform}-${inputs.architecture}`;
+      if (id === "koffi" || id === koffiNativeId) {
+        if (data.version !== "3.3.3" || data.license !== "MIT")
+          throw new Error("Unreviewed Koffi runtime version or license");
+      }
+      if (id === "koffi")
+        for (const [path, sha256] of koffiNotices)
+          if ((await runtimeHash(join(root, path))) !== sha256)
+            throw new Error("Reviewed Koffi license notice hash mismatch");
       const license =
         names.find((name) => /^licen[cs]e(?:\..*)?$/iu.test(name)) ??
         names.find((name) => /^copying/iu.test(name));
-      const override = inputs.dependencyLicenses?.[id];
+      const override =
+        id === koffiNativeId
+          ? {
+              source: join(copied.get("koffi")!, "LICENSE.txt"),
+              sha256: koffiNotices[0][1],
+            }
+          : inputs.dependencyLicenses?.[id];
       if (!license && !override)
         throw new Error(
           `License inventory missing: ${id}; provide a reviewed, hash-pinned dependencyLicenses receipt`,
@@ -222,13 +256,42 @@ export async function stageRuntime(
           if (info.isSymbolicLink())
             throw new Error("Symlink in runtime dependency");
           if (info.isDirectory()) await walk(source, path);
-          else await add(source, path, id);
+          else {
+            const expected =
+              id === "koffi"
+                ? koffiNotices.find(
+                    ([name]) => path === `node_modules/koffi/${name}`,
+                  )?.[1]
+                : undefined;
+            await add(source, path, id, false, expected);
+          }
         }
       };
       await walk(root, `node_modules/${id}`);
       const dependencyRequire = createRequire(join(root, "package.json"));
       for (const dependency of Object.keys(data.dependencies ?? {}).sort())
         await copyPackage(dependencyRequire, dependency);
+      if (id === "koffi") {
+        // Require the same fixed host package the audited loader actually used;
+        // source-build/resourcesPath fallbacks must not hide an unbundled addon.
+        const nativeRoot = await realpath(
+          await locate(dependencyRequire, koffiNativeId),
+        );
+        const koffi = dependencyRequire("koffi") as { version?: string };
+        const loaded = Object.keys(dependencyRequire.cache).filter((path) => {
+          const rel = relative(nativeRoot, path);
+          return (
+            path.endsWith(".node") && !isAbsolute(rel) && !rel.startsWith("..")
+          );
+        });
+        if (
+          data.optionalDependencies?.[koffiNativeId] !== "3.3.3" ||
+          koffi.version !== "3.3.3" ||
+          loaded.length !== 1
+        )
+          throw new Error("Compatible Koffi host native dependency missing");
+        await copyPackage(dependencyRequire, koffiNativeId);
+      }
       if (id === "@resvg/resvg-js") {
         const native = Object.keys(data.optionalDependencies ?? {}).filter(
           (name) => name.includes(`-${inputs.platform}-${inputs.architecture}`),
@@ -251,6 +314,7 @@ export async function stageRuntime(
     const require = createRequire(join(repository, "package.json"));
     await copyPackage(require, "fontkit");
     await copyPackage(require, "@resvg/resvg-js");
+    await copyPackage(require, "koffi");
     files.sort((a, b) => a.path.localeCompare(b.path, "en"));
     components.sort((a, b) => a.id.localeCompare(b.id, "en"));
     if (inputs.distributionReview) {
@@ -317,7 +381,7 @@ export async function stageRuntime(
       { mode: 0o644 },
     );
     await verifyRuntimeBundle(stage);
-    await rename(stage, output);
+    renameDirectory(stage, output);
     return manifest;
   } finally {
     await rm(stage, { recursive: true, force: true });

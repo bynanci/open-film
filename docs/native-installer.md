@@ -29,11 +29,20 @@ and platform code signing. A local attacker able to replace the shell is outside
 this integrity boundary.
 
 Required components are Node 24.14+ on the pinned 24.x line, the current bundled
-Node service/launcher, FFmpeg/FFprobe, a CJK font, fontkit, resvg and their required
+Node service/launcher, FFmpeg/FFprobe, a CJK font, fontkit, resvg, Koffi and their required
 runtime dependencies. Preflight executes tools, checks versions, rejects FFmpeg
 `--enable-nonfree`, requires a GPL receipt for GPL builds, checks libx264/AAC and
 loads/rasterizes CJK text with the bundled font. Identifiers and checks do not
 replace a distribution license review or a FFmpeg source-offer obligation.
+
+Koffi `3.3.3` and its exact host native addon are part of the verified inventory.
+Its npm lifecycle script remains disabled (`allowBuilds.koffi: false`); frozen
+installation uses the pinned prebuilt package. Staging requires the host addon
+actually selected by the loader, retains the core and two Node API MIT notices,
+and checks their reviewed hashes. Native preflight verifies all inventory hashes
+before loading the addon. Missing OS symbols or unsupported filesystems do not
+fall back to ordinary rename/copy. Actual Windows/macOS publication behavior
+remains a workstation gate.
 
 ExifTool/Perl and Whisper are optional and not included by this first contract.
 Metadata follows the existing explicit FFprobe/filesystem fallback. No model,
@@ -73,7 +82,7 @@ pnpm exec tsx scripts/native/verify.ts /tmp/openfilm-runtime-candidate <reviewed
 The second command verifies the independently supplied manifest digest and that
 the service/launcher match this checkout's `pnpm build`. It exercises owned
 start/close with an empty temporary app-data directory. Staging uses exclusive
-files, a cooperative output lock and sibling publication; existing destinations
+files, a cooperative output lock and atomic sibling no-replace publication; existing destinations
 are rejected. Identical inputs produce identical runtime manifests/inventory.
 The npm closure comes from the frozen installed dependencies, with exact versions
 and every copied file included in the manifest.

@@ -12,7 +12,7 @@ for (const app of ["cli", "server"]) {
     platform: "node",
     // Keep the platform native loader intact. The root runtime dependency
     // makes it resolvable from both dist/cli and dist/server after installation.
-    external: ["@resvg/resvg-js"],
+    external: ["@resvg/resvg-js", "koffi"],
     format: "esm",
     target: "node24",
     sourcemap: true,
@@ -29,7 +29,7 @@ await build({
   outfile: "dist/native/launcher.mjs",
   bundle: true,
   platform: "node",
-  external: ["fontkit", "@resvg/resvg-js"],
+  external: ["fontkit", "@resvg/resvg-js", "koffi"],
   format: "esm",
   target: "node24",
 });

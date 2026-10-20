@@ -19,6 +19,7 @@ historical material covered by those grants.
 | OpenTimelineIO                | Independent development-time export validation                  | Apache-2.0                                                                      |
 | fontkit                       | Local font shaping, measured title layout and glyph outlines    | MIT                                                                             |
 | resvg (`@resvg/resvg-js`)     | Rasterize local title outlines into a shared preview/render PNG | MPL-2.0                                                                         |
+| Koffi (`koffi`)               | Fixed OS no-replace directory publication calls                 | MIT, including bundled Node API header notices                                  |
 
 FFmpeg/FFprobe and Perl are system prerequisites, not redistributed OpenFilm
 binaries. Do not assume that every locally installed FFmpeg build has the same
@@ -32,6 +33,29 @@ synthesized tones. No personal photographs, recordings or commercial music are
 included. The fixture generator dedicates its generated media to the public
 domain under CC0-1.0. The application icon is original OpenFilm contributor work
 and is covered by this repository's license.
+
+## Atomic directory publication
+
+Koffi is pinned to `3.3.3` in the root/application dependencies and lockfile.
+Its lifecycle script is explicitly disabled; the integrity-pinned optional
+package for the target platform supplies the native addon. Unsupported platforms,
+missing symbols/addons and filesystems without the required no-replace operation
+fail closed. OpenFilm exposes only fixed operating-system rename functions;
+projects cannot choose FFI libraries, symbols, declarations or JavaScript.
+
+The reviewed npm tarball is
+`https://registry.npmjs.org/koffi/-/koffi-3.3.3.tgz`, with integrity
+`sha512-XWNI4eyxJJzR2MakPZzR3QeZ06JOklLbxglin0dHhx/qIQCby8lqHs9Acq4Q7CpCKnOrBSj+6b9J5y69wfr2ZA==`.
+Its MIT notice credits Niels Martignène (2026). The bundled `node-addon-api`
+notice credits the Node.js API collaborators (2017), and `node-api-headers`
+credits Node.js (2021); both also use MIT. Runtime staging retains all three
+complete upstream notices and checks their reviewed SHA-256 values. The matching
+host native package omits a license text, so staging carries the reviewed core
+MIT receipt for that component as well. No third-party implementation is copied
+into OpenFilm source files.
+
+See [validation](validation-exclusive-directory-publication.md) for the bounded
+Linux proof and the unverified Windows/macOS workstation gates.
 
 ## Local title fonts and rasterization
 
