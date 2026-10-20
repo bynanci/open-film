@@ -35,10 +35,14 @@ list and receipt. Larger output dimensions do not recover missing source detail.
 
 The preview service renders the selected saved Composition revision with the
 selected profile, film look, and caption track, then extracts the requested
-frame from that real MP4. Its response includes the frame-aligned time/index,
+frame from a picture-only MP4 intermediate. Standalone audio files are not
+opened, mixed or included in picture source receipts, so offline narration or
+music does not block previews or PNG delivery. Titles attached to audio clips
+remain part of the picture. A normal MP4 or audio export still requires its
+audio inputs. Its response includes the frame-aligned time/index,
 dimensions, profile, warnings, and an opaque token. The token is bound to the
 project ID, project revision, Composition, frame index, selected profile,
-quality, look/caption selection and source hashes. A null look override preserves
+quality, look/caption selection and visual source hashes. A null look override preserves
 saved looks, like an omitted override. The token expires after ten minutes and
 is served from a private project cache. Project
 switches, edits, changed sources, cancellation, and cache expiry invalidate the
@@ -70,7 +74,8 @@ the source hashes. A full mix is published as
 under `exports/stems-<request-id>/`.
 Audio preflight checks only sources used by the selected audio graph, so an
 offline picture-only source does not block audio delivery. Conflicting hashes
-for a source shared by successive role renders abort publication.
+for a source shared by successive role renders abort publication. Audio-only
+delivery does not select captions or apply picture-rendering caption limits.
 
 ## Shared entry points and safety
 
@@ -102,6 +107,11 @@ profile. `--confirm-crop` alone cannot authorize an unreviewed crop.
 Approval validation and publication share an immutable render snapshot. A
 concurrent project, source or render-plan change rejects the crop; a change
 during the output/receipt renames rolls publication back.
+
+HTTP frame-preview requests reserve project ownership before reading their
+body and release the mutation queue after registering the active job. PNG, WAV
+and stem deliveries keep project edits queued until publication finishes;
+cancellation remains available while that queue is held.
 
 Profiles and manifests are output records, not project schema fields. Exports
 are staged in private directories and atomically published. Output paths reject

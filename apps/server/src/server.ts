@@ -665,7 +665,6 @@ export async function startServer(options: ServerOptions = {}) {
           (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
           !nonMutatingGraphicAgentPreview &&
-          !nonMutatingExportPreview &&
           route !== "/api/projects/availability"
         ) {
           if (
@@ -708,8 +707,12 @@ export async function startServer(options: ServerOptions = {}) {
           };
           application.catalog.saveJob(job);
           active.set(jobId, controller);
-          releaseMutation?.();
-          releaseMutation = undefined;
+          // A preview reserves project ownership through its body read and job
+          // registration. Deliveries keep edits queued through publication.
+          if (nonMutatingExportPreview) {
+            releaseMutation?.();
+            releaseMutation = undefined;
+          }
           const running: Job = {
             ...job,
             status: "running",

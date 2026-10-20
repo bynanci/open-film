@@ -78,6 +78,7 @@ import { proposalTemplate } from "@openfilm/template-proposal";
 import {
   FFmpegRenderer,
   audioSourceAssetIds,
+  visualSourceAssetIds,
   createTitleOverlay,
   resolveTitleFont,
   titleOverlayCacheKey,
@@ -224,6 +225,8 @@ export interface FilmRenderOptions {
   exportProfile?: ExportProfile;
   /** Internal shared WAV/stem route; uses AudioAutomation and existing clips. */
   audioOnly?: boolean;
+  /** Internal picture-only intermediate; standalone audio is not an input. */
+  videoOnly?: boolean;
   audioRole?: AudioAutomation["role"];
   /** Required only when an explicit center crop is published as a video/still. */
   confirmCrop?: boolean;
@@ -329,6 +332,7 @@ export class OpenFilmApplication {
               exportProfile: options.exportProfile,
               captionTrackId: options.captionTrackId,
               audioOnly: options.audioOnly,
+              videoOnly: options.videoOnly,
               audioRole: options.audioRole,
             },
             false,
@@ -1813,11 +1817,13 @@ export class OpenFilmApplication {
     if (trackActiveJob) this.activeJobs++;
     try {
       const assets = this.compositionAssets(composition);
-      const audioIds = options.audioOnly
+      const sourceIds = options.audioOnly
         ? audioSourceAssetIds(composition, assets, options.audioRole)
-        : undefined;
+        : options.videoOnly
+          ? visualSourceAssetIds(composition, assets)
+          : undefined;
       for (const asset of assets.filter(
-        (asset) => !audioIds || audioIds.has(asset.id),
+        (asset) => !sourceIds || sourceIds.has(asset.id),
       )) {
         checkAbort(options.signal);
         const status = await sourceStatus(asset);
@@ -1871,6 +1877,7 @@ export class OpenFilmApplication {
           captionTrackId: options.captionTrackId,
           exportProfile,
           audioOnly: options.audioOnly,
+          videoOnly: options.videoOnly,
           audioRole: options.audioRole,
           snapshot: approved,
           onProgress: (progress) => {

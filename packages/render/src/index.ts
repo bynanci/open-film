@@ -86,6 +86,8 @@ export interface RenderSnapshot {
   settingsSha256: string;
   assetsSha256: string;
   sources?: ReadonlyArray<{ assetId: string; sha256: string; size: number }>;
+  /** A reviewed picture approves visual inputs; a delivered MP4 also captures audio. */
+  sourceScope?: "visual";
   assertCurrent: () => void;
 }
 export interface RenderOptions {
@@ -102,6 +104,8 @@ export interface RenderOptions {
   exportProfile?: ExportProfile;
   /** Exports the exact existing audio mix graph as PCM WAV. */
   audioOnly?: boolean;
+  /** Internal picture-only intermediate for frame previews and PNG delivery. */
+  videoOnly?: boolean;
   /** Optional role filter for a separate WAV stem. */
   audioRole?: AudioAutomation["role"];
   /** Internal snapshot binding for a reviewed preview and its delivered pixels. */
@@ -173,6 +177,36 @@ export function audioSourceAssetIds(
   );
 }
 
+/** Sources consumed by the picture graph, shared with frame-export preflight. */
+export function visualSourceAssetIds(
+  composition: Composition,
+  assets: MediaAsset[],
+): Set<string> {
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  return new Set([
+    ...composition.tracks
+      .filter(
+        (track) =>
+          track.type !== "titles" &&
+          track.type !== "audio" &&
+          track.type !== "music",
+      )
+      .flatMap((track) =>
+        track.clips.flatMap((clip) =>
+          assetMap.get(clip.assetId)?.mediaType === "audio"
+            ? []
+            : [
+                clip.assetId,
+                ...(clip.layout?.secondary
+                  ? [clip.layout.secondary.assetId]
+                  : []),
+              ],
+        ),
+      ),
+    ...graphicSceneAssetIds(composition.graphicScenes ?? []),
+  ]);
+}
+
 function outputFrameFilters(profile: ExportProfile): string[] {
   if (profile.framing === "contain")
     return [
@@ -228,6 +262,9 @@ export class FFmpegRenderer {
       exportProfile?.quality ?? options.quality,
     );
     const audioOnly = options.audioOnly ?? false;
+    const videoOnly = options.videoOnly ?? false;
+    if (audioOnly && videoOnly)
+      throw new Error("A render cannot be both audio-only and picture-only.");
     if (exportProfile?.format === "png")
       throw new Error(
         "Still PNG export requires an application-selected frame time.",
@@ -247,8 +284,9 @@ export class FFmpegRenderer {
         ? null
         : validateFilmLook(structuredClone(options.lookOverride));
     const nativeCaptionTracks = composition.captionTracks ?? [];
-    const selectedCaptionTrackId =
-      options.captionTrackId === undefined
+    const selectedCaptionTrackId = audioOnly
+      ? undefined
+      : options.captionTrackId === undefined
         ? nativeCaptionTracks[0]?.id
         : (options.captionTrackId ?? undefined);
     const selectedCaptionTrack = selectedCaptionTrackId
@@ -312,20 +350,22 @@ export class FFmpegRenderer {
     const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
     const usedIds = audioOnly
       ? audioSourceAssetIds(composition, assets, options.audioRole)
-      : new Set(
-          composition.tracks
-            .filter((track) => track.type !== "titles")
-            .flatMap((track) =>
-              track.clips.flatMap((clip) => {
-                return [
-                  clip.assetId,
-                  ...(clip.layout?.secondary
-                    ? [clip.layout.secondary.assetId]
-                    : []),
-                ];
-              }),
-            ),
-        );
+      : videoOnly
+        ? visualSourceAssetIds(composition, assets)
+        : new Set(
+            composition.tracks
+              .filter((track) => track.type !== "titles")
+              .flatMap((track) =>
+                track.clips.flatMap((clip) => {
+                  return [
+                    clip.assetId,
+                    ...(clip.layout?.secondary
+                      ? [clip.layout.secondary.assetId]
+                      : []),
+                  ];
+                }),
+              ),
+          );
     if (!audioOnly)
       for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
         if (!assetMap.has(id))
@@ -370,6 +410,13 @@ export class FFmpegRenderer {
           throw new Error(
             `Clip ${clip.id} references missing asset ${clip.assetId}`,
           );
+        if (
+          videoOnly &&
+          (track.type === "audio" ||
+            track.type === "music" ||
+            asset.mediaType === "audio")
+        )
+          continue;
         if (
           audioOnly &&
           (!hasAudio(asset) ||
@@ -420,10 +467,17 @@ export class FFmpegRenderer {
       const expected = new Map(
         snapshot.sources.map((source) => [source.assetId, source]),
       );
+      const visualIds =
+        snapshot.sourceScope === "visual"
+          ? visualSourceAssetIds(composition, assets)
+          : undefined;
+      const approvedSources = visualIds
+        ? sources.filter((source) => visualIds.has(source.assetId))
+        : sources;
       if (
         expected.size !== snapshot.sources.length ||
-        expected.size !== sources.length ||
-        sources.some((source) => {
+        expected.size !== approvedSources.length ||
+        approvedSources.some((source) => {
           const approved = expected.get(source.assetId);
           return (
             !approved ||
@@ -569,6 +623,15 @@ export class FFmpegRenderer {
               `Clip ${clip.id} references missing asset ${clip.assetId}`,
             );
           if (
+            videoOnly &&
+            (track.type === "audio" ||
+              track.type === "music" ||
+              asset.mediaType === "audio")
+          ) {
+            pendingTitles.push(addTitle);
+            continue;
+          }
+          if (
             audioOnly &&
             (!hasAudio(asset) ||
               (options.audioRole &&
@@ -697,7 +760,7 @@ export class FFmpegRenderer {
             videoLabel = merged;
           }
           if (!audioOnly) pendingTitles.push(addTitle);
-          if (hasAudio(asset)) {
+          if (!videoOnly && hasAudio(asset)) {
             const label = `audio${suffix}`;
             const audioFilters = [
               `atrim=start=${number(sourceIn)}:end=${number(sourceOut)}`,
@@ -831,11 +894,11 @@ export class FFmpegRenderer {
           : ["format=yuv420p"];
         filters.push(`[${videoLabel}]${finalVideoFilters.join(",")}[vout]`);
       }
-      if (audioLabels.length)
+      if (!videoOnly && audioLabels.length)
         filters.push(
           `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${audioLabels.length}:duration=longest:normalize=0,alimiter=limit=0.95,apad,atrim=duration=${number(composition.duration)}[aout]`,
         );
-      else
+      else if (!videoOnly)
         filters.push(
           `anullsrc=r=48000:cl=stereo,atrim=duration=${number(composition.duration)}[aout]`,
         );
@@ -862,7 +925,7 @@ export class FFmpegRenderer {
           "-r",
           number(outputFrameRate),
         );
-      args.push("-map", "[aout]");
+      if (!videoOnly) args.push("-map", "[aout]");
       if (audioOnly)
         args.push(
           "-vn",
@@ -879,10 +942,7 @@ export class FFmpegRenderer {
         );
       else
         args.push(
-          "-c:a",
-          "aac",
-          "-ar",
-          "48000",
+          ...(videoOnly ? ["-an"] : ["-c:a", "aac", "-ar", "48000"]),
           "-t",
           number(outputDuration),
           "-movflags",
@@ -944,6 +1004,7 @@ export class FFmpegRenderer {
         encoding,
         {
           format: audioOnly ? "wav" : "mp4",
+          ...(videoOnly ? { videoOnly } : {}),
           ...(exportProfile ? { exportProfile } : {}),
           ...(options.audioRole ? { audioRole: options.audioRole } : {}),
         },

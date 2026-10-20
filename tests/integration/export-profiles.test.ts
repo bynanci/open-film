@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, readdirSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import {
   mkdtemp,
   lstat,
@@ -271,7 +272,296 @@ const postJson = (base: string, route: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+function manualCaptions(cueCount: number): CaptionTrack {
+  return {
+    version: 1,
+    id: "manual-captions",
+    name: "Manual captions",
+    language: "en",
+    style: {
+      version: 1,
+      role: "subtitle",
+      fontFamily: "Noto Sans CJK TC",
+      fontSize: 24,
+      position: "bottom",
+      background: "scrim",
+      safeArea: { left: 0.08, right: 0.08, top: 0.08, bottom: 0.15 },
+    },
+    cues: Array.from({ length: cueCount }, (_, index) => ({
+      version: 1,
+      id: `cue-${index}`,
+      startMs: index,
+      endMs: cueCount === 1 ? 900 : index + 1,
+      text: "Hi",
+      source: { kind: "manual" },
+      manualRevision: 0,
+    })),
+  };
+}
+
 describe("professional profile exports", () => {
+  it("exports audio without applying the picture caption cue limit", async () => {
+    const { app, composition } = await fixture(6);
+    composition.captionTracks = [manualCaptions(5_001)];
+    await app.save();
+    for (const format of ["wav", "audio-stems"] as const) {
+      const result = await app.exportProfileAudio({
+        compositionId: composition.id,
+        profile: createExportProfile({ ratio: "16:9", format, frameRate: 12 }),
+        requestId: `many-captions-${format}`,
+      });
+      expect(result.files.length).toBe(format === "wav" ? 1 : 2);
+      for (const file of result.files) {
+        expect(file.sampleCount).toBe(288_000);
+        expect((await probe(file.path)).streams).toMatchObject([
+          { codec_type: "audio", codec_name: "pcm_s24le", channels: 2 },
+        ]);
+        expect(await audioRms(file.path, 2)).toBeGreaterThan(0.005);
+      }
+    }
+    await expect(app.exportMp4(composition.id)).rejects.toThrow(/5.?000/u);
+  });
+
+  it("renders and verifies picture-only previews and PNGs with offline standalone audio", async () => {
+    const { app, composition, imagePath, narrationPath, musicPath } =
+      await fixture(1);
+    composition.captionTracks = [manualCaptions(1)];
+    composition.tracks[1]!.clips[0]!.title = "A";
+    await app.save();
+    const profile = createExportProfile({
+      ratio: "16:9",
+      format: "png",
+      width: 160,
+      height: 90,
+      frameRate: 12,
+    });
+    const reference = await app.exportMp4(composition.id, {
+      exportProfile: { ...profile, format: "mp4" },
+    });
+    const referencePixels = await decodedRgb(reference.path, 0.25);
+    const online = await app.previewExportFrame({
+      compositionId: composition.id,
+      profile,
+      time: 0.25,
+    });
+    const reviewedPixels = await decodedRgb(
+      await app.exportProfiles.previewPath(online.token),
+    );
+    expect(reviewedPixels).toEqual(referencePixels);
+    await rm(narrationPath);
+    await rm(musicPath);
+    const streams: Array<Array<Record<string, string>>> = [];
+    const receipts: Array<{ encoding: { audio: string | null } }> = [];
+    const render = FFmpegRenderer.prototype.render;
+    const spy = vi
+      .spyOn(FFmpegRenderer.prototype, "render")
+      .mockImplementation(async function (this: FFmpegRenderer, ...args) {
+        const path = await render.apply(this, args);
+        streams.push((await probe(path)).streams);
+        receipts.push(
+          JSON.parse(await readFile(`${path}.manifest.json`, "utf8")),
+        );
+        return path;
+      });
+    try {
+      const offline = await app.previewExportFrame({
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+      });
+      expect(
+        await decodedRgb(await app.exportProfiles.previewPath(offline.token)),
+      ).toEqual(reviewedPixels);
+      expect(await app.exportProfiles.previewPath(online.token)).toBeTruthy();
+      const input = {
+        compositionId: composition.id,
+        profile,
+        time: 0.25,
+        requestId: "offline-audio-picture-001",
+      };
+      const still = await app.exportStill(input);
+      expect(await decodedRgb(still.path)).toEqual(reviewedPixels);
+      const receipt = JSON.parse(
+        await readFile(`${still.path}.manifest.json`, "utf8"),
+      ) as { sources: Array<{ assetId: string; sha256: string }> };
+      expect(receipt.sources).toEqual([
+        expect.objectContaining({ sha256: await hashFile(imagePath) }),
+      ]);
+      expect((await app.exportStill(input)).path).toBe(still.path);
+      expect(streams).toHaveLength(2);
+      for (const sourceStreams of streams)
+        expect(sourceStreams.map((stream) => stream.codec_type)).toEqual([
+          "video",
+        ]);
+      for (const receipt of receipts) expect(receipt.encoding.audio).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+    await expect(app.exportMp4(composition.id)).rejects.toThrow(
+      /Missing Media/u,
+    );
+    await expect(
+      app.exportProfileAudio({
+        compositionId: composition.id,
+        profile: createExportProfile({
+          ratio: "16:9",
+          format: "wav",
+          frameRate: 12,
+        }),
+        requestId: "offline-audio-mix-001",
+      }),
+    ).rejects.toThrow(/Missing Media/u);
+  });
+
+  it("reserves preview project ownership while its request body is incomplete", async () => {
+    const { projectPath, composition, close } = await fixture(1);
+    close();
+    const runtime = await startServer({ port: 0, project: projectPath });
+    cleanup.push(() => runtime.close());
+    const base = `http://127.0.0.1:${runtime.port}`;
+    const seen = (route: string) =>
+      new Promise<void>((accept) => {
+        const listener = (request: { url?: string }) => {
+          if (request.url !== route) return;
+          runtime.server.off("request", listener);
+          accept();
+        };
+        runtime.server.on("request", listener);
+      });
+    let resume!: () => void;
+    const rendering = new Promise<void>((accept) => (resume = accept));
+    const preview = OpenFilmApplication.prototype.previewExportFrame;
+    const spy = vi
+      .spyOn(OpenFilmApplication.prototype, "previewExportFrame")
+      .mockImplementation(async function (this: OpenFilmApplication, ...args) {
+        await rendering;
+        return preview.apply(this, args);
+      });
+    const previewSeen = seen("/api/export/frame-preview");
+    let slowRequest!: ReturnType<typeof httpRequest>;
+    const previewResponse = new Promise<{ status: number; data: string }>(
+      (accept, reject) => {
+        slowRequest = httpRequest(
+          `${base}/api/export/frame-preview`,
+          { method: "POST", headers: { "Content-Type": "application/json" } },
+          (response) => {
+            let data = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk: string) => (data += chunk));
+            response.on("end", () =>
+              accept({ status: response.statusCode!, data }),
+            );
+          },
+        );
+        slowRequest.on("error", reject);
+      },
+    );
+    slowRequest.write("{");
+    await previewSeen;
+    const closeSeen = seen("/api/project/close");
+    const closing = postJson(base, "/api/project/close", {});
+    await closeSeen;
+    await new Promise<void>((accept) => setImmediate(accept));
+    slowRequest.end(
+      JSON.stringify({
+        compositionId: composition.id,
+        profile: createExportProfile({
+          ratio: "16:9",
+          width: 160,
+          height: 90,
+          frameRate: 12,
+        }),
+        time: 0.25,
+      }).slice(1),
+    );
+    try {
+      expect((await closing).status).toBe(409);
+    } finally {
+      resume();
+      spy.mockRestore();
+    }
+    const result = await previewResponse;
+    expect(result.status, result.data).toBe(200);
+    const { token } = JSON.parse(result.data) as { token: string };
+    expect(
+      (await fetch(`${base}/api/export/frame-preview/${token}`)).status,
+    ).toBe(200);
+  });
+
+  it.each(["png", "wav", "audio-stems"] as const)(
+    "keeps project edits queued through %s receipt publication",
+    async (format) => {
+      const { projectPath, composition, close } = await fixture(1);
+      close();
+      const runtime = await startServer({ port: 0, project: projectPath });
+      cleanup.push(() => runtime.close());
+      const base = `http://127.0.0.1:${runtime.port}`;
+      let resume!: () => void;
+      const publication = new Promise<void>((accept) => (resume = accept));
+      let staged!: () => void;
+      const receiptStaged = new Promise<void>((accept) => (staged = accept));
+      const service = ExportProfileService.prototype as unknown as {
+        writeReceipt: (path: string, value: unknown) => Promise<void>;
+      };
+      const writeReceipt = service.writeReceipt;
+      const spy = vi
+        .spyOn(service, "writeReceipt")
+        .mockImplementation(async function (this: typeof service, path, value) {
+          await writeReceipt.call(this, path, value);
+          const receipt = value as { profile?: { format?: string } };
+          if (receipt.profile?.format !== format) return;
+          staged();
+          await publication;
+        });
+      const exporting = postJson(
+        base,
+        format === "png" ? "/api/export/still" : "/api/export/audio",
+        {
+          compositionId: composition.id,
+          profile: createExportProfile({
+            ratio: "16:9",
+            format,
+            width: 160,
+            height: 90,
+            frameRate: 12,
+          }),
+          requestId: `queued-edit-${format}`,
+          ...(format === "png" ? { time: 0.25 } : {}),
+        },
+      );
+      await receiptStaged;
+      const events: string[] = [];
+      const update = OpenFilmApplication.prototype.updateFilm;
+      const editSpy = vi
+        .spyOn(OpenFilmApplication.prototype, "updateFilm")
+        .mockImplementation(function (this: OpenFilmApplication, ...args) {
+          events.push("edit");
+          return update.apply(this, args);
+        });
+      const edited = fetch(`${base}/api/project`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectContentLocale: "ja-JP" }),
+      });
+      // The real HTTP edit reaches its body reader while publication is paused.
+      await new Promise<void>((accept) => setTimeout(accept, 100));
+      const editedBeforePublication = events.includes("edit");
+      events.push("publish");
+      resume();
+      const result = await exporting;
+      try {
+        expect(result.status, await result.text()).toBe(200);
+        expect((await edited).status).toBe(200);
+        expect(editedBeforePublication).toBe(false);
+        expect(events).toEqual(["publish", "edit"]);
+      } finally {
+        resume();
+        spy.mockRestore();
+        editSpy.mockRestore();
+      }
+    },
+  );
+
   it.each(
     (["png", "mp4"] as const).flatMap((format) =>
       (["validation", "after-approval", "source", "render-plan"] as const).map(
