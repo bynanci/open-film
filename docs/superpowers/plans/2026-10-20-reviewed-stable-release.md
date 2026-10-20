@@ -34,6 +34,8 @@
 - [x] Run combined format/i18n/lint/typecheck/test/build/interchange, built CLI smoke and actual shared render regressions.
 - [x] Reproduce and independently close final CLI/archive/native admission findings; preserve owned output and rerun full combined basic gates.
 
+- [x] Reproduce the hosted FFmpeg 6.1.1 low-frame-rate output defect with the exact authenticated runtime; independently verify the minimal renderer correction on 6.1.1/7.1.5 and rerun complete final gates.
+
 Final full browser/native CI, exact-head review, merge and publication are gated
 and recorded by [PR #41](https://github.com/bynanci/open-film/pull/41) and the
 [checksummed 0.4.0 release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).

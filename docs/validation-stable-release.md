@@ -10,7 +10,7 @@ certification is implied.
 ## Exact reviewed inputs
 
 Main baseline: `bb2c4521ad894478893485119442a00ffd9b34cc`.
-Combined implementation: `aef93976cd85f19560a4416f7d7a773494017575`. Later documentation-only changes
+Combined implementation: `61fa596aaaf2d48dcbb3cb920e12bdfc436a7973`. Later documentation-only changes
 retain the same implementation; the release evidence identifies the final head.
 Named Versions hardening: `41357e73fbb2b1686d96192664ed405b908aed5a`;
 checkpoint race: `ede62fc0dcdcfda373b0b1a7757880e36f45532a`.
@@ -169,13 +169,31 @@ Content/settings/source changes remain rejected by the original fingerprint and
 stale fences. The failing
 control and independent final disposition accompany the release receipts.
 
+## Supported FFmpeg frame-rate regression
+
+Both hosted runs of candidate `0cd6b3429e58e73ab55b3f7a9cddf91385cd2819`
+passed 3,600 unit tests but failed the unchanged low-frame-rate delivery browser
+case: Ubuntu FFmpeg 6.1.1 could discard a singleton composed stream before output
+padding. Local FFmpeg 7.1.5 passed all 195 browser cases, so that local result did
+not establish supported-version correctness. Original failure logs are retained.
+
+The renderer now pads the composed stream before output frame-rate sampling;
+the existing exact complete-frame trim bounds the result. Project frame rates,
+saved revisions, source hashes and delivery settings are preserved. Seven new
+actual-render regressions check singleton rates 0.25/0.5/1/12, two-picture holds,
+first/last previews and PNG/MP4 pixels and frame counts. The signed Ubuntu
+6.1.1 runtime reproduces the failing controls and passes the fixed controls;
+FFmpeg 7.1.5 and an independent review also pass. No browser case, filter
+requirement, assertion or supported project rate is removed. Final full-suite
+and hosted results are read back separately for the new candidate.
+
 ## Combined automated gates
 
-On implementation `aef93976cd85f19560a4416f7d7a773494017575`:
+On implementation `61fa596aaaf2d48dcbb3cb920e12bdfc436a7973`:
 
 - `pnpm format:check`, `pnpm test:i18n` (1,973 semantic keys), `pnpm lint` and
   `pnpm typecheck`: pass.
-- `pnpm test`: **245 files / 3,600 tests passed**; no weakened or disabled
+- `pnpm test`: **247 files / 3,607 tests passed**; no weakened or disabled
   assertions. Synthetic FFmpeg, HTTP/application, child-process, legacy-project
   and recovery regressions run as part of this command.
 - `pnpm build`, built CLI smoke and `pnpm test:interchange`: pass; the official
@@ -219,6 +237,8 @@ related certification claims. The existing Linux installer gate for
 the affected iterator implementation as informational unsoundness. A compatible
 upstream remedy and reachability review are required before installer release.
 A successful advisory job does not close that native distribution gate.
+The transitive `proc-macro-error` 1.0.4 / `RUSTSEC-2024-0370`
+unmaintained warning also remains in the native dependency review queue.
 Native tooling stays a disabled/manual candidate
 slice. The 0.4.0 release ships source, checksums and curated validation receipts;
 no native installers, credentials, private media or automatic-update feed.

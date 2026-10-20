@@ -14,6 +14,10 @@ actual cross-feature render/package parity pass; see
 native CI, merge and tag results accompany the
 [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
 
+Supported FFmpeg 6.1.1 and 7.1.5 retain singleton and low-frame-rate picture
+streams through delivery sampling; actual frame counts, picture holds and
+first/last preview pixels are regression-tested without changing project rates.
+
 CLI exports preserve saved revisions and unrelated jobs across durable retries.
 Native installer distribution also requires compatible remediation and reachability
 review for GLib 0.18.5 / `RUSTSEC-2024-0429`; that existing gate remains open.
