@@ -2027,13 +2027,15 @@ async function restoreNativeDrafts() {
     project.value === current &&
     projectPath.value === path &&
     props.nativeGeneration === generation;
-  const consumed: number[] = [];
+  const retained = (entry: RetainedNativeDraft) =>
+    props.nativeDrafts?.some((item) => item.id === entry.id) === true;
   const entries = [...(props.nativeDrafts ?? [])].sort(
     (left, right) => right.generation - left.generation || right.id - left.id,
   );
   for (const entry of entries) {
     if (!owned()) break;
     if (
+      !retained(entry) ||
       entry.generation >= generation ||
       entry.projectId !== current.id ||
       entry.projectPath !== path
@@ -2055,6 +2057,7 @@ async function restoreNativeDrafts() {
       await nextTick();
       if (
         !owned() ||
+        !retained(entry) ||
         beatDirty.value ||
         activeStory.value?.id !== story.id ||
         activeBeat.value?.id !== entry.entityId ||
@@ -2064,7 +2067,8 @@ async function restoreNativeDrafts() {
       beatDraft.value = JSON.parse(JSON.stringify(entry.value));
       beatDirty.value = true;
       tab.value = "story";
-      consumed.push(entry.id);
+      // Consume in the same turn as applying, before another entry can await.
+      emit("nativeDraftsRestored", [entry.id]);
     } else if (entry.kind === "category" && !categoryDirty.value) {
       const selectedBefore = selectedAssetId.value;
       try {
@@ -2074,6 +2078,7 @@ async function restoreNativeDrafts() {
         const asset = result.assets.find((item) => item.id === entry.entityId);
         if (
           !owned() ||
+          !retained(entry) ||
           categoryDirty.value ||
           selectedAssetId.value !== selectedBefore ||
           !asset ||
@@ -2084,7 +2089,7 @@ async function restoreNativeDrafts() {
         selectedAssetId.value = asset.id;
         categoryDraft.value = [...entry.value];
         categoryDirty.value = true;
-        consumed.push(entry.id);
+        emit("nativeDraftsRestored", [entry.id]);
       } catch {
         /* Keep the only recovery copy until a fresh read can validate it. */
       }
@@ -2098,17 +2103,17 @@ async function restoreNativeDrafts() {
       await nextTick();
       if (
         !owned() ||
+        !retained(entry) ||
         scenePlanDraftPresent.value ||
         !scenePlanner.value ||
         plannerBaseline() !== entry.baseline
       )
         continue;
       scenePlanner.value.restoreNativeDraft(entry.value);
-      consumed.push(entry.id);
+      emit("nativeDraftsRestored", [entry.id]);
     }
     // Manually edited proposal text stays exportable. Old proposals/acceptance IDs never replay.
   }
-  if (owned() && consumed.length) emit("nativeDraftsRestored", consumed);
 }
 defineExpose({
   prepareNativeClose,
@@ -2128,6 +2133,7 @@ function protectDrafts(event: BeforeUnloadEvent) {
   }
 }
 onMounted(async () => {
+  window.addEventListener("beforeunload", protectDrafts);
   await boot();
   await restoreNativeDrafts();
   if (nativeDisposed) return;
@@ -2135,7 +2141,6 @@ onMounted(async () => {
     void pollJobs();
   }, 1000);
   window.addEventListener("keydown", handleKeyboard);
-  window.addEventListener("beforeunload", protectDrafts);
 });
 onUnmounted(() => {
   nativeDisposed = true;

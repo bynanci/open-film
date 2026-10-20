@@ -620,7 +620,7 @@ describe("native recovery retains actual App local draft owners", () => {
     );
     expect(h.patch).not.toHaveBeenCalled();
   });
-  it("retains a partially applied snapshot if its project owner refreshes before recovery finishes", async () => {
+  it("consumes an applied copy while owned and fences pending copies after a project refresh", async () => {
     const h = await fixture();
     h.current.setupState.selectedAssetId = "photo";
     h.current.setupState.categoryDraft = ["Keep pending category"];
@@ -638,14 +638,112 @@ describe("native recovery retains actual App local draft owners", () => {
     expect(h.current.setupState.beatDraft.narration).toBe(
       "Keep partial recovery copy",
     );
+    expect(h.current.props.nativeDrafts?.map((entry) => entry.kind)).toEqual([
+      "category",
+    ]);
     h.current.setupState.project = savedProject();
     await settle();
     accept({ assets: [structuredClone(h.asset)], total: 1 });
     await settle();
     const retained = JSON.stringify(h.current.props.nativeDrafts ?? []);
-    expect(retained).toContain("Keep partial recovery copy");
+    expect(retained).not.toContain("Keep partial recovery copy");
     expect(retained).toContain("Keep pending category");
+    expect(h.current.setupState.categoryDirty).toBe(false);
     expect(h.patch).not.toHaveBeenCalled();
+  });
+  it("does not restore or autosave a retained draft discarded while its recovery read awaits", async () => {
+    const h = await fixture();
+    h.current.setupState.selectedAssetId = "photo";
+    h.current.setupState.categoryDraft = ["Explicitly discarded category"];
+    h.current.setupState.categoryDirty = true;
+    let accept!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      accept = resolve;
+    });
+    h.setAssetRead(() => pending);
+    await h.retry();
+    expect(h.current.props.nativeDrafts).toHaveLength(1);
+    await h.discard();
+    expect(h.current.props.nativeDrafts).toHaveLength(0);
+    accept({ assets: [structuredClone(h.asset)], total: 1 });
+    await settle();
+    expect(h.current.setupState.categoryDirty).toBe(false);
+    expect(h.current.setupState.categoryDraft).not.toContain(
+      "Explicitly discarded category",
+    );
+    await h.close();
+    expect(h.patch).not.toHaveBeenCalled();
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: false,
+    });
+  });
+  it("lists only pending copies during mixed recovery so Discard cannot contradict an applied draft", async () => {
+    const h = await fixture();
+    h.current.setupState.selectedAssetId = "photo";
+    h.current.setupState.categoryDraft = ["Discard pending category only"];
+    h.current.setupState.categoryDirty = true;
+    h.setAssetRead(async () => ({ assets: [], total: 0 }));
+    await h.retry();
+    h.current.setupState.beatDraft.narration = "Keep applied beat";
+    h.current.setupState.beatDirty = true;
+    let accept!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      accept = resolve;
+    });
+    h.setAssetRead(() => pending);
+    await h.retry();
+    expect(h.current.setupState.beatDraft.narration).toBe("Keep applied beat");
+    expect(h.current.props.nativeDrafts?.map((entry) => entry.kind)).toEqual([
+      "category",
+    ]);
+    await h.discard();
+    expect(h.beforeUnload().defaultPrevented).toBe(true);
+    accept({ assets: [structuredClone(h.asset)], total: 1 });
+    await settle();
+    expect(h.current.setupState.categoryDirty).toBe(false);
+    expect(h.current.setupState.categoryDraft).not.toContain(
+      "Discard pending category only",
+    );
+    await h.close();
+    expect(h.patch).toHaveBeenCalledOnce();
+    expect(h.patch.mock.calls[0]![0]).toBe("/stories/story");
+    expect(
+      h.current.setupState.project!.stories[0]!.beats[0]!.script.narration,
+    ).toBe("Keep applied beat");
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: false,
+    });
+  });
+  it("protects live drafts during a pending recovery read and dead-service close", async () => {
+    const h = await fixture();
+    h.current.setupState.selectedAssetId = "photo";
+    h.current.setupState.categoryDraft = ["Pending category"];
+    h.current.setupState.categoryDirty = true;
+    let accept!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      accept = resolve;
+    });
+    h.setAssetRead(() => pending);
+    await h.retry();
+    h.current.setupState.beatDraft.narration = "Live draft during recovery";
+    h.current.setupState.beatDirty = true;
+    await h.discard();
+    expect(h.beforeUnload().defaultPrevented).toBe(true);
+    await h.fail();
+    await h.close();
+    expect(h.invoke).toHaveBeenCalledWith("native_runtime_close", {
+      requestId: 1,
+      cancel: true,
+    });
+    expect(h.patch).not.toHaveBeenCalled();
+    accept({ assets: [structuredClone(h.asset)], total: 1 });
+    await settle();
+    expect(h.current.setupState.beatDraft.narration).toBe(
+      "Live draft during recovery",
+    );
+    expect(h.beforeUnload().defaultPrevented).toBe(true);
   });
   it("retains planner inputs and exports only authored proposal edits, never an old generated plan", async () => {
     const h = await fixture();
