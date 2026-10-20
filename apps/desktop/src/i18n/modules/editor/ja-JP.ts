@@ -161,6 +161,8 @@ export default {
       description:
         "ローカルの PNG アルファマスクと任意の背景補完を使います。元の写真は変更せず、外部の画像サービスも使用しません。",
       importAssets: "写真レイヤーをローカルから読み込む",
+      libraryError:
+        "ローカルの写真レイヤーを読み込めませんでした。再試行してください。",
       sourceHashRequired:
         "深度レイヤーを編集する前に、写真をローカルに読み込んで保存してください。",
       durationRule:

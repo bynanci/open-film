@@ -8,9 +8,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   Composition,
   GraphicImageNode,
@@ -18,10 +19,15 @@ import type {
   MediaAsset,
 } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import * as media from "@openfilm/media";
 import { FFmpegRenderer, prepareGraphicScenes } from "../src/index.js";
 
 const roots: string[] = [];
+vi.mock("@openfilm/media", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@openfilm/media")>()),
+}));
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -126,6 +132,250 @@ async function fixture(
 }
 
 describe("PhotoDepth rendering", () => {
+  it("inspects and renders the same unrotated pixels of an EXIF-oriented PNG mask", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-photo-depth-orientation-"),
+    );
+    roots.push(root);
+    const { assets, composition } = await fixture(
+      root,
+      "nullsrc=s=64x48,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,8,23)*between(Y,12,35),255,0)'",
+    );
+    const mask = assets[1]!;
+    const path = fileURLToPath(mask.uri);
+    const plainPath = join(root, "unoriented-mask.png");
+    await copyFile(path, plainPath);
+    const plainHash = mask.contentHash!;
+    const require = createRequire(import.meta.url);
+    const exiftool = join(
+      dirname(require.resolve("exiftool-vendored.pl/package.json")),
+      "bin",
+      "exiftool",
+    );
+    await runProcess("perl", [
+      exiftool,
+      "-overwrite_original",
+      "-Orientation#=6",
+      path,
+    ]);
+    mask.contentHash = await hashFile(path);
+    expect(mask.contentHash).not.toBe(plainHash);
+    const sourceHashes = await Promise.all(
+      assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
+    );
+    // FFmpeg 7.1 ignores PNG eXIf orientation. Override its input display
+    // matrix to exercise actual autorotation on that runtime too; FFmpeg
+    // still decodes the real EXIF-tagged PNG and honors -noautorotate.
+    const originalRunProcess = media.runProcess;
+    vi.spyOn(media, "runProcess").mockImplementation(
+      async (command, args, options) => {
+        const adjusted: string[] = [];
+        for (let index = 0; index < args.length; index++) {
+          if (
+            command === "ffmpeg" &&
+            args[index] === "-i" &&
+            (await hashFile(args[index + 1]!).catch(() => "")) ===
+              mask.contentHash
+          )
+            adjusted.push("-display_rotation", "90");
+          adjusted.push(args[index]!);
+        }
+        return originalRunProcess(command, adjusted, options);
+      },
+    );
+    const decode = async (noAutorotate: boolean) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          ...(noAutorotate ? ["-noautorotate"] : []),
+          "-f",
+          "png_pipe",
+          "-i",
+          path,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "rgba",
+          "pipe:1",
+        ])
+      ).stdout;
+    const [rotated, unrotated] = await Promise.all([
+      decode(false),
+      decode(true),
+    ]);
+    expect(rotated.length).toBe(64 * 48 * 4);
+    expect(rotated).not.toEqual(unrotated);
+    const scene = composition.graphicScenes![0]!;
+    const recipe = scene.photoDepth;
+    if (recipe?.mode !== "parallax") throw new Error("Expected parallax");
+    recipe.maskSha256 = mask.contentHash;
+    recipe.protectedRegion = { x: 0.1, y: 0.2, width: 0.3, height: 0.6 };
+    const settings = { width: 320, height: 180, frameRate: 8 };
+    const oriented = await prepareGraphicScenes(
+      composition,
+      assets,
+      settings,
+      root,
+    );
+    const plainComposition = structuredClone(composition);
+    const plainRecipe = plainComposition.graphicScenes![0]!.photoDepth!;
+    if (plainRecipe.mode === "parallax") plainRecipe.maskSha256 = plainHash;
+    const plainAssets = assets.map((asset) =>
+      asset.id === mask.id
+        ? {
+            ...asset,
+            uri: pathToFileURL(plainPath).href,
+            contentHash: plainHash,
+          }
+        : asset,
+    );
+    const plain = await prepareGraphicScenes(
+      plainComposition,
+      plainAssets,
+      settings,
+      root,
+    );
+    for (const frame of [47, 0, 24, 11, 0])
+      expect(await oriented.frame(null, frame)).toEqual(
+        await plain.frame(null, frame),
+      );
+    const output = join(root, "oriented-mask.mp4");
+    const plainOutput = join(root, "plain-mask.mp4");
+    await new FFmpegRenderer().render(composition, assets, output, settings);
+    await new FFmpegRenderer().render(
+      plainComposition,
+      plainAssets,
+      plainOutput,
+      settings,
+    );
+    expect(await hashFile(output)).toBe(await hashFile(plainOutput));
+    const monitorPath = join(root, "oriented-mask-monitor-frame-0.png");
+    const decodedPath = join(root, "oriented-mask-decoded-frame-0.png");
+    await writeFile(monitorPath, await oriented.frame(null, 0));
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      output,
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      decodedPath,
+    ]);
+    const decodeRgb = async (path: string) =>
+      (
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          path,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "rgb24",
+          "pipe:1",
+        ])
+      ).stdout;
+    const [monitorRgb, decodedRgb] = await Promise.all([
+      decodeRgb(monitorPath),
+      decodeRgb(decodedPath),
+    ]);
+    const samples = [85, 220].map((x) => {
+      const offset = (90 * settings.width + x) * 3;
+      return {
+        x,
+        y: 90,
+        monitor: [...monitorRgb.subarray(offset, offset + 3)],
+        decoded: [...decodedRgb.subarray(offset, offset + 3)],
+      };
+    });
+    expect(samples[0]!.monitor[2]).toBeGreaterThan(samples[0]!.monitor[1]!);
+    expect(samples[1]!.monitor[1]).toBeGreaterThan(samples[1]!.monitor[2]!);
+    for (const sample of samples)
+      for (let channel = 0; channel < 3; channel++)
+        expect(
+          Math.abs(sample.monitor[channel]! - sample.decoded[channel]!),
+        ).toBeLessThanOrEqual(8);
+    const frameCount = await runProcess("ffprobe", [
+      "-v",
+      "error",
+      "-count_frames",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=nb_read_frames,width,height",
+      "-of",
+      "json",
+      output,
+    ]);
+    expect(JSON.parse(frameCount.stdout.toString()).streams[0]).toMatchObject({
+      nb_read_frames: "48",
+      width: 320,
+      height: 180,
+    });
+    const invalid = structuredClone(composition);
+    const invalidRecipe = invalid.graphicScenes![0]!.photoDepth!;
+    if (invalidRecipe.mode === "parallax")
+      invalidRecipe.protectedRegion = { x: 0, y: 0.1, width: 1, height: 0.3 };
+    await expect(
+      prepareGraphicScenes(invalid, assets, settings, root),
+    ).rejects.toMatchObject({ code: "graphics.protectedRegion" });
+    expect(
+      await Promise.all(
+        assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
+      ),
+    ).toEqual(sourceHashes);
+    expect(await hashFile(plainPath)).toBe(plainHash);
+    const evidence = process.env.OPENFILM_PHOTO_DEPTH_QA_OUTPUT;
+    if (evidence) {
+      await mkdir(evidence, { recursive: true });
+      await Promise.all([
+        copyFile(path, join(evidence, "exif-orientation-6-mask.png")),
+        copyFile(plainPath, join(evidence, "plain-mask.png")),
+        copyFile(output, join(evidence, "oriented-mask.mp4")),
+        copyFile(plainOutput, join(evidence, "plain-mask.mp4")),
+        copyFile(
+          monitorPath,
+          join(evidence, "oriented-mask-monitor-frame-0.png"),
+        ),
+        copyFile(
+          decodedPath,
+          join(evidence, "oriented-mask-decoded-frame-0.png"),
+        ),
+        copyFile(
+          `${output}.manifest.json`,
+          join(evidence, "oriented-mask.manifest.json"),
+        ),
+        writeFile(
+          join(evidence, "oriented-mask.measurements.json"),
+          JSON.stringify(
+            {
+              sourceHashes,
+              plainHash,
+              rotatedPixelSha256: hash(rotated),
+              unrotatedPixelSha256: hash(unrotated),
+              outputSha256: await hashFile(output),
+              frameCount: 48,
+              samples,
+              orientationMetadata: 6,
+              recognizedRotationShim:
+                "FFmpeg 7.1 ignores PNG eXIf; a test-only -display_rotation 90 input override exercises real autorotation with the production -noautorotate policy.",
+              protectedRegion: recipe.protectedRegion,
+            },
+            null,
+            2,
+          ),
+        ),
+      ]);
+    }
+  });
+
   it("intersects source and mask alpha in Monitor pixels and the decoded FFmpeg output", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-photo-depth-alpha-"));
     roots.push(root);

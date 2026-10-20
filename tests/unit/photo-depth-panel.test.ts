@@ -63,7 +63,13 @@ function text(node: HostNode): string {
     .join(" ")
     .trim();
 }
-async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
+async function fixture(
+  recipe?: PhotoDepthRecipe,
+  initialAssetIds?: string[],
+  readLibrary?: (
+    params: URLSearchParams,
+  ) => Promise<{ assets: MediaAsset[]; total: number }>,
+) {
   class HostDocument {
     activeElement = null;
   }
@@ -74,7 +80,12 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
     "apps/desktop/src/components/PhotoDepthControls.vue",
     {
       "vue-i18n": { useI18n: () => ({ t: (key: string) => key }) },
-      "../api": { thumbnailUrl: () => "/synthetic-thumbnail.png" },
+      "../api": {
+        thumbnailUrl: () => "/synthetic-thumbnail.png",
+        api: {
+          assets: readLibrary ?? (async () => ({ assets: [], total: 0 })),
+        },
+      },
       "../photo-depth-controls": { canCreatePhotoDepth },
     },
   );
@@ -115,7 +126,10 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
     }),
   );
   const commands: TimelineCommand[] = [];
+  const references: (readonly MediaAsset[])[] = [];
   const props = vue.shallowReactive({
+    projectId: "film",
+    dependencyVersion: "initial",
     scene,
     node: image,
     assets: initialAssetIds
@@ -124,8 +138,12 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
     duration: 6,
     frameRate: 30,
     disabled: false,
-    onCommand: (command: TimelineCommand) => {
+    onCommand: (
+      command: TimelineCommand,
+      referencedAssets?: readonly MediaAsset[],
+    ) => {
       commands.push(command);
+      references.push(referencedAssets ?? []);
       if (command.type === "graphic.scene.upsert") props.scene = command.scene;
     },
   });
@@ -134,7 +152,10 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
   await vue.nextTick();
   const control = (key: string) =>
     flatten(mounted.root)
-      .find((node) => node.tag === "label" && text(node).includes(key))
+      .find(
+        (node) =>
+          node.tag === "label" && text(node).split(/\s+/u).includes(key),
+      )
       ?.children.find((node) => ["select", "input"].includes(node.tag));
   const button = (key: string) =>
     flatten(mounted.root).find(
@@ -161,6 +182,7 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
   return {
     props,
     commands,
+    references,
     control,
     button,
     model,
@@ -171,6 +193,146 @@ async function fixture(recipe?: PhotoDepthRecipe, initialAssetIds?: string[]) {
 }
 
 describe("PhotoDepth recipe controls", () => {
+  it("ignores stale Library pages after a newer import refresh", async () => {
+    const deferred = () => {
+      let resolve!: (page: { assets: MediaAsset[]; total: number }) => void;
+      const promise = new Promise<{ assets: MediaAsset[]; total: number }>(
+        (yes) => {
+          resolve = yes;
+        },
+      );
+      return { resolve, promise };
+    };
+    const old = deferred(),
+      current = deferred();
+    const reads = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(current.promise);
+    const panel = await fixture(undefined, ["source"], reads);
+    panel.props.dependencyVersion = "new-import";
+    await vue.nextTick();
+    current.resolve({
+      assets: [{ ...panel.assets[1]!, id: "fresh", name: "fresh.png" }],
+      total: 1,
+    });
+    for (let index = 0; index < 8; index++) await vue.nextTick();
+    old.resolve({
+      assets: [{ ...panel.assets[1]!, id: "stale", name: "stale.png" }],
+      total: 1,
+    });
+    for (let index = 0; index < 8; index++) await vue.nextTick();
+    expect(text(panel.control("editor.photoDepth.foregroundMask")!)).toContain(
+      "fresh.png",
+    );
+    expect(
+      text(panel.control("editor.photoDepth.foregroundMask")!),
+    ).not.toContain("stale.png");
+  });
+
+  it("offers an explicit retry after a Library read failure", async () => {
+    const reads = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Temporary catalog read failure"))
+      .mockResolvedValueOnce({ assets: [], total: 0 });
+    const panel = await fixture(undefined, undefined, reads);
+    for (let index = 0; index < 8; index++) await vue.nextTick();
+    expect(panel.button("editor.graphics.retry")).toBeDefined();
+    await panel.click("editor.graphics.retry");
+    for (let index = 0; index < 8; index++) await vue.nextTick();
+    expect(reads).toHaveBeenCalledTimes(2);
+    expect(panel.button("editor.graphics.retry")).toBeUndefined();
+  });
+
+  it("queries every Library image page outside the explicit story pool and passes only chosen dependencies with the command", async () => {
+    const library = Array.from({ length: 200 }, (_, index): MediaAsset => ({
+      id: `remote-${index}`,
+      name: `remote-${index}.png`,
+      mediaType: "image",
+      uri: `https://synthetic.invalid/${index}.png`,
+      contentHash: hash,
+      tags: [],
+      state: {},
+      metadata: {},
+    }));
+    const local = (id: string): MediaAsset => ({
+      id,
+      name: `${id}.png`,
+      mediaType: "image",
+      uri: `file:///synthetic/${id}.png`,
+      contentHash: hash,
+      tags: [],
+      state: {},
+      metadata: {},
+    });
+    library.push(
+      local("new-mask"),
+      local("new-background"),
+      local("unselected"),
+    );
+    const reads = vi.fn(async (params: URLSearchParams) => ({
+      assets: library.slice(
+        Number(params.get("offset")),
+        Number(params.get("offset")) + Number(params.get("limit")),
+      ),
+      total: library.length,
+    }));
+    const panel = await fixture(undefined, ["source"], reads);
+    for (let index = 0; index < 12; index++) await vue.nextTick();
+    expect(reads).toHaveBeenCalledTimes(2);
+    expect(reads.mock.calls.map(([params]) => params.get("offset"))).toEqual([
+      "0",
+      "200",
+    ]);
+    expect(
+      reads.mock.calls.every(([params]) => params.get("mediaType") === "image"),
+    ).toBe(true);
+    expect(
+      text(panel.control("editor.photoDepth.foregroundMask")!),
+    ).not.toContain("remote-");
+    await panel.model("editor.photoDepth.foregroundMask", "new-mask");
+    await panel.model("editor.photoDepth.backgroundMode", "asset");
+    await panel.model("editor.photoDepth.background", "new-background");
+    expect(panel.button("editor.photoDepth.create")!.props.disabled).toBe(
+      false,
+    );
+    await panel.click("editor.photoDepth.create");
+    expect(panel.savedRecipe()).toMatchObject({
+      mode: "parallax",
+      maskAssetId: "new-mask",
+      background: { kind: "asset", assetId: "new-background" },
+    });
+    expect(
+      panel.references
+        .at(-1)!
+        .map((asset) => asset.id)
+        .sort(),
+    ).toEqual(["new-background", "new-mask", "source"]);
+    expect(panel.props.assets.map((asset: MediaAsset) => asset.id)).toEqual([
+      "source",
+    ]);
+  });
+
+  it("refreshes dependency choices after import completion without discarding a pending mask", async () => {
+    let library: MediaAsset[] = [];
+    const reads = vi.fn(async () => ({
+      assets: library,
+      total: library.length,
+    }));
+    const panel = await fixture(parallax, undefined, reads);
+    await panel.model("editor.photoDepth.foregroundMask", "mask-b");
+    library = [
+      { ...panel.assets[1]!, id: "fresh-import", name: "fresh-import.png" },
+    ];
+    panel.props.dependencyVersion = "import-completed";
+    for (let index = 0; index < 12; index++) await vue.nextTick();
+    expect(reads).toHaveBeenCalledTimes(2);
+    expect(text(panel.control("editor.photoDepth.foregroundMask")!)).toContain(
+      "fresh-import.png",
+    );
+    await panel.click("editor.photoDepth.update");
+    expect(panel.savedRecipe()).toMatchObject({ maskAssetId: "mask-b" });
+  });
   it("recreates parallax directly from an active fallback while retaining its recipe ID", async () => {
     const panel = await fixture(fallback);
     expect(panel.control("editor.photoDepth.foregroundMask")).toBeDefined();
