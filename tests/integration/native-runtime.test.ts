@@ -47,8 +47,11 @@ afterEach(async () => {
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
 });
-async function eventually<T>(read: () => T | undefined): Promise<T> {
-  const end = Date.now() + 30000;
+async function eventually<T>(
+  read: () => T | undefined,
+  timeout = 30000,
+): Promise<T> {
+  const end = Date.now() + timeout;
   while (Date.now() < end) {
     const value = read();
     if (value !== undefined) return value;
@@ -133,7 +136,8 @@ async function bundle(root: string) {
         { source: license, sha256: tools.node.licenseSha256 },
       ]),
     ),
-    appVersion: "0.1.0",
+    appVersion: JSON.parse(await readFile(resolve("package.json"), "utf8"))
+      .version,
     platform: process.platform as RuntimeInputs["platform"],
     architecture: process.arch as RuntimeInputs["architecture"],
     nodeVersion: process.versions.node,
@@ -215,6 +219,49 @@ function launch(
     },
   };
 }
+it("closes a genuine service spawn error and can launch a fresh owner afterward", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-native-spawn-error-"));
+  roots.push(root);
+  const { output } = await bundle(root);
+  const entry = join(root, "spawn-error-launcher.mjs");
+  await build({
+    stdin: {
+      contents: `import {runNativeLauncher} from ${JSON.stringify(resolve("apps/server/src/native-launcher.ts"))};
+        import {rm} from 'node:fs/promises';
+        await runNativeLauncher(...process.argv.slice(2), {beforeSpawn: async () => {
+          await rm(process.argv[3], {recursive:true, force:true});
+        }});`,
+      resolveDir: resolve("."),
+      sourcefile: "trusted-spawn-error-harness.ts",
+    },
+    outfile: entry,
+    bundle: true,
+    platform: "node",
+    target: "node24",
+    format: "esm",
+    external: ["@resvg/resvg-js", "fontkit"],
+  });
+  // Removing cwd after the verified preflight produces a real ENOENT spawn
+  // error, with no service PID or exit event; no production verifier is mocked.
+  const failed = launch(join(root, "failed"), output, entry);
+  expect(
+    await eventually(
+      () => failed.messages.find((value) => value.state === "blocked"),
+      5000,
+    ),
+  ).toMatchObject({ state: "blocked", code: "runtime.serviceExited" });
+  failed.child.stdin.write('{"type":"shutdown"}\n');
+  await eventually(
+    () => failed.messages.find((value) => value.state === "closed"),
+    3000,
+  );
+  expect(await eventually(() => failed.child.exitCode ?? undefined, 3000)).toBe(
+    0,
+  );
+  const recovered = launch(join(root, "recovered"), output);
+  await recovered.ready();
+  await recovered.stop();
+}, 30000);
 it("starts a relocated verified runtime, edits/renders/reopens synthetic media and closes only its own service", async () => {
   const root = await mkdtemp(join(tmpdir(), "openfilm-native-runtime-"));
   roots.push(root);

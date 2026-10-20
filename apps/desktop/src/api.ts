@@ -376,6 +376,14 @@ export const captionDownloadUrl = (
   `${prefix}/captions/file?${new URLSearchParams({ id, projectId, kind })}`;
 export const exportDownloadUrl = (filename: string): string =>
   `${prefix}/export/file?${new URLSearchParams({ name: filename })}`;
+export const audioQualityMediaUrl = (
+  reportId: string,
+  variant: "original" | "candidate",
+  projectId: string,
+): string =>
+  `${prefix}/audio-quality/${encodeURIComponent(reportId)}/${variant}?${new URLSearchParams({ projectId })}`;
+export const generatedAudioMediaUrl = (id: string, projectId: string): string =>
+  `${prefix}/audio-generation/${encodeURIComponent(id)}/media?${new URLSearchParams({ projectId })}`;
 
 async function uploadFiles(
   files: File[],

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { AudioGenerationReceipt } from "@openfilm/application";
-import { api } from "../api";
+import { api, generatedAudioMediaUrl } from "../api";
 const props = defineProps<{
   projectId: string;
   compositionId: string;
@@ -193,7 +193,8 @@ function importAudio() {
       </p>
       <audio
         controls
-        :src="`/api/audio-generation/${receipt.id}/media?projectId=${encodeURIComponent(projectId)}`"
+        crossorigin="anonymous"
+        :src="generatedAudioMediaUrl(receipt.id, projectId)"
         :aria-label="t('editor.audioGeneration.preview')"
       />
       <details>

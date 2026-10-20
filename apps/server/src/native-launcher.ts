@@ -233,7 +233,8 @@ export async function runNativeLauncher(
     });
     let expectedExit = false;
     let acknowledged = false;
-    const exited = new Promise<number | null>((accept) =>
+    let spawnFailed = false;
+    const exited = new Promise<number | null>((accept) => {
       child.once("exit", (code) => {
         if (!expectedExit) {
           output({ state: "blocked", code: "runtime.serviceExited" });
@@ -242,8 +243,14 @@ export async function runNativeLauncher(
           process.stdin.destroy();
         }
         accept(code);
-      }),
-    );
+      });
+      child.once("error", () => {
+        if (child.pid === undefined) {
+          spawnFailed = true;
+          accept(null);
+        }
+      });
+    });
     const wait = <T>(promise: Promise<T>, ms: number) =>
       new Promise<T>((accept, reject) => {
         const timer = setTimeout(
@@ -263,6 +270,7 @@ export async function runNativeLauncher(
       });
     const closeService = async () => {
       expectedExit = true;
+      if (spawnFailed) return;
       if (child.exitCode !== null || child.signalCode !== null) {
         if (child.exitCode !== 0 || !acknowledged)
           throw new Error("runtime.closeFailed");
