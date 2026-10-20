@@ -15,7 +15,7 @@ import {
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import {
@@ -226,40 +226,11 @@ function launch(
     },
   };
 }
-it("rejects a verified runtime missing any shipped workflow filter before starting a service", async () => {
-  const root = await mkdtemp(join(tmpdir(), "openfilm-native-filters-"));
-  roots.push(root);
-  const selection = join(root, "omitted-filter.txt");
-  await writeFile(selection, "");
-  const ffmpeg = join(root, "reduced-ffmpeg");
-  // This executable is staged and hash-verified exactly like a real input.
-  // It delegates version/encoder probes to FFmpeg, changing only its filter
-  // advertisement under trusted test control outside the runtime bundle.
-  await writeFile(
-    ffmpeg,
-    `#!${await realpath(process.execPath)}
-    (async () => {
-      const {spawnSync} = await import('node:child_process');
-      const {readFileSync} = await import('node:fs');
-      const args = process.argv.slice(2);
-      const result = spawnSync('/usr/bin/ffmpeg', args, {encoding:'utf8', maxBuffer:2097152});
-      if (result.error) throw result.error;
-      let stdout = result.stdout;
-      if (args.includes('-filters')) {
-        const missing = readFileSync(${JSON.stringify(selection)}, 'utf8');
-        stdout = stdout.split('\\n').filter(line => line.trim().split(/\\s+/u)[1] !== missing).join('\\n');
-      }
-      process.stdout.write(stdout);
-      process.stderr.write(result.stderr);
-      process.exitCode = result.status ?? 1;
-    })().catch(error => { console.error(error); process.exitCode = 1; });
-    `,
-    { mode: 0o755 },
-  );
-  const { output } = await bundle(root, ffmpeg);
-  const control = launch(join(root, "control"), output);
-  await control.ready();
-  await control.stop();
+describe("verified native filter admission", { concurrent: false }, () => {
+  let root: string;
+  let selection: string;
+  let output: string;
+  let fullNames: Set<string | undefined>;
   // Independent inventory of the actual source graphs, including existing
   // admission requirements. Each omission is tested alone, not as a group.
   const filters = [
@@ -307,38 +278,88 @@ it("rejects a verified runtime missing any shipped workflow filter before starti
     "fps",
     "xfade",
   ];
-  const full = (
-    await runProcess("/usr/bin/ffmpeg", ["-hide_banner", "-filters"])
-  ).stdout.toString();
-  const fullNames = new Set(
-    full.split("\n").map((line) => line.trim().split(/\s+/u)[1]),
-  );
-  for (const filter of filters) {
-    expect(fullNames.has(filter), `Full FFmpeg lacks ${filter}`).toBe(true);
-    await writeFile(selection, filter);
-    const advertised = (
-      await runProcess(join(output, "bin/ffmpeg"), ["-hide_banner", "-filters"])
-    ).stdout.toString();
-    expect(
-      advertised
-        .split("\n")
-        .some((line) => line.trim().split(/\s+/u)[1] === filter),
-    ).toBe(false);
-    const reduced = launch(join(root, `missing-${filter}`), output);
-    expect(
-      await eventually(() =>
-        reduced.messages.find(
-          (value) => value.state === "ready" || value.state === "blocked",
-        ),
-      ),
-      `A runtime without ${filter} must not be admitted`,
-    ).toMatchObject({ state: "blocked", code: "runtime.codecs" });
-    expect(reduced.messages.some((value) => value.state === "ready")).toBe(
-      false,
+
+  // Stage once, but keep every fault injection a separate serial test. A single
+  // wall-clock budget for 43 independent launches obscures the failing filter
+  // and expires on slower CI even when every individual contract is satisfied.
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), "openfilm-native-filters-"));
+    selection = join(root, "omitted-filter.txt");
+    await writeFile(selection, "");
+    const ffmpeg = join(root, "reduced-ffmpeg");
+    // This executable is staged and hash-verified exactly like a real input.
+    // It delegates version/encoder probes to FFmpeg, changing only its filter
+    // advertisement under trusted test control outside the runtime bundle.
+    await writeFile(
+      ffmpeg,
+      `#!${await realpath(process.execPath)}
+    (async () => {
+      const {spawnSync} = await import('node:child_process');
+      const {readFileSync} = await import('node:fs');
+      const args = process.argv.slice(2);
+      const result = spawnSync('/usr/bin/ffmpeg', args, {encoding:'utf8', maxBuffer:2097152});
+      if (result.error) throw result.error;
+      let stdout = result.stdout;
+      if (args.includes('-filters')) {
+        const missing = readFileSync(${JSON.stringify(selection)}, 'utf8');
+        stdout = stdout.split('\\n').filter(line => line.trim().split(/\\s+/u)[1] !== missing).join('\\n');
+      }
+      process.stdout.write(stdout);
+      process.stderr.write(result.stderr);
+      process.exitCode = result.status ?? 1;
+    })().catch(error => { console.error(error); process.exitCode = 1; });
+    `,
+      { mode: 0o755 },
     );
-    await reduced.stop();
-  }
-}, 60000);
+    ({ output } = await bundle(root, ffmpeg));
+    const full = (
+      await runProcess("/usr/bin/ffmpeg", ["-hide_banner", "-filters"])
+    ).stdout.toString();
+    fullNames = new Set(
+      full.split("\n").map((line) => line.trim().split(/\s+/u)[1]),
+    );
+  });
+  afterAll(async () => {
+    if (root) await rm(root, { recursive: true, force: true });
+  });
+  it("admits the complete advertised runtime and closes its owned service", async () => {
+    await writeFile(selection, "");
+    const control = launch(join(root, "control"), output);
+    await control.ready();
+    await control.stop();
+  });
+  it.each(filters)(
+    "rejects a verified runtime missing %s before starting a service",
+    async (filter) => {
+      expect(fullNames.has(filter), `Full FFmpeg lacks ${filter}`).toBe(true);
+      await writeFile(selection, filter);
+      const advertised = (
+        await runProcess(join(output, "bin/ffmpeg"), [
+          "-hide_banner",
+          "-filters",
+        ])
+      ).stdout.toString();
+      expect(
+        advertised
+          .split("\n")
+          .some((line) => line.trim().split(/\s+/u)[1] === filter),
+      ).toBe(false);
+      const reduced = launch(join(root, `missing-${filter}`), output);
+      expect(
+        await eventually(() =>
+          reduced.messages.find(
+            (value) => value.state === "ready" || value.state === "blocked",
+          ),
+        ),
+        `A runtime without ${filter} must not be admitted`,
+      ).toMatchObject({ state: "blocked", code: "runtime.codecs" });
+      expect(reduced.messages.some((value) => value.state === "ready")).toBe(
+        false,
+      );
+      await reduced.stop();
+    },
+  );
+});
 it("closes a genuine service spawn error and can launch a fresh owner afterward", async () => {
   const root = await mkdtemp(join(tmpdir(), "openfilm-native-spawn-error-"));
   roots.push(root);
