@@ -229,7 +229,16 @@ function assertGraphicSceneLocks(
   previous: GraphicScene | undefined,
   next: GraphicScene,
 ): void {
-  if (!previous) return;
+  if (!previous) {
+    const target = next.photoDepth
+      ? graphicNodeLockEntries(next).get(next.photoDepth.nodeId)?.node
+      : undefined;
+    if (target?.locked)
+      fail(
+        `Locked graphic layer "${target.id}" cannot receive a PhotoDepth recipe.`,
+      );
+    return;
+  }
   const oldEntries = graphicNodeLockEntries(previous);
   if (
     [...oldEntries.values()].some(({ node }) => node.locked) &&
@@ -241,6 +250,21 @@ function assertGraphicSceneLocks(
       "A scene containing locked graphic layers cannot be moved or retimed.",
     );
   const newEntries = graphicNodeLockEntries(next);
+  if (!sameGraphicData(previous.photoDepth, next.photoDepth)) {
+    const photoNodeIds = new Set(
+      [previous.photoDepth?.nodeId, next.photoDepth?.nodeId].filter(
+        (id): id is string => Boolean(id),
+      ),
+    );
+    for (const photoNodeId of photoNodeIds)
+      if (
+        oldEntries.get(photoNodeId)?.node.locked ||
+        newEntries.get(photoNodeId)?.node.locked
+      )
+        fail(
+          `Locked graphic layer "${photoNodeId}" cannot change its PhotoDepth recipe.`,
+        );
+  }
   for (const [id, entry] of oldEntries) {
     if (!entry.node.locked) continue;
     const replacement = newEntries.get(id);
@@ -827,6 +851,36 @@ export function applyTimelineCommand(
         [command.scene],
         next.composition.duration,
       );
+      const recipe = scene!.photoDepth;
+      if (recipe) {
+        const references = [
+          { id: recipe.sourceAssetId, hash: recipe.sourceSha256 },
+          ...(recipe.mode === "parallax"
+            ? [
+                { id: recipe.maskAssetId!, hash: recipe.maskSha256! },
+                ...(recipe.background?.kind === "asset"
+                  ? [
+                      {
+                        id: recipe.background.assetId,
+                        hash: recipe.background.sha256,
+                      },
+                    ]
+                  : []),
+              ]
+            : []),
+        ];
+        for (const reference of references) {
+          const asset = findAsset(assets, reference.id);
+          if (asset.mediaType !== "image")
+            fail(`PhotoDepth source "${reference.id}" must be a still image.`);
+          if (!asset.contentHash || asset.contentHash !== reference.hash)
+            throw new ApplicationError(
+              "graphics.sourceChanged",
+              `PhotoDepth source "${reference.id}" does not match its saved SHA-256 receipt.`,
+              409,
+            );
+        }
+      }
       for (const id of graphicSceneAssetIds([scene!])) {
         const asset = findAsset(assets, id);
         if (asset.mediaType !== "image")

@@ -776,3 +776,32 @@ separately.
 
 M7B–M7E (export formats, NLE fidelity, Collect Media, and native installer) stay
 queued until independently scoped and reviewed. M7A does not implement them.
+
+## Candidate — M8A selective 2.5D PhotoDepth
+
+Scope: [PhotoDepth contract](docs/photo-depth.md), [threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1),
+[validation record](docs/validation-photo-depth.md), [GraphicScene contract](docs/graphic-scenes.md).
+This branch is stacked on M7A PR #34's exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`;
+it is not merged and must be retargeted if that dependency changes.
+
+- [x] Add a strict optional `PhotoDepthRecipe` to the existing GraphicScene
+      Image contract with stable IDs, source/mask/fill hashes, protected region,
+      bounded camera/depth/easing and explicit fallback.
+- [x] Share one arbitrary-seek evaluator and prepared foreground/background
+      textures across Monitor PNG and FFmpeg output; keep the image-node interval
+      as the only clock and preserve legacy projects.
+- [x] Use the existing local media importer, validate PNG dimensions/alpha/source
+      hashes, and keep typed edit, lock, source replacement, history/autosave and
+      reopen semantics in the current command path.
+- [x] Add Visual QA diagnostics for unavailable/changed sources, invalid or
+      empty/mismatched masks, enclosed transparent regions, protected-region
+      failures, explicit fallback and manual subject/edge review.
+- [x] Complete a real 6-second/180-frame synthetic MP4, shuffled decoded seeks,
+      Monitor parity, Visual QA, named-version restore/reopen and Desktop browser
+      regressions; record hashes and measurements in the validation file.
+- [x] Pass format, i18n, lint, typecheck, unit/integration, build, all 169 E2E
+      tests and interchange validation on the M8A source tree.
+- [ ] Complete independent PR review and stacked PR CI. Rust/native checks are
+      unavailable because this environment has no Rust toolchain. Real people,
+      sustained 4K, physical display and Resolve/NLE behavior remain
+      candidate-bound workstation gates.

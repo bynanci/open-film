@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
+import { hashFile, runProcess } from "@openfilm/media";
+import { join } from "node:path";
 import { initialLocale, navigate } from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
 const api = "http://127.0.0.1:4310/api";
@@ -693,4 +695,296 @@ test("authors all primitives, seeks exact shared frames and preserves history an
   await page.reload();
   await navigate(page, "edit");
   expect((await state()).composition.graphicSceneTemplates).toEqual(templates);
+});
+
+test("authors local PhotoDepth layers, previews shared frames, and preserves undo/reopen", async ({
+  page,
+  request,
+}) => {
+  fixture = await createDesktopFixture(0);
+  const maskPath = join(fixture.media, "synthetic-depth-mask.png");
+  const backgroundPath = join(fixture.media, "synthetic-depth-background.png");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "nullsrc=s=320x180,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,40,139)*between(Y,30,149),255,0)'",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    "-pix_fmt",
+    "rgba",
+    "-y",
+    maskPath,
+  ]);
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x1d694b:s=320x180",
+    "-frames:v",
+    "1",
+    "-threads",
+    "1",
+    "-y",
+    backgroundPath,
+  ]);
+  const importedHashes = await Promise.all(
+    [maskPath, backgroundPath].map((path) => hashFile(path)),
+  );
+  const app = await OpenFilmApplication.create(
+    fixture.project,
+    "Synthetic PhotoDepth film",
+  );
+  let maskId: string;
+  let maskHash: string;
+  let backgroundId: string;
+  let sourceHash: string;
+  let replacementId: string;
+  let replacementHash: string;
+  try {
+    await app.importFolder(fixture.media);
+    const assets = app.catalog.listAssets({ limit: 100 });
+    const photo = assets.find((asset) => asset.name === "01-photo.png")!;
+    const replacementPhoto = assets.find(
+      (asset) => asset.name === "02-photo-copy.png",
+    )!;
+    const mask = assets.find(
+      (asset) => asset.name === "synthetic-depth-mask.png",
+    )!;
+    const background = assets.find(
+      (asset) => asset.name === "synthetic-depth-background.png",
+    )!;
+    maskId = mask.id;
+    maskHash = mask.contentHash!;
+    backgroundId = background.id;
+    sourceHash = photo.contentHash!;
+    replacementId = replacementPhoto.id;
+    replacementHash = replacementPhoto.contentHash!;
+    app.project.settings = { width: 320, height: 180, frameRate: 30 };
+    const story = app.generateStory({
+      title: "Synthetic parallax",
+      template: "blank",
+      assetIds: [photo.id, replacementPhoto.id, mask.id, background.id],
+      targetDuration: 6,
+      maxDuration: 6,
+    });
+    const composition = app.compose(story.id);
+    composition.id = compositionId;
+    composition.duration = 6;
+    composition.tracks = [
+      {
+        id: "photo-track",
+        type: "video",
+        clips: [
+          {
+            id: "photo-clip",
+            assetId: photo.id,
+            beatId: story.beats[0]!.id,
+            sourceIn: 0,
+            sourceOut: 6,
+            timelineStart: 0,
+            timelineDuration: 6,
+          },
+        ],
+      },
+    ];
+    composition.graphicScenes = [
+      {
+        version: 1,
+        id: "photo-depth-scene",
+        name: "Synthetic depth",
+        start: 0,
+        duration: 6,
+        zIndex: 0,
+        nodes: [
+          {
+            id: "photo-depth-image",
+            type: "image",
+            assetId: photo.id,
+            x: 0,
+            y: 0,
+            width: 320,
+            height: 180,
+            opacity: 1,
+            zIndex: 0,
+            start: 0,
+            end: 6,
+          },
+        ],
+      },
+    ];
+    app.project.timelines[app.project.timelines.length - 1] = composition;
+    await app.save();
+  } finally {
+    app.close();
+  }
+  expect(
+    (
+      await request.post(`${api}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await initialLocale(page);
+  await page.goto("/");
+  await navigate(page, "edit");
+  await page.getByTestId("graphic-inspector-tab").click();
+  const panel = page.locator(".graphic-inspector");
+  await panel
+    .getByRole("button", {
+      name: "Select layer photo-depth-image",
+      exact: true,
+    })
+    .click();
+  const controls = panel.getByTestId("photo-depth-controls");
+  await expect(controls).toBeVisible();
+  await controls
+    .getByRole("button", { name: "Import local photo layers", exact: true })
+    .click();
+  await expect(page.locator(".import-panel")).toBeVisible();
+  await page.getByRole("button", { name: "Close import", exact: true }).click();
+  await controls.getByLabel("Foreground alpha mask (PNG)").selectOption(maskId);
+  await controls.getByLabel("Background source").selectOption("asset");
+  await controls.getByLabel("Background fill image").selectOption(backgroundId);
+  await controls
+    .getByRole("button", { name: "Create photo motion", exact: true })
+    .click();
+  const state = async () =>
+    (await request.get(`${api}/compositions/${compositionId}/editor`)).json();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  const recipe = (await state()).composition.graphicScenes[0].photoDepth;
+  expect(recipe).toMatchObject({
+    mode: "parallax",
+    sourceAssetId: expect.any(String),
+    maskAssetId: expect.any(String),
+    background: { kind: "asset", assetId: backgroundId },
+    duration: 6,
+  });
+  expect(recipe.sourceSha256).toBe(sourceHash);
+  expect(recipe.maskSha256).toBe(maskHash);
+  const projectId = (await (await request.get(`${api}/project`)).json()).project
+    .id;
+  const saved = await state();
+  const frame = await request.get(
+    `${api}/compositions/${compositionId}/graphics.png?projectId=${encodeURIComponent(projectId)}&revision=${encodeURIComponent(saved.revision)}&frame=90`,
+  );
+  if (!frame.ok())
+    throw new Error(
+      `Graphic preview returned HTTP ${frame.status()}: ${await frame.text()}`,
+    );
+  expect(frame.headers()["content-type"]).toContain("image/png");
+  const frameBytes = await frame.body();
+  expect(frameBytes.readUInt32BE(16)).toBe(320);
+  expect(frameBytes.readUInt32BE(20)).toBe(180);
+  await controls
+    .getByRole("button", { name: "Preview middle", exact: true })
+    .click();
+  await expect(page.locator(".graphic-preview-status")).toHaveCount(0);
+  await expect(page.getByTestId("graphic-preview")).toBeVisible();
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+
+  const sourcePicker = panel.getByTestId("graphic-node-image-asset");
+  await expect(sourcePicker).toBeEnabled();
+  await sourcePicker.selectOption(replacementId, { timeout: 5_000 });
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+  expect((await state()).composition.graphicScenes[0].photoDepth).toMatchObject(
+    {
+      sourceAssetId: replacementId,
+      fallbackReason: "mask-unreliable",
+    },
+  );
+  await expect
+    .poll(
+      async () =>
+        (await state()).composition.graphicScenes[0].photoDepth?.sourceSha256,
+    )
+    .toBe(replacementHash);
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("parallax");
+  await page.getByRole("button", { name: "Redo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.mode,
+    )
+    .toBe("fallback");
+  await page.getByRole("button", { name: "Undo edit", exact: true }).click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.id,
+    )
+    .toBe(recipe.id);
+  expect(
+    await Promise.all([maskPath, backgroundPath].map((path) => hashFile(path))),
+  ).toEqual(importedHashes);
+  await request.post(`${api}/project/close`, { data: {} });
+  expect(
+    (
+      await request.post(`${api}/project/open`, {
+        data: { path: fixture.project },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await page.getByTestId("graphic-inspector-tab").click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].photoDepth?.id,
+    )
+    .toBe(recipe.id);
+  await expect(
+    page.locator("[data-testid='photo-depth-controls']"),
+  ).toBeVisible();
+
+  await panel
+    .getByRole("button", {
+      name: "Select layer photo-depth-image",
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByRole("button", { name: "Remove layer", exact: true })
+    .click();
+  await expect
+    .poll(async () => {
+      const current = (await state()).composition.graphicScenes[0];
+      return {
+        hasPhotoLayer: current.nodes.some(
+          (node: { id: string }) => node.id === "photo-depth-image",
+        ),
+        recipe: current.photoDepth,
+      };
+    })
+    .toEqual({ hasPhotoLayer: false, recipe: undefined });
 });

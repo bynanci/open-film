@@ -92,6 +92,201 @@ async function fixture() {
 }
 
 describe("durable GraphicScene editing", () => {
+  it("rejects PhotoDepth recipes whose bound source hashes differ from catalog assets", async () => {
+    const { app, editor } = await fixture();
+    for (const [id, contentHash] of [
+      ["photo-original", "a".repeat(64)],
+      ["photo-mask", "b".repeat(64)],
+      ["photo-background", "c".repeat(64)],
+    ] as const)
+      app.catalog.upsertAsset({
+        id,
+        uri: `file:///synthetic/${id}.png`,
+        name: id,
+        mediaType: "image",
+        contentHash,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+    const before = editor.get("composition");
+    const scene = graphicScene({
+      id: "photo-depth-source-fence",
+      nodes: [
+        {
+          id: "photo-node",
+          type: "image",
+          assetId: "photo-original",
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 180,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+      photoDepth: {
+        version: 1,
+        id: "photo-depth-recipe",
+        nodeId: "photo-node",
+        mode: "parallax",
+        duration: 6,
+        sourceAssetId: "photo-original",
+        sourceSha256: "d".repeat(64),
+        maskAssetId: "photo-mask",
+        maskSha256: "b".repeat(64),
+        background: {
+          kind: "asset",
+          assetId: "photo-background",
+          sha256: "c".repeat(64),
+        },
+        protectedRegion: { x: 0.25, y: 0.1, width: 0.5, height: 0.8 },
+        foregroundDepth: 1.2,
+        backgroundDepth: 0.25,
+        amplitude: 0.5,
+        camera: {
+          from: { x: 0, y: 0, scale: 1 },
+          to: { x: 0.02, y: 0, scale: 1.04 },
+        },
+        easing: "ease-in-out",
+      },
+    });
+    await expect(
+      editor.edit("composition", {
+        baseRevision: before.revision,
+        commands: [{ type: "graphic.scene.upsert", scene }],
+      }),
+    ).rejects.toMatchObject({ code: "graphics.sourceChanged" });
+    expect(editor.get("composition").revision).toBe(before.revision);
+
+    const boundScene = structuredClone(scene);
+    boundScene.photoDepth!.sourceSha256 = "a".repeat(64);
+    const accepted = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: boundScene }],
+    });
+    const rebindToLocked = structuredClone(
+      accepted.composition.graphicScenes![0]!,
+    );
+    rebindToLocked.nodes.push({
+      ...rebindToLocked.nodes[0]!,
+      id: "locked-photo-node",
+      x: 20,
+      locked: true,
+    });
+    rebindToLocked.photoDepth!.nodeId = "locked-photo-node";
+    await expect(
+      editor.edit("composition", {
+        baseRevision: accepted.revision,
+        commands: [{ type: "graphic.scene.upsert", scene: rebindToLocked }],
+      }),
+    ).rejects.toThrow(/locked.*locked-photo-node.*PhotoDepth/i);
+
+    const lockedScene = structuredClone(
+      accepted.composition.graphicScenes![0]!,
+    );
+    lockedScene.nodes[0]!.locked = true;
+    const locked = await editor.edit("composition", {
+      baseRevision: accepted.revision,
+      commands: [{ type: "graphic.scene.upsert", scene: lockedScene }],
+    });
+    const changed = structuredClone(locked.composition.graphicScenes![0]!);
+    if (changed.photoDepth?.mode === "parallax")
+      changed.photoDepth.amplitude = 0.75;
+    await expect(
+      editor.edit("composition", {
+        baseRevision: locked.revision,
+        commands: [{ type: "graphic.scene.upsert", scene: changed }],
+      }),
+    ).rejects.toThrow(/locked.*PhotoDepth/i);
+  });
+
+  it("keeps PhotoDepth recipes in the typed edit history and reopens the same saved revision", async () => {
+    const { app, editor } = await fixture();
+    const identities = {
+      photo: { id: "depth-photo", hash: "a".repeat(64) },
+      mask: { id: "depth-mask", hash: "b".repeat(64) },
+      background: { id: "depth-background", hash: "c".repeat(64) },
+    };
+    for (const [name, { id, hash }] of Object.entries(identities))
+      app.catalog.upsertAsset({
+        id,
+        uri: `file:///synthetic/${name}.png`,
+        name,
+        mediaType: "image",
+        contentHash: hash,
+        tags: [],
+        state: {},
+        metadata: {},
+      });
+    const before = editor.get("composition");
+    const scene = graphicScene({
+      id: "photo-depth-history",
+      nodes: [
+        {
+          id: "depth-image",
+          type: "image",
+          assetId: identities.photo.id,
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 180,
+          opacity: 1,
+          zIndex: 0,
+          start: 0,
+          end: 6,
+        },
+      ],
+      photoDepth: {
+        version: 1,
+        id: "depth-history-recipe",
+        nodeId: "depth-image",
+        mode: "parallax",
+        duration: 6,
+        sourceAssetId: identities.photo.id,
+        sourceSha256: identities.photo.hash,
+        maskAssetId: identities.mask.id,
+        maskSha256: identities.mask.hash,
+        background: {
+          kind: "asset",
+          assetId: identities.background.id,
+          sha256: identities.background.hash,
+        },
+        protectedRegion: { x: 0.2, y: 0.1, width: 0.6, height: 0.8 },
+        foregroundDepth: 1.2,
+        backgroundDepth: 0.25,
+        amplitude: 0.5,
+        camera: {
+          from: { x: 0, y: 0, scale: 1 },
+          to: { x: 0.02, y: 0, scale: 1.04 },
+        },
+        easing: "ease-in-out",
+      },
+    });
+    const added = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene }],
+    });
+    const undo = await editor.undo("composition", added.revision);
+    expect(undo.composition.graphicScenes).toBeUndefined();
+    const redo = await editor.redo("composition", undo.revision);
+    expect(redo.composition.graphicScenes?.[0]?.photoDepth).toEqual(
+      scene.photoDepth,
+    );
+    const directory = app.directory;
+    app.close();
+    apps.delete(app);
+    const reopened = await OpenFilmApplication.open(directory);
+    apps.add(reopened);
+    const saved = new TimelineEditor(reopened).get("composition");
+    expect(saved.composition.graphicScenes?.[0]?.photoDepth).toEqual(
+      scene.photoDepth,
+    );
+    expect(saved.revision).toBe(redo.revision);
+  });
+
   it("saves stable scene/node IDs through update, Undo/Redo, retry and reopen", async () => {
     const { app, editor } = await fixture();
     const before = editor.get("composition");

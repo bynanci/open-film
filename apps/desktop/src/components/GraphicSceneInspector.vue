@@ -6,16 +6,19 @@ import {
   type GraphicScene,
   type GraphicNode,
   type GraphicEasing,
+  type PhotoDepthRecipe,
 } from "@openfilm/core";
 import type { MediaAsset } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import GraphicSceneAgentReview from "./GraphicSceneAgentReview.vue";
+import PhotoDepthControls from "./PhotoDepthControls.vue";
 const props = defineProps<{
   projectId: string;
   compositionId: string;
   revision: string;
   scenes: readonly GraphicScene[];
   duration: number;
+  frameRate: number;
   assets: readonly MediaAsset[];
   disabled: boolean;
   agentDisabled: boolean;
@@ -27,6 +30,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   command: [command: TimelineCommand];
   selection: [selection: { sceneId: string; nodeId: string }];
+  previewTime: [time: number];
+  importAssets: [];
   "update:snapping": [value: boolean];
   "update:guides": [value: boolean];
   agentBusy: [value: boolean];
@@ -106,6 +111,11 @@ watch(
 const images = computed(() =>
   props.assets.filter((asset) => asset.mediaType === "image"),
 );
+const isRootImageNode = computed(
+  () =>
+    node.value?.type === "image" &&
+    scene.value?.nodes.some((item) => item.id === node.value?.id),
+);
 const value = (event: Event) => (event.target as HTMLInputElement).value;
 const numericFields = [
   "x",
@@ -171,7 +181,37 @@ function updateLayer(id: string, update: (node: GraphicNode) => void) {
     (item) => item.node.id === id,
   )?.node;
   if (!selected) return;
+  const priorImageAssetId =
+    selected.type === "image" ? selected.assetId : undefined;
   update(selected);
+  if (
+    selected.type === "image" &&
+    priorImageAssetId !== selected.assetId &&
+    next.photoDepth?.nodeId === id
+  ) {
+    const bound = next.photoDepth;
+    const replacement = props.assets.find(
+      (asset) => asset.id === selected.assetId,
+    );
+    const duration = selected.end - selected.start;
+    if (
+      replacement?.contentHash &&
+      /^[a-f0-9]{64}$/u.test(replacement.contentHash) &&
+      duration >= 3 &&
+      duration <= 6
+    ) {
+      next.photoDepth = {
+        version: 1,
+        id: bound.id,
+        nodeId: id,
+        mode: "fallback",
+        duration,
+        sourceAssetId: selected.assetId,
+        sourceSha256: replacement.contentHash,
+        fallbackReason: "mask-unreliable",
+      } satisfies PhotoDepthRecipe;
+    } else delete next.photoDepth;
+  }
   save(next);
 }
 function addScene() {
@@ -237,6 +277,7 @@ function removeNode() {
           : item,
       );
   next.nodes = remove(next.nodes);
+  if (next.photoDepth?.nodeId === nodeId.value) delete next.photoDepth;
   save(next);
 }
 function nudgeLayer(event: KeyboardEvent) {
@@ -628,6 +669,7 @@ function endpointValue(
             <label v-if="node.type === 'image'"
               >{{ t("editor.graphics.image")
               }}<select
+                data-testid="graphic-node-image-asset"
                 :value="node.assetId"
                 @change="
                   updateNode((item) => {
@@ -644,6 +686,18 @@ function endpointValue(
                 </option>
               </select></label
             >
+            <PhotoDepthControls
+              v-if="node.type === 'image' && isRootImageNode && scene"
+              :scene="scene"
+              :node="node"
+              :assets="assets"
+              :duration="duration"
+              :frame-rate="frameRate"
+              :disabled="disabled || selectedLayerProtected"
+              @command="emit('command', $event)"
+              @preview="emit('previewTime', $event)"
+              @import-assets="emit('importAssets')"
+            />
             <template v-if="node.type === 'shape'"
               ><label
                 >{{ t("editor.graphics.shape")

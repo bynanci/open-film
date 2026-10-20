@@ -5,14 +5,19 @@ import { open, readFile, stat, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ApplicationError,
+  type ApplicationErrorCode,
   GRAPHIC_SCENE_LIMITS as limits,
   evaluateGraphicSceneAtTime,
+  evaluatePhotoDepthAtTime,
   graphicSceneAssetIds,
   validateGraphicScenes,
   type Composition,
   type EvaluatedGraphicNode,
   type GraphicNode,
+  type GraphicScene,
+  type GraphicImageNode,
   type MediaAsset,
+  type PhotoDepthParallaxRecipe,
 } from "@openfilm/core";
 import { checkAbort, hashFile, localPath, runProcess } from "@openfilm/media";
 import { createTitleOverlay } from "./titles.js";
@@ -132,6 +137,11 @@ export interface PreparedGraphicScenes {
   fonts: RenderFontEvidence[];
   warnings: string[];
   sources: { assetId: string; sha256: string }[];
+  photoDepthFindings: {
+    sceneId: string;
+    nodeId: string;
+    significantTransparentHoles: boolean;
+  }[];
   frame(sceneId: string | null, outputFrame: number): Promise<Buffer>;
   verifySources(): Promise<void>;
   assertSourceIdentities(): Promise<void>;
@@ -141,7 +151,7 @@ export interface PreparedGraphicScenes {
 export async function inspectGraphicImage(
   asset: MediaAsset,
   work: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; typedSourceHashMismatch?: boolean } = {},
 ) {
   checkAbort(options.signal);
   if (asset.mediaType !== "image" || !asset.uri.startsWith("file:"))
@@ -155,8 +165,14 @@ export async function inspectGraphicImage(
     const bytes = await readSourceBytes(sourcePath, info.size);
     const imageFormat = format(bytes);
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    if (asset.contentHash && sha256 !== asset.contentHash)
+    if (asset.contentHash && sha256 !== asset.contentHash) {
+      if (options.typedSourceHashMismatch)
+        photoDepthFailure(
+          "graphics.sourceChanged",
+          "PhotoDepth source changed; restore or relink its local source.",
+        );
       fail("Graphic image changed; restore or relink its source.");
+    }
     // Probe/decode only the exact admitted bytes, never a subsequently replaced input.
     await writeFile(path, bytes, { mode: 0o600 });
     const probe = await runProcess(
@@ -180,6 +196,7 @@ export async function inspectGraphicImage(
       width?: number;
       height?: number;
       codec_name?: string;
+      pix_fmt?: string;
     }>;
     const image = streams?.[0];
     if (
@@ -199,6 +216,9 @@ export async function inspectGraphicImage(
       format: imageFormat,
       sha256,
       byteLength: bytes.length,
+      width: image.width,
+      height: image.height,
+      pixelFormat: image.pix_fmt ?? "",
     };
   } catch (error) {
     await rm(path, { force: true });
@@ -208,6 +228,283 @@ export async function inspectGraphicImage(
       "Graphic image source is unavailable, malformed or unsupported.",
     );
   }
+}
+
+function photoDepthFailure(code: ApplicationErrorCode, message: string): never {
+  throw new ApplicationError(code, message, 422);
+}
+
+interface MatteBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  significantTransparentHoles: boolean;
+}
+
+async function inspectPhotoDepthMask(
+  mask: Awaited<ReturnType<typeof inspectGraphicImage>>,
+  source: Awaited<ReturnType<typeof inspectGraphicImage>>,
+  signal?: AbortSignal,
+): Promise<MatteBounds> {
+  if (mask.format !== "png_pipe")
+    photoDepthFailure(
+      "graphics.maskInvalid",
+      "PhotoDepth foreground mattes must be PNG images.",
+    );
+  if (mask.width !== source.width || mask.height !== source.height)
+    photoDepthFailure(
+      "graphics.maskMismatch",
+      "PhotoDepth mask dimensions must match the original photo.",
+    );
+  const pixels = mask.width * mask.height;
+  if (pixels > limits.photoMaskPixels)
+    photoDepthFailure(
+      "graphics.resourceLimit",
+      "PhotoDepth mask exceeds the decoded pixel budget.",
+    );
+  const decoded = await runProcess(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-protocol_whitelist",
+      "file,pipe",
+      "-f",
+      mask.format,
+      "-i",
+      mask.path,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgba",
+      "pipe:1",
+    ],
+    { signal, timeoutMs: 15000, maxOutputBytes: pixels * 4 },
+  );
+  if (decoded.stdout.byteLength !== pixels * 4)
+    photoDepthFailure(
+      "graphics.maskInvalid",
+      "PhotoDepth mask could not be decoded at its admitted dimensions.",
+    );
+  let left = mask.width;
+  let top = mask.height;
+  let right = -1;
+  let bottom = -1;
+  let transparent = 0;
+  let opaque = 0;
+  for (let pixel = 0; pixel < pixels; pixel++) {
+    const alpha = decoded.stdout[pixel * 4 + 3]!;
+    if (alpha === 0) transparent++;
+    if (alpha >= 192) opaque++;
+    if (alpha > 0) {
+      const x = pixel % mask.width;
+      const y = Math.floor(pixel / mask.width);
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left || bottom < top)
+    photoDepthFailure(
+      "graphics.maskEmpty",
+      "PhotoDepth mask contains no visible foreground pixels.",
+    );
+  if (!transparent || !opaque)
+    photoDepthFailure(
+      "graphics.maskInvalid",
+      "PhotoDepth mask needs both transparent background and opaque subject pixels.",
+    );
+  const gridWidth = Math.min(mask.width, 512);
+  const gridHeight = Math.min(mask.height, 512);
+  const gridPixels = gridWidth * gridHeight;
+  const foreground = new Uint8Array(gridPixels);
+  for (let y = 0; y < gridHeight; y++) {
+    const sourceY = Math.min(
+      mask.height - 1,
+      Math.floor(((y + 0.5) * mask.height) / gridHeight),
+    );
+    for (let x = 0; x < gridWidth; x++) {
+      const sourceX = Math.min(
+        mask.width - 1,
+        Math.floor(((x + 0.5) * mask.width) / gridWidth),
+      );
+      foreground[y * gridWidth + x] =
+        decoded.stdout[(sourceY * mask.width + sourceX) * 4 + 3]! >= 192
+          ? 1
+          : 0;
+    }
+  }
+  const visited = new Uint8Array(gridPixels);
+  const queue = new Uint32Array(gridPixels);
+  const significantHoleThreshold = Math.max(16, Math.ceil(gridPixels * 0.002));
+  let significantTransparentHoles = false;
+  for (
+    let start = 0;
+    start < gridPixels && !significantTransparentHoles;
+    start++
+  ) {
+    if (foreground[start] || visited[start]) continue;
+    let head = 0;
+    let tail = 0;
+    let touchesEdge = false;
+    queue[tail++] = start;
+    visited[start] = 1;
+    while (head < tail) {
+      const index = queue[head++]!;
+      const x = index % gridWidth;
+      const y = Math.floor(index / gridWidth);
+      if (x === 0 || y === 0 || x === gridWidth - 1 || y === gridHeight - 1)
+        touchesEdge = true;
+      for (const neighbor of [
+        x > 0 ? index - 1 : -1,
+        x + 1 < gridWidth ? index + 1 : -1,
+        y > 0 ? index - gridWidth : -1,
+        y + 1 < gridHeight ? index + gridWidth : -1,
+      ]) {
+        if (neighbor < 0 || foreground[neighbor] || visited[neighbor]) continue;
+        visited[neighbor] = 1;
+        queue[tail++] = neighbor;
+      }
+    }
+    if (!touchesEdge && tail >= significantHoleThreshold)
+      significantTransparentHoles = true;
+  }
+  return {
+    left: left / mask.width,
+    top: top / mask.height,
+    right: (right + 1) / mask.width,
+    bottom: (bottom + 1) / mask.height,
+    significantTransparentHoles,
+  };
+}
+
+function assertProtectedRegion(
+  scene: GraphicScene,
+  recipe: PhotoDepthParallaxRecipe,
+  node: GraphicImageNode,
+  source: { width: number; height: number },
+  settings: RenderSettings,
+): void {
+  const region = recipe.protectedRegion;
+  const sourceAspect = source.width / source.height;
+  const nodeAspect = node.width / node.height;
+  const contentWidth =
+    sourceAspect > nodeAspect ? node.width : node.height * sourceAspect;
+  const contentHeight =
+    sourceAspect > nodeAspect ? node.width / sourceAspect : node.height;
+  const contentLeft = -node.width / 2 + (node.width - contentWidth) / 2;
+  const contentTop = -node.height / 2 + (node.height - contentHeight) / 2;
+  const protectedLeft = contentLeft + region.x * contentWidth;
+  const protectedRight = contentLeft + (region.x + region.width) * contentWidth;
+  const protectedTop = contentTop + region.y * contentHeight;
+  const protectedBottom =
+    contentTop + (region.y + region.height) * contentHeight;
+  const backgroundBaseLeft =
+    recipe.background.kind === "source" ? contentLeft : -node.width / 2;
+  const backgroundBaseRight =
+    recipe.background.kind === "source"
+      ? contentLeft + contentWidth
+      : node.width / 2;
+  const backgroundBaseTop =
+    recipe.background.kind === "source" ? contentTop : -node.height / 2;
+  const backgroundBaseBottom =
+    recipe.background.kind === "source"
+      ? contentTop + contentHeight
+      : node.height / 2;
+  const frames = Math.ceil(recipe.duration * settings.frameRate);
+  for (let frame = 0; frame <= frames; frame++) {
+    const time =
+      scene.start +
+      node.start +
+      Math.min(recipe.duration - 1e-9, frame / settings.frameRate);
+    const motion = evaluatePhotoDepthAtTime(scene, time);
+    if (!motion) continue;
+    const left =
+      settings.width / 2 +
+      node.x +
+      motion.foreground.x * settings.width +
+      protectedLeft * motion.foreground.scale;
+    const right =
+      settings.width / 2 +
+      node.x +
+      motion.foreground.x * settings.width +
+      protectedRight * motion.foreground.scale;
+    const top =
+      settings.height / 2 +
+      node.y +
+      motion.foreground.y * settings.height +
+      protectedTop * motion.foreground.scale;
+    const bottom =
+      settings.height / 2 +
+      node.y +
+      motion.foreground.y * settings.height +
+      protectedBottom * motion.foreground.scale;
+    if (
+      left < -0.5 ||
+      top < -0.5 ||
+      right > settings.width + 0.5 ||
+      bottom > settings.height + 0.5
+    )
+      photoDepthFailure(
+        "graphics.protectedRegion",
+        "PhotoDepth motion would crop the protected subject region.",
+      );
+    const backgroundLeft =
+      settings.width / 2 +
+      node.x +
+      motion.background.x * settings.width +
+      backgroundBaseLeft * motion.background.scale;
+    const backgroundRight =
+      settings.width / 2 +
+      node.x +
+      motion.background.x * settings.width +
+      backgroundBaseRight * motion.background.scale;
+    const backgroundTop =
+      settings.height / 2 +
+      node.y +
+      motion.background.y * settings.height +
+      backgroundBaseTop * motion.background.scale;
+    const backgroundBottom =
+      settings.height / 2 +
+      node.y +
+      motion.background.y * settings.height +
+      backgroundBaseBottom * motion.background.scale;
+    if (
+      left < backgroundLeft - 0.5 ||
+      right > backgroundRight + 0.5 ||
+      top < backgroundTop - 0.5 ||
+      bottom > backgroundBottom + 0.5
+    )
+      photoDepthFailure(
+        "graphics.protectedRegion",
+        "PhotoDepth background fill cannot cover the protected subject region during motion.",
+      );
+  }
+}
+
+function assertMatteProtectedRegion(
+  recipe: PhotoDepthParallaxRecipe,
+  matte: MatteBounds,
+  width: number,
+  height: number,
+): void {
+  const region = recipe.protectedRegion;
+  const toleranceX = 1 / width;
+  const toleranceY = 1 / height;
+  if (
+    matte.left < region.x - toleranceX ||
+    matte.top < region.y - toleranceY ||
+    matte.right > region.x + region.width + toleranceX ||
+    matte.bottom > region.y + region.height + toleranceY
+  )
+    photoDepthFailure(
+      "graphics.protectedRegion",
+      "The protected region must contain the full foreground mask.",
+    );
 }
 
 /** One pure evaluator and raster producer for Monitor and output, never project code. */
@@ -229,11 +526,30 @@ export async function prepareGraphicScenes(
   const warnings: string[] = [];
   const sources: Array<{ assetId: string; path: string; hash: string }> = [];
   const textures = new Map<string, string>();
+  const photoDepthTextures = new Map<
+    string,
+    { foreground: string; background: string }
+  >();
+  const photoDepthFindings: PreparedGraphicScenes["photoDepthFindings"] = [];
   let texturePixels = 0;
   let textureBytes = 0;
   let index = 0;
   let sourceBytes = 0;
-  const admitted = new Map<string, { path: string; format: string }>();
+  const admitted = new Map<
+    string,
+    Awaited<ReturnType<typeof inspectGraphicImage>>
+  >();
+  const photoDepthSourceIds = new Set<string>();
+  for (const { scene } of ranges) {
+    const recipe = scene.photoDepth;
+    if (!recipe) continue;
+    photoDepthSourceIds.add(recipe.sourceAssetId);
+    if (recipe.mode === "parallax") {
+      photoDepthSourceIds.add(recipe.maskAssetId);
+      if (recipe.background.kind === "asset")
+        photoDepthSourceIds.add(recipe.background.assetId);
+    }
+  }
   const textureCost = (nodes: readonly GraphicNode[]): number =>
     nodes.reduce(
       (sum, node) =>
@@ -245,31 +561,121 @@ export async function prepareGraphicScenes(
             : Math.ceil(node.width) * Math.ceil(node.height)),
       0,
     );
+  const depthTextureCost = (scene: GraphicScene) => {
+    const recipe = scene.photoDepth;
+    if (recipe?.mode !== "parallax") return 0;
+    const image = scene.nodes.find(
+      (node): node is Extract<GraphicNode, { type: "image" }> =>
+        node.id === recipe.nodeId && node.type === "image",
+    );
+    if (!image) return 0;
+    return (
+      Math.ceil(image.width) *
+      Math.ceil(image.height) *
+      (recipe.background?.kind === "asset" ? 2 : 1)
+    );
+  };
   if (
-    ranges.reduce((sum, range) => sum + textureCost(range.scene.nodes), 0) >
-    limits.texturePixels
+    ranges.reduce(
+      (sum, range) =>
+        sum + textureCost(range.scene.nodes) + depthTextureCost(range.scene),
+      0,
+    ) > limits.texturePixels
   )
     fail("Graphic textures exceed the pixel budget.", true);
 
   for (const id of graphicSceneAssetIds(composition.graphicScenes ?? [])) {
     checkAbort(options.signal);
     const asset = assetMap.get(id);
-    if (!asset) fail("Graphic image is unavailable in the local catalog.");
-    const image = await inspectGraphicImage(asset, work, options);
+    if (!asset) {
+      const missingMask = ranges.some(
+        ({ scene }) =>
+          scene.photoDepth?.mode === "parallax" &&
+          scene.photoDepth.maskAssetId === id,
+      );
+      const missingBackground = ranges.some(
+        ({ scene }) =>
+          scene.photoDepth?.mode === "parallax" &&
+          scene.photoDepth.background.kind === "asset" &&
+          scene.photoDepth.background.assetId === id,
+      );
+      if (missingMask)
+        photoDepthFailure(
+          "graphics.maskMissing",
+          "PhotoDepth foreground mask is unavailable in the local catalog.",
+        );
+      if (missingBackground)
+        photoDepthFailure(
+          "graphics.backgroundMissing",
+          "PhotoDepth background fill is unavailable in the local catalog.",
+        );
+      fail("Graphic image is unavailable in the local catalog.");
+    }
+    const image = await inspectGraphicImage(asset, work, {
+      signal: options.signal,
+      typedSourceHashMismatch: photoDepthSourceIds.has(id),
+    });
     sourceBytes += image.byteLength;
     if (sourceBytes > limits.sourceBytes * 2)
       fail("Graphic sources exceed the combined byte budget.", true);
-    admitted.set(id, { path: image.path, format: image.format });
+    admitted.set(id, image);
     sources.push({ assetId: id, path: image.sourcePath, hash: image.sha256 });
   }
+  for (const { scene } of ranges) {
+    const recipe = scene.photoDepth;
+    if (!recipe) continue;
+    const source = admitted.get(recipe.sourceAssetId);
+    if (!source || source.sha256 !== recipe.sourceSha256)
+      photoDepthFailure(
+        "graphics.sourceChanged",
+        "PhotoDepth original photo hash no longer matches its saved recipe.",
+      );
+    if (recipe.mode === "fallback") continue;
+    const imageNode = scene.nodes.find(
+      (node): node is GraphicImageNode =>
+        node.id === recipe.nodeId && node.type === "image",
+    );
+    const mask = admitted.get(recipe.maskAssetId!);
+    if (!imageNode || !mask)
+      photoDepthFailure(
+        "graphics.maskMissing",
+        "PhotoDepth source or foreground mask is unavailable.",
+      );
+    if (mask.sha256 !== recipe.maskSha256)
+      photoDepthFailure(
+        "graphics.sourceChanged",
+        "PhotoDepth mask hash no longer matches its saved recipe.",
+      );
+    const matte = await inspectPhotoDepthMask(mask, source, options.signal);
+    photoDepthFindings.push({
+      sceneId: scene.id,
+      nodeId: recipe.nodeId,
+      significantTransparentHoles: matte.significantTransparentHoles,
+    });
+    if (matte.significantTransparentHoles)
+      warnings.push(
+        "PhotoDepth mask contains a significant enclosed transparent region; review mask edges manually.",
+      );
+    assertMatteProtectedRegion(recipe, matte, mask.width, mask.height);
+    if (recipe.background?.kind === "asset") {
+      const background = admitted.get(recipe.background.assetId);
+      if (!background || background.sha256 !== recipe.background.sha256)
+        photoDepthFailure(
+          "graphics.sourceChanged",
+          "PhotoDepth background hash no longer matches its saved recipe.",
+        );
+    }
+    assertProtectedRegion(scene, recipe, imageNode, source, settings);
+  }
   const visit = async (
-    sceneId: string,
+    scene: GraphicScene,
     nodes: GraphicNode[],
   ): Promise<void> => {
+    const sceneId = scene.id;
     for (const node of nodes) {
       checkAbort(options.signal);
       if (node.type === "group") {
-        await visit(sceneId, node.children);
+        await visit(scene, node.children);
         continue;
       }
       if (node.type === "shape") continue;
@@ -304,6 +710,12 @@ export async function prepareGraphicScenes(
         warnings.push(...title.warnings);
       } else {
         const image = admitted.get(node.assetId)!;
+        const recipe =
+          node.type === "image" &&
+          scene.photoDepth?.mode === "parallax" &&
+          scene.photoDepth.nodeId === node.id
+            ? scene.photoDepth
+            : undefined;
         await runProcess(
           "ffmpeg",
           [
@@ -313,6 +725,7 @@ export async function prepareGraphicScenes(
             "file,pipe",
             "-max_pixels",
             String(limits.sourcePixels),
+            ...(recipe ? ["-noautorotate"] : []),
             "-f",
             image.format,
             "-i",
@@ -334,9 +747,103 @@ export async function prepareGraphicScenes(
       if (textureBytes > limits.textureBytes)
         fail("Graphic textures exceed the byte budget.", true);
       textures.set(`${sceneId}/${node.id}`, bytes.toString("base64"));
+      const recipe =
+        node.type === "image" &&
+        scene.photoDepth?.mode === "parallax" &&
+        scene.photoDepth.nodeId === node.id
+          ? scene.photoDepth
+          : undefined;
+      if (recipe) {
+        const area = width * height;
+        texturePixels += area * (recipe.background?.kind === "asset" ? 2 : 1);
+        if (texturePixels > limits.texturePixels)
+          fail("PhotoDepth layers exceed the texture pixel budget.", true);
+        const original = admitted.get(recipe.sourceAssetId)!;
+        const mask = admitted.get(recipe.maskAssetId!)!;
+        const foregroundPath = join(
+          work,
+          `photo-depth-foreground-${index++}.png`,
+        );
+        await runProcess(
+          "ffmpeg",
+          [
+            "-v",
+            "error",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-max_pixels",
+            String(limits.photoMaskPixels),
+            "-noautorotate",
+            "-f",
+            original.format,
+            "-i",
+            original.path,
+            "-noautorotate",
+            "-f",
+            mask.format,
+            "-i",
+            mask.path,
+            "-filter_complex",
+            `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0,split[source][sourceAlpha];[sourceAlpha]alphaextract[sourceMatte];[1:v]format=rgba,alphaextract,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black[matte];[sourceMatte][matte]blend=all_mode=multiply[alpha];[source][alpha]alphamerge[foreground]`,
+            "-map",
+            "[foreground]",
+            "-frames:v",
+            "1",
+            "-threads",
+            "1",
+            "-y",
+            foregroundPath,
+          ],
+          { signal: options.signal, timeoutMs: 30000 },
+        );
+        const foreground = await readFile(foregroundPath);
+        textureBytes += foreground.length;
+        if (textureBytes > limits.textureBytes)
+          fail("PhotoDepth textures exceed the byte budget.", true);
+        let background = bytes;
+        if (recipe.background?.kind === "asset") {
+          const backgroundAsset = admitted.get(recipe.background.assetId)!;
+          const backgroundPath = join(
+            work,
+            `photo-depth-background-${index++}.png`,
+          );
+          await runProcess(
+            "ffmpeg",
+            [
+              "-v",
+              "error",
+              "-protocol_whitelist",
+              "file,pipe",
+              "-max_pixels",
+              String(limits.sourcePixels),
+              "-f",
+              backgroundAsset.format,
+              "-i",
+              backgroundAsset.path,
+              "-vf",
+              `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=rgba`,
+              "-frames:v",
+              "1",
+              "-threads",
+              "1",
+              "-y",
+              backgroundPath,
+            ],
+            { signal: options.signal, timeoutMs: 15000 },
+          );
+          background = await readFile(backgroundPath);
+          textureBytes += background.length;
+          if (textureBytes > limits.textureBytes)
+            fail("PhotoDepth textures exceed the byte budget.", true);
+        }
+        photoDepthTextures.set(`${sceneId}/${node.id}`, {
+          foreground: foreground.toString("base64"),
+          background: background.toString("base64"),
+        });
+      }
     }
   };
-  for (const { scene } of ranges) await visit(scene.id, scene.nodes);
+  for (const { scene } of ranges) await visit(scene, scene.nodes);
   const sourceIdentities = new Map<string, string>();
   const sourceIdentity = async (path: string) => {
     try {
@@ -382,6 +889,7 @@ export async function prepareGraphicScenes(
       assetId: source.assetId,
       sha256: source.hash,
     })),
+    photoDepthFindings,
     verifySources,
     assertSourceIdentities,
     async frame(sceneId, outputFrame) {
@@ -403,6 +911,25 @@ export async function prepareGraphicScenes(
             outputFrame / settings.frameRate,
           );
           const render = (node: EvaluatedGraphicNode): string => {
+            if (
+              node.type === "image" &&
+              scene.photoDepth?.mode === "parallax" &&
+              scene.photoDepth.nodeId === node.id
+            ) {
+              const motion = evaluatePhotoDepthAtTime(
+                scene,
+                outputFrame / settings.frameRate,
+              );
+              const layers = photoDepthTextures.get(`${scene.id}/${node.id}`);
+              if (motion && layers) {
+                const layer = (
+                  bytes: string,
+                  transform: { x: number; y: number; scale: number },
+                ) =>
+                  `<g transform="translate(${numeric(node.x + transform.x * settings.width)} ${numeric(node.y + transform.y * settings.height)}) rotate(${numeric(node.rotation ?? 0)}) scale(${numeric((node.width / node.baseWidth) * transform.scale)} ${numeric((node.height / node.baseHeight) * transform.scale)})"><image x="${numeric(-node.baseWidth / 2)}" y="${numeric(-node.baseHeight / 2)}" width="${numeric(node.baseWidth)}" height="${numeric(node.baseHeight)}" href="data:image/png;base64,${bytes}"/></g>`;
+                return `<g opacity="${numeric(node.opacity)}">${layer(layers.background, motion.background)}${layer(layers.foreground, motion.foreground)}</g>`;
+              }
+            }
             const content =
               node.type === "group"
                 ? (node.children ?? []).map(render).join("")

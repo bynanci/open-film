@@ -32,3 +32,24 @@ manual gates. Source paths stay in existing private manifests, never public fixt
 or CI data. All committed media evidence is synthetic/CC0. CI publishes only the explicitly
 generated graphic fixture, never media from an opened user project. Source fences
 bound asynchronous windows; they do not provide an atomic filesystem snapshot.
+
+## PhotoDepth v1
+
+PhotoDepth does not widen the project's executable input surface. A recipe is
+strict JSON data attached to an existing root Image node. Source, mask and
+optional fill resolve through local catalog IDs; their saved SHA-256 hashes are
+checked during edits, Monitor preparation and output. PNG alpha is decoded with
+the existing bounded FFmpeg path, checked for matching source dimensions and
+both transparent and opaque content, and sampled on a bounded 512×512 grid for
+large enclosed transparent areas. Oversized/malformed masks and regions or
+transforms that crop the protected box fail closed. The 3–6 second camera uses
+the image node's existing interval and the pure `frame(t)` evaluator.
+
+No model, remote URL, raw SVG, HTML, JavaScript, absolute path or arbitrary
+project cache path is accepted. A changed image source converts the layer recipe
+to an explicit fallback during the normal typed edit; fallback diagnostics
+remain visible. Cancellation and stale revision fences use existing render and
+edit ownership. The hole check is a warning heuristic: it cannot establish that
+a mask follows a face, hand, hair, clothing edge or contact between people.
+Visual QA marks every valid parallax recipe for manual review, and actual human
+photo quality remains a workstation gate.

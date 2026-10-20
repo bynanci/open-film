@@ -117,6 +117,13 @@ work. JSON retains all source references; OTIO graphics are metadata only;
 FCPXML/EDL reject unsupported scenes. Numeric/resource limits are documented in
 [GraphicScene v1](graphic-scenes.md), with evidence in [validation](validation-graphic-scene.md).
 
+The optional `photoDepth` extension binds a version-1 root Image recipe to local
+catalog photo/mask/background hashes and the same scene-local interval. A pure
+bounded evaluator supplies the Monitor and FFmpeg producer; existing scene
+commands, locks and history remain authoritative. Old schema-1.0.0 projects do
+not need a migration. See the [PhotoDepth contract](photo-depth.md) and
+[validation](validation-photo-depth.md).
+
 The M5 Layer Editor uses the existing Monitor and typed scene-upsert command for
 direct transforms and Inspector edits. A locked node can only be unlocked in a
 separate command; the command boundary rejects edits to its values, containing

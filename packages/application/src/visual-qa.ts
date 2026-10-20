@@ -30,7 +30,11 @@ import {
   safeProjectCachePath,
   sourceStatus,
 } from "@openfilm/media";
-import { inspectGraphicImage, inspectTitleOverlay } from "@openfilm/render";
+import {
+  inspectGraphicImage,
+  inspectTitleOverlay,
+  prepareGraphicScenes,
+} from "@openfilm/render";
 import { isInside } from "./path-safety.js";
 
 export type VisualQaIssueCode =
@@ -40,7 +44,17 @@ export type VisualQaIssueCode =
   | "font.load-failed"
   | "title.overflow"
   | "visual.suspected-blank"
-  | "revision.stale";
+  | "revision.stale"
+  | "photo-depth.mask-missing"
+  | "photo-depth.background-missing"
+  | "photo-depth.mask-invalid"
+  | "photo-depth.mask-mismatch"
+  | "photo-depth.mask-empty"
+  | "photo-depth.mask-holes"
+  | "photo-depth.protected-region"
+  | "photo-depth.source-changed"
+  | "photo-depth.fallback-used"
+  | "photo-depth.manual-review";
 
 export type VisualQaIssueSeverity = "error" | "warning" | "manual-review";
 
@@ -54,6 +68,7 @@ export interface VisualQaIssue {
   cueId?: string;
   graphicSceneId?: string;
   nodeId?: string;
+  photoDepthPart?: "mask" | "background";
   /** Stable detail key; user-authored title text and filesystem paths are omitted. */
   detail?: "unavailable" | "fallback-used" | "missing-glyph" | "changed";
   manualReview: boolean;
@@ -135,6 +150,7 @@ function issue(
     | "cueId"
     | "graphicSceneId"
     | "nodeId"
+    | "photoDepthPart"
     | "detail"
   > = {},
 ): VisualQaIssue {
@@ -152,6 +168,7 @@ type SourceOccurrence = {
   clipId?: string;
   graphicSceneId?: string;
   nodeId?: string;
+  photoDepthPart?: "mask" | "background";
 };
 function uniqueSources(
   composition: Composition,
@@ -186,6 +203,25 @@ function uniqueSources(
       }
     };
     visit(scene.nodes);
+    if (scene.photoDepth?.mode === "parallax") {
+      const node = scene.nodes.find(
+        (item) => item.id === scene.photoDepth!.nodeId && item.type === "image",
+      );
+      const at = scene.start + (node?.start ?? 0);
+      const addDepthSource = (assetId: string, part: "mask" | "background") => {
+        const occurrences = times.get(assetId) ?? [];
+        occurrences.push({
+          at,
+          graphicSceneId: scene.id,
+          nodeId: scene.photoDepth!.nodeId,
+          photoDepthPart: part,
+        });
+        times.set(assetId, occurrences);
+      };
+      addDepthSource(scene.photoDepth.maskAssetId!, "mask");
+      if (scene.photoDepth.background?.kind === "asset")
+        addDepthSource(scene.photoDepth.background.assetId, "background");
+    }
   }
   return times;
 }
@@ -540,13 +576,24 @@ export class VisualQaService {
         if (!asset) {
           for (const time of times)
             report.issues.push(
-              issue("asset.missing", "error", time.at, frameRate, {
-                assetId,
-                detail: "unavailable",
-                clipId: time.clipId,
-                graphicSceneId: time.graphicSceneId,
-                nodeId: time.nodeId,
-              }),
+              issue(
+                time.photoDepthPart === "mask"
+                  ? "photo-depth.mask-missing"
+                  : time.photoDepthPart === "background"
+                    ? "photo-depth.background-missing"
+                    : "asset.missing",
+                "error",
+                time.at,
+                frameRate,
+                {
+                  assetId,
+                  detail: "unavailable",
+                  clipId: time.clipId,
+                  graphicSceneId: time.graphicSceneId,
+                  nodeId: time.nodeId,
+                  photoDepthPart: time.photoDepthPart,
+                },
+              ),
             );
           continue;
         }
@@ -556,13 +603,24 @@ export class VisualQaService {
         if (status.status !== "available") {
           for (const time of times)
             report.issues.push(
-              issue("asset.missing", "error", time.at, frameRate, {
-                assetId,
-                detail: "unavailable",
-                clipId: time.clipId,
-                graphicSceneId: time.graphicSceneId,
-                nodeId: time.nodeId,
-              }),
+              issue(
+                time.photoDepthPart === "mask"
+                  ? "photo-depth.mask-missing"
+                  : time.photoDepthPart === "background"
+                    ? "photo-depth.background-missing"
+                    : "asset.missing",
+                "error",
+                time.at,
+                frameRate,
+                {
+                  assetId,
+                  detail: "unavailable",
+                  clipId: time.clipId,
+                  graphicSceneId: time.graphicSceneId,
+                  nodeId: time.nodeId,
+                  photoDepthPart: time.photoDepthPart,
+                },
+              ),
             );
           continue;
         }
@@ -583,13 +641,22 @@ export class VisualQaService {
         if (asset.contentHash && asset.contentHash !== sha256) {
           for (const time of times)
             report.issues.push(
-              issue("asset.changed", "error", time.at, frameRate, {
-                assetId,
-                detail: "changed",
-                clipId: time.clipId,
-                graphicSceneId: time.graphicSceneId,
-                nodeId: time.nodeId,
-              }),
+              issue(
+                time.photoDepthPart
+                  ? "photo-depth.source-changed"
+                  : "asset.changed",
+                "error",
+                time.at,
+                frameRate,
+                {
+                  assetId,
+                  detail: "changed",
+                  clipId: time.clipId,
+                  graphicSceneId: time.graphicSceneId,
+                  nodeId: time.nodeId,
+                  photoDepthPart: time.photoDepthPart,
+                },
+              ),
             );
           continue;
         }
@@ -621,6 +688,120 @@ export class VisualQaService {
                 }),
               );
           }
+        }
+      }
+
+      for (const scene of composition.graphicScenes ?? []) {
+        const recipe = scene.photoDepth;
+        if (!recipe) continue;
+        const at =
+          scene.start +
+          (scene.nodes.find((node) => node.id === recipe.nodeId)?.start ?? 0);
+        if (recipe.mode === "fallback") {
+          const sourceSha256 = originalHashes.get(recipe.sourceAssetId);
+          if (sourceSha256 && sourceSha256 !== recipe.sourceSha256)
+            report.issues.push(
+              issue("photo-depth.source-changed", "error", at, frameRate, {
+                graphicSceneId: scene.id,
+                nodeId: recipe.nodeId,
+                assetId: recipe.sourceAssetId,
+                detail: "changed",
+              }),
+            );
+          report.issues.push(
+            issue("photo-depth.fallback-used", "warning", at, frameRate, {
+              graphicSceneId: scene.id,
+              nodeId: recipe.nodeId,
+              detail: "fallback-used",
+            }),
+          );
+          continue;
+        }
+        const photoDepthAssetIds = new Set([
+          recipe.sourceAssetId,
+          recipe.maskAssetId,
+          ...(recipe.background?.kind === "asset"
+            ? [recipe.background.assetId]
+            : []),
+        ]);
+        const priorSourceFailure = report.issues.some(
+          (entry) =>
+            entry.graphicSceneId === scene.id &&
+            entry.severity === "error" &&
+            Boolean(entry.assetId && photoDepthAssetIds.has(entry.assetId)) &&
+            [
+              "asset.missing",
+              "asset.changed",
+              "asset.unsupported",
+              "photo-depth.mask-missing",
+              "photo-depth.background-missing",
+              "photo-depth.source-changed",
+            ].includes(entry.code),
+        );
+        if (priorSourceFailure) continue;
+        const work = join(reportDirectory, `photo-depth-${randomUUID()}`);
+        await mkdir(work, { mode: 0o700 });
+        try {
+          const prepared = await prepareGraphicScenes(
+            {
+              ...composition,
+              graphicScenes: [
+                {
+                  ...scene,
+                  nodes: scene.nodes.filter(
+                    (node) => node.id === recipe.nodeId,
+                  ),
+                },
+              ],
+            },
+            [...assets.values()],
+            report.settings,
+            work,
+            { signal: options.signal },
+          );
+          for (const finding of prepared.photoDepthFindings)
+            if (finding.significantTransparentHoles)
+              report.issues.push(
+                issue("photo-depth.mask-holes", "warning", at, frameRate, {
+                  graphicSceneId: finding.sceneId,
+                  nodeId: finding.nodeId,
+                  photoDepthPart: "mask",
+                }),
+              );
+          report.issues.push(
+            issue("photo-depth.manual-review", "manual-review", at, frameRate, {
+              graphicSceneId: scene.id,
+              nodeId: recipe.nodeId,
+            }),
+          );
+        } catch (error) {
+          checkAbort(options.signal);
+          const code = (error as { code?: string }).code;
+          const mapped: Partial<Record<string, VisualQaIssueCode>> = {
+            "graphics.maskMissing": "photo-depth.mask-missing",
+            "graphics.backgroundMissing": "photo-depth.background-missing",
+            "graphics.maskInvalid": "photo-depth.mask-invalid",
+            "graphics.maskMismatch": "photo-depth.mask-mismatch",
+            "graphics.maskEmpty": "photo-depth.mask-empty",
+            "graphics.protectedRegion": "photo-depth.protected-region",
+            "graphics.sourceChanged": "photo-depth.source-changed",
+          };
+          const issueCode = mapped[code ?? ""];
+          if (!issueCode) throw error;
+          report.issues.push(
+            issue(issueCode, "error", at, frameRate, {
+              graphicSceneId: scene.id,
+              nodeId: recipe.nodeId,
+              ...(issueCode.startsWith("photo-depth.mask-")
+                ? {
+                    assetId: recipe.maskAssetId,
+                    photoDepthPart: "mask" as const,
+                  }
+                : {}),
+            }),
+          );
+        } finally {
+          await rm(work, { recursive: true, force: true });
         }
       }
 

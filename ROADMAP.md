@@ -141,7 +141,27 @@ native/baked/metadata/unsupported NLE report; M7D needs path-safe, license-aware
 media collection and relocation evidence; M7E needs Windows/macOS workstation
 installer, dependency and rollback evidence. These are separate PRs and remain
 queued. M8 selective 2.5D photo animation depends on stable GraphicScene,
-templates and Visual QA, but is not part of M7A.
+templates and Visual QA and is tracked as a separate stacked M8A candidate on
+M7A PR #34's exact head. It is not part of the M7A snapshot and must be
+retargeted if that dependency changes.
+
+## Candidate — M8A selective 2.5D PhotoDepth
+
+M8A extends the saved GraphicScene Image node with a local, hash-bound
+foreground mask and optional background fill. A bounded camera/easing evaluator
+drives Monitor and FFmpeg from the existing Composition clock; explicit
+fallback, lock/history/reopen behavior and typed Visual QA findings preserve
+the local-first editing contract. See [PhotoDepth](docs/photo-depth.md), the
+[threat model](docs/security/graphic-scene-threat-model.md#photodepth-v1), and
+[validation](docs/validation-photo-depth.md).
+
+Automated evidence passed on the M8A source tree stacked over M7A PR #34:
+2,941 unit/integration tests, all 169 E2E tests, build, interchange and the
+actual 6-second synthetic MP4 with decoded frame and Monitor parity measurements.
+See [the validation record](docs/validation-photo-depth.md). Independent PR
+review and stacked CI are pending. Real-photo subject stability, sustained 4K
+rendering, physical display, Windows/macOS behavior and NLE review remain manual
+gates.
 
 ## Implemented — M1 / F07 Visual QA and contact sheets
 

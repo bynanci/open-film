@@ -105,15 +105,46 @@ describe("named project versions", () => {
         "-y",
         path,
       ]);
-      const asset = await inspectMedia({
-        path,
-        uri: pathToFileURL(path).href,
-        name: `${id}.png`,
-      });
+      const asset = {
+        ...(await inspectMedia({
+          path,
+          uri: pathToFileURL(path).href,
+          name: `${id}.png`,
+        })),
+        contentHash: await hashFile(path),
+      };
       app.catalog.upsertAsset(asset);
       photos.push(asset);
       sourcePaths.set(asset.id, path);
     }
+
+    const maskPath = join(directory, "synthetic-photo-mask.png");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "nullsrc=s=96x54,format=rgba,geq=r='255':g='255':b='255':a='if(between(X,10,75)*between(Y,5,48),255,0)'",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "rgba",
+      "-y",
+      maskPath,
+    ]);
+    const photoMask = {
+      ...(await inspectMedia({
+        path: maskPath,
+        uri: pathToFileURL(maskPath).href,
+        name: "Synthetic photo mask",
+      })),
+      contentHash: await hashFile(maskPath),
+    };
+    app.catalog.upsertAsset(photoMask);
+    sourcePaths.set(photoMask.id, maskPath);
 
     app.project.settings = { width: 320, height: 180, frameRate: 12 };
     app.project.stories.push({
@@ -198,7 +229,43 @@ describe("named project versions", () => {
           id: "version-shape",
           name: "Versioned shape",
           duration: 4,
-          nodes: [graphicNode({ id: "versioned-red-shape", end: 4 })],
+          nodes: [
+            graphicNode({ id: "versioned-red-shape", end: 4 }),
+            {
+              id: "versioned-photo-depth-image",
+              type: "image" as const,
+              assetId: photos[0]!.id,
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+              opacity: 1,
+              zIndex: 1,
+              start: 0,
+              end: 4,
+            },
+          ],
+          photoDepth: {
+            version: 1,
+            id: "versioned-photo-depth-recipe",
+            nodeId: "versioned-photo-depth-image",
+            mode: "parallax" as const,
+            duration: 4,
+            sourceAssetId: photos[0]!.id,
+            sourceSha256: photos[0]!.contentHash!,
+            maskAssetId: photoMask.id,
+            maskSha256: photoMask.contentHash!,
+            background: { kind: "source" as const },
+            protectedRegion: { x: 0.09, y: 0.07, width: 0.72, height: 0.85 },
+            foregroundDepth: 1.2,
+            backgroundDepth: 0.25,
+            amplitude: 0.35,
+            camera: {
+              from: { x: 0, y: 0, scale: 1 },
+              to: { x: 0.02, y: 0, scale: 1.04 },
+            },
+            easing: "ease-in-out" as const,
+          },
         }),
         photoScene.scene,
       ],
@@ -265,6 +332,11 @@ describe("named project versions", () => {
     const restored = app.project.timelines[0]!;
     expect(restored.captionTracks?.[0]?.cues[0]?.text).toBe("Original caption");
     expect(restored.graphicScenes?.[0]?.nodes[0]?.x).toBe(0);
+    expect(restored.graphicScenes?.[0]?.photoDepth).toMatchObject({
+      mode: "parallax",
+      sourceAssetId: photos[0]!.id,
+      maskAssetId: photoMask.id,
+    });
     expect(restored.graphicSceneTemplates?.[0]).toEqual(photoScene.record);
     expect(
       restored.tracks[0]?.clips[0]?.audioAutomation?.points?.[0]?.gain,

@@ -50,6 +50,13 @@ URI, and display name. Settings contain width, height, and frame rate; new proje
 default to 1920 × 1080 at 30 fps. Stories reference candidate/selected media IDs;
 compositions contain tracks and clips referencing catalog media IDs.
 
+Compositions may also contain additive `graphicScenes`; a scene may include a
+version-1 `photoDepth` recipe tied to a root Image node. Its source, alpha mask
+and optional background remain ordinary local catalog assets with content
+hashes. This optional extension retains project schema 1.0.0: legacy projects
+without scenes or PhotoDepth need no migration, and no derived image bytes are
+embedded in `project.json`.
+
 Optional `projectContentLocale` (`en-US`, `zh-TW`, `ja-JP`) and `filmSettings`
 (`templateId`, `targetDuration`, `maxDuration`) describe new-film defaults without
 creating a story. Story overrides remain possible. Template beats optionally carry

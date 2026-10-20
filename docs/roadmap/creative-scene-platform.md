@@ -45,10 +45,15 @@ does not complete the remaining M7 work.
 | 7D  | Collect Media (queued)     | Collect only referenced media/dependencies with hashes, license/path safety, ZIP validation and relocation/reopen; exclude credentials.                                                                                                                |
 | 7E  | Native Installer (queued)  | Tauri/service/FFmpeg/font packaging and update/rollback; require separate Windows and macOS workstation evidence.                                                                                                                                      |
 
-M8 selective 2.5D photo animation follows GraphicScene, Photo Relationship and
-Visual QA contracts; it must preserve protected subjects and provide fallback
-to the original image when layer quality is uncertain. It is not implemented by
-the M7A version store.
+M8A selective 2.5D photo motion is a separate candidate stacked on M7A PR #34's
+exact head `92330127f01c934da0235c56d3fbef4b159bcaf3`. It extends GraphicScene
+with a local hash-bound alpha mask, optional background fill, bounded deterministic
+camera motion, explicit fallback and typed Visual QA/manual-review findings. It
+does not add another timeline or use remote image generation. The full automated
+matrix and decoded synthetic MP4 evidence passed; independent PR review and
+stacked CI are pending. Real-photo/4K/workstation gates remain separate. See
+[`PhotoDepth validation`](../validation-photo-depth.md); M7A itself does not
+contain this feature.
 
 ## Dependencies and PR route
 
