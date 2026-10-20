@@ -17,6 +17,7 @@ import {
 } from "../../apps/desktop/src/editorPresentation";
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
+import { canCreatePhotoDepth } from "../../apps/desktop/src/photo-depth-controls";
 import {
   clampFrameStep,
   formatTimecode,
@@ -307,6 +308,7 @@ async function mountTimeline(
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "../api": io,
+    "../photo-depth-controls": { canCreatePhotoDepth },
     "../i18n": i18n,
     "../duration": { durationStatus },
     "../nativeBenchmark": {

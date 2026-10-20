@@ -966,4 +966,25 @@ test("authors local PhotoDepth layers, previews shared frames, and preserves und
   await expect(
     page.locator("[data-testid='photo-depth-controls']"),
   ).toBeVisible();
+
+  await panel
+    .getByRole("button", {
+      name: "Select layer photo-depth-image",
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByRole("button", { name: "Remove layer", exact: true })
+    .click();
+  await expect
+    .poll(async () => {
+      const current = (await state()).composition.graphicScenes[0];
+      return {
+        hasPhotoLayer: current.nodes.some(
+          (node: { id: string }) => node.id === "photo-depth-image",
+        ),
+        recipe: current.photoDepth,
+      };
+    })
+    .toEqual({ hasPhotoLayer: false, recipe: undefined });
 });

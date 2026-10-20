@@ -9,6 +9,7 @@ import type {
 import type { MediaAsset } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import { thumbnailUrl } from "../api";
+import { canCreatePhotoDepth } from "../photo-depth-controls";
 
 const props = defineProps<{
   scene: GraphicScene;
@@ -27,6 +28,9 @@ const { t } = useI18n();
 const selectedMaskId = ref("");
 const selectedBackgroundId = ref("");
 const backgroundKind = ref<"source" | "asset">("source");
+const selectedMask = computed(() =>
+  props.assets.find((asset) => asset.id === selectedMaskId.value),
+);
 const fallbackReason =
   ref<NonNullable<PhotoDepthRecipe["fallbackReason"]>>("mask-not-available");
 const showLayers = ref(false);
@@ -54,6 +58,9 @@ const backgrounds = computed(() =>
       /^[a-f0-9]{64}$/u.test(asset.contentHash ?? ""),
   ),
 );
+const selectedBackground = computed(() =>
+  backgrounds.value.find((asset) => asset.id === selectedBackgroundId.value),
+);
 const depth = computed(() =>
   props.scene.photoDepth?.nodeId === props.node.id
     ? props.scene.photoDepth
@@ -72,6 +79,17 @@ const eligibility = computed(() => {
   if (!pngMasks.value.length && !parallax.value) return "mask";
   return "";
 });
+const canCreateParallax = computed(() =>
+  canCreatePhotoDepth({
+    disabled: props.disabled,
+    sourceHash: source.value?.contentHash,
+    maskHash: selectedMask.value?.contentHash,
+    selectedMaskId: selectedMaskId.value,
+    backgroundKind: backgroundKind.value,
+    backgroundHash: selectedBackground.value?.contentHash,
+    eligibility: eligibility.value,
+  }),
+);
 const currentMask = computed(() =>
   props.assets.find((asset) => asset.id === parallax.value?.maskAssetId),
 );
@@ -119,21 +137,11 @@ function save(recipe: PhotoDepthRecipe | undefined) {
 }
 
 function createParallax() {
-  const original = source.value;
-  const mask = props.assets.find((asset) => asset.id === selectedMaskId.value);
-  if (
-    !original?.contentHash ||
-    !mask?.contentHash ||
-    !selectedMaskId.value ||
-    eligibility.value === "duration" ||
-    eligibility.value === "motion"
-  )
-    return;
+  if (!canCreateParallax.value) return;
+  const original = source.value!;
+  const mask = selectedMask.value!;
   const backgroundAsset =
-    backgroundKind.value === "asset"
-      ? props.assets.find((asset) => asset.id === selectedBackgroundId.value)
-      : undefined;
-  if (backgroundKind.value === "asset" && !backgroundAsset?.contentHash) return;
+    backgroundKind.value === "asset" ? selectedBackground.value : undefined;
   const recipe: PhotoDepthRecipe = {
     version: 1,
     id: depth.value?.id ?? crypto.randomUUID(),
@@ -141,9 +149,9 @@ function createParallax() {
     mode: "parallax",
     duration: seconds.value,
     sourceAssetId: original.id,
-    sourceSha256: original.contentHash,
+    sourceSha256: original.contentHash!,
     maskAssetId: mask.id,
-    maskSha256: mask.contentHash,
+    maskSha256: mask.contentHash!,
     background: backgroundAsset
       ? {
           kind: "asset",
@@ -461,11 +469,7 @@ function updateBackground() {
       <button
         type="button"
         class="editor-button"
-        :disabled="
-          disabled ||
-          !selectedMaskId ||
-          (!!eligibility && eligibility !== 'source')
-        "
+        :disabled="!canCreateParallax"
         @click="createParallax"
       >
         {{

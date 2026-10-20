@@ -125,6 +125,19 @@ describe("saved-composition Visual QA", () => {
       start: 0,
       end: 6,
     };
+    const unrelatedMissingImageNode = {
+      id: "unrelated-missing-image-node",
+      type: "image" as const,
+      assetId: "unrelated-missing-image-asset",
+      x: 70,
+      y: 0,
+      width: 24,
+      height: 24,
+      opacity: 1,
+      zIndex: 1,
+      start: 0,
+      end: 6,
+    };
     const story = app.generateStory({
       title: "Synthetic depth QA",
       template: "blank",
@@ -141,7 +154,7 @@ describe("saved-composition Visual QA", () => {
         graphicScene({
           id: "qa-photo-depth-scene",
           duration: 6,
-          nodes: [imageNode],
+          nodes: [imageNode, unrelatedMissingImageNode],
           photoDepth: {
             version: 1,
             id: "qa-photo-depth-recipe",
@@ -169,8 +182,7 @@ describe("saved-composition Visual QA", () => {
     await app.save();
 
     const reviewed = await app.runVisualQa(depthComposition.id);
-    expect(reviewed.status).toBe("complete");
-    expect(reviewed.output).toMatchObject({ duration: 6, frameCount: 48 });
+    expect(reviewed.status).toBe("incomplete");
     expect(reviewed.sources).toEqual(
       expect.arrayContaining([
         { assetId: originalAsset.id, sha256: originalHash },
@@ -183,6 +195,12 @@ describe("saved-composition Visual QA", () => {
           code: "photo-depth.manual-review",
           severity: "manual-review",
           graphicSceneId: "qa-photo-depth-scene",
+        }),
+        expect.objectContaining({
+          code: "asset.missing",
+          severity: "error",
+          assetId: "unrelated-missing-image-asset",
+          nodeId: "unrelated-missing-image-node",
         }),
         expect.objectContaining({
           code: "photo-depth.mask-holes",

@@ -277,6 +277,7 @@ function removeNode() {
           : item,
       );
   next.nodes = remove(next.nodes);
+  if (next.photoDepth?.nodeId === nodeId.value) delete next.photoDepth;
   save(next);
 }
 function nudgeLayer(event: KeyboardEvent) {

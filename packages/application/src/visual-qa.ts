@@ -707,10 +707,18 @@ export class VisualQaService {
           );
           continue;
         }
+        const photoDepthAssetIds = new Set([
+          recipe.sourceAssetId,
+          recipe.maskAssetId,
+          ...(recipe.background?.kind === "asset"
+            ? [recipe.background.assetId]
+            : []),
+        ]);
         const priorSourceFailure = report.issues.some(
           (entry) =>
             entry.graphicSceneId === scene.id &&
             entry.severity === "error" &&
+            Boolean(entry.assetId && photoDepthAssetIds.has(entry.assetId)) &&
             [
               "asset.missing",
               "asset.changed",
@@ -725,7 +733,17 @@ export class VisualQaService {
         await mkdir(work, { mode: 0o700 });
         try {
           const prepared = await prepareGraphicScenes(
-            { ...composition, graphicScenes: [scene] },
+            {
+              ...composition,
+              graphicScenes: [
+                {
+                  ...scene,
+                  nodes: scene.nodes.filter(
+                    (node) => node.id === recipe.nodeId,
+                  ),
+                },
+              ],
+            },
             [...assets.values()],
             report.settings,
             work,

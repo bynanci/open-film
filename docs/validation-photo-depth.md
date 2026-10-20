@@ -3,10 +3,11 @@
 ## Status
 
 Implementation and automated regression evidence are recorded on the M8A
-branch. Human-photo quality, physical workstation display, 4K sustained work,
-and downstream NLE review are manual gates and remain unverified until a
-candidate-bound workstation record is attached. A synthetic test pass is not
-evidence of face/hand preservation or professional image quality.
+branch. All local automated gates passed after the latest review fixes; GitHub
+checks will rerun after the branch update. Human-photo quality, physical
+workstation display, 4K sustained work, and downstream NLE review remain manual
+gates. A synthetic test pass is not evidence of face/hand preservation or
+professional image quality.
 
 ## Automated contracts
 
@@ -16,31 +17,37 @@ evidence of face/hand preservation or professional image quality.
 | Application/persistence | Hash mismatch rejection without revision change, layer lock fencing, typed edit Undo/Redo, autosave and reopen. Named-version restore retains recipe data and source identities.                                                 |
 | Renderer                | Synthetic landscape, alpha silhouette, separate background fill; source/mask dimensions and alpha validation; empty/mismatched mask failures; source hash receipts; deterministic random frame access.                           |
 | Real MP4                | Actual FFmpeg H.264 output, FFprobe frame count/duration/size/rate, first/middle/last plus shuffled decoded seeks, Monitor-PNG versus decoded-frame RGB tolerance, manifest source hashes, and unchanged synthetic source files. |
-| Visual QA               | Typed mask missing/invalid/mismatch/empty/holes, source changed, background missing, protected-region and fallback findings; valid recipes receive explicit manual-review findings.                                              |
-| Desktop                 | Playwright local asset import entry, mask/background selection, save, preview seek, Undo/Redo and reopen.                                                                                                                        |
+| Visual QA               | Typed mask missing/invalid/mismatch/empty/holes, source changed, background missing, protected-region and fallback findings; unrelated missing assets no longer hide PhotoDepth manual-review findings.                          |
+| Desktop                 | Playwright local asset import, selection, save, preview, Undo/Redo, reopen, readiness gating for unhashed inputs, and deletion of a bound image with its recipe.                                                                 |
 | Compatibility           | Optional additive `photoDepth` on schema-1.0.0 GraphicScene; projects without the field keep existing behavior. JSON interchange contract is checked with the existing suite.                                                    |
 
 ## Automated gate run
 
-Run date: 2026-10-20 UTC. The branch was checked against current `main`
-`ba7af5067c486654a9708c6f0df00c923ab9cfb6` and stacked on open M7A PR #34 at
-`92330127f01c934da0235c56d3fbef4b159bcaf3`. PR #34 was `OPEN`/`CLEAN`; both
-Verify workflow jobs passed on that exact M7A head.
+Run date: 2026-10-20 UTC. M7A PR #34 is merged. The current M8A PR targets
+`main` at `bb2c4521ad894478893485119442a00ffd9b34cc`; GitHub Verify checks will
+rerun after the review-fix commit is pushed.
 
-| Command                 | Result                                                                                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm format:check`     | Passed; all files formatted.                                                                                                                           |
-| `pnpm test:i18n`        | Passed; 1,745 semantic keys, application errors and literal UI keys matched across en-US, zh-TW and ja-JP.                                             |
-| `pnpm lint`             | Passed with `--max-warnings=0`.                                                                                                                        |
-| `pnpm typecheck`        | Passed (`tsc` and `vue-tsc`).                                                                                                                          |
-| `pnpm test`             | Passed: 212 test files, 2,941 tests; Vitest reported 104.90 seconds.                                                                                   |
-| `pnpm build`            | Passed. Vite reported the 957.88 kB main JavaScript chunk advisory.                                                                                    |
-| `pnpm test:e2e`         | Passed: all 169 Playwright tests in 16.4 minutes. PhotoDepth browser regression passed in 5.7 seconds; Visual QA contact-sheet regression also passed. |
-| `pnpm test:interchange` | Passed: 18 parser/interchange checks plus source URL rejection and relocation/hash checks. Actual Resolve import remains unverified.                   |
-| `pnpm test:native`      | Not run: `rustc` and `cargo` are not installed in this environment.                                                                                    |
+| Command                 | Result                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm format:check`     | Passed; all files formatted.                                                                                                               |
+| `pnpm test:i18n`        | Passed; 1,745 semantic keys, application errors and literal UI keys matched across en-US, zh-TW and ja-JP.                                 |
+| `pnpm lint`             | Passed with `--max-warnings=0`.                                                                                                            |
+| `pnpm typecheck`        | Passed (`tsc` and `vue-tsc`).                                                                                                              |
+| `pnpm test`             | Passed: 213 test files, 2,954 tests; Vitest reported 105.13 seconds.                                                                       |
+| `pnpm build`            | Passed. Vite reported the 958.49 kB main JavaScript chunk advisory.                                                                        |
+| `pnpm test:e2e`         | Passed: all 169 Playwright tests in 16.6 minutes. PhotoDepth browser regression passed, including bound-layer deletion and recipe cleanup. |
+| `pnpm test:interchange` | Passed: 18 parser/interchange checks plus source URL rejection and relocation/hash checks. Actual Resolve import remains unverified.       |
+| `pnpm test:native`      | Not run: `rustc` and `cargo` are not installed in this environment.                                                                        |
+
+Review corrections covered by regression tests: apply node opacity once to the
+combined depth layers; validate locks on both old and new bound nodes; project
+the protected region through the fitted image content rectangle; reject all
+parallax-only fields on fallback recipes; scope Visual QA source failures to
+recipe dependencies; disable creation when any required hash is unavailable;
+and remove the recipe when its bound image layer is deleted.
 
 The actual FFmpeg evidence was regenerated after the final code changes by
-`OPENFILM_PHOTO_DEPTH_QA_OUTPUT=/tmp/openfilm-m8a-photo-depth-evidence-final pnpm exec vitest run packages/render/tests/photo-depth.test.ts -t 'renders six seconds'`.
+`OPENFILM_PHOTO_DEPTH_QA_OUTPUT=/tmp/openfilm-m8a-photo-depth-review-final pnpm exec vitest run packages/render/tests/photo-depth.test.ts -t 'renders six seconds'`.
 It passed in 5.93 seconds and produced an H.264 MP4 at 320×180, 30/1 fps, 180
 decoded frames and 6.000 seconds. Repeated reads in shuffled frame order
 `0, 90, 179, 35, 140, 179, 0, 90` returned identical decoded pixels at repeated
