@@ -781,6 +781,7 @@ export class VisualQaService {
             "graphics.maskMissing": "photo-depth.mask-missing",
             "graphics.backgroundMissing": "photo-depth.background-missing",
             "graphics.maskInvalid": "photo-depth.mask-invalid",
+            "graphics.resourceLimit": "photo-depth.mask-invalid",
             "graphics.maskMismatch": "photo-depth.mask-mismatch",
             "graphics.maskEmpty": "photo-depth.mask-empty",
             "graphics.protectedRegion": "photo-depth.protected-region",

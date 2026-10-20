@@ -125,6 +125,36 @@ fallback and legacy MP4 hashes to those recorded above. Repeated shuffled seeks,
 Monitor/decoded-frame parity, source receipts and protected-region regressions
 also passed.
 
+## PR #35 follow-up at reviewed head 909c435
+
+All five new findings were reproduced against
+`909c435c98bb49fc1242cf4f5a5ca52e983c824e` before changing production code.
+
+| Discussion ID | Disposition and regression evidence                                                                                                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4326502537    | Accepted and fixed: mask/background selection and Create remain available while fallback is active; recreating parallax retains the recipe ID. Only existing-parallax tuning is conditional.                                                         |
+| 4326502543    | Accepted and fixed: source-background recipes seed an available background on open and when Library assets arrive. Both fresh-component and later-import cases switch to asset mode successfully.                                                    |
+| 4326502552    | Accepted and fixed: the fallback reason is selectable before first creation and resets for a newly selected image. A chosen reason survives parameter saves on the same image.                                                                       |
+| 4326502562    | Accepted and fixed: the PhotoDepth `graphics.resourceLimit` admission error becomes a typed `photo-depth.mask-invalid` finding. Real 3000×3000 source/mask PNGs return an incomplete QA report with mask/node/scene identities and unchanged hashes. |
+| 4326502570    | Accepted and fixed: pending mask selection survives acknowledged parameter saves for the same saved mask/source/recipe identity. A newly saved mask identity still replaces the draft; disabled editing still emits no commands.                     |
+
+The initial red run contained six expected failures: five component behaviors
+(the fallback-reason finding has two cases) and the real mask-budget QA failure.
+The later-Library background case was also observed failing before adding the
+asset-list watcher. The final focused run passed 66 tests in five files; the
+two selected PhotoDepth application/history tests also passed (12 unrelated
+tests were filtered out). Formatting, i18n (1,745 semantic keys), lint and
+TypeScript/Vue type checks passed.
+
+`tests/unit/photo-depth-panel.test.ts` compiles and mounts the actual Vue SFC
+using the repository's existing Vue host renderer. It checks rendered controls,
+user model/change events, emitted scene commands and acknowledged prop updates.
+No browser server or shared default ports are needed for these regressions.
+The focused renderer run regenerated the same synthetic MP4 hashes recorded
+above, including source-alpha intersection, protected-region checks, arbitrary
+seeks and fallback/legacy parity. No full suite or browser suite was rerun for
+this follow-up; the coordinator owns combined release verification.
+
 ## Manual gates
 
 - Test representative real photographs only on a local workstation. Check hair,
