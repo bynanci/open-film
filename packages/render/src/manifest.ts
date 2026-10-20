@@ -53,6 +53,13 @@ export interface RenderFontEvidence {
   postscriptName: string;
   sha256: string;
 }
+export type RenderFontUsage =
+  | readonly ["title", trackId: string, clipId: string]
+  | readonly ["caption", trackId: string, cueId: string]
+  | readonly ["graphic", sceneId: string, nodeId: string];
+export interface RenderFontBinding extends RenderFontEvidence {
+  usage: RenderFontUsage;
+}
 /** Stable identities for the actual file and face, without local font paths. */
 export function canonicalRenderFonts(
   fonts: ReadonlyArray<RenderFontEvidence>,
@@ -64,6 +71,39 @@ export function canonicalRenderFonts(
     ]),
   );
   return [...identities.keys()].sort().map((key) => identities.get(key)!);
+}
+/** Bind each rendered use to its actual file/face without coupling local paths. */
+export function canonicalRenderFontBindings(
+  bindings: ReadonlyArray<RenderFontBinding>,
+): RenderFontBinding[] {
+  const uses = new Map<string, RenderFontBinding>();
+  for (const binding of bindings) {
+    if (
+      !binding ||
+      typeof binding.family !== "string" ||
+      typeof binding.postscriptName !== "string" ||
+      typeof binding.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(binding.sha256) ||
+      !Array.isArray(binding.usage) ||
+      binding.usage.length !== 3 ||
+      !["title", "caption", "graphic"].includes(binding.usage[0]) ||
+      binding.usage.slice(1).some((id) => typeof id !== "string" || !id)
+    )
+      throw new Error("Render receipt has an invalid font usage binding.");
+    const { family, postscriptName, sha256 } = binding;
+    const key = JSON.stringify(binding.usage);
+    const value: RenderFontBinding = {
+      usage: [binding.usage[0], binding.usage[1], binding.usage[2]],
+      family,
+      postscriptName,
+      sha256,
+    };
+    const previous = uses.get(key);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(value))
+      throw new Error("Render receipt has conflicting font usage bindings.");
+    uses.set(key, value);
+  }
+  return [...uses.keys()].sort().map((key) => uses.get(key)!);
 }
 export interface RenderProjectEvidence {
   id: string;
@@ -145,6 +185,7 @@ export async function writeRenderManifest(
   encoding: RenderQualityProfile = resolveRenderQuality(),
   outputConfig: {
     format: "mp4" | "wav";
+    fontBindings?: ReadonlyArray<RenderFontBinding>;
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
@@ -243,6 +284,7 @@ export async function writeRenderManifest(
           },
     sources,
     fonts,
+    fontBindings: canonicalRenderFontBindings(outputConfig.fontBindings ?? []),
     warnings: [...new Set(warnings)],
     outputSha256: await hashFile(output, signal),
     verification: {

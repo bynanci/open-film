@@ -16,7 +16,7 @@ import {
 } from "@openfilm/core";
 import { checkAbort, hashFile, localPath, runProcess } from "@openfilm/media";
 import { createTitleOverlay } from "./titles.js";
-import type { RenderFontEvidence } from "./manifest.js";
+import type { RenderFontBinding, RenderFontEvidence } from "./manifest.js";
 import type { RenderSettings } from "./index.js";
 
 const nativeRequire = createRequire(import.meta.url);
@@ -130,6 +130,7 @@ async function readSourceBytes(path: string, size: number): Promise<Buffer> {
 export interface PreparedGraphicScenes {
   ranges: ReturnType<typeof graphicFrameRanges>;
   fonts: RenderFontEvidence[];
+  fontBindings: RenderFontBinding[];
   warnings: string[];
   sources: { assetId: string; sha256: string }[];
   frame(sceneId: string | null, outputFrame: number): Promise<Buffer>;
@@ -226,6 +227,7 @@ export async function prepareGraphicScenes(
     assets.map((asset) => [asset.id, structuredClone(asset)]),
   );
   const fonts: RenderFontEvidence[] = [];
+  const fontBindings: RenderFontBinding[] = [];
   const warnings: string[] = [];
   const sources: Array<{ assetId: string; path: string; hash: string }> = [];
   const textures = new Map<string, string>();
@@ -300,6 +302,10 @@ export async function prepareGraphicScenes(
           family: title.font.family,
           postscriptName: title.font.postscriptName,
           sha256: title.font.sha256,
+        });
+        fontBindings.push({
+          ...fonts.at(-1)!,
+          usage: ["graphic", sceneId, node.id],
         });
         warnings.push(...title.warnings);
       } else {
@@ -377,6 +383,7 @@ export async function prepareGraphicScenes(
   return {
     ranges,
     fonts,
+    fontBindings,
     warnings,
     sources: sources.map((source) => ({
       assetId: source.assetId,

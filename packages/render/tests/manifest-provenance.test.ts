@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,7 +14,13 @@ import {
   type MediaAsset,
 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
-import { captureRenderSources, writeRenderManifest } from "../src/manifest.js";
+import {
+  canonicalRenderFontBindings,
+  captureRenderSources,
+  writeRenderManifest,
+  type RenderFontBinding,
+} from "../src/manifest.js";
+import { FFmpegRenderer } from "../src/index.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -38,6 +44,67 @@ async function fixture() {
   };
   return { root, path, asset };
 }
+it("retains distinct font uses across namespaces and delimiter-bearing identifiers", () => {
+  const font = {
+    family: "Sans",
+    postscriptName: "Sans-Regular",
+    sha256: "a".repeat(64),
+  };
+  const bindings: RenderFontBinding[] = [
+    { ...font, usage: ["title", "track:clip", "id"] },
+    { ...font, usage: ["title", "track", "clip:id"] },
+    { ...font, usage: ["caption", "track:clip", "id"] },
+    { ...font, usage: ["graphic", "track:clip", "id"] },
+  ];
+  expect(canonicalRenderFontBindings([...bindings].reverse())).toEqual([
+    bindings[2],
+    bindings[3],
+    bindings[1],
+    bindings[0],
+  ]);
+  expect(bindings.map((binding) => binding.usage.join(":"))).toEqual([
+    "title:track:clip:id",
+    "title:track:clip:id",
+    "caption:track:clip:id",
+    "graphic:track:clip:id",
+  ]);
+  expect(() =>
+    canonicalRenderFontBindings([
+      bindings[0]!,
+      { ...bindings[0]!, sha256: "b".repeat(64) },
+    ]),
+  ).toThrow(/conflicting font usage bindings/u);
+  expect(() =>
+    canonicalRenderFontBindings([
+      { ...font, usage: ["title", "track"] } as unknown as RenderFontBinding,
+    ]),
+  ).toThrow(/invalid font usage binding/u);
+});
+it("rejects a direct renderer crop snapshot with only legacy font-set evidence", async () => {
+  const { root } = await fixture();
+  const composition = { id: "film", storyId: "story", duration: 1, tracks: [] };
+  const settings = { width: 160, height: 90, frameRate: 12 };
+  const sha = (value: unknown) =>
+    createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  await expect(
+    new FFmpegRenderer().render(
+      composition,
+      [],
+      join(root, "legacy.mp4"),
+      settings,
+      {
+        snapshot: {
+          compositionSha256: sha(composition),
+          settingsSha256: sha(settings),
+          assetsSha256: sha([]),
+          fonts: [],
+          assertCurrent() {},
+        },
+      },
+    ),
+  ).rejects.toThrow(/no font usage bindings/u);
+  expect(await readdir(root)).toEqual(["source.bin"]);
+});
 it("records original recipe provenance, a reproducible registry digest and the actual FFmpeg build", async () => {
   const { root, path, asset } = await fixture();
   const manifestPath = join(root, "manifest.json");

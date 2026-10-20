@@ -39,11 +39,19 @@ import {
   verifyRenderSources,
   writeRenderManifest,
   canonicalRenderFonts,
+  canonicalRenderFontBindings,
+  type RenderFontBinding,
   type RenderFontEvidence,
   type RenderProjectEvidence,
   type RenderLookEvidence,
 } from "./manifest.js";
-export { canonicalRenderFonts, type RenderFontEvidence } from "./manifest.js";
+export {
+  canonicalRenderFonts,
+  canonicalRenderFontBindings,
+  type RenderFontEvidence,
+  type RenderFontBinding,
+  type RenderFontUsage,
+} from "./manifest.js";
 export {
   createTitleOverlay,
   inspectTitleOverlay,
@@ -92,6 +100,8 @@ export interface RenderSnapshot {
   sourceScope?: "visual";
   /** Actual reviewed font files/faces; paths may change when media is collected. */
   fonts?: ReadonlyArray<RenderFontEvidence>;
+  /** Actual file/face for every title, caption cue and scene text node. */
+  fontBindings?: ReadonlyArray<RenderFontBinding>;
   assertCurrent: () => void;
 }
 export interface RenderOptions {
@@ -247,9 +257,16 @@ export class FFmpegRenderer {
             structuredClone(options.snapshot.sources),
           fonts:
             options.snapshot.fonts && structuredClone(options.snapshot.fonts),
+          fontBindings:
+            options.snapshot.fontBindings &&
+            structuredClone(options.snapshot.fontBindings),
         }
       : undefined;
     snapshot?.assertCurrent();
+    if (snapshot?.fonts && !snapshot.fontBindings)
+      throw new Error(
+        "Crop approval has no font usage bindings; render a new export frame.",
+      );
     const sha256 = (value: unknown) =>
       createHash("sha256").update(JSON.stringify(value)).digest("hex");
     if (
@@ -379,6 +396,7 @@ export class FFmpegRenderer {
         usedIds.add(id);
       }
     const fonts: RenderFontEvidence[] = [];
+    const fontBindings: RenderFontBinding[] = [];
     const warnings: string[] = [];
     if (!audioOnly && exportProfile) {
       const savedRatio = settings.width / settings.height;
@@ -583,6 +601,10 @@ export class FFmpegRenderer {
               family: title.font.family,
               postscriptName: title.font.postscriptName,
               sha256: title.font.sha256,
+            });
+            fontBindings.push({
+              ...fonts.at(-1)!,
+              usage: ["title", track.id, clip.id],
             });
             warnings.push(...title.warnings);
             args.push(
@@ -801,6 +823,7 @@ export class FFmpegRenderer {
               "Graphic source changed between manifest capture and image preparation.",
             );
         fonts.push(...graphics.fonts);
+        fontBindings.push(...graphics.fontBindings);
         warnings.push(...graphics.warnings);
         for (const [index, sequence] of (
           await writeGraphicSequences(graphics, work, options)
@@ -857,6 +880,10 @@ export class FFmpegRenderer {
             family: title.font.family,
             postscriptName: title.font.postscriptName,
             sha256: title.font.sha256,
+          });
+          fontBindings.push({
+            ...fonts.at(-1)!,
+            usage: ["caption", selectedCaptionTrack.id, cue.id],
           });
           warnings.push(...title.warnings);
           for (const warning of cue.warnings ?? [])
@@ -969,6 +996,14 @@ export class FFmpegRenderer {
         }
       };
       if (
+        snapshot?.fontBindings &&
+        sha256(canonicalRenderFontBindings(fontBindings)) !==
+          sha256(canonicalRenderFontBindings(snapshot.fontBindings))
+      )
+        throw new Error(
+          "Rendered font assignments changed after crop approval; render a new export frame.",
+        );
+      if (
         snapshot?.fonts &&
         sha256(canonicalRenderFonts(fonts)) !==
           sha256(canonicalRenderFonts(snapshot.fonts))
@@ -1018,6 +1053,7 @@ export class FFmpegRenderer {
         encoding,
         {
           format: audioOnly ? "wav" : "mp4",
+          fontBindings,
           ...(videoOnly ? { videoOnly } : {}),
           ...(exportProfile ? { exportProfile } : {}),
           ...(options.audioRole ? { audioRole: options.audioRole } : {}),
