@@ -742,19 +742,15 @@ async function hashSupportedMedia(
     fail("request.unsupported", "Nested archives cannot be collected.", 422);
   const source = await hashRegularFile(canonical, signal);
   try {
+    const inputOptions = await localMediaInputOptions(canonical, signal);
     const probed = await runProcess(
       "ffprobe",
       [
         "-v",
         "error",
-        ...(await localMediaInputOptions(canonical, signal)),
-        "-threads",
-        "1",
-        "-read_intervals",
-        "%+#32",
-        "-show_frames",
+        ...inputOptions,
         "-show_entries",
-        "format=format_name:format_tags=major_brand:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic:frame=media_type,width,height,nb_samples",
+        "format=format_name:format_tags=major_brand:stream=index,codec_type,codec_name,width,height:stream_disposition=attached_pic",
         "-of",
         "json",
         canonical,
@@ -764,17 +760,12 @@ async function hashSupportedMedia(
     const probe = JSON.parse(probed.stdout.toString("utf8")) as {
       format?: { format_name?: string; tags?: { major_brand?: string } };
       streams?: {
+        index?: number;
         codec_type?: string;
         codec_name?: string;
         width?: number;
         height?: number;
         disposition?: { attached_pic?: number };
-      }[];
-      frames?: {
-        media_type?: string;
-        width?: number;
-        height?: number;
-        nb_samples?: number;
       }[];
     };
     const audio = probe.streams?.find(
@@ -808,25 +799,54 @@ async function hashSupportedMedia(
         ].includes(
           probe.format?.tags?.major_brand?.trim().toLowerCase() ?? "",
         ));
-    const visualFrame = probe.frames?.some(
-      (frame) =>
-        frame.media_type === "video" &&
-        Number(frame.width) > 0 &&
-        Number(frame.height) > 0,
-    );
-    const audioFrame = probe.frames?.some(
-      (frame) => frame.media_type === "audio" && Number(frame.nb_samples) > 0,
-    );
+    const selectedStream = mediaType === "audio" ? audio : visual;
     if (
-      mediaType === "audio"
-        ? !audio || !audioFrame || Boolean(visual)
+      !Number.isSafeInteger(selectedStream?.index) ||
+      Number(selectedStream?.index) < 0 ||
+      (mediaType === "audio"
+        ? !audio || Boolean(visual)
         : !visual ||
-          !visualFrame ||
-          (mediaType === "image" ? !imageFormat : Boolean(imageFormat))
+          (mediaType === "image" ? !imageFormat : Boolean(imageFormat)))
     )
       fail(
         "request.invalid",
         "Source bytes do not match a supported media type.",
+        422,
+      );
+    // Decode the required stream itself. A global packet budget can contain
+    // only earlier audio packets when a valid video stream starts later.
+    const decoded = await runProcess(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-xerror",
+        ...inputOptions,
+        "-threads",
+        "1",
+        "-i",
+        canonical,
+        "-map",
+        `0:${selectedStream!.index}`,
+        ...(mediaType === "audio"
+          ? ["-frames:a", "1"]
+          : ["-frames:v", "1", "-fps_mode", "passthrough"]),
+        "-threads",
+        "1",
+        "-f",
+        "framemd5",
+        "-",
+      ],
+      { signal, timeoutMs: 30_000, maxOutputBytes: 512 * 1024 },
+    );
+    if (
+      !/^\d+,\s*-?\d+,\s*-?\d+,\s*[1-9]\d*,\s*[1-9]\d*,\s*[a-f0-9]{32}$/mu.test(
+        decoded.stdout.toString("utf8"),
+      )
+    )
+      fail(
+        "request.invalid",
+        "Source media has no decodable frame in its required stream.",
         422,
       );
   } catch (error) {
