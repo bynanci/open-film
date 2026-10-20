@@ -79,6 +79,53 @@ real FFmpeg relocation/render, HTTP boundaries, catalog privacy, path-safety and
 Desktop project-switch fencing. The focused Collect Media browser flow passed
 before the full E2E suite started.
 
+## PR37 review remediation — 2026-10-20
+
+The original M7D gates above are historical. The review remediation starts from
+`cd537da784d73478a8d156fcc9677aafd8f79e26` and adds 21 focused regression cases.
+All 21 cases fail against the reviewed baseline and pass with the candidate,
+including missing font bindings and missing font files on direct reopen.
+All persisted Story and Composition asset references are checked against the
+packaged catalog, and every saved text style requires a package font binding.
+The render check still uses the first Composition.
+
+The regressions cover valid names containing `secret`, `password`, `credential`
+and `api-key`, retained `360-video` Story candidates, every non-owned rights
+basis without a license name, nested GraphicScene text, and recollection of two
+relocated copies. Raw 360° clips still require a reframed export for rendering.
+Real FFmpeg output is deliberately changed to the wrong dimensions or stripped
+of its embedded video soundtrack, with its output hash receipt updated; Verify
+rejects both outputs during decoded stream inspection.
+
+Both directory scans now observe cancellation while hashing. A deterministic
+test aborts on the first chunk of a 4 MiB synthetic file. The baseline read all
+4 MiB after cancellation; the candidate reads less than 512 KiB in each scan
+and leaves the original package intact. This is a bounded-read correctness
+check, not a throughput benchmark.
+
+Current local validation uses Node 24.19.0, pnpm 11.11.0 and FFmpeg/FFprobe 7.1.5,
+with Vitest limited to one worker:
+
+| Check                                                                                                  | Result                                         |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| Collect review, collect relocation/render, archive and HTTP suites                                     | Passed: 4 files, 29 tests.                     |
+| Reopen/relink, managed-source relocation, project versions, catalog and Desktop navigation regressions | Passed: 5 files, 71 tests.                     |
+| `pnpm typecheck`                                                                                       | Passed: TypeScript and Vue TypeScript.         |
+| `pnpm format:check`                                                                                    | Passed.                                        |
+| `pnpm lint`                                                                                            | Passed with zero warnings/errors.              |
+| `pnpm build`                                                                                           | Passed; existing Vite >500 kB bundle advisory. |
+
+The existing synthetic relocation test still verifies identical decoded frames
+after removing the original sources, exact source/font hashes, ZIP and directory
+packages, catalog filtering and source-path privacy. CI, browser, native and
+workstation gates have not been rerun as part of these local remediation checks.
+
+A separate retained synthetic handoff contains a one-second H.264 film at
+160 × 90 and 10 fps, AAC audio at 48 kHz, and one hash-checked packaged font.
+All ten decoded frames match the baseline after source removal and relocation;
+ZIP, directory and recollected-directory verification pass, and recollection
+retains the original source URI digest.
+
 ## Manual gates and limits
 
 - Run relocation/reopen on real Windows and macOS filesystems, including path

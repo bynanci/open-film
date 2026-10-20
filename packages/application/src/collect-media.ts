@@ -29,6 +29,7 @@ import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import {
   ApplicationError,
+  captionAssetState,
   graphicSceneAssetIds,
   migrateProject,
   resolveTitleStyle,
@@ -432,6 +433,15 @@ function packageAssetUri(assetId: string): string {
   return `openfilm-package://assets/${digest(assetId)}`;
 }
 
+function sourceOriginalUriDigest(asset: MediaAsset): string {
+  const reference = asset.metadata["openfilm.reference"] as
+    { originalUriDigest?: unknown } | undefined;
+  return typeof reference?.originalUriDigest === "string" &&
+    SHA_PATTERN.test(reference.originalUriDigest)
+    ? reference.originalUriDigest
+    : digest(asset.uri);
+}
+
 function packagedAsset(
   source: MediaAsset,
   sha256: string,
@@ -442,7 +452,7 @@ function packagedAsset(
     string,
     unknown
   >;
-  const originalUriDigest = digest(source.uri);
+  const originalUriDigest = sourceOriginalUriDigest(source);
   metadata["openfilm.reference"] = {
     originalUri: `openfilm-origin:${originalUriDigest}`,
     originalUriDigest,
@@ -833,10 +843,13 @@ async function hashPackageTree(root: string): Promise<CollectManifestFile[]> {
 
 async function listDirectoryPackage(
   root: string,
+  signal?: AbortSignal,
 ): Promise<CollectManifestFile[]> {
   const files: CollectManifestFile[] = [];
   const visit = async (directory: string): Promise<void> => {
+    checkAbortAndStatus(signal);
     for (const entry of await readdir(directory, { withFileTypes: true })) {
+      checkAbortAndStatus(signal);
       const path = join(directory, entry.name);
       const info = await lstat(path);
       if (info.isSymbolicLink())
@@ -853,7 +866,7 @@ async function listDirectoryPackage(
           "request.invalid",
           "Nested archives are not allowed in a package.",
         );
-      const value = await hashRegularFile(path);
+      const value = await hashRegularFile(path, signal);
       files.push({ path: packagePath, size: value.size, sha256: value.sha256 });
       if (files.length > MAX_SOURCE_COUNT + 300)
         fail("request.tooLarge", "Package has too many files.", 413);
@@ -999,10 +1012,13 @@ function validateManifest(value: unknown): CollectManifest {
         "Collect Media manifest contains an invalid media record.",
       );
     safeIdentifier(asset.id, "Manifest asset ID");
-    safeText(asset.name, "Media display name", 256);
+    safeIdentifier(asset.name, "Media display name");
+    if (asset.name.length > 256 || asset.name !== cleanDisplayName(asset.name))
+      fail("request.invalid", "Media display name must be a safe basename.");
     if (!(
       "image" === asset.mediaType ||
       "video" === asset.mediaType ||
+      "360-video" === asset.mediaType ||
       "audio" === asset.mediaType
     ))
       fail(
@@ -1119,6 +1135,8 @@ function validateManifest(value: unknown): CollectManifest {
     rightsIds.add(right.resourceId);
     if (right.licenseName !== undefined)
       safeText(right.licenseName, "license name", 120);
+    if (right.basis !== "owned" && right.licenseName === undefined)
+      fail("request.invalid", "Name the license or rights basis.");
     if (right.attribution !== undefined)
       safeText(right.attribution, "attribution", 512);
   }
@@ -1186,9 +1204,10 @@ async function readManifest(root: string): Promise<CollectManifest> {
 async function verifyPackageFiles(
   root: string,
   manifest: CollectManifest,
+  signal?: AbortSignal,
 ): Promise<void> {
   const expected = new Map(manifest.files.map((file) => [file.path, file]));
-  const actual = await listDirectoryPackage(root);
+  const actual = await listDirectoryPackage(root, signal);
   if (actual.length !== expected.size + 1)
     fail("request.invalid", "Package contains unexpected or missing files.");
   for (const file of actual) {
@@ -1225,7 +1244,7 @@ async function copyDirectoryPackage(
   destination: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  const files = await listDirectoryPackage(source);
+  const files = await listDirectoryPackage(source, signal);
   const total = files.reduce((sum, item) => sum + item.size, 0);
   if (total > MAX_PACKAGE_BYTES)
     fail("request.tooLarge", "Package exceeds the size limit.", 413);
@@ -1254,10 +1273,13 @@ function mediaFontBindings(
 /** Validate and load only hash-checked, package-relative font paths on reopen. */
 export async function loadCollectedFontBindings(
   projectDirectory: string,
+  project: OpenFilmProject,
 ): Promise<Map<string, string>> {
   const path = join(projectDirectory, MANIFEST_FILE);
+  let foundManifest = false;
   try {
     const info = await lstat(path);
+    foundManifest = true;
     if (
       info.isSymbolicLink() ||
       !info.isFile() ||
@@ -1278,9 +1300,23 @@ export async function loadCollectedFontBindings(
       )
         fail("source.changed", "A collected font failed its hash check.", 422);
     }
-    return mediaFontBindings(manifest, projectDirectory);
+    const bindings = mediaFontBindings(manifest, projectDirectory);
+    for (const style of collectTitleStyles(
+      project,
+      project.timelines.map((composition) => composition.id),
+    ))
+      if (!collectFontPathForStyle(bindings, style, project.settings))
+        fail(
+          "request.invalid",
+          "Collected package is missing a required text font binding.",
+          422,
+        );
+    return bindings;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (!foundManifest) return new Map();
+      fail("request.invalid", "A required collected font file is missing.");
+    }
     throw error;
   }
 }
@@ -1693,7 +1729,7 @@ export class CollectMediaService {
         sha256: source.sha256,
         size: source.size,
         path: uniquePaths.get(source.sha256)!,
-        originalUriDigest: digest(source.asset.uri),
+        originalUriDigest: sourceOriginalUriDigest(source.asset),
       };
     });
     const manifestEstimate: CollectManifest = {
@@ -2007,7 +2043,7 @@ export class CollectMediaService {
             sha256: source.sha256,
             size: source.size,
             path: source.relativePath,
-            originalUriDigest: digest(source.asset.uri),
+            originalUriDigest: sourceOriginalUriDigest(source.asset),
           };
         }),
         fonts: [...fonts.values()].map((font) => ({
@@ -2136,20 +2172,13 @@ export class CollectMediaService {
       }
       checkAbortAndStatus(signal);
       const manifest = await readManifest(isolated);
-      await verifyPackageFiles(isolated, manifest);
+      await verifyPackageFiles(isolated, manifest, signal);
       const projectInfo = await lstat(join(isolated, "project.json"));
       if (projectInfo.size > 16 * 1024 * 1024 || projectInfo.isSymbolicLink())
         fail("request.invalid", "Packaged project manifest is unsafe.");
-      const project = validateProject(
-        migrateProject(
-          JSON.parse(await readFile(join(isolated, "project.json"), "utf8")),
-        ),
+      const projectData = migrateProject(
+        JSON.parse(await readFile(join(isolated, "project.json"), "utf8")),
       );
-      if (project.id !== manifest.projectId)
-        fail(
-          "request.invalid",
-          "Project identity does not match its package manifest.",
-        );
       const catalogInfo = await lstat(join(isolated, "database.sqlite"));
       if (
         catalogInfo.isSymbolicLink() ||
@@ -2165,6 +2194,12 @@ export class CollectMediaService {
       );
       const expectedIds = manifest.assets.map((asset) => asset.id).sort();
       const actualIds = catalogSnapshot.assets.map((asset) => asset.id).sort();
+      const project = validateProject(projectData, { assetIds: actualIds });
+      if (project.id !== manifest.projectId)
+        fail(
+          "request.invalid",
+          "Project identity does not match its package manifest.",
+        );
       if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds))
         fail(
           "request.invalid",
@@ -2372,10 +2407,16 @@ export class CollectMediaService {
       const outputAudioStream = parsed.streams?.find(
         (item) => item.codec_type === "audio",
       );
-      const expectsAudio = firstComposition.tracks.some(
-        (track) =>
-          (track.type === "audio" || track.type === "music") &&
-          track.clips.length > 0,
+      const sourceAssets = new Map(
+        catalogSnapshot.assets.map((asset) => [asset.id, asset]),
+      );
+      const expectsAudio = firstComposition.tracks.some((track) =>
+        track.clips.some((clip) => {
+          const asset = clip.assetId
+            ? sourceAssets.get(clip.assetId)
+            : undefined;
+          return asset !== undefined && captionAssetState(asset).hasAudio;
+        }),
       );
       const alignedDuration = frameAlignedDuration(
         firstComposition.duration,
@@ -2385,8 +2426,8 @@ export class CollectMediaService {
         alignedDuration * application.project.settings.frameRate,
       );
       if (
-        !video?.width ||
-        !video.height ||
+        video?.width !== application.project.settings.width ||
+        video.height !== application.project.settings.height ||
         !video.avg_frame_rate ||
         video.codec_name !== "h264" ||
         !Number.isSafeInteger(outputFrames) ||

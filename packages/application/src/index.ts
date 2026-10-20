@@ -421,7 +421,10 @@ export class OpenFilmApplication {
       JSON.parse(await readFile(join(path, "project.json"), "utf8")),
     );
     const canonical = await realpath(path);
-    const packageFontBindings = await loadCollectedFontBindings(canonical);
+    const packageFontBindings = await loadCollectedFontBindings(
+      canonical,
+      project,
+    );
     for (const name of ["story", "timeline", "analysis", "cache", "exports"]) {
       try {
         safeDirectorySync(join(canonical, name));
@@ -585,7 +588,15 @@ export class OpenFilmApplication {
               metadata: {
                 ...asset.metadata,
                 "openfilm.managedSource": { ...managed, uri },
-                "openfilm.reference": { ...reference, rootUri, relativePath },
+                "openfilm.reference": {
+                  ...reference,
+                  ...(typeof packageReference?.originalUriDigest === "string" &&
+                  /^[a-f0-9]{64}$/u.test(packageReference.originalUriDigest)
+                    ? { originalUriDigest: packageReference.originalUriDigest }
+                    : {}),
+                  rootUri,
+                  relativePath,
+                },
               },
             };
             this.catalog.upsertAsset(asset);
