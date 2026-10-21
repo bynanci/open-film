@@ -162,4 +162,49 @@ originals show **Missing Media** or **Library offline**. Use **Check again** aft
 reconnecting at the same path, or **Relink Media** for a new location:
 
 1. Use **Search a folder** and its **Search folder path**, or inspect a single item,
-   choose **Relink selected 
+   choose **Relink selected media**, then **Choose one file** and **Replacement
+   file path**.
+2. Choose **Find matches** and inspect the evidence. A unique exact content match
+   can be selected automatically. Choose ambiguous copies explicitly; confirm
+   weaker matches only when the chosen file is the intended original. A known
+   hash mismatch cannot be overridden.
+3. Apply the reviewed matches, then **Close relink media**. Check the availability
+   status and return to Timeline to play the reconnected source. Ratings, IDs,
+   trims, effects, and locks should remain intact.
+
+See [Moving and reconnecting media](../media-portability.md) for matching rules,
+legacy projects, and mount-path limitations. The generated manifest's hashes can
+be checked against the moved originals; editing and relinking must not change
+their bytes.
+
+## 6. Prepare the edit for Resolve
+
+Go to **Export** and choose **OpenTimelineIO**. The displayed output path points to
+`exports/timeline.otio` in the project. Keep the original media accessible; the
+export references it. Read the persistent **Export compatibility report** and keep
+the accompanying `timeline.otio.report.json` alongside the timeline. Export
+**OpenFilm timeline** as well when you want a full JSON copy of the OpenFilm cut.
+
+Cuts, trims, stills, audio, and tracks have independent OpenTimelineIO parser
+validation. That validation does not certify a real DaVinci Resolve import.
+Speed, volume, transforms, and crossfades are retained in OpenFilm metadata and
+need manual recreation in Resolve; do not assume native effect preservation.
+
+Follow [NLE compatibility and manual verification](../nle-compatibility.md) for
+version-specific import checks. In an actual Resolve installation, verify source
+paths, clip order, source in/out, still durations, track placement, and overall
+length; recreate and inspect the advanced edits. Compare playback with the
+OpenFilm preview before sharing. Record the Resolve version and results rather
+than marking an unperformed import as verified.
+
+## Optional camera-format checks
+
+Import the generated `raw/` directory separately to inspect explicit limitations.
+The `.insv` and `.insp` samples must show **360 source / Requires reframed export**,
+with metadata still browseable; use a flat JPG/MP4 export for the film. The DNG
+fixture exercises metadata-only fallback, not real-camera demosaicing. Motion
+Photo fixtures exercise experimental detection and evidence, not production motion
+extraction. Real camera DNG decoding, HDR display appearance, physical removable
+drives, native pickers, and actual 360 stitching/reframing remain manual checks.
+Generated source tags and successful browser playback do not establish those
+hardware capabilities.
