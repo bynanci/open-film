@@ -171,4 +171,68 @@ publication runs in the catalog restore transaction; a small private journal
 rolls back to the checkpoint when startup detects an interrupted publication.
 The current project manifest and catalog are replaced together, and editor
 snapshots are invalidated. This does not restore cache/exports or originals and
-does not become session U
+does not become session Undo/Redo. See [Named Versions](named-versions.md) for
+the full lifecycle and failure behavior.
+
+Browser-managed copies record a validated source-relative path and their previous
+managed URI under `openfilm.managedSource`. On moving the project, opening it
+rebases only assets still pointing at their managed source; an explicitly relinked
+external file stays external. IDs and original provenance remain stable. Source
+paths must remain within `sources/`; project cache or arbitrary metadata paths are
+never imported as managed media.
+
+Collect Media packages use the same managed-source boundary. Their optional
+`collect-manifest.json` records selected Stories/Compositions, relative paths,
+content hashes/sizes, required font bindings, explicit rights declarations and
+digests of original URIs. The project catalog contains only referenced assets
+and their selected transcript data; unrelated Library assets, caches, jobs,
+provider credentials and named-version snapshots are not included. Each distinct
+source byte sequence is stored once beneath `sources/<hash-prefix>/`; asset URIs
+remain unique and opaque while their `openfilm.managedSource.relativePath` points
+to the shared source bytes. Font files and their resolver bindings are stored in
+`fonts/` and checked by hash when a collected project opens. These package
+receipts live outside schema 1.0.0 and catalog schema v5; projects without them
+continue to open as before. See [Collect Media](collect-media.md) for the
+directory/ZIP and Verify contract.
+
+## Validation and migration
+
+`validateProject` checks the current schema and structural/value constraints.
+`migrateProject` supports current 1.0.0 and a documented 0.1.0 draft with identical
+v1 field names; that draft may omit settings, in which case 1920 × 1080 / 30 fps
+is added. It does not mutate its input or infer unversioned/unknown formats.
+Unknown future versions are rejected with a useful error.
+
+Opening a draft migrates it in memory; saving/closing persists the current
+manifest. Original media is never part of a schema migration. Back up a project
+before opening it with a version that introduces a format migration.
+
+## Timeline interchange
+
+JSON exports include schema version, full composition, referenced assets, and
+settings. OTIO uses native Timeline/Stack/Track/Clip/Gap objects for cut layout,
+current source file URIs, still holds, audio and source ranges at 1x. Advanced
+edits—speed, volume/mute, transforms, titles, crossfades and clip locks—are retained
+in OpenFilm metadata with explicit warnings, not native NLE effects. Exact
+original clip fields and the complete composition are embedded. Retimed clips
+use unretimed native excerpts and, when needed, labeled padding gaps to preserve
+record positions; reconstruct the intended speed edit manually from metadata.
+Within-track overlaps are rejected.
+
+The application returns warnings and writes an adjacent
+`timeline.<format>.report.json`; OTIO also embeds its compatibility report.
+FCPXML and EDL retain their limited cut-based behavior and reject unsupported
+advanced operations. JSON remains the complete model export. Official OTIO parser
+read/write/read verification is separate from actual NLE behavior: DaVinci Resolve
+import and playback have not been verified. See
+[NLE compatibility](nle-compatibility.md) for exact feature support, metadata
+locations, and manual verification steps.
+
+## Native installer storage separation
+
+The M7E RuntimeManifest and bundled executables are app installation resources,
+not project data. Runtime staging and installer packaging do not copy or migrate
+project directories. First-run checks use app-data working storage. Manual app
+rollback preserves projects and relies on existing project/catalog compatibility
+checks; unsupported versions are refused rather than rewritten. See
+[Native Installer](native-installer.md).
