@@ -33,7 +33,7 @@ evidence only.
 ## Gate: Real DaVinci Resolve
 
 Use the generated Resolve QA artifact and
-[`scripts/resolve-qa/WORKSTATION.md`](../scripts/resolve-qa/WORKSTATION.md).
+[`scripts/resolve-qa/WORKSTATION.md`](https://github.com/bynanci/open-film/blob/main/scripts/resolve-qa/WORKSTATION.md).
 
 Minimum observations:
 
@@ -245,4 +245,4 @@ For each platform:
    snapshots and saved edits were retained. Record actual file observations.
 
 Signing/feed setup and any automatic update activation require their own reviewed
-configuration and failure/rollback evidence. See [Native Installer](native-installer.md).
+configuration and failure/rollback evidence. See [Native Installer]

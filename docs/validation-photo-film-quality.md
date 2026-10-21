@@ -1,7 +1,7 @@
 # Photo-film quality validation
 
 This record covers the generated 20-second A/B calibration workflow, using
-[the public fixture generator](../fixtures/photo-film-quality/README.md).
+[the public fixture generator](https://github.com/bynanci/open-film/tree/main/fixtures/photo-film-quality).
 It contains no user photographs, original films or private audio.
 
 ## Automated evidence
@@ -146,118 +146,4 @@ They do not describe the corrected implementation's larger test suite.
 | Built CLI smoke         | Passed                                                                                                   |
 | Complete browser suite  | 116 passed / 1 environment failure in 16.5 minutes; separate configured retry 1/1 passed in 32.7 seconds |
 | `pnpm test:native`      | Not runnable locally: `cargo` is unavailable                                                             |
-| Published-head CI       | Recorded separately on candidate PR checks; local results do not substitute                              |
-
-Earlier failed attempts remain part of the record. The first full regression
-attempt exposed a static resvg import/bundling failure; the implementation now
-loads that runtime lazily. A later attempt had seven port-4310-related test
-failures while a separate browser suite was running concurrently. After fixing
-that test orchestration and running the suites serially, all 153 files / 2,213
-Vitest tests passed. These earlier failures are not counted as successful runs.
-The native lifecycle helper tests inside Vitest do not replace the unavailable
-Rust/Tauri gate or actual native workstation operation.
-
-The complete browser run finished with 116 passing tests and one environment
-failure in 16.5 minutes. The invocation omitted `OPENFILM_OTIO_PYTHON`, so the
-Proposal workflow's parser check fell back to a system Python without OTIO.
-Its failure trace remains in the local evidence directory under
-`proposal-python-environment-failure/`. A separate `--last-failed` retry using
-the verified OTIO 0.18.1 virtual environment passed the remaining test in 32.7
-seconds (29.4 seconds in the test), without an implementation change:
-
-```sh
-OPENFILM_CHROMIUM=/usr/bin/chromium OPENFILM_OTIO_PYTHON=/tmp/openfilm-interchange-venv/bin/python3 pnpm test:e2e --last-failed
-```
-
-All 117 cases were exercised successfully across these attempts. This is not
-recorded as a single successful 117-test run. Remote CI is recorded independently
-on the candidate PR checks.
-
-The previous base's successful exact-head Verify job
-[`38997528797`](https://github.com/bynanci/open-film/actions/runs/38997528797)
-took approximately 19 minutes, including 15 minutes of browser coverage, against
-a 20-minute job limit. The expanded photo-film suite raises that job budget to
-30 minutes while retaining every gate and the existing per-test timeouts. This
-is CI capacity headroom, not a runtime performance improvement.
-
-## Initial implementation correctness review
-
-Independent final review reproduced and corrected three Desktop issues before
-the implementation was frozen:
-
-| Reproduced issue                                                                                   | Corrected behavior and regression                                                                                                                                          |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A saved motion-only photo used a static monitor while FFmpeg applied motion.                       | Presentation activates for motion without requiring a layout field. The browser reopens a motion-only clip, seeks its endpoint and plays/pauses without mutating the film. |
-| A saved diptych's explicit gap remained when choosing contain or hero, blocking validation.        | Single-photo layout commands remove diptych-only data. The browser changes a persisted gap-16 diptych to hero, undoes it, and changes to contain.                          |
-| Undo/Redo restored audio trim/speed in data but left the audio element at its prior playback rate. | Audio preview reconfigures from the restored source range and speed. The browser verifies rate and current source time through Undo and Redo.                              |
-
-The focused photo-quality browser suite passed all seven tests. Supplementary
-regressions cover title-only photos/videos using the shared title raster outside
-source transforms, unsupported native audio playback staying paused, the combined
-editing/history/reopen flow and localized desktop layouts. An independent
-compiled-SFC reproduction also confirmed the three corrected behaviors.
-
-Scoped rendering/source-isolation review additionally covered actual decoded
-FFmpeg pixels at motion samples, two diptych inputs, real mixed-audio fades and
-ducking, original preservation when an output aliases a source through a hard
-link, missing-font/glyph errors and source-bound export manifests. HTTP coverage
-rejects titles requested for another project or stale revision. These checks
-exercise implementation correctness; they do not establish hardware playback,
-human listening, photographic aesthetics or real Resolve import.
-
-## PR #18 follow-up correctness review
-
-The corrected `8baa2740eea22bcb2f33a29647839c12a7585b31` implementation addresses
-twelve unique follow-up P2 issues: the preceding round's five newly valid bot
-findings and three independent-review findings, followed by three newly reviewed
-correctness issues and one historical-style recovery issue. Each has regression
-coverage. Current non-browser and focused browser results remain distinct from
-the historical complete browser runs above.
-
-| Finding                                                            | Correction and regression coverage                                                                                                                                                                                  |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unbounded new title/raster input                                   | Bound new commands and rasterization at 8,000 UTF-16 code units while keeping legacy project reading compatible. Reject invalid new edits before mutation.                                                          |
-| Sound controls offered ordinary Story audio as overlay-editable    | List/control only explicitly designated overlay tracks; compiled-component tests retain ordinary audio outside the Sound controls.                                                                                  |
-| One failed/stale photo layer corrupted the current presentation    | Recover layers independently and ignore events from obsolete layer resources; verify primary/secondary replacement and recovery.                                                                                    |
-| Diptych gap could equal or exceed output width                     | Atomically reject an invalid gap before project/history mutation, using the actual project frame width.                                                                                                             |
-| Empty overlay tracks blocked restrictive interchange               | Remove empty tracks on edit and preserve cleanup through history/reopen; FCPXML/EDL ignore legacy empty tracks.                                                                                                     |
-| Incompatible media could replace/configure audio                   | Remove automation when replacements have no audio; preserve/clamp compatible curves. Reject silent-video configuration; Undo restores the original automation.                                                      |
-| Sparse title defaults changed on editing/clearing                  | Preserve resolved role defaults, explicit overrides, text-only edits and clear/Undo semantics; cover sparse/legacy title styles.                                                                                    |
-| Relinked Sound source reused stale playback/buffer                 | Bind playback to current URI/reconnect version, pause the old buffer and ignore obsolete errors; exercise same-ID source changes.                                                                                   |
-| Effective title tracking failed only after save/render             | Preflight tracking against resolved role/default typography and project size before mutation; cover authored styles with omitted font size.                                                                         |
-| Replacing visual media discarded its graphic title style           | Preserve title styling across source replacement and cover replacement/history behavior.                                                                                                                            |
-| Visual overlay clips disappeared from selection controls           | Keep visual overlay clips selectable without offering audio overlays as visual clips; verify the available edit targets.                                                                                            |
-| A readable historical subtitle style crashed Inspector setup/watch | Display safe defaults and a localized inline warning without mutating saved style. An explicit Reset preserves text; Undo restores the old style while recovery, text correction and clear controls stay reachable. |
-
-One bot report repeated the already-corrected legacy-title rendering issue.
-The alleged P1 PNG selector failure was not reproduced with actual FFprobe:
-
-| FFprobe version | Actual PNG selector result      |
-| --------------- | ------------------------------- |
-| 6.0             | Reported failure not reproduced |
-| 7.0.2           | Reported failure not reproduced |
-| 7.1.5           | Reported failure not reproduced |
-
-The probe now nevertheless declares `format:stream` sections explicitly, with
-real generated PNG/JPEG regression tests for dimensions and codec metadata.
-This is recorded as explicit selection and coverage, not as proof that the
-reported PNG failure existed on those versions.
-
-Fresh independent review of the frozen corrected source passed all four latest
-findings. The focused photo browser suite passed 11/11 tests, including actual
-reopen/reset/Undo recovery for historical invalid title tracking. Component
-regression helpers use the declared public
-`vue/compiler-sfc` entry point rather than an undeclared transitive Node module.
-Neither that review nor generated-media tests establish hardware playback,
-private-film aesthetics, human audio listening or actual Resolve QA.
-
-## Manual gates
-
-- Inspect actual start/middle/end frames and transition edges for crop loss,
-  inappropriate overlap, drift, missing characters and unreadable text.
-- Listen to real narration, original audio and licensed music; a synthetic
-  gated tone cannot verify intelligibility or emotional continuity.
-- Test real portrait/landscape originals, actual CJK project text and intended
-  projection/playback hardware. No user image or attachment is a public fixture.
-- Windows native operation, hardware/camera sources and real Resolve finishing
-  remain separate workstation gates.
+| Published-h

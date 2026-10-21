@@ -96,4 +96,4 @@ Browser-managed copies move with the project; externally referenced media may ne
 relinking. Physical removable-drive behavior still requires platform QA.
 
 For implementation details, see [internationalization](i18n.md),
-[the design system](design-system.md), and [the desktop guide](../apps/desktop/README.md).
+[the design system](design-system.md), and [the desktop guide](https://github.com/bynanci/open-film/blob/main/apps/desktop/README.md).

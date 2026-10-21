@@ -1,7 +1,7 @@
 # Licensing and distribution
 
 OpenFilm's current first-party code is offered under **Apache-2.0**. The
-repository's [LICENSE](../LICENSE) is authoritative; this guide explains the
+repository's [LICENSE](https://github.com/bynanci/open-film/blob/main/LICENSE) is authoritative; this guide explains the
 policy and does not replace the license text. The restoration is recorded in
 [ADR 010](adr/010-apache-license-restoration.md).
 
@@ -18,7 +18,7 @@ When redistributing covered material:
 - Retain the source notices required by section 4, including applicable
   copyright, patent, trademark and attribution notices.
 - Mark modified files with prominent notices stating that they were changed.
-- Preserve the applicable attribution notices from [NOTICE](../NOTICE) in a
+- Preserve the applicable attribution notices from [NOTICE](https://github.com/bynanci/open-film/blob/main/NOTICE) in a
   readable form as required by section 4(d).
 - Meet the actual licenses of any included third-party components separately.
 
@@ -45,8 +45,8 @@ revoke either grant, rewrite the license of a historical revision or remove the
 conditions that apply when using material under its historical GPL terms.
 
 The exact original Apache text is preserved in
-[LICENSES/Apache-2.0.txt](../LICENSES/Apache-2.0.txt), and the earlier GPL text is
-retained in [LICENSES/GPL-3.0-only.txt](../LICENSES/GPL-3.0-only.txt). That archive
+[LICENSES/Apache-2.0.txt](https://github.com/bynanci/open-film/blob/main/LICENSES/Apache-2.0.txt), and the earlier GPL text is
+retained in [LICENSES/GPL-3.0-only.txt](https://github.com/bynanci/open-film/blob/main/LICENSES/GPL-3.0-only.txt). That archive
 records earlier terms; it does not designate GPL as the current license.
 Original attribution remains in NOTICE. Future third-party contributions must
 have permission compatible with the intended distribution; a repository-wide

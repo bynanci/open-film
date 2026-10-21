@@ -43,7 +43,7 @@ the project; missing proxies have a specific rebuild instruction. Originals are
 never rewritten by this pipeline.
 
 All committed fixture definitions are generated/public-domain. See
-[`fixtures/proposal-film`](../fixtures/proposal-film/README.md) for provenance and
+[`fixtures/proposal-film`](https://github.com/bynanci/open-film/tree/main/fixtures/proposal-film) for provenance and
 reproduction. No real personal camera media is bundled.
 
 ## Browser previews of ordinary media

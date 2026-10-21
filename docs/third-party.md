@@ -1,7 +1,7 @@
 # Third-party components
 
 OpenFilm's current first-party code is offered under Apache-2.0; see
-[licensing](licensing.md) and the authoritative [LICENSE](../LICENSE).
+[licensing](licensing.md) and the authoritative [LICENSE](https://github.com/bynanci/open-film/blob/main/LICENSE).
 Dependencies and external programs retain their own licenses; the project
 license does not replace them. The lockfiles identify exact versions, including
 transitive packages. Previously granted rights remain available for the
