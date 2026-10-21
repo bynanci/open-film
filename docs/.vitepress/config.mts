@@ -4,9 +4,8 @@ import { defineConfig } from 'vitepress'
 const guide = (label: string, path: string) => ({ text: label, link: `/${path}` })
 const group = (text: string, items: ReturnType<typeof guide>[], collapsed = true) => ({ text, collapsed, items })
 const keepExisting = (items: ReturnType<typeof guide>[]) => items.filter(({ link }) => existsSync(new URL(`../${link.slice(1)}.md`, import.meta.url)))
-const searchSegmenter = new Intl.Segmenter('zh-TW', { granularity: 'word' })
 const tokenizeForSearch = (text: string) =>
-  Array.from(searchSegmenter.segment(text.toLocaleLowerCase('zh-TW')))
+  Array.from(new Intl.Segmenter('zh-TW', { granularity: 'word' }).segment(text.toLocaleLowerCase('zh-TW')))
     .filter(({ isWordLike }) => isWordLike)
     .map(({ segment }) => segment)
 
