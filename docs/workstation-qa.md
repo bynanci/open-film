@@ -245,4 +245,4 @@ For each platform:
    snapshots and saved edits were retained. Record actual file observations.
 
 Signing/feed setup and any automatic update activation require their own reviewed
-configuration and failure/rollback evidence. See [Native Installer]
+configuration and failure/rollback evidence. See [Native Installer](native-installer.md).
