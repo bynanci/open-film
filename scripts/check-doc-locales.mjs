@@ -46,7 +46,10 @@ for (const readme of readmes) {
       errors.push(`Missing ${path.relative(root, translated)}`);
     }
   }
-  if (!source.includes("README.zh-TW.md") || !source.includes("README.ja.md")) {
+  if (
+    !source.includes("README.zh-TW.md") ||
+    !source.includes("README.ja.md")
+  ) {
     errors.push(`Missing language links in ${path.relative(root, readme)}`);
   }
 }
@@ -75,7 +78,12 @@ for (const locale of ["", "en/", "ja/"]) {
   }
 }
 
-const ignoredDocDirectories = new Set([".vitepress", "en", "ja", "superpowers"]);
+const ignoredDocDirectories = new Set([
+  ".vitepress",
+  "en",
+  "ja",
+  "superpowers",
+]);
 const sourceDocs = collect(docsRoot, ignoredDocDirectories).filter((file) => {
   const rel = path.relative(docsRoot, file).split(path.sep).join("/");
   return (
@@ -112,6 +120,6 @@ if (errors.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    `README locale coverage: ${readmes.length}/${readmes.length} with zh-TW and ja editions. English reference mirrors checked: ${sourceDocs.length}.`,
+    `README locales: ${readmes.length}; English reference mirrors: ${sourceDocs.length}.`,
   );
 }

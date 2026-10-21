@@ -189,9 +189,7 @@ const sectionNames: Record<string, Record<string, string>> = {
     "ja-JP": "検証記録（英語原文）",
   },
 };
-const englishFallbackGroups = (
-  locale: "zh-TW" | "en-US" | "ja-JP",
-) => {
+const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
   const grouped = new Map<string, ReturnType<typeof guide>[]>();
   const collect = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
@@ -231,9 +229,13 @@ const englishFallbackGroups = (
   return [...grouped.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([section, items]) => {
+      const fallbackLabel = {
+        "zh-TW": "英文原文",
+        "en-US": "English source",
+        "ja-JP": "英語原文",
+      }[locale];
       const title =
-        sectionNames[section]?.[locale] ??
-        `${section} (${locale === "ja-JP" ? "英語原文" : locale === "zh-TW" ? "英文原文" : "English source"})`;
+        sectionNames[section]?.[locale] ?? `${section} (${fallbackLabel})`;
       return group(title, items);
     });
 };
