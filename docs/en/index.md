@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: Start making
-      link: /product-workflow
+      link: /en/product-workflow
     - theme: alt
       text: View on GitHub
       link: https://github.com/bynanci/open-film
@@ -26,7 +26,7 @@ features:
 
 ## Quick start
 
-Start with the [film-making workflow](/product-workflow) to create a project, import media, organize the story, edit and export. See [media portability](/media-portability) when moving source files, and review [export quality](/export-quality) and [export profiles](/export-profiles) before delivery.
+Start with the [film-making workflow](/en/product-workflow) to create a project, import media, organize the story, edit and export. See [media portability](/en/media-portability) when moving source files, and read about [camera sources and preview limits](/en/source-support).
 
 ## Workflow
 
@@ -34,4 +34,4 @@ Create a project → Import media → Organize the story → Edit and preview �
 
 ## Language and documentation
 
-This page is available in English. Technical reference pages are currently written primarily in English; Traditional Chinese and Japanese versions will be added as they are prepared.
+The five getting-started guides are available in English, Traditional Chinese and Japanese. Other technical reference pages are currently available primarily in English and are labeled in the navigation.
