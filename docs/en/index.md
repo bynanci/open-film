@@ -34,5 +34,5 @@ Create a project → Import media → Organize the story → Edit and preview �
 
 ## Language and documentation
 
-The site uses saved Traditional Chinese, English and Japanese Markdown files committed to Git. It does not translate pages at runtime. The five main user guides currently have saved versions in all three locales; translations for the remaining technical references are still in progress.
+The site uses saved Traditional Chinese, English and Japanese Markdown files committed to Git. It does not translate pages at runtime. The five main guides and the creative story templates, precision editing, source markers and snapping, MP4 compression quality, and audio quality pages have saved versions in all three locales. Other technical references still need translation.
 

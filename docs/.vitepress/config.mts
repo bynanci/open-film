@@ -50,20 +50,20 @@ const gettingStarted = keepExisting([
 ]);
 
 const editing = keepExisting([
-  guide("故事模板", "en/creative-story-templates"),
-  guide("精準剪輯", "en/precision-editing"),
-  guide("標記與吸附", "en/markers-and-snapping"),
+  guide("故事模板", "creative-story-templates"),
+  guide("精準剪輯", "precision-editing"),
+  guide("標記與吸附", "markers-and-snapping"),
   guide("Film Looks", "en/film-looks"),
   guide("PhotoDepth", "en/photo-depth"),
   guide("原生文字控制", "en/native-text-controls"),
-  guide("音訊品質", "en/audio-quality"),
+  guide("音訊品質", "audio-quality"),
   guide("字幕", "en/composition-captions"),
   guide("逐字稿編輯", "en/transcript-editing"),
   guide("可審閱建議", "en/review-suggestions"),
 ]);
 
 const exportDocs = keepExisting([
-  guide("輸出品質", "en/export-quality"),
+  guide("輸出品質", "export-quality"),
   guide("輸出設定檔", "en/export-profiles"),
   guide("OpenTimelineIO 與 NLE", "en/nle-compatibility"),
   guide("NLE 交接", "en/nle-handoff"),
@@ -116,6 +116,22 @@ const japaneseGettingStarted = keepExisting([
   guide("メディアの移動と再リンク", "ja/media-portability"),
   guide("カメラソースとプレビュー", "ja/source-support"),
 ]);
+const englishAdditionalDocs = keepExisting([
+  guide("Creative story templates", "en/creative-story-templates"),
+  guide("Precision editing", "en/precision-editing"),
+  guide("Source markers and snapping", "en/markers-and-snapping"),
+  guide("Audio quality", "en/audio-quality"),
+  guide("MP4 compression quality", "en/export-quality"),
+]);
+const japaneseEditing = keepExisting([
+  guide("クリエイティブストーリーテンプレート", "ja/creative-story-templates"),
+  guide("精密編集", "ja/precision-editing"),
+  guide("ソースマーカーとスナップ", "ja/markers-and-snapping"),
+  guide("確認可能な音声品質", "ja/audio-quality"),
+]);
+const japaneseExportDocs = keepExisting([
+  guide("MP4 圧縮品質", "ja/export-quality"),
+]);
 const englishReference = keepExisting([
   guide("Export quality", "en/export-quality"),
   guide("Export profiles", "en/export-profiles"),
@@ -149,6 +165,11 @@ const localizedSlugs = new Set([
   "media-portability.md",
   "source-support.md",
   "i18n.md",
+  "creative-story-templates.md",
+  "precision-editing.md",
+  "markers-and-snapping.md",
+  "export-quality.md",
+  "audio-quality.md",
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
@@ -268,6 +289,7 @@ export default defineConfig({
         ],
         sidebar: [
           group("Getting started", englishGettingStarted, false),
+          group("Editing and export", englishAdditionalDocs),
           group("Technical references", englishReference),
           ...englishFallbackGroups("en-US"),
         ],
@@ -305,6 +327,8 @@ export default defineConfig({
         ],
         sidebar: [
           group("スタートガイド", japaneseGettingStarted, false),
+          group("編集", japaneseEditing),
+          group("書き出し", japaneseExportDocs),
           group("言語と翻訳", keepExisting([guide("国際化", "ja/i18n")])),
           group("その他の技術資料", englishReference),
           ...englishFallbackGroups("ja-JP"),
