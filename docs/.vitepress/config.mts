@@ -81,7 +81,7 @@ const intelligence = keepExisting([
 const concepts = keepExisting([
   guide("架構", "en/architecture"),
   guide("設計系統", "en/design-system"),
-  guide("國際化", "en/i18n"),
+  guide("國際化", "i18n"),
   guide("詞彙表", "en/glossary"),
   guide("授權", "en/licensing"),
   guide("第三方元件", "en/third-party"),
@@ -150,6 +150,7 @@ const localizedSlugs = new Set([
   "project-format.md",
   "media-portability.md",
   "source-support.md",
+  "i18n.md",
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
@@ -310,6 +311,7 @@ export default defineConfig({
         ],
         sidebar: [
           group("スタートガイド", japaneseGettingStarted, false),
+          group("言語と翻訳", keepExisting([guide("国際化", "ja/i18n")])),
           group("その他の技術資料（英語原文）", englishReference),
           ...englishFallbackGroups("ja-JP"),
         ],

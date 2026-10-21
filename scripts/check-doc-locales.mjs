@@ -57,6 +57,7 @@ const guideSlugs = [
   "project-format",
   "media-portability",
   "source-support",
+  "i18n",
 ];
 for (const slug of guideSlugs) {
   for (const locale of ["", "en/", "ja/"]) {
