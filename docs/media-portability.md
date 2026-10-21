@@ -1,51 +1,22 @@
-# Moving and reconnecting media
+# 搬移與重新連結媒體
 
-OpenFilm keeps original media outside the project. Moving a `.openfilm` directory
-preserves its catalog, story, timeline, edits and cached thumbnails/proxies. Newly
-created cache references are relative to the project. Older generated absolute
-cache references are recovered when reopening the moved project.
+OpenFilm 會將原始媒體保存在專案資料夾之外。搬移 .openfilm 資料夾時，素材目錄、故事、時間軸、編輯內容與快取縮圖／代理檔都會保留。新建立的快取參照使用專案相對路徑；重新開啟已搬移的專案時，也會復原符合應用程式命名規則的舊版絕對快取路徑。
 
-Missing files remain in the Library and Timeline with **Missing Media**. Ratings,
-locks, source ranges, effects and beat selections remain editable and saved.
-Rendering requires available originals; reconnect the disk or relink before
-rendering. **Check again** refreshes source and library availability without
-decoding all the media. An unavailable library displays **Library offline**.
+檔案遺失時，素材仍會留在素材庫與時間軸中，並標示「媒體遺失」。評分、鎖定、來源範圍、效果與段落選擇仍可編輯並儲存。算繪時需要可用的原始檔；請重新連接磁碟或重新連結媒體。「再次檢查」會更新來源與素材庫的可用狀態，不會解碼全部媒體。無法使用的素材庫會顯示「素材庫離線」。
 
-Use **Relink Media** for a folder, or the selected asset's relink action for one
-file. Enter its new path or use a native picker. Review the matching evidence,
-choose ambiguous candidates explicitly, and apply the selected matches. Pending
-timeline edits are saved before relinking. Import or render jobs must finish or
-be cancelled first.
+資料夾搬移後，使用「重新連結媒體」選擇新資料夾；單一檔案則使用該素材的重新連結操作。輸入新路徑或開啟原生檔案選擇器後，請檢視配對依據、明確選擇有歧義的候選檔案，再套用所選配對。重新連結前會先儲存待處理的時間軸編輯。匯入或算繪工作必須先完成或取消。
 
-Matching proceeds in this order:
+配對依照以下順序進行：
 
-1. Exact SHA-256 content hash, even if the filename changed.
-2. Relative path within the library, when no original hash is known.
-3. Filename plus byte size, when no original hash is known.
-4. Explicit single-file selection and confirmation for unidentified legacy media.
+1. 精確的 SHA-256 內容雜湊，即使檔名已變更也可辨識。
+2. 原始雜湊未知時，使用素材庫中的相對路徑。
+3. 原始雜湊未知時，以檔名和位元組大小配對。
+4. 無法識別的舊版媒體需要明確選取單一檔案並確認。
 
-Only a unique exact content match is automatically selected. Weaker matches
-require confirmation; filename alone never automatically identifies a source.
-Known hash mismatches cannot be overridden by a weaker match. Multiple equivalent
-candidates stay ambiguous. Files are checked again when applying; stale plans,
-deleted files, source ranges longer than replacement media and destination
-collisions produce specific errors. A folder relink updates all selected catalog
-rows in one SQLite transaction or changes none.
+只有唯一且內容完全相符的檔案會自動選取。較弱的配對依據需要使用者確認；系統絕不會只憑檔名自動識別來源。已知雜湊不符時，不能用較弱的配對方式覆蓋。多個候選同樣相符時會保持歧義。套用時會重新檢查檔案；計畫已過期、檔案已刪除、替代媒體長度不足以涵蓋來源範圍，或目的地發生衝突時，都會顯示對應錯誤。資料夾重新連結會在單一 SQLite 交易中更新所有已選素材，否則一筆也不會變更。
 
-References live in the existing `metadata["openfilm.reference"]` extension:
-original URI, hash, filename, byte size, library ID, relative path, logical volume
-ID and current root URI. The original URI and asset ID survive every relink.
-The project and catalog schema versions remain unchanged because this is additive
-metadata. Legacy references are derived from existing library roots and filesystem
-metadata; no guessed content hashes are invented. Re-importing a successfully
-relinked source retains its original asset ID and user decisions.
+來源參照儲存在既有的 metadata["openfilm.reference"] 擴充欄位，包括原始 URI、雜湊、檔名、位元組大小、素材庫 ID、相對路徑、邏輯磁碟區 ID 和目前根目錄 URI。每次重新連結後，原始 URI 和素材 ID 都會保留。這些新增中繼資料不會改變專案或素材目錄的版本。舊版參照會根據既有素材庫根目錄與檔案系統中繼資料推導，不會臆造內容雜湊。來源成功重新連結後重新匯入，仍會保留原素材 ID 和使用者決定。
 
-Logical volume IDs survive a mount path or drive-letter change. Reconnecting at
-the same path needs only **Check again**. For a new drive letter or mount point,
-relink the folder once. Windows drive, UNC and file-URL normalization are covered
-by portable tests. Automatic operating-system disk discovery and actual Windows
-removable-drive mounting still need native hardware verification; this release
-does not claim physical-volume auto-detection.
+邏輯磁碟區 ID 可跨越掛載路徑或磁碟機代號變更而保留。在相同路徑重新連接時，只需使用「再次檢查」；磁碟機代號或掛載點變更時，請重新連結資料夾。可攜式測試涵蓋 Windows 磁碟機、UNC 路徑和 file URL 正規化。自動偵測作業系統磁碟，以及在實體 Windows 裝置上掛載可移除磁碟，仍需使用原生硬體驗證；此版本不宣稱支援實體磁碟區自動偵測。
 
-Source files are never renamed, rewritten or removed by relinking. Cached media
-remains in the project. Keep backups of originals as well as the project.
+重新連結不會重新命名、改寫或移除來源檔案。快取媒體仍保留在專案內。請同時備份原始媒體和專案。
