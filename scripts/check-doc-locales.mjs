@@ -46,10 +46,7 @@ for (const readme of readmes) {
       errors.push(`Missing ${path.relative(root, translated)}`);
     }
   }
-  if (
-    !source.includes("README.zh-TW.md") ||
-    !source.includes("README.ja.md")
-  ) {
+  if (!source.includes("README.zh-TW.md") || !source.includes("README.ja.md")) {
     errors.push(`Missing language links in ${path.relative(root, readme)}`);
   }
 }

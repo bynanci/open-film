@@ -138,9 +138,7 @@ const listedDocumentation = new Set(
     ...englishGettingStarted,
     ...japaneseGettingStarted,
     ...englishReference,
-  ].map(({ link }) =>
-    link.slice(1).replace(/^(?:en|ja)\//, ""),
-  ),
+  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
 );
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
 const localizedSlugs = new Set([
