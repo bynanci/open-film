@@ -60,4 +60,148 @@ also embedded in the OTIO document so it remains available with the file.
 | Non-ripple soundtrack editing                        | Native Audio track timing; OpenFilm editing policy in metadata                                          | Metadata yes; editing policy not implemented by NLE    | Track timing policy preserved                                 | Recreate editing policy manually                             |
 | Clip lock and beat identity                          | Metadata only                                                                                           | Yes                                                    | Preserved                                                     | Reapply locks/organization manually                          |
 | Within-track overlapping clips                       | Rejected with an actionable error                                                                       | Not exported                                           | Not applicable                                                | Not claimed                                                  |
-| FCPXML / ED
+| FCPXML / EDL advanced effects                        | Rejected; including explicit contain/hold/default quality recipes and non-ripple track policy           | Existing limited formats only                          | Existing XML/resource checks retained                         | Not claimed                                                  |
+
+“Schema-valid” here means the official library recognizes and deserializes the
+standard OTIO schema objects used by the exporter. No separate Resolve-specific
+schema validator or Resolve application was run.
+
+## How metadata-only retimes preserve the cut layout
+
+OTIO's `LinearTimeWarp` does not change `Clip.duration()` or track layout in the
+official parser. Emitting it without a verified consumer contract could preserve
+a JSON effect while changing record timing or source interpretation. This version
+therefore emits no native retime or dissolve effect.
+
+For a 2x edit of source 1–3 seconds into a one-second slot, the native cut references
+source 1–2 seconds for that slot. Metadata still contains the exact original
+source 1–3 seconds, speed 2 and the one-second timeline duration. To reproduce the
+OpenFilm edit, use the full original source range and apply the 2x speed manually.
+The exported native source-out is intentionally different and is reported.
+
+For a 0.5x edit of source 2–3 seconds into a two-second slot, the native cut holds
+one unretimed second followed by a one-second Gap named `Retime padding for
+clip ID`. This keeps later cuts at the same record times without inventing frames
+past the source. Recreate the two-second retimed clip and replace the labeled gap
+without rippling later clips. Still-image holds keep their timeline duration;
+no video padding is required for a still.
+
+Original data locations are:
+
+- Timeline `metadata.openfilm.composition`: the complete original composition.
+- Each Clip's `metadata.openfilm.clip`: exact original source/timeline fields,
+  transform, transition, title, layout, motion, titleStyle, look, audioAutomation, lock
+  and beat ID.
+- Visual Clip `metadata.openfilm.effectiveLook`: resolved versioned recipe and
+  scope (`clip`, `beat`, `film` or `original`) when any look configuration is
+  authored. The full composition retains exact `defaultLook`, `beatLooks` and
+  clip `look` values. Portable JSON also records resolved visual clips in
+  `metadata.openfilm.effectiveLooks`. These are color reconstruction evidence;
+  an NLE does not automatically apply the look. Clip overrides take precedence
+  over scene and film settings; explicit `none` or zero strength stops
+  inheritance. Only active effective visual looks request manual recreation;
+  unused or overridden settings do not cause color warnings. Titles, audio and
+  music tracks do not inherit a visual color look. A photo/video caption retains
+  its source image's look; its text remains separate. An MP4 export override is a
+  render option and is not applied to NLE interchange. FCPXML and EDL reject
+  active effective looks rather than silently dropping color edits. Old
+  compositions keep their existing schema and exports without added defaults.
+- Diptych Clip `metadata.openfilm.secondaryMediaReferences`: second photo's
+  source URL, name, asset ID, content hash and portable reference. The exporter
+  rejects a missing secondary catalog source or empty URI just as it rejects a
+  missing primary source. Filesystem availability is checked by the application
+  and the interchange source gate separately.
+- Track `metadata.openfilm`: original track type and optional `timing` policy.
+- Timeline `metadata.openfilm.compatibility`: warnings and the affected clip IDs.
+- Padding Gap `metadata.openfilm`: owning clip ID, reason, record start and length.
+
+A consuming NLE may ignore or discard custom metadata during its own export.
+Retain the original `.otio`, `.otio.report.json` and OpenFilm project alongside the
+NLE project. The original OpenFilm timeline is not reconstructed from a generic
+NLE round trip in this version.
+
+## Reproducible parser and source gate
+
+Install the pinned official `opentimelineio==0.18.1` package in an isolated Python
+environment, with FFmpeg/FFprobe available, then run:
+
+```sh
+OPENFILM_OTIO_PYTHON=/path/to/venv/bin/python pnpm test:interchange
+OPENFILM_OTIO_PYTHON=/path/to/venv/bin/python pnpm test:interchange --output /path/to/empty/resolve-reference
+```
+
+The optional output retains a reviewable CC0 bundle: generated real PNG/MP4/WAV
+sources, `cuts.otio`, `edited.otio`, `fractional.otio`, compatibility reports,
+officially reserialized round-trip files, and an expected-source/timeline manifest.
+The ordinary command removes its temporary artifacts after verification.
+
+The gate verifies actual source URLs including spaces, `#` and Unicode filenames,
+SHA-256 identities, FFprobe durations, native source bounds, original metadata,
+clip count, track kind, source in, record start, still hold and clip duration,
+retime padding, gaps and total duration. It independently rejects a temporarily
+missing source even when the OTIO file itself parses. Originals are restored and
+rehashed afterward. Generated fixtures are synthetic evidence, not real-camera
+or Resolve playback evidence.
+
+The edited fixture also includes a diptych, protected region, push-in recipe,
+title style, soundtrack automation and non-ripple track policy. Official parser
+read/write/read checks their full original metadata and both photo source URLs
+and hashes. This establishes metadata preservation only. FCPXML and EDL reject
+these optional fields explicitly, including a `hold` motion with identical
+endpoints or an explicit `contain` layout, rather than silently dropping the
+authored recipe. JSON retains the full composition and all referenced assets,
+including a diptych's second photo.
+
+## Manual Resolve import procedure
+
+For a cloud environment without Resolve, use the CI-downloadable bundle and
+[workstation QA guide](resolve-workstation-qa.md). Its preparation command verifies
+hashes and creates local-path copies without changing the original fixtures. An
+optional installed-API runner records individual observations; unsupported API
+imports fall back to this GUI procedure. Neither path automatically certifies
+unobserved playback, relinking or metadata-only edits.
+
+1. Generate the retained reference bundle above and record the Resolve version,
+   operating system and project frame rate. Make a separate Resolve project;
+   retain the OpenFilm files unchanged. Save the compatibility report with the QA
+   record.
+2. Set the cut-reference project to **24 fps**, then import `cuts.otio` through
+   Resolve's timeline import UI if that installed
+   version offers OTIO. If the version does not support it, record the limitation;
+   do not infer OTIO support from another interchange format. Relink the `media
+files` folder if the bundle moved between machines.
+3. Compare the timeline against `manifest.json`: four tracks, all six source
+   clips, 12-second total duration, one-second initial still offset, two-second
+   source-trimmed main video at record 5 seconds, closing still at 9 seconds,
+   second video at 2 seconds, and the audio/music ranges. Check every source-in,
+   source-out, gap, layer and audio routing. Inspect the first and last frame of
+   each video edit and verify still holds visually.
+4. Import `fractional.otio` into a project set to 30000/1001. Record whether Resolve
+   preserves or rounds the deliberately fractional frame positions; compare both
+   seconds and frame numbers. Parser timing preservation is not a promise about
+   a consumer's frame-grid rounding.
+5. Import `edited.otio` separately. Read every warning before comparing playback.
+   Recreate speed using the original source range, replace any labeled retime
+   padding without ripple, set volume/mute, transforms and title, and recreate
+   transitions. OpenFilm's crossfade uses its incoming fade semantics; compare
+   against a rendered OpenFilm reference instead of assuming Resolve's default
+   centered dissolve is identical. Reapply locks as desired.
+6. Save and reopen the Resolve project. Check source availability, timing, muted
+   audio, overlays, color interpretation and the manually recreated effects. If
+   testing export back to OTIO, use a separate output and compare against the
+   retained original; log any custom metadata lost by Resolve.
+7. Attach screenshots of the source properties and timeline, measured timing,
+   compatibility reports and the Resolve project to the QA record. Mark each
+   feature verified only after this procedure succeeds. No such result is claimed
+   by the automated gate.
+
+_Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
+
+## M7C optional fidelity exchange
+
+The ordinary exports described above remain metadata-only for advanced edits.
+The additional [reviewed handoff](nle-handoff.md) offers explicit opaque precomp
+ranges, aligned full mix, native embedded video audio projection and caption
+sidecars with original effect/source provenance. This does not reconstruct native
+Resolve keyframes or establish actual NLE import success. See the [separate
+M7C workstation gate](validation-nle-handoff.md#resolve-workstation-gate--not-run).
