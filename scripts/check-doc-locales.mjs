@@ -87,11 +87,18 @@ for (const slug of localizedReferenceSlugs) {
     const sourceText = readFileSync(english, "utf8");
     const traditionalText = readFileSync(traditional, "utf8");
     const japaneseText = readFileSync(japanese, "utf8");
-    if (sourceText === traditionalText || !/[\u3400-\u9fff]/u.test(traditionalText)) {
-      errors.push(`Traditional Chinese translation is missing or empty: docs/${slug}.md`);
+    if (
+      sourceText === traditionalText ||
+      !/[\u3400-\u9fff]/u.test(traditionalText)
+    ) {
+      errors.push(
+        `Traditional Chinese translation is missing or empty: docs/${slug}.md`,
+      );
     }
     if (sourceText === japaneseText || !/[\u3040-\u30ff]/u.test(japaneseText)) {
-      errors.push(`Japanese translation is missing or empty: docs/ja/${slug}.md`);
+      errors.push(
+        `Japanese translation is missing or empty: docs/ja/${slug}.md`,
+      );
     }
   } catch {
     errors.push(`Missing translation source for ${slug}`);
