@@ -1,69 +1,31 @@
-# Camera sources and preview limits
+# 相機來源與預覽限制
 
-Device adapters live in `@openfilm/source-pixel` and
-`@openfilm/source-insta360`; the portable Core has no device-specific branches.
-The application applies their metadata enrichment during local import. Original
-EXIF/FFprobe records remain available alongside the interpreted fields.
+裝置介接器位於 @openfilm/source-pixel 和 @openfilm/source-insta360；可攜式 Core 不含裝置專屬分支。應用程式會在本機匯入時套用這些中繼資料增補資訊。原始 EXIF／FFprobe 記錄會與解讀後的欄位一併保留。
 
-| Source                                  | Implemented behavior                                                                            | Verified evidence                                                                        | Remaining manual check                                     |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Pixel JPG/MP4                           | Google/Pixel metadata recognition; date/offset, orientation, GPS, device and technical metadata | Real ExifTool-tagged generated JPG/MP4, import and preview tests                         | Representative camera originals and orientation appearance |
-| DNG                                     | Metadata retained; preview only after successful bounded decode                                 | Generated TIFF/DNG tags and metadata-only DNG fixture                                    | Real Pixel CFA/demosaic and camera color                   |
-| HEVC 10-bit HLG/PQ                      | Detect, retain original color fields, tone-map preview to SDR                                   | Generated HEVC, actual FFprobe, thumbnail, proxy and renderer; original hashes unchanged | Real HDR appearance and device-specific metadata           |
-| Pixel Motion Photo                      | Embedded offset, sidecar and metadata-reference detection with evidence                         | Simulated metadata, embedded bytes and named sidecars                                    | Real camera variants and extraction; experimental          |
-| Insta360 flat exported JPG/MP4, Level 1 | Ordinary playable media, retained device metadata, source association                           | Generated tagged JPEG/H.264 files decoded, thumbnailed, proxied and rendered             | Representative real exports, especially unusual codecs     |
-| `.insv` / `.insp`, Level 2              | Recognition, best-effort metadata and original-source association                               | Simulated source files and explicit/conventional sibling relationships                   | Real camera raw files and hardware metadata                |
-| Raw/spherical processing, Level 3       | Capability recorded; requires reframed export                                                   | Explicit spherical metadata and raw files are blocked from flat preview                  | Stitching, gyro, reframing and keyframes are deferred      |
+| 來源 | 已實作行為 | 驗證證據 | 尚待人工檢查 |
+| --- | --- | --- | --- |
+| Pixel JPG／MP4 | 辨識 Google／Pixel 中繼資料；日期／時區偏移、方向、GPS、裝置與技術資訊 | 使用 ExifTool 標記的產生式 JPG／MP4、匯入與預覽測試 | 具代表性的相機原檔與方向顯示方式 |
+| DNG | 保留中繼資料；只有成功完成有界解碼後才提供預覽 | 產生的 TIFF／DNG 標記與僅含中繼資料的 DNG 測試素材 | 真實 Pixel CFA／去馬賽克與相機色彩 |
+| HEVC 10-bit HLG／PQ | 偵測並保留原始色彩欄位，將預覽轉為 SDR 色調映射 | 產生的 HEVC、實際 FFprobe、縮圖、代理檔與算繪；原始雜湊不變 | 真實 HDR 外觀和裝置專屬中繼資料 |
+| Pixel Motion Photo | 偵測內嵌位移、側錄檔與中繼資料參照，並保留證據 | 模擬中繼資料、內嵌位元組和具名側錄檔 | 真實相機變體與擷取；仍屬實驗性功能 |
+| Insta360 扁平匯出 JPG／MP4，第 1 級 | 一般可播放媒體，保留裝置中繼資料與來源關聯 | 產生的標記 JPEG／H.264 檔案已解碼、建立縮圖與代理檔並完成算繪 | 具代表性的真實匯出檔，尤其是特殊編碼 |
+| .insv／.insp，第 2 級 | 辨識、盡力讀取中繼資料並關聯原始來源 | 模擬來源檔與明確／慣例式的同目錄關聯 | 真實相機原始檔與硬體中繼資料 |
+| 原始／球面處理，第 3 級 | 記錄功能狀態；需要先重新取景匯出 | 明確標示球面中繼資料，原始檔會被平面預覽阻擋 | 拼接、陀螺儀、重新取景與關鍵影格尚未提供 |
 
-Level 1 uses the normal production media path. This does not imply every camera
-codec or raw format has been validated. A filename alone does not establish Pixel
-identity. Uncertain files use generic camera handling. Insta360 associations record
-their evidence and do not certify that two files share identical source content.
-An explicit spherical projection is treated as 360 media even in an MP4 or JPG;
-a 2:1 aspect ratio alone does not establish that projection.
+第 1 級使用一般正式媒體處理流程。這不代表每種相機編碼或 RAW 格式都已驗證。單靠檔名無法證明來源是 Pixel；不確定的檔案會採用一般相機處理方式。Insta360 關聯會記錄判斷依據，但不證明兩個檔案具有相同來源內容。若明確標示為球面投影，即使是 MP4 或 JPG 也會視為 360 媒體；單靠 2:1 長寬比不足以判斷為球面投影。
 
-HDR detection distinguishes bit depth from dynamic range: 10-bit or BT.2020 alone
-does not imply HDR. HLG/PQ transfer functions and HDR side data are preserved in
-`openfilm.color` and the original probe record. Safe SDR previews require known
-transfer/primaries/matrix values and FFmpeg `zscale` plus `tonemap`. Unknown color
-metadata or missing filters produces an actionable unsupported-preview message;
-OpenFilm keeps the catalog metadata instead of silently producing a wrong preview.
-This is preview conversion, not a full color-management or grading engine.
+HDR 偵測會區分位元深度與動態範圍：10-bit 或 BT.2020 本身不代表 HDR。HLG／PQ 傳遞函數和 HDR 側錄資料會保留在 openfilm.color 與原始探測記錄中。只有在傳遞函數／原色／矩陣資訊已知，且 FFmpeg 提供 zscale 和 tonemap 時，才會安全產生 SDR 預覽。色彩中繼資料未知或缺少濾鏡時，會顯示可採取動作的「不支援預覽」訊息；OpenFilm 會保留素材目錄中繼資料，不會默默產生錯誤預覽。這是預覽轉換功能，不是完整的色彩管理或調光引擎。
 
-Raw 360 sources display **360 source / Requires reframed export**. Export a
-stitched, reframed flat JPG/MP4 with Insta360 Studio, then import that file.
-Undecodable DNGs similarly require an exported JPEG for preview. Unsupported
-sources stay browseable; automatic story composition excludes them. An explicitly
-required unsupported asset must be converted before composition/rendering.
+原始 360 來源會顯示「360 來源／需要重新取景的匯出檔」。請使用 Insta360 Studio 匯出已拼接並重新取景的平面 JPG／MP4，再匯入該檔案。無法解碼的 DNG 同樣需要先匯出 JPEG 才能預覽。無法支援的來源仍可瀏覽，但不會自動加入故事合成；若明確指定了不支援的素材，必須先轉換才能合成或算繪。
 
-For projects imported before these adapters, import the source folder again to
-refresh device/color metadata and rebuild versioned preview caches. IDs, ratings,
-locks and timeline references remain stable. Preview proxies are cached inside
-the project; missing proxies have a specific rebuild instruction. Originals are
-never rewritten by this pipeline.
+若專案是在這些介接器加入前匯入，請重新匯入來源資料夾，以更新裝置／色彩中繼資料並重建版本化預覽快取。素材 ID、評分、鎖定和時間軸參照都會保留。預覽代理檔儲存在專案快取中；若代理檔遺失，會顯示明確的重建指示。整個流程不會改寫原始檔案。
 
-All committed fixture definitions are generated/public-domain. See
-[`fixtures/proposal-film`](https://github.com/bynanci/open-film/tree/main/fixtures/proposal-film) for provenance and
-reproduction. No real personal camera media is bundled.
+所有提交的測試素材定義均為產生式或公有領域內容。素材來源與重現方式請見 [fixtures/proposal-film](https://github.com/bynanci/open-film/tree/main/fixtures/proposal-film)。不會附上任何真實個人相機媒體。
 
-## Browser previews of ordinary media
+## 瀏覽器中的一般媒體預覽
 
-Native JPEG, PNG, WebP, GIF and BMP sources are served with their matching image
-MIME type. TIFF, AVIF, successfully decoded HEIC/DNG, and HDR images use the cached
-JPEG preview. Unsupported or missing derivatives give a specific rebuild or
-conversion instruction instead of sending undecodable source bytes to the player.
+原生 JPEG、PNG、WebP、GIF 和 BMP 來源會以相符的圖片 MIME 類型提供。TIFF、AVIF、成功解碼的 HEIC／DNG 和 HDR 圖片會使用快取 JPEG 預覽。衍生檔不支援或遺失時，系統會顯示明確的重建或轉換指示，不會把無法解碼的來源位元組直接送給播放器。
 
-Imported audio uses a project-relative MP3 preview cache, including AAC, M4A,
-FLAC, Ogg and Opus. Embedded album artwork remains metadata and does not turn an
-audio file into a video clip. Rendering and timeline exports retain the original
-audio references; preview conversion never rewrites the source. Reimporting an
-older audio-only import builds its missing preview. Disabling proxies explicitly
-uses the original audio and therefore depends on the browser's native codec support.
+匯入的音訊會建立專案相對路徑的 MP3 預覽快取，涵蓋 AAC、M4A、FLAC、Ogg 和 Opus。內嵌專輯封面仍是中繼資料，不會使音訊檔變成影片片段。算繪和時間軸匯出仍參照原始音訊；預覽轉換不會改寫來源。重新匯入舊版純音訊素材時，會補建缺少的預覽。明確停用代理檔時會直接使用原始音訊，因此取決於瀏覽器原生編碼支援。
 
-`tests/integration/preview-formats.test.ts` generates real GIF, BMP, TIFF, AVIF
-and audio files, including MP3/FLAC with embedded cover art. It checks HTTP MIME,
-served bytes, audio codec, byte ranges, missing-cache recovery, project relocation
-and unchanged source hashes. HEIC coverage is a catalog/cache routing fixture:
-it does **not** establish real HEIC decoding support or camera compatibility.
-A representative HEIC import still needs verification with the installed FFmpeg
-build.
+tests/integration/preview-formats.test.ts 會產生 GIF、BMP、TIFF、AVIF 和音訊檔案，包括含內嵌封面的 MP3／FLAC。測試會檢查 HTTP MIME、傳送的位元組、音訊編碼、位元組範圍、快取遺失復原、專案搬移和來源雜湊不變。HEIC 覆蓋範圍只是素材目錄／快取路由測試，不代表已驗證真實 HEIC 解碼或相機相容性。仍需使用目前安裝的 FFmpeg 建置版本驗證代表性 HEIC 匯入。
