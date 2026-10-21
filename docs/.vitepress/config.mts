@@ -139,7 +139,7 @@ const listedDocumentation = new Set(
     ...japaneseGettingStarted,
     ...englishReference,
   ].map(({ link }) =>
-    link.slice(1).replace(/^(?:en|ja)\\//, ""),
+    link.slice(1).replace(/^(?:en|ja)\//, ""),
   ),
 );
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
@@ -214,14 +214,14 @@ const englishFallbackGroups = (
       ) {
         continue;
       }
-      const slug = relativePath.replace(/\\.md$/, "");
+      const slug = relativePath.replace(/\.md$/, "");
       if (listedDocumentation.has(slug)) continue;
       const section = relativePath.includes("/")
         ? relativePath.split("/")[0]
         : "root";
       const items = grouped.get(section) ?? [];
       const source = readFileSync(absolutePath, "utf8");
-      const title = source.match(/^#\\s+(.+?)\\s*$/m)?.[1] ?? slug;
+      const title = source.match(/^#\s+(.+?)\s*$/m)?.[1] ?? slug;
       items.push(guide(title, `en/${slug}`));
       grouped.set(section, items);
     }
