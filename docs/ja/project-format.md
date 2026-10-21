@@ -4,7 +4,7 @@
 
 機械可読な契約は[プロジェクト schema](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json)、[メディア資産 schema](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json)、[プラグイン manifest schema](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json)で公開しています。
 
-~~~text
+```text
 film.openfilm/
   project.json
   database.sqlite
@@ -35,7 +35,7 @@ film.openfilm/
     still-<request-id>.png + manifest
     mix-<request-id>.wav + manifest
     stems-<request-id>/   アライン済み役割別 WAV と manifest
-~~~
+```
 
 SQLite には database.sqlite-wal と database.sqlite-shm が同時に存在する場合があります。分析、キャッシュ、書き出しファイルは処理に応じて生成されます。現在 Story とタイムラインは project.json に保存されています。予約済みディレクトリを作成しても、独立した正規文書がそこにあるわけではありません。
 
