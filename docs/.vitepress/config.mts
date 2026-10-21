@@ -8,6 +8,14 @@ const tokenizeForSearch = (text: string) =>
   Array.from(new Intl.Segmenter('zh-TW', { granularity: 'word' }).segment(text.toLocaleLowerCase('zh-TW')))
     .filter(({ isWordLike }) => isWordLike)
     .map(({ segment }) => segment)
+const tokenizeForEnglish = (text: string) =>
+  Array.from(new Intl.Segmenter('en', { granularity: 'word' }).segment(text.toLocaleLowerCase('en-US')))
+    .filter(({ isWordLike }) => isWordLike)
+    .map(({ segment }) => segment)
+const tokenizeForJapanese = (text: string) =>
+  Array.from(new Intl.Segmenter('ja', { granularity: 'word' }).segment(text.toLocaleLowerCase('ja-JP')))
+    .filter(({ isWordLike }) => isWordLike)
+    .map(({ segment }) => segment)
 
 const gettingStarted = keepExisting([
   guide('製作流程', 'product-workflow'),
@@ -74,6 +82,73 @@ export default defineConfig({
   lang: 'zh-TW',
   title: 'OpenFilm',
   description: 'OpenFilm 官方文件：從素材整理、故事規劃到剪輯與輸出。',
+  locales: {
+    root: {
+      label: '繁體中文',
+      lang: 'zh-TW',
+      themeConfig: {
+        langMenuLabel: '切換語言',
+        darkModeSwitchLabel: '外觀',
+        lightModeSwitchTitle: '切換為淺色主題',
+        darkModeSwitchTitle: '切換為深色主題',
+        sidebarMenuLabel: '目錄',
+        returnToTopLabel: '回到頂端',
+        skipToContentLabel: '跳至主要內容',
+      },
+    },
+    en: {
+      label: 'English',
+      lang: 'en-US',
+      link: '/en/',
+      description: 'Official OpenFilm documentation for the story-first, local-first media editor.',
+      themeConfig: {
+        nav: [
+          { text: 'English technical docs', link: '/product-workflow' },
+          { text: 'GitHub', link: 'https://github.com/bynanci/open-film', target: '_blank', rel: 'noreferrer' },
+        ],
+        outline: { label: 'On this page', level: [2, 3] },
+        docFooter: { prev: 'Previous page', next: 'Next page' },
+        editLink: {
+          pattern: 'https://github.com/bynanci/open-film/edit/main/docs/:path',
+          text: 'Edit this page on GitHub',
+        },
+        langMenuLabel: 'Change language',
+        darkModeSwitchLabel: 'Appearance',
+        lightModeSwitchTitle: 'Switch to light theme',
+        darkModeSwitchTitle: 'Switch to dark theme',
+        sidebarMenuLabel: 'Menu',
+        returnToTopLabel: 'Return to top',
+        skipToContentLabel: 'Skip to content',
+        lastUpdated: { text: 'Last updated' },
+      },
+    },
+    ja: {
+      label: '日本語',
+      lang: 'ja-JP',
+      link: '/ja/',
+      description: 'ストーリー重視、ローカルファーストのメディアエディター OpenFilm の公式ドキュメント。',
+      themeConfig: {
+        nav: [
+          { text: '英語の技術ドキュメント', link: '/product-workflow' },
+          { text: 'GitHub', link: 'https://github.com/bynanci/open-film', target: '_blank', rel: 'noreferrer' },
+        ],
+        outline: { label: 'このページの内容', level: [2, 3] },
+        docFooter: { prev: '前のページ', next: '次のページ' },
+        editLink: {
+          pattern: 'https://github.com/bynanci/open-film/edit/main/docs/:path',
+          text: 'GitHub でこのページを編集',
+        },
+        langMenuLabel: '言語を変更',
+        darkModeSwitchLabel: '外観',
+        lightModeSwitchTitle: 'ライトテーマに切り替え',
+        darkModeSwitchTitle: 'ダークテーマに切り替え',
+        sidebarMenuLabel: 'メニュー',
+        returnToTopLabel: 'トップに戻る',
+        skipToContentLabel: 'コンテンツへ移動',
+        lastUpdated: { text: '最終更新' },
+      },
+    },
+  },
   base: '/open-film/',
   cleanUrls: true,
   lastUpdated: true,
@@ -81,6 +156,7 @@ export default defineConfig({
   markdown: { html: false },
   themeConfig: {
     siteTitle: 'OpenFilm',
+    i18nRouting: false,
     nav: [
       { text: '文件', link: '/product-workflow' },
       { text: 'GitHub', link: 'https://github.com/bynanci/open-film', target: '_blank', rel: 'noreferrer' },
@@ -111,6 +187,28 @@ export default defineConfig({
                 noResultsText: '找不到符合的結果',
                 resetButtonTitle: '清除搜尋',
                 footer: { selectText: '選擇', navigateText: '切換', closeText: '關閉' },
+              },
+            },
+          },
+          en: {
+            miniSearch: { options: { tokenize: tokenizeForEnglish } },
+            translations: {
+              button: { buttonText: 'Search docs', buttonAriaLabel: 'Search documentation' },
+              modal: {
+                noResultsText: 'No results found',
+                resetButtonTitle: 'Clear search',
+                footer: { selectText: 'Select', navigateText: 'Navigate', closeText: 'Close' },
+              },
+            },
+          },
+          ja: {
+            miniSearch: { options: { tokenize: tokenizeForJapanese } },
+            translations: {
+              button: { buttonText: 'ドキュメントを検索', buttonAriaLabel: 'ドキュメントを検索' },
+              modal: {
+                noResultsText: '検索結果がありません',
+                resetButtonTitle: '検索をクリア',
+                footer: { selectText: '選択', navigateText: '移動', closeText: '閉じる' },
               },
             },
           },
