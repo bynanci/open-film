@@ -41,7 +41,7 @@ Package Verify はディレクトリパッケージをコピーするか、ZIP �
 
 CLI では JSON 配列で権利宣言を明示する必要があります。一般的な手順は次のとおりです。
 
-~~~sh
+```sh
 pnpm cli collect plan --project ./film.openfilm --scope current-film \
   --composition <composition-id> --rights ./rights.json
 pnpm cli collect create --project ./film.openfilm --scope current-film \
@@ -49,6 +49,6 @@ pnpm cli collect create --project ./film.openfilm --scope current-film \
   --plan-id <plan-id> --base-revision <revision> \
   --format zip --destination ./handoff/film.zip
 pnpm cli collect verify --project ./film.openfilm --package ./handoff/film.zip
-~~~
+```
 
 HTTP ルートは POST /api/collect/plan、POST /api/collect/create、POST /api/collect/verify です。リクエストを閉じると作成／検証をキャンセルできます。サーバーは一時作業が停止するまでプロジェクトを使用中のままにします。デスクトップアプリの書き出し画面でも、同じ計画、権利確認、パッケージ作成、検証を実行できます。
