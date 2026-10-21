@@ -4,7 +4,7 @@
 
 機器可讀契約已發布於 [專案 schema](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json)、[媒體資產 schema](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json) 和 [外掛 manifest schema](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json)。
 
-~~~text
+```text
 film.openfilm/
   project.json
   database.sqlite
@@ -35,7 +35,7 @@ film.openfilm/
     still-<request-id>.png + manifest
     mix-<request-id>.wav + manifest
     stems-<request-id>/   對齊的角色 WAV 和 manifest
-~~~
+```
 
 SQLite 可能同時使用 database.sqlite-wal 和 database.sqlite-shm。分析、快取、輸出檔會在執行相關工作時出現。目前 Story 和時間軸都儲存在 project.json；建立預留資料夾不代表其中已存在獨立的標準文件。
 
