@@ -1,107 +1,45 @@
-# Precision editing
+# 精準剪輯
 
-The Edit workspace offers Story and Precision modes over the same composition
-and edit history. Story mode remains the place for beat structure, photos and
-the overall sequence. Precision mode focuses on source timing for one selected
-video or audio clip. Switching modes does not create a second cut.
+「剪輯」工作區提供「故事」與「精準」兩種模式，兩者共用同一份 Composition 和編輯記錄。「故事」模式用來安排節拍、照片和整體順序；「精準」模式則聚焦於目前選取的一個影片或音訊片段的來源時間。切換模式不會建立第二份剪輯。
 
-## Source time and film time
+## 來源時間與影片時間
 
-The source preview, waveform, transcript, scene cuts and manual markers all use
-seconds in the original file. The selected clip still has a composition start,
-source in/out and optional playback speed. A source second is not necessarily a
-second in the film: retimed clips map the selected source span through their
-speed. The UI distinguishes the source playhead, its location within the clip
-and positions outside the clip.
+來源預覽、波形、逐字稿、場景切點和手動標記，都使用原始檔案中的秒數。選取的片段仍有其 Composition 起點、來源入點／出點，以及選用的播放速度。來源的一秒不一定等於影片的一秒：變速片段會依播放速度映射所選的來源範圍。介面會區分來源播放頭、它在片段內的位置，以及片段以外的位置。
 
-Use explicit source playback, frame stepping or waveform seeking to find a
-point. Zoom changes the visible source range; follow-playhead is a view option.
-Hover preview is opt-in and only seeks while paused. Moving a pointer over a
-waveform must not unexpectedly start playback or alter a cut.
+可用來源播放、逐格移動或波形搜尋定位時間點。縮放只會改變可見的來源範圍；「跟隨播放頭」則是檢視選項。滑鼠懸停預覽預設關閉，且只有暫停時才會搜尋。指標移過波形，不應意外開始播放或修改剪輯點。
 
-Transcript text corrections mark word alignment `text-edited`. Segment seeking
-remains available, while shared snapping excludes those historical words and the
-Precision UI explains why word-specific controls are unavailable. Corrected text
-does not silently retime a clip. See [Transcript editing](transcript-editing.md).
+更正逐字稿文字時，單字對齊會標記為 `text-edited`。仍可按逐字稿片段搜尋；共用吸附功能會排除這些歷史單字，且「精準」介面會說明為何無法使用單字層級控制。更正文字不會暗中改變片段時間。參閱[逐字稿編輯](transcript-editing.md)。
 
-## Trim and split
+## 修剪與分割
 
-Drag the in/out handles or set an edge at the playhead. A drag previews a range
-locally and commits one edit on completion. The shared command path validates
-source bounds, positive duration, playback speed and clip locks. Snapping can
-help align an edge to a source marker, scene cut or loaded speech boundary; see
-[markers-and-snapping.md](markers-and-snapping.md).
+拖曳入點／出點控制柄，或將邊界設在播放頭位置。拖曳期間會在本機預覽範圍，放開後只提交一筆編輯。共用命令路徑會驗證來源界限、正時長、播放速度和片段鎖定。吸附可協助邊界對齊來源標記、場景切點或已載入的語音邊界；請參閱[來源標記與吸附](markers-and-snapping.md)。
 
-Split at a playhead inside the selected clip to divide its existing source span.
-Both sides retain the relevant source and edit properties. The split belongs to
-the same composition history as Story edits; undo/redo and autosave operate on
-that history. It does not split or modify the original media file. A locked
-clip can still be played or analyzed, but must be unlocked before trimming or
-splitting.
+在選取片段內的播放頭位置分割，就會切開現有來源範圍。兩側都會保留相關來源與編輯屬性。分割與「故事」編輯共用同一份 Composition 記錄，因此復原／重做和自動儲存會作用於同一記錄；分割不會修改原始媒體檔案。鎖定的片段仍可播放或分析，但修剪或分割前必須先解除鎖定。
 
-A source locked in Library also prevents splitting, even when its selected
-timeline clip is unlocked. Precision explains the source lock and disables both
-the Split action and B shortcut until it is unlocked in Library. Source locking
-does not disable a valid trim of an unlocked clip.
+即使時間軸片段已解除鎖定，若素材庫中的來源被鎖定，仍不能分割。「精準」模式會說明來源鎖定原因，並停用「分割」動作和 B 快捷鍵；請先到素材庫解除鎖定。來源鎖定不會阻止對未鎖定片段進行有效修剪。
 
-Split also waits until the incoming crossfade has finished. The guard converts
-the source span through clip speed, matching the shared command's film-time
-transition constraint. Playback can use a saved clip range when source duration
-metadata is unavailable; trimming, splitting, adding markers and analysis wait
-for a finite positive duration recorded on the asset.
+分割也會等到片段的淡入交叉轉場結束後才進行。保護檢查會依片段速度換算來源範圍，以符合共用命令對影片時間轉場的限制。來源時長中繼資料無法使用時，播放仍可使用已儲存的片段範圍；修剪、分割、新增標記和分析則會等到素材記錄有有限且大於零的時長。
 
-The editor must flush pending work before operations that switch project or
-export. A failed/conflicting save remains visible and keeps the existing draft
-recovery behavior. Reopening the project loads the saved cut, not a separate
-Precision draft document.
+切換專案或輸出前，編輯器必須先寫入待處理工作。儲存失敗或發生衝突時，會保持可見並沿用現有草稿復原流程。重新開啟專案時會載入已儲存的剪輯，不會載入另一份「精準」草稿文件。
 
-## Analysis and transcript
+## 分析與逐字稿
 
-Waveform analysis, scene detection and transcription are explicit actions with
-visible progress and cancellation. Analysis completion refreshes source evidence;
-it does not edit the timeline. Read-only transcript segments and words act as
-seek targets, with page controls for long recordings. An unavailable Whisper
-model leaves source playback and normal editing usable.
+波形分析、場景偵測和轉錄都是明確操作，會顯示進度且可取消。分析完成只會更新來源證據，不會編輯時間軸。唯讀逐字稿片段和單字可作為搜尋目標；長錄音提供分頁控制。Whisper 模型無法使用時，來源播放和一般剪輯仍可使用。
 
-Analysis availability follows all active project jobs, including work on another
-source, import and rendering. The inspector shows job details for the selected
-source and explains when another task owns the project. It keeps polling until
-that task completes or is cancelled so analysis becomes available again.
+分析是否可用會考慮所有進行中的專案工作，包括其他來源的工作、匯入和算圖。檢查器會顯示選取來源的工作詳細資料，並說明專案目前由其他工作使用時的原因。它會持續輪詢，直到該工作完成或取消，之後分析便可再次使用。
 
-Marker controls show 100 rows per page with a full visible-range count and
-first/previous/next/last navigation. Paging limits DOM work without discarding
-scene/manual evidence used for seeking or snapping; the waveform overlay stays
-bounded separately.
+標記控制項每頁顯示 100 列，提供完整可見範圍計數，以及第一頁／上一頁／下一頁／最後一頁導覽。分頁會減少 DOM 工作量，但不會捨棄搜尋或吸附所需的場景／手動證據；波形覆蓋層則另有數量上限。
 
-The source player and inspector remain available while navigating the precision
-view. Long transcript/marker lists scroll inside their own areas rather than
-displacing every editing control. Browser checks exercise supported desktop
-sizes 1280×720, 1440×900 and 1920×1080 in English, Traditional Chinese and Japanese.
+瀏覽精準剪輯畫面時，來源播放器和檢查器會保持可用。長逐字稿／標記清單會在各自區域內捲動，不會把所有剪輯控制項擠開。瀏覽器檢查會以英文、繁體中文和日文，測試 1280×720、1440×900 和 1920×1080 的支援桌面尺寸。
 
-## Keyboard scope
+## 鍵盤操作範圍
 
-Precision mode exposes Space for playback, left/right for frame stepping,
-Shift+left/right for second stepping, B for split and M for a marker. Keyboard
-editing commands must not intercept typing in inputs, selects, menus or dialogs,
-or fire in the hidden Story editor. The visible mode owns the shortcuts.
+精準模式提供播放用空白鍵、逐格移動用左右方向鍵、逐秒移動用 Shift+左右方向鍵、分割用 B、標記用 M。鍵盤剪輯命令不能攔截輸入框、選單或對話框中的文字，也不能在隱藏的「故事」編輯器中觸發。由目前可見的模式負責接收快捷鍵。
 
-## P0 limits and evidence
+## P0 限制與證據
 
-The transcript is navigational evidence, not an editable subtitle track. There
-is no automatic highlight selection, face tracking, smart crop, dictionary,
-proofreading, safe-frame overlay or subtitle burn-in in this foundation.
+逐字稿是導覽證據，不是可編輯字幕軌。本階段不提供自動反白選取、人臉追蹤、智慧裁切、字典、校對、安全框覆蓋或字幕燒錄。
 
-`tests/e2e/precision-editing.spec.ts` is the browser acceptance path for a Proposal
-film with a photo, generated spoken video and procedural music: actual import,
-analysis orchestration, source seeking, snapped trim, split, shared history,
-reopening and a rendered MP4 preview. It also checks source-switch job recovery,
-cancellation, exact frame adjustment and valid sub-frame trim boundaries.
-Its deterministic transcription provider is
-explicitly a protocol fixture. Real FFmpeg waveform/scene processing and actual
-Whisper inference are different checks and must be reported separately.
+`tests/e2e/precision-editing.spec.ts` 是 Proposal 影片的瀏覽器驗收流程，包含照片、產生的語音影片和程序化音樂：實際匯入、分析協調、來源搜尋、吸附修剪、分割、共用記錄、重新開啟，以及算圖後的 MP4 預覽。它也會檢查切換來源後的工作復原、取消、逐格精確調整，以及有效的子影格修剪邊界。測試中的確定性轉錄服務明確是協定測試裝置。真實 FFmpeg 波形／場景處理，以及真正的 Whisper 推論，是不同的檢查，報告時必須分開。
 
-Source evidence is cleared when a read, job or marker operation reports changed
-or missing media. Precision edit/marker controls wait for a successful source
-verification; use the source refresh action after restoring the original file.
-Cancelled re-transcription keeps previously verified results. This source
-readiness guard does not delete the saved composition or its edit history.
+讀取、工作或標記操作回報媒體變更或遺失時，系統會清除來源證據。精準剪輯／標記控制項會等到來源驗證成功才可使用；還原原始檔案後，請執行來源重新整理。取消重新轉錄會保留先前已驗證的結果。來源就緒保護不會刪除已儲存的 Composition 或其編輯記錄。

@@ -1,80 +1,29 @@
-# Creative Story Templates
+# 創意故事模板
 
-Creative Story Templates build editable scenes by composing the existing
-version-1 `GraphicScene` primitives. They do not create a second timeline,
-renderer, asset store or project schema migration. Scene placement and every
-visible duration remain in the saved Composition and its ordinary GraphicScene
-nodes.
+創意故事模板會組合既有的 v1 `GraphicScene` 基元，建立可編輯場景。它不會建立第二條時間軸、第二個算圖器、素材庫，也不會要求遷移專案 schema。場景位置與所有可見時長，仍儲存在既有的 Composition 與一般 `GraphicScene` 節點中。
 
-## Gallery and Inspector
+## 範本庫與檢查器
 
-The Edit inspector offers three local templates:
+「剪輯」檢查器提供三種本機範本：
 
-- **Conversation Card** creates one to four speaker/message pairs. Messages can
-  be reordered with keyboard-accessible controls and timed on the scene's local
-  clock. Text remains literal, supports line breaks and is conservatively fit
-  to each card slot before save; content that cannot fit at the minimum size is
-  rejected instead of failing during export. The card uses centered, frame-safe
-  margins; Graphics can edit each node's font, line breaks and position.
-  Template controls set layer animation duration and easing.
-- **Route Story** accepts explicitly entered latitude/longitude points or bytes
-  from a GPX file the user selected. Points appear in sequence as a dotted route
-  reveal; named waypoints remain associated with their original coordinates.
-  Imported source name and SHA-256 are retained. Timing, elevation, speed,
-  distance, race results and event claims are not inferred or imported.
-- **Photo Relationship** supports a focal reveal, two-photo comparison and
-  opening/closing bookends. Each image node points to a local catalog asset.
-  Focal points and optional protected regions are normalized against the source
-  photo. Images use a full-frame contain fit, so the first version does not crop
-  a protected area out of the output.
+- **對話卡**：建立一至四組講者／訊息。可用鍵盤操作的控制項重新排序，並依場景本地時鐘設定時間。文字會以原樣保留、支援換行，儲存前會盡量縮放以符合卡片區域；若縮至最小字級仍放不下，就會拒絕儲存，避免到輸出時才失敗。卡片採用置中且符合安全框的邊界；可在「圖形」中調整各節點字型、換行和位置。範本控制項可設定圖層動畫時長與緩動。
+- **路線故事**：可手動輸入經緯度，或匯入使用者選取的 GPX 檔案內容。地點會依序以點線路徑顯示；命名地點會保留與原座標的關聯。會保留匯入來源名稱和 SHA-256。系統不會推算或匯入時間、高度、速度、距離、比賽結果或事件主張。
+- **照片關係**：支援焦點揭示、雙照片比較，以及開場／收尾畫面。每個圖片節點都指向本機素材庫中的素材。焦點與選用的保護區會依來源照片正規化。圖片會完整縮放到畫格內，因此第一版不會裁掉輸出中的保護區。
 
-Saved templates can be reopened in the inspector to change text, scene timing,
-animation, relationship, photo source, focal point and protected region. Font,
-line-break and per-layer geometry edits use the existing Graphics inspector.
-Template changes emit the existing `graphic.scene.upsert` command with an
-optional template record. Composition revision checks, lock state, Undo/Redo,
-autosave, retry and reopen continue through the existing editor application.
+儲存後可在檢查器重新開啟範本，修改文字、場景時間、動畫、關係、照片來源、焦點與保護區。字型、換行和各圖層幾何位置，仍使用現有的「圖形」檢查器。範本變更會呼叫既有的 `graphic.scene.upsert` 命令，並可選擇附上範本記錄。Composition 版本檢查、鎖定狀態、復原／重做、自動儲存、重試與重新開啟，仍沿用既有編輯器應用程式。
 
-## Source attribution
+## 來源標註
 
-Conversation metadata binds stable message IDs to their existing speaker, text
-and optional source-label nodes. `quoted` text must equal the entire stored
-original; `excerpt` must match the saved UTF-16 range and receives a visible
-localized excerpt label; `adapted` retains the original and citation while
-identifying changed wording. The Inspector exposes these three labels and
-grapheme-aware start/end offsets; serialized UTF-16 ranges cannot split emoji
-or other surrogate pairs. Editing quoted or excerpted wording changes its
-visible label to `adapted` before save. Removing source metadata is an explicit
-inspector action.
-Source text is bounded and never sent to an AI provider by this feature.
+對話中繼資料會以穩定訊息 ID，連結既有講者、文字和選用的來源標籤節點。`quoted` 文字必須等於完整儲存的原文；`excerpt` 必須符合儲存的 UTF-16 範圍，並顯示本地化的節錄標籤；`adapted` 會保留原文和引文，同時指出措辭有修改。檢查器會提供這三種標籤，以及以字素為單位的起訖位置；序列化的 UTF-16 範圍不會切開 emoji 或其他代理組。編輯引用或節錄文字後，儲存前會將可見標籤改為 `adapted`。移除來源中繼資料必須由使用者在檢查器明確執行。本功能不會把來源文字送到 AI 服務，且來源文字長度有限制。
 
-Route metadata binds saved map points to shape nodes. The GPX importer is
-read-only, accepts UTF-8 XML up to 4 MiB, rejects DTDs, entities, comments,
-processing instructions, malformed XML and more than one track segment/route,
-and supports at most 32 display points and eight named waypoints. If more than
-32 route points exist, deterministic even sampling preserves the endpoints.
-Only the exact imported file hash and display geometry are saved; original file
-paths, timestamps, elevation, speed and activity summaries are not persisted.
+路線中繼資料會把已儲存的地圖點連到形狀節點。GPX 匯入器唯讀，接受最多 4 MiB 的 UTF-8 XML；拒絕 DTD、實體、註解、處理指令、格式錯誤的 XML，以及含有多個軌跡區段或路線的檔案；最多支援 32 個顯示點和 8 個命名地點。路線點超過 32 個時，會以確定性的等距取樣保留首尾點。只會儲存匯入檔案的精確雜湊與顯示幾何，不會保存原始檔案路徑、時間戳記、高度、速度或活動摘要。
 
-Photo metadata binds image-node identity, relationship role, catalog asset ID,
-optional source hash and focus/layout data. A comparison requires two distinct
-assets. The renderer reads the existing local image bytes and validates their
-identity; templates never overwrite source media.
+照片中繼資料會記錄圖片節點身分、關係角色、素材庫素材 ID、選用的來源雜湊，以及焦點／版面資料。比較需要兩個不同素材。算圖器會讀取既有的本機圖片位元組並驗證身分；範本永遠不會覆寫來源媒體。
 
-## Limits and trust boundary
+## 限制與信任邊界
 
-All metadata is strict JSON with a version field, bounded arrays and literal
-text. It is validated against the exact saved scene and node types before a
-typed edit is committed. Unknown fields, orphaned node IDs, missing assets,
-malformed hashes, unsafe file names and invalid coordinates are rejected.
-GPX content is parsed as data only. No network request, project HTML, script,
-remote URL, XML entity expansion or third-party template code is executed.
+所有中繼資料都是含版本欄位、陣列數量上限和原樣文字的嚴格 JSON。提交具型別的編輯前，會依照精確儲存的場景和節點類型驗證。未知欄位、沒有對應節點的 ID、缺少素材、格式錯誤的雜湊、不安全檔名和無效座標都會被拒絕。GPX 內容只會當作資料剖析，不會執行網路要求、專案 HTML、指令碼、遠端 URL、XML 實體展開或第三方範本程式碼。
 
-The output renderer continues to consume only the corresponding GraphicScene.
-The metadata is editorial provenance and replacement context; it cannot add
-render primitives or bypass the existing resource limits.
+輸出算圖器仍只處理相應的 `GraphicScene`。中繼資料只記錄編輯來源與替換脈絡，無法新增算圖基元，也無法繞過既有資源限制。
 
-See [GraphicScene v1](graphic-scenes.md),
-[architecture](architecture.md#creative-story-template-records),
-[project contracts](CONTRACTS.md#creative-story-template-records) and the
-[validation record](validation-creative-story-templates.md).
+參閱 [GraphicScene v1](graphic-scenes.md)、[架構](architecture.md#creative-story-template-records)、[專案契約](CONTRACTS.md#creative-story-template-records)與[驗證紀錄](validation-creative-story-templates.md)。

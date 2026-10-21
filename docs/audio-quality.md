@@ -1,36 +1,13 @@
-# Reviewable audio quality (M6 / PR 6A)
+# 可審閱的音訊品質（M6 / PR 6A）
 
-AudioAutomation already owns role, fades, gain points and manual ducking. This
-feature reuses that contract and the existing volume command. It adds no audio
-schema or second timeline, and never rewrites a media source.
+音訊自動化已管理角色、淡入淡出、增益控制點和手動閃避。本功能重用該契約與既有音量命令，不新增音訊 schema 或第二條時間軸，也永遠不會改寫媒體來源。
 
-The application renders three private MP4s with the normal FFmpeg Renderer:
-original mix, selected sound stem (all other clip audio muted), and a proposed
-mix. The stem's integrated loudness informs a constant-volume suggestion by role:
-narration/dialogue −16 LUFS, music −23 LUFS, ambience −24 LUFS. These are
-workflow defaults, not delivery-standard certification. The current volume
-contract remains 0–1; boosts requiring more than unity are explicitly limited.
+應用程式使用一般 FFmpeg Renderer 算出三個私有 MP4：原始混音、選取的獨立音軌（將其他片段音訊靜音），以及建議混音。獨立音軌的整合響度會用來依角色提出固定音量建議：旁白／對話 −16 LUFS、音樂 −23 LUFS、環境音 −24 LUFS。這些是工作流程預設值，不是交付標準認證。現有音量契約仍限制在 0–1；需要超過單位增益的提升會明確受限。
 
-FFmpeg loudnorm reports decoded input integrated LUFS, LRA and oversampled true
-peak. Block astats provides decoded sample peak and RMS/peak meter bins. Silence
-and nonfinite results remain null. Files without audio or longer than one hour
-fail explicitly. The meter is a sampled output meter, not a live input meter.
+FFmpeg loudnorm 會回報解碼輸入的整合 LUFS、LRA 和過取樣真峰值。區塊層級的 astats 會提供解碼後的樣本峰值，以及 RMS／峰值計量資料。靜音和非有限數值會保持為 null。沒有音訊或長度超過一小時的檔案會明確失敗。計量器是取樣後的輸出計量器，不是即時輸入計量器。
 
-A candidate is actually encoded and remeasured. Acceptance is unavailable unless
-its full-mix true peak is at most −1 dBTP. The user auditions original/candidate,
-then explicitly accepts a normal typed volume command through autosave/history.
-All authored fades, curves, ducking, trims and speed stay intact. Uncertain edit
-writes follow the existing editor recovery lifecycle.
+候選混音會實際編碼並重新測量。只有在完整混音的真峰值不高於 −1 dBTP 時，才能接受。使用者先試聽原始版本與候選版本，再明確透過自動儲存／記錄接受一般的具型別音量命令。所有已編寫的淡入淡出、曲線、閃避、修剪與速度都會保持不變。不確定的編輯寫入會沿用既有編輯器復原生命週期。
 
-Results bind project, saved Composition, editor revision, settings, source hashes
-and output hashes. Source locks/rejections are respected. Changes invalidate
-playback/acceptance; the server and application reject stale requests. Client
-abort cancels child processes, partial caches are removed, and a retry creates a
-new private review. Cache directories reject symlinks and use mode 0700; at most
-five in-session completed reviews remain. Paths and original media are not sent
-to providers.
+結果會綁定專案、已儲存的 Composition、編輯器版本、設定、來源雜湊和輸出雜湊。會遵守來源鎖定／拒絕狀態。變更會使播放／接受失效；伺服器與應用程式會拒絕過期要求。用戶端中止會取消子程序並移除部分快取；重試會建立新的私有審閱結果。快取目錄會拒絕符號連結並使用 0700 權限；每個工作階段最多保留五個已完成審閱結果。路徑和原始媒體不會傳送給服務提供者。
 
-Desktop, HTTP and `openfilm audio-quality --project <path> --composition <id>
---clip <id>` call the same application boundary. Loudness/peak values do not prove
-speech intelligibility, musical balance or creative quality; those remain manual
-listening decisions.
+Desktop、HTTP 和 `openfilm audio-quality --project <path> --composition <id> --clip <id>` 都會呼叫相同的應用程式邊界。響度／峰值數值不代表語音清晰度、音樂平衡或創作品質；這些仍需人工聆聽判斷。

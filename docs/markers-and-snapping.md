@@ -1,66 +1,35 @@
-# Source markers and snapping
+# 來源標記與吸附
 
-A marker belongs to an original asset and a source timestamp. It is not a
-timeline clip, a duplicated media file or an instruction to change a story.
-Manual markers persist in the catalog against asset ID and source hash;
-detected scene markers retain detector provenance in the scene result.
+標記屬於原始素材和來源時間戳記，不是時間軸片段、複製出的媒體檔案，也不是修改故事的指令。手動標記會依素材 ID 和來源雜湊儲存在素材庫中；偵測到的場景標記則會在場景結果中保留偵測來源。
 
-## Marker behavior
+## 標記行為
 
-In Precision mode, add a marker at the playhead, double-click the waveform, or
-use M when focus is outside text and form controls. Select a marker to seek to
-its source position. Removing a manual marker removes that source marker; it
-does not trim a clip or delete the original. Times must remain inside the
-source duration. Marker labels, when provided, are user text and are not
-translated when the interface language changes.
+在精準模式中，可在播放頭位置新增標記、雙擊波形，或在焦點不在文字與表單控制項時按 M。選取標記即可搜尋其來源位置。刪除手動標記只會移除該來源標記；不會修剪片段或刪除原始檔案。時間必須落在來源時長內。標記標籤若有提供，屬於使用者文字，不會因介面語言切換而翻譯。
 
-The Core marker vocabulary also reserves `speech`, `word`, `beat` and `chapter`
-types. Their presence in the contract is not a claim that every type has an
-authoring UI. P0 provides manual markers and detected scene cuts; loaded
-transcript segment/word edges and selected source clip edges can also act as
-snap candidates without creating persisted manual markers.
+核心標記詞彙也保留 `speech`、`word`、`beat` 和 `chapter` 類型。契約中列出某類型，不代表每種類型都有建立介面。P0 提供手動標記和偵測到的場景切點；已載入逐字稿片段／單字的邊界，以及選取來源片段的邊界，也可作為吸附候選，但不會建立已儲存的手動標記。
 
-## Snap calculation
+## 吸附計算
 
-`packages/analysis/src/snapping.ts` contains the pure source-time calculation.
-The view converts its pixel tolerance to seconds using the current zoom and
-passes the valid trim bounds. Candidates outside those bounds or of disabled
-types are ignored. With snapping off, the bounded requested time is preserved.
+`packages/analysis/src/snapping.ts` 包含純來源時間計算。畫面會依目前縮放程度把像素容差換算成秒，並傳入有效修剪界限。超出界限或已停用類型的候選都會忽略。關閉吸附時，會保留限制在界限內的要求時間。
 
-The nearest eligible candidate within the threshold wins. Equal distances prefer
-the higher priority, then earlier time, candidate type and stable ID, making
-ties reproducible. Default priorities are:
+符合閾值的候選中，會選擇最近者。距離相同時，依序以較高優先度、較早時間、候選類型和穩定 ID 決定，因此相同輸入會得到相同結果。預設優先度如下：
 
-| Candidate                             | Priority |
-| ------------------------------------- | -------: |
-| Manual marker                         |      100 |
-| Clip edge                             |       90 |
-| Detected scene cut                    |       80 |
-| Chapter                               |       70 |
-| Beat                                  |       60 |
-| Speech or transcript-segment boundary |       50 |
-| Word boundary                         |       40 |
+| 候選 | 優先度 |
+| --- | ---: |
+| 手動標記 | 100 |
+| 片段邊界 | 90 |
+| 偵測到的場景切點 | 80 |
+| 章節 | 70 |
+| 節拍 | 60 |
+| 語音或逐字稿片段邊界 | 50 |
+| 單字邊界 | 40 |
 
-Both starts and ends of transcript segments and words are candidates. Silence
-between segments remains free source time; snapping does not fill it with
-invented speech. Transcript candidates come from the currently loaded page,
-which is stated in the UI. Marker visualization is bounded separately from the
-full persisted data so dense analysis does not require thousands of DOM lines.
+逐字稿片段和單字的起點、終點都可作為候選。片段間的靜音仍是可自由使用的來源時間；吸附不會補入虛構語音。逐字稿候選取自目前載入的頁面，介面會說明這一點。標記視覺化有獨立數量上限，因此密集分析結果不會產生數千條 DOM 線段。
 
-## Visibility and persistence
+## 顯示與保存
 
-Snap feedback identifies the selected target type and time. Marker timestamps,
-scene cuts and transcript timings remain in source seconds when a clip is
-moved, reordered or retimed. The normal timeline command still validates the
-result after snapping; a nearby marker cannot bypass a lock, source limit or
-positive-duration constraint.
+吸附回饋會指出選取的目標類型和時間。移動、重新排序或變速片段時，標記時間戳記、場景切點和逐字稿時間仍以來源秒數表示。吸附後，一般時間軸命令仍會驗證結果；附近的標記不能繞過鎖定、來源界限或正時長限制。
 
-Analysis results and manual markers are source-bound catalog data, while trim
-and split commands are composition edits. Timeline undo/redo should not be
-interpreted as a general analysis/marker history. Reopening retains committed
-valid marker/analysis data and the independently saved composition. Changed
-source bytes must not silently reuse markers or analysis from the old source.
+分析結果和手動標記是綁定來源的素材庫資料；修剪與分割命令則是 Composition 編輯。時間軸復原／重做不代表一般分析／標記記錄。重新開啟專案時，已提交且有效的標記／分析資料會保留，Composition 也獨立保存。來源位元組變更時，不得暗中沿用舊來源的標記或分析。
 
-Pure tests cover candidate selection, thresholds, bounds, disabled types and
-deterministic ties. The precision browser workflow checks an actual persisted
-marker, snapped trim and shared timeline history through the product controls.
+純函式測試涵蓋候選選擇、閾值、界限、停用項目與確定性平手處理。精準剪輯的瀏覽器流程會透過產品控制項，檢查實際保存的標記、吸附修剪和共用時間軸記錄。
