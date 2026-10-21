@@ -1,238 +1,104 @@
-# OpenFilm project format
+# OpenFilm 專案格式
 
-An `.openfilm` project is a directory. **Project schema 1.0.0** is independent of
-the **OpenFilm application release 0.1.0**. A project refers to source media by
-local file URI. Native file/folder import references originals in place; browser
-file selection copies the chosen bytes into project-managed `sources/` because a
-browser does not expose their original local paths. Neither route modifies originals.
+.openfilm 專案是一個資料夾。專案 schema 1.0.0 與 OpenFilm 應用程式版本 0.1.0 各自獨立。專案以本機 file URI 參照來源媒體。原生檔案／資料夾匯入會直接參照原檔；瀏覽器選取檔案時，因瀏覽器不會提供原始本機路徑，所選位元組會複製到專案管理的 sources/。兩種匯入方式都不會修改原檔。
 
-Published machine-readable contracts are in
-[`schemas/openfilm-project-1.0.0.schema.json`](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json),
-[`schemas/media-asset-1.0.0.schema.json`](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json),
-and [`schemas/plugin-manifest-1.schema.json`](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json).
+機器可讀契約已發布於 [專案 schema](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json)、[媒體資產 schema](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json) 和 [外掛 manifest schema](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json)。
 
-```text
+~~~text
 film.openfilm/
   project.json
   database.sqlite
-  story/                 reserved for future standalone story documents
-  timeline/              reserved for future standalone composition documents
+  story/                  保留給未來獨立的故事文件
+  timeline/               保留給未來獨立的剪輯文件
   analysis/
     events.json
     duplicates.json
-  sources/               browser copies or collected hash-addressed media
-  fonts/                 hash-addressed fonts in a collected package
-  collect-manifest.json  package hashes, scope and rights receipts only
-  versions/              immutable named project snapshots and private index
-    index.json           mutable labels and idempotency receipts only
+  sources/                瀏覽器副本或以雜湊命名的收集媒體
+  fonts/                  可攜式套件中的雜湊字型
+  collect-manifest.json   僅含套件雜湊、範圍和權利回條
+  versions/               不可變的具名專案快照和私人索引
+    index.json            僅含可變標籤和冪等回條
     <version-id>/
-      project.json       saved schema-1.0.0 manifest image
-      database.sqlite    SQLite-consistent catalog image
-      record.json        immutable version identity and source hashes
+      project.json        已儲存的 schema 1.0.0 manifest 影像
+      database.sqlite     SQLite 一致性的素材目錄影像
+      record.json         不可變版本識別和來源雜湊
   cache/
     thumbnails/
     proxies/
     preview.mp4
-    export-preview/        short-lived private profile-frame PNG cache
-    export-work/           private staged MP4/PNG/WAV render work
+    export-preview/       短期私人設定檔影格 PNG 快取
+    export-work/          私人暫存的 MP4／PNG／WAV 算繪工作
   exports/
     timeline.json | timeline.otio | timeline.fcpxml | timeline.edl
     timeline.<format>.report.json
-    film-<unique-id>.mp4  finished playable exports
+    film-<unique-id>.mp4  已完成、可播放的影片輸出
     still-<request-id>.png + manifest
     mix-<request-id>.wav + manifest
-    stems-<request-id>/    aligned role WAVs and manifest
-```
+    stems-<request-id>/   對齊的角色 WAV 和 manifest
+~~~
 
-SQLite may also have active `database.sqlite-wal` and `database.sqlite-shm` files.
-Analysis/cache/export files appear when their workflow runs. Stories and timelines
-currently live in `project.json`; creating the reserved directories does not mean
-they already contain separate canonical documents.
+SQLite 可能同時使用 database.sqlite-wal 和 database.sqlite-shm。分析、快取、輸出檔會在執行相關工作時出現。目前 Story 和時間軸都儲存在 project.json；建立預留資料夾不代表其中已存在獨立的標準文件。
 
-Profile outputs are derived files. Their versioned Export Profile and receipts
-bind output dimensions, frame/time or sample measurements, source hashes and
-warnings without changing Composition/project settings or project schema
-1.0.0. See [Export Profiles](export-profiles.md). Private previews expire and
-can be regenerated; exported stills and WAVs remain in `exports/` until removed
-by the user.
+設定檔輸出是衍生檔案。版本化的輸出設定檔與回條會記錄輸出尺寸、影格／時間或取樣測量、來源雜湊和警告，不會變更 Composition／專案設定或專案 schema 1.0.0。請見[輸出設定檔](/export-profiles)。私人預覽會到期並可重新產生；已輸出的圖片和 WAV 會留在 exports/，直到使用者移除。
 
-## Manifest and catalog
+## Manifest 與素材目錄
 
-`project.json` contains `schemaVersion`, `id`, `title`, ISO `createdAt`/`updatedAt`,
-`mediaLibraries`, `stories`, `timelines`, and `settings`. Each library has an ID,
-URI, and display name. Settings contain width, height, and frame rate; new projects
-default to 1920 × 1080 at 30 fps. Stories reference candidate/selected media IDs;
-compositions contain tracks and clips referencing catalog media IDs.
+project.json 含有 schemaVersion、id、title、ISO 格式的 createdAt／updatedAt、mediaLibraries、stories、timelines 和 settings。每個素材庫都有 ID、URI 與顯示名稱。設定含寬度、高度和影格率；新專案預設為 1920 × 1080、30 fps。Story 會參照候選／已選媒體 ID；Composition 則包含參照素材目錄媒體 ID 的軌道和片段。
 
-Compositions may also contain additive `graphicScenes`; a scene may include a
-version-1 `photoDepth` recipe tied to a root Image node. Its source, alpha mask
-and optional background remain ordinary local catalog assets with content
-hashes. This optional extension retains project schema 1.0.0: legacy projects
-without scenes or PhotoDepth need no migration, and no derived image bytes are
-embedded in `project.json`.
+Composition 也可額外包含 graphicScenes；場景可以帶有綁定至根 Image 節點的 PhotoDepth v1 配方。來源、alpha 遮罩和可選背景仍是具有內容雜湊的一般本機素材目錄資產。這項可選擴充不變更專案 schema 1.0.0：沒有場景或 PhotoDepth 的舊專案不需遷移，衍生圖像位元組也不會內嵌到 project.json。
 
-Optional `projectContentLocale` (`en-US`, `zh-TW`, `ja-JP`) and `filmSettings`
-(`templateId`, `targetDuration`, `maxDuration`) describe new-film defaults without
-creating a story. Story overrides remain possible. Template beats optionally carry
-`templateBeatKey`, `titleSource` and `intentSource`; only explicit template-owned
-fields change when the film language changes. Existing text with no provenance
-remains verbatim. These additive fields retain schema 1.0.0 and require no catalog
-migration. UI language and theme are local preferences outside the project.
+可選的 projectContentLocale（en-US、zh-TW、ja-JP）和 filmSettings（templateId、targetDuration、maxDuration）會描述新影片的預設值，不會自行建立故事；Story 仍可設定個別覆寫。範本段落可選擇包含 templateBeatKey、titleSource 和 intentSource；只有明確標為範本擁有的欄位會隨影片語言更新。沒有來源標記的既有文字會原樣保留。這些新增欄位維持 schema 1.0.0，不需要素材目錄遷移。介面語言與主題是專案以外的本機偏好。
 
-The manifest is validated before atomic temporary-file replacement. The catalog
-uses SQLite schema `PRAGMA user_version=2`, WAL mode, indexed fields for listing,
-and JSON descriptors for extensible asset data. Version 1 migrates atomically to
-version 2 by adding transcript revision/segment tables, derived-analysis caches
-and source-bound manual markers. Existing asset/job descriptors are preserved;
-failed migration rolls back. Large transcripts use bounded segment pages, with
-words stored alongside each segment. Manifest schema remains 1.0.0. See
-[media intelligence](media-intelligence.md).
-User preference patches change rating/state/tags while keeping source descriptors.
-Future catalog schema versions are rejected. Access through `ProjectCatalog`
-preserves the schema's invariants; avoid ad-hoc SQL mutations.
+manifest 通過驗證後才會以暫存檔原子替換。素材目錄使用 SQLite schema PRAGMA user_version=2、WAL 模式、供清單查詢的索引欄位，以及可擴充資產資料的 JSON 描述。版本 1 會以原子方式新增逐字稿修訂／片段表、衍生分析快取和來源綁定手動標記，遷移至版本 2。既有資產／工作描述會保留；遷移失敗會回復。大型逐字稿使用有界分段頁面，文字保存在各段旁。Manifest schema 維持 1.0.0。使用者偏好補丁可變更評分／狀態／標籤，同時保留來源描述。未來的素材目錄 schema 版本會被拒絕。請透過 ProjectCatalog 存取資料，以維持 schema 不變條件；避免直接執行任意 SQL 變更。
 
-Close the application before copying the project directory as a filesystem
-backup; use SQLite-aware backup tooling for a live catalog. Include source media
-in a separate backup. A manifest alone does not preserve catalog preferences or
-grant access to missing original files.
+複製專案資料夾作為檔案備份前，請先關閉應用程式；若要備份正在使用的素材目錄，請使用理解 SQLite 的備份工具。來源媒體需另行備份。只有 manifest 無法保留素材目錄偏好，也無法讓遺失的原始檔重新可用。
 
-Jobs retain their legacy URI/stage/message diagnostics and may also store a stable
-error `code`, string/number `params`, and `detail` for localized recovery messages.
+工作記錄沿用舊的 URI／階段／訊息診斷，也可儲存穩定錯誤 code、字串／數字 params 和供本機化復原訊息使用的 detail。
 
-## Media descriptors and editing
+## 媒體描述與編輯
 
-An asset contains its ID, `uri`, name, type, tags, state, extensible namespaced
-metadata, and optional technical/capture/hash/cache information. Capture resolution
-is retained under `metadata["openfilm.timestamp"]`, including original value,
-source, confidence, timezone, and timezone uncertainty. Unzoned capture metadata
-is represented as wall-clock UTC with lowered confidence, not as proven UTC.
+資產含 ID、URI、名稱、類型、標籤、狀態、可擴充的命名空間中繼資料，以及可選技術／拍攝／雜湊／快取資訊。拍攝時間解析結果保存在 metadata["openfilm.timestamp"]，包含原始值、來源、信心度、時區及時區不確定性。沒有時區的拍攝資訊會表示為信心度較低的牆上時鐘 UTC，而不是已證實的 UTC。
 
-Namespace additional metadata, for example `openfilm.audio.transcript`, to avoid
-plugin collisions. Thumbnails and proxies are derived cache, not replacements for
-the original asset URI. A file changing externally is rehashed/reinspected on
-reimport, while its existing catalog ID and preference edits are retained. IDs
-initially derived from a source URI remain durable after relinking. Reusing an old
-source path for a different file creates a separate identity when that ID already
-belongs to a relinked asset.
+額外中繼資料應使用命名空間，例如 openfilm.audio.transcript，以避免外掛衝突。縮圖和代理檔是衍生快取，不會取代原始資產 URI。外部檔案變更後重新匯入時，系統會重新計算雜湊／檢查媒體，但保留既有素材 ID 和偏好。最初由來源 URI 推導的 ID 在重新連結後仍穩定。若舊來源路徑已被另一個重新連結資產使用，再放入不同檔案會建立不同身分。
 
-All `sourceIn`, `sourceOut`, `timelineStart`, `timelineDuration`, and story duration
-values are seconds. Transforms, volume/speed, titles, and transitions describe
-operations. They never modify the source. IDs must remain consistent across the
-catalog, beat candidates/selections, and timeline clips. Optional `Clip.locked`
-persists clip protection without changing schema version 1.0.0. Manual edits may
-exceed a story's maximum duration; rendering requires shortening the timeline
-first. Undo/redo history belongs to the open editing session and is not persisted.
+sourceIn、sourceOut、timelineStart、timelineDuration 和 Story 片長都以秒為單位。變形、音量／速度、標題和轉場描述的是操作，不會修改來源。素材目錄、段落候選／選取和時間軸片段中的 ID 必須一致。可選的 Clip.locked 會保存片段保護狀態，仍維持 schema 1.0.0。手動編輯可能超出 Story 最長片長；算繪前必須先縮短時間軸。復原／重做歷程只屬於目前開啟的編輯工作階段，不會永久保存。
 
-## Portable source references and caches
+## 可攜式來源參照與快取
 
-Current asset `uri` values are absolute local `file:` URIs. Relinking is exposed
-through the application, HTTP API and desktop. Portable provenance uses the
-existing `metadata["openfilm.reference"]` extension:
+目前資產 URI 是絕對本機 file URI。應用程式、HTTP API 和桌面版皆提供重新連結。可攜來源資訊使用既有 metadata["openfilm.reference"] 擴充欄位：
 
-- `originalUri`: original import location; retained across relinks.
-- `contentHash` and `fileSize`: optional SHA-256 identity and byte size.
-- `filename`, `mediaLibraryId`, `relativePath`: source name and library-relative
-  location.
-- `volumeId`: stable logical identity, not an operating-system disk identifier.
-- `rootUri`: current source library root or mount path.
+- originalUri：最初匯入位置，重新連結後仍保留。
+- contentHash 和 fileSize：可選 SHA-256 身分和位元組大小。
+- filename、mediaLibraryId、relativePath：來源名稱和素材庫相對位置。
+- volumeId：穩定的邏輯身分，不是作業系統磁碟識別碼。
+- rootUri：目前來源素材庫根目錄或掛載路徑。
 
-Relinking preserves asset IDs, user metadata, ratings, locks, stories and clip
-edits. It checks candidate files again before updating all selected catalog rows
-in one SQLite transaction. A known hash mismatch cannot be overridden. Relative
-path, filename/size and manual legacy matches require confirmation; legacy
-replacements must also satisfy media-type and existing source-duration bounds.
-Current roots are stored in catalog reference metadata. Relinking does not need a
-transaction spanning `project.json` and SQLite or rewrite the manifest's original
-library URI.
+重新連結會保留資產 ID、使用者中繼資料、評分、鎖定、故事和片段編輯。更新已選素材列之前會重新檢查候選檔，並以單一 SQLite 交易提交。已知雜湊不符時無法覆蓋。相對路徑、檔名／大小和舊版手動配對需確認；舊版替代檔也必須符合媒體類型和既有來源片長範圍。目前根目錄儲存在素材目錄參照中繼資料。重新連結不需同時交易 project.json 和 SQLite，也不會重寫 manifest 的原始素材庫 URI。
 
-New thumbnail and proxy references use project-relative `cache/...` paths.
-Reopening a moved project recovers older absolute references that match the
-application's generated cache naming convention. Original sources remain external
-and may still need relinking. Missing-source and library availability are checked
-at runtime, independently of stored editing revisions. Automatic physical-volume
-detection is not implemented. See [media portability](media-portability.md) and
-[relinking contracts](RELINK_CONTRACTS.md) for matching and remount limitations.
+新縮圖／代理檔參照使用專案相對 cache/... 路徑。重新開啟搬移過的專案時，會依照應用程式產生快取的命名規則復原符合條件的舊版絕對參照。原始來源仍位於專案外，可能需要重新連結。來源遺失和素材庫可用性會在執行時檢查，與已儲存編輯修訂無關。尚未實作實體磁碟區自動偵測。配對方式與重新掛載限制請見[媒體搬移](/media-portability)和[重新連結契約](../RELINK_CONTRACTS.md)。
 
-## Named versions
+## 具名版本
 
-The optional `versions/` directory is application-owned data outside project
-schema 1.0.0 and catalog schema v5. Projects without it open normally. Version
-creation captures the saved manifest and a bounded catalog image while the
-catalog writer is excluded; it validates the SQLite schema, integrity and
-foreign keys before staging and publishing the package. Snapshot metadata and
-hashes do not copy source media or expose absolute source URIs through API/CLI
-records. Names and descriptions live in the index and can change without
-rewriting a saved version. The store has explicit count and byte caps and does
-not silently prune versions.
+可選的 versions/ 資料夾屬於應用程式管理資料，不屬於專案 schema 1.0.0 或素材目錄 schema v5。沒有此資料夾的專案仍可正常開啟。建立版本時會排除素材目錄寫入器，同時擷取已儲存 manifest 和有界素材目錄快照；暫存與發布前會驗證 SQLite schema、完整性和外鍵。快照中繼資料與雜湊不會複製來源媒體，也不會透過 API／CLI 紀錄暴露絕對來源 URI。名稱與描述儲存在索引，可在不重寫快照的情況下變更。儲存區有明確數量和位元組上限，不會默默刪除舊版本。
 
-Restore validates the selected manifest/catalog/source fingerprints, current
-revision and locks, then first creates a named recovery checkpoint. Manifest
-publication runs in the catalog restore transaction; a small private journal
-rolls back to the checkpoint when startup detects an interrupted publication.
-The current project manifest and catalog are replaced together, and editor
-snapshots are invalidated. This does not restore cache/exports or originals and
-does not become session Undo/Redo. See [Named Versions](named-versions.md) for
-the full lifecycle and failure behavior.
+還原前會驗證所選 manifest／素材目錄／來源指紋、目前修訂和鎖定，然後先建立具名復原檢查點。Manifest 發布在素材目錄還原交易中進行；若啟動時偵測到發布中斷，小型私人日誌會回復至檢查點。目前專案 manifest 和素材目錄會一併替換，編輯器快照也會失效。還原不會恢復快取／輸出或原始素材，也不等同工作階段復原／重做。完整生命週期與失敗行為請見[具名版本](/named-versions)。
 
-Browser-managed copies record a validated source-relative path and their previous
-managed URI under `openfilm.managedSource`. On moving the project, opening it
-rebases only assets still pointing at their managed source; an explicitly relinked
-external file stays external. IDs and original provenance remain stable. Source
-paths must remain within `sources/`; project cache or arbitrary metadata paths are
-never imported as managed media.
+瀏覽器管理的副本會在 openfilm.managedSource 中記錄已驗證的來源相對路徑和原管理 URI。搬移專案後，只有仍指向受管理來源的資產會重新定位；明確重新連結至外部檔案的素材會維持外部參照。ID 和原始來源資訊不變。來源路徑必須在 sources/ 之內；專案快取或任意中繼資料路徑不會被當成受管理媒體匯入。
 
-Collect Media packages use the same managed-source boundary. Their optional
-`collect-manifest.json` records selected Stories/Compositions, relative paths,
-content hashes/sizes, required font bindings, explicit rights declarations and
-digests of original URIs. The project catalog contains only referenced assets
-and their selected transcript data; unrelated Library assets, caches, jobs,
-provider credentials and named-version snapshots are not included. Each distinct
-source byte sequence is stored once beneath `sources/<hash-prefix>/`; asset URIs
-remain unique and opaque while their `openfilm.managedSource.relativePath` points
-to the shared source bytes. Font files and their resolver bindings are stored in
-`fonts/` and checked by hash when a collected project opens. These package
-receipts live outside schema 1.0.0 and catalog schema v5; projects without them
-continue to open as before. See [Collect Media](collect-media.md) for the
-directory/ZIP and Verify contract.
+Collect Media 套件使用相同的受管理來源邊界。可選 collect-manifest.json 會記錄所選 Story／Composition、相對路徑、內容雜湊／大小、必要字型綁定、明確權利聲明及原 URI 摘要。專案素材目錄只保留參照資產與其選定逐字稿資料；無關素材庫資產、快取、工作、供應商憑證和具名版本快照不會納入。相同來源位元組只存一份；資產 URI 仍保持不透明且唯一，openfilm.managedSource.relativePath 則指向共用檔案。字型檔和解析器綁定保存在 fonts/，開啟套件時會檢查雜湊。這些回條位於 schema 1.0.0 和素材目錄 schema v5 之外；既有專案照常開啟。完整目錄／ZIP 與驗證契約請見[Collect Media](/collect-media)。
 
-## Validation and migration
+## 驗證與遷移
 
-`validateProject` checks the current schema and structural/value constraints.
-`migrateProject` supports current 1.0.0 and a documented 0.1.0 draft with identical
-v1 field names; that draft may omit settings, in which case 1920 × 1080 / 30 fps
-is added. It does not mutate its input or infer unversioned/unknown formats.
-Unknown future versions are rejected with a useful error.
+validateProject 會檢查目前 schema 和結構／值限制。migrateProject 支援目前 1.0.0，以及欄位名稱相同、已有文件說明的 0.1.0 草案版本；該草案若缺少 settings，會補上 1920 × 1080／30 fps。遷移不會修改輸入，也不會推測未標版本或未知格式。未知的未來版本會以明確錯誤拒絕。
 
-Opening a draft migrates it in memory; saving/closing persists the current
-manifest. Original media is never part of a schema migration. Back up a project
-before opening it with a version that introduces a format migration.
+開啟草案專案時會在記憶體中遷移；儲存或關閉時才寫入目前 manifest。Schema 遷移不會包含原始媒體。使用引入格式遷移的版本開啟專案前，請先備份。
 
-## Timeline interchange
+## 時間軸交換
 
-JSON exports include schema version, full composition, referenced assets, and
-settings. OTIO uses native Timeline/Stack/Track/Clip/Gap objects for cut layout,
-current source file URIs, still holds, audio and source ranges at 1x. Advanced
-edits—speed, volume/mute, transforms, titles, crossfades and clip locks—are retained
-in OpenFilm metadata with explicit warnings, not native NLE effects. Exact
-original clip fields and the complete composition are embedded. Retimed clips
-use unretimed native excerpts and, when needed, labeled padding gaps to preserve
-record positions; reconstruct the intended speed edit manually from metadata.
-Within-track overlaps are rejected.
+JSON 匯出包含 schema 版本、完整 Composition、參照資產和設定。OTIO 使用原生 Timeline／Stack／Track／Clip／Gap 物件表達剪輯版面、目前來源 file URI、靜態影格停留、音訊和 1x 來源範圍。速度、音量／靜音、變形、標題、交叉淡化和片段鎖定等進階編輯會保存在 OpenFilm 中繼資料，並附上明確警告，不會變成 NLE 原生效果。完整 Composition 和原始片段欄位會一併嵌入。調速片段會使用未調速的原生片段摘錄；必要時加入有標記的補白間隔以維持記錄位置，使用者須依中繼資料在 NLE 手動重建速度變更。軌道內重疊會被拒絕。
 
-The application returns warnings and writes an adjacent
-`timeline.<format>.report.json`; OTIO also embeds its compatibility report.
-FCPXML and EDL retain their limited cut-based behavior and reject unsupported
-advanced operations. JSON remains the complete model export. Official OTIO parser
-read/write/read verification is separate from actual NLE behavior: DaVinci Resolve
-import and playback have not been verified. See
-[NLE compatibility](nle-compatibility.md) for exact feature support, metadata
-locations, and manual verification steps.
+應用程式會回傳警告並寫入相鄰的 timeline.<format>.report.json；OTIO 也會內嵌相容性報告。FCPXML 和 EDL 僅支援有限的剪輯式流程，遇到不支援的進階操作會拒絕輸出。JSON 是完整模型匯出格式。官方 OTIO 解析器讀取／寫入／再次讀取的驗證，不等同於實際 NLE 行為；DaVinci Resolve 匯入與播放尚未驗證。詳細功能支援、中繼資料位置和人工檢查方式請見[NLE 相容性](/nle-compatibility)。
 
-## Native installer storage separation
+## 原生安裝程式的儲存區隔
 
-The M7E RuntimeManifest and bundled executables are app installation resources,
-not project data. Runtime staging and installer packaging do not copy or migrate
-project directories. First-run checks use app-data working storage. Manual app
-rollback preserves projects and relies on existing project/catalog compatibility
-checks; unsupported versions are refused rather than rewritten. See
-[Native Installer](native-installer.md).
+M7E RuntimeManifest 和隨附執行檔屬於應用程式安裝資源，不是專案資料。Runtime 暫存和安裝程式打包不會複製或遷移專案資料夾。首次啟動檢查使用應用程式資料目錄。手動回復應用程式版本會保留專案，並依靠既有的專案／素材目錄相容性檢查；不支援的版本會被拒絕，不會被改寫。詳見[原生安裝程式](/native-installer)。
