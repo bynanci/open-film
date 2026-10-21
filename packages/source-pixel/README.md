@@ -1,5 +1,7 @@
 # Google Pixel source adapter
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 `PixelSource` implements the existing local media source port. `enrichPixelAsset`
 recognizes Google plus a Pixel camera model in EXIF/QuickTime metadata; filenames
 or a Google Photos software tag alone remain `GenericCamera`. It preserves the

@@ -1,5 +1,7 @@
 # Generated proposal reference library
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 ```sh
 node fixtures/proposal-film/generate.mjs /tmp/openfilm-proposal-reference
 ```

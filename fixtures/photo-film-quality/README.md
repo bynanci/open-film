@@ -1,5 +1,7 @@
 # Generated 20-second photo-film comparison
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 ```sh
 pnpm exec tsx scripts/photo-film-quality.ts /tmp/openfilm-photo-quality-evidence
 ```

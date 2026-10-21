@@ -1,5 +1,7 @@
 # OpenFilm desktop
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 **Edit → Film look** offers six original styles and strength for the whole film,
 selected scene or clip. Inherit follows the parent; Original keeps source colors.
 Saved changes use normal autosave, Undo/Redo and lock protection. **Export → MP4

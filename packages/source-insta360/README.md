@@ -1,5 +1,7 @@
 # Insta360 sources
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 `@openfilm/source-insta360` implements the existing local `MediaSourceAdapter`
 port and exports `isInsta360Raw`, `inspectInsta360Raw`, and
 `enrichInsta360Asset`. Source files remain unchanged.

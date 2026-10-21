@@ -1,5 +1,7 @@
 # Resolve preparation fixture and parser gate
 
+**[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
+
 `verify.py` uses official OpenTimelineIO 0.18.1 and FFprobe. Invoke it through
 `scripts/verify-interchange.ts`, which generates procedural CC0 sources and three
 OTIO cases, runs official read/write/read, checks actual file URLs/hashes/bounds,
