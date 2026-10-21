@@ -152,39 +152,39 @@ const localizedSlugs = new Set([
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
-    "zh-TW": "其他技術文件（英文原文）",
-    "en-US": "Other technical documents (English source)",
-    "ja-JP": "その他の技術資料（英語原文）",
+    "zh-TW": "其他技術文件",
+    "en-US": "Other technical documents",
+    "ja-JP": "その他の技術資料",
   },
   adr: {
-    "zh-TW": "架構決策紀錄（英文原文）",
-    "en-US": "Architecture decisions (English source)",
-    "ja-JP": "アーキテクチャ決定記録（英語原文）",
+    "zh-TW": "架構決策紀錄",
+    "en-US": "Architecture decisions",
+    "ja-JP": "アーキテクチャ決定記録",
   },
   security: {
-    "zh-TW": "安全文件（英文原文）",
-    "en-US": "Security documents (English source)",
-    "ja-JP": "セキュリティ資料（英語原文）",
+    "zh-TW": "安全文件",
+    "en-US": "Security documents",
+    "ja-JP": "セキュリティ資料",
   },
   "reference-workflows": {
-    "zh-TW": "參考流程（英文原文）",
-    "en-US": "Reference workflows (English source)",
-    "ja-JP": "参考ワークフロー（英語原文）",
+    "zh-TW": "參考流程",
+    "en-US": "Reference workflows",
+    "ja-JP": "参考ワークフロー",
   },
   releases: {
-    "zh-TW": "版本紀錄（英文原文）",
-    "en-US": "Release notes (English source)",
-    "ja-JP": "リリースノート（英語原文）",
+    "zh-TW": "版本紀錄",
+    "en-US": "Release notes",
+    "ja-JP": "リリースノート",
   },
   roadmap: {
-    "zh-TW": "路線圖（英文原文）",
-    "en-US": "Roadmaps (English source)",
-    "ja-JP": "ロードマップ（英語原文）",
+    "zh-TW": "路線圖",
+    "en-US": "Roadmaps",
+    "ja-JP": "ロードマップ",
   },
   validation: {
-    "zh-TW": "驗證紀錄（英文原文）",
-    "en-US": "Validation records (English source)",
-    "ja-JP": "検証記録（英語原文）",
+    "zh-TW": "驗證紀錄",
+    "en-US": "Validation records",
+    "ja-JP": "検証記録",
   },
 };
 const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
@@ -227,13 +227,7 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
   return [...grouped.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([section, items]) => {
-      const fallbackLabel = {
-        "zh-TW": "英文原文",
-        "en-US": "English source",
-        "ja-JP": "英語原文",
-      }[locale];
-      const title =
-        sectionNames[section]?.[locale] ?? `${section} (${fallbackLabel})`;
+      const title = sectionNames[section]?.[locale] ?? section;
       return group(title, items);
     });
 };
@@ -274,7 +268,7 @@ export default defineConfig({
         ],
         sidebar: [
           group("Getting started", englishGettingStarted, false),
-          group("Additional technical references (English)", englishReference),
+          group("Technical references", englishReference),
           ...englishFallbackGroups("en-US"),
         ],
         outline: { label: "On this page", level: [2, 3] },
@@ -301,7 +295,7 @@ export default defineConfig({
         "ストーリー重視、ローカルファーストのメディアエディター OpenFilm の公式ドキュメント。",
       themeConfig: {
         nav: [
-          { text: "英語の技術ドキュメント", link: "/ja/product-workflow" },
+          { text: "ドキュメント", link: "/ja/product-workflow" },
           {
             text: "GitHub",
             link: "https://github.com/bynanci/open-film",
@@ -312,7 +306,7 @@ export default defineConfig({
         sidebar: [
           group("スタートガイド", japaneseGettingStarted, false),
           group("言語と翻訳", keepExisting([guide("国際化", "ja/i18n")])),
-          group("その他の技術資料（英語原文）", englishReference),
+          group("その他の技術資料", englishReference),
           ...englishFallbackGroups("ja-JP"),
         ],
         outline: { label: "このページの内容", level: [2, 3] },
@@ -350,12 +344,12 @@ export default defineConfig({
       },
     ],
     sidebar: [
-      group("開始使用（繁體中文）", gettingStarted, false),
-      group("剪輯與創作（英文）", editing),
-      group("輸出與交接（含繁中指南）", exportDocs),
-      group("媒體智慧（英文）", intelligence),
-      group("架構與參考（英文）", concepts),
-      group("驗證紀錄（英文原文）", validation),
+      group("開始使用", gettingStarted, false),
+      group("剪輯與創作", editing),
+      group("輸出與交接", exportDocs),
+      group("媒體智慧", intelligence),
+      group("架構與參考", concepts),
+      group("驗證紀錄", validation),
       ...englishFallbackGroups("zh-TW"),
     ],
     outline: { label: "本頁目錄", level: [2, 3] },

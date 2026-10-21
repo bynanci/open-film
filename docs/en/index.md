@@ -34,4 +34,5 @@ Create a project → Import media → Organize the story → Edit and preview �
 
 ## Language and documentation
 
-The five main user guides are available in English, Traditional Chinese and Japanese. Every other published technical reference is available from the sidebar as an English source page.
+The site uses saved Traditional Chinese, English and Japanese Markdown files committed to Git. It does not translate pages at runtime. The five main user guides currently have saved versions in all three locales; translations for the remaining technical references are still in progress.
+
