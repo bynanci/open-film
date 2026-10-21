@@ -41,7 +41,7 @@ Package Verify 會將資料夾套件複製到私人暫存根目錄，或將 ZIP 
 
 CLI 需要在 JSON 陣列中明確宣告權利。典型流程如下：
 
-~~~sh
+```sh
 pnpm cli collect plan --project ./film.openfilm --scope current-film \
   --composition <composition-id> --rights ./rights.json
 pnpm cli collect create --project ./film.openfilm --scope current-film \
@@ -49,6 +49,6 @@ pnpm cli collect create --project ./film.openfilm --scope current-film \
   --plan-id <plan-id> --base-revision <revision> \
   --format zip --destination ./handoff/film.zip
 pnpm cli collect verify --project ./film.openfilm --package ./handoff/film.zip
-~~~
+```
 
 HTTP 路由為 POST /api/collect/plan、POST /api/collect/create 和 POST /api/collect/verify。關閉請求可取消建立／驗證作業；伺服器會等到暫存工作停止後才釋放專案。桌面應用程式的輸出頁面提供相同的計畫、權利檢查、套件建立與驗證流程。
