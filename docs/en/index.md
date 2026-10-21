@@ -30,9 +30,7 @@ Start with the [film-making workflow](/product-workflow) to create a project, im
 
 ## Workflow
 
-\x60\x60\x60text
 Create a project → Import media → Organize the story → Edit and preview → Export
-\x60\x60\x60
 
 ## Language and documentation
 
