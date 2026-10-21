@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: 制作を始める
-      link: /product-workflow
+      link: /ja/product-workflow
     - theme: alt
       text: GitHub を見る
       link: https://github.com/bynanci/open-film
@@ -26,7 +26,7 @@ features:
 
 ## クイックスタート
 
-[制作の流れ](/product-workflow)では、プロジェクトの作成、素材の読み込み、ストーリー整理、編集、書き出しまでを紹介します。素材の移動は[メディアの移動と再リンク](/media-portability)、完成前の確認には[書き出し品質](/export-quality)と[書き出しプロファイル](/export-profiles)をご覧ください。
+[制作の流れ](/ja/product-workflow)では、プロジェクトの作成、素材の読み込み、ストーリー整理、編集、書き出しまでを紹介します。素材の移動は[メディアの移動と再リンク](/ja/media-portability)、カメラや形式の制限は[カメラソースとプレビューの制限](/ja/source-support)をご覧ください。
 
 ## 制作の流れ
 
@@ -34,4 +34,4 @@ features:
 
 ## 言語とドキュメント
 
-このページは日本語でご覧いただけます。技術資料は現在主に英語で公開しており、繁體中文と日本語の翻訳は準備ができたページから追加します。
+制作の流れ、Collect Media、プロジェクト形式、メディアの移動、カメラソースの5つのガイドを日本語、繁體中文、英語で公開しています。その他の技術資料は主に英語で、ナビゲーションにその旨を表示しています。
