@@ -34,8 +34,4 @@ Create a project → Import media → Organize the story → Edit and preview �
 
 ## Language and documentation
 
-The five getting-started guides are available in English, Traditional Chinese and Japanese. Other technical reference pages are currently available primarily in English and are labeled in the navigation.
-
-## Documentation languages
-
-The sidebar includes every published technical reference. Pages without a Traditional Chinese or Japanese translation link to the English source.
+The five main user guides are available in English, Traditional Chinese and Japanese. Every other published technical reference is available from the sidebar as an English source page.
