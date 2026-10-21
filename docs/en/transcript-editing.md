@@ -1,0 +1,195 @@
+# Transcript editing
+
+Open **Edit → Transcript** for the selected spoken video or audio. Transcribe
+first if there is no transcript. Story and Precision editing remain available;
+correcting text never changes original audio, Story selections, clip trims or
+composition duration.
+
+## Correct and navigate
+
+Select a segment to seek its source time. Edit its text inline, split at the
+playhead or text cursor, merge with the previous/next segment, or delete the
+transcript segment. Deletion removes text only. Search provides matching segments
+and occurrences, next/previous navigation and source seeking. Replace changes one
+occurrence; Replace All is one command and one undo step.
+
+Filter Matches applies the literal query and chosen case option to the current
+transcript page, up to 100 rows. It does not move the separate search occurrence
+cursor or limit Next/Previous to that page. Clearing the query or turning off the
+filter shows the loaded page again.
+
+Text replacements and merged text are limited to 20,000 UTF-16 units. Merge checks
+its combined text; Replace All checks the projected result before allocating expanded text.
+Oversized commands leave the saved transcript revision unchanged. Existing
+provider evidence is preserved rather than truncated to this editing limit.
+Failed commands remain in the recovery draft. Discarding that draft requires
+confirmation. Confirming Discard immediately reserves the operation: competing
+edits and history actions are blocked, and review actions and navigation wait
+until an in-flight save settles and the saved revision reloads. An edit already
+acknowledged by that save remains saved; Discard removes the unsaved draft.
+Earlier unsaved edits are never silently removed.
+
+Transcript has its own Undo/Redo history. Keyboard actions follow the focused
+workspace; typing spaces in a text field does not start playback. The editor saves
+commands with a debounce and displays saving, saved, failed or conflict state.
+Leaving the workspace waits for pending edits. Failed requests keep a recovery
+draft tied to the revision on which it was made; a draft cannot overwrite a newer
+transcript automatically.
+
+Undo, Redo and revision restore reserve their operation before waiting for a
+pending save. A rapid second action cannot replace the first recovery receipt,
+and navigation waits for both preparation and acknowledgement. A lost response
+retains the original request for exact retry, including after reopening.
+
+Deleting or merging the last row of a page, changing revisions, or recovering a
+saved edit returns to the last valid page. A shorter transcript cannot leave the
+editor showing an empty page beyond its end.
+
+Transcription and re-transcription requests also participate in the navigation
+barrier from preflight through acknowledgement. A project switch cannot send a
+delayed request into a different project, even when portable copies share asset
+IDs. Failed requests retain their error, block an already-waiting switch and
+allow an explicit retry.
+
+The editor observes newly completed transcription jobs even when they finish
+before a poll sees them running. A clean editor reloads the new provider revision;
+pending manual drafts are reconciled, with conflicts preserving edits when the
+provider revision changed. Completion refresh waits for initial draft recovery;
+stale ancillary responses cannot replace newer job/revision-page state.
+
+Reconciliation waits while a save or exact request receipt remains unresolved.
+Delayed reads and errors belong to their original draft base; they cannot mark a
+newly acknowledged save conflicted or block its receipt retry.
+
+Navigation waits for an accepted transcript load, including provider refresh and
+draft recovery, before checking whether edits can be flushed. A newer accepted
+load supersedes an older read; a refused read cannot replace recovery ownership.
+Read failure, draft conflict or disposal blocks the waiting transition rather than
+discarding edits or treating an in-flight refresh as a completed save.
+A later explicit navigation may leave a failed read when there are no unsaved
+commands, receipts or unread recovery bytes, including a failed first read before
+editor state is hydrated. Failed saves, uncertain receipts and conflicting drafts
+still require recovery; an offline source cannot trap a clean project indefinitely.
+
+## Timing after correction
+
+Every segment has an alignment state:
+
+| State         | Meaning                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `original`    | Provider timing corresponds to the original provider text. Legacy segments without an explicit state have this meaning. |
+| `text-edited` | Text changed. Segment times remain usable, but historical word timing is not treated as precise alignment.              |
+| `realigned`   | Reserved for a future explicit alignment process; this release does not perform forced alignment.                       |
+
+Any changed text conservatively becomes `text-edited`, including punctuation and
+capitalization. Precision still supports segment seeking but excludes stale word
+boundaries from word snapping and word-specific seeking. Words remain evidence,
+not a promise that corrected syllables occur at their old timestamps.
+
+A split uses a valid playhead time first. A cursor may use an original word
+boundary when the word text actually maps to the segment. Otherwise timing is
+proportional and marked `estimated`. Splits preserve complete words that fit
+inside each range; the immutable parent keeps all original timing evidence.
+Merging uses the first start and second end and joins CJK text without inserting
+an English space. Latin words receive appropriate spacing.
+
+## Revisions and recovery
+
+Provider results and edits are separate immutable revisions. Revision metadata
+records its parent, source (`provider`, `user`, `glossary` or `review-suggestion`),
+creation time and accepted suggestion when relevant. Provider/model/source-hash
+provenance stays with the original recognition evidence.
+
+Undo, Redo and selecting a previous revision create a new revision token. They
+do not resurrect an old token and make an old suggestion appear current again.
+Re-transcription keeps the current result until a new run succeeds; failed or
+cancelled recognition preserves existing edits. A concurrent edit causes a
+revision conflict instead of being replaced by an in-flight provider result.
+
+SQLite catalog v3 added transcript
+revision/history/request receipts and text knowledge tables. The `.openfilm`
+manifest and composition schema are unchanged. Request IDs are durable: retrying
+the same request after a lost response acknowledges its original result without
+applying it twice. Reusing an ID for another command is rejected.
+
+Catalog v4 transactionally migrates v1/v2/v3 projects. Its internal segment lookup
+keys use JSON string encoding so isolated UTF-16 surrogates and literal U+FFFD
+remain distinct. Original IDs, transcript evidence and text are preserved;
+malformed legacy data rolls back the migration instead of partially updating the
+catalog. This changes internal indexing, not user-visible IDs.
+
+## Shared application contract
+
+`OpenFilmApplication.transcriptEditor` exposes `get`, `edit`, `undo`, `redo`,
+`search`, `revisions` and `selectRevision`. Mutations require `baseRevision` and a
+unique `requestId`. Core validates commands before the catalog applies them.
+Desktop and CLI use the same application boundary; transcript state is not
+Vue-only.
+
+Existing provider and legacy segment IDs remain opaque, nonblank strings. Reads,
+commands, review targets and keyboard focus preserve them exactly, including
+long IDs and control-bearing values. Newly generated split IDs, asset/revision
+IDs and request IDs keep their separate strict validation.
+
+Headless examples (replace the project path and asset ID with your own):
+
+```bash
+pnpm cli transcript get source-id --project /path/film.openfilm
+pnpm cli transcript search source-id --project /path/film.openfilm --query "十河田"
+pnpm cli transcript edit source-id --project /path/film.openfilm --commands /path/edit.json
+pnpm cli transcript revisions source-id --project /path/film.openfilm
+```
+
+`transcript get <asset-id>` is the canonical read syntax and accepts IDs named
+`edit`, `search`, `revisions`, `undo`, `redo`, `select` or `get`. The earlier
+`transcript <asset-id>` shorthand remains available for non-action names.
+
+Both read forms return the current editor state: top-level `revision`,
+`revisionInfo`, `document`, `total`, `offset`, `limit`, `canUndo`, `canRedo`, and
+`sourceHash`. Use the returned `revision` as `baseRevision` for the next mutation.
+Before transcription there is no `revision` or `document`, and history flags are
+false. Existing `transcript`, `transcriptTotal`, and `transcriptOffset` fields remain
+aliases of that same editor page; waveform, scenes, and markers remain available
+when present. The aliases and editor state describe the same transcript revision.
+
+`edit.json` contains the current revision from the read response, a fresh request
+ID and validated commands:
+
+```json
+{
+  "baseRevision": "current-revision-id",
+  "requestId": "unique-request-id",
+  "commands": [
+    { "type": "replace-text", "segmentId": "segment-1", "text": "十和田湖" }
+  ]
+}
+```
+
+Reuse that exact request after an uncertain network response; use a new request
+ID for a different operation. CLI command files are bounded to 1 MiB. The local
+API exposes `GET /api/assets/:id/transcript` and POST suffixes `/edit`, `/undo`,
+`/redo` and `/select`, plus paged GET `/search` and `/revisions`. Exact segment
+lookup uses `POST /api/assets/:id/transcript/segment` with JSON `{ "segmentId":
+"..." }`, bounded by the existing 1 MiB request-body limit. IDs do not enter a
+request URL, so valid long or isolated-surrogate IDs can be transported exactly.
+The existing GET `/segments/:segmentId` remains available for compatible IDs.
+Invalid input and revision conflicts are structured errors.
+
+Reads and searches are paged. Search streams parameterized SQLite rows through
+an exact literal matcher; there is no regex, FTS or semantic-search service.
+Legacy text containing NUL or isolated-surrogate evidence is read from canonical
+escaped data before matching, preserving exact offsets. Manual text validation
+still applies: a correction that retains invalid controls is rejected without a
+revision; explicit valid whole-segment replacement can clean that legacy text.
+A generated search/matching benchmark and its limits are recorded in the
+[validation record](validation-transcript-productivity.md). Very large archives still require
+published hardware benchmarks before any performance claim.
+
+Committed debounced batches use immutable validated snapshots in the existing
+transcript tables. Undo/Redo retains up to 100 history references; revision evidence
+and deduplication receipts are retained without silent pruning. Repeated editing
+of very large transcripts can therefore grow the catalog. Storage compaction and
+large-edit performance benchmarks are future work, separate from bounded UI reads.
+
+See [Glossary](glossary.md) and [Review suggestions](review-suggestions.md) for
+remembering and reviewing corrections.

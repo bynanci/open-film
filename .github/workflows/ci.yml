@@ -33,6 +33,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm test:i18n
+      - run: pnpm test:docs-i18n
       - run: pnpm verify
         env:
           OPENFILM_GRAPHIC_QA_OUTPUT: ${{ runner.temp }}/graphic-scene-qa

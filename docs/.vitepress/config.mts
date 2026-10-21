@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 
 const guide = (label: string, path: string) => ({
@@ -48,56 +50,56 @@ const gettingStarted = keepExisting([
 ]);
 
 const editing = keepExisting([
-  guide("故事模板", "creative-story-templates"),
-  guide("精準剪輯", "precision-editing"),
-  guide("標記與吸附", "markers-and-snapping"),
-  guide("Film Looks", "film-looks"),
-  guide("PhotoDepth", "photo-depth"),
-  guide("原生文字控制", "native-text-controls"),
-  guide("音訊品質", "audio-quality"),
-  guide("字幕", "composition-captions"),
-  guide("逐字稿編輯", "transcript-editing"),
-  guide("可審閱建議", "review-suggestions"),
+  guide("故事模板", "en/creative-story-templates"),
+  guide("精準剪輯", "en/precision-editing"),
+  guide("標記與吸附", "en/markers-and-snapping"),
+  guide("Film Looks", "en/film-looks"),
+  guide("PhotoDepth", "en/photo-depth"),
+  guide("原生文字控制", "en/native-text-controls"),
+  guide("音訊品質", "en/audio-quality"),
+  guide("字幕", "en/composition-captions"),
+  guide("逐字稿編輯", "en/transcript-editing"),
+  guide("可審閱建議", "en/review-suggestions"),
 ]);
 
 const exportDocs = keepExisting([
-  guide("輸出品質", "export-quality"),
-  guide("輸出設定檔", "export-profiles"),
-  guide("OpenTimelineIO 與 NLE", "nle-compatibility"),
-  guide("NLE 交接", "nle-handoff"),
+  guide("輸出品質", "en/export-quality"),
+  guide("輸出設定檔", "en/export-profiles"),
+  guide("OpenTimelineIO 與 NLE", "en/nle-compatibility"),
+  guide("NLE 交接", "en/nle-handoff"),
   guide("Collect Media 套件", "collect-media"),
 ]);
 
 const intelligence = keepExisting([
-  guide("媒體智慧", "media-intelligence"),
-  guide("轉錄", "transcription"),
-  guide("場景腳本規劃", "scene-script-planning"),
-  guide("場景方向編輯", "scene-direction-editing"),
-  guide("分析復原", "media-analysis-recovery"),
+  guide("媒體智慧", "en/media-intelligence"),
+  guide("轉錄", "en/transcription"),
+  guide("場景腳本規劃", "en/scene-script-planning"),
+  guide("場景方向編輯", "en/scene-direction-editing"),
+  guide("分析復原", "en/media-analysis-recovery"),
 ]);
 
 const concepts = keepExisting([
-  guide("架構", "architecture"),
-  guide("設計系統", "design-system"),
-  guide("國際化", "i18n"),
-  guide("詞彙表", "glossary"),
-  guide("授權", "licensing"),
-  guide("第三方元件", "third-party"),
-  guide("整合契約", "CONTRACTS"),
-  guide("編輯契約", "EDITING_CONTRACTS"),
-  guide("來源介接契約", "SOURCE_ADAPTER_CONTRACTS"),
+  guide("架構", "en/architecture"),
+  guide("設計系統", "en/design-system"),
+  guide("國際化", "en/i18n"),
+  guide("詞彙表", "en/glossary"),
+  guide("授權", "en/licensing"),
+  guide("第三方元件", "en/third-party"),
+  guide("整合契約", "en/CONTRACTS"),
+  guide("編輯契約", "en/EDITING_CONTRACTS"),
+  guide("來源介接契約", "en/SOURCE_ADAPTER_CONTRACTS"),
 ]);
 
 const validation = keepExisting([
-  guide("穩定版驗證", "validation-stable-release"),
-  guide("視覺品質檢查", "validation-visual-qa"),
-  guide("匯出設定驗證", "validation-export-profiles"),
-  guide("PhotoDepth 驗證", "validation-photo-depth"),
-  guide("Film Looks 驗證", "validation-film-looks"),
-  guide("音訊品質驗證", "validation-audio-quality"),
-  guide("媒體復原驗證", "validation-media-analysis-recovery"),
-  guide("NLE 交接驗證", "validation-nle-handoff"),
-  guide("工作站 QA", "workstation-qa"),
+  guide("穩定版驗證", "en/validation-stable-release"),
+  guide("視覺品質檢查", "en/validation-visual-qa"),
+  guide("匯出設定驗證", "en/validation-export-profiles"),
+  guide("PhotoDepth 驗證", "en/validation-photo-depth"),
+  guide("Film Looks 驗證", "en/validation-film-looks"),
+  guide("音訊品質驗證", "en/validation-audio-quality"),
+  guide("媒體復原驗證", "en/validation-media-analysis-recovery"),
+  guide("NLE 交接驗證", "en/validation-nle-handoff"),
+  guide("工作站 QA", "en/workstation-qa"),
 ]);
 
 const englishGettingStarted = keepExisting([
@@ -115,15 +117,117 @@ const japaneseGettingStarted = keepExisting([
   guide("カメラソースとプレビュー", "ja/source-support"),
 ]);
 const englishReference = keepExisting([
-  guide("Export quality", "export-quality"),
-  guide("Export profiles", "export-profiles"),
-  guide("NLE compatibility", "nle-compatibility"),
-  guide("Media intelligence", "media-intelligence"),
-  guide("Architecture", "architecture"),
-  guide("Internationalization", "i18n"),
-  guide("Glossary", "glossary"),
-  guide("Licensing", "licensing"),
+  guide("Export quality", "en/export-quality"),
+  guide("Export profiles", "en/export-profiles"),
+  guide("NLE compatibility", "en/nle-compatibility"),
+  guide("Media intelligence", "en/media-intelligence"),
+  guide("Architecture", "en/architecture"),
+  guide("Internationalization", "en/i18n"),
+  guide("Glossary", "en/glossary"),
+  guide("Licensing", "en/licensing"),
 ]);
+
+const listedDocumentation = new Set(
+  [
+    ...gettingStarted,
+    ...editing,
+    ...exportDocs,
+    ...intelligence,
+    ...concepts,
+    ...validation,
+    ...englishGettingStarted,
+    ...japaneseGettingStarted,
+    ...englishReference,
+  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\\//, "")),
+);
+const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
+const localizedSlugs = new Set([
+  "index.md",
+  "product-workflow.md",
+  "collect-media.md",
+  "project-format.md",
+  "media-portability.md",
+  "source-support.md",
+]);
+const sectionNames = {
+  root: {
+    "zh-TW": "其他技術文件（英文原文）",
+    "en-US": "Other technical documents (English source)",
+    "ja-JP": "その他の技術資料（英語原文）",
+  },
+  adr: {
+    "zh-TW": "架構決策紀錄（英文原文）",
+    "en-US": "Architecture decisions (English source)",
+    "ja-JP": "アーキテクチャ決定記録（英語原文）",
+  },
+  security: {
+    "zh-TW": "安全文件（英文原文）",
+    "en-US": "Security documents (English source)",
+    "ja-JP": "セキュリティ資料（英語原文）",
+  },
+  "reference-workflows": {
+    "zh-TW": "參考流程（英文原文）",
+    "en-US": "Reference workflows (English source)",
+    "ja-JP": "参考ワークフロー（英語原文）",
+  },
+  releases: {
+    "zh-TW": "版本紀錄（英文原文）",
+    "en-US": "Release notes (English source)",
+    "ja-JP": "リリースノート（英語原文）",
+  },
+  roadmap: {
+    "zh-TW": "路線圖（英文原文）",
+    "en-US": "Roadmaps (English source)",
+    "ja-JP": "ロードマップ（英語原文）",
+  },
+  validation: {
+    "zh-TW": "驗證紀錄（英文原文）",
+    "en-US": "Validation records (English source)",
+    "ja-JP": "検証記録（英語原文）",
+  },
+};
+const englishFallbackGroups = (locale) => {
+  const grouped = new Map();
+  const collect = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    )) {
+      const absolutePath = join(directory, entry.name);
+      const relativePath = relative(docsRootPath, absolutePath).split(sep).join("/");
+      if (entry.isDirectory()) {
+        if ([".vitepress", "en", "ja", "superpowers"].includes(relativePath))
+          continue;
+        collect(absolutePath);
+        continue;
+      }
+      if (
+        !entry.isFile() ||
+        !relativePath.endsWith(".md") ||
+        relativePath === "PROJECT_BRIEF.md" ||
+        localizedSlugs.has(relativePath)
+      )
+        continue;
+      const slug = relativePath.replace(/\\.md$/, "");
+      if (listedDocumentation.has(slug)) continue;
+      const section = relativePath.includes("/") ? relativePath.split("/")[0] : "root";
+      const items = grouped.get(section) ?? [];
+      const source = readFileSync(absolutePath, "utf8");
+      const title = source.match(/^#\\s+(.+?)\\s*$/m)?.[1] ?? slug;
+      items.push(guide(title, `en/${slug}`));
+      grouped.set(section, items);
+    }
+  };
+  collect(docsRootPath);
+  return [...grouped.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([section, items]) =>
+      group(
+        sectionNames[section]?.[locale] ??
+          `${section} (${locale === "ja-JP" ? "英語原文" : locale === "zh-TW" ? "英文原文" : "English source"})`,
+        items,
+      ),
+    );
+};
 
 export default defineConfig({
   lang: "zh-TW",
@@ -162,6 +266,7 @@ export default defineConfig({
         sidebar: [
           group("Getting started", englishGettingStarted, false),
           group("Additional technical references (English)", englishReference),
+          ...englishFallbackGroups("en-US"),
         ],
         outline: { label: "On this page", level: [2, 3] },
         docFooter: { prev: "Previous page", next: "Next page" },
@@ -197,7 +302,8 @@ export default defineConfig({
         ],
         sidebar: [
           group("スタートガイド", japaneseGettingStarted, false),
-          group("その他の技術資料（英語）", englishReference),
+          group("その他の技術資料（英語原文）", englishReference),
+          ...englishFallbackGroups("ja-JP"),
         ],
         outline: { label: "このページの内容", level: [2, 3] },
         docFooter: { prev: "前のページ", next: "次のページ" },
@@ -239,7 +345,8 @@ export default defineConfig({
       group("輸出與交接（含繁中指南）", exportDocs),
       group("媒體智慧（英文）", intelligence),
       group("架構與參考（英文）", concepts),
-      group("驗證紀錄（英文）", validation),
+      group("驗證紀錄（英文原文）", validation),
+      ...englishFallbackGroups("zh-TW"),
     ],
     outline: { label: "本頁目錄", level: [2, 3] },
     docFooter: { prev: "上一頁", next: "下一頁" },
