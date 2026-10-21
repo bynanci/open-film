@@ -26,4 +26,4 @@
 
 出力レンダラーは引き続き対応する `GraphicScene` だけを処理します。メタデータは編集上の出所と置換時の文脈を記録するもので、レンダープリミティブを追加したり既存のリソース制限を回避したりできません。
 
-[GraphicScene v1](graphic-scenes.md)、[アーキテクチャ](architecture.md#creative-story-template-records)、[プロジェクト契約](CONTRACTS.md#creative-story-template-records)、[検証記録](validation-creative-story-templates.md)を参照してください。
+[GraphicScene v1](/en/graphic-scenes)、[アーキテクチャ](/en/architecture#creative-story-template-records)、[プロジェクト契約](/en/CONTRACTS#creative-story-template-records)、[検証記録](/en/validation-creative-story-templates)を参照してください。
