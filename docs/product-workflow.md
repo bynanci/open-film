@@ -1,99 +1,47 @@
-# Making a film in OpenFilm
+# 在 OpenFilm 製作影片
 
-OpenFilm is an open-source, local-first, story-first media composer. The workspace
-is organized around making a film, not operating a media toolchain. All work stays
-on the local machine.
+OpenFilm 是開源、以本機為優先、以故事為核心的媒體編輯器。工作區以製作影片為中心，而不是要求你操作一整套媒體工具。所有工作都留在本機電腦。
 
-## Start with a film
+## 從一部影片開始
 
-Welcome offers **Create Film**, **Open Project** and recent films. Recent entries
-report whether their saved location is currently available; opening a missing
-entry does not erase it. Language and Settings are available before opening a film.
+歡迎畫面提供「建立影片」、「開啟專案」和最近開啟的影片。最近項目會標示儲存位置目前是否可用；即使位置遺失，開啟項目也不會刪除它。開啟影片前即可使用語言與設定。
 
-Create Film asks for a name, story type, film language and target/maximum length.
-The Proposal Film template supplies its 4:30 target and 5:00 maximum. These are
-template defaults, not a Core limit. Storage is under Advanced; the local service
-uses a unique project folder inside the configured default location. Settings can
-choose a different default location for future films.
+建立影片時，請輸入名稱、故事類型、影片語言，以及目標／最長片長。「提案影片」範本預設目標為 4 分 30 秒、上限為 5 分鐘；這些是範本預設值，不是 Core 的硬性限制。儲存位置位於「進階」選項；本機服務會在設定的預設位置建立唯一的專案資料夾。你也可以在設定中變更之後新影片的預設位置。
 
-The interface language and film language are independent. Changing the interface
-updates buttons and guidance immediately. Changing the film language updates
-known default template text, while custom titles and intents remain unchanged.
+介面語言與影片語言互不依賴。變更介面語言會立即更新按鈕和說明；變更影片語言會更新已知的範本預設文字，自訂標題與意圖則維持原樣。
 
-## Add and organize memories
+## 加入並整理回憶
 
-**Add Media** accepts folders or selected files. Native desktop uses local pickers
-and file paths. Browser-selected files and drops are copied into the project on
-the local service; they are not uploaded to a cloud. Original files remain intact.
-The compact Activity area reports progress, completion and files needing attention,
-and offers cancellation for active import and render jobs.
+「加入媒體」可選擇資料夾或個別檔案。原生桌面應用程式使用本機選擇器和檔案路徑；透過瀏覽器選取或拖放的檔案會由本機服務複製到專案內，不會上傳到雲端。原始檔案始終保持不變。精簡的「活動」區會顯示進度、完成狀態和需要處理的檔案，也可取消正在執行的匯入或算繪工作。
 
-The Library provides All, Moments, Similar, Favorites, Rejected and Missing views.
-Choose a thumbnail to inspect it. Mark favorites, reject unwanted shots or lock
-important memories. Organize groups related moments and repeated shots. Device,
-capture-time evidence, GPS, codec, color and full source paths stay in the inspector
-or technical details rather than the contact sheet.
+素材庫提供「全部」、「時刻」、「相似」、「最愛」、「已排除」和「遺失」檢視。選取縮圖即可檢視素材；可將素材加入最愛、排除不需要的片段，或鎖定重要回憶。你可以把相關時刻和重複鏡頭整理成群組。裝置、拍攝時間依據、GPS、編碼、色彩和完整來源路徑會顯示在檢視器或技術資訊中，不會塞進縮圖聯絡表。
 
-The progress row—Add Media, Organize, Story, Edit, Export—shows useful next steps
-and attention states. It is not a locked wizard: navigation stays available, with
-empty-state guidance when a later step needs a story or composition first.
+「加入媒體、整理、故事、剪輯、輸出」進度列會顯示建議的下一步和需要留意的狀態。它不是鎖住操作順序的精靈：你仍可自由切換頁面；若後續步驟需要先建立故事或剪輯，空白狀態會提供指引。
 
-## Build the story
+## 建立故事
 
-Create a story from the film's chosen template and duration defaults. The Story
-board lists beats with titles, timing and selected-memory counts. Choose a beat
-to refine its title, intent and target; selected memories are shown separately
-from suggestions. Choosing a memory makes it required for that beat.
+依照影片所選的範本和片長預設建立故事。故事板會列出各段落的標題、時間安排和已選素材數量。選取段落即可調整標題、意圖和目標時間；已選素材會與建議素材分開顯示。將素材指定到某段落後，該素材便會成為必要素材。
 
-Refreshing suggestions re-ranks the beat's existing candidate scope using current
-preferences. It does not replace selected memories or change other beats. Creating
-the cut takes the story into **Edit**.
+更新建議會依照目前偏好重新排列該段落既有候選素材；不會取代已選素材，也不會更動其他段落。建立剪輯後，故事會進入「剪輯」工作區。
 
-## Edit and preview
+## 剪輯與預覽
 
-Clips remain grouped by story beat. Select a photo to change its hold and framing;
-select a video to trim, adjust speed/volume, frame it or set a cut/crossfade. Audio
-offers its supported trim and volume controls. Use drag or Earlier/Later to reorder.
-Locks protect important clips from replacement, deletion and regeneration.
+片段會依故事段落分組。選取照片可調整停留時間和構圖；選取影片可修剪片段、調整速度／音量、構圖，或設定切接／交叉淡化。音訊提供支援的修剪與音量控制。可拖曳片段，或使用「提前／延後」重新排序。鎖定可避免重要片段被取代、刪除或重新產生。
 
-The duration display keeps actual, target and maximum visible. **Fit to target**
-offers explainable changes measured from the current film. Preview inspects a
-proposed change without saving it; Apply commits it; Skip excludes that clip from
-the refreshed plan. The Apply-all total comes from its sequential plan, not the
-sum of independent alternatives. If protected material prevents the target, the
-interface explains that instead of silently removing it.
+片長資訊會同時顯示實際、目標和最長片長。「符合目標」會提出可說明的調整，並以目前影片為基準計算。預覽會檢視提議的變更，但不會儲存；「套用」會提交變更；「略過」會在更新計畫時排除此片段。「全部套用」顯示的是依序執行的計畫總長，不是各個獨立方案長度的加總。若受保護素材使影片無法達到目標，介面會說明原因，不會默默刪除素材。
 
-Edits autosave after a short pause. Saved, Saving and Save failed describe the
-actual state. Undo and Redo remain available during the editing session. A conflict
-retains the draft and offers review/reapply or an explicit discard; a language
-change does not reset the editor. Preview renders the current film; later edits
-mark that preview stale until rendered again.
+編輯會在短暫停頓後自動儲存。「已儲存」、「儲存中」和「儲存失敗」會反映實際狀態。編輯工作階段中可使用復原與重做。若發生衝突，草稿會保留下來，並提供檢視／重新套用或明確捨棄的選項；切換語言不會重設編輯器。預覽會算繪目前影片；之後若再編輯，預覽會標示為過期，直到重新算繪。
 
-Keyboard shortcuts: Space plays/pauses, arrows select nearby clips, Delete removes
-an eligible selected clip, Ctrl/Cmd+Z undoes and Ctrl/Cmd+Shift+Z redoes. Inputs and
-dialogs retain normal typing and keyboard behavior. Earlier/Later provide an
-accessible reorder alternative to drag.
+鍵盤快捷鍵：空白鍵播放／暫停，方向鍵選取附近片段，Delete 刪除符合條件的已選片段，Ctrl/Cmd+Z 復原，Ctrl/Cmd+Shift+Z 重做。輸入欄位和對話框保留一般打字與鍵盤操作行為。「提前／延後」也提供可使用鍵盤完成的重新排序方式。
 
-## Finish or continue editing
+## 完成或繼續剪輯
 
-Export begins with goals: **Watch / Share** creates an MP4; **Continue editing**
-offers the existing NLE destinations. Advanced exposes the existing interchange
-formats. MP4 export renders the current saved film and provides its local output
-and browser download. It never copies an out-of-date preview as a finished film.
+輸出會先詢問用途：「觀看／分享」會建立 MP4；「繼續剪輯」會提供現有的 NLE 輸出目的地。「進階」可使用現有交換格式。MP4 輸出會算繪已儲存的影片，並提供本機輸出位置和瀏覽器下載；不會把過期預覽檔當成完成影片。
 
-The Resolve card uses the shared compatibility model. Native cut layout and parser
-checks are implemented, but real Resolve import is still a manual verification
-gate. Speed, volume/mute, transforms, crossfades and titles need manual recreation.
-The export report describes the particular file's limitations. See
-[the compatibility matrix](nle-compatibility.md) for technical evidence.
+Resolve 卡片使用共用的相容性模型。原生剪輯版面和解析器檢查已實作，但實際匯入 Resolve 仍須人工驗證。速度、音量／靜音、變形、交叉淡化和標題需要在 Resolve 中手動重建。輸出報告會列出該檔案的限制。技術細節請見[相容性矩陣](/nle-compatibility)。
 
-## When a drive disappears
+## 磁碟機離線時
 
-Offline media keeps its thumbnail, story placement and edits. Choose **Find File**
-for one memory or **Find Folder** for a moved collection. Review uncertain matches;
-filename alone never confirms identity. Reconnecting sources preserves the cut.
-Browser-managed copies move with the project; externally referenced media may need
-relinking. Physical removable-drive behavior still requires platform QA.
+媒體離線時，素材縮圖、故事位置和編輯仍會保留。可對單一素材使用「尋找檔案」，或對已搬移的素材集合使用「尋找資料夾」。請檢查不確定的配對；系統不會只憑檔名確認素材。重新連結來源後，剪輯會保留。由瀏覽器管理的副本會隨專案移動；外部參照的素材可能需要重新連結。可移除磁碟機的實際行為仍需要平台驗證。
 
-For implementation details, see [internationalization](i18n.md),
-[the design system](design-system.md), and [the desktop guide](https://github.com/bynanci/open-film/blob/main/apps/desktop/README.md).
+實作細節請見[國際化](/i18n)、[設計系統](/design-system)與[桌面應用程式指南](https://github.com/bynanci/open-film/blob/main/apps/desktop/README.md)。
