@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)
 
-桌面工作區使用本機應用程式服務，預設位於 `127.0.0.1:4310)。不會要求上傳素材，也不會載入遠端字型、媒體或模型。從 repo 根目錄執行 `pnpm dev` 可啟動開發環境；建置前端請執行 `pnpm --filter @openfilm/desktop build`。
+桌面工作區使用本機應用程式服務，預設位於 `127.0.0.1:4310`)。不會要求上傳素材，也不會載入遠端字型、媒體或模型。從 repo 根目錄執行 `pnpm dev` 可啟動開發環境；建置前端請執行 `pnpm --filter @openfilm/desktop build`。
 
 ## 建立影片與語言
 

@@ -11,13 +11,29 @@ function collect(directory, ignoredDirectories) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!ignoredDirectories.has(entry.name)) output.push(...collect(full, ignoredDirectories));
-    } else if (entry.isFile()) output.push(full);
+      if (!ignoredDirectories.has(entry.name)) {
+        output.push(...collect(full, ignoredDirectories));
+      }
+    } else if (entry.isFile()) {
+      output.push(full);
+    }
   }
   return output;
 }
 
-for (const file of collect(root, new Set([".git", "node_modules", "dist", "target", "coverage", ".vitepress"]))) {
+function readFileSyncSafe(file) {
+  try {
+    readFileSync(file, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+for (const file of collect(
+  root,
+  new Set([".git", "node_modules", "dist", "target", "coverage", ".vitepress"]),
+)) {
   if (path.basename(file) === "README.md") readmes.push(file);
 }
 
@@ -35,15 +51,6 @@ for (const readme of readmes) {
   }
 }
 
-function readFileSyncSafe(file) {
-  try {
-    readFileSync(file, "utf8");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const guideSlugs = [
   "product-workflow",
   "collect-media",
@@ -54,12 +61,17 @@ const guideSlugs = [
 for (const slug of guideSlugs) {
   for (const locale of ["", "en/", "ja/"]) {
     const file = path.join(docsRoot, locale, `${slug}.md`);
-    if (!readFileSyncSafe(file)) errors.push(`Missing localized guide ${path.relative(root, file)}`);
+    if (!readFileSyncSafe(file)) {
+      errors.push(`Missing localized guide ${path.relative(root, file)}`);
+    }
   }
 }
+
 for (const locale of ["", "en/", "ja/"]) {
   const file = path.join(docsRoot, locale, "index.md");
-  if (!readFileSyncSafe(file)) errors.push(`Missing docs home ${path.relative(root, file)}`);
+  if (!readFileSyncSafe(file)) {
+    errors.push(`Missing docs home ${path.relative(root, file)}`);
+  }
 }
 
 const ignoredDocDirectories = new Set([".vitepress", "en", "ja", "superpowers"]);
@@ -72,6 +84,7 @@ const sourceDocs = collect(docsRoot, ignoredDocDirectories).filter((file) => {
     !guideSlugs.some((slug) => rel === `${slug}.md`)
   );
 });
+
 for (const source of sourceDocs) {
   const relative = path.relative(docsRoot, source);
   const mirror = path.join(docsRoot, "en", relative);
@@ -81,11 +94,15 @@ for (const source of sourceDocs) {
     sourceText = readFileSync(source, "utf8");
     mirrorText = readFileSync(mirror, "utf8");
   } catch {
-    errors.push(`Missing English reference mirror docs/en/${relative.split(path.sep).join("/")}`);
+    errors.push(
+      `Missing English reference mirror docs/en/${relative.split(path.sep).join("/")}`,
+    );
     continue;
   }
   if (sourceText !== mirrorText) {
-    errors.push(`English reference mirror is out of sync: docs/${relative.split(path.sep).join("/")}`);
+    errors.push(
+      `English reference mirror is out of sync: docs/${relative.split(path.sep).join("/")}`,
+    );
   }
 }
 

@@ -138,7 +138,9 @@ const listedDocumentation = new Set(
     ...englishGettingStarted,
     ...japaneseGettingStarted,
     ...englishReference,
-  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
+  ].map(({ link }) =>
+    link.slice(1).replace(/^(?:en|ja)\\//, ""),
+  ),
 );
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
 const localizedSlugs = new Set([
@@ -186,14 +188,18 @@ const sectionNames: Record<string, Record<string, string>> = {
     "ja-JP": "検証記録（英語原文）",
   },
 };
-const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
+const englishFallbackGroups = (
+  locale: "zh-TW" | "en-US" | "ja-JP",
+) => {
   const grouped = new Map<string, ReturnType<typeof guide>[]>();
-  const collect = (directory) => {
+  const collect = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name),
     )) {
       const absolutePath = join(directory, entry.name);
-      const relativePath = relative(docsRootPath, absolutePath).split(sep).join("/");
+      const relativePath = relative(docsRootPath, absolutePath)
+        .split(sep)
+        .join("/");
       if (entry.isDirectory()) {
         if ([".vitepress", "en", "ja", "superpowers"].includes(relativePath))
           continue;
@@ -205,14 +211,17 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
         !relativePath.endsWith(".md") ||
         relativePath === "PROJECT_BRIEF.md" ||
         localizedSlugs.has(relativePath)
-      )
+      ) {
         continue;
-      const slug = relativePath.replace(/\.md$/, "");
+      }
+      const slug = relativePath.replace(/\\.md$/, "");
       if (listedDocumentation.has(slug)) continue;
-      const section = relativePath.includes("/") ? relativePath.split("/")[0] : "root";
+      const section = relativePath.includes("/")
+        ? relativePath.split("/")[0]
+        : "root";
       const items = grouped.get(section) ?? [];
       const source = readFileSync(absolutePath, "utf8");
-      const title = source.match(/^#\s+(.+?)\s*$/m)?.[1] ?? slug;
+      const title = source.match(/^#\\s+(.+?)\\s*$/m)?.[1] ?? slug;
       items.push(guide(title, `en/${slug}`));
       grouped.set(section, items);
     }
@@ -220,13 +229,12 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
   collect(docsRootPath);
   return [...grouped.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([section, items]) =>
-      group(
+    .map(([section, items]) => {
+      const title =
         sectionNames[section]?.[locale] ??
-          `${section} (${locale === "ja-JP" ? "英語原文" : locale === "zh-TW" ? "英文原文" : "English source"})`,
-        items,
-      ),
-    );
+        `${section} (${locale === "ja-JP" ? "英語原文" : locale === "zh-TW" ? "英文原文" : "English source"})`;
+      return group(title, items);
+    });
 };
 
 export default defineConfig({
