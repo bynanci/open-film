@@ -138,7 +138,7 @@ const listedDocumentation = new Set(
     ...englishGettingStarted,
     ...japaneseGettingStarted,
     ...englishReference,
-  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\\//, "")),
+  ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
 );
 const docsRootPath = fileURLToPath(new URL("../", import.meta.url));
 const localizedSlugs = new Set([
@@ -149,7 +149,7 @@ const localizedSlugs = new Set([
   "media-portability.md",
   "source-support.md",
 ]);
-const sectionNames = {
+const sectionNames: Record<string, Record<string, string>> = {
   root: {
     "zh-TW": "其他技術文件（英文原文）",
     "en-US": "Other technical documents (English source)",
@@ -186,8 +186,8 @@ const sectionNames = {
     "ja-JP": "検証記録（英語原文）",
   },
 };
-const englishFallbackGroups = (locale) => {
-  const grouped = new Map();
+const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
+  const grouped = new Map<string, ReturnType<typeof guide>[]>();
   const collect = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name),
@@ -207,12 +207,12 @@ const englishFallbackGroups = (locale) => {
         localizedSlugs.has(relativePath)
       )
         continue;
-      const slug = relativePath.replace(/\\.md$/, "");
+      const slug = relativePath.replace(/\.md$/, "");
       if (listedDocumentation.has(slug)) continue;
       const section = relativePath.includes("/") ? relativePath.split("/")[0] : "root";
       const items = grouped.get(section) ?? [];
       const source = readFileSync(absolutePath, "utf8");
-      const title = source.match(/^#\\s+(.+?)\\s*$/m)?.[1] ?? slug;
+      const title = source.match(/^#\s+(.+?)\s*$/m)?.[1] ?? slug;
       items.push(guide(title, `en/${slug}`));
       grouped.set(section, items);
     }

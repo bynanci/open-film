@@ -6,23 +6,6 @@ const docsRoot = path.join(root, "docs");
 const errors = [];
 const readmes = [];
 
-function walk(directory, skip = new Set()) {
-  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  )) {
-    if (entry.isDirectory()) {
-      if (skip.has(entry.name)) continue;
-      walk(path.join(directory, entry.name), skip);
-    } else if (entry.isFile()) {
-      yieldPath(path.join(directory, entry.name));
-    }
-  }
-}
-
-function* yieldPath(file) {
-  yield file;
-}
-
 function collect(directory, ignoredDirectories) {
   const output = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
