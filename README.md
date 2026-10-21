@@ -1,5 +1,13 @@
 # OpenFilm
 
+[![Official Website](https://img.shields.io/badge/Website-bynanci.github.io%2Fopen--film-06b6d4?style=for-the-badge&logo=github)](https://bynanci.github.io/open-film/)
+[![Release](https://img.shields.io/badge/Release-v0.4.0-8b5cf6?style=for-the-badge)](https://github.com/bynanci/open-film/pull/41)
+[![License](https://img.shields.io/badge/License-Apache_2.0-10b981?style=for-the-badge)](https://github.com/bynanci/open-film/pull/25)
+[![XERJ Corpus Hub](https://img.shields.io/badge/XERJ_Corpus_Hub-Selected_v0.3.3-f59e0b?style=for-the-badge)](https://hub.xerj.org)
+
+🌐 **Official Multi-Language Website (繁體中文 / English / 日本語 / 简体中文 / 한국어):**  
+👉 **[https://bynanci.github.io/open-film/](https://bynanci.github.io/open-film/)**
+
 An open-source, local-first, story-first media composer. OpenFilm turns a local
 collection of photos, video and audio into organized memories, a story and an
 editable film. Original files are never modified.
