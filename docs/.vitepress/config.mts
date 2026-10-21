@@ -41,7 +41,7 @@ const tokenizeForJapanese = (text: string) =>
 
 const gettingStarted = keepExisting([
   guide("製作流程", "product-workflow"),
-  guide("匯入媒體", "collect-media"),
+  guide("Collect Media 可攜套件", "collect-media"),
   guide("專案格式", "project-format"),
   guide("媒體搬移與重新連結", "media-portability"),
   guide("相機與來源支援", "source-support"),
@@ -100,6 +100,31 @@ const validation = keepExisting([
   guide("工作站 QA", "workstation-qa"),
 ]);
 
+const englishGettingStarted = keepExisting([
+  guide("Film-making workflow", "en/product-workflow"),
+  guide("Collect Media packages", "en/collect-media"),
+  guide("Project format", "en/project-format"),
+  guide("Moving and reconnecting media", "en/media-portability"),
+  guide("Camera sources and preview limits", "en/source-support"),
+]);
+const japaneseGettingStarted = keepExisting([
+  guide("映画制作の流れ", "ja/product-workflow"),
+  guide("Collect Media パッケージ", "ja/collect-media"),
+  guide("プロジェクト形式", "ja/project-format"),
+  guide("メディアの移動と再リンク", "ja/media-portability"),
+  guide("カメラソースとプレビュー", "ja/source-support"),
+]);
+const englishReference = keepExisting([
+  guide("Export quality", "export-quality"),
+  guide("Export profiles", "export-profiles"),
+  guide("NLE compatibility", "nle-compatibility"),
+  guide("Media intelligence", "media-intelligence"),
+  guide("Architecture", "architecture"),
+  guide("Internationalization", "i18n"),
+  guide("Glossary", "glossary"),
+  guide("Licensing", "licensing"),
+]);
+
 export default defineConfig({
   lang: "zh-TW",
   title: "OpenFilm",
@@ -126,13 +151,17 @@ export default defineConfig({
         "Official OpenFilm documentation for the story-first, local-first media editor.",
       themeConfig: {
         nav: [
-          { text: "English technical docs", link: "/product-workflow" },
+          { text: "English technical docs", link: "/en/product-workflow" },
           {
             text: "GitHub",
             link: "https://github.com/bynanci/open-film",
             target: "_blank",
             rel: "noreferrer",
           },
+        ],
+        sidebar: [
+          group("Getting started", englishGettingStarted, false),
+          group("Additional technical references (English)", englishReference),
         ],
         outline: { label: "On this page", level: [2, 3] },
         docFooter: { prev: "Previous page", next: "Next page" },
@@ -158,13 +187,17 @@ export default defineConfig({
         "ストーリー重視、ローカルファーストのメディアエディター OpenFilm の公式ドキュメント。",
       themeConfig: {
         nav: [
-          { text: "英語の技術ドキュメント", link: "/product-workflow" },
+          { text: "英語の技術ドキュメント", link: "/ja/product-workflow" },
           {
             text: "GitHub",
             link: "https://github.com/bynanci/open-film",
             target: "_blank",
             rel: "noreferrer",
           },
+        ],
+        sidebar: [
+          group("スタートガイド", japaneseGettingStarted, false),
+          group("その他の技術資料（英語）", englishReference),
         ],
         outline: { label: "このページの内容", level: [2, 3] },
         docFooter: { prev: "前のページ", next: "次のページ" },
@@ -201,12 +234,12 @@ export default defineConfig({
       },
     ],
     sidebar: [
-      group("開始使用", gettingStarted, false),
-      group("剪輯與創作", editing),
-      group("輸出與交接", exportDocs),
-      group("媒體智慧", intelligence),
-      group("架構與參考", concepts),
-      group("驗證紀錄", validation),
+      group("開始使用（繁體中文）", gettingStarted, false),
+      group("剪輯與創作（英文）", editing),
+      group("輸出與交接（含繁中指南）", exportDocs),
+      group("媒體智慧（英文）", intelligence),
+      group("架構與參考（英文）", concepts),
+      group("驗證紀錄（英文）", validation),
     ],
     outline: { label: "本頁目錄", level: [2, 3] },
     docFooter: { prev: "上一頁", next: "下一頁" },
