@@ -162,4 +162,79 @@ The local API exposes two operations:
 - `POST /api/story-plans/preview`: accepts `title`, `groupBy` (`category` or
   `chronology`), `targetDuration`, `maxDuration`, optional `brief`, `assetIds` and
   `transition` (`cut` or `crossfade`). Returns `{ plan }` without persisting a film.
-- `POST /api/s
+- `POST /api/story-plans/accept`: accepts `{ plan }`, validates the editable Story,
+  checks its scope/signature and solves again. The submitted composition is not
+  trusted as an executable result. Returns the saved `{ story, composition }`.
+
+The plan contains the proposed Story and composition, source IDs/signature,
+transition choice and excluded-audio count. Editable scene source references must
+stay inside its original bounded scope and respect globally locked sources.
+The preferred acceptance payload contains only `plan.story`, `sourceAssetIds`,
+`sourceSignature` and `transition`; the informational preview composition need
+not be sent back. Full preview JSON remains accepted for CLI file review. The
+acceptance and Story-edit HTTP endpoints, and CLI plan-file input, allow at most **16 MiB**; ordinary
+API bodies retain their existing **1 MiB** limit. This supports the bounded
+2,000-clip preview and long CJK scripts without making all API routes unbounded.
+
+For a headless review, save the preview JSON, inspect/edit the Story's scene text,
+then accept that file:
+
+```bash
+pnpm cli scene-plan preview --project /path/film.openfilm --group-by category --target 270 --max 300 --title "Our memories" --transition crossfade > scene-plan.json
+pnpm cli scene-plan accept --project /path/film.openfilm --plan scene-plan.json
+```
+
+Use `--brief` to supply the writing prompt and `--assets id1,id2` for an explicit
+scope. Preview opens the CLI project with read-only/export intent and does not
+write `project.json`; successful acceptance creates the film. Changing bound
+catalog inputs or film language can require a fresh preview. Validation
+evidence must include the same success, retry and stale/failure behavior through
+both API and CLI.
+
+## Targeted verification and remaining gates
+
+The targeted suites establish:
+
+- Category and chronological grouping are deterministic for the same inputs;
+  unclassified, multiply tagged and missing-date assets are handled explicitly.
+- Scope and scene limits are enforced without silently losing required media.
+- Rejected assets stay out; required/locked selections and source bounds remain
+  protected; infeasible durations produce an actionable failure.
+- Previewed timing comes from the real solver, and accepted composition duration
+  respects the chosen maximum with valid cuts/crossfades.
+- Editable narration/visual direction survive save/reopen and language switching.
+- Source changes invalidate reviewed drafts before acceptance; failed publication
+  preserves existing stories and compositions.
+- API/CLI and the localized Desktop flow share the same decisions and validation.
+- A real 2,000-clip crossfade CLI preview above 1 MiB and a 30-scene HTTP acceptance
+  with long CJK script fields succeed within the 16 MiB input bound. Those scripts
+  remain editable through Story PATCH and persist after reopening.
+- Delayed acceptance disables conflicting old-beat controls, preserves the
+  acknowledged new film and retains the intended script after reopening.
+
+The [validation record](validation-scene-script-planning.md) preserves exact
+candidate gate outcomes and the initial failures, while current full CI is in the
+[PR checks](https://github.com/bynanci/open-film/pull/15/checks). Existing
+Story/Precision synchronization, Undo/Redo, locks, recovery and export remain part
+of that full regression gate; targeted tests alone do not claim its completion.
+
+Automated generated-fixture success does not certify a compelling screenplay,
+real photo understanding, speech timing, Windows startup/memory, Pixel/Insta360
+camera quality or DaVinci Resolve import. Those observations need their own
+evidence. See [native measurement](native-performance.md) and
+[Resolve workstation QA](resolve-workstation-qa.md).
+
+## OpenCut adaptation and next step
+
+OpenCut classic demonstrates named scene navigation, shared commands and common
+preview/export semantics. OpenFilm adapts those interaction principles while
+keeping Story beats and its existing solver. The current OpenCut rewrite's
+"scripting" direction concerns programmatic editor automation, not evidence of a
+photo-to-screenplay feature. See the [pinned reference](opencut-reference.md).
+
+After this offline flow is verified, the next bounded improvement is optional,
+reviewable LanguageProvider assistance for the **declared category and scene
+text**. It should preserve user text, validate structured proposals, bind them to
+the reviewed source revision and require the existing consent boundary for a
+remote destination. Image interpretation, narration synthesis and photo motion
+need separate explicit capabilities and evidence.
