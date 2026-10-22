@@ -90,13 +90,11 @@ function initialState(): EditorState {
   };
 }
 
-async function mountEditor(
-  api: {
-    editor: ReturnType<typeof vi.fn>;
-    edit: ReturnType<typeof vi.fn>;
-    history?: ReturnType<typeof vi.fn>;
-  },
-) {
+async function mountEditor(api: {
+  editor: ReturnType<typeof vi.fn>;
+  edit: ReturnType<typeof vi.fn>;
+  history?: ReturnType<typeof vi.fn>;
+}) {
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -151,9 +149,9 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     ).toBe(24);
     expect(editor.status.value).toBe("saving");
     expect(editor.hasPending.value).toBe(true);
-    expect(
-      editor.command({ type: "lock", clipId: "clip", locked: true }),
-    ).toBe(true);
+    expect(editor.command({ type: "lock", clipId: "clip", locked: true })).toBe(
+      true,
+    );
     expect(editor.state.value?.composition.tracks[0]?.clips[0]?.locked).toBe(
       true,
     );
@@ -167,9 +165,9 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     expect(editor.hasPending.value).toBe(false);
     expect(storage.has("openfilm:editor:project:cut")).toBe(false);
     // A locked clip cannot be modified via Inspector, even if the UI fails to disable it.
-    expect(
-      editor.command({ type: "transform", clipId: "clip", x: 30 }),
-    ).toBe(false);
+    expect(editor.command({ type: "transform", clipId: "clip", x: 30 })).toBe(
+      false,
+    );
     expect(
       editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x,
     ).toBe(24);
@@ -202,9 +200,9 @@ describe("P0 Inspector / Timeline command-state contract", () => {
       ),
     };
     const { editor } = await mountEditor(api);
-    expect(
-      editor.command({ type: "transform", clipId: "clip", x: 7 }),
-    ).toBe(true);
+    expect(editor.command({ type: "transform", clipId: "clip", x: 7 })).toBe(
+      true,
+    );
     expect(await editor.history("undo")).toBe(true);
     expect(order).toEqual(["edit", "undo"]);
     expect(
@@ -222,9 +220,9 @@ describe("P0 Inspector / Timeline command-state contract", () => {
       }),
     };
     const { editor, storage } = await mountEditor(api);
-    expect(
-      editor.command({ type: "transform", clipId: "clip", x: 11 }),
-    ).toBe(true);
+    expect(editor.command({ type: "transform", clipId: "clip", x: 11 })).toBe(
+      true,
+    );
     expect(await editor.flush()).toBe(false);
     expect(editor.status.value).toBe("conflict");
     expect(editor.hasPending.value).toBe(true);
