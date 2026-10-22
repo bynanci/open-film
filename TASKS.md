@@ -885,6 +885,27 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Automated acceptance verification: 30.0s / 30fps (900 frames) rough cut with synthetic photos, fictional memories, echo clips, reopen, and manual edit preservation.
 - [ ] Manual workstation validation: voice narration recording, production multi-track audio listening QA.
 
+## Delivered — M10A Guided Pipeline Orchestration
+
+[Contract](docs/CONTRACTS.md#m10a-guided-pipeline-orchestration) · [validation](docs/validation-pipeline-orchestration.md).
+
+- [x] Canonical recipe (`guided-story-to-video`): 8 whitelisted steps (`story-plan-select` -> `scene-prepare` -> `narration` -> `timing-captions` -> `composition-adopt` -> `render` -> `visual-qa` -> `export`).
+- [x] Recipe schema validation (`validatePipelineRecipe`): strict whitelist, typed ports (`story-reference`, `story-plan`, etc.), and DAG topological acyclicity validation (`checkRecipeAcyclic`).
+- [x] Immutable input snapshot (`PipelineInputSnapshot`): deterministic 64-character lowercase hex digest calculation (`computeInputSnapshotDigest`).
+- [x] Separation of execution lifecycle (`status`) and applicability (`freshness`): external edits correctly flag prior runs as `outdated` via `isRunOutdated` without rewriting history.
+- [x] Legal adoption receipts (`PipelineRunReceipt`): atomically advance `expectedRevision` to match adopted project state, preventing self-invalidation.
+- [x] Heavy media serialization: dedicated concurrency = 1 lock (`heavyLock`) for heavy media rendering and solver operations.
+- [x] Tone mock guard: rejects synthetic tones (`local-audio-mock`) from speech narration with an actionable error explaining tone mock cannot masquerade as speech.
+- [x] Remote motion transparency: unconfigured remote motion is explicitly flagged as `unavailable` rather than synthesizing fake progress.
+- [x] Zero-lock review gates: `waiting-review` steps release all locks and background subprocesses; polling `getRun` is strictly read-only.
+- [x] Cancellation & late result protection: `cancelRun` broadcasts `AbortSignal` and late subprocess results are discarded.
+- [x] Reopen persistence: durable run storage in `cache/pipeline-runs.json`; application reopen restores runs without killing live processes.
+- [x] Retry vs new run: `retryRun` retains identical input snapshot and increments attempt count; `createRun` captures current project revision.
+- [x] Idempotency: repeated execution of succeeded runs returns immediately without side effects.
+- [x] Desktop UI integration: `PipelineOrchestrationModal.vue` with preflight checklist, stepper track, status chips, waiting review action cards, artifacts list, outdated alert, full i18n (`en-US`, `zh-TW`, `ja-JP`), reduced motion, and 1024x768 responsiveness; triggered via header and story toolbar.
+- [x] Verification: comprehensive unit and application integration test suites (20 tests across core, application, and UI).
+- [ ] Manual workstation validation: end-to-end hardware-accelerated video export, high-DPI display layout review.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

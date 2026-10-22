@@ -381,3 +381,41 @@ The StoryPlan pipeline compiles Story Graph selections and canonical beat sequen
   - Leaves the user's original manual timeline and existing rough cuts completely untouched.
   - Idempotent: repeated submissions with the same `planId` return the existing adoption result without creating duplicate compositions.
   - Stores a durable `StoryPlanAcceptanceMapping` binding proposal scene IDs to created clip IDs and track IDs.
+
+## M10A Guided Pipeline Orchestration
+
+The Guided Pipeline Orchestration engine executes fixed, recipe-driven production workflows reusing existing application services, catalog `Job`s, `ReviewExecutionOwner`, `ProviderRegistry`, renderer, and Visual QA.
+
+### Recipe and Port Contracts
+
+- **Recipe Schema (`PipelineRecipe`)**: Versioned (`schemaVersion: "1.0.0"`), identified by stable ID, version string, human-readable name, and an ordered list of step definitions (`PipelineStepDefinition`).
+- **Whitelisted Step Types**: Strict whitelist enforcement (`ALLOWED_PIPELINE_STEP_TYPES`):
+  1. `story-plan-select`: Selection and validation of story / story plan and candidate asset references.
+  2. `scene-prepare`: Visual framing, photo aspect ratio checks, PhotoDepth fallback assessment, and remote motion availability verification.
+  3. `narration`: Voice narration strategy (none, user-imported audio asset, or configured remote TTS). _Tone mock (`local-audio-mock`) is strictly prohibited from masquerading as speech narration._
+  4. `timing-captions`: Duration matching and subtitle/caption alignment.
+  5. `composition-adopt`: Adoption of rough cut composition using legal receipts advancing `expectedRevision`.
+  6. `render`: Sequential heavy video rendering (concurrency = 1 lock).
+  7. `visual-qa`: Automated Visual QA inspection; triggers `waiting-review` when issues or warnings are discovered.
+  8. `export`: Final explicit export to specified target profile and destination.
+- **Typed Ports & DAG Integrity**: Inputs and outputs specify explicit port types (`story-reference`, `story-plan`, `asset-list`, `scene-prep-result`, `audio-source`, `timing-result`, `composition`, `render-artifact`, `qa-report`, `export-artifact`). Recipes are validated for topological acyclicity; circular step dependencies are rejected with typed validation errors.
+
+### Execution State vs. Result Freshness
+
+- **Immutable Input Snapshots**: Each `PipelineRun` contains an immutable `inputSnapshot` capturing the project revision, story ID, asset IDs, narration strategy, and export format, sealed with a deterministic 64-character lowercase hex digest (`computeInputSnapshotDigest`).
+- **State Separation (`succeeded !== current`)**:
+  - A run's completion state (`idle`, `running`, `waiting-review`, `succeeded`, `failed`, `cancelled`) reflects execution lifecycle.
+  - A run's freshness state (`current`, `outdated`, `stale`) reflects applicability relative to current project content.
+  - External modifications to project title, beats, or assets increment project revision, rendering prior runs `outdated` via `isRunOutdated` without rewriting historical records.
+- **Legal Adoption Receipts**: Step 5 (`composition-adopt`) creates a canonical `PipelineRunReceipt` documenting composition creation and atomically advances `expectedRevision` to match the newly adopted project state, preventing legitimate run modifications from being flagged as stale.
+
+### Concurrency, Recovery, and Side-Effect Guards
+
+- **Concurrency = 1 for Heavy Media**: Heavy video rendering and solver operations are serialized through a dedicated single-flight execution lock (`heavyLock`).
+- **Zero-Lock Review Gates**: Steps entering `waiting-review` release all write locks and do not hold active child subprocesses. Polling `getRun` is strictly read-only and never spawns background tasks or increments revisions.
+- **Cancellation & Late Result Protection**: `cancelRun` broadcasts an `AbortSignal` to active tasks. Subprocess results arriving after cancellation are discarded.
+- **Durable Persistence Across Reopen**: Pipeline runs are persisted to disk (`cache/pipeline-runs.json`). Reopening the application restores runs without marking running or review processes as dead simply due to UI reload.
+- **Retry vs. New Run**:
+  - `retryRun`: Reruns a failed or cancelled run with the _identical_ immutable `inputSnapshot`, incrementing the step `attemptNumber`.
+  - `createRun`: Creates an entirely new run capturing current project revision and inputs.
+- **Idempotent Execution**: Calling `startRun` on an already succeeded run returns the completed run immediately without re-triggering side effects or duplicating compositions.

@@ -3638,6 +3638,80 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, result);
           return;
         }
+        if (method === "GET" && route === "/api/pipelines/recipes") {
+          json(response, 200, { recipes: application.pipeline.listRecipes() });
+          return;
+        }
+        const recipeMatch = /^\/api\/pipelines\/recipes\/([^/]+)$/.exec(route);
+        if (method === "GET" && recipeMatch) {
+          const recipeId = decodeURIComponent(recipeMatch[1]!);
+          json(response, 200, {
+            recipe: application.pipeline.getRecipe(recipeId),
+          });
+          return;
+        }
+        if (method === "GET" && route === "/api/pipelines/runs") {
+          json(response, 200, { runs: application.pipeline.listRuns() });
+          return;
+        }
+        if (method === "POST" && route === "/api/pipelines/runs") {
+          const data = (await body(request)) as {
+            recipeId?: string;
+            options?: import("@openfilm/application").CreatePipelineRunOptions;
+          };
+          const recipeId = data.recipeId ?? "guided-story-to-video";
+          const run = await application.pipeline.createRun(
+            recipeId,
+            data.options ?? {},
+          );
+          json(response, 201, { run });
+          return;
+        }
+        const runMatch = /^\/api\/pipelines\/runs\/([^/]+)$/.exec(route);
+        if (method === "GET" && runMatch) {
+          const runId = decodeURIComponent(runMatch[1]!);
+          json(response, 200, { run: application.pipeline.getRun(runId) });
+          return;
+        }
+        const runActionMatch =
+          /^\/api\/pipelines\/runs\/([^/]+)\/(start|cancel|review|retry)$/.exec(
+            route,
+          );
+        if (method === "POST" && runActionMatch) {
+          const runId = decodeURIComponent(runActionMatch[1]!);
+          const action = runActionMatch[2]!;
+          if (action === "start") {
+            const run = await application.pipeline.startRun(runId);
+            json(response, 200, { run });
+            return;
+          }
+          if (action === "cancel") {
+            const run = await application.pipeline.cancelRun(runId);
+            json(response, 200, { run });
+            return;
+          }
+          if (action === "retry") {
+            const run = await application.pipeline.retryRun(runId);
+            json(response, 200, { run });
+            return;
+          }
+          if (action === "review") {
+            const data = (await body(request)) as {
+              stepId: string;
+              decision: "accepted" | "rejected" | "skipped";
+              notes?: string;
+              adjustedOutputs?: Record<string, unknown>;
+            };
+            const run = await application.pipeline.submitReview(
+              runId,
+              data.stepId,
+              data.decision,
+              { notes: data.notes, adjustedOutputs: data.adjustedOutputs },
+            );
+            json(response, 200, { run });
+            return;
+          }
+        }
         const suggestions =
           /^\/api\/stories\/([^/]+)\/beats\/([^/]+)\/suggestions$/.exec(route);
         if (method === "POST" && suggestions) {

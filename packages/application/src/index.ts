@@ -15,6 +15,8 @@ import { StoryGraphService } from "./story-graph.js";
 export * from "./story-graph.js";
 import { StoryPlanService } from "./story-plan.js";
 export * from "./story-plan.js";
+import { PipelineService } from "./pipeline-orchestrator.js";
+export * from "./pipeline-orchestrator.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -338,6 +340,7 @@ export class OpenFilmApplication {
   readonly collectMedia: CollectMediaService;
   readonly storyGraph: StoryGraphService;
   readonly storyPlan: StoryPlanService;
+  readonly pipeline: PipelineService;
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
@@ -401,6 +404,7 @@ export class OpenFilmApplication {
       this.storyPlan = new StoryPlanService(this, (next) =>
         this.publishProject(next),
       );
+      this.pipeline = new PipelineService(this);
       this.knowledge = new KnowledgeService(
         this.catalog,
         this.transcriptEditor,
@@ -583,6 +587,7 @@ export class OpenFilmApplication {
       application.knowledge.recoverInterruptedReviews();
       application.intelligence.recoverInterruptedJobs();
       await application.motionGeneration.expirePreviews();
+      await application.pipeline.init();
       return application;
     } catch (error) {
       application.catalog.close();

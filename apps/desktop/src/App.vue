@@ -35,6 +35,7 @@ import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
 import StoryGraphView from "./components/StoryGraphView.vue";
 import StoryboardView from "./components/StoryboardView.vue";
+import PipelineOrchestrationModal from "./components/PipelineOrchestrationModal.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -116,6 +117,7 @@ const noticeMessage = computed(() =>
   notice.value ? uiMessage(notice.value) : "",
 );
 const settingsOpen = ref(false);
+const pipelineModalOpen = ref(false);
 const workspaceInfo = ref<Awaited<ReturnType<typeof api.workspace>> | null>(
   null,
 );
@@ -1053,6 +1055,17 @@ async function acceptScenePlan(plan: ScenePlan) {
   // Follow-up failures do not invite another create request.
   try {
     await loadCandidates();
+  } catch (cause) {
+    error.value = cause;
+  }
+}
+async function handleRoughCutAdopted(compositionId: string) {
+  try {
+    await refreshProject();
+    if (compositionId) {
+      activeCompositionId.value = compositionId;
+      tab.value = "edit";
+    }
   } catch (cause) {
     error.value = cause;
   }
@@ -2262,6 +2275,15 @@ onUnmounted(() => {
           </option>
         </select></label
       >
+      <button
+        v-if="project"
+        class="text-button pipeline-toggle"
+        :aria-label="t('app.pipeline.title')"
+        @click="pipelineModalOpen = true"
+      >
+        <Icon name="layers" :size="16" />
+        {{ t("app.pipeline.title") }}
+      </button>
       <button class="text-button settings-toggle" @click="settingsOpen = true">
         {{ t("app.settings.title") }}
       </button>
@@ -3370,6 +3392,15 @@ onUnmounted(() => {
               })
             }}</span
             ><button
+              class="secondary pipeline-action"
+              :disabled="
+                !!busy || beatDirty || storyReviewBusy || storyReviewPending
+              "
+              @click="pipelineModalOpen = true"
+            >
+              <Icon name="layers" :size="14" />
+              {{ t("app.pipeline.title") }}</button
+            ><button
               class="primary"
               :disabled="
                 !!busy || beatDirty || storyReviewBusy || storyReviewPending
@@ -3900,6 +3931,15 @@ onUnmounted(() => {
       :default-root="defaultRoot"
       @close="settingsOpen = false"
       @content-locale="changeFilmLocale"
+    />
+    <PipelineOrchestrationModal
+      v-if="pipelineModalOpen"
+      :open="pipelineModalOpen"
+      :story-id="activeStory?.id"
+      :active-story="activeStory"
+      :assets="assets"
+      @close="pipelineModalOpen = false"
+      @rough-cut-adopted="handleRoughCutAdopted"
     />
     <div v-if="busy" class="busy-indicator" role="status">
       <span class="spinner" />{{ t(`app.activity.tasks.${busy}`) }}…
