@@ -891,5 +891,90 @@ export default {
       suggestionsRefreshed:
         "候補を更新しました。選択した思い出と文章は保持されています。",
     },
+    variants: {
+      modalTitle: "クリエイティブ案と A/B 比較",
+      listHeader: "クリエイティブ案",
+      createHeader: "別の案を作成",
+      impactHeader: "変更影響のプレビュー",
+      plannedChanges: "予定される変更",
+      preservedSections: "保持されるセクション（変更なし）",
+      unsupportedBrief: "クリエイティブ指示書（自動化対象外）",
+      unsupportedNotice:
+        "未対応の自由記述指示はクリエイティブメモとして保持され、予期せぬ変更は実行されません。",
+      emptyNotice:
+        "クリエイティブ案はまだありません。メインの編集に影響を与えずに、別のカット割りやテンポを試すことができます。",
+      sectionNav: "セクション別に移動",
+      diffDetails: "差分の詳細確認",
+      checkpointHeader: "名前付き自動チェックポイント",
+      checkpointNotice:
+        "この案を採用する前に名前付きチェックポイントが自動保存されます。いつでもベースラインを安全に復元できます。",
+      tabs: {
+        list: "すべての案",
+        create: "案を作成",
+        compare: "A/B 比較",
+      },
+      status: {
+        draft: "下書き",
+        compared: "比較済み",
+        adopted: "採用済み",
+        archived: "アーカイブ済み",
+      },
+      scope: {
+        section: "このセクションのみ",
+        film: "フィルム全体",
+        sectionOnly: "指定したセクションのみを変更",
+        wholeFilm: "フィルム全体のテンポを調整",
+      },
+      actions: {
+        newVariant: "+ 新規案",
+        createFirst: "最初の案を作成",
+        compare: "比較",
+        adopt: "採用",
+        adoptB: "案 B を採用（メインに設定）",
+        createConfirm: "案を作成",
+        refreshDiff: "比較を更新",
+        close: "閉じる",
+        delete: "削除",
+        cancel: "キャンセル",
+      },
+      fields: {
+        name: "案の名称",
+        intent: "制作意図 / 目的",
+        scope: "変更範囲",
+        targetBeat: "対象セクション",
+        targetDuration: "目標時間（秒）",
+        narration: "ナレーション原稿の調整",
+      },
+      placeholders: {
+        name: "例: 案 B - テンポ短縮とクローズアップ",
+        intent: "例: 散歩シーンを詰め、細部のショットを強調する",
+        duration: "例: 3.5",
+        narration: "このセクションのナレーション原稿（任意）...",
+      },
+      labels: {
+        variantA: "ベースライン (A)",
+        variantB: "比較案 (B)",
+      },
+      audio: {
+        active: "再生中",
+        play: "音声を再生",
+        rule: "単一音声ルール：同時に再生される音声チャンネルは1つのみです。",
+      },
+      table: {
+        section: "セクション",
+        variantA: "ベースライン (A)",
+        variantB: "比較案 (B)",
+        status: "差分の状態",
+      },
+      diff: {
+        changed: "変更あり",
+        identical: "変更なし",
+      },
+      messages: {
+        created: "クリエイティブ案を作成しました。",
+        adopted:
+          "案をメインの編集として採用し、チェックポイントを保存しました。",
+      },
+    },
   },
 } as const;

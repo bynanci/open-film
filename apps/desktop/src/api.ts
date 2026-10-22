@@ -1217,6 +1217,55 @@ export const api = {
       { stepId, decision, notes },
       signal,
     ),
+  creativeVariantsList: (signal?: AbortSignal) =>
+    request<{ variants: import("@openfilm/core").CreativeVariant[] }>(
+      "/creative-variants",
+      { signal },
+    ),
+  creativeVariantsPreviewImpact: (
+    body: import("@openfilm/core").CreateVariantInput,
+  ) =>
+    post<{
+      report: import("@openfilm/application").CreativeVariantImpactReport;
+    }>("/creative-variants/preview-impact", body),
+  creativeVariantsCreate: (body: import("@openfilm/core").CreateVariantInput) =>
+    post<{ variant: import("@openfilm/core").CreativeVariant }>(
+      "/creative-variants",
+      body,
+    ),
+  creativeVariantsCompare: (
+    variantA: string,
+    variantB: string,
+    signal?: AbortSignal,
+  ) =>
+    request<{
+      comparison: import("@openfilm/application").CreativeVariantComparisonResult;
+    }>(
+      `/creative-variants/compare?${new URLSearchParams({ variantA, variantB })}`,
+      { signal },
+    ),
+  creativeVariantsGet: (id: string, signal?: AbortSignal) =>
+    request<{ variant: import("@openfilm/core").CreativeVariant }>(
+      `/creative-variants/${encodeURIComponent(id)}`,
+      { signal },
+    ),
+  creativeVariantsAdopt: (id: string, body?: { expectedRevision?: string }) =>
+    post<{
+      project: import("@openfilm/core").OpenFilmProject;
+      checkpointVersionId: string;
+    }>(`/creative-variants/${encodeURIComponent(id)}/adopt`, body ?? {}),
+  creativeVariantsRestore: (
+    id: string,
+    body: { checkpointVersionId: string },
+  ) =>
+    post<{ project: import("@openfilm/core").OpenFilmProject }>(
+      `/creative-variants/${encodeURIComponent(id)}/restore`,
+      body,
+    ),
+  creativeVariantsDelete: (id: string) =>
+    request<{ ok: boolean }>(`/creative-variants/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
   editor: (id: string) =>

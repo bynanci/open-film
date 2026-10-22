@@ -949,6 +949,24 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Verification: comprehensive unit and integration test suites covering all 8 matrix cases, disk tampering detection, stale report rejection, base run immutability, zero service calls on reuse, and full i18n compilation across `en-US`, `zh-TW`, and `ja-JP`.
 - [ ] Manual workstation validation: live multi-track audio listening QA, external remote TTS latency verification.
 
+## Delivered — M11B Creative Variants and A/B Review
+
+[Contract](docs/CONTRACTS.md#m11b-creative-variants-and-ab-review) · [validation](docs/validation-creative-variants.md).
+
+- [x] Three distinct versioning concepts: clear separation between full immutable project snapshots (`ProjectVersionRecord`), ephemeral session undo/redo, and structured branching records (`CreativeVariant`) in `cache/creative-variants.json`. No duplication of raw media and no secondary database.
+- [x] Section isolation proof ("只改本段"): creating a variant with `scope: "section"` provably leaves 100% of non-target beats and clips unchanged (`preservedSections`), preserving exact media asset ID, filters, transforms, and timing relative to preceding cursor offsets.
+- [x] Edit lock preservation: `clip.locked` is strictly preserved on cloned variant clips. Modifying a section containing locked clips without prior unlocking fails closed with HTTP 409 (`timeline.conflict`).
+- [x] Zero-render A/B comparison: `compareVariants` inspects existing composition models, story structures, and pre-existing pipeline preview/QA artifacts without triggering media rendering, re-rasterization, or external service calls ("開比較不重新生成").
+- [x] Single-audio playback safety: player and modal enforce that only one variant audio channel plays at any time. Selecting Audio A mutes/pauses Audio B; selecting Audio B mutes/pauses Audio A (`activeAudioChannel === "A" | "B"`).
+- [x] Section-based alignment navigation: differing overall runtimes navigate by section/beat markers; never falsely claim differing runtimes align at identical absolute timestamps.
+- [x] Mandatory pre-adoption checkpoint: `adoptVariant` verifies source availability, edit locks, and expected revision before mutating the active project. A named checkpoint version (`app.versions.create`) is created automatically before promoting the variant composition to `timelines[0]`. Checkpoint failure immediately aborts adoption without project mutation.
+- [x] Post-restore invalidation: restoring a baseline checkpoint (`app.versions.restore`) reverts project state; old pipeline runs, approval receipts, and adopted variant references targeting superseded revisions are marked `outdated` via `isRunOutdated` and cannot be re-adopted.
+- [x] Shared media protection: deleting a creative variant deletes only its derived Story, derived Composition, and variant record. Shared catalog `MediaAsset`s are never deleted or pruned.
+- [x] Collect Media privacy: collecting media for a variant with `scope: "current-film"` packages only the media assets directly referenced by that specific composition, strictly excluding private assets from other variants or unconsumed library media.
+- [x] UI/UX Workbench Integration: `CreativeVariantComparisonModal.vue` with 3 views (`list`, `create`, `compare`), live change impact preview, locked warnings, A/B video player, diff summary table, automatic checkpoint notice, keyboard/IME protection, responsive layout (1440x900, 1280x720, 1024x768), reduced motion support, and full 100% i18n parity across `en-US`, `zh-TW`, and `ja-JP`.
+- [x] Verification: comprehensive core domain, application service, and UI unit test suites (`packages/core/tests/creative-variants.test.ts`, `packages/application/tests/creative-variants.test.ts`, `tests/unit/creative-variant-ui.test.ts`) passing with 15/15 tests.
+- [ ] Manual workstation validation: live multi-track audio listening QA, high-DPI touch/gesture workbench verification.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

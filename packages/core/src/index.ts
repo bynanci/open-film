@@ -20,3 +20,4 @@ export * from "./project-versions.js";
 export * from "./story-graph.js";
 export * from "./story-plan.js";
 export * from "./pipeline.js";
+export * from "./creative-variants.js";

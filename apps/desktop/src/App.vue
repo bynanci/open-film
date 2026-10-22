@@ -38,6 +38,7 @@ import StoryboardView from "./components/StoryboardView.vue";
 import PipelineWorkbench, {
   type WorkbenchMode,
 } from "./components/PipelineWorkbench.vue";
+import CreativeVariantComparisonModal from "./components/CreativeVariantComparisonModal.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -121,9 +122,28 @@ const noticeMessage = computed(() =>
 const settingsOpen = ref(false);
 const pipelineWorkbenchOpen = ref(true);
 const pipelineWorkbenchMode = ref<WorkbenchMode>("bar");
+const variantsModalOpen = ref(false);
 
 function handleWorkbenchModeChange(newMode: WorkbenchMode) {
   pipelineWorkbenchMode.value = newMode;
+}
+
+async function handleVariantAdopted(payload: {
+  project?: OpenFilmProject;
+  checkpointVersionId?: string;
+  compositionId?: string;
+}) {
+  try {
+    await refreshProject();
+    const compId =
+      payload?.compositionId ?? payload?.project?.timelines?.[0]?.id;
+    if (compId) {
+      activeCompositionId.value = compId;
+      tab.value = "edit";
+    }
+  } catch (cause) {
+    error.value = cause;
+  }
 }
 
 function handleNavigateStoryFromPipeline(
@@ -3432,6 +3452,16 @@ onUnmounted(() => {
               <Icon name="layers" :size="14" />
               {{ t("app.pipeline.title") }}</button
             ><button
+              class="secondary variants-action"
+              :disabled="
+                !!busy || beatDirty || storyReviewBusy || storyReviewPending
+              "
+              data-testid="creative-variants-btn"
+              @click="variantsModalOpen = true"
+            >
+              <Icon name="copy" :size="14" />
+              {{ t("app.variants.modalTitle") }}</button
+            ><button
               class="primary"
               :disabled="
                 !!busy || beatDirty || storyReviewBusy || storyReviewPending
@@ -3977,6 +4007,15 @@ onUnmounted(() => {
       @rough-cut-adopted="handleRoughCutAdopted"
       @navigate-story="handleNavigateStoryFromPipeline"
       @navigate-timeline="handleNavigateTimelineFromPipeline"
+    />
+    <CreativeVariantComparisonModal
+      v-if="project && variantsModalOpen"
+      :open="variantsModalOpen"
+      :project="project"
+      :active-story="activeStory"
+      :active-composition-id="activeCompositionId"
+      @close="variantsModalOpen = false"
+      @adopted="handleVariantAdopted"
     />
     <div v-if="busy" class="busy-indicator" role="status">
       <span class="spinner" />{{ t(`app.activity.tasks.${busy}`) }}…
