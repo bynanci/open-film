@@ -22,7 +22,10 @@ let factory: (dependencies: Record<string, unknown>) => Editor;
 
 beforeAll(async () => {
   const source = await readFile(
-    new URL("../../apps/desktop/src/composables/useTimelineEditor.ts", import.meta.url),
+    new URL(
+      "../../apps/desktop/src/composables/useTimelineEditor.ts",
+      import.meta.url,
+    ),
     "utf8",
   );
   const transformed = await transform(source, { loader: "ts", format: "esm" });
@@ -57,27 +60,33 @@ function initialState(): EditorState {
       id: "cut",
       storyId: "story",
       duration: 4,
-      tracks: [{
-        id: "video",
-        type: "video",
-        clips: [{
-          id: "clip",
-          assetId: "photo",
-          beatId: "beat",
-          timelineStart: 0,
-          timelineDuration: 4,
-        }],
-      }],
+      tracks: [
+        {
+          id: "video",
+          type: "video",
+          clips: [
+            {
+              id: "clip",
+              assetId: "photo",
+              beatId: "beat",
+              timelineStart: 0,
+              timelineDuration: 4,
+            },
+          ],
+        },
+      ],
     },
-    assets: [{
-      id: "photo",
-      uri: "file:///synthetic.png",
-      name: "Fixture",
-      mediaType: "image",
-      tags: [],
-      state: {},
-      metadata: {},
-    }],
+    assets: [
+      {
+        id: "photo",
+        uri: "file:///synthetic.png",
+        name: "Fixture",
+        mediaType: "image",
+        tags: [],
+        state: {},
+        metadata: {},
+      },
+    ],
   };
 }
 
@@ -116,27 +125,38 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     let saved = initial;
     const api = {
       editor: vi.fn(async () => saved),
-      edit: vi.fn(async (_id: string, batch: { commands: TimelineCommand[] }) => {
-        for (const command of batch.commands) {
-          saved = {
-            ...saved,
-            ...applyTimelineCommand(saved, saved.assets, command),
-          };
-        }
-        saved = { ...saved, revision: "r2", canUndo: true };
-        return saved;
-      }),
+      edit: vi.fn(
+        async (_id: string, batch: { commands: TimelineCommand[] }) => {
+          for (const command of batch.commands) {
+            saved = {
+              ...saved,
+              ...applyTimelineCommand(saved, saved.assets, command),
+            };
+          }
+          saved = { ...saved, revision: "r2", canUndo: true };
+          return saved;
+        },
+      ),
     };
     const { editor, storage } = await mountEditor(api);
     const transform: TimelineCommand = {
-      type: "transform", clipId: "clip", x: 24, y: -12,
+      type: "transform",
+      clipId: "clip",
+      x: 24,
+      y: -12,
     };
     expect(editor.command(transform)).toBe(true);
-    expect(editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x).toBe(24);
+    expect(
+      editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x,
+    ).toBe(24);
     expect(editor.status.value).toBe("saving");
     expect(editor.hasPending.value).toBe(true);
-    expect(editor.command({ type: "lock", clipId: "clip", locked: true })).toBe(true);
-    expect(editor.state.value?.composition.tracks[0]?.clips[0]?.locked).toBe(true);
+    expect(
+      editor.command({ type: "lock", clipId: "clip", locked: true }),
+    ).toBe(true);
+    expect(editor.state.value?.composition.tracks[0]?.clips[0]?.locked).toBe(
+      true,
+    );
     expect(await editor.flush()).toBe(true);
     expect(api.edit).toHaveBeenCalledTimes(1);
     expect(api.edit.mock.calls[0]?.[1]?.commands).toEqual([
@@ -147,8 +167,12 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     expect(editor.hasPending.value).toBe(false);
     expect(storage.has("openfilm:editor:project:cut")).toBe(false);
     // A locked clip cannot be modified via Inspector, even if the UI fails to disable it.
-    expect(editor.command({ type: "transform", clipId: "clip", x: 30 })).toBe(false);
-    expect(editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x).toBe(24);
+    expect(
+      editor.command({ type: "transform", clipId: "clip", x: 30 }),
+    ).toBe(false);
+    expect(
+      editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x,
+    ).toBe(24);
   });
 
   it("flushes pending edits before invoking server Undo", async () => {
@@ -157,22 +181,35 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     const order: string[] = [];
     const api = {
       editor: vi.fn(async () => initial),
-      edit: vi.fn(async (_id: string, batch: { commands: TimelineCommand[] }) => {
-        order.push("edit");
-        saved = { ...saved, ...applyTimelineCommand(saved, saved.assets, batch.commands[0]!), revision: "r2", canUndo: true };
-        return saved;
-      }),
-      history: vi.fn(async (_id: string, direction: string, revision: string) => {
-        order.push(direction);
-        expect(revision).toBe("r2");
-        return { ...initial, revision: "r3", canRedo: true };
-      }),
+      edit: vi.fn(
+        async (_id: string, batch: { commands: TimelineCommand[] }) => {
+          order.push("edit");
+          saved = {
+            ...saved,
+            ...applyTimelineCommand(saved, saved.assets, batch.commands[0]!),
+            revision: "r2",
+            canUndo: true,
+          };
+          return saved;
+        },
+      ),
+      history: vi.fn(
+        async (_id: string, direction: string, revision: string) => {
+          order.push(direction);
+          expect(revision).toBe("r2");
+          return { ...initial, revision: "r3", canRedo: true };
+        },
+      ),
     };
     const { editor } = await mountEditor(api);
-    expect(editor.command({ type: "transform", clipId: "clip", x: 7 })).toBe(true);
+    expect(
+      editor.command({ type: "transform", clipId: "clip", x: 7 }),
+    ).toBe(true);
     expect(await editor.history("undo")).toBe(true);
     expect(order).toEqual(["edit", "undo"]);
-    expect(editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x).toBeUndefined();
+    expect(
+      editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x,
+    ).toBeUndefined();
     expect(editor.status.value).toBe("saved");
   });
 
@@ -185,7 +222,9 @@ describe("P0 Inspector / Timeline command-state contract", () => {
       }),
     };
     const { editor, storage } = await mountEditor(api);
-    expect(editor.command({ type: "transform", clipId: "clip", x: 11 })).toBe(true);
+    expect(
+      editor.command({ type: "transform", clipId: "clip", x: 11 }),
+    ).toBe(true);
     expect(await editor.flush()).toBe(false);
     expect(editor.status.value).toBe("conflict");
     expect(editor.hasPending.value).toBe(true);
