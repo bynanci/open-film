@@ -967,6 +967,21 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Verification: comprehensive core domain, application service, and UI unit test suites (`packages/core/tests/creative-variants.test.ts`, `packages/application/tests/creative-variants.test.ts`, `tests/unit/creative-variant-ui.test.ts`) passing with 15/15 tests.
 - [ ] Manual workstation validation: live multi-track audio listening QA, high-DPI touch/gesture workbench verification.
 
+## Completed — Story Graph × Pipeline End-to-End Product Acceptance
+
+[Contract](docs/CONTRACTS.md#story-graph--pipeline-end-to-end-product-acceptance) · [validation](docs/validation-story-graph-pipeline-acceptance.md).
+
+- [x] Fixed fixture: 6 synthetic JPEG images (1280x720, distinct content hashes, GPS along Jiufen trail), 3 fictional memories (user-memory, wish), 3 fictional chat conversations (planned), schematic route, reproducible 30-second mono WAV guide tone (strictly labeled tone), manual Traditional Chinese subtitles; 30s at 30 fps yielding exactly 900 frames.
+- [x] Journey 1 & 2: Story Graph to StoryPlan storyboard proposal card deck with 5 dimensions; thematic echo clip instances without duplicate assets; non-destructive preview; adoption into Rough Cut A without overwriting existing manual edit.
+- [x] Journey 3 & 4: Guided pipeline execution through review gate (`waiting-review`); legal adoption receipt advancing revision; preview MP4 and visual QA inspection report generation; subtitle-only Variant B incremental run with verified 0 TTS calls and 0 motion generation calls.
+- [x] Journey 5: Narration input modification invalidation propagation; marks `scene-prepare` as reuse while invalidating voice narration (`needs-review`) and downstream timing/rendering.
+- [x] Journey 6: Injects run cancellation (stops immediately, rejects late arrival), retry (preserves identical input snapshot), source tampering (triggers cache miss fallback), project reopen persistence, and checkpoint restoration with superseded run invalidation (`isRunOutdated`).
+- [x] Journey 7: Creative variants A/B review; section isolation proof ("只改本段"); zero-render comparison (`renderCalls === 0`); single-audio playback; pre-adoption automatic checkpoint; baseline restoration back to Baseline A.
+- [x] Privacy contracts: Collect Media and Export strictly packages media referenced by the active film, isolating private assets from other variants or library media.
+- [x] Bug remediation: Fixed variant clip `beatId` and composition `beatLooks` mapping in `packages/application/src/creative-variants.ts` to prevent invalid beat ID errors.
+- [x] Verification: 6/6 tests passing in `tests/integration/story-graph-pipeline-e2e-acceptance.test.ts`, full regression test suites passing (27/27 tests), format check passing, i18n check passing (2,219 keys), ESLint 0 warnings passing, TypeScript/vue-tsc passing, and Vite production client build passing.
+- [ ] Manual workstation validation: live multi-track audio listening QA, clean-machine physical GPU video playback, and workstation gates intentionally remain open.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

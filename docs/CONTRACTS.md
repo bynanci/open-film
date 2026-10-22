@@ -593,3 +593,27 @@ Phase M11B introduces creative variant branching, side-by-side A/B review, lock 
 - **Collect Media Privacy**:
   - When collecting media for a variant (`app.collectMedia.plan({ scope: "current-film", compositionId })`), only media assets directly referenced by that specific composition are packaged.
   - Private assets used exclusively in other variants or unconsumed library media are strictly excluded.
+
+## Story Graph × Pipeline End-to-End Product Acceptance
+
+Phase M9A–M11B product acceptance verifies the complete creative workflow across Story Graph, StoryPlan storyboard proposal, guided pipeline orchestration, change impact analysis, and creative variants.
+
+### Fixed Synthetic Fixture Specification
+
+- **6 Synthetic Images**: 1280×720 synthetic JPEG images (`photo_1` through `photo_6`), each with unique content hashes, dimensions, timestamps, and realistic Jiufen hiking trail GPS coordinates (`GeoPoint`).
+- **3 Fictional Memories**: Personal reflective thoughts (`user-memory`, `wish`) capturing personal nostalgia and future wishes without conflation into historical facts.
+- **3 Fictional Conversations**: Dialogue excerpts (`planned`) reflecting intentions and advice from companions, tea house owners, and guides.
+- **Schematic Route**: Explicit graph edges (`precedes`, `echoes`, `contains`) mapping the narrative progression without canvas coordinate guesswork.
+- **Reproducible WAV Guide Tone**: 30.0-second 16-bit PCM Mono 44.1 kHz sinusoidal WAV tone. Explicitly labeled `tone` across all metadata; never masquerades as human speech.
+- **Manual Traditional Chinese Subtitles**: Authentic localized strings aligned to scene intentions and visual directions.
+- **Frame Calculation**: 30.0 seconds at 30 fps yielding exactly **900 frames** under default 1280×720 resolution.
+
+### Verified Workflow Guarantees
+
+1. **Explicit Sequence & Echo Preservation**: Sequences are strictly governed by explicit graph edges (`precedes`); cycles and unresolved alternatives fail closed. Opening and closing echo clips reference distinct clip instances without duplicating media assets or bypassing deduplication.
+2. **Non-Destructive Storyboard Adoption**: `StoryPlan` generates a proposal card deck without touching existing timelines; adopting a plan creates a new rough cut (新試剪) while preserving manual edits.
+3. **Pipeline Review Gates**: Pipeline runs pause at required review steps (`waiting-review`); review state holds no subprocesses or locks.
+4. **Change Impact & Zero-Cost Reuse**: Subtitle-only modifications reuse 100% of upstream visual preparation and narration audio, proving `ttsCalls === 0` and `motionCalls === 0`.
+5. **Fault Injection Resilience**: Cancellation halts runs immediately; retry retains identical input snapshots; source data tampering triggers cache miss fallbacks; version restoration marks superseded runs as outdated.
+6. **Zero-Render A/B Review & Safe Reversion**: Variant comparison inspects existing models and artifacts with `renderCalls === 0`; adoption creates automatic checkpoints; baseline restoration rolls back cleanly to Baseline A.
+7. **Privacy Isolation**: Collect Media strictly isolates the assets of the active film from other variants or private catalog items.
