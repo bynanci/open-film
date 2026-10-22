@@ -17,7 +17,7 @@
     "server": "tsx apps/server/src/index.ts",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
-    "format:check": "prettier tests/unit/p0-editor-command-state.test.ts && exit 1",
+    "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit && vue-tsc --noEmit -p apps/desktop/tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run --exclude \"**/integration/**\" --exclude \"packages/application/tests/**\" --exclude \"packages/media/tests/**\" --exclude \"packages/render/tests/**\" --exclude \"packages/catalog/tests/**\"",
