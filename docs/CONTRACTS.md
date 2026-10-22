@@ -347,3 +347,37 @@ multi-perspective workflow (Outline, Story Graph, Storyboard) while keeping cano
   perspectives and locating clips on the Edit timeline.
 - Media playback follows the strict privacy and resource rule: only the actively
   inspected media card allows playback; all other cards display static thumbnails.
+
+## M9B Graph to Reviewable Storyboard (StoryPlan)
+
+The StoryPlan pipeline compiles Story Graph selections and canonical beat sequences into a reviewable storyboard proposal (`StoryPlan`), supporting non-destructive preview, conflict resolution, and explicit adoption into a new rough cut (新試剪) while keeping original manual edits intact.
+
+### Proposal Contract (Not a Second Timeline)
+
+- `StoryPlan` is strictly an editorial proposal (`schemaVersion: '1.0.0'`), not a divergent Timeline or alternate renderer graph.
+- Input state is sealed with `inputSignature`: a deterministic 64-character lowercase hex digest of canonical story beats, target duration, candidate graph nodes, and non-echo edges.
+- Narrative order is strictly defined by canonical story beat sequences and explicit precedence edges. Canvas `(x, y)` coordinates are never used to infer narrative sequence.
+- Each scene card (`StoryPlanScene`) provides exactly the 5 reviewable dimensions:
+  1. **Assets & Roles (`assets`)**: references to library assets with roles (`hero`, `supporting`, `echo`), display thumbnails, and PhotoDepth support status (`supported`, `fallback-standard-hold`, `fallback-ken-burns`).
+  2. **Narrative Intent (`intent`)**: explicit editorial purpose grounded in canonical beat and attached thought nodes.
+  3. **Visual Direction (`visualDirection`)**: staging, camera motivation, and shot presentation.
+  4. **Duration & Pacing (`targetDuration`, `estimatedDuration`)**: target cut duration and CJK/Latin character-paced estimated narration timing (~3.5 CJK chars/sec, ~2.5 Latin words/sec). Microsecond fake precision timings are disallowed for unrecorded narration.
+  5. **Editorial Rationale (`rationale`)**: qualitative storytelling reasons; numerical pseudo-aesthetic scores are strictly forbidden.
+
+### Narrative Protections & Solver Extensions
+
+- **Thematic Echoes**: When a photo appears at both opening and closing (echo), solver receives explicit `allowEchoAssetIds` containing the asset ID. The rough cut produces distinct `Clip` instances referencing the same underlying `MediaAsset` without fabricating fake asset IDs or disabling deduplication globally.
+- **Source Nature Preservation**: Idea nodes explicitly distinguish `user-memory`, `planned`, `wish`, and `unknown` sources. Wishes, plans, and chat excerpts are never conflated into established factual occurrences.
+- **Unresolved Conflict Rejection**: Graph cycles and unresolved `alternative` paths are surfaced as actionable blocking conflicts (`conflicts`, `unresolvedAlternatives`, `detectedCycles`). Adoption is rejected with HTTP 409 until resolved.
+- **Unsupported Intent Transparency**: Freeform creative text requirements not supported by current templates or effects are surfaced in `unsupportedIntents` rather than being silently substituted with inaccurate effects.
+- **PhotoDepth Degradation**: When depth maps are unconfigured or unavailable, clear fallback modes (`standard-hold`, `ken-burns`) are indicated without synthesizing fake depth geometry.
+
+### Preview and Explicit Adoption
+
+- **Preview Endpoint (`POST /api/stories/:id/plan/preview`)**: Generates an ephemeral preview `Composition` using `@openfilm/solver` with 0 project mutations and 0 provider calls.
+- **Adoption Endpoint (`POST /api/stories/:id/plan/accept`)**:
+  - Validates `planId` and matches current `inputSignature`. If graph or beats have changed since plan generation, adoption fails with HTTP 409 Stale Plan.
+  - Generates a new rough cut `Composition` titled `${story.title} (Story Plan Cut)` scoped strictly to the plan's `candidateAssetIds`.
+  - Leaves the user's original manual timeline and existing rough cuts completely untouched.
+  - Idempotent: repeated submissions with the same `planId` return the existing adoption result without creating duplicate compositions.
+  - Stores a durable `StoryPlanAcceptanceMapping` binding proposal scene IDs to created clip IDs and track IDs.

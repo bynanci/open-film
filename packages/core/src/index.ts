@@ -18,3 +18,4 @@ export * from "./graphic-scenes.js";
 export * from "./graphic-scene-templates.js";
 export * from "./project-versions.js";
 export * from "./story-graph.js";
+export * from "./story-plan.js";
