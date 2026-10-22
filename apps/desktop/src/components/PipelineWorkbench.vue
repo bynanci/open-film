@@ -11,6 +11,7 @@ import type {
   MediaAsset,
   Story,
   OpenFilmProject,
+  PipelineChangeImpactReport,
 } from "@openfilm/core";
 
 export type WorkbenchMode = "bar" | "drawer" | "modal";
@@ -63,6 +64,11 @@ const currentRun = ref<PipelineRun | null>(null);
 const runsList = ref<PipelineRun[]>([]);
 const actionLoading = ref(false);
 const error = ref<string | null>(null);
+
+// M11A Change Impact
+const impactReport = ref<PipelineChangeImpactReport | null>(null);
+const showImpactModal = ref(false);
+const impactLoading = ref(false);
 
 // Narration selection
 const narrationStrategy = ref<"none" | "voice-import" | "configured-tts">(
@@ -290,6 +296,96 @@ async function handleStartProduction() {
     }
   } catch (err: unknown) {
     error.value = (err as Error)?.message ?? "Failed to start pipeline.";
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
+async function handleAnalyzeImpact() {
+  error.value = null;
+  impactLoading.value = true;
+  try {
+    let narrationOption: {
+      type: "none" | "voice-import" | "configured-tts";
+      assetId?: string;
+      providerId?: string;
+      speechConsent?: boolean;
+    } = { type: "none" };
+
+    if (narrationStrategy.value === "voice-import") {
+      narrationOption = {
+        type: "voice-import",
+        assetId: selectedVoiceAssetId.value,
+      };
+    } else if (narrationStrategy.value === "configured-tts") {
+      narrationOption = {
+        type: "configured-tts",
+        providerId: "byok-tts-standard",
+        speechConsent: remoteConsentGiven.value,
+      };
+    }
+
+    const res = await api.pipelineAnalyzeImpact(selectedRecipeId.value, {
+      baseRunId: currentRun.value?.id,
+      storyId: props.storyId ?? props.activeStory?.id,
+      assetIds: (props.assets ?? []).map((a) => a.id),
+      narration: narrationOption,
+    });
+    impactReport.value = res.report;
+    showImpactModal.value = true;
+  } catch (err: unknown) {
+    error.value = (err as Error)?.message ?? "Failed to analyze change impact.";
+  } finally {
+    impactLoading.value = false;
+  }
+}
+
+async function handleStartIncrementalRun() {
+  error.value = null;
+  actionLoading.value = true;
+  try {
+    let narrationOption: {
+      type: "none" | "voice-import" | "configured-tts";
+      assetId?: string;
+      providerId?: string;
+      speechConsent?: boolean;
+    } = { type: "none" };
+
+    if (narrationStrategy.value === "voice-import") {
+      narrationOption = {
+        type: "voice-import",
+        assetId: selectedVoiceAssetId.value,
+      };
+    } else if (narrationStrategy.value === "configured-tts") {
+      narrationOption = {
+        type: "configured-tts",
+        providerId: "byok-tts-standard",
+        speechConsent: remoteConsentGiven.value,
+      };
+    }
+
+    const created = await api.pipelineCreateIncrementalRun(
+      selectedRecipeId.value,
+      {
+        baseRunId: currentRun.value?.id,
+        impactReport: impactReport.value ?? undefined,
+        storyId: props.storyId ?? props.activeStory?.id,
+        assetIds: (props.assets ?? []).map((a) => a.id),
+        narration: narrationOption,
+      },
+    );
+
+    currentRun.value = created.run;
+    showImpactModal.value = false;
+    const started = await api.pipelineStartRun(created.run.id);
+    currentRun.value = started.run;
+
+    if (started.run.status === "running") {
+      startPolling();
+    }
+    await loadRuns();
+  } catch (err: unknown) {
+    error.value = (err as Error)?.message ?? "Failed to start incremental run.";
   } finally {
     actionLoading.value = false;
   }
@@ -566,9 +662,12 @@ onUnmounted(() => {
           v-else-if="isOutdated"
           type="button"
           class="bar-cta-btn bar-cta-warning"
-          @click="handleStartProduction"
+          @click="
+            switchMode('drawer');
+            handleAnalyzeImpact();
+          "
         >
-          {{ t("app.pipeline.workbench.ctas.newRunWithLatest") }}
+          {{ t("app.pipeline.workbench.ctas.viewImpact") }}
         </button>
         <button
           v-else-if="!currentRun || currentRun.status === 'idle'"
@@ -685,15 +784,132 @@ onUnmounted(() => {
             t("app.pipeline.workbench.disclosures.noM11aNotice")
           }}</small>
         </div>
-        <button
-          type="button"
-          class="workbench-btn btn-warning"
-          :disabled="actionLoading"
-          @click="handleStartProduction"
-        >
-          {{ t("app.pipeline.workbench.ctas.newRunWithLatest") }}
-        </button>
+        <div class="banner-actions">
+          <button
+            type="button"
+            class="workbench-btn btn-secondary"
+            :disabled="actionLoading || impactLoading"
+            @click="handleAnalyzeImpact"
+          >
+            {{ t("app.pipeline.workbench.ctas.viewImpact") }}
+          </button>
+          <button
+            type="button"
+            class="workbench-btn btn-warning"
+            :disabled="actionLoading"
+            @click="handleStartIncrementalRun"
+          >
+            {{ t("app.pipeline.workbench.ctas.startIncrementalRun") }}
+          </button>
+        </div>
       </div>
+
+      <!-- Change Impact Inspection Panel (Phase M11A) -->
+      <section
+        v-if="showImpactModal && impactReport"
+        class="workbench-impact-panel"
+      >
+        <div class="impact-panel-header">
+          <div>
+            <h3>{{ t("app.pipeline.workbench.impact.title") }}</h3>
+            <p class="impact-subtitle">
+              {{ t("app.pipeline.workbench.impact.subtitle") }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="workbench-icon-btn"
+            @click="showImpactModal = false"
+          >
+            <Icon name="close" :size="16" />
+          </button>
+        </div>
+
+        <div class="impact-summary-chips">
+          <span class="impact-chip chip-reuse">
+            {{
+              t("app.pipeline.workbench.impact.reusableSummary", {
+                reusable: impactReport.summary.reusableSteps,
+                rerun: impactReport.summary.rerunSteps,
+              })
+            }}
+          </span>
+          <span
+            v-if="impactReport.renderMode === 'full-render-fallback'"
+            class="impact-chip chip-fallback"
+          >
+            {{ t("app.pipeline.workbench.impact.fullRenderFallback") }}
+          </span>
+        </div>
+
+        <div
+          v-if="impactReport.renderFallbackReason"
+          class="impact-fallback-notice"
+        >
+          <Icon name="info" :size="14" />
+          <span>{{ impactReport.renderFallbackReason }}</span>
+        </div>
+
+        <div class="impact-steps-table">
+          <div
+            v-for="step in impactReport.steps"
+            :key="step.stepId"
+            class="impact-step-row"
+            :class="`status-${step.status}`"
+          >
+            <div class="step-identity">
+              <span class="step-id-pill">{{ step.stepId }}</span>
+              <strong class="step-name">{{ step.stepName }}</strong>
+            </div>
+            <span class="step-status-pill" :class="`pill-${step.status}`">
+              {{
+                t(
+                  `app.pipeline.workbench.impactStatus.${step.status === "needs-review" ? "needsReview" : step.status}`,
+                )
+              }}
+            </span>
+            <div class="step-reason">
+              {{ step.reason }}
+              <span
+                v-if="step.inputsChanged && step.inputsChanged.length > 0"
+                class="step-inputs-changed"
+              >
+                ({{
+                  t("app.pipeline.workbench.impact.stepInputsChanged", {
+                    inputs: step.inputsChanged.join(", "),
+                  })
+                }})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="impact-panel-actions">
+          <button
+            type="button"
+            class="workbench-btn btn-primary"
+            :disabled="actionLoading"
+            @click="handleStartIncrementalRun"
+          >
+            {{ t("app.pipeline.workbench.ctas.startIncrementalRun") }}
+          </button>
+          <button
+            type="button"
+            class="workbench-btn btn-outline"
+            :disabled="actionLoading"
+            @click="handleStartProduction"
+          >
+            {{ t("app.pipeline.workbench.ctas.newRunWithLatest") }}
+          </button>
+          <button
+            type="button"
+            class="workbench-btn btn-secondary"
+            @click="showImpactModal = false"
+          >
+            {{ t("app.pipeline.closeButton") }}
+          </button>
+        </div>
+      </section>
 
       <!-- 5-Stage Stepper Bar -->
       <nav
@@ -1613,6 +1829,153 @@ onUnmounted(() => {
 .banner-text p,
 .banner-text small {
   margin: 2px 0 0 0;
+}
+
+.banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.workbench-impact-panel {
+  margin: 12px 16px;
+  padding: 16px;
+  background: var(--color-bg-secondary, #1e1e24);
+  border: 1px solid var(--color-border-subtle, #33333d);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.impact-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.impact-subtitle {
+  font-size: 12px;
+  color: var(--color-text-muted, #8e8e9a);
+  margin-top: 2px;
+}
+
+.impact-summary-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.impact-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.impact-chip.chip-reuse {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+}
+
+.impact-chip.chip-fallback {
+  background: rgba(241, 196, 15, 0.15);
+  color: #f1c40f;
+  border: 1px solid rgba(241, 196, 15, 0.3);
+}
+
+.impact-fallback-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted, #c0c0d0);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.impact-steps-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.impact-step-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--color-border-subtle, #2a2a35);
+  font-size: 13px;
+}
+
+.step-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.step-id-pill {
+  font-size: 10px;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.step-status-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.step-status-pill.pill-reuse {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.step-status-pill.pill-rerun {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.step-status-pill.pill-needs-review {
+  background: rgba(155, 89, 182, 0.2);
+  color: #9b59b6;
+}
+
+.step-status-pill.pill-unavailable {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.step-reason {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-muted, #a0a0b0);
+}
+
+.step-inputs-changed {
+  color: #f39c12;
+  margin-left: 4px;
+}
+
+.impact-panel-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-subtle, #33333d);
 }
 
 .workbench-stepper {

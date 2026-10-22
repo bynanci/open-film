@@ -37,6 +37,7 @@ import type {
   StoryPlanAcceptanceMapping,
   PipelineRecipe,
   PipelineRun,
+  PipelineChangeImpactReport,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -1152,6 +1153,26 @@ export const api = {
     ),
   pipelineListRuns: (signal?: AbortSignal) =>
     request<{ runs: PipelineRun[] }>("/pipelines/runs", { signal }),
+  pipelineAnalyzeImpact: (
+    recipeId: string,
+    options?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
+    post<{ report: PipelineChangeImpactReport }>(
+      "/pipelines/analyze-impact",
+      { recipeId, options },
+      signal,
+    ),
+  pipelineCreateIncrementalRun: (
+    recipeId: string,
+    options?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
+    post<{ run: PipelineRun }>(
+      "/pipelines/runs/incremental",
+      { recipeId, options },
+      signal,
+    ),
   pipelineCreateRun: (
     recipeId: string,
     options?: Record<string, unknown>,

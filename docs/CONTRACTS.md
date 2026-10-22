@@ -474,4 +474,69 @@ The Pipeline Workbench (`PipelineWorkbench.vue`) elevates the Phase M10A orchest
 - **Keyboard & IME Protection**: Keyboard listeners explicitly check event targets; keystrokes inside `input`, `textarea`, or contenteditable elements are never swallowed by global hotkeys. Number keys `1`..`5` switch stages when outside form inputs; `Escape` collapses modal/drawer.
 - **Reduced Motion**: Disables transitions and animations when `@media (prefers-reduced-motion: reduce)` is active.
 - **External Provider Consent**: Prior to transmitting script text to external TTS services, displays data categories, target destination, estimated cost, and requires explicit user checkbox consent.
-- **Cache Transparency**: Discloses that fine-grained partial cache reuse (Phase M11A) is not yet active, informing users that retrying will rerun from the original immutable snapshot.
+- **Cache Transparency**: Discloses that fine-grained partial cache reuse is governed by verified per-step input signatures (Phase M11A), preventing unverified assumptions.
+
+## M11A Change Impact and Incremental Runs
+
+Phase M11A establishes fine-grained change impact analysis, verified artifact reuse, and incremental pipeline execution across video production workflows.
+
+### Separation of Concerns: Project Revision vs. Per-Step Consumed Signature
+
+- **Project Revision (`expectedRevision` / `revision`)**:
+  - Used exclusively for checking rough-cut adoption permissions and detecting overall draft freshness (`isRunOutdated`).
+  - A whole-project revision bump (e.g., editing a subtitle line or adding an unconsumed beat idea) **must not** invalidate unaffected pipeline steps wholesale.
+- **Per-Step Consumed-Input Signature (`computeStepConsumedSignature`)**:
+  - Determines artifact reusability strictly based on the exact inputs consumed by that specific step.
+  - Computed via deterministic canonicalization (sorted object keys, normalized primitives, recursive arrays) fed into a 64-character lowercase hex digest mixer (`fnv1a64Mix`).
+  - Stamped onto `PipelineStepAttempt.inputSignature` and `PipelineArtifactRecord.inputSignature`.
+
+### Change Impact Matrix (8 Canonical Invalidation Cases)
+
+1. **Canvas pan/zoom/fold (`GraphViewState`)**:
+   - Updates viewport offsets and folded node states in `cache/story-graph-views.json`.
+   - Produces **0 media calls** and **100% artifact reuse**.
+2. **Unconsumed notes / draft ideas**:
+   - Notes or draft ideas not linked into the active story plan or pipeline inputs do not alter step signatures.
+   - Produces **0 media calls** and **100% artifact reuse**.
+3. **Subtitle text / style modified**:
+   - `timing-captions`, `render`, `visual-qa`, and `export` steps rerun.
+   - Narration voice audio and photo visual candidates are completely preserved (**0 TTS calls, 0 motion calls**).
+   - Generates verified output MP4 reflecting updated subtitle styling while reusing existing audio tracks.
+4. **Narration script modified (rerun requested)**:
+   - `narration`, `timing-captions`, `composition-adopt`, `render`, `visual-qa`, and `export` steps rerun.
+   - Visual candidate assets and `scene-prepare` artifacts are completely preserved.
+5. **Photo changed / PhotoDepth changed**:
+   - `scene-prepare`, `render`, `visual-qa`, and `export` steps rerun.
+   - Voice narration audio is completely preserved (**0 TTS calls**).
+6. **Output aspect ratio changed**:
+   - Delivery framing, safe areas, `render`, `visual-qa`, and `export` steps rerun.
+   - Voice narration audio is completely preserved.
+7. **Source bytes, font, or adapter version changed**:
+   - Any modification to source media bytes (`asset.hash`), font files, or adapter version invalidates all downstream consumers.
+8. **Consent / capability revoked**:
+   - Revoking external service consent or credentials invalidates remote steps.
+   - A cached artifact **cannot** authorize new remote dispatches or bypass user consent.
+
+### Verified Artifact Reuse Before Cache Hit
+
+Before any artifact from a prior run is reused, `verifyArtifactForReuse` strictly verifies:
+
+1. **Input Signature Equality**: The current step's computed consumed-input signature matches the recorded `artifact.inputSignature`.
+2. **Disk Existence & Non-Zero Bytes**: The physical artifact file exists at its resolved path on disk and has `stat.size > 0`.
+3. **Byte Size Integrity (Tampering Detection)**: The on-disk file size matches `artifact.sizeBytes`. If corrupted, truncated, or tampered with, the check fails closed with a cache miss fallback.
+4. **Referenced Asset Availability**: All catalog media assets consumed by the step still exist in the project catalog.
+5. **Adapter Version & Capability**: The adapter version matches current runtime expectations.
+6. **Consent & Scope**: Required permissions and speech consent remain actively granted.
+
+### Full-Render Fallback Transparency
+
+- When composition or subtitle changes require re-rendering, OpenFilm reports `renderMode: "full-render-fallback"`.
+- OpenFilm **never claims** to splice in-place bitstream MP4 frames or hack video containers without re-rasterization.
+- When existing adapters do not support bitstream-level delta splicing, full-render rasterization is explicitly disclosed in the impact report.
+
+### Immutable History & Asset Protection
+
+- **User Confirmation Creates a New Run**: Confirming an incremental run creates a brand new `PipelineRun` with a fresh `runId` and updated `inputSnapshot`.
+- **Historical Immutability**: Previous runs, attempts, and receipts remain completely untouched. Old manifests are never renamed or disguised.
+- **Provenance Stamping**: Reused step attempts are recorded with `status: "succeeded"`, their verified `inputSignature`, and metadata `reuseSource: { runId, stepId, reason }`.
+- **Asset Pruning Protection**: `isAssetReferencedByPipeline` checks all historical snapshots, step attempts, and artifact records to ensure media referenced by any pipeline run cannot be deleted or pruned.

@@ -58,6 +58,17 @@ describe("Phase M10B: Pipeline Workbench UI/UX Component", () => {
     expect(content).toContain('target.tagName === "TEXTAREA"');
     expect(content).toContain("target.isContentEditable");
 
+    // M11A Change Impact and incremental execution
+    expect(content).toContain("workbench-impact-panel");
+    expect(content).toContain("handleAnalyzeImpact");
+    expect(content).toContain("handleStartIncrementalRun");
+    expect(content).toContain("impact.title");
+    expect(content).toContain("impact.reusableSummary");
+    expect(content).toContain("impact.fullRenderFallback");
+    expect(content).toContain("impactStatus");
+    expect(content).toContain("ctas.startIncrementalRun");
+    expect(content).toContain("ctas.viewImpact");
+
     // Responsive 3-pane & reduced motion
     expect(content).toContain("workbench-pane-nav");
     expect(content).toContain("workbench-pane-card");

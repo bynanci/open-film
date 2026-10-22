@@ -600,7 +600,7 @@ export default {
         ideaText: "Idea / Thought",
         ideaIntent: "Intent / Note",
         ideaSource: "Source Nature",
-        mentionAsset: "Type @ to mention compatible assets",
+        mentionAsset: "Type {'@'} to mention compatible assets",
         themeTitle: "Theme Title",
         themeDescription: "Description",
         themeColor: "Theme Accent Color",
@@ -740,6 +740,8 @@ export default {
           adoptRoughCut: "Adopt Rough Cut",
           retryStep: "Retry Step",
           newRunWithLatest: "Create New Run with Latest Draft",
+          startIncrementalRun: "Start Incremental Run",
+          viewImpact: "View Change Impact",
           startExport: "Export Film",
           auditionPlay: "Play Audition",
           auditionPause: "Pause Audition",
@@ -751,7 +753,7 @@ export default {
           outdatedNotice:
             "Completed with an older draft — project content was modified after execution.",
           noM11aNotice:
-            "Fine-grained cache reuse (M11A) is not yet active. Retrying will rerun using the original snapshot.",
+            "Fine-grained cache reuse (M11A) is active: unaffected steps will reuse verified artifacts.",
           remoteConsentTitle: "External Service Data Transmission Consent",
           remoteConsentDesc:
             "Data category: Narration script text. Destination: {destination}. Estimated cost: {cost}.",
@@ -763,6 +765,24 @@ export default {
           missingAudioPrompt:
             "Narration audio is missing. Please select an audio recording or choose No Narration.",
           autoSelectCandidate: "Auto-select matching candidate media",
+        },
+        impact: {
+          title: "Change Impact Analysis",
+          subtitle:
+            "Per-step input signature verification and incremental artifact reuse",
+          reusableSummary: "{reusable} reusable, {rerun} will rerun",
+          fullRenderFallback: "Full Render Fallback",
+          fullRenderNotice:
+            "Subtitles or composition changed; full rasterization is required. In-place MP4 frame patching is not supported.",
+          incrementalNotice:
+            "Only modified steps will re-execute; verified artifacts from previous runs are preserved.",
+          stepInputsChanged: "Changed inputs: {inputs}",
+        },
+        impactStatus: {
+          reuse: "Reuse",
+          rerun: "Rerun",
+          needsReview: "Needs Review",
+          unavailable: "Unavailable",
         },
       },
     },
