@@ -11,6 +11,8 @@ import type {
 export * from "./audio-generation.js";
 import { AudioQualityService } from "./audio-quality.js";
 export * from "./audio-quality.js";
+import { StoryGraphService } from "./story-graph.js";
+export * from "./story-graph.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -332,6 +334,7 @@ export class OpenFilmApplication {
   readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
   readonly collectMedia: CollectMediaService;
+  readonly storyGraph: StoryGraphService;
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
@@ -391,6 +394,7 @@ export class OpenFilmApplication {
       this.intelligence = new MediaIntelligence(this.catalog);
       this.transcriptEditor = new TranscriptEditor(this);
       this.captions = new CaptionService(this);
+      this.storyGraph = new StoryGraphService(this, this.directory);
       this.knowledge = new KnowledgeService(
         this.catalog,
         this.transcriptEditor,

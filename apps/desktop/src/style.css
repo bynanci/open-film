@@ -981,6 +981,39 @@ textarea {
   font-size: var(--of-font-caption);
   color: var(--faded-ink);
 }
+.perspective-nav {
+  display: inline-flex;
+  align-items: center;
+  background: var(--card-surface, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--pencil, rgba(255, 255, 255, 0.1));
+  border-radius: var(--of-radius-sm, 6px);
+  padding: 2px;
+  gap: 2px;
+}
+.perspective-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: var(--of-font-caption, 13px);
+  font-weight: 500;
+  color: var(--faded-ink, #888);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.perspective-tab-btn:hover {
+  color: var(--ink, #eee);
+  background: rgba(255, 255, 255, 0.05);
+}
+.perspective-tab-btn.active {
+  color: var(--ink, #fff);
+  background: var(--panel, #25282d);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
 .story-selection > label {
   display: flex;
   align-items: center;

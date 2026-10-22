@@ -33,6 +33,8 @@ import CollectMediaPanel from "./components/CollectMediaPanel.vue";
 import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
+import StoryGraphView from "./components/StoryGraphView.vue";
+import StoryboardView from "./components/StoryboardView.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -326,6 +328,45 @@ const selectedBeatAssets = computed(() =>
     .map((id) => assetCache.value[id])
     .filter((asset): asset is MediaAsset => !!asset),
 );
+type StoryPerspective = "outline" | "graph" | "storyboard";
+const storyPerspective = ref<StoryPerspective>("graph");
+
+async function handleSelectBeat(beatId: string) {
+  if (!activeStory.value) return;
+  const index = activeStory.value.beats.findIndex((b) => b.id === beatId);
+  if (index !== -1 && activeBeatIndex.value !== index) {
+    if (beatDirty.value) {
+      if (!(await saveBeat())) return;
+    }
+    activeBeatIndex.value = index;
+    hydrateBeat();
+  }
+}
+
+async function handleStoryUpdate(updatedStory: Story) {
+  if (!project.value) return;
+  const index = project.value.stories.findIndex(
+    (s) => s.id === updatedStory.id,
+  );
+  if (index !== -1) {
+    project.value.stories[index] = updatedStory;
+    await patch(`/api/stories/${updatedStory.id}`, {
+      graph: updatedStory.graph,
+      beats: updatedStory.beats,
+    });
+  }
+}
+
+async function handleNavigateTimeline(beatId: string) {
+  if (!activeComposition.value) return;
+  const clip = activeComposition.value.tracks
+    .flatMap((t) => t.clips)
+    .find((c) => c.beatId === beatId);
+  await changeTab("edit");
+  if (clip) {
+    timelineEditor.value?.navigateToTime(clip.timelineStart);
+  }
+}
 const activeCompositionId = ref("");
 const activeComposition = computed(
   () =>
@@ -3279,7 +3320,50 @@ onUnmounted(() => {
                   {{ story.title }}
                 </option>
               </select></label
-            ><span>{{
+            >
+            <div
+              class="perspective-nav"
+              role="tablist"
+              :aria-label="t('app.storyGraph.perspectives.outline')"
+            >
+              <button
+                type="button"
+                role="tab"
+                class="perspective-tab-btn"
+                :class="{ active: storyPerspective === 'outline' }"
+                :aria-selected="storyPerspective === 'outline'"
+                data-testid="perspective-tab-outline"
+                @click="storyPerspective = 'outline'"
+              >
+                <Icon name="layers" :size="14" />
+                {{ t("app.storyGraph.perspectives.outline") }}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                class="perspective-tab-btn"
+                :class="{ active: storyPerspective === 'graph' }"
+                :aria-selected="storyPerspective === 'graph'"
+                data-testid="perspective-tab-graph"
+                @click="storyPerspective = 'graph'"
+              >
+                <Icon name="film" :size="14" />
+                {{ t("app.storyGraph.perspectives.graph") }}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                class="perspective-tab-btn"
+                :class="{ active: storyPerspective === 'storyboard' }"
+                :aria-selected="storyPerspective === 'storyboard'"
+                data-testid="perspective-tab-storyboard"
+                @click="storyPerspective = 'storyboard'"
+              >
+                <Icon name="grid" :size="14" />
+                {{ t("app.storyGraph.perspectives.storyboard") }}
+              </button>
+            </div>
+            <span>{{
               t("app.story.timing", {
                 target: duration(activeStory.targetDuration),
                 maximum: duration(activeStory.maxDuration),
@@ -3295,7 +3379,38 @@ onUnmounted(() => {
               {{ t("app.story.compose") }}<Icon name="arrow" />
             </button>
           </div>
-          <div class="story-room story-board">
+
+          <!-- Story Graph Perspective -->
+          <StoryGraphView
+            v-if="storyPerspective === 'graph'"
+            :key="`graph-${activeStory.id}`"
+            :story="activeStory"
+            :composition="activeComposition"
+            :assets="assets"
+            :media-statuses="sourceStatuses"
+            :active-beat-id="activeBeat?.id"
+            @select-beat="handleSelectBeat"
+            @update-story="handleStoryUpdate"
+            @navigate-timeline="handleNavigateTimeline"
+            @compose="compose"
+          />
+
+          <!-- Storyboard Perspective -->
+          <StoryboardView
+            v-else-if="storyPerspective === 'storyboard'"
+            :key="`storyboard-${activeStory.id}`"
+            :story="activeStory"
+            :composition="activeComposition"
+            :assets="assets"
+            :media-statuses="sourceStatuses"
+            :active-beat-id="activeBeat?.id"
+            @select-beat="handleSelectBeat"
+            @navigate-timeline="handleNavigateTimeline"
+            @compose="compose"
+          />
+
+          <!-- Outline Perspective (Preexisting Workflow) -->
+          <div v-else class="story-room story-board">
             <aside class="beat-list" :aria-label="t('app.story.beats')">
               <button
                 v-for="(beat, index) in activeStory.beats"

@@ -853,6 +853,24 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
       terms/license/cost/retention/download safety and explicit provider consent.
 - [ ] Manual: human/detail fidelity, physical color and native presentation.
 
+## Delivered — M9A Story Graph & Multi-Perspective Workspace
+
+[Contract](docs/CONTRACTS.md#m9a-story-graph--multi-perspective-workspace) · [validation](docs/validation-story-graph.md).
+
+- [x] Story and StoryBeat remain canonical; graph nodes reference stable `storyId` and `beatId` without duplicating content into divergent schemas.
+- [x] Four node types (`theme`, `beat`, `asset`, `idea`) and four idea sources (`user-memory`, `planned`, `wish`, `unknown`).
+- [x] Five edge types (`contains`, `supports`, `precedes`, `echoes`, `alternative`); cycle detection for `contains` and `precedes`; `echoes` strictly non-execution.
+- [x] Playback order driven by explicit reorder operations, never inferred from node coordinates (x, y).
+- [x] `GraphViewState` (pan, zoom, node coordinates) separated from video content revision (0 render/provider calls during canvas layout).
+- [x] Multi-perspective Story workspace: Outline (`outline`), Story Graph (`graph`), and Storyboard (`storyboard`).
+- [x] 3-column UI: Assets palette, Center Canvas, Inspector; auto-initializes graph on opening existing story (no empty canvas).
+- [x] Search, fit-to-content, layered auto-layout, layout undo, and quick actions ("Add asset", "Create echo", "Set as next beat").
+- [x] Compatible `@`-mentions with stable asset references (no private local file paths).
+- [x] View switching preserves active beat selection; clip mapping pills indicate timeline placement.
+- [x] Removing graph nodes/edges never deletes original library assets.
+- [x] Comprehensive test suites (33 tests across core, story, application, and UI) including 100/500-node synthetic benchmarks (<50ms).
+- [ ] Manual workstation testing: touch/pen gestures, large high-DPI displays.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

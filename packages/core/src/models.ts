@@ -127,6 +127,8 @@ export interface Story {
   targetDuration?: number;
   maxDuration?: number;
   beats: StoryBeat[];
+  /** Optional Story Graph perspective content. */
+  graph?: import("./story-graph.js").StoryGraph;
 }
 
 export interface ClipTransform {
