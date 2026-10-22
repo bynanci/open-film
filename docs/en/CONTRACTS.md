@@ -294,3 +294,326 @@ existing receipt and output bytes. Export jobs never mutate source files,
 Composition geometry, project schema, or editing history. See
 [Export Profiles](export-profiles.md) and the
 [M7B validation record](validation-export-profiles.md).
+
+## M9A Story Graph & Multi-Perspective Workspace
+
+The Story Graph workspace establishes a non-destructive narrative canvas and visual
+multi-perspective workflow (Outline, Story Graph, Storyboard) while keeping canonical
+`Story` and `StoryBeat` definitions strictly authoritative.
+
+### Canonical Story and Beat Integrity
+
+- `Story` and `StoryBeat` remain the sole canonical source of truth for narrative
+  structure, timing, script, and chosen candidate media.
+- Graph nodes reference stable `storyId` and `beatId` via typed `StoryBeatNode` entries.
+  Beat text, narration, and durations are never copied into divergent schemas.
+- Playback order is driven strictly by explicit canonical beat ordering, never
+  inferred from canvas `(x, y)` coordinates.
+
+### Graph Nodes and Edge Semantics
+
+- **Node Types**: Four distinct node types are supported: `theme` (thematic anchor),
+  `beat` (story beat reference), `asset` (library media reference), and `idea` (creative
+  thought or memory).
+- **Idea Sources**: Idea nodes explicitly record their origin via `IdeaSource`:
+  `user-memory`, `planned`, `wish`, or `unknown`.
+- **Edge Types**: Five relationship types are supported: `contains`, `supports`,
+  `precedes`, `echoes`, and `alternative`.
+- **Cycle Validation**: `precedes` and `contains` relationships are validated against
+  graph cycles upon addition and persist operations. Cyclic dependencies and
+  self-referencing edges are rejected with typed validation errors.
+- **Thematic Echoes**: `echoes` edges denote thematic resonance and are strictly
+  non-execution relationships; they are excluded from execution dependency graphs.
+- **Asset Protection**: Removing an asset node or connection from the graph never
+  deletes or alters the underlying `MediaAsset` in the project library.
+
+### Revision Separation
+
+- Canvas presentation data (`GraphViewState`: pan, zoom, node coordinate positions,
+  selected nodes/edges) is persisted separately in `cache/story-graph-views.json`.
+- Dragging nodes, zooming, panning, or running auto-layout does not increment the
+  project content revision, mutate `project.updatedAt`, or trigger any video rendering
+  or external provider executions (0 render/provider calls).
+
+### Multi-Perspective Workspace Synchronization
+
+- The Story workspace features three synchronized views:
+  1. **Outline (`outline`)**: Sequential script and candidate selection workflow.
+  2. **Story Graph (`graph`)**: Interactive 3-column canvas (Assets palette, SVG/HTML
+     graph canvas, Inspector) with search, auto-layout, layout undo, and quick actions.
+  3. **Storyboard (`storyboard`)**: Visual sequence card grid displaying beat timing,
+     narration, visual directions, media thumbnails, and timeline mapping status.
+- Beat selection (`activeBeatId`) is bidirectionally preserved when switching between
+  perspectives and locating clips on the Edit timeline.
+- Media playback follows the strict privacy and resource rule: only the actively
+  inspected media card allows playback; all other cards display static thumbnails.
+
+## M9B Graph to Reviewable Storyboard (StoryPlan)
+
+The StoryPlan pipeline compiles Story Graph selections and canonical beat sequences into a reviewable storyboard proposal (`StoryPlan`), supporting non-destructive preview, conflict resolution, and explicit adoption into a new rough cut (新試剪) while keeping original manual edits intact.
+
+### Proposal Contract (Not a Second Timeline)
+
+- `StoryPlan` is strictly an editorial proposal (`schemaVersion: '1.0.0'`), not a divergent Timeline or alternate renderer graph.
+- Input state is sealed with `inputSignature`: a deterministic 64-character lowercase hex digest of canonical story beats, target duration, candidate graph nodes, and non-echo edges.
+- Narrative order is strictly defined by canonical story beat sequences and explicit precedence edges. Canvas `(x, y)` coordinates are never used to infer narrative sequence.
+- Each scene card (`StoryPlanScene`) provides exactly the 5 reviewable dimensions:
+  1. **Assets & Roles (`assets`)**: references to library assets with roles (`hero`, `supporting`, `echo`), display thumbnails, and PhotoDepth support status (`supported`, `fallback-standard-hold`, `fallback-ken-burns`).
+  2. **Narrative Intent (`intent`)**: explicit editorial purpose grounded in canonical beat and attached thought nodes.
+  3. **Visual Direction (`visualDirection`)**: staging, camera motivation, and shot presentation.
+  4. **Duration & Pacing (`targetDuration`, `estimatedDuration`)**: target cut duration and CJK/Latin character-paced estimated narration timing (~3.5 CJK chars/sec, ~2.5 Latin words/sec). Microsecond fake precision timings are disallowed for unrecorded narration.
+  5. **Editorial Rationale (`rationale`)**: qualitative storytelling reasons; numerical pseudo-aesthetic scores are strictly forbidden.
+
+### Narrative Protections & Solver Extensions
+
+- **Thematic Echoes**: When a photo appears at both opening and closing (echo), solver receives explicit `allowEchoAssetIds` containing the asset ID. The rough cut produces distinct `Clip` instances referencing the same underlying `MediaAsset` without fabricating fake asset IDs or disabling deduplication globally.
+- **Source Nature Preservation**: Idea nodes explicitly distinguish `user-memory`, `planned`, `wish`, and `unknown` sources. Wishes, plans, and chat excerpts are never conflated into established factual occurrences.
+- **Unresolved Conflict Rejection**: Graph cycles and unresolved `alternative` paths are surfaced as actionable blocking conflicts (`conflicts`, `unresolvedAlternatives`, `detectedCycles`). Adoption is rejected with HTTP 409 until resolved.
+- **Unsupported Intent Transparency**: Freeform creative text requirements not supported by current templates or effects are surfaced in `unsupportedIntents` rather than being silently substituted with inaccurate effects.
+- **PhotoDepth Degradation**: When depth maps are unconfigured or unavailable, clear fallback modes (`standard-hold`, `ken-burns`) are indicated without synthesizing fake depth geometry.
+
+### Preview and Explicit Adoption
+
+- **Preview Endpoint (`POST /api/stories/:id/plan/preview`)**: Generates an ephemeral preview `Composition` using `@openfilm/solver` with 0 project mutations and 0 provider calls.
+- **Adoption Endpoint (`POST /api/stories/:id/plan/accept`)**:
+  - Validates `planId` and matches current `inputSignature`. If graph or beats have changed since plan generation, adoption fails with HTTP 409 Stale Plan.
+  - Generates a new rough cut `Composition` titled `${story.title} (Story Plan Cut)` scoped strictly to the plan's `candidateAssetIds`.
+  - Leaves the user's original manual timeline and existing rough cuts completely untouched.
+  - Idempotent: repeated submissions with the same `planId` return the existing adoption result without creating duplicate compositions.
+  - Stores a durable `StoryPlanAcceptanceMapping` binding proposal scene IDs to created clip IDs and track IDs.
+
+## M10A Guided Pipeline Orchestration
+
+The Guided Pipeline Orchestration engine executes fixed, recipe-driven production workflows reusing existing application services, catalog `Job`s, `ReviewExecutionOwner`, `ProviderRegistry`, renderer, and Visual QA.
+
+### Recipe and Port Contracts
+
+- **Recipe Schema (`PipelineRecipe`)**: Versioned (`schemaVersion: "1.0.0"`), identified by stable ID, version string, human-readable name, and an ordered list of step definitions (`PipelineStepDefinition`).
+- **Whitelisted Step Types**: Strict whitelist enforcement (`ALLOWED_PIPELINE_STEP_TYPES`):
+  1. `story-plan-select`: Selection and validation of story / story plan and candidate asset references.
+  2. `scene-prepare`: Visual framing, photo aspect ratio checks, PhotoDepth fallback assessment, and remote motion availability verification.
+  3. `narration`: Voice narration strategy (none, user-imported audio asset, or configured remote TTS). _Tone mock (`local-audio-mock`) is strictly prohibited from masquerading as speech narration._
+  4. `timing-captions`: Duration matching and subtitle/caption alignment.
+  5. `composition-adopt`: Adoption of rough cut composition using legal receipts advancing `expectedRevision`.
+  6. `render`: Sequential heavy video rendering (concurrency = 1 lock).
+  7. `visual-qa`: Automated Visual QA inspection; triggers `waiting-review` when issues or warnings are discovered.
+  8. `export`: Final explicit export to specified target profile and destination.
+- **Typed Ports & DAG Integrity**: Inputs and outputs specify explicit port types (`story-reference`, `story-plan`, `asset-list`, `scene-prep-result`, `audio-source`, `timing-result`, `composition`, `render-artifact`, `qa-report`, `export-artifact`). Recipes are validated for topological acyclicity; circular step dependencies are rejected with typed validation errors.
+
+### Execution State vs. Result Freshness
+
+- **Immutable Input Snapshots**: Each `PipelineRun` contains an immutable `inputSnapshot` capturing the project revision, story ID, asset IDs, narration strategy, and export format, sealed with a deterministic 64-character lowercase hex digest (`computeInputSnapshotDigest`).
+- **State Separation (`succeeded !== current`)**:
+  - A run's completion state (`idle`, `running`, `waiting-review`, `succeeded`, `failed`, `cancelled`) reflects execution lifecycle.
+  - A run's freshness state (`current`, `outdated`, `stale`) reflects applicability relative to current project content.
+  - External modifications to project title, beats, or assets increment project revision, rendering prior runs `outdated` via `isRunOutdated` without rewriting historical records.
+- **Legal Adoption Receipts**: Step 5 (`composition-adopt`) creates a canonical `PipelineRunReceipt` documenting composition creation and atomically advances `expectedRevision` to match the newly adopted project state, preventing legitimate run modifications from being flagged as stale.
+
+### Concurrency, Recovery, and Side-Effect Guards
+
+- **Concurrency = 1 for Heavy Media**: Heavy video rendering and solver operations are serialized through a dedicated single-flight execution lock (`heavyLock`).
+- **Zero-Lock Review Gates**: Steps entering `waiting-review` release all write locks and do not hold active child subprocesses. Polling `getRun` is strictly read-only and never spawns background tasks or increments revisions.
+- **Cancellation & Late Result Protection**: `cancelRun` broadcasts an `AbortSignal` to active tasks. Subprocess results arriving after cancellation are discarded.
+- **Durable Persistence Across Reopen**: Pipeline runs are persisted to disk (`cache/pipeline-runs.json`). Reopening the application restores runs without marking running or review processes as dead simply due to UI reload.
+- **Retry vs. New Run**:
+  - `retryRun`: Reruns a failed or cancelled run with the _identical_ immutable `inputSnapshot`, incrementing the step `attemptNumber`.
+  - `createRun`: Creates an entirely new run capturing current project revision and inputs.
+- **Idempotent Execution**: Calling `startRun` on an already succeeded run returns the completed run immediately without re-triggering side effects or duplicating compositions.
+
+## M10B Pipeline Workbench UI/UX
+
+The Pipeline Workbench (`PipelineWorkbench.vue`) elevates the Phase M10A orchestration engine into an interactive, multi-modal film production workbench that integrates non-destructively into the creator's workspace.
+
+### Information Architecture & Three Modes
+
+- **Workspace Invariance**: Preserves existing `Library`, `Story`, `Edit`, `Export`, and `Versions` workspaces without displacing the user's ongoing creative context.
+- **Three Progressive Modes**:
+  1. **Docked Status Bar (`bar`)**: Compact status bar docked at the bottom of the workspace. Shows the active 5-stage progress indicator, run status chip, outdated warning pill, and immediate one-click CTAs.
+  2. **Expandable Drawer (`drawer`)**: Slides up smoothly over the lower portion of the screen (~52vh), enabling simultaneous inspection of the Story Graph, Storyboard, Timeline, or Library while configuring the pipeline.
+  3. **Full-Viewport Modal (`modal`)**: Fullscreen view for focused, immersive inspection, parameter adjustment, and review decisions.
+- **Simplified 5 Stages**:
+  - `materials`: Selection and verification of library photos, videos, and audio candidates.
+  - `storyPlan`: Selection of canonical story, beat structure, timing, and PhotoDepth fallback.
+  - `produceClips`: Narration strategy (none, user voice recording with inline audition, or remote TTS with consent), timing, and rough cut composition adoption.
+  - `previewQa`: Sequential video render preview and Visual QA report with timecoded issue inspection.
+  - `export`: Final film packaging to MP4 1080p.
+- **Collapsible Sub-Steps & Dependencies**: Expanding reveals the underlying 8 canonical pipeline steps (`story-plan-select`, `scene-prepare`, `narration`, `timing-captions`, `composition-adopt`, `render`, `visual-qa`, `export`), typed ports, and execution attempt records.
+
+### Card Standard & Media Protections
+
+- **Four Questions Answered per Stage**:
+  1. **What was used (`usedWhat`)**: Input media, story references, narration audio files, and export profiles.
+  2. **What was produced (`producedWhat`)**: Adopted rough cut compositions, rendered video previews, QA reports, and export packages.
+  3. **Current status (`currentStatus`)**: Clear human-readable status badge (`pending`, `running`, `waiting-review`, `succeeded`, `failed`, `outdated`).
+  4. **Next action (`nextAction`)**: Context-dependent CTA button (supplement audio, review & confirm, adopt rough cut, retry step, export).
+- **Media Playback Safeguards**:
+  - Images: Displayed strictly as static thumbnails (`thumbnailUrl`).
+  - Audio: Inline mini audition player (`auditionPlay`/`auditionPause`) with elapsed time and duration tracking.
+  - Video: Static poster preview; video playback occurs only when the user explicitly clicks the play overlay. Unselected cards never auto-play.
+- **Outdated Revision Transparency**: Completed runs whose source drafts have changed externally are marked with an amber warning banner (`outdated`) and a CTA to "Create New Run from Current Draft". Historical runs never masquerade as latest outputs.
+- **Progress & Error Diagnostics**:
+  - Waiting-review states display explicit action prompts without continuous infinite spinners.
+  - In-progress runs with dynamic duration use indeterminate progress bars rather than fabricating completion percentages.
+  - Failed steps display the failing step name, concrete failure reason, and actionable recovery CTAs (e.g. import recording, retry).
+
+### Cross-View Navigation & Form Integrity
+
+- **Bidirectional Locating**:
+  - `[Locate in Story Graph]`: Switches to Story workspace with graph perspective, selecting the relevant beat node.
+  - `[Locate in Storyboard]`: Switches to Story workspace with storyboard card grid perspective.
+  - `[Locate on Timeline]`: Switches to Edit workspace, maintaining focus on the adopted rough cut clip.
+  - Returning to the workbench preserves previous selections, viewports, and scroll positions.
+- **Polling & Form Safety**: Background status polling (`getRun`) updates reactive run state without remounting the editor, wiping dirty drafts, or resetting uncommitted input fields.
+
+### Usability, Accessibility, and Disclosures
+
+- **Responsive Breakpoints**:
+  - `1440×900`: Three-pane layout (stages navigation, active stage card, inspector/sub-steps).
+  - `1280×720`: Two-pane collapsible layout.
+  - `1024×768`: Single-pane stacked drawer with stage outline list.
+- **Keyboard & IME Protection**: Keyboard listeners explicitly check event targets; keystrokes inside `input`, `textarea`, or contenteditable elements are never swallowed by global hotkeys. Number keys `1`..`5` switch stages when outside form inputs; `Escape` collapses modal/drawer.
+- **Reduced Motion**: Disables transitions and animations when `@media (prefers-reduced-motion: reduce)` is active.
+- **External Provider Consent**: Prior to transmitting script text to external TTS services, displays data categories, target destination, estimated cost, and requires explicit user checkbox consent.
+- **Cache Transparency**: Discloses that fine-grained partial cache reuse is governed by verified per-step input signatures (Phase M11A), preventing unverified assumptions.
+
+## M11A Change Impact and Incremental Runs
+
+Phase M11A establishes fine-grained change impact analysis, verified artifact reuse, and incremental pipeline execution across video production workflows.
+
+### Separation of Concerns: Project Revision vs. Per-Step Consumed Signature
+
+- **Project Revision (`expectedRevision` / `revision`)**:
+  - Used exclusively for checking rough-cut adoption permissions and detecting overall draft freshness (`isRunOutdated`).
+  - A whole-project revision bump (e.g., editing a subtitle line or adding an unconsumed beat idea) **must not** invalidate unaffected pipeline steps wholesale.
+- **Per-Step Consumed-Input Signature (`computeStepConsumedSignature`)**:
+  - Determines artifact reusability strictly based on the exact inputs consumed by that specific step.
+  - Computed via deterministic canonicalization (sorted object keys, normalized primitives, recursive arrays) fed into a 64-character lowercase hex digest mixer (`fnv1a64Mix`).
+  - Stamped onto `PipelineStepAttempt.inputSignature` and `PipelineArtifactRecord.inputSignature`.
+
+### Change Impact Matrix (8 Canonical Invalidation Cases)
+
+1. **Canvas pan/zoom/fold (`GraphViewState`)**:
+   - Updates viewport offsets and folded node states in `cache/story-graph-views.json`.
+   - Produces **0 media calls** and **100% artifact reuse**.
+2. **Unconsumed notes / draft ideas**:
+   - Notes or draft ideas not linked into the active story plan or pipeline inputs do not alter step signatures.
+   - Produces **0 media calls** and **100% artifact reuse**.
+3. **Subtitle text / style modified**:
+   - `timing-captions`, `render`, `visual-qa`, and `export` steps rerun.
+   - Narration voice audio and photo visual candidates are completely preserved (**0 TTS calls, 0 motion calls**).
+   - Generates verified output MP4 reflecting updated subtitle styling while reusing existing audio tracks.
+4. **Narration script modified (rerun requested)**:
+   - `narration`, `timing-captions`, `composition-adopt`, `render`, `visual-qa`, and `export` steps rerun.
+   - Visual candidate assets and `scene-prepare` artifacts are completely preserved.
+5. **Photo changed / PhotoDepth changed**:
+   - `scene-prepare`, `render`, `visual-qa`, and `export` steps rerun.
+   - Voice narration audio is completely preserved (**0 TTS calls**).
+6. **Output aspect ratio changed**:
+   - Delivery framing, safe areas, `render`, `visual-qa`, and `export` steps rerun.
+   - Voice narration audio is completely preserved.
+7. **Source bytes, font, or adapter version changed**:
+   - Any modification to source media bytes (`asset.hash`), font files, or adapter version invalidates all downstream consumers.
+8. **Consent / capability revoked**:
+   - Revoking external service consent or credentials invalidates remote steps.
+   - A cached artifact **cannot** authorize new remote dispatches or bypass user consent.
+
+### Verified Artifact Reuse Before Cache Hit
+
+Before any artifact from a prior run is reused, `verifyArtifactForReuse` strictly verifies:
+
+1. **Input Signature Equality**: The current step's computed consumed-input signature matches the recorded `artifact.inputSignature`.
+2. **Disk Existence & Non-Zero Bytes**: The physical artifact file exists at its resolved path on disk and has `stat.size > 0`.
+3. **Byte Size Integrity (Tampering Detection)**: The on-disk file size matches `artifact.sizeBytes`. If corrupted, truncated, or tampered with, the check fails closed with a cache miss fallback.
+4. **Referenced Asset Availability**: All catalog media assets consumed by the step still exist in the project catalog.
+5. **Adapter Version & Capability**: The adapter version matches current runtime expectations.
+6. **Consent & Scope**: Required permissions and speech consent remain actively granted.
+
+### Full-Render Fallback Transparency
+
+- When composition or subtitle changes require re-rendering, OpenFilm reports `renderMode: "full-render-fallback"`.
+- OpenFilm **never claims** to splice in-place bitstream MP4 frames or hack video containers without re-rasterization.
+- When existing adapters do not support bitstream-level delta splicing, full-render rasterization is explicitly disclosed in the impact report.
+
+### Immutable History & Asset Protection
+
+- **User Confirmation Creates a New Run**: Confirming an incremental run creates a brand new `PipelineRun` with a fresh `runId` and updated `inputSnapshot`.
+- **Historical Immutability**: Previous runs, attempts, and receipts remain completely untouched. Old manifests are never renamed or disguised.
+- **Provenance Stamping**: Reused step attempts are recorded with `status: "succeeded"`, their verified `inputSignature`, and metadata `reuseSource: { runId, stepId, reason }`.
+- **Asset Pruning Protection**: `isAssetReferencedByPipeline` checks all historical snapshots, step attempts, and artifact records to ensure media referenced by any pipeline run cannot be deleted or pruned.
+
+## M11B Creative Variants and A/B Review
+
+Phase M11B introduces creative variant branching, side-by-side A/B review, lock preservation, zero-render comparison, pre-adoption version checkpoints, baseline restoration, and media collection privacy.
+
+### Three Distinct Versioning Concepts
+
+1. **Project Snapshot (`ProjectVersionRecord`)**:
+   - Managed by `app.versions`. Persists immutable point-in-time full project snapshots with name, revision, and timestamp.
+2. **Session Undo/Redo**:
+   - In-memory ephemeral stack tracking user interactions and mutations within an active editing session.
+3. **Creative Variant (`CreativeVariant`)**:
+   - Structured alternative creative branches exploring different pacing, scene focus, or narration scripts.
+   - Stored in `cache/creative-variants.json`.
+   - References existing `MediaAsset`s, Story, and Composition records.
+   - **Does NOT duplicate raw media files** and **does NOT create a secondary version database**.
+
+### Scope and "只改本段" Section Isolation Proof
+
+- When creating a variant with `scope.type === "section"`:
+  - The variant targets a single specified beat/section.
+  - All non-target beats and clips are provably preserved (`preservedSections`).
+  - Preserved clips maintain exact media asset ID, filters, transforms, and timing relative to preceding cursor offsets.
+  - Modifying a section containing locked clips (`clip.locked === true`) without prior unlocking is rejected with HTTP 409 (`timeline.conflict`). Cloned variant clips strictly inherit lock flags.
+
+### Zero-Render A/B Comparison and Single-Audio Rule
+
+- **Zero-Render Comparison**:
+  - Comparing variants (`compareVariants`) evaluates existing composition models, story structures, and previously generated pipeline artifacts (preview MP4, visual QA reports).
+  - Comparison **never** triggers media rendering, re-rasterization, or external service calls ("開比較不重新生成").
+- **Single-Audio Playback Rule**:
+  - The UI and player strictly enforce that only **one** variant audio channel plays at any time. Selecting Audio A mutes/pauses Audio B; selecting Audio B mutes/pauses Audio A.
+- **Section-Based Timeline Alignment**:
+  - When comparing variants with different overall durations, navigation aligns by section/beat chips. OpenFilm **never** falsely claims differing runtimes align at identical absolute timestamps.
+
+### Pre-Adoption Checkpoint & Safe Reversion
+
+- **Mandatory Pre-Adoption Checkpoint**:
+  - Adopting a variant (`adoptVariant`) verifies source availability, edit locks, and expected revision before mutating the active project.
+  - A named checkpoint version (`app.versions.create`) is created automatically _before_ the variant composition is promoted to `timelines[0]`.
+  - If checkpoint creation fails, adoption immediately aborts and the project remains completely untouched.
+- **Post-Restore Invalidation**:
+  - When a user restores a baseline checkpoint (`app.versions.restore`), the project revision reverts.
+  - Old pipeline runs, approval receipts, and adopted variant references targeting superseded revisions are marked `outdated` and cannot be re-adopted.
+
+### Shared Media Safety & Collect Media Privacy
+
+- **Catalog Media Protection**:
+  - Deleting a creative variant deletes only its derived Story, derived Composition, and variant record.
+  - Shared catalog `MediaAsset`s are **never deleted or pruned**.
+- **Collect Media Privacy**:
+  - When collecting media for a variant (`app.collectMedia.plan({ scope: "current-film", compositionId })`), only media assets directly referenced by that specific composition are packaged.
+  - Private assets used exclusively in other variants or unconsumed library media are strictly excluded.
+
+## Story Graph × Pipeline End-to-End Product Acceptance
+
+Phase M9A–M11B product acceptance verifies the complete creative workflow across Story Graph, StoryPlan storyboard proposal, guided pipeline orchestration, change impact analysis, and creative variants.
+
+### Fixed Synthetic Fixture Specification
+
+- **6 Synthetic Images**: 1280×720 synthetic JPEG images (`photo_1` through `photo_6`), each with unique content hashes, dimensions, timestamps, and realistic Jiufen hiking trail GPS coordinates (`GeoPoint`).
+- **3 Fictional Memories**: Personal reflective thoughts (`user-memory`, `wish`) capturing personal nostalgia and future wishes without conflation into historical facts.
+- **3 Fictional Conversations**: Dialogue excerpts (`planned`) reflecting intentions and advice from companions, tea house owners, and guides.
+- **Schematic Route**: Explicit graph edges (`precedes`, `echoes`, `contains`) mapping the narrative progression without canvas coordinate guesswork.
+- **Reproducible WAV Guide Tone**: 30.0-second 16-bit PCM Mono 44.1 kHz sinusoidal WAV tone. Explicitly labeled `tone` across all metadata; never masquerades as human speech.
+- **Manual Traditional Chinese Subtitles**: Authentic localized strings aligned to scene intentions and visual directions.
+- **Frame Calculation**: 30.0 seconds at 30 fps yielding exactly **900 frames** under default 1280×720 resolution.
+
+### Verified Workflow Guarantees
+
+1. **Explicit Sequence & Echo Preservation**: Sequences are strictly governed by explicit graph edges (`precedes`); cycles and unresolved alternatives fail closed. Opening and closing echo clips reference distinct clip instances without duplicating media assets or bypassing deduplication.
+2. **Non-Destructive Storyboard Adoption**: `StoryPlan` generates a proposal card deck without touching existing timelines; adopting a plan creates a new rough cut (新試剪) while preserving manual edits.
+3. **Pipeline Review Gates**: Pipeline runs pause at required review steps (`waiting-review`); review state holds no subprocesses or locks.
+4. **Change Impact & Zero-Cost Reuse**: Subtitle-only modifications reuse 100% of upstream visual preparation and narration audio, proving `ttsCalls === 0` and `motionCalls === 0`.
+5. **Fault Injection Resilience**: Cancellation halts runs immediately; retry retains identical input snapshots; source data tampering triggers cache miss fallbacks; version restoration marks superseded runs as outdated.
+6. **Zero-Render A/B Review & Safe Reversion**: Variant comparison inspects existing models and artifacts with `renderCalls === 0`; adoption creates automatic checkpoints; baseline restoration rolls back cleanly to Baseline A.
+7. **Privacy Isolation**: Collect Media strictly isolates the assets of the active film from other variants or private catalog items.
