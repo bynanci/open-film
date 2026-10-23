@@ -19,10 +19,7 @@ import {
 import { safeProjectCachePath, checkAbort } from "@openfilm/media";
 import type { OpenFilmApplication } from "./index.js";
 import { savedScriptProjectIdentity } from "./scene-script-review.js";
-import {
-  createReviewOwner,
-  reviewOwnerState,
-} from "./review-owner.js";
+import { createReviewOwner, reviewOwnerState } from "./review-owner.js";
 
 /** Built-in canonical guided recipe: Assets/Story -> Scenes -> Narration -> Timing/Captions -> Adopt -> Render -> QA -> Export. */
 export const guidedStoryToVideoRecipe: PipelineRecipe = {
