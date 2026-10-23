@@ -115,13 +115,18 @@ function importAudio() {
   >
     <header class="audio-generation-header">
       <strong>{{ t("editor.audioGeneration.title") }}</strong>
-      <p class="audio-generation-disclosure">{{ t("editor.audioGeneration.disclosure") }}</p>
+      <p class="audio-generation-disclosure">
+        {{ t("editor.audioGeneration.disclosure") }}
+      </p>
     </header>
 
     <div class="audio-generation-provider-block">
       <label
         >{{ t("editor.audioGeneration.provider")
-        }}<select v-model="providerId" :disabled="busy || importing || disabled">
+        }}<select
+          v-model="providerId"
+          :disabled="busy || importing || disabled"
+        >
           <option
             v-for="provider in providers"
             :key="provider.id"
@@ -135,7 +140,10 @@ function importAudio() {
           </option>
         </select></label
       >
-      <div v-if="providerId === 'local-audio-mock'" class="provider-info-card local">
+      <div
+        v-if="providerId === 'local-audio-mock'"
+        class="provider-info-card local"
+      >
         <span class="provider-badge local">Local Mock</span>
         <p class="provider-desc">{{ t("editor.audioGeneration.mock") }}</p>
       </div>
@@ -143,7 +151,9 @@ function importAudio() {
         <span class="provider-badge remote">Remote Service</span>
         <p class="provider-desc">
           {{ t("editor.audioGeneration.remoteCost") }}
-          <code>{{ providers.find((p) => p.id === providerId)?.endpoint }}</code>
+          <code>{{
+            providers.find((p) => p.id === providerId)?.endpoint
+          }}</code>
         </p>
       </div>
     </div>
@@ -197,19 +207,29 @@ function importAudio() {
       </button>
     </div>
 
-    <p v-if="failed" class="error-text" role="alert">{{ t("editor.audioGeneration.failed") }}</p>
+    <p v-if="failed" class="error-text" role="alert">
+      {{ t("editor.audioGeneration.failed") }}
+    </p>
 
     <section v-if="receipt" class="audio-receipt-card">
       <div class="receipt-header">
         <div class="receipt-meta">
-          <strong>{{ receipt.mock ? t("editor.audioGeneration.mock") : receipt.model }}</strong>
-          <span>{{ receipt.duration.toFixed(2) }} s · {{
-            receipt.costStatus === "free-mock"
-              ? "$0"
-              : t("editor.audioGeneration.remoteCost")
-          }}</span>
+          <strong>{{
+            receipt.mock ? t("editor.audioGeneration.mock") : receipt.model
+          }}</strong>
+          <span
+            >{{ receipt.duration.toFixed(2) }} s ·
+            {{
+              receipt.costStatus === "free-mock"
+                ? "$0"
+                : t("editor.audioGeneration.remoteCost")
+            }}</span
+          >
         </div>
-        <span class="receipt-status-badge" :class="{ accepted: receipt.accepted }">
+        <span
+          class="receipt-status-badge"
+          :class="{ accepted: receipt.accepted }"
+        >
           {{ receipt.accepted ? "✓ Accepted" : "Review" }}
         </span>
       </div>

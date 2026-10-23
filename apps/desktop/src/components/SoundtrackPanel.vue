@@ -340,8 +340,13 @@ function startPlayback() {
           }}</span>
         </div>
         <div class="soundtrack-item-meta">
-          <small class="soundtrack-item-time">{{ formatDuration(clip.timelineStart) }}</small>
-          <span v-if="clip.audioAutomation?.ducking" class="soundtrack-item-tag">
+          <small class="soundtrack-item-time">{{
+            formatDuration(clip.timelineStart)
+          }}</small>
+          <span
+            v-if="clip.audioAutomation?.ducking"
+            class="soundtrack-item-tag"
+          >
             {{ t("editor.sound.ducking") }}
           </span>
         </div>
