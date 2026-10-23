@@ -558,7 +558,7 @@ export default {
         ideaText: "想法／筆記內容",
         ideaIntent: "創作意圖",
         ideaSource: "來源性質",
-        mentionAsset: "輸入 @ 引用相容素材",
+        mentionAsset: "輸入 {'@'} 引用相容素材",
         themeTitle: "主題名稱",
         themeDescription: "主題描述",
         themeColor: "強調顏色",

@@ -595,7 +595,7 @@ export default {
         ideaText: "アイデア／メモ内容",
         ideaIntent: "意図／演出意図",
         ideaSource: "ソース性質",
-        mentionAsset: "@を入力して互換性のある素材を参照",
+        mentionAsset: "{'@'}を入力して互換性のある素材を参照",
         themeTitle: "テーマ名",
         themeDescription: "説明",
         themeColor: "テーマカラー",
