@@ -906,6 +906,27 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Verification: comprehensive unit and application integration test suites (20 tests across core, application, and UI).
 - [ ] Manual workstation validation: end-to-end hardware-accelerated video export, high-DPI display layout review.
 
+## Delivered — M10B Pipeline Workbench UI/UX
+
+[Contract](docs/CONTRACTS.md#m10b-pipeline-workbench-uiux) · [validation](docs/validation-pipeline-workbench.md).
+
+- [x] Information architecture: preserved Library/Story/Edit/Export; docked collapsed status bar (`bar`) above footer, expandable drawer (`drawer`) preserving creative context, and focused fullscreen view (`modal`).
+- [x] Simplified 5 stages: Materials (`materials`) -> Story Plan (`storyPlan`) -> Produce Clips (`produceClips`) -> Preview & QA (`previewQa`) -> Export (`export`).
+- [x] Four Questions per card: explicit answer to Used What (`usedWhat`), Produced What (`producedWhat`), Current Status (`currentStatus`), and Next Action (`nextAction`).
+- [x] Media safeguards: static photo thumbnails (`thumbnailUrl`), inline audio audition mini player with play/pause, and click-to-play video preview (unselected cards never auto-play).
+- [x] Status-dependent CTAs: supplement missing audio, review & confirm, adopt rough cut, retry step, export film.
+- [x] Outdated draft transparency: `isRunOutdated` flags runs based on older drafts with a prominent amber alert banner and "Create New Run with Latest Draft" CTA.
+- [x] Non-blocking waiting review: displays clear action prompts without continuous infinite spinners.
+- [x] Indeterminate progress: in-progress steps with dynamic durations use indeterminate spinners rather than faking average percentages.
+- [x] Actionable error diagnostics: step identification, failure cause, and concrete recovery action.
+- [x] Cross-view navigation: `[Locate in Story Graph]`, `[Locate in Storyboard]`, `[Locate on Timeline]` with selection and viewport preservation upon return.
+- [x] Form & polling safety: background polling updates reactive run state without remounting editors or wiping uncommitted form inputs.
+- [x] Responsive layout: 1440x900 3-pane workbench, 1280x720 2-pane collapsible, 1024x768 single-pane stacked drawer.
+- [x] Keyboard & IME protection: input/textarea key events isolated from global hotkeys; 1..5 shortcuts for stage navigation; Esc collapses drawer/modal.
+- [x] Disclosures & consent: external TTS service disclosure (data category, destination, cost, and explicit consent checkbox); M11A cache disclosure.
+- [x] Real services acceptance: verified missing audio supplement journey, review & adopt journey, failure recovery journey, and outdated draft detection journey.
+- [ ] Manual workstation validation: live multi-track audio listening QA, high-DPI touch/gesture workbench verification.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

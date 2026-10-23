@@ -60,20 +60,19 @@ describe("Phase M10A: Pipeline Orchestration Modal UI Component", () => {
     const appPath = resolve("apps/desktop/src/App.vue");
     const content = readFileSync(appPath, "utf8");
 
-    // Import modal
-    expect(content).toContain("PipelineOrchestrationModal");
+    // Import workbench
+    expect(content).toContain("PipelineWorkbench");
 
     // Header toggle button
     expect(content).toContain("pipeline-toggle");
-    expect(content).toContain("pipelineModalOpen = true");
+    expect(content).toContain("pipelineWorkbenchOpen = true");
 
     // Story workspace action button
     expect(content).toContain("pipeline-action");
 
-    // Modal mounting with props and events
-    expect(content).toContain("<PipelineOrchestrationModal");
-    expect(content).toContain(':open="pipelineModalOpen"');
-    expect(content).toContain('@close="pipelineModalOpen = false"');
+    // Workbench mounting with props and events
+    expect(content).toContain("<PipelineWorkbench");
+    expect(content).toContain(':open="pipelineWorkbenchOpen"');
     expect(content).toContain('@rough-cut-adopted="handleRoughCutAdopted"');
 
     // Adoption handler switches to edit tab

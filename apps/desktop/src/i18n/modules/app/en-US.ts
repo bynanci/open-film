@@ -711,6 +711,60 @@ export default {
         exportFile: "Exported Film File",
         roughCut: "Adopted Rough Cut Composition",
       },
+      workbench: {
+        title: "Video Production Workbench",
+        barTitle: "Production Pipeline",
+        expand: "Expand Workbench",
+        collapse: "Collapse Workbench",
+        fullscreen: "Fullscreen View",
+        exitFullscreen: "Exit Fullscreen",
+        stages: {
+          materials: "Materials",
+          storyPlan: "Story Plan",
+          produceClips: "Produce Clips",
+          previewQa: "Preview & QA",
+          export: "Export",
+        },
+        card: {
+          usedWhat: "What was used",
+          producedWhat: "What was produced",
+          currentStatus: "Current status",
+          nextAction: "Next action",
+        },
+        ctas: {
+          locateStoryGraph: "Locate in Story Graph",
+          locateStoryboard: "Locate in Storyboard",
+          locateTimeline: "Locate on Timeline",
+          importAudio: "Import Narration",
+          reviewAndAdopt: "Review & Confirm",
+          adoptRoughCut: "Adopt Rough Cut",
+          retryStep: "Retry Step",
+          newRunWithLatest: "Create New Run with Latest Draft",
+          startExport: "Export Film",
+          auditionPlay: "Play Audition",
+          auditionPause: "Pause Audition",
+          playPreview: "Play Preview",
+          pausePreview: "Pause Preview",
+          openLibrary: "Open Library",
+        },
+        disclosures: {
+          outdatedNotice:
+            "Completed with an older draft — project content was modified after execution.",
+          noM11aNotice:
+            "Fine-grained cache reuse (M11A) is not yet active. Retrying will rerun using the original snapshot.",
+          remoteConsentTitle: "External Service Data Transmission Consent",
+          remoteConsentDesc:
+            "Data category: Narration script text. Destination: {destination}. Estimated cost: {cost}.",
+          remoteConsentCheckbox:
+            "I consent to sending script text to the external speech service.",
+          waitingUserPrompt:
+            "Awaiting your review decision. Please inspect the output above and submit approval.",
+          errorDiagnostic: "Error in step '{step}': {reason}",
+          missingAudioPrompt:
+            "Narration audio is missing. Please select an audio recording or choose No Narration.",
+          autoSelectCandidate: "Auto-select matching candidate media",
+        },
+      },
     },
     composition: {
       eyebrow: "YOUR ROUGH CUT",

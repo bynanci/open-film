@@ -705,6 +705,59 @@ export default {
         exportFile: "エクスポートされた動画ファイル",
         roughCut: "採用されたラフカット構成",
       },
+      workbench: {
+        title: "動画制作ワークベンチ",
+        barTitle: "制作パイプライン",
+        expand: "ワークベンチを展開",
+        collapse: "ワークベンチを折りたたむ",
+        fullscreen: "全画面表示",
+        exitFullscreen: "全画面を終了",
+        stages: {
+          materials: "素材選択",
+          storyPlan: "ストーリー案",
+          produceClips: "クリップ作成",
+          previewQa: "試写とQA",
+          export: "書き出し",
+        },
+        card: {
+          usedWhat: "使用した要素",
+          producedWhat: "生成された成果物",
+          currentStatus: "現在の状態",
+          nextAction: "次の操作",
+        },
+        ctas: {
+          locateStoryGraph: "ストーリーグラフで特定",
+          locateStoryboard: "絵コンテで特定",
+          locateTimeline: "タイムラインで特定",
+          importAudio: "音声をインポート",
+          reviewAndAdopt: "レビューして承認",
+          adoptRoughCut: "ラフカットを採用",
+          retryStep: "このステップを再試行",
+          newRunWithLatest: "最新稿で新規実行を作成",
+          startExport: "動画を書き出し",
+          auditionPlay: "音声を試聴",
+          auditionPause: "試聴を一時停止",
+          playPreview: "プレビューを再生",
+          pausePreview: "プレビューを一時停止",
+          openLibrary: "ライブラリを開く",
+        },
+        disclosures: {
+          outdatedNotice:
+            "旧稿に基づいて完了しています — 前回の実行後にプロジェクトが変更されました。",
+          noM11aNotice:
+            "詳細キャッシュ再利用 (M11A) は未有効です。再試行時は元のスナップショットで再実行されます。",
+          remoteConsentTitle: "外部サービスへのデータ送信の同意",
+          remoteConsentDesc:
+            "送信データ種別：ナレーション台本。送信先：{destination}。概算費用：{cost}。",
+          remoteConsentCheckbox: "外部音声サービスへの台本送信に同意します。",
+          waitingUserPrompt:
+            "ユーザーのレビュー待ちです。上の成果物を確認して承認操作を行ってください。",
+          errorDiagnostic: "ステップ「{step}」でエラーが発生しました：{reason}",
+          missingAudioPrompt:
+            "ナレーション音声がありません。録音素材を選択するか、ナレーションなしを選択してください。",
+          autoSelectCandidate: "一致する候補素材を自動選択",
+        },
+      },
     },
     composition: {
       eyebrow: "あなたのラフカット",

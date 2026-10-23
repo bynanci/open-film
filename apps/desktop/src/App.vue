@@ -35,7 +35,9 @@ import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
 import StoryGraphView from "./components/StoryGraphView.vue";
 import StoryboardView from "./components/StoryboardView.vue";
-import PipelineOrchestrationModal from "./components/PipelineOrchestrationModal.vue";
+import PipelineWorkbench, {
+  type WorkbenchMode,
+} from "./components/PipelineWorkbench.vue";
 import type {
   MediaAsset,
   FilmLook,
@@ -117,7 +119,30 @@ const noticeMessage = computed(() =>
   notice.value ? uiMessage(notice.value) : "",
 );
 const settingsOpen = ref(false);
-const pipelineModalOpen = ref(false);
+const pipelineWorkbenchOpen = ref(true);
+const pipelineWorkbenchMode = ref<WorkbenchMode>("bar");
+
+function handleWorkbenchModeChange(newMode: WorkbenchMode) {
+  pipelineWorkbenchMode.value = newMode;
+}
+
+function handleNavigateStoryFromPipeline(
+  perspective: "outline" | "graph" | "storyboard",
+  beatId?: string,
+) {
+  tab.value = "story";
+  storyPerspective.value = perspective;
+  if (beatId && activeStory.value) {
+    const idx = activeStory.value.beats.findIndex((b) => b.id === beatId);
+    if (idx !== -1) {
+      activeBeatIndex.value = idx;
+    }
+  }
+}
+
+function handleNavigateTimelineFromPipeline(_clipId?: string, _time?: number) {
+  tab.value = "edit";
+}
 const workspaceInfo = ref<Awaited<ReturnType<typeof api.workspace>> | null>(
   null,
 );
@@ -2279,7 +2304,10 @@ onUnmounted(() => {
         v-if="project"
         class="text-button pipeline-toggle"
         :aria-label="t('app.pipeline.title')"
-        @click="pipelineModalOpen = true"
+        @click="
+          pipelineWorkbenchOpen = true;
+          pipelineWorkbenchMode = 'drawer';
+        "
       >
         <Icon name="layers" :size="16" />
         {{ t("app.pipeline.title") }}
@@ -3396,7 +3424,10 @@ onUnmounted(() => {
               :disabled="
                 !!busy || beatDirty || storyReviewBusy || storyReviewPending
               "
-              @click="pipelineModalOpen = true"
+              @click="
+                pipelineWorkbenchOpen = true;
+                pipelineWorkbenchMode = 'drawer';
+              "
             >
               <Icon name="layers" :size="14" />
               {{ t("app.pipeline.title") }}</button
@@ -3932,14 +3963,20 @@ onUnmounted(() => {
       @close="settingsOpen = false"
       @content-locale="changeFilmLocale"
     />
-    <PipelineOrchestrationModal
-      v-if="pipelineModalOpen"
-      :open="pipelineModalOpen"
+    <PipelineWorkbench
+      v-if="project && pipelineWorkbenchOpen"
+      :open="pipelineWorkbenchOpen"
+      :initial-mode="pipelineWorkbenchMode"
       :story-id="activeStory?.id"
       :active-story="activeStory"
       :assets="assets"
-      @close="pipelineModalOpen = false"
+      :project="project"
+      :active-composition-id="activeCompositionId"
+      @close="pipelineWorkbenchMode = 'bar'"
+      @mode-change="handleWorkbenchModeChange"
       @rough-cut-adopted="handleRoughCutAdopted"
+      @navigate-story="handleNavigateStoryFromPipeline"
+      @navigate-timeline="handleNavigateTimelineFromPipeline"
     />
     <div v-if="busy" class="busy-indicator" role="status">
       <span class="spinner" />{{ t(`app.activity.tasks.${busy}`) }}…
