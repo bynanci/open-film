@@ -654,7 +654,12 @@ label.ui-language {
   line-height: 1.5;
 }
 .library-sidebar
-  button:is(.active, [aria-pressed="true"], [aria-current="page"], [aria-current="true"]) {
+  button:is(
+    .active,
+    [aria-pressed="true"],
+    [aria-current="page"],
+    [aria-current="true"]
+  ) {
   color: var(--of-accent);
   background: var(--of-accent-soft);
   border-color: var(--of-accent);

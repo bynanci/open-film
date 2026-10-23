@@ -2414,7 +2414,9 @@ onUnmounted(() => {
         :class="{ 'project-heading-compact': tab === 'edit' }"
       >
         <div v-if="tab !== 'edit'">
-          <span class="eyebrow">{{ `${tab.toUpperCase()} / LOCAL-FIRST` }}</span>
+          <span class="eyebrow">{{
+            `${tab.toUpperCase()} / LOCAL-FIRST`
+          }}</span>
           <h1>
             {{
               tab === "library"

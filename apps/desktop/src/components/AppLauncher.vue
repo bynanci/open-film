@@ -131,7 +131,14 @@ function submit() {
               <stop offset="100%" stop-color="#593e29" />
             </linearGradient>
           </defs>
-          <ellipse cx="180" cy="158" rx="118" ry="18" fill="#090b0d" opacity="0.65" />
+          <ellipse
+            cx="180"
+            cy="158"
+            rx="118"
+            ry="18"
+            fill="#090b0d"
+            opacity="0.65"
+          />
           <polygon
             points="180,92 316,136 180,180 44,136"
             fill="#14171c"
