@@ -600,7 +600,7 @@ export default {
         ideaText: "Idea / Thought",
         ideaIntent: "Intent / Note",
         ideaSource: "Source Nature",
-        mentionAsset: "Type @ to mention compatible assets",
+        mentionAsset: "Type {'@'} to mention compatible assets",
         themeTitle: "Theme Title",
         themeDescription: "Description",
         themeColor: "Theme Accent Color",
