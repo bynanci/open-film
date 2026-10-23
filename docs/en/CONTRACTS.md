@@ -294,3 +294,90 @@ existing receipt and output bytes. Export jobs never mutate source files,
 Composition geometry, project schema, or editing history. See
 [Export Profiles](export-profiles.md) and the
 [M7B validation record](validation-export-profiles.md).
+
+## M9A Story Graph & Multi-Perspective Workspace
+
+The Story Graph workspace establishes a non-destructive narrative canvas and visual
+multi-perspective workflow (Outline, Story Graph, Storyboard) while keeping canonical
+`Story` and `StoryBeat` definitions strictly authoritative.
+
+### Canonical Story and Beat Integrity
+
+- `Story` and `StoryBeat` remain the sole canonical source of truth for narrative
+  structure, timing, script, and chosen candidate media.
+- Graph nodes reference stable `storyId` and `beatId` via typed `StoryBeatNode` entries.
+  Beat text, narration, and durations are never copied into divergent schemas.
+- Playback order is driven strictly by explicit canonical beat ordering, never
+  inferred from canvas `(x, y)` coordinates.
+
+### Graph Nodes and Edge Semantics
+
+- **Node Types**: Four distinct node types are supported: `theme` (thematic anchor),
+  `beat` (story beat reference), `asset` (library media reference), and `idea` (creative
+  thought or memory).
+- **Idea Sources**: Idea nodes explicitly record their origin via `IdeaSource`:
+  `user-memory`, `planned`, `wish`, or `unknown`.
+- **Edge Types**: Five relationship types are supported: `contains`, `supports`,
+  `precedes`, `echoes`, and `alternative`.
+- **Cycle Validation**: `precedes` and `contains` relationships are validated against
+  graph cycles upon addition and persist operations. Cyclic dependencies and
+  self-referencing edges are rejected with typed validation errors.
+- **Thematic Echoes**: `echoes` edges denote thematic resonance and are strictly
+  non-execution relationships; they are excluded from execution dependency graphs.
+- **Asset Protection**: Removing an asset node or connection from the graph never
+  deletes or alters the underlying `MediaAsset` in the project library.
+
+### Revision Separation
+
+- Canvas presentation data (`GraphViewState`: pan, zoom, node coordinate positions,
+  selected nodes/edges) is persisted separately in `cache/story-graph-views.json`.
+- Dragging nodes, zooming, panning, or running auto-layout does not increment the
+  project content revision, mutate `project.updatedAt`, or trigger any video rendering
+  or external provider executions (0 render/provider calls).
+
+### Multi-Perspective Workspace Synchronization
+
+- The Story workspace features three synchronized views:
+  1. **Outline (`outline`)**: Sequential script and candidate selection workflow.
+  2. **Story Graph (`graph`)**: Interactive 3-column canvas (Assets palette, SVG/HTML
+     graph canvas, Inspector) with search, auto-layout, layout undo, and quick actions.
+  3. **Storyboard (`storyboard`)**: Visual sequence card grid displaying beat timing,
+     narration, visual directions, media thumbnails, and timeline mapping status.
+- Beat selection (`activeBeatId`) is bidirectionally preserved when switching between
+  perspectives and locating clips on the Edit timeline.
+- Media playback follows the strict privacy and resource rule: only the actively
+  inspected media card allows playback; all other cards display static thumbnails.
+
+## M9B Graph to Reviewable Storyboard (StoryPlan)
+
+The StoryPlan pipeline compiles Story Graph selections and canonical beat sequences into a reviewable storyboard proposal (`StoryPlan`), supporting non-destructive preview, conflict resolution, and explicit adoption into a new rough cut (新試剪) while keeping original manual edits intact.
+
+### Proposal Contract (Not a Second Timeline)
+
+- `StoryPlan` is strictly an editorial proposal (`schemaVersion: '1.0.0'`), not a divergent Timeline or alternate renderer graph.
+- Input state is sealed with `inputSignature`: a deterministic 64-character lowercase hex digest of canonical story beats, target duration, candidate graph nodes, and non-echo edges.
+- Narrative order is strictly defined by canonical story beat sequences and explicit precedence edges. Canvas `(x, y)` coordinates are never used to infer narrative sequence.
+- Each scene card (`StoryPlanScene`) provides exactly the 5 reviewable dimensions:
+  1. **Assets & Roles (`assets`)**: references to library assets with roles (`hero`, `supporting`, `echo`), display thumbnails, and PhotoDepth support status (`supported`, `fallback-standard-hold`, `fallback-ken-burns`).
+  2. **Narrative Intent (`intent`)**: explicit editorial purpose grounded in canonical beat and attached thought nodes.
+  3. **Visual Direction (`visualDirection`)**: staging, camera motivation, and shot presentation.
+  4. **Duration & Pacing (`targetDuration`, `estimatedDuration`)**: target cut duration and CJK/Latin character-paced estimated narration timing (~3.5 CJK chars/sec, ~2.5 Latin words/sec). Microsecond fake precision timings are disallowed for unrecorded narration.
+  5. **Editorial Rationale (`rationale`)**: qualitative storytelling reasons; numerical pseudo-aesthetic scores are strictly forbidden.
+
+### Narrative Protections & Solver Extensions
+
+- **Thematic Echoes**: When a photo appears at both opening and closing (echo), solver receives explicit `allowEchoAssetIds` containing the asset ID. The rough cut produces distinct `Clip` instances referencing the same underlying `MediaAsset` without fabricating fake asset IDs or disabling deduplication globally.
+- **Source Nature Preservation**: Idea nodes explicitly distinguish `user-memory`, `planned`, `wish`, and `unknown` sources. Wishes, plans, and chat excerpts are never conflated into established factual occurrences.
+- **Unresolved Conflict Rejection**: Graph cycles and unresolved `alternative` paths are surfaced as actionable blocking conflicts (`conflicts`, `unresolvedAlternatives`, `detectedCycles`). Adoption is rejected with HTTP 409 until resolved.
+- **Unsupported Intent Transparency**: Freeform creative text requirements not supported by current templates or effects are surfaced in `unsupportedIntents` rather than being silently substituted with inaccurate effects.
+- **PhotoDepth Degradation**: When depth maps are unconfigured or unavailable, clear fallback modes (`standard-hold`, `ken-burns`) are indicated without synthesizing fake depth geometry.
+
+### Preview and Explicit Adoption
+
+- **Preview Endpoint (`POST /api/stories/:id/plan/preview`)**: Generates an ephemeral preview `Composition` using `@openfilm/solver` with 0 project mutations and 0 provider calls.
+- **Adoption Endpoint (`POST /api/stories/:id/plan/accept`)**:
+  - Validates `planId` and matches current `inputSignature`. If graph or beats have changed since plan generation, adoption fails with HTTP 409 Stale Plan.
+  - Generates a new rough cut `Composition` titled `${story.title} (Story Plan Cut)` scoped strictly to the plan's `candidateAssetIds`.
+  - Leaves the user's original manual timeline and existing rough cuts completely untouched.
+  - Idempotent: repeated submissions with the same `planId` return the existing adoption result without creating duplicate compositions.
+  - Stores a durable `StoryPlanAcceptanceMapping` binding proposal scene IDs to created clip IDs and track IDs.
