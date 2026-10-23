@@ -3654,6 +3654,37 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, { runs: application.pipeline.listRuns() });
           return;
         }
+        if (method === "POST" && route === "/api/pipelines/analyze-impact") {
+          const data = (await body(request)) as {
+            recipeId?: string;
+            options?: import("@openfilm/application").CreatePipelineRunOptions & {
+              baseRunId?: string;
+            };
+          };
+          const recipeId = data.recipeId ?? "guided-story-to-video";
+          const report = await application.pipeline.analyzeChangeImpact(
+            recipeId,
+            data.options ?? {},
+          );
+          json(response, 200, { report });
+          return;
+        }
+        if (method === "POST" && route === "/api/pipelines/runs/incremental") {
+          const data = (await body(request)) as {
+            recipeId?: string;
+            options?: import("@openfilm/application").CreatePipelineRunOptions & {
+              baseRunId?: string;
+              impactReport?: import("@openfilm/core").PipelineChangeImpactReport;
+            };
+          };
+          const recipeId = data.recipeId ?? "guided-story-to-video";
+          const run = await application.pipeline.createIncrementalRun(
+            recipeId,
+            data.options ?? {},
+          );
+          json(response, 201, { run });
+          return;
+        }
         if (method === "POST" && route === "/api/pipelines/runs") {
           const data = (await body(request)) as {
             recipeId?: string;

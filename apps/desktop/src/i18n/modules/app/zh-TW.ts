@@ -693,6 +693,8 @@ export default {
           adoptRoughCut: "採用粗剪",
           retryStep: "重試該步驟",
           newRunWithLatest: "依最新稿件建立新 Run",
+          startIncrementalRun: "建立增量 Run",
+          viewImpact: "查看變更影響",
           startExport: "輸出影片",
           auditionPlay: "試聽配音",
           auditionPause: "暫停試聽",
@@ -703,7 +705,7 @@ export default {
         disclosures: {
           outdatedNotice: "完成但基於舊稿件 — 專案內容在上次執行後已被修改。",
           noM11aNotice:
-            "尚未啟用精細快取重用 (M11A)。重試將使用原始快照重新執行。",
+            "精細快取重用 (M11A) 已啟用：未受影響之步驟將重用已驗證產物。",
           remoteConsentTitle: "外部服務資料傳輸同意",
           remoteConsentDesc:
             "傳輸類別：旁白語音劇本。目標服務：{destination}。預估費用：{cost}。",
@@ -713,6 +715,23 @@ export default {
           missingAudioPrompt:
             "目前缺少旁白錄音，請選取錄音素材或切換至無旁白模式。",
           autoSelectCandidate: "自動選擇符合的候選素材",
+        },
+        impact: {
+          title: "變更影響分析",
+          subtitle: "各步驟輸入簽章比對與增量產物重用",
+          reusableSummary: "{reusable} 項可重用，{rerun} 項需重新執行",
+          fullRenderFallback: "完整合成回退 (Full-render Fallback)",
+          fullRenderNotice:
+            "字幕或剪輯內容已改變；需要完整畫面合成，不支援原地修改 MP4 影格。",
+          incrementalNotice:
+            "僅受影響步驟會重新執行；先前 Run 之有效產物將完整保留。",
+          stepInputsChanged: "變更輸入：{inputs}",
+        },
+        impactStatus: {
+          reuse: "重用",
+          rerun: "重跑",
+          needsReview: "待審閱",
+          unavailable: "無法執行",
         },
       },
     },

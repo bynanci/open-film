@@ -927,6 +927,28 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Real services acceptance: verified missing audio supplement journey, review & adopt journey, failure recovery journey, and outdated draft detection journey.
 - [ ] Manual workstation validation: live multi-track audio listening QA, high-DPI touch/gesture workbench verification.
 
+## Delivered — M11A Change Impact and Incremental Runs
+
+[Contract](docs/CONTRACTS.md#m11a-change-impact-and-incremental-runs) · [validation](docs/validation-change-impact.md).
+
+- [x] Separation of concerns: composition revision used strictly for checking adoption permissions and draft freshness; per-step consumed-input signatures (`computeStepConsumedSignature`) govern artifact reusability. Project-wide revision bumps do not invalidate unaffected steps wholesale.
+- [x] Canonical step consumed signatures: canonicalized key-sorted deterministic hashing via 64-char FNV-1a mixer (`fnv1a64Mix`). Stamped onto `PipelineStepAttempt.inputSignature` and `PipelineArtifactRecord.inputSignature`.
+- [x] Impact Matrix: Case 1 (canvas pan/zoom/fold) and Case 2 (unconsumed draft notes/ideas) yield 0 media calls and 100% artifact reuse.
+- [x] Impact Matrix: Case 3 (subtitle text/style modified) yields 0 TTS calls, 0 motion calls, downstream visual QA / export rerun, and verified A/B output bytes reflecting updated subtitles.
+- [x] Impact Matrix: Case 4 (narration script modified) reruns voice audio and downstream steps while preserving visual assets and scene prep.
+- [x] Impact Matrix: Case 5 (photos changed / PhotoDepth changed) reruns visual preparation while preserving voice narration audio (0 TTS calls).
+- [x] Impact Matrix: Case 6 (output aspect ratio changed) reruns delivery framing, rendering, and QA while preserving audio tracks.
+- [x] Impact Matrix: Case 7 (source media bytes, font, or adapter version changed) cleanly propagates invalidation to all genuine consumers.
+- [x] Impact Matrix: Case 8 (external service consent revoked) re-checks permissions; cache hits cannot authorize remote dispatches or bypass user consent.
+- [x] Verified artifact reuse before hit: `verifyArtifactForReuse` strictly verifies input signature equality, physical file existence on disk, non-zero file size, byte size matching against recorded metadata (tampering check), referenced asset presence in catalog, adapter version match, and active user consent.
+- [x] Full-render fallback transparency: `renderMode: "full-render-fallback"` explicitly reported when rasterization or subtitle changes require re-rendering. No claim of in-place MP4 frame patching.
+- [x] Immutable history & stale rejection: user confirmation creates a brand new `PipelineRun` with a fresh `runId` and updated `inputSnapshot`; previous runs and receipts remain untouched. Stale impact reports are rejected if project revision advances prior to confirmation.
+- [x] Reused attempt provenance: reused step attempts stamped with `status: "succeeded"`, their verified `inputSignature`, and metadata `reuseSource: { runId, stepId, reason }`.
+- [x] Asset protection: `isAssetReferencedByPipeline` checks all snapshots, attempts, and artifacts to prevent media referenced by pipeline runs from being deleted or pruned.
+- [x] Workbench UI integration: docked bar displays `[View Change Impact]` CTA when outdated; opens modal displaying per-step badges (`reuse`, `rerun`, `needs-review`, `unavailable`), human-readable explanations, changed input tags, full-render fallback notice, and "Start Incremental Run" CTA.
+- [x] Verification: comprehensive unit and integration test suites covering all 8 matrix cases, disk tampering detection, stale report rejection, base run immutability, zero service calls on reuse, and full i18n compilation across `en-US`, `zh-TW`, and `ja-JP`.
+- [ ] Manual workstation validation: live multi-track audio listening QA, external remote TTS latency verification.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

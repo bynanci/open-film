@@ -118,6 +118,12 @@ export interface PipelineStepAttempt {
   completedAt?: string;
   inputs?: Record<string, unknown>;
   outputs?: Record<string, unknown>;
+  inputSignature?: string;
+  reuseSource?: {
+    runId: string;
+    stepId: string;
+    reason: string;
+  };
   error?: {
     message: string;
     code?: string;
@@ -142,9 +148,16 @@ export interface PipelineArtifactRecord {
     | "qa-report"
     | "export-file"
     | "rough-cut-composition"
-    | "audio-file";
+    | "audio-file"
+    | "scene-prep"
+    | "timing-result";
   path?: string;
   uri?: string;
+  inputSignature?: string;
+  outputHash?: string;
+  sizeBytes?: number;
+  adapterVersion?: string;
+  verifiedAt?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -166,6 +179,92 @@ export interface PipelineRun {
   updatedAt: string;
 }
 
+export type StepImpactStatus =
+  "rerun" | "reuse" | "needs-review" | "unavailable";
+
+export interface StepChangeImpact {
+  stepId: string;
+  stepType: PipelineStepType;
+  stepName: string;
+  status: StepImpactStatus;
+  reason: string;
+  reusableArtifactId?: string;
+  reusableRunId?: string;
+  inputsChanged: string[];
+  currentSignature: string;
+  baseSignature?: string;
+}
+
+export interface PipelineChangeImpactReport {
+  schemaVersion: "1.0.0";
+  recipeId: string;
+  baseRunId?: string;
+  projectRevision: string | number;
+  steps: StepChangeImpact[];
+  summary: {
+    totalSteps: number;
+    reusableSteps: number;
+    rerunSteps: number;
+    needsReviewSteps: number;
+    unavailableSteps: number;
+  };
+  renderMode: "incremental" | "full-render-fallback";
+  renderFallbackReason?: string;
+  createdAt: string;
+}
+
+/** Pure deterministic FNV-1a mixer generating 64-char lowercase hex digest without Node crypto runtime. */
+export function fnv1a64Mix(input: string): string {
+  const seeds = [
+    0x811c9dc5, 0x9e3779b9, 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c,
+  ];
+  const primes = [
+    16777619, 16777643, 16777663, 16777681, 16777709, 16777727, 16777739,
+    16777759,
+  ];
+
+  const hashes = seeds.slice();
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    for (let h = 0; h < 8; h++) {
+      hashes[h] = Math.imul(hashes[h]! ^ code, primes[h]!) >>> 0;
+    }
+  }
+
+  return hashes.map((h) => h.toString(16).padStart(8, "0")).join("");
+}
+
+function canonicalizeJson(val: unknown): unknown {
+  if (val === null || typeof val !== "object") {
+    return val;
+  }
+  if (Array.isArray(val)) {
+    return val.map(canonicalizeJson);
+  }
+  const keys = Object.keys(val as Record<string, unknown>).sort();
+  const res: Record<string, unknown> = {};
+  for (const k of keys) {
+    const v = (val as Record<string, unknown>)[k];
+    if (v !== undefined) {
+      res[k] = canonicalizeJson(v);
+    }
+  }
+  return res;
+}
+
+/** Compute deterministic consumed input signature for a single pipeline step. */
+export function computeStepConsumedSignature(
+  stepType: PipelineStepType,
+  inputs: Record<string, unknown>,
+): string {
+  const canonical = JSON.stringify({
+    stepType,
+    inputs: canonicalizeJson(inputs),
+  });
+  return fnv1a64Mix(canonical);
+}
+
 /** Pure deterministic FNV-1a mixer generating 64-char lowercase hex digest without Node crypto runtime. */
 export function computeInputSnapshotDigest(
   snapshot: Omit<PipelineInputSnapshot, "inputDigest">,
@@ -181,24 +280,7 @@ export function computeInputSnapshotDigest(
     customParams: snapshot.customParams ?? {},
   });
 
-  const seeds = [
-    0x811c9dc5, 0x9e3779b9, 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-    0x510e527f, 0x9b05688c,
-  ];
-  const primes = [
-    16777619, 16777643, 16777663, 16777681, 16777709, 16777727, 16777739,
-    16777759,
-  ];
-
-  const hashes = seeds.slice();
-  for (let i = 0; i < normalized.length; i++) {
-    const code = normalized.charCodeAt(i);
-    for (let h = 0; h < 8; h++) {
-      hashes[h] = Math.imul(hashes[h]! ^ code, primes[h]!) >>> 0;
-    }
-  }
-
-  return hashes.map((h) => h.toString(16).padStart(8, "0")).join("");
+  return fnv1a64Mix(normalized);
 }
 
 /** Validates that a recipe is non-cyclic and its step types are strictly whitelisted. */
@@ -383,4 +465,47 @@ export function isRunOutdated(
     return true;
   }
   return false;
+}
+
+/** Check if a Change Impact Report is stale relative to the active project revision. */
+export function isImpactReportStale(
+  report: PipelineChangeImpactReport,
+  currentProjectRevision: string | number,
+): boolean {
+  return String(report.projectRevision) !== String(currentProjectRevision);
+}
+
+/** Validate schema of a PipelineChangeImpactReport. */
+export function validateChangeImpactReport(
+  raw: unknown,
+): PipelineChangeImpactReport {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("PipelineChangeImpactReport must be an object.");
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.schemaVersion !== "1.0.0") {
+    throw new Error(
+      `Unsupported PipelineChangeImpactReport schemaVersion: '${String(obj.schemaVersion)}'.`,
+    );
+  }
+  if (typeof obj.recipeId !== "string" || !obj.recipeId.trim()) {
+    throw new Error(
+      "PipelineChangeImpactReport.recipeId must be a non-empty string.",
+    );
+  }
+  if (!Array.isArray(obj.steps)) {
+    throw new Error("PipelineChangeImpactReport.steps must be an array.");
+  }
+  if (!obj.summary || typeof obj.summary !== "object") {
+    throw new Error("PipelineChangeImpactReport.summary must be an object.");
+  }
+  if (
+    obj.renderMode !== "incremental" &&
+    obj.renderMode !== "full-render-fallback"
+  ) {
+    throw new Error(
+      `Invalid renderMode: expected 'incremental' or 'full-render-fallback', got '${String(obj.renderMode)}'.`,
+    );
+  }
+  return raw as PipelineChangeImpactReport;
 }

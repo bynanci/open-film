@@ -734,6 +734,8 @@ export default {
           adoptRoughCut: "ラフカットを採用",
           retryStep: "このステップを再試行",
           newRunWithLatest: "最新稿で新規実行を作成",
+          startIncrementalRun: "増分実行を開始",
+          viewImpact: "変更の影響を確認",
           startExport: "動画を書き出し",
           auditionPlay: "音声を試聴",
           auditionPause: "試聴を一時停止",
@@ -745,7 +747,7 @@ export default {
           outdatedNotice:
             "旧稿に基づいて完了しています — 前回の実行後にプロジェクトが変更されました。",
           noM11aNotice:
-            "詳細キャッシュ再利用 (M11A) は未有効です。再試行時は元のスナップショットで再実行されます。",
+            "詳細キャッシュ再利用 (M11A) が有効です: 影響を受けないステップは検証済み成果物を再利用します。",
           remoteConsentTitle: "外部サービスへのデータ送信の同意",
           remoteConsentDesc:
             "送信データ種別：ナレーション台本。送信先：{destination}。概算費用：{cost}。",
@@ -756,6 +758,23 @@ export default {
           missingAudioPrompt:
             "ナレーション音声がありません。録音素材を選択するか、ナレーションなしを選択してください。",
           autoSelectCandidate: "一致する候補素材を自動選択",
+        },
+        impact: {
+          title: "変更影響分析",
+          subtitle: "ステップごとの入力署名検証と増分成果物の再利用",
+          reusableSummary: "{reusable} 件再利用可能、{rerun} 件再実行",
+          fullRenderFallback: "フルレンダリングフォールバック",
+          fullRenderNotice:
+            "字幕または構成が変更されたため、完全なレンダリングが必要です。MP4フレームの部分変更はサポートされていません。",
+          incrementalNotice:
+            "変更されたステップのみ再実行され、過去の検証済み成果物が保持されます。",
+          stepInputsChanged: "変更された入力: {inputs}",
+        },
+        impactStatus: {
+          reuse: "再利用",
+          rerun: "再実行",
+          needsReview: "確認必要",
+          unavailable: "利用不可",
         },
       },
     },
