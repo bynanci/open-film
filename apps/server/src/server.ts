@@ -3523,6 +3523,97 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const storyMatch = /^\/api\/stories\/([^/]+)$/.exec(route);
+        const storyGraphMatch = /^\/api\/stories\/([^/]+)\/graph$/.exec(route);
+        if (storyGraphMatch) {
+          const storyId = decodeURIComponent(storyGraphMatch[1]!);
+          if (method === "GET") {
+            const graph = application.storyGraph.getGraph(storyId);
+            json(response, 200, { graph });
+            return;
+          }
+          if (method === "PUT") {
+            const data = await body(request, 16 * 1024 * 1024);
+            const graph = await application.storyGraph.updateGraph(
+              storyId,
+              data,
+            );
+            json(response, 200, { graph });
+            return;
+          }
+        }
+        const storyGraphViewMatch =
+          /^\/api\/stories\/([^/]+)\/graph-view$/.exec(route);
+        if (storyGraphViewMatch) {
+          const storyId = decodeURIComponent(storyGraphViewMatch[1]!);
+          if (method === "GET") {
+            const viewState = application.storyGraph.getViewState(storyId);
+            json(response, 200, { viewState });
+            return;
+          }
+          if (method === "PUT") {
+            const data = await body(request, 16 * 1024 * 1024);
+            const viewState = application.storyGraph.updateViewState(
+              storyId,
+              data,
+            );
+            json(response, 200, { viewState });
+            return;
+          }
+        }
+        const storyGraphQuickActionMatch =
+          /^\/api\/stories\/([^/]+)\/graph\/quick-action$/.exec(route);
+        if (method === "POST" && storyGraphQuickActionMatch) {
+          const storyId = decodeURIComponent(storyGraphQuickActionMatch[1]!);
+          const data = await body(request);
+          const action = String(data.action);
+          if (action === "add-asset") {
+            const result = await application.storyGraph.addAssetToBeat(
+              storyId,
+              String(data.beatId),
+              String(data.assetId),
+            );
+            json(response, 200, result);
+            return;
+          }
+          if (action === "create-echo") {
+            const graph = await application.storyGraph.createEcho(
+              storyId,
+              String(data.fromNodeId),
+              String(data.toNodeId),
+            );
+            json(response, 200, { graph });
+            return;
+          }
+          if (action === "set-next-beat") {
+            const result = await application.storyGraph.setNextBeat(
+              storyId,
+              String(data.currentBeatId),
+              String(data.targetBeatId),
+            );
+            json(response, 200, result);
+            return;
+          }
+          if (action === "remove-node") {
+            const graph = await application.storyGraph.removeNode(
+              storyId,
+              String(data.nodeId),
+            );
+            json(response, 200, { graph });
+            return;
+          }
+          if (action === "remove-edge") {
+            const graph = await application.storyGraph.removeEdge(
+              storyId,
+              String(data.edgeId),
+            );
+            json(response, 200, { graph });
+            return;
+          }
+          throw new HttpError(
+            400,
+            `Unknown story graph quick action '${action}'.`,
+          );
+        }
         const suggestions =
           /^\/api\/stories\/([^/]+)\/beats\/([^/]+)\/suggestions$/.exec(route);
         if (method === "POST" && suggestions) {
@@ -3547,9 +3638,13 @@ export async function startServer(options: ServerOptions = {}) {
           if (
             Object.keys(data).some(
               (key) =>
-                !["title", "targetDuration", "maxDuration", "beats"].includes(
-                  key,
-                ),
+                ![
+                  "title",
+                  "targetDuration",
+                  "maxDuration",
+                  "beats",
+                  "graph",
+                ].includes(key),
             )
           )
             throw new HttpError(400, "Unsupported story edit.");

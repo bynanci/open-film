@@ -29,6 +29,7 @@ import {
   graphicSceneAssetIds,
 } from "./graphic-scenes.js";
 import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
+import { validateStoryGraph } from "./story-graph.js";
 
 export interface ValidationIssue {
   path: string;
@@ -879,7 +880,7 @@ function story(
   )
     fail(`${path}.targetDuration`, "target duration exceeds maximum duration");
   const beats = array(data.beats, `${path}.beats`);
-  ids(beats, `${path}.beats`);
+  const beatIds = ids(beats, `${path}.beats`);
   beats.forEach((entry, i) => {
     const beatPath = `${path}.beats[${i}]`;
     const beat = object(entry, beatPath);
@@ -952,6 +953,13 @@ function story(
           );
       });
     });
+  });
+  optional(data, "graph", path, (v, p) => {
+    try {
+      validateStoryGraph(v, beatIds, knownAssets);
+    } catch (err) {
+      fail(p, err instanceof Error ? err.message : String(err));
+    }
   });
   return data as unknown as Story;
 }

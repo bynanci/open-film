@@ -294,3 +294,56 @@ existing receipt and output bytes. Export jobs never mutate source files,
 Composition geometry, project schema, or editing history. See
 [Export Profiles](export-profiles.md) and the
 [M7B validation record](validation-export-profiles.md).
+
+## M9A Story Graph & Multi-Perspective Workspace
+
+The Story Graph workspace establishes a non-destructive narrative canvas and visual
+multi-perspective workflow (Outline, Story Graph, Storyboard) while keeping canonical
+`Story` and `StoryBeat` definitions strictly authoritative.
+
+### Canonical Story and Beat Integrity
+
+- `Story` and `StoryBeat` remain the sole canonical source of truth for narrative
+  structure, timing, script, and chosen candidate media.
+- Graph nodes reference stable `storyId` and `beatId` via typed `StoryBeatNode` entries.
+  Beat text, narration, and durations are never copied into divergent schemas.
+- Playback order is driven strictly by explicit canonical beat ordering, never
+  inferred from canvas `(x, y)` coordinates.
+
+### Graph Nodes and Edge Semantics
+
+- **Node Types**: Four distinct node types are supported: `theme` (thematic anchor),
+  `beat` (story beat reference), `asset` (library media reference), and `idea` (creative
+  thought or memory).
+- **Idea Sources**: Idea nodes explicitly record their origin via `IdeaSource`:
+  `user-memory`, `planned`, `wish`, or `unknown`.
+- **Edge Types**: Five relationship types are supported: `contains`, `supports`,
+  `precedes`, `echoes`, and `alternative`.
+- **Cycle Validation**: `precedes` and `contains` relationships are validated against
+  graph cycles upon addition and persist operations. Cyclic dependencies and
+  self-referencing edges are rejected with typed validation errors.
+- **Thematic Echoes**: `echoes` edges denote thematic resonance and are strictly
+  non-execution relationships; they are excluded from execution dependency graphs.
+- **Asset Protection**: Removing an asset node or connection from the graph never
+  deletes or alters the underlying `MediaAsset` in the project library.
+
+### Revision Separation
+
+- Canvas presentation data (`GraphViewState`: pan, zoom, node coordinate positions,
+  selected nodes/edges) is persisted separately in `cache/story-graph-views.json`.
+- Dragging nodes, zooming, panning, or running auto-layout does not increment the
+  project content revision, mutate `project.updatedAt`, or trigger any video rendering
+  or external provider executions (0 render/provider calls).
+
+### Multi-Perspective Workspace Synchronization
+
+- The Story workspace features three synchronized views:
+  1. **Outline (`outline`)**: Sequential script and candidate selection workflow.
+  2. **Story Graph (`graph`)**: Interactive 3-column canvas (Assets palette, SVG/HTML
+     graph canvas, Inspector) with search, auto-layout, layout undo, and quick actions.
+  3. **Storyboard (`storyboard`)**: Visual sequence card grid displaying beat timing,
+     narration, visual directions, media thumbnails, and timeline mapping status.
+- Beat selection (`activeBeatId`) is bidirectionally preserved when switching between
+  perspectives and locating clips on the Edit timeline.
+- Media playback follows the strict privacy and resource rule: only the actively
+  inspected media card allows playback; all other cards display static thumbnails.

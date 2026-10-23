@@ -30,6 +30,8 @@ import type {
   ProjectVersionRecord,
   ExportProfile,
   FilmLook,
+  StoryGraph,
+  GraphViewState,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -366,6 +368,16 @@ export const post = <T>(
   });
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const put = <T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> =>
+  request<T>(path, {
+    method: "PUT",
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
 export const thumbnailUrl = (id: string): string =>
   `${prefix}/thumbnail/${encodeURIComponent(id)}`;
 export const previewUrl = (version: number): string =>
@@ -1069,6 +1081,46 @@ export const api = {
   refreshSuggestions: (storyId: string, beatId: string) =>
     post<{ story: Story }>(
       `/stories/${encodeURIComponent(storyId)}/beats/${encodeURIComponent(beatId)}/suggestions`,
+    ),
+  storyGraph: (storyId: string, signal?: AbortSignal) =>
+    request<{ graph: StoryGraph }>(
+      `/stories/${encodeURIComponent(storyId)}/graph`,
+      { signal },
+    ),
+  updateStoryGraph: (
+    storyId: string,
+    graph: StoryGraph,
+    signal?: AbortSignal,
+  ) =>
+    put<{ graph: StoryGraph }>(
+      `/stories/${encodeURIComponent(storyId)}/graph`,
+      graph,
+      signal,
+    ),
+  storyGraphView: (storyId: string, signal?: AbortSignal) =>
+    request<{ viewState: GraphViewState }>(
+      `/stories/${encodeURIComponent(storyId)}/graph-view`,
+      { signal },
+    ),
+  updateStoryGraphView: (
+    storyId: string,
+    viewState: GraphViewState,
+    signal?: AbortSignal,
+  ) =>
+    put<{ viewState: GraphViewState }>(
+      `/stories/${encodeURIComponent(storyId)}/graph-view`,
+      viewState,
+      signal,
+    ),
+  storyGraphQuickAction: (
+    storyId: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
+    post<{ story?: Story; graph: StoryGraph }>(
+      `/stories/${encodeURIComponent(storyId)}/graph/quick-action`,
+      body,
+      signal,
     ),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
