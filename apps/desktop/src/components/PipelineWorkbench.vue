@@ -1619,6 +1619,9 @@ onUnmounted(() => {
    MODE 1: Collapsed Docked Bottom Bar
    ========================================= */
 .pipeline-status-bar {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2326,7 +2329,7 @@ onUnmounted(() => {
 
 .pill-idle {
   background: #33333d;
-  color: #888;
+  color: #e5e7eb;
 }
 
 .indeterminate-bar {
@@ -2435,6 +2438,16 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
   .bar-stages-track {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .pipeline-status-bar {
+    padding: 6px 12px;
+    gap: 8px;
+  }
+  .bar-title {
     display: none;
   }
 }
