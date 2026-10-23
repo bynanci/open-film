@@ -93,8 +93,8 @@ export default {
       openStory: "自由なストーリー",
       proposal: "プロポーズフィルム",
       filmLanguage: "フィルムの言語",
-      target: "目標の長さ（秒）",
-      maximum: "最大の長さ（秒）",
+      target: "目標時間（秒）",
+      maximum: "最大時間（秒）",
       languageHint:
         "フィルムの言語は初期のビート名に使われます。自分の文章はどの言語でも書けます。",
       advanced: "詳細設定 · 保存先",

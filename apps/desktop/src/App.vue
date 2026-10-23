@@ -2285,9 +2285,13 @@ onUnmounted(() => {
         href="#"
         :aria-label="t('app.navigation.home')"
         @click.prevent="changeTab('library')"
-        ><span class="logo-bracket">[</span>OpenFilm<span class="logo-bracket"
-          >]</span
-        ></a
+        ><img
+          src="/openfilm-logo-light.png"
+          alt=""
+          class="wordmark-logo"
+          width="28"
+          height="28"
+        /><span class="wordmark-text">OpenFilm</span></a
       >
       <nav
         v-if="project"

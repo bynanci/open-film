@@ -82,12 +82,25 @@ textarea {
   border-bottom: 1px solid var(--frame-line);
 }
 .wordmark {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 760;
-  letter-spacing: -1.3px;
+  letter-spacing: -1.2px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--ink);
+}
+.wordmark-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(236, 172, 124, 0.35));
+}
+.wordmark-text {
+  font-weight: 760;
+  letter-spacing: -0.03em;
 }
 .logo-bracket {
   color: var(--film-orange);
@@ -162,7 +175,18 @@ textarea {
   font-size: var(--of-font-display);
   line-height: var(--of-line-heading);
   letter-spacing: -0.025em;
-  margin: 22px 0 27px;
+  margin: 18px 0 27px;
+}
+.launcher-brand-hero {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--of-space-2);
+}
+.launcher-brand-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(236, 172, 124, 0.35));
 }
 .welcome-intro h1 em {
   font-weight: 400;
@@ -606,11 +630,17 @@ textarea {
 .asset-card {
   position: relative;
   min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .asset-image-button {
   display: block;
   width: 100%;
   aspect-ratio: 4/3;
+  min-height: 0;
+  max-width: 100%;
   position: relative;
   background: var(--dark-room);
   border-radius: var(--of-radius-sm);
@@ -665,14 +695,19 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 .asset-caption {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 11px;
-  padding-right: var(--of-space-1);
+  display: block;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-top: 8px;
+  padding-right: var(--of-space-1);
 }
 .asset-name {
+  display: block;
+  max-width: 100%;
   font-size: var(--of-font-caption);
   font-weight: 550;
   overflow: hidden;
@@ -680,12 +715,18 @@ textarea {
   white-space: nowrap;
 }
 .asset-date {
+  display: block;
   font-size: var(--of-font-caption);
   color: var(--faded-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .asset-actions {
   display: flex;
   align-items: center;
+  max-width: 100%;
+  overflow: hidden;
   gap: 3px;
   margin-top: 7px;
   color: var(--of-text-secondary);

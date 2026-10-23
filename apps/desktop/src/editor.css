@@ -825,10 +825,68 @@ button.editor-beat-heading:hover {
 
 .editor-soundtrack-list > button {
   display: grid;
-  justify-items: start;
+  justify-items: stretch;
   gap: var(--of-space-1);
   text-align: start;
   min-width: 0;
+  min-height: 58px;
+  padding: var(--of-space-3);
+  border-radius: var(--of-radius-sm);
+  background: var(--editor-surface-1, var(--of-surface-1));
+  border: 1px solid var(--editor-border-soft, var(--of-border));
+  box-sizing: border-box;
+}
+
+.editor-soundtrack-list > button[aria-pressed="true"] {
+  border-color: var(--of-accent);
+  background: var(--of-surface-2, rgba(236, 172, 124, 0.08));
+}
+
+.soundtrack-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--of-space-2);
+  width: 100%;
+}
+
+.soundtrack-item-title {
+  font-weight: 550;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soundtrack-item-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--of-surface-2);
+  color: var(--of-text-secondary);
+  flex-shrink: 0;
+}
+
+.soundtrack-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--of-space-2);
+  width: 100%;
+  margin-top: 2px;
+}
+
+.soundtrack-item-time {
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.soundtrack-item-tag {
+  font-size: 11px;
+  color: var(--of-accent);
 }
 
 .editor-soundtrack-list span {

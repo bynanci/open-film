@@ -172,9 +172,34 @@ input[type="range"] {
   letter-spacing: -0.025em;
   line-height: 1;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--of-space-2);
+}
+.wordmark-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(236, 172, 124, 0.35));
+}
+.wordmark-text {
+  font-weight: 760;
+  letter-spacing: -0.03em;
 }
 .logo-bracket {
   font-size: 1.75rem;
+}
+.launcher-brand-hero {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--of-space-2);
+}
+.launcher-brand-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(236, 172, 124, 0.35));
 }
 .main-nav {
   min-width: 0;
@@ -654,10 +679,21 @@ label.ui-language {
   top: var(--of-space-10);
 }
 .asset-caption {
-  gap: var(--of-space-1);
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .asset-name {
+  display: block;
+  max-width: 100%;
   font-size: var(--of-font-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .asset-actions {
   margin-top: var(--of-space-1);

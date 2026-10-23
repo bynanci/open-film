@@ -326,20 +326,25 @@ function startPlayback() {
         v-for="clip in audioClips"
         :key="clip.id"
         type="button"
-        class="editor-button"
+        class="editor-button soundtrack-item"
         :aria-pressed="selectedAudio?.id === clip.id"
         @click="emit('select', clip)"
       >
-        <span>{{
-          assets.find((asset) => asset.id === clip.assetId)?.name ??
-          t("editor.media")
-        }}</span
-        ><small
-          >{{ formatDuration(clip.timelineStart) }} ·
-          {{
+        <div class="soundtrack-item-header">
+          <span class="soundtrack-item-title">{{
+            assets.find((asset) => asset.id === clip.assetId)?.name ??
+            t("editor.media")
+          }}</span>
+          <span class="soundtrack-item-role">{{
             t(`editor.sound.roles.${clip.audioAutomation?.role ?? "music"}`)
-          }}</small
-        >
+          }}</span>
+        </div>
+        <div class="soundtrack-item-meta">
+          <small class="soundtrack-item-time">{{ formatDuration(clip.timelineStart) }}</small>
+          <span v-if="clip.audioAutomation?.ducking" class="soundtrack-item-tag">
+            {{ t("editor.sound.ducking") }}
+          </span>
+        </div>
       </button>
     </div>
     <template v-if="selectedAudio">
