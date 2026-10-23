@@ -419,3 +419,59 @@ The Guided Pipeline Orchestration engine executes fixed, recipe-driven productio
   - `retryRun`: Reruns a failed or cancelled run with the _identical_ immutable `inputSnapshot`, incrementing the step `attemptNumber`.
   - `createRun`: Creates an entirely new run capturing current project revision and inputs.
 - **Idempotent Execution**: Calling `startRun` on an already succeeded run returns the completed run immediately without re-triggering side effects or duplicating compositions.
+
+## M10B Pipeline Workbench UI/UX
+
+The Pipeline Workbench (`PipelineWorkbench.vue`) elevates the Phase M10A orchestration engine into an interactive, multi-modal film production workbench that integrates non-destructively into the creator's workspace.
+
+### Information Architecture & Three Modes
+
+- **Workspace Invariance**: Preserves existing `Library`, `Story`, `Edit`, `Export`, and `Versions` workspaces without displacing the user's ongoing creative context.
+- **Three Progressive Modes**:
+  1. **Docked Status Bar (`bar`)**: Compact status bar docked at the bottom of the workspace. Shows the active 5-stage progress indicator, run status chip, outdated warning pill, and immediate one-click CTAs.
+  2. **Expandable Drawer (`drawer`)**: Slides up smoothly over the lower portion of the screen (~52vh), enabling simultaneous inspection of the Story Graph, Storyboard, Timeline, or Library while configuring the pipeline.
+  3. **Full-Viewport Modal (`modal`)**: Fullscreen view for focused, immersive inspection, parameter adjustment, and review decisions.
+- **Simplified 5 Stages**:
+  - `materials`: Selection and verification of library photos, videos, and audio candidates.
+  - `storyPlan`: Selection of canonical story, beat structure, timing, and PhotoDepth fallback.
+  - `produceClips`: Narration strategy (none, user voice recording with inline audition, or remote TTS with consent), timing, and rough cut composition adoption.
+  - `previewQa`: Sequential video render preview and Visual QA report with timecoded issue inspection.
+  - `export`: Final film packaging to MP4 1080p.
+- **Collapsible Sub-Steps & Dependencies**: Expanding reveals the underlying 8 canonical pipeline steps (`story-plan-select`, `scene-prepare`, `narration`, `timing-captions`, `composition-adopt`, `render`, `visual-qa`, `export`), typed ports, and execution attempt records.
+
+### Card Standard & Media Protections
+
+- **Four Questions Answered per Stage**:
+  1. **What was used (`usedWhat`)**: Input media, story references, narration audio files, and export profiles.
+  2. **What was produced (`producedWhat`)**: Adopted rough cut compositions, rendered video previews, QA reports, and export packages.
+  3. **Current status (`currentStatus`)**: Clear human-readable status badge (`pending`, `running`, `waiting-review`, `succeeded`, `failed`, `outdated`).
+  4. **Next action (`nextAction`)**: Context-dependent CTA button (supplement audio, review & confirm, adopt rough cut, retry step, export).
+- **Media Playback Safeguards**:
+  - Images: Displayed strictly as static thumbnails (`thumbnailUrl`).
+  - Audio: Inline mini audition player (`auditionPlay`/`auditionPause`) with elapsed time and duration tracking.
+  - Video: Static poster preview; video playback occurs only when the user explicitly clicks the play overlay. Unselected cards never auto-play.
+- **Outdated Revision Transparency**: Completed runs whose source drafts have changed externally are marked with an amber warning banner (`outdated`) and a CTA to "Create New Run from Current Draft". Historical runs never masquerade as latest outputs.
+- **Progress & Error Diagnostics**:
+  - Waiting-review states display explicit action prompts without continuous infinite spinners.
+  - In-progress runs with dynamic duration use indeterminate progress bars rather than fabricating completion percentages.
+  - Failed steps display the failing step name, concrete failure reason, and actionable recovery CTAs (e.g. import recording, retry).
+
+### Cross-View Navigation & Form Integrity
+
+- **Bidirectional Locating**:
+  - `[Locate in Story Graph]`: Switches to Story workspace with graph perspective, selecting the relevant beat node.
+  - `[Locate in Storyboard]`: Switches to Story workspace with storyboard card grid perspective.
+  - `[Locate on Timeline]`: Switches to Edit workspace, maintaining focus on the adopted rough cut clip.
+  - Returning to the workbench preserves previous selections, viewports, and scroll positions.
+- **Polling & Form Safety**: Background status polling (`getRun`) updates reactive run state without remounting the editor, wiping dirty drafts, or resetting uncommitted input fields.
+
+### Usability, Accessibility, and Disclosures
+
+- **Responsive Breakpoints**:
+  - `1440×900`: Three-pane layout (stages navigation, active stage card, inspector/sub-steps).
+  - `1280×720`: Two-pane collapsible layout.
+  - `1024×768`: Single-pane stacked drawer with stage outline list.
+- **Keyboard & IME Protection**: Keyboard listeners explicitly check event targets; keystrokes inside `input`, `textarea`, or contenteditable elements are never swallowed by global hotkeys. Number keys `1`..`5` switch stages when outside form inputs; `Escape` collapses modal/drawer.
+- **Reduced Motion**: Disables transitions and animations when `@media (prefers-reduced-motion: reduce)` is active.
+- **External Provider Consent**: Prior to transmitting script text to external TTS services, displays data categories, target destination, estimated cost, and requires explicit user checkbox consent.
+- **Cache Transparency**: Discloses that fine-grained partial cache reuse (Phase M11A) is not yet active, informing users that retrying will rerun from the original immutable snapshot.
