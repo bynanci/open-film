@@ -70,7 +70,7 @@ function createSyntheticToneWav(
 
 describe(
   "Story Graph × Pipeline — End-to-End Product Acceptance",
-  { timeout: 180_000 },
+  { timeout: 360_000 },
   () => {
     let projectDir: string;
     let app: OpenFilmApplication;

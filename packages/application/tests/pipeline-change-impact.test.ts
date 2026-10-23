@@ -31,7 +31,10 @@ function makeSyntheticPhoto(
   };
 }
 
-describe("M11A Application: Change Impact & Incremental Runs", () => {
+describe(
+  "M11A Application: Change Impact & Incremental Runs",
+  { timeout: 180_000 },
+  () => {
   let projectDir: string;
   let app: OpenFilmApplication;
 

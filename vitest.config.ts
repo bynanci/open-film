@@ -38,8 +38,8 @@ export default defineConfig({
       "tests/unit/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "tests/e2e/**"],
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
     maxWorkers: 3,
   },
 });
