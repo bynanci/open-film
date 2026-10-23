@@ -43,9 +43,11 @@
 .versions-confirm-dialog .eyebrow {
   margin: 0;
   color: var(--of-accent);
+  font-family: var(--of-font-mono);
   font-size: var(--of-font-caption);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .versions-create {
   display: grid;
@@ -53,9 +55,9 @@
   align-items: end;
   gap: var(--of-space-4);
   padding: var(--of-space-5);
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-md);
+  border-radius: 16px;
 }
 .versions-create label,
 .version-rename label,
@@ -69,16 +71,16 @@
 .versions-diff-heading select {
   width: 100%;
   min-width: 0;
-  min-height: 42px;
-  padding: var(--of-space-3);
+  min-height: 40px;
+  padding: var(--of-space-2) var(--of-space-3);
   color: var(--of-text-primary);
-  background: var(--of-surface-1);
+  background: var(--of-bg);
   border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-sm);
+  border-radius: 10px;
   font: inherit;
 }
 .versions-create button {
-  min-height: 42px;
+  min-height: 40px;
   white-space: nowrap;
 }
 .versions-private-note {
@@ -91,13 +93,13 @@
   gap: var(--of-space-2);
   padding: var(--of-space-8);
   text-align: center;
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   border: 1px dashed var(--of-border-strong);
-  border-radius: var(--of-radius-md);
+  border-radius: 16px;
 }
 .versions-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.4fr);
+  grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.35fr);
   align-items: start;
   gap: var(--of-space-6);
 }
@@ -105,6 +107,12 @@
 .versions-diff {
   min-width: 0;
   gap: var(--of-space-3);
+}
+.versions-list {
+  padding: var(--of-space-5);
+  background: var(--of-surface-1);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: 16px;
 }
 .versions-list > h3,
 .versions-diff-heading > h3 {
@@ -116,11 +124,12 @@
   padding: var(--of-space-4);
   background: var(--of-surface-2);
   border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-md);
+  border-radius: 12px;
 }
 .version-card.selected {
+  background: var(--of-accent-soft);
   border-color: var(--of-accent);
-  box-shadow: inset 3px 0 0 var(--of-accent);
+  box-shadow: none;
 }
 .version-select {
   display: grid;
@@ -164,9 +173,9 @@
 }
 .versions-diff {
   padding: var(--of-space-5);
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-md);
+  border-radius: 16px;
 }
 .versions-diff-heading {
   align-items: end;
@@ -193,9 +202,9 @@
 .version-diff-list > li {
   min-width: 0;
   padding: var(--of-space-4);
-  background: var(--of-surface-1);
+  background: var(--of-surface-2);
   border: 1px solid var(--of-border-subtle);
-  border-radius: var(--of-radius-sm);
+  border-radius: 12px;
 }
 .diff-entry-heading {
   justify-content: flex-start;
