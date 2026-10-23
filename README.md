@@ -74,6 +74,12 @@ Create Film → Add Media → Organize → Story → Edit → Preview → Export
   export SRT/WebVTT with a source-revision receipt in **Export → Subtitles**.
 - Graphically trim video, set photo duration, reorder, adjust speed/volume and
   transforms, and choose cut/crossfade in a dark story-first timeline.
+- Story Graph and multi-perspective workspace: view and edit canonical stories across Outline, Graph, and Storyboard perspectives with cycle-free narrative topology.
+- Storyboard proposals (`StoryPlan`): turn story graphs into reviewable 5-dimension storyboard decks and adopt them non-destructively as new rough cuts.
+- Guided Pipeline orchestration: execute canonical 8-step story-to-video pipelines with zero-lock review gates, signed adoption receipts, and concurrency serialization.
+- Pipeline Workbench: docked bar, drawer, audio audition, and click-to-play video preview with outdated draft indicators and keyboard/IME protection.
+- Change Impact analysis and incremental runs: separate composition revision from per-step consumed-input signatures, allowing verified artifact reuse with disk tampering checks and full-render fallback transparency.
+- Creative Variants and A/B review: structured alternative branches with "只改本段" section isolation proof, edit lock inheritance, zero-render comparison, single-audio playback safety, and automatic pre-adoption checkpoints.
 - Give photos contain, protected hero or explicit diptych layouts; use hold,
   gentle push-in or pan, and choose distinct film-title, scene and subtitle roles.
 - Add imported music or narration over the existing cut, with clip-local fades,
