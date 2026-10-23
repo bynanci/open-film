@@ -1,5 +1,5 @@
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
-import { rm, mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { rm, mkdtemp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
