@@ -108,6 +108,15 @@ function submit() {
     :class="{ 'launcher-form-open': mode !== 'welcome' }"
   >
     <section class="welcome-intro launcher-intro">
+      <div class="launcher-brand-hero">
+        <img
+          src="/openfilm-logo-light.png"
+          alt="OpenFilm"
+          class="launcher-brand-logo"
+          width="64"
+          height="64"
+        />
+      </div>
       <h1>{{ t("app.welcome.title") }}</h1>
       <p>{{ t("app.welcome.description") }}</p>
       <div v-if="mode === 'welcome'" class="launcher-actions">
