@@ -35,6 +35,8 @@ import type {
   StoryPlan,
   StoryPlanOptions,
   StoryPlanAcceptanceMapping,
+  PipelineRecipe,
+  PipelineRun,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -1141,6 +1143,59 @@ export const api = {
       composition: Composition;
       acceptanceMapping: StoryPlanAcceptanceMapping;
     }>(`/stories/${encodeURIComponent(storyId)}/plan/accept`, plan, signal),
+  pipelineListRecipes: (signal?: AbortSignal) =>
+    request<{ recipes: PipelineRecipe[] }>("/pipelines/recipes", { signal }),
+  pipelineGetRecipe: (id: string, signal?: AbortSignal) =>
+    request<{ recipe: PipelineRecipe }>(
+      `/pipelines/recipes/${encodeURIComponent(id)}`,
+      { signal },
+    ),
+  pipelineListRuns: (signal?: AbortSignal) =>
+    request<{ runs: PipelineRun[] }>("/pipelines/runs", { signal }),
+  pipelineCreateRun: (
+    recipeId: string,
+    options?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) =>
+    post<{ run: PipelineRun }>(
+      "/pipelines/runs",
+      { recipeId, options },
+      signal,
+    ),
+  pipelineGetRun: (id: string, signal?: AbortSignal) =>
+    request<{ run: PipelineRun }>(`/pipelines/runs/${encodeURIComponent(id)}`, {
+      signal,
+    }),
+  pipelineStartRun: (id: string, signal?: AbortSignal) =>
+    post<{ run: PipelineRun }>(
+      `/pipelines/runs/${encodeURIComponent(id)}/start`,
+      {},
+      signal,
+    ),
+  pipelineCancelRun: (id: string, signal?: AbortSignal) =>
+    post<{ run: PipelineRun }>(
+      `/pipelines/runs/${encodeURIComponent(id)}/cancel`,
+      {},
+      signal,
+    ),
+  pipelineRetryRun: (id: string, signal?: AbortSignal) =>
+    post<{ run: PipelineRun }>(
+      `/pipelines/runs/${encodeURIComponent(id)}/retry`,
+      {},
+      signal,
+    ),
+  pipelineSubmitReview: (
+    id: string,
+    stepId: string,
+    decision: "accepted" | "rejected" | "skipped",
+    notes?: string,
+    signal?: AbortSignal,
+  ) =>
+    post<{ run: PipelineRun }>(
+      `/pipelines/runs/${encodeURIComponent(id)}/review`,
+      { stepId, decision, notes },
+      signal,
+    ),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
   editor: (id: string) =>
