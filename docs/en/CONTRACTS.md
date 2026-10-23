@@ -540,3 +540,56 @@ Before any artifact from a prior run is reused, `verifyArtifactForReuse` strictl
 - **Historical Immutability**: Previous runs, attempts, and receipts remain completely untouched. Old manifests are never renamed or disguised.
 - **Provenance Stamping**: Reused step attempts are recorded with `status: "succeeded"`, their verified `inputSignature`, and metadata `reuseSource: { runId, stepId, reason }`.
 - **Asset Pruning Protection**: `isAssetReferencedByPipeline` checks all historical snapshots, step attempts, and artifact records to ensure media referenced by any pipeline run cannot be deleted or pruned.
+
+## M11B Creative Variants and A/B Review
+
+Phase M11B introduces creative variant branching, side-by-side A/B review, lock preservation, zero-render comparison, pre-adoption version checkpoints, baseline restoration, and media collection privacy.
+
+### Three Distinct Versioning Concepts
+
+1. **Project Snapshot (`ProjectVersionRecord`)**:
+   - Managed by `app.versions`. Persists immutable point-in-time full project snapshots with name, revision, and timestamp.
+2. **Session Undo/Redo**:
+   - In-memory ephemeral stack tracking user interactions and mutations within an active editing session.
+3. **Creative Variant (`CreativeVariant`)**:
+   - Structured alternative creative branches exploring different pacing, scene focus, or narration scripts.
+   - Stored in `cache/creative-variants.json`.
+   - References existing `MediaAsset`s, Story, and Composition records.
+   - **Does NOT duplicate raw media files** and **does NOT create a secondary version database**.
+
+### Scope and "只改本段" Section Isolation Proof
+
+- When creating a variant with `scope.type === "section"`:
+  - The variant targets a single specified beat/section.
+  - All non-target beats and clips are provably preserved (`preservedSections`).
+  - Preserved clips maintain exact media asset ID, filters, transforms, and timing relative to preceding cursor offsets.
+  - Modifying a section containing locked clips (`clip.locked === true`) without prior unlocking is rejected with HTTP 409 (`timeline.conflict`). Cloned variant clips strictly inherit lock flags.
+
+### Zero-Render A/B Comparison and Single-Audio Rule
+
+- **Zero-Render Comparison**:
+  - Comparing variants (`compareVariants`) evaluates existing composition models, story structures, and previously generated pipeline artifacts (preview MP4, visual QA reports).
+  - Comparison **never** triggers media rendering, re-rasterization, or external service calls ("開比較不重新生成").
+- **Single-Audio Playback Rule**:
+  - The UI and player strictly enforce that only **one** variant audio channel plays at any time. Selecting Audio A mutes/pauses Audio B; selecting Audio B mutes/pauses Audio A.
+- **Section-Based Timeline Alignment**:
+  - When comparing variants with different overall durations, navigation aligns by section/beat chips. OpenFilm **never** falsely claims differing runtimes align at identical absolute timestamps.
+
+### Pre-Adoption Checkpoint & Safe Reversion
+
+- **Mandatory Pre-Adoption Checkpoint**:
+  - Adopting a variant (`adoptVariant`) verifies source availability, edit locks, and expected revision before mutating the active project.
+  - A named checkpoint version (`app.versions.create`) is created automatically _before_ the variant composition is promoted to `timelines[0]`.
+  - If checkpoint creation fails, adoption immediately aborts and the project remains completely untouched.
+- **Post-Restore Invalidation**:
+  - When a user restores a baseline checkpoint (`app.versions.restore`), the project revision reverts.
+  - Old pipeline runs, approval receipts, and adopted variant references targeting superseded revisions are marked `outdated` and cannot be re-adopted.
+
+### Shared Media Safety & Collect Media Privacy
+
+- **Catalog Media Protection**:
+  - Deleting a creative variant deletes only its derived Story, derived Composition, and variant record.
+  - Shared catalog `MediaAsset`s are **never deleted or pruned**.
+- **Collect Media Privacy**:
+  - When collecting media for a variant (`app.collectMedia.plan({ scope: "current-film", compositionId })`), only media assets directly referenced by that specific composition are packaged.
+  - Private assets used exclusively in other variants or unconsumed library media are strictly excluded.
