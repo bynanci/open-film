@@ -1380,6 +1380,53 @@ export class PipelineService {
           }
 
           const composition = this.app.compose(story.id);
+          const subtitleText = run.inputSnapshot.customParams?.subtitleText as
+            string | undefined;
+          if (subtitleText) {
+            const endMs = Math.max(1, Math.floor(composition.duration * 1000));
+            composition.captionTracks = [
+              {
+                version: 1,
+                id: `captions_${randomUUID().slice(0, 8)}`,
+                name: "Subtitles",
+                style: {
+                  version: 1,
+                  role: "subtitle",
+                  fontSize: 24,
+                  fontFamily: "Inter",
+                  fontWeight: 400,
+                  background: "scrim",
+                  position: "bottom",
+                  maxWidth: 1000,
+                  safeArea: {
+                    left: 0.08,
+                    right: 0.08,
+                    top: 0.08,
+                    bottom: 0.12,
+                  },
+                },
+                cues: [
+                  {
+                    version: 1,
+                    id: `cue_${randomUUID().slice(0, 8)}`,
+                    startMs: 0,
+                    endMs,
+                    text: subtitleText,
+                    manualRevision: 0,
+                    source: { kind: "manual" },
+                  },
+                ],
+              },
+            ];
+          }
+          const timelineIndex = this.app.project.timelines.findIndex(
+            (t) => t.id === composition.id,
+          );
+          if (timelineIndex >= 0) {
+            this.app.project.timelines[timelineIndex] = composition;
+          } else {
+            this.app.project.timelines.push(composition);
+          }
           await this.app.save();
 
           const newRev = this.getCurrentProjectRevision();

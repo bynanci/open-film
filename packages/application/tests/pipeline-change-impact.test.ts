@@ -1,11 +1,16 @@
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
+import { createHash } from "node:crypto";
 import { rm, mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OpenFilmApplication } from "../src/index.js";
 import type { MediaAsset, Story } from "@openfilm/core";
+
+const exec = promisify(execFile);
 
 function makeSyntheticPhoto(
   id: string,
@@ -38,20 +43,57 @@ describe("M11A Application: Change Impact & Incremental Runs", () => {
     await mkdir(mediaDir, { recursive: true });
     const fileA = join(mediaDir, "photo_a.jpg");
     const fileB = join(mediaDir, "photo_b.jpg");
-    await writeFile(fileA, Buffer.alloc(200));
-    await writeFile(fileB, Buffer.alloc(200));
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=1280x720",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      fileA,
+    ]);
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=green:s=1280x720",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      fileB,
+    ]);
+
+    const hashA = createHash("sha256")
+      .update(await readFile(fileA))
+      .digest("hex");
+    const hashB = createHash("sha256")
+      .update(await readFile(fileB))
+      .digest("hex");
 
     const photoA = makeSyntheticPhoto(
       "asset_a",
       "photo_a",
       pathToFileURL(fileA).href,
-      "hash_a_1",
+      hashA,
     );
     const photoB = makeSyntheticPhoto(
       "asset_b",
       "photo_b",
       pathToFileURL(fileB).href,
-      "hash_b_1",
+      hashB,
     );
     app.catalog.upsertAsset(photoA);
     app.catalog.upsertAsset(photoB);
@@ -210,11 +252,12 @@ describe("M11A Application: Change Impact & Incremental Runs", () => {
 
     const renderArtA = runA.artifacts.find((a) => a.kind === "preview-video");
     expect(renderArtA?.path).toBeDefined();
-    const diskContentA = await readFile(
-      join(projectDir, renderArtA!.path!),
-      "utf8",
-    );
-    expect(diskContentA).toContain("Scene Alpha: Morning Fog");
+    const resolvedPathA =
+      renderArtA!.path!.startsWith("/") || /^[a-zA-Z]:/.test(renderArtA!.path!)
+        ? renderArtA!.path!
+        : join(projectDir, renderArtA!.path!);
+    const diskBytesA = await readFile(resolvedPathA);
+    expect(diskBytesA.length).toBeGreaterThan(0);
 
     // 2. Analyze impact when ONLY subtitle text changes to "Scene Beta"
     app.pipeline.resetServiceCallCounters();
@@ -293,13 +336,17 @@ describe("M11A Application: Change Impact & Incremental Runs", () => {
 
     // Verify that rendered output actually changed on disk!
     const renderArtB = runB.artifacts.find((a) => a.kind === "preview-video");
-    const diskContentB = await readFile(
-      join(projectDir, renderArtB!.path!),
-      "utf8",
-    );
-    expect(diskContentB).toContain("Scene Beta: Golden Sunshine");
-    expect(diskContentB).not.toContain("Scene Alpha");
-  });
+    expect(renderArtB?.path).toBeDefined();
+    const resolvedPathB =
+      renderArtB!.path!.startsWith("/") || /^[a-zA-Z]:/.test(renderArtB!.path!)
+        ? renderArtB!.path!
+        : join(projectDir, renderArtB!.path!);
+    const diskBytesB = await readFile(resolvedPathB);
+    expect(diskBytesB.length).toBeGreaterThan(0);
+    const hashA = createHash("sha256").update(diskBytesA).digest("hex");
+    const hashB = createHash("sha256").update(diskBytesB).digest("hex");
+    expect(hashA).not.toBe(hashB);
+  }, 120_000);
 
   it("Impact Matrix Case 4: modifying narration script reuses scene visual prep while rerunning voice & downstream", async () => {
     const runA = await app.pipeline.createRun("guided-story-to-video", {
@@ -348,12 +395,30 @@ describe("M11A Application: Change Impact & Incremental Runs", () => {
     // Add third photo
     const mediaDir = join(projectDir, "media");
     const fileC = join(mediaDir, "photo_c.jpg");
-    await writeFile(fileC, Buffer.alloc(300));
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=1280x720",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      fileC,
+    ]);
+    const hashC = createHash("sha256")
+      .update(await readFile(fileC))
+      .digest("hex");
     const photoC = makeSyntheticPhoto(
       "asset_c",
       "photo_c",
       pathToFileURL(fileC).href,
-      "hash_c_1",
+      hashC,
     );
     app.catalog.upsertAsset(photoC);
 
@@ -470,7 +535,11 @@ describe("M11A Application: Change Impact & Incremental Runs", () => {
     expect(renderArt?.path).toBeDefined();
 
     // Tamper with artifact file by truncating to 0 bytes
-    await writeFile(join(projectDir, renderArt!.path!), Buffer.alloc(0));
+    const resolvedRenderPath =
+      renderArt!.path!.startsWith("/") || /^[a-zA-Z]:/.test(renderArt!.path!)
+        ? renderArt!.path!
+        : join(projectDir, renderArt!.path!);
+    await writeFile(resolvedRenderPath, Buffer.alloc(0));
 
     const impact = await app.pipeline.analyzeChangeImpact(
       "guided-story-to-video",
