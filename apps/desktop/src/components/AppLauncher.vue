@@ -108,17 +108,63 @@ function submit() {
     :class="{ 'launcher-form-open': mode !== 'welcome' }"
   >
     <section class="welcome-intro launcher-intro">
-      <div class="launcher-brand-hero">
-        <img
-          src="/openfilm-logo-light.png"
-          alt="OpenFilm"
-          class="launcher-brand-logo"
-          width="64"
-          height="64"
-        />
-      </div>
+      <span class="eyebrow">WELCOME / LOCAL-FIRST</span>
       <h1>{{ t("app.welcome.title") }}</h1>
       <p>{{ t("app.welcome.description") }}</p>
+      <div class="launcher-brand-hero" aria-hidden="true">
+        <svg
+          class="launcher-stack-graphic"
+          viewBox="0 0 360 190"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            <linearGradient
+              id="of-hero-top"
+              x1="60"
+              y1="20"
+              x2="300"
+              y2="120"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0%" stop-color="#c48e63" />
+              <stop offset="100%" stop-color="#593e29" />
+            </linearGradient>
+          </defs>
+          <ellipse
+            cx="180"
+            cy="158"
+            rx="118"
+            ry="18"
+            fill="#090b0d"
+            opacity="0.65"
+          />
+          <polygon
+            points="180,92 316,136 180,180 44,136"
+            fill="#14171c"
+            stroke="#2b313a"
+            stroke-width="1.5"
+          />
+          <polygon
+            points="180,62 316,106 180,150 44,106"
+            fill="#232830"
+            stroke="#3d4552"
+            stroke-width="1.5"
+          />
+          <polygon
+            points="180,26 316,74 180,122 44,74"
+            fill="url(#of-hero-top)"
+            stroke="#e0a477"
+            stroke-opacity="0.55"
+            stroke-width="1.5"
+          />
+          <polygon
+            points="166,57 166,89 204,73"
+            fill="#f7f5f1"
+            fill-opacity="0.9"
+          />
+        </svg>
+      </div>
       <div v-if="mode === 'welcome'" class="launcher-actions">
         <button class="primary" :disabled="busy" @click="changeMode('create')">
           {{ t("app.welcome.create") }}<Icon name="plus" />
@@ -134,9 +180,11 @@ function submit() {
     <section v-if="mode === 'welcome'" class="launcher-home">
       <section class="recent-projects" :aria-label="t('app.welcome.recent')">
         <h2>{{ t("app.welcome.recent") }}</h2>
-        <p v-if="!recent.length" class="muted">
-          {{ t("app.welcome.noRecent") }}
-        </p>
+        <div v-if="!recent.length" class="recent-empty-card">
+          <p class="muted">
+            {{ t("app.welcome.noRecent") }}
+          </p>
+        </div>
         <button
           v-for="item in recent"
           :key="item.path"
@@ -154,6 +202,7 @@ function submit() {
           }}</span
           ><Icon name="chevron" :size="14" />
         </button>
+        <p class="project-footnote">{{ t("app.welcome.privacy") }}</p>
       </section>
     </section>
     <section v-else class="project-start" :aria-label="t('app.create.setup')">

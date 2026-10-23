@@ -2285,13 +2285,36 @@ onUnmounted(() => {
         href="#"
         :aria-label="t('app.navigation.home')"
         @click.prevent="changeTab('library')"
-        ><img
-          src="/openfilm-logo-light.png"
-          alt=""
+        ><svg
           class="wordmark-logo"
           width="28"
           height="28"
-        /><span class="wordmark-text">OpenFilm</span></a
+          viewBox="0 0 28 28"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <rect
+            x="3"
+            y="10"
+            width="22"
+            height="15"
+            rx="3.5"
+            fill="#22262c"
+            stroke="#353b45"
+            stroke-width="1.2"
+          />
+          <polygon points="12,14.2 12,20.8 17.5,17.5" fill="#f4f2ee" />
+          <g transform="rotate(-10 4 9)">
+            <rect x="3" y="4.5" width="22" height="5.5" rx="2" fill="#ecac7c" />
+            <path
+              d="M8 4.5L6 10M14 4.5L12 10M20 4.5L18 10"
+              stroke="#23180f"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+          </g></svg
+        ><span class="wordmark-text">OpenFilm</span></a
       >
       <nav
         v-if="project"
@@ -2391,6 +2414,9 @@ onUnmounted(() => {
         :class="{ 'project-heading-compact': tab === 'edit' }"
       >
         <div v-if="tab !== 'edit'">
+          <span class="eyebrow">{{
+            `${tab.toUpperCase()} / LOCAL-FIRST`
+          }}</span>
           <h1>
             {{
               tab === "library"
