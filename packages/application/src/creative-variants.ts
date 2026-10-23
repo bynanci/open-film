@@ -368,6 +368,10 @@ export class CreativeVariantService {
       ? baselineStory.beats.find((b) => b.id === targetBeatId)
       : undefined;
 
+    const beatIdMap = new Map(
+      beatMappings.map((m) => [m.baselineBeatId, m.variantBeatId]),
+    );
+
     let cursorOffset = 0;
     const newTracks: Track[] = baselineComp.tracks.map((oldTrack) => {
       const newClips: Clip[] = oldTrack.clips.map((oldClip) => {
@@ -380,6 +384,9 @@ export class CreativeVariantService {
 
         // LOCK PRESERVATION: Cloned clip strictly preserves lock!
         const isLocked = oldClip.locked === true;
+        const mappedBeatId = oldClip.beatId
+          ? (beatIdMap.get(oldClip.beatId) ?? oldClip.beatId)
+          : undefined;
 
         if (input.scope.type === "section" && targetBeat) {
           const isTargetClip = targetBeat.selectedAssetIds?.includes(
@@ -402,6 +409,7 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
+              beatId: mappedBeatId,
               assetId,
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset - deltaDur).toFixed(3),
@@ -423,6 +431,7 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
+              beatId: mappedBeatId,
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset).toFixed(3),
               ),
@@ -439,6 +448,7 @@ export class CreativeVariantService {
           return {
             ...oldClip,
             id: newClipId,
+            beatId: mappedBeatId,
             timelineStart: scaledStart,
             timelineDuration: scaledDur,
             sourceOut:
@@ -469,6 +479,10 @@ export class CreativeVariantService {
       storyId: derivedStoryId,
       duration: Number(maxEnd.toFixed(3)),
       tracks: newTracks,
+      beatLooks: baselineComp.beatLooks?.map((bl) => ({
+        ...bl,
+        beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
+      })),
     };
 
     const variantRecord: CreativeVariant = {

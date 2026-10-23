@@ -990,6 +990,7 @@ export class PipelineService {
 
           // Execute step logic
           const stepResult = await this.executeStep(step, run, mergedSignal);
+          checkAbort(mergedSignal);
 
           attempt.outputs = stepResult.outputs;
           attempt.completedAt = new Date().toISOString();
@@ -1379,6 +1380,53 @@ export class PipelineService {
           }
 
           const composition = this.app.compose(story.id);
+          const subtitleText = run.inputSnapshot.customParams?.subtitleText as
+            string | undefined;
+          if (subtitleText) {
+            const endMs = Math.max(1, Math.floor(composition.duration * 1000));
+            composition.captionTracks = [
+              {
+                version: 1,
+                id: `captions_${randomUUID().slice(0, 8)}`,
+                name: "Subtitles",
+                style: {
+                  version: 1,
+                  role: "subtitle",
+                  fontSize: 24,
+                  fontFamily: "Inter",
+                  fontWeight: 400,
+                  background: "scrim",
+                  position: "bottom",
+                  maxWidth: 1000,
+                  safeArea: {
+                    left: 0.08,
+                    right: 0.08,
+                    top: 0.08,
+                    bottom: 0.12,
+                  },
+                },
+                cues: [
+                  {
+                    version: 1,
+                    id: `cue_${randomUUID().slice(0, 8)}`,
+                    startMs: 0,
+                    endMs,
+                    text: subtitleText,
+                    manualRevision: 0,
+                    source: { kind: "manual" },
+                  },
+                ],
+              },
+            ];
+          }
+          const timelineIndex = this.app.project.timelines.findIndex(
+            (t) => t.id === composition.id,
+          );
+          if (timelineIndex >= 0) {
+            this.app.project.timelines[timelineIndex] = composition;
+          } else {
+            this.app.project.timelines.push(composition);
+          }
           await this.app.save();
 
           const newRev = this.getCurrentProjectRevision();
@@ -1418,38 +1466,10 @@ export class PipelineService {
             run.stepAttempts.find((s) => s.stepId === "step-5")?.outputs ?? {};
           const compositionId = String(step5Outputs.compositionId ?? "");
 
-          let renderPath: string;
-          try {
-            renderPath = await this.app.render(compositionId, { signal });
-          } catch (err: unknown) {
-            const errStr = String(err);
-            if (
-              errStr.includes("Missing Media") ||
-              errStr.includes("media.unsupported") ||
-              errStr.includes("ffmpeg") ||
-              errStr.includes("ENOENT")
-            ) {
-              renderPath = `cache/renders/${compositionId}_preview.mp4`;
-            } else {
-              throw err;
-            }
-          }
-
-          // Ensure physical preview file exists on disk with payload containing subtitle text
-          try {
-            const resolvedPath = `${this.app.directory}/${renderPath}`;
-            await mkdir(dirname(resolvedPath), { recursive: true });
-            const subtitlePayload =
-              (run.inputSnapshot.customParams?.subtitleText as string) ??
-              "DEFAULT_SUBTITLE";
-            await writeFile(
-              resolvedPath,
-              `OPENFILM_PREVIEW_MP4:${subtitlePayload}`,
-              "utf8",
-            );
-          } catch {
-            // ignore
-          }
+          // Only the renderer may produce video bytes. Errors and cancellation
+          // must reach the run state machine, never become placeholder media.
+          const renderPath = await this.app.render(compositionId, { signal });
+          checkAbort(signal);
 
           const artifact: PipelineArtifactRecord = {
             id: `art_${randomUUID().slice(0, 8)}`,
@@ -1470,15 +1490,12 @@ export class PipelineService {
             run.stepAttempts.find((s) => s.stepId === "step-5")?.outputs ?? {};
           const compositionId = String(step5Outputs.compositionId ?? "");
 
-          let report;
-          try {
-            report = await this.app.visualQa.run(compositionId, { signal });
-          } catch {
-            report = {
-              id: randomUUID(),
-              status: "passed",
-              issues: [],
-            };
+          const report = await this.app.visualQa.run(compositionId, { signal });
+          checkAbort(signal);
+          if (report.status !== "complete" || !report.output) {
+            throw new Error(
+              `Visual QA did not complete with output evidence (${report.status}).`,
+            );
           }
 
           const artifact: PipelineArtifactRecord = {
@@ -1507,32 +1524,13 @@ export class PipelineService {
           const compositionId = String(step5Outputs.compositionId ?? "");
           const format = run.inputSnapshot.exportFormat ?? "mp4";
 
-          let exportPath: string;
-          try {
-            if (format === "mp4") {
-              exportPath = `exports/${this.app.project.id}_film.mp4`;
-            } else {
-              exportPath = await this.app.export(format, compositionId);
-            }
-          } catch {
-            exportPath = `exports/${this.app.project.id}_film.${format}`;
-          }
-
-          // Ensure physical export file exists on disk with payload containing subtitle text
-          try {
-            const resolvedExport = `${this.app.directory}/${exportPath}`;
-            await mkdir(dirname(resolvedExport), { recursive: true });
-            const subtitlePayload =
-              (run.inputSnapshot.customParams?.subtitleText as string) ??
-              "DEFAULT_SUBTITLE";
-            await writeFile(
-              resolvedExport,
-              `OPENFILM_EXPORT_MP4:${subtitlePayload}`,
-              "utf8",
-            );
-          } catch {
-            // ignore
-          }
+          // Reuse the atomic, source-preserving application exporters. A path
+          // label is not evidence that an export completed successfully.
+          const exportPath =
+            format === "mp4"
+              ? (await this.app.exportMp4(compositionId, { signal })).path
+              : await this.app.export(format, compositionId);
+          checkAbort(signal);
 
           const artifact: PipelineArtifactRecord = {
             id: `art_${randomUUID().slice(0, 8)}`,
@@ -1556,19 +1554,19 @@ export class PipelineService {
       for (const art of stepResult.artifacts) {
         art.inputSignature = inputSignature;
         art.adapterVersion = "1.0.0";
-        art.verifiedAt = new Date().toISOString();
         if (art.path) {
-          try {
-            const resolvedPath =
-              art.path.startsWith("/") || /^[a-zA-Z]:/.test(art.path)
-                ? art.path
-                : `${this.app.directory}/${art.path}`;
-            const fileStat = await stat(resolvedPath);
-            art.sizeBytes = fileStat.size;
-          } catch {
-            // file might be virtual in test
+          const resolvedPath =
+            art.path.startsWith("/") || /^[a-zA-Z]:/.test(art.path)
+              ? art.path
+              : `${this.app.directory}/${art.path}`;
+          const fileStat = await stat(resolvedPath);
+          if (!fileStat.isFile() || fileStat.size === 0) {
+            throw new Error("Pipeline output is not a non-empty regular file.");
           }
+          art.sizeBytes = fileStat.size;
         }
+        checkAbort(signal);
+        art.verifiedAt = new Date().toISOString();
       }
     }
 

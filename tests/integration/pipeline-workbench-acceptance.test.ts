@@ -1,11 +1,15 @@
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
-import { rm, mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { rm, mkdtemp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
 import type { MediaAsset, Story } from "@openfilm/core";
+
+const exec = promisify(execFile);
 
 function makeSyntheticPhoto(id: string, name: string, uri: string): MediaAsset {
   return {
@@ -35,8 +39,38 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
     await mkdir(mediaDir, { recursive: true });
     const fileA = join(mediaDir, "photo_a.jpg");
     const fileB = join(mediaDir, "photo_b.jpg");
-    await writeFile(fileA, Buffer.alloc(100));
-    await writeFile(fileB, Buffer.alloc(100));
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=1280x720",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      fileA,
+    ]);
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=green:s=1280x720",
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      "-update",
+      "1",
+      "-y",
+      fileB,
+    ]);
 
     const photoA = makeSyntheticPhoto(
       "asset_a",
@@ -100,7 +134,18 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
 
     // 2. Supplement: User imports physical recording to library
     const voiceFile = join(projectDir, "media", "supplement_voice.wav");
-    await writeFile(voiceFile, Buffer.alloc(100));
+    await exec("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=10",
+      "-c:a",
+      "pcm_s16le",
+      "-y",
+      voiceFile,
+    ]);
     const voiceAsset: MediaAsset = {
       id: "voice_supp_1",
       uri: pathToFileURL(voiceFile).href,
