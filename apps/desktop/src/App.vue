@@ -356,7 +356,7 @@ const selectedBeatAssets = computed(() =>
     .filter((asset): asset is MediaAsset => !!asset),
 );
 type StoryPerspective = "outline" | "graph" | "storyboard";
-const storyPerspective = ref<StoryPerspective>("graph");
+const storyPerspective = ref<StoryPerspective>("outline");
 
 async function handleSelectBeat(beatId: string) {
   if (!activeStory.value) return;
