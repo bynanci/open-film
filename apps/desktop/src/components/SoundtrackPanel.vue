@@ -344,7 +344,7 @@ function startPlayback() {
             formatDuration(clip.timelineStart)
           }}</small>
           <span
-            v-if="clip.audioAutomation?.ducking"
+            v-if="clip.audioAutomation?.ducking?.length"
             class="soundtrack-item-tag"
           >
             {{ t("editor.sound.ducking") }}
