@@ -244,4 +244,35 @@ describe("generic composition constraints", () => {
     expect(ids(result)).toEqual(["video"]);
     expect(result.duration).toBe(0.5);
   });
+  it("permits explicit echo asset across opening and closing beats with distinct clip instances while maintaining overall deduplication", () => {
+    const s = story({
+      targetDuration: 6,
+      maxDuration: 6,
+      beats: [
+        { id: "intro", title: "Intro", selectedAssetIds: ["photo_echo"] },
+        { id: "body", title: "Body", selectedAssetIds: ["photo_mid"] },
+        { id: "outro", title: "Outro", selectedAssetIds: ["photo_echo"] },
+      ],
+    });
+    const assets = [asset("photo_echo"), asset("photo_mid")];
+
+    // Without allowEchoAssetIds, deduplication rejects duplicate requirement
+    expect(() => compose(s, assets)).toThrowError(
+      /is required by more than one beat/,
+    );
+
+    // With allowEchoAssetIds, it creates distinct clip instances for the same assetId
+    const result = compose(s, assets, { allowEchoAssetIds: ["photo_echo"] });
+    expect(result.duration).toBe(6);
+    const videoClips = result.tracks[0]!.clips;
+    expect(videoClips).toHaveLength(3);
+    expect(videoClips[0]!.assetId).toBe("photo_echo");
+    expect(videoClips[0]!.beatId).toBe("intro");
+    expect(videoClips[1]!.assetId).toBe("photo_mid");
+    expect(videoClips[1]!.beatId).toBe("body");
+    expect(videoClips[2]!.assetId).toBe("photo_echo");
+    expect(videoClips[2]!.beatId).toBe("outro");
+    // Distinct clip IDs, preserving real assetId without fabricating fake assets
+    expect(videoClips[0]!.id).not.toBe(videoClips[2]!.id);
+  });
 });

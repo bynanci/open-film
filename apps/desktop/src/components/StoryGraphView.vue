@@ -18,6 +18,7 @@ import { createInitialStoryGraph, detectGraphCycle } from "@openfilm/core";
 import { computeStoryGraphAutoLayout } from "@openfilm/story";
 import { api, thumbnailUrl, type SourceStatus } from "../api";
 import Icon from "./Icon.vue";
+import StoryPlanReviewModal from "./StoryPlanReviewModal.vue";
 
 const { t } = useI18n();
 
@@ -65,6 +66,14 @@ const selectedNodeId = ref<string | null>(
   props.activeBeatId ? `beat-node-${props.activeBeatId}` : null,
 );
 const selectedEdgeId = ref<string | null>(null);
+
+// Storyboard Proposal Plan Modal
+const planModalOpen = ref(false);
+
+function handleAdopted(res: { story: Story; composition: Composition }) {
+  planModalOpen.value = false;
+  emit("update-story", res.story);
+}
 
 // Search query
 const searchQuery = ref("");
@@ -917,6 +926,14 @@ onUnmounted(() => {
             <Icon name="plus" :size="14" />
             {{ t("app.storyGraph.toolbar.addIdea") }}
           </button>
+          <button
+            class="primary-btn plan-storyboard-btn"
+            :title="t('app.storyPlan.button')"
+            @click="planModalOpen = true"
+          >
+            <Icon name="layers" :size="14" />
+            {{ t("app.storyPlan.button") }}
+          </button>
         </div>
 
         <div class="toolbar-group zoom-group">
@@ -1518,6 +1535,15 @@ onUnmounted(() => {
         </div>
       </div>
     </aside>
+
+    <!-- Storyboard Proposal Review Modal -->
+    <StoryPlanReviewModal
+      :show="planModalOpen"
+      :story-id="props.story.id"
+      :story="props.story"
+      @close="planModalOpen = false"
+      @adopted="handleAdopted"
+    />
   </div>
 </template>
 

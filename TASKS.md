@@ -871,6 +871,20 @@ PR #34 is merged at `bb2c4521ad894478893485119442a00ffd9b34cc`.
 - [x] Comprehensive test suites (33 tests across core, story, application, and UI) including 100/500-node synthetic benchmarks (<50ms).
 - [ ] Manual workstation testing: touch/pen gestures, large high-DPI displays.
 
+## Delivered — M9B Graph to Reviewable Storyboard
+
+[Contract](docs/CONTRACTS.md#m9b-graph-to-reviewable-storyboard-storyplan) · [validation](docs/validation-story-plan.md).
+
+- [x] `StoryPlan` v1 schema and proposal engine: input signature binding, 5 storyboard dimensions, deterministic hex digest.
+- [x] 5 reviewable card dimensions: which image/clip (hero/supporting/echo & PhotoDepth status), intent, visual direction, target & estimated narration duration (CJK/Latin pacing, no microsecond fake precision), editorial rationale (no fake scores).
+- [x] Solver extension: `allowEchoAssetIds` enabling distinct opening & closing echo clip instances referencing the same asset ID without fabricating fake assets or globally disabling deduplication.
+- [x] Narrative protections: reject canvas coordinate guessing, detect and surface cycles/unresolved alternative conflicts (HTTP 409), preserve source natures (`user-memory`, `planned`, `wish`, `unknown`), list `unsupportedIntents` explicitly, provide PhotoDepth fallbacks (`standard-hold`, `ken-burns`).
+- [x] Preview & adoption: ephemeral preview composition with 0 project mutations and 0 provider calls; explicit adoption creates a new rough cut `(Story Plan Cut)` scoped to candidate assets while preserving original manual edits.
+- [x] Idempotency: lost-response retry with identical `planId` and signature returns existing rough cut without duplicate compositions; stale signature rejected with HTTP 409.
+- [x] Storyboard Review Modal with full i18n (`en-US`, `zh-TW`, `ja-JP`), source badges, conflict alerts, and rough cut creation.
+- [x] Automated acceptance verification: 30.0s / 30fps (900 frames) rough cut with synthetic photos, fictional memories, echo clips, reopen, and manual edit preservation.
+- [ ] Manual workstation validation: voice narration recording, production multi-track audio listening QA.
+
 The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature

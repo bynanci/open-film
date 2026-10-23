@@ -32,6 +32,9 @@ import type {
   FilmLook,
   StoryGraph,
   GraphViewState,
+  StoryPlan,
+  StoryPlanOptions,
+  StoryPlanAcceptanceMapping,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -1122,6 +1125,22 @@ export const api = {
       body,
       signal,
     ),
+  storyPlanPreview: (
+    storyId: string,
+    options?: StoryPlanOptions,
+    signal?: AbortSignal,
+  ) =>
+    post<{ plan: StoryPlan; compositionPreview: Composition }>(
+      `/stories/${encodeURIComponent(storyId)}/plan/preview`,
+      options ?? {},
+      signal,
+    ),
+  storyPlanAccept: (storyId: string, plan: StoryPlan, signal?: AbortSignal) =>
+    post<{
+      story: Story;
+      composition: Composition;
+      acceptanceMapping: StoryPlanAcceptanceMapping;
+    }>(`/stories/${encodeURIComponent(storyId)}/plan/accept`, plan, signal),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
   editor: (id: string) =>

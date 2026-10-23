@@ -71,8 +71,17 @@ function duration(
     );
 }
 
+export interface ComposeOptions {
+  /** Explicitly permitted echo asset IDs that may appear in multiple beats without disabling overall deduplication. */
+  allowEchoAssetIds?: string[];
+}
+
 /** Required selections are assigned first; optional candidates never displace them. */
-export function compose(story: Story, assets: MediaAsset[]): Composition {
+export function compose(
+  story: Story,
+  assets: MediaAsset[],
+  options?: ComposeOptions,
+): Composition {
   duration(story.targetDuration, "Story target");
   duration(story.maxDuration, "Story maximum");
   if (
@@ -137,10 +146,14 @@ export function compose(story: Story, assets: MediaAsset[]): Composition {
         fail(
           `Required asset "${asset.name}" has no usable source duration. Inspect or replace the media first.`,
         );
-      if (requiredOwners.has(id))
-        fail(
-          `Asset "${asset.name}" is required by more than one beat. Keep it in one beat; repeated assets are disabled.`,
-        );
+      if (requiredOwners.has(id)) {
+        const isAllowedEcho = options?.allowEchoAssetIds?.includes(id);
+        if (!isAllowedEcho) {
+          fail(
+            `Asset "${asset.name}" is required by more than one beat. Keep it in one beat; repeated assets are disabled.`,
+          );
+        }
+      }
       requiredOwners.set(id, index);
     }
     const pool =

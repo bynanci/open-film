@@ -3614,6 +3614,30 @@ export async function startServer(options: ServerOptions = {}) {
             `Unknown story graph quick action '${action}'.`,
           );
         }
+        const storyPlanPreviewMatch =
+          /^\/api\/stories\/([^/]+)\/plan\/preview$/.exec(route);
+        if (method === "POST" && storyPlanPreviewMatch) {
+          const storyId = decodeURIComponent(storyPlanPreviewMatch[1]!);
+          const data = await body(request, 16 * 1024 * 1024);
+          const result = application.storyPlan.previewPlan(
+            storyId,
+            data as Record<string, unknown>,
+          );
+          json(response, 200, result);
+          return;
+        }
+        const storyPlanAcceptMatch =
+          /^\/api\/stories\/([^/]+)\/plan\/accept$/.exec(route);
+        if (method === "POST" && storyPlanAcceptMatch) {
+          const storyId = decodeURIComponent(storyPlanAcceptMatch[1]!);
+          const data = await body(request, 16 * 1024 * 1024);
+          const result = application.storyPlan.acceptPlan(
+            storyId,
+            data as unknown as import("@openfilm/core").StoryPlan,
+          );
+          json(response, 200, result);
+          return;
+        }
         const suggestions =
           /^\/api\/stories\/([^/]+)\/beats\/([^/]+)\/suggestions$/.exec(route);
         if (method === "POST" && suggestions) {
