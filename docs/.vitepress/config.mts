@@ -50,6 +50,12 @@ const gettingStarted = keepExisting([
 ]);
 
 const editing = keepExisting([
+  guide("故事圖譜與視角", "en/validation-story-graph"),
+  guide("故事提案", "en/validation-story-plan"),
+  guide("導引工作流程", "en/validation-pipeline-orchestration"),
+  guide("Pipeline 工作台", "en/validation-pipeline-workbench"),
+  guide("變更影響與增量執行", "en/validation-change-impact"),
+  guide("創意方案與 A/B 評審", "en/validation-creative-variants"),
   guide("故事模板", "creative-story-templates"),
   guide("精準剪輯", "precision-editing"),
   guide("標記與吸附", "markers-and-snapping"),
@@ -92,6 +98,12 @@ const concepts = keepExisting([
 
 const validation = keepExisting([
   guide("穩定版驗證", "en/validation-stable-release"),
+  guide(
+    "故事圖譜與管線全流程驗收",
+    "en/validation-story-graph-pipeline-acceptance",
+  ),
+  guide("變更影響與增量執行驗證", "en/validation-change-impact"),
+  guide("創意方案驗證", "en/validation-creative-variants"),
   guide("視覺品質檢查", "en/validation-visual-qa"),
   guide("匯出設定驗證", "en/validation-export-profiles"),
   guide("PhotoDepth 驗證", "en/validation-photo-depth"),
@@ -117,6 +129,16 @@ const japaneseGettingStarted = keepExisting([
   guide("カメラソースとプレビュー", "ja/source-support"),
 ]);
 const englishAdditionalDocs = keepExisting([
+  guide("Story Graph & perspectives", "en/validation-story-graph"),
+  guide("Storyboard proposal", "en/validation-story-plan"),
+  guide("Pipeline orchestration", "en/validation-pipeline-orchestration"),
+  guide("Pipeline workbench", "en/validation-pipeline-workbench"),
+  guide("Change impact & incremental runs", "en/validation-change-impact"),
+  guide("Creative variants & A/B review", "en/validation-creative-variants"),
+  guide(
+    "Story Graph × Pipeline acceptance",
+    "en/validation-story-graph-pipeline-acceptance",
+  ),
   guide("Creative story templates", "en/creative-story-templates"),
   guide("Precision editing", "en/precision-editing"),
   guide("Source markers and snapping", "en/markers-and-snapping"),
