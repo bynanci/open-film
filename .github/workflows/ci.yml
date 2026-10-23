@@ -10,9 +10,9 @@ concurrency:
 jobs:
   typescript-and-media:
     runs-on: ubuntu-24.04
-    # Hosted feature runs now take about 27 minutes. Keep every browser and
-    # actual-media gate while allowing the combined regression suite to finish.
-    timeout-minutes: 45
+    # Hosted regression runs with full Story Graph × Pipeline E2E acceptance take
+    # about 38 minutes. Keep every browser and actual-media gate with safe timeout margin.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
