@@ -3743,6 +3743,86 @@ export async function startServer(options: ServerOptions = {}) {
             return;
           }
         }
+        // Creative Variants
+        if (method === "GET" && route === "/api/creative-variants") {
+          json(response, 200, {
+            variants: await application.creativeVariants.listVariants(),
+          });
+          return;
+        }
+        if (
+          method === "POST" &&
+          route === "/api/creative-variants/preview-impact"
+        ) {
+          const data = (await body(
+            request,
+          )) as unknown as import("@openfilm/core").CreateVariantInput;
+          const report =
+            application.creativeVariants.previewVariantImpact(data);
+          json(response, 200, { report });
+          return;
+        }
+        if (method === "POST" && route === "/api/creative-variants") {
+          const data = (await body(
+            request,
+          )) as unknown as import("@openfilm/core").CreateVariantInput;
+          const variant =
+            await application.creativeVariants.createVariant(data);
+          json(response, 201, { variant });
+          return;
+        }
+        if (method === "GET" && route === "/api/creative-variants/compare") {
+          const variantA = url.searchParams.get("variantA") ?? "";
+          const variantB = url.searchParams.get("variantB") ?? "";
+          const comparison = await application.creativeVariants.compareVariants(
+            variantA,
+            variantB,
+          );
+          json(response, 200, { comparison });
+          return;
+        }
+        const variantActionMatch =
+          /^\/api\/creative-variants\/([^/]+)\/(adopt|restore)$/.exec(route);
+        if (method === "POST" && variantActionMatch) {
+          const variantId = decodeURIComponent(variantActionMatch[1]!);
+          const action = variantActionMatch[2]!;
+          if (action === "adopt") {
+            const data = (await body(request).catch(() => ({}))) as {
+              expectedRevision?: string;
+            };
+            const result = await application.creativeVariants.adoptVariant(
+              variantId,
+              data,
+            );
+            json(response, 200, result);
+            return;
+          }
+          if (action === "restore") {
+            const data = (await body(request)) as {
+              checkpointVersionId: string;
+            };
+            const result = await application.creativeVariants.restoreBaseline(
+              variantId,
+              data.checkpointVersionId,
+            );
+            json(response, 200, result);
+            return;
+          }
+        }
+        const variantMatch = /^\/api\/creative-variants\/([^/]+)$/.exec(route);
+        if (method === "GET" && variantMatch) {
+          const variantId = decodeURIComponent(variantMatch[1]!);
+          const variant =
+            await application.creativeVariants.getVariant(variantId);
+          json(response, 200, { variant });
+          return;
+        }
+        if (method === "DELETE" && variantMatch) {
+          const variantId = decodeURIComponent(variantMatch[1]!);
+          await application.creativeVariants.deleteVariant(variantId);
+          json(response, 200, { ok: true });
+          return;
+        }
         const suggestions =
           /^\/api\/stories\/([^/]+)\/beats\/([^/]+)\/suggestions$/.exec(route);
         if (method === "POST" && suggestions) {

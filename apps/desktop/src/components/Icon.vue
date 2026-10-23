@@ -24,6 +24,7 @@ const paths: Record<string, string> = {
   music:
     "M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3c1.7 0 3 1.3 3 3Zm12-2a3 3 0 1 1-3-3c1.7 0 3 1.3 3 3Z",
   close: "M6 6l12 12M18 6 6 18",
+  copy: "M8 4h10a2 2 0 0 1 2 2v10M4 8h10a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z",
 };
 </script>
 

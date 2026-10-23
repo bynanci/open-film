@@ -900,5 +900,90 @@ export default {
       suggestionsRefreshed:
         "Suggestions refreshed. Your selected memories and words are preserved.",
     },
+    variants: {
+      modalTitle: "Creative Variants & A/B Review",
+      listHeader: "Creative Variants",
+      createHeader: "Create New Variant",
+      impactHeader: "Change Impact Preview",
+      plannedChanges: "Planned Changes",
+      preservedSections: "Preserved Sections (Unchanged)",
+      unsupportedBrief: "Creative Brief (Non-Automated)",
+      unsupportedNotice:
+        "Free-text styling instructions are retained as creative brief notes and will not execute unexpected mutations.",
+      emptyNotice:
+        "No creative variants created yet. Explore alternative cuts, pacing, or scene focuses without mutating your main cut.",
+      sectionNav: "Navigate by Section",
+      diffDetails: "Differences Inspection",
+      checkpointHeader: "Automatic Named Checkpoint",
+      checkpointNotice:
+        "Adopting this variant automatically saves a named version checkpoint first. You can safely restore baseline at any time.",
+      tabs: {
+        list: "All Variants",
+        create: "Create Variant",
+        compare: "A/B Compare",
+      },
+      status: {
+        draft: "Draft",
+        compared: "Compared",
+        adopted: "Adopted",
+        archived: "Archived",
+      },
+      scope: {
+        section: "Section Only",
+        film: "Whole Film",
+        sectionOnly: "Only modify specified section",
+        wholeFilm: "Adjust whole film rhythm",
+      },
+      actions: {
+        newVariant: "+ New Variant",
+        createFirst: "Create First Variant",
+        compare: "Compare",
+        adopt: "Adopt",
+        adoptB: "Adopt Variant B (Make Active)",
+        createConfirm: "Create Variant",
+        refreshDiff: "Refresh Comparison",
+        close: "Close",
+        delete: "Delete",
+        cancel: "Cancel",
+      },
+      fields: {
+        name: "Variant Name",
+        intent: "Creative Intent / Purpose",
+        scope: "Modification Scope",
+        targetBeat: "Target Beat Section",
+        targetDuration: "Target Duration (seconds)",
+        narration: "Narration Script Adjustment",
+      },
+      placeholders: {
+        name: "e.g. Variant B - Faster Pacing & Closeups",
+        intent: "e.g. Tighten walking sequence, focus on detail shot",
+        duration: "e.g. 3.5",
+        narration: "Optional narration text for this section...",
+      },
+      labels: {
+        variantA: "Baseline (A)",
+        variantB: "Variant (B)",
+      },
+      audio: {
+        active: "Playing",
+        play: "Play Audio",
+        rule: "Single-audio rule: only one variant audio channel plays at any time.",
+      },
+      table: {
+        section: "Section",
+        variantA: "Baseline (A)",
+        variantB: "Variant (B)",
+        status: "Diff Status",
+      },
+      diff: {
+        changed: "Modified",
+        identical: "Unchanged",
+      },
+      messages: {
+        created: "Creative variant created successfully.",
+        adopted:
+          "Variant adopted as active composition with automatic checkpoint.",
+      },
+    },
   },
 } as const;
