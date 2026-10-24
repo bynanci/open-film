@@ -38,6 +38,6 @@ installed under `/tmp`.
 - Shot-level/emotional proposal validation is not implemented in this change;
   the reference schemas were supplied on 2026-10-24 and reviewed as design
   guidance; their runtime scene/shot adapter remains unimplemented. See
-  [design](superpowers/specs/2026-10-23-story-arc-authoring-design.md).
+  [design](https://github.com/bynanci/open-film/blob/main/docs/superpowers/specs/2026-10-23-story-arc-authoring-design.md).
 - This change does not add an MP4/render path; rendering remains on the existing
   Composition and Pipeline contracts.

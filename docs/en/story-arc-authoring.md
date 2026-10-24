@@ -64,5 +64,5 @@ explicit versioned contract and scene-to-shot adapter before it can safely add
 reviewable emotional or shot suggestions.
 
 See [Story Graph](validation-story-graph.md),
-[StoryPlan](validation-story-plan.md), [Pipeline Workbench](../TASKS.md#delivered--m10b-pipeline-workbench-uiux),
+[StoryPlan](validation-story-plan.md), [Pipeline Workbench](validation-pipeline-workbench.md),
 and [this implementation's validation](validation-story-arc-authoring.md).
