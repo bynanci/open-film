@@ -1489,6 +1489,7 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   const element = event.target as HTMLElement | null;
+  if (element?.closest(".pipeline-workbench-root")) return;
   if (element?.closest("input, textarea, select, [contenteditable='true']"))
     return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {

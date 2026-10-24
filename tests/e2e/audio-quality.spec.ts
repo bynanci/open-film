@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, test } from "@playwright/test";
 import { createAudioQualityFixture } from "../fixtures/audio-quality.js";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, openAdvancedTools } from "./ui-helpers.js";
 const api = "http://127.0.0.1:4310/api";
 test("reviews decoded MP4 audio, auditions B and accepts through normal saved history", async ({
   page,
@@ -26,6 +26,7 @@ test("reviews decoded MP4 audio, auditions B and accepts through normal saved hi
     await navigate(page, "edit");
     await page.getByRole("button", { name: "Sound", exact: true }).click();
     await page.locator(".editor-soundtrack-list button").first().click();
+    await openAdvancedTools(page);
     await page
       .getByRole("button", { name: "Audio quality", exact: true })
       .click();

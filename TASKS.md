@@ -59,6 +59,10 @@ system or downstream NLE. Commands and test responsibilities are in
       54 relevant browser cases), preserve review fixes and prepare the branch update;
       record exact local gates and remaining workstation limits in
       [validation](docs/validation-quiet-studio-redesign.md).
+- [x] Close PR #53 review and full-suite regressions for IME persistence, arc
+      localization/timing, Pipeline shortcut isolation, loopback image CORS,
+      progressive disclosure and compact Export geometry; pass 278 files / 3,821
+      tests and the complete 228-case browser suite from the final files.
 
 Scope and contract: [Story arc authoring](docs/story-arc-authoring.md),
 [design](docs/superpowers/specs/2026-10-23-story-arc-authoring-design.md) and

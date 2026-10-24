@@ -86,6 +86,7 @@ import { clusterEvents, findDuplicates } from "@openfilm/events";
 import {
   createStory,
   createStoryArc,
+  storyArcBeatText,
   STORY_ARC_IDS,
   resolveFilmSettings,
   localizeProjectContent,
@@ -1496,9 +1497,12 @@ export class OpenFilmApplication {
     let next =
       options.projectContentLocale === undefined
         ? structuredClone(previous)
-        : localizeProjectContent(previous, options.projectContentLocale, [
-            proposalTemplate,
-          ]);
+        : localizeProjectContent(
+            previous,
+            options.projectContentLocale,
+            [proposalTemplate],
+            [storyArcBeatText],
+          );
     if (options.filmSettings !== undefined)
       next = {
         ...next,

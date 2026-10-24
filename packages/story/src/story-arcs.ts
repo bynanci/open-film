@@ -5,6 +5,7 @@ import {
   type Story,
   type StoryBeat,
 } from "@openfilm/core";
+import type { TemplateBeatText } from "@openfilm/plugin-sdk";
 import { genericStoryTitle } from "./content.js";
 
 export const STORY_ARC_IDS = [
@@ -437,6 +438,25 @@ const prompts: Record<ProjectContentLocale, ArcPrompts> = {
     ],
   },
 };
+
+export function storyArcBeatText(
+  templateId: string | undefined,
+  templateBeatKey: string,
+  locale: ProjectContentLocale,
+): TemplateBeatText | undefined {
+  if (
+    !templateId ||
+    !isStoryArcId(templateId) ||
+    templateId === "custom-outline"
+  )
+    return undefined;
+  const prefix = `arc.${templateId}.`;
+  if (!templateBeatKey.startsWith(prefix)) return undefined;
+  const prompt = prompts[locale][templateId].find(
+    (entry) => entry.key === templateBeatKey.slice(prefix.length),
+  );
+  return prompt ? { title: prompt.title, intent: prompt.intent } : undefined;
+}
 
 function invalid(message: string): never {
   throw new ApplicationError("story.invalid", message);

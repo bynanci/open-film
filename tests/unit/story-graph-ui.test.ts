@@ -272,6 +272,43 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
         mounted.unmount();
       }
     });
+
+    it("requests a full-size storyboard photo with the loopback CORS contract", async () => {
+      const component = loadComponent(
+        "apps/desktop/src/components/StoryboardView.vue",
+        dependencies,
+      );
+      const props = vue.reactive({
+        story: dummyStory,
+        composition: dummyComposition,
+        assets: dummyAssets,
+        activeBeatId: "beat-2",
+      });
+
+      const mounted = mountComponent(component, props);
+      try {
+        await vue.nextTick();
+        const previewButton = flatten(mounted.root).find(
+          (node) => node.props["data-testid"] === "storyboard-preview-asset-2",
+        );
+        expect(previewButton).toBeDefined();
+        (
+          previewButton!.props.onClick as (event: {
+            currentTarget: object;
+            stopPropagation: () => void;
+          }) => void
+        )({ currentTarget: {}, stopPropagation: () => {} });
+        await vue.nextTick();
+
+        const fullSizeImage = flatten(mounted.root).find(
+          (node) => node.props.src === "/api/source/asset-2",
+        );
+        expect(fullSizeImage).toBeDefined();
+        expect(fullSizeImage!.props.crossorigin).toBe("anonymous");
+      } finally {
+        mounted.unmount();
+      }
+    });
   });
 
   describe("StoryGraph Domain & Auto-layout Contracts", () => {

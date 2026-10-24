@@ -1634,6 +1634,27 @@ label.ui-language {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+@media (max-width: 1100px) and (min-width: 901px) {
+  .workspace-export .export-destination:has(> .export-primary-action) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--of-space-4);
+    align-items: start;
+  }
+  .workspace-export
+    .export-destination:has(> .export-primary-action)
+    > .export-primary-action {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 160px;
+    margin-bottom: 0;
+  }
+  .workspace-export
+    .export-destination:has(> .export-primary-action)
+    > :nth-child(n + 4) {
+    grid-column: 1 / -1;
+  }
+}
 @media (max-width: 900px) {
   .workspace-export .output-workspace-export {
     grid-template-columns: minmax(0, 1fr);
@@ -1641,6 +1662,14 @@ label.ui-language {
   .workspace-export .output-preview {
     position: static;
     width: min(100%, 360px);
+  }
+}
+@media (max-height: 760px) and (min-width: 901px) {
+  .workspace-export .output-workspace-export .export-options {
+    row-gap: var(--of-space-3);
+  }
+  .workspace-export .export-options .export-destination {
+    padding-block: var(--of-space-3);
   }
 }
 .export-goals {

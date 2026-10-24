@@ -59,6 +59,12 @@ workspace, project and renderer contracts. See the
 [design](docs/superpowers/specs/2026-10-24-quiet-studio-redesign-design.md) and
 [validation](docs/validation-quiet-studio-redesign.md).
 
+PR #53's final review pass also fences IME completion, localizes untouched arc
+prompts, binds timing defaults to the selected arc, isolates Pipeline keyboard
+focus and preserves the loopback image CORS boundary. The compact Export action
+remains visible through 1024x768 expanded-locale layouts. Full local evidence is
+3,821 Vitest tests and 228 Playwright tests from the final candidate.
+
 General and Expert operation modes share one editor and project contract.
 Guided disclosure, compact expert spacing and searchable navigation commands
 serve first-time and frequent creators; mode changes retain edits and history.

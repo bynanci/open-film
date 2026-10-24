@@ -393,9 +393,10 @@ const storyOutlineInvalid = computed(
       customOutline.value.some((heading) => [...heading].length > 300)),
 );
 watch(
-  storyTemplate,
-  (template) => {
+  storyArc,
+  (arc) => {
     if (storyTimingEdited.value) return;
+    const template = arc === "proposal-film" ? arc : "blank";
     const defaults = workspaceInfo.value?.templates.find(
       (item) => item.id === template,
     );

@@ -356,6 +356,7 @@ watch(
               :key="playingAssetId"
               :src="sourceUrl(playingAssetId)"
               :alt="assetMap.get(playingAssetId)?.name"
+              crossorigin="anonymous"
               @error="previewFailed = true"
             />
           </section>

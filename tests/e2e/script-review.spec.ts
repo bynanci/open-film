@@ -196,8 +196,16 @@ async function storyWorkspace(
   const activeStory = page.getByLabel(uiText(locale, "app.story.active"), {
     exact: true,
   });
+  await expect
+    .poll(
+      async () =>
+        (await activeStory.inputValue()) === storyId ||
+        !(await activeStory.isDisabled()),
+    )
+    .toBe(true);
   if ((await activeStory.inputValue()) !== storyId)
     await activeStory.selectOption(storyId);
+  await expect(activeStory).toHaveValue(storyId);
   const firstBeat = page.locator(".beat-list button").first();
   if (await firstBeat.isEnabled()) await firstBeat.click();
   await expect(page.getByTestId("script-review-panel")).toBeVisible();

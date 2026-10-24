@@ -39,19 +39,19 @@ source media and autosave/revision/history contracts are unchanged.
 
 Final local results after the fixes:
 
-| Gate                          | Result                                                                                           |
-| ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| `pnpm format:check`           | Pass                                                                                             |
-| `pnpm test:i18n`              | Pass; 2,268 semantic keys in en-US, zh-TW and ja-JP                                              |
-| `pnpm test:docs-i18n`         | Pass; 9 README locale groups, 110 reference mirrors                                              |
-| `pnpm lint`                   | Pass; zero warnings                                                                              |
-| `pnpm typecheck`              | Pass                                                                                             |
-| `pnpm test`                   | **278 files / 3,819 tests passed**, 341.57s                                                      |
-| Relevant Playwright selection | **54/54 passed** in 10 suites, 4.5 minutes                                                       |
-| `pnpm build`                  | Pass; existing >500kB application chunk advisory remains                                         |
-| `pnpm test:interchange`       | Pass; 18 harness tests, official OpenTimelineIO 0.18.1, source hash/bounds and relocation checks |
-| Built CLI smoke               | Pass; real import, synthetic playable MP4, CJK title raster, exports and reopen                  |
-| `git diff --check`            | Pass                                                                                             |
+| Gate                    | Result                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `pnpm format:check`     | Pass                                                                                             |
+| `pnpm test:i18n`        | Pass; 2,268 semantic keys in en-US, zh-TW and ja-JP                                              |
+| `pnpm test:docs-i18n`   | Pass; 9 README locale groups, 110 reference mirrors                                              |
+| `pnpm lint`             | Pass; zero warnings                                                                              |
+| `pnpm typecheck`        | Pass                                                                                             |
+| `pnpm test`             | **278 files / 3,821 tests passed**, 344.32s                                                      |
+| `pnpm test:e2e`         | **228/228 passed**, one worker, 18.6 minutes; no skips or retries                                |
+| `pnpm build`            | Pass; existing >500kB application chunk advisory remains                                         |
+| `pnpm test:interchange` | Pass; 18 harness tests, official OpenTimelineIO 0.18.1, source hash/bounds and relocation checks |
+| Built CLI smoke         | Pass; real import, synthetic playable MP4, CJK title raster, exports and reopen                  |
+| `git diff --check`      | Pass                                                                                             |
 
 The new browser suite includes actual decoded synthetic-source MP4 playback,
 native player identity/seek/volume/rate continuity, pointer targets and real
@@ -124,11 +124,35 @@ the new suite adds actual coarse-pointer controls and layout regressions, plus
 dark/light screenshots of Library, Outline, Edit, Export, Versions, Graph,
 Storyboard, Pipeline, Settings and commands.
 
+## PR #53 review and full-suite remediation
+
+The GitHub review and the first hosted full-browser run exposed five correctness
+issues and stale expectations in older workflows. The final candidate saves the
+last IME composition value, localizes untouched built-in arc prompts while
+preserving user-owned text, derives new-story timing from the selected arc,
+isolates Timeline shortcuts while the Pipeline drawer owns focus, and requests
+full-size Storyboard images with the loopback CORS contract.
+
+General mode still exposes advanced audio, Fit and Visual QA actions through its
+documented disclosure. New stories still open in StoryGraph. Existing browser
+flows now exercise those intended steps explicitly; reload/relink checks use the
+top-bar project identity and enter the workspace whose content they inspect.
+The compact Export layout keeps the MP4 action fully visible at 1280x720 and
+1024x768, including expanded pseudo-localized text, without changing export order
+or Composition state.
+
+Focused review tests passed 42/42. The 50-case affected browser selection passed
+48 immediately; the two stale workspace assumptions were corrected and passed
+individually. The final repository-wide runs then passed all 3,821 Vitest tests
+and all 228 Playwright tests from the final files. Production build, built CLI
+smoke, all 18 OpenTimelineIO 0.18.1 interchange checks and `git diff --check`
+also passed.
+
 ## Limits
 
 Local automation is separate from hosted CI and native workstation evidence.
-The complete repository E2E selection and native Rust gates are not rerun for
-this web presentation change. Physical Windows/macOS WebViews, OS IME,
+The complete repository E2E selection was rerun; native Rust gates remain owned
+by exact-head hosted CI for this web presentation change. Physical Windows/macOS WebViews, OS IME,
 VoiceOver/NVDA, actual browser zoom controls, touch/pen devices and hardware/4K/NLE
 QA remain manual gates. CSS reflow and emulated coarse pointer are evidence for
 those particular browser conditions, not a claim of physical-device certification.

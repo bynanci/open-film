@@ -711,6 +711,11 @@ async function saveBeatChanges() {
   emit("edit-beat", props.story.id, updatedBeat);
 }
 
+function finishBeatComposition() {
+  isImeComposing.value = false;
+  void saveBeatChanges();
+}
+
 async function saveIdeaChanges() {
   if (!selectedNode.value || selectedNode.value.type !== "idea") return;
   const updatedNode: StoryGraphNode = {
@@ -1336,7 +1341,7 @@ onUnmounted(() => {
               v-model="beatDraft.title"
               :disabled="beatEditingBlocked"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1358,7 +1363,7 @@ onUnmounted(() => {
               v-model="beatDraft.intent"
               :disabled="beatEditingBlocked"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1370,7 +1375,7 @@ onUnmounted(() => {
               :disabled="beatEditingBlocked"
               rows="2"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1382,7 +1387,7 @@ onUnmounted(() => {
               :disabled="beatEditingBlocked"
               rows="2"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>

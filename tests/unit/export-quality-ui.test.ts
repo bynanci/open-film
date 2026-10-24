@@ -463,7 +463,9 @@ describe("MP4 output quality controls", () => {
       .nodes()
       .find((node) => node.props.class === "export-destination")!;
     const button = destination.children.find(
-      (node) => node.tag === "button" && node.props.class === "primary",
+      (node) =>
+        node.tag === "button" &&
+        node.props["data-testid"] === "export-profile-mp4",
     )!;
     expect(button).toBeDefined();
     expect(destination.children.indexOf(button)).toBeLessThan(

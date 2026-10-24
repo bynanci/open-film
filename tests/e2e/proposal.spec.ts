@@ -6,6 +6,7 @@ import {
   chooseImportFolder,
   openFilm,
   openAdvancedExports,
+  openAdvancedTools,
 } from "./ui-helpers.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -295,9 +296,28 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   await expect(
     page.getByLabel("Maximum (seconds)", { exact: true }),
   ).toHaveValue("300");
+  await page.getByLabel("Starting structure").selectOption("blank");
+  await expect(
+    page.getByLabel("Target (seconds)", { exact: true }),
+  ).toHaveValue("120");
+  await expect(
+    page.getByLabel("Maximum (seconds)", { exact: true }),
+  ).toHaveValue("180");
+  await page.getByLabel("Starting structure").selectOption("proposal-film");
+  await expect(
+    page.getByLabel("Target (seconds)", { exact: true }),
+  ).toHaveValue("270");
+  await expect(
+    page.getByLabel("Maximum (seconds)", { exact: true }),
+  ).toHaveValue("300");
   await page.getByLabel("Target (seconds)", { exact: true }).fill("18");
   await page.getByLabel("Maximum (seconds)", { exact: true }).fill("30");
   await page.getByRole("button", { name: "Plan story", exact: true }).click();
+  await expect(page.getByTestId("perspective-tab-graph")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByTestId("perspective-tab-outline").click();
   await expect(page.locator(".beat-list button")).toHaveCount(9);
   await page.getByLabel("Beat title", { exact: true }).fill("The first hello");
   await page
@@ -451,6 +471,7 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   expect(current.composition.duration).toBeGreaterThan(
     current.story.targetDuration!,
   );
+  await openAdvancedTools(page);
   await page
     .getByRole("button", { name: "Fit to target", exact: true })
     .click();

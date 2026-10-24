@@ -368,6 +368,52 @@ test("native Space activation opens general tools and quick actions while Edit i
   await expect(trigger).toBeFocused();
 });
 
+test("keeps timeline shortcuts isolated while the pipeline drawer has focus", async ({
+  page,
+  request,
+}) => {
+  await navigate(page, "edit", "en-US");
+  const photo = page
+    .locator(".editor-clip")
+    .filter({ hasText: "01-photo.png" });
+  await photo.click();
+  const duration = page.getByLabel("Photo duration", { exact: true });
+  const changedDuration = String(Number(await duration.inputValue()) + 1);
+  await duration.fill(changedDuration);
+  await duration.press("Tab");
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  const clipId = (await photo.getAttribute("id"))!.replace(/^clip-/, "");
+  await expect
+    .poll(async () => {
+      const current = (await (await request.get(`${api}/project`)).json())
+        .project;
+      return current.timelines[0].tracks
+        .flatMap(
+          (track: { clips: Array<{ id: string; timelineDuration: number }> }) =>
+            track.clips,
+        )
+        .find((clip: { id: string }) => clip.id === clipId)?.timelineDuration;
+    })
+    .toBe(Number(changedDuration));
+  const before = (await (await request.get(`${api}/project`)).json()).project;
+
+  await page.locator(".app-header .pipeline-toggle").click();
+  const drawer = page.locator(".pipeline-workbench-container.is-drawer");
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole("button").first().focus();
+  await page.keyboard.press("Control+z");
+  await page.waitForTimeout(500);
+  expect(
+    (await (await request.get(`${api}/project`)).json()).project.timelines,
+  ).toEqual(before.timelines);
+
+  await page.keyboard.press("Delete");
+  await page.waitForTimeout(500);
+  expect(
+    (await (await request.get(`${api}/project`)).json()).project.timelines,
+  ).toEqual(before.timelines);
+});
+
 test("retains selection and Undo history across both workspace modes", async ({
   page,
   request,

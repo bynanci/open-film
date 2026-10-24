@@ -392,7 +392,7 @@ onUnmounted(() => {
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
       <button
-        class="primary"
+        class="primary export-primary-action"
         data-testid="export-profile-mp4"
         :disabled="busy || !canExportCropped"
         @click="

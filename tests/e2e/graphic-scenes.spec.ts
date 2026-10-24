@@ -4,7 +4,7 @@ import { hashFile, runProcess } from "@openfilm/media";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, openAdvancedTools } from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
 const api = process.env.OPENFILM_E2E_API ?? "http://127.0.0.1:4310/api";
 const compositionId = "graphic-film";
@@ -311,6 +311,7 @@ for (const layout of [
     }
     expect(new Set(frames.map((frame) => frame.rgbaSha256)).size).toBe(3);
     if (layout === "graphics-only" || layout === "visual-gaps") {
+      await openAdvancedTools(page);
       await page
         .getByRole("button", { name: "Open Visual QA panel", exact: true })
         .click();

@@ -114,6 +114,39 @@ test("authors a freeform beat order, opens the mind map, then presents the exist
     [`beat-node-${story.beats[1]!.id}`, `beat-node-${story.beats[2]!.id}`],
   ]);
 
+  const firstBeatNode = page.locator(".graph-node.node-beat").first();
+  await firstBeatNode.click();
+  const beatTitle = page
+    .locator(".inspector-palette")
+    .getByLabel("Beat Title", { exact: true });
+  const imeTitle = "輸入法完成後要保存";
+  await beatTitle.evaluate((input, value) => {
+    input.dispatchEvent(
+      new CompositionEvent("compositionstart", { bubbles: true }),
+    );
+    (input as HTMLInputElement).value = value;
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: value,
+        inputType: "insertCompositionText",
+        isComposing: true,
+      }),
+    );
+    input.dispatchEvent(
+      new CompositionEvent("compositionend", { bubbles: true, data: value }),
+    );
+  }, imeTitle);
+  await expect
+    .poll(async () => {
+      const response = await request.get(`${base}/project`);
+      const current = (await response.json()).project as { stories: Story[] };
+      return current.stories
+        .find((item) => item.id === story.id)
+        ?.beats.find((beat) => beat.id === story.beats[0]!.id)?.title;
+    })
+    .toBe(imeTitle);
+
   await page
     .getByTestId("story-workflow")
     .getByRole("button", {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Story, StoryGraph } from "@openfilm/core";
+import { preserveUserBeatText } from "@openfilm/story";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
 import { startServer } from "../../apps/server/src/server.js";
 
@@ -96,6 +97,57 @@ it("creates a custom outline through the API, exposes its order in the mind map,
     ).toEqual(headings);
   } finally {
     await closeServer?.();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("re-localizes untouched arc prompts while preserving authored fields", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-story-arc-locale-"));
+  const projectPath = join(root, "film.openfilm");
+  try {
+    const sourcePath = join(root, "media");
+    await generateSampleMedia(sourcePath);
+    const application = await OpenFilmApplication.create(
+      projectPath,
+      "Localized arc",
+      { projectContentLocale: "en-US" },
+    );
+    try {
+      await application.importFiles([join(sourcePath, "01-photo.png")]);
+      const story = application.generateStory({
+        template: "journey",
+        targetDuration: 12,
+        maxDuration: 18,
+      });
+      const saved = application.project.stories.find(
+        (entry) => entry.id === story.id,
+      )!;
+      saved.beats[0] = preserveUserBeatText(saved.beats[0], {
+        ...saved.beats[0]!,
+        title: "My authored departure",
+      });
+
+      const localized = application
+        .updateFilm({ projectContentLocale: "zh-TW" })
+        .stories.find((entry) => entry.id === story.id)!;
+
+      expect(localized.beats.map((beat) => beat.title)).toEqual([
+        "My authored departure",
+        "沿途",
+        "抵達",
+      ]);
+      expect(localized.beats[0]!.intent).toBe(
+        "建立旅程的起點，以及繼續前行的理由。",
+      );
+      expect(localized.beats[0]!.titleSource).toBe("user");
+      expect(localized.beats.slice(1).map((beat) => beat.titleSource)).toEqual([
+        "template",
+        "template",
+      ]);
+    } finally {
+      application.close();
+    }
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
