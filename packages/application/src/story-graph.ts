@@ -282,12 +282,13 @@ export class StoryGraphService {
       source?.type === "beat" &&
       target?.type === "asset"
     ) {
-      result = addAssetToBeatInGraph(
+      const canonicalStory = addAssetToBeatInGraph(
         story,
         graph,
         source.beatId,
         target.assetId,
-      );
+      ).story;
+      result = { story: canonicalStory, graph: validatedGraph };
     } else if (
       type === "precedes" &&
       source?.type === "beat" &&

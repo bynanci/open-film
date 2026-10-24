@@ -25,6 +25,7 @@ The primary person is an editor returning to an active local project. They have 
 - The selected relationship type defaults from the source and target types but remains reviewable before use.
 - `beat → asset / supports` updates the beat's canonical selected assets. `beat → beat / precedes` updates canonical beat order. Other valid links update the graph only.
 - Duplicate, self-referencing, missing-node, and cyclic dependency links fail without modifying the graph.
+- Valid persisted graphs retain the exact selected source and target node IDs, including non-generated asset node IDs.
 - Moving a node remains layout-only and never changes playback order or a Composition revision.
 
 ### Pipeline workbench
@@ -38,7 +39,7 @@ The primary person is an editor returning to an active local project. They have 
 ## Interaction and accessibility
 
 - Node movement starts only from the node body; connection dragging starts only from its dedicated handle.
-- Window-scoped pointer tracking and cleanup prevent a stuck drag when the pointer leaves the canvas.
+- Window-scoped pointer tracking and cleanup prevent a stuck drag when the pointer leaves the canvas. Coordinate hit-testing resolves the release target even when touch implicitly captures the pointer on the source handle.
 - The connection handle is a named button with visible focus. Enter or Space chooses a source or completes a target.
 - A live status region announces the source, relationship, success, cancellation, or validation failure.
 - Pipeline stages are buttons with `aria-current="step"`; status is expressed by text and shape as well as color.

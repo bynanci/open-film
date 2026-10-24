@@ -251,6 +251,11 @@ describe("StoryGraphService Application Integration", () => {
             type: "asset",
             assetId: "asset-sunset",
           },
+          {
+            id: "remembered-sunset",
+            type: "asset",
+            assetId: "asset-sunset",
+          },
         ],
         edges: [],
       },
@@ -275,6 +280,32 @@ describe("StoryGraphService Application Integration", () => {
           edge.type === "supports",
       ),
     ).toHaveLength(1);
+
+    const aliasResult = await app.storyGraph.connectNodes(
+      story.id,
+      "beat-node-b1",
+      "remembered-sunset",
+      "supports",
+    );
+    expect(aliasResult.story.beats[1]?.selectedAssetIds).toEqual([
+      "asset-sunset",
+    ]);
+    expect(
+      aliasResult.graph.edges.some(
+        (edge) =>
+          edge.from === "beat-node-b1" &&
+          edge.to === "remembered-sunset" &&
+          edge.type === "supports",
+      ),
+    ).toBe(true);
+    expect(
+      aliasResult.graph.edges.some(
+        (edge) =>
+          edge.from === "beat-node-b1" &&
+          edge.to === "asset-node-asset-sunset" &&
+          edge.type === "supports",
+      ),
+    ).toBe(false);
 
     const orderResult = await app.storyGraph.connectNodes(
       story.id,

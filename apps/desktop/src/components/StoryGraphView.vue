@@ -161,6 +161,8 @@ const dragStartNodePos = ref({ x: 0, y: 0 });
 const connectionSourceNodeId = ref<string | null>(null);
 const connectionHoverTargetId = ref<string | null>(null);
 const connectionPointer = ref<{ x: number; y: number } | null>(null);
+const connectionPointerOrigin = ref<{ x: number; y: number } | null>(null);
+const connectionPointerDragged = ref(false);
 const connectionTargetId = ref("");
 const connectionType = ref<StoryGraphEdgeType | "auto">("auto");
 const connectionBusy = ref(false);
@@ -527,6 +529,7 @@ function clearSelection() {
 function onNodePointerDown(nodeId: string, event: PointerEvent) {
   if (event.button !== 0) return;
   event.stopPropagation();
+  if (connectionSourceNodeId.value) return;
   selectNode(nodeId);
 
   isDraggingNode.value = true;
@@ -561,6 +564,18 @@ function onCanvasPointerDown(event: PointerEvent) {
 
 function onPointerMove(event: PointerEvent) {
   if (connectionSourceNodeId.value) {
+    const origin = connectionPointerOrigin.value;
+    if (
+      origin &&
+      Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 4
+    ) {
+      connectionPointerDragged.value = true;
+    }
+    const hitNodeId = graphNodeIdAtPoint(event.clientX, event.clientY);
+    connectionHoverTargetId.value =
+      hitNodeId && hitNodeId !== connectionSourceNodeId.value
+        ? hitNodeId
+        : null;
     connectionPointer.value = graphPointFromPointer(event);
     return;
   }
@@ -618,6 +633,14 @@ function graphPointFromPointer(event: PointerEvent) {
   };
 }
 
+function graphNodeIdAtPoint(clientX: number, clientY: number) {
+  return (
+    document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>(".graph-node")?.dataset.nodeId ?? null
+  );
+}
+
 function nodeLabel(node: StoryGraphNode): string {
   if (node.type === "theme") return node.title;
   if (node.type === "beat")
@@ -642,10 +665,17 @@ function startConnection(nodeId: string, event?: PointerEvent) {
   connectionHoverTargetId.value = null;
   connectionError.value = null;
   connectionMessage.value = t("app.storyGraph.connections.chooseTarget");
-  if (event) connectionPointer.value = graphPointFromPointer(event);
-  else {
+  connectionPointerDragged.value = false;
+  if (event) {
+    connectionPointer.value = graphPointFromPointer(event);
+    connectionPointerOrigin.value = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  } else {
     const pos = viewState.value.nodes[nodeId] ?? { x: 100, y: 100 };
     connectionPointer.value = { x: pos.x + 120, y: pos.y + 60 };
+    connectionPointerOrigin.value = null;
   }
   removePointerListeners();
   window.addEventListener("pointermove", onPointerMove);
@@ -658,6 +688,8 @@ function cancelConnection(announce = false) {
   connectionSourceNodeId.value = null;
   connectionHoverTargetId.value = null;
   connectionPointer.value = null;
+  connectionPointerOrigin.value = null;
+  connectionPointerDragged.value = false;
   removePointerListeners();
   if (announce && hadConnection && !connectionBusy.value) {
     connectionMessage.value = t("app.storyGraph.connections.cancelled");
@@ -715,8 +747,18 @@ async function finishConnection(nodeId: string, event: PointerEvent) {
   if (!connectionSourceNodeId.value) return;
   event.stopPropagation();
   const sourceId = connectionSourceNodeId.value;
-  if (sourceId === nodeId) return;
-  await connectNodes(sourceId, nodeId);
+  const hitNodeId = graphNodeIdAtPoint(event.clientX, event.clientY);
+  const targetId =
+    hitNodeId && hitNodeId !== sourceId
+      ? hitNodeId
+      : nodeId !== sourceId
+        ? nodeId
+        : null;
+  if (!targetId) {
+    if (connectionPointerDragged.value) cancelConnection(true);
+    return;
+  }
+  await connectNodes(sourceId, targetId);
 }
 
 async function handleConnectionHandleKeydown(
