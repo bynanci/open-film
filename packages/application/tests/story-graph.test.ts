@@ -256,6 +256,18 @@ describe("StoryGraphService Application Integration", () => {
             type: "asset",
             assetId: "asset-sunset",
           },
+          {
+            id: "alternate-opening",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b0",
+          },
+          {
+            id: "alternate-ending",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b2",
+          },
         ],
         edges: [],
       },
@@ -326,6 +338,14 @@ describe("StoryGraphService Application Integration", () => {
           edge.type === "precedes",
       ),
     ).toBe(true);
+    expect(
+      orderResult.graph.edges.some(
+        (edge) =>
+          edge.from === "alternate-opening" &&
+          edge.to === "alternate-ending" &&
+          edge.type === "precedes",
+      ),
+    ).toBe(false);
   });
 
   it("removes graph node and edges without deleting original assets from catalog", async () => {

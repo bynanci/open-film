@@ -294,7 +294,41 @@ export class StoryGraphService {
       source?.type === "beat" &&
       target?.type === "beat"
     ) {
-      result = setAsNextBeat(story, graph, source.beatId, target.beatId);
+      const canonical = setAsNextBeat(
+        story,
+        graph,
+        source.beatId,
+        target.beatId,
+      );
+      const exactEdge = validatedGraph.edges.find(
+        (edge) =>
+          edge.type === "precedes" &&
+          edge.from === fromNodeId &&
+          edge.to === toNodeId,
+      );
+      const beatIdByNodeId = new Map(
+        graph.nodes.flatMap((node) =>
+          node.type === "beat" ? [[node.id, node.beatId] as const] : [],
+        ),
+      );
+      const canonicalPairIndex = canonical.graph.edges.findIndex(
+        (edge) =>
+          edge.type === "precedes" &&
+          beatIdByNodeId.get(edge.from) === source.beatId &&
+          beatIdByNodeId.get(edge.to) === target.beatId,
+      );
+      result = {
+        story: canonical.story,
+        graph:
+          exactEdge && canonicalPairIndex >= 0
+            ? {
+                ...canonical.graph,
+                edges: canonical.graph.edges.map((edge, index) =>
+                  index === canonicalPairIndex ? exactEdge : edge,
+                ),
+              }
+            : canonical.graph,
+      };
     } else {
       result = { story, graph: validatedGraph };
     }
