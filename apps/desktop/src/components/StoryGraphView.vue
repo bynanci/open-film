@@ -1600,7 +1600,7 @@ onUnmounted(() => {
                     })
               "
               @pointerdown.stop.prevent="startConnection(node.id, $event)"
-              @pointerup.stop="finishConnection(node.id, $event)"
+              @pointerup="finishConnection(node.id, $event)"
               @click="handleConnectionHandleClick(node.id, $event)"
               @keydown="handleConnectionHandleKeydown(node.id, $event)"
             >

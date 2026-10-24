@@ -746,6 +746,25 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
         );
         expect(viewWrites.at(-1)?.pan).toEqual({ x: 50, y: 30 });
 
+        let ordinaryDragReleaseStopped = false;
+        (targetNode!.props.onPointerdown as (event: unknown) => void)({
+          button: 0,
+          clientX: 280,
+          clientY: 160,
+          stopPropagation() {},
+        });
+        await (target!.props.onPointerup as (event: unknown) => Promise<void>)({
+          clientX: 300,
+          clientY: 180,
+          stopPropagation() {
+            ordinaryDragReleaseStopped = true;
+          },
+        });
+        expect(ordinaryDragReleaseStopped).toBe(false);
+        for (const listener of [...(listeners.get("pointerup") ?? [])]) {
+          listener({ clientX: 300, clientY: 180 } as unknown as Event);
+        }
+
         (targetNode!.props.onKeydown as (event: unknown) => void)({
           key: "Enter",
           preventDefault() {},
