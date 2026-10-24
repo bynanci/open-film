@@ -46,6 +46,17 @@ export function connectStoryGraphNodes(
   ) {
     throw new Error("A precedes relationship can only connect beat nodes.");
   }
+  if (
+    type === "precedes" &&
+    source?.type === "beat" &&
+    target?.type === "beat" &&
+    source.id !== target.id &&
+    source.beatId === target.beatId
+  ) {
+    throw new Error(
+      "A precedes relationship cannot connect aliases of the same canonical beat.",
+    );
+  }
 
   if (
     graph.edges.some(

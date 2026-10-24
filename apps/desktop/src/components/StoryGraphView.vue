@@ -1069,6 +1069,11 @@ function insertAssetMention(asset: MediaAsset) {
 // Keyboard navigation
 function onKeyDown(event: KeyboardEvent) {
   if (event.defaultPrevented || isImeComposing.value) return;
+  if (event.key === "Escape" && connectionSourceNodeId.value) {
+    event.preventDefault();
+    cancelConnection(true);
+    return;
+  }
   if (
     (event.target as HTMLElement).tagName === "INPUT" ||
     (event.target as HTMLElement).tagName === "TEXTAREA" ||

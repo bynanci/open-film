@@ -294,20 +294,73 @@ test("drags graph layout and creates a typed story connection through the expert
 
   const sourceHandle = page.getByTestId(`story-connect-handle-${beatNodeId}`);
   const targetNode = page.locator(`[data-node-id="${assetNodeId}"]`);
+  await page
+    .getByRole("button", { name: "Fit to content", exact: true })
+    .click();
   const sourceBox = await sourceHandle.boundingBox();
   const targetBox = await targetNode.boundingBox();
   expect(sourceBox).not.toBeNull();
   expect(targetBox).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  const cancelledTargetPoint = {
+    x: Math.min(
+      targetBox!.x + Math.min(8, targetBox!.width / 2),
+      viewport.width - 2,
+    ),
+    y: Math.min(
+      targetBox!.y + Math.min(8, targetBox!.height / 2),
+      viewport.height - 2,
+    ),
+  };
   await page.mouse.move(
     sourceBox!.x + sourceBox!.width / 2,
     sourceBox!.y + sourceBox!.height / 2,
   );
   await page.mouse.down();
+  await expect(sourceHandle).toHaveClass(/active/);
+  await page.keyboard.press("Escape");
+  await expect(sourceHandle).not.toHaveClass(/active/);
+  await page.mouse.move(cancelledTargetPoint.x, cancelledTargetPoint.y, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(async () => {
+      const project = (await (await request.get(`${api}/project`)).json())
+        .project;
+      const story = project.stories.find(
+        (item: { id: string }) => item.id === activeStoryId,
+      );
+      return story.graph.edges.some(
+        (edge: { from: string; to: string; type: string }) =>
+          edge.from === beatNodeId &&
+          edge.to === assetNodeId &&
+          edge.type === "supports",
+      );
+    })
+    .toBe(false);
+
+  const actualSourceBox = await sourceHandle.boundingBox();
+  expect(actualSourceBox).not.toBeNull();
   await page.mouse.move(
-    targetBox!.x + Math.min(24, targetBox!.width / 2),
-    targetBox!.y + Math.min(24, targetBox!.height / 2),
-    { steps: 8 },
+    actualSourceBox!.x + actualSourceBox!.width / 2,
+    actualSourceBox!.y + actualSourceBox!.height / 2,
   );
+  await page.mouse.down();
+  await expect(sourceHandle).toHaveClass(/active/);
+  const actualTargetBox = await targetNode.boundingBox();
+  expect(actualTargetBox).not.toBeNull();
+  const actualTargetPoint = {
+    x: Math.min(
+      actualTargetBox!.x + Math.min(8, actualTargetBox!.width / 2),
+      viewport.width - 2,
+    ),
+    y: Math.min(
+      actualTargetBox!.y + Math.min(8, actualTargetBox!.height / 2),
+      viewport.height - 2,
+    ),
+  };
+  await page.mouse.move(actualTargetPoint.x, actualTargetPoint.y, { steps: 8 });
   await page.mouse.up();
 
   await expect(page.locator(".connection-result-toast")).toContainText(

@@ -130,4 +130,19 @@ describe("story graph drag connections", () => {
       connectStoryGraphNodes(ordered, "idea-1", "asset-1", "precedes"),
     ).toThrow(/beat nodes/i);
   });
+
+  it("rejects a precedes relationship between aliases of one canonical beat", () => {
+    const aliased = graph();
+    aliased.nodes.push({
+      id: "beat-a-alias",
+      type: "beat",
+      storyId: "story-1",
+      beatId: "a",
+    });
+
+    expect(() =>
+      connectStoryGraphNodes(aliased, "beat-a", "beat-a-alias", "precedes"),
+    ).toThrow(/same canonical beat/i);
+    expect(aliased.edges).toHaveLength(0);
+  });
 });

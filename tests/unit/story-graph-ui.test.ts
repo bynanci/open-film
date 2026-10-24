@@ -710,6 +710,31 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
         (source!.props.onClick as (event: unknown) => void)({
           stopPropagation() {},
         });
+        let escapePrevented = false;
+        const escapeEvent = {
+          key: "Escape",
+          defaultPrevented: false,
+          target: { tagName: "BUTTON", isContentEditable: false },
+          preventDefault() {
+            escapePrevented = true;
+            this.defaultPrevented = true;
+          },
+          stopPropagation() {},
+        };
+        for (const listener of [...(listeners.get("keydown") ?? [])]) {
+          listener(escapeEvent as unknown as Event);
+        }
+        pointerHitNodeId = "asset-node-asset-2";
+        await (source!.props.onPointerup as (event: unknown) => Promise<void>)(
+          pointerEvent,
+        );
+        expect(escapePrevented).toBe(true);
+        expect(calls).toHaveLength(2);
+        pointerHitNodeId = null;
+
+        (source!.props.onClick as (event: unknown) => void)({
+          stopPropagation() {},
+        });
         const targetPointerEvent = {
           button: 0,
           clientX: 280,
