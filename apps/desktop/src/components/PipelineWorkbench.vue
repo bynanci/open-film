@@ -3,7 +3,16 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, sourceUrl, thumbnailUrl } from "../api.js";
+import { preferences } from "../preferences";
 import Icon from "./Icon.vue";
+import {
+  WORKBENCH_STAGES,
+  adjacentWorkbenchStage,
+  resolveWorkbenchStageStatus,
+  summarizeWorkbenchProgress,
+  type WorkbenchStageKey,
+  type WorkbenchStageStatus,
+} from "../pipeline-workbench-model";
 import type {
   PipelineRecipe,
   PipelineRun,
@@ -15,8 +24,7 @@ import type {
 } from "@openfilm/core";
 
 export type WorkbenchMode = "bar" | "drawer" | "modal";
-export type WorkbenchStageKey =
-  "materials" | "storyPlan" | "produceClips" | "previewQa" | "export";
+export type { WorkbenchStageKey } from "../pipeline-workbench-model";
 
 const props = withDefaults(
   defineProps<{
@@ -78,7 +86,7 @@ watch(mode, async (next, previous) => {
   }
 });
 const activeStage = ref<WorkbenchStageKey>("produceClips");
-const showAdvancedSubSteps = ref(false);
+const expertMode = computed(() => preferences.workspaceMode === "expert");
 
 const recipes = ref<PipelineRecipe[]>([]);
 const selectedRecipeId = ref<string>("guided-story-to-video");
@@ -140,54 +148,63 @@ const isOutdated = computed(() => {
 });
 
 // Stage status mappings
-const stageStatuses = computed<Record<WorkbenchStageKey, string>>(() => {
-  const run = currentRun.value;
-  if (!run) {
+const stageStatuses = computed<Record<WorkbenchStageKey, WorkbenchStageStatus>>(
+  () => {
+    const run = currentRun.value;
+    if (!run) {
+      return {
+        materials: (props.assets?.length ?? 0) > 0 ? "succeeded" : "idle",
+        storyPlan: props.activeStory ? "succeeded" : "idle",
+        produceClips: "idle",
+        previewQa: "idle",
+        export: "idle",
+      };
+    }
+
+    const statusesFor = (stepIds: readonly string[]) =>
+      stepIds.map(
+        (stepId) =>
+          run.stepAttempts.find((attempt) => attempt.stepId === stepId)
+            ?.status ?? "pending",
+      );
+    const produceStatus = resolveWorkbenchStageStatus(
+      statusesFor(["step-3", "step-4", "step-5"]),
+    );
+    const previewStatus = resolveWorkbenchStageStatus(
+      statusesFor(["step-6", "step-7"]),
+    );
+    const exportStatus = resolveWorkbenchStageStatus(statusesFor(["step-8"]));
+
     return {
       materials: (props.assets?.length ?? 0) > 0 ? "succeeded" : "idle",
       storyPlan: props.activeStory ? "succeeded" : "idle",
-      produceClips: "idle",
-      previewQa: "idle",
-      export: "idle",
+      produceClips: produceStatus,
+      previewQa: previewStatus,
+      export: exportStatus,
     };
-  }
+  },
+);
 
-  // Derive status from underlying attempts
-  const step3 = run.stepAttempts.find((s) => s.stepId === "step-3");
-  const step5 = run.stepAttempts.find((s) => s.stepId === "step-5");
-  const step6 = run.stepAttempts.find((s) => s.stepId === "step-6");
-  const step7 = run.stepAttempts.find((s) => s.stepId === "step-7");
-  const step8 = run.stepAttempts.find((s) => s.stepId === "step-8");
+const activeStageIndex = computed(() =>
+  WORKBENCH_STAGES.findIndex((stage) => stage.key === activeStage.value),
+);
+const stageProgress = computed(() =>
+  summarizeWorkbenchProgress(stageStatuses.value),
+);
+const activeStageStatus = computed(
+  () => stageStatuses.value[activeStage.value],
+);
 
-  let produceStatus = "idle";
-  if (step5?.status === "succeeded") produceStatus = "succeeded";
-  else if (step3?.status === "waiting-review") produceStatus = "waiting-review";
-  else if (step3?.status === "running" || step5?.status === "running")
-    produceStatus = "running";
-  else if (step3?.status === "failed" || step5?.status === "failed")
-    produceStatus = "failed";
+function moveToAdjacentStage(direction: -1 | 1) {
+  activeStage.value = adjacentWorkbenchStage(activeStage.value, direction);
+}
 
-  let previewStatus = "idle";
-  if (step7?.status === "succeeded") previewStatus = "succeeded";
-  else if (step7?.status === "waiting-review") previewStatus = "waiting-review";
-  else if (step6?.status === "running" || step7?.status === "running")
-    previewStatus = "running";
-  else if (step6?.status === "failed" || step7?.status === "failed")
-    previewStatus = "failed";
-
-  let exportStatus = "idle";
-  if (step8?.status === "succeeded") exportStatus = "succeeded";
-  else if (step8?.status === "running") exportStatus = "running";
-  else if (step8?.status === "failed") exportStatus = "failed";
-
-  return {
-    materials: (props.assets?.length ?? 0) > 0 ? "succeeded" : "idle",
-    storyPlan: props.activeStory ? "succeeded" : "idle",
-    produceClips: produceStatus,
-    previewQa: previewStatus,
-    export: exportStatus,
-  };
-});
+function stepAttemptStatus(stepId: string): WorkbenchStageStatus {
+  return (
+    currentRun.value?.stepAttempts.find((attempt) => attempt.stepId === stepId)
+      ?.status ?? "pending"
+  );
+}
 
 // Artifacts accessors
 const previewVideoArtifact = computed(() => {
@@ -605,6 +622,7 @@ onUnmounted(() => {
   <div
     class="pipeline-workbench-root"
     :class="[`workbench-mode-${mode}`, { 'is-outdated': isOutdated }]"
+    :data-workspace-mode="preferences.workspaceMode"
   >
     <!-- MODE 1: Docked Bottom Status Bar -->
     <aside
@@ -629,28 +647,23 @@ onUnmounted(() => {
         <!-- 5-Stage Indicator -->
         <div class="bar-stages-track">
           <button
-            v-for="(stKey, idx) in [
-              'materials',
-              'storyPlan',
-              'produceClips',
-              'previewQa',
-              'export',
-            ] as WorkbenchStageKey[]"
-            :key="stKey"
+            v-for="(stage, idx) in WORKBENCH_STAGES"
+            :key="stage.key"
             type="button"
             class="bar-stage-dot"
-            :data-stage="stKey"
+            :data-stage="stage.key"
             :class="[
-              `status-${stageStatuses[stKey]}`,
-              { active: activeStage === stKey },
+              `status-${stageStatuses[stage.key]}`,
+              { active: activeStage === stage.key },
             ]"
-            :title="t(`app.pipeline.workbench.stages.${stKey}`)"
+            :title="t(`app.pipeline.workbench.stages.${stage.key}`)"
             @click="
-              activeStage = stKey;
+              activeStage = stage.key;
               switchMode('drawer');
             "
           >
-            {{ idx + 1 }}. {{ t(`app.pipeline.workbench.stages.${stKey}`) }}
+            {{ idx + 1 }}.
+            {{ t(`app.pipeline.workbench.stages.${stage.key}`) }}
           </button>
         </div>
       </div>
@@ -973,66 +986,221 @@ onUnmounted(() => {
         :aria-label="t('app.pipeline.workbench.stages.materials')"
       >
         <button
-          v-for="(stKey, idx) in [
-            'materials',
-            'storyPlan',
-            'produceClips',
-            'previewQa',
-            'export',
-          ] as WorkbenchStageKey[]"
-          :key="stKey"
+          v-for="(stage, idx) in WORKBENCH_STAGES"
+          :key="stage.key"
           type="button"
           class="workbench-step-tab"
           :class="{
-            active: activeStage === stKey,
-            'is-succeeded': stageStatuses[stKey] === 'succeeded',
-            'is-review': stageStatuses[stKey] === 'waiting-review',
-            'is-failed': stageStatuses[stKey] === 'failed',
+            active: activeStage === stage.key,
+            'is-succeeded': stageStatuses[stage.key] === 'succeeded',
+            'is-review': stageStatuses[stage.key] === 'waiting-review',
+            'is-failed': stageStatuses[stage.key] === 'failed',
           }"
-          :aria-current="activeStage === stKey ? 'step' : undefined"
-          @click="activeStage = stKey"
+          :aria-current="activeStage === stage.key ? 'step' : undefined"
+          @click="activeStage = stage.key"
         >
           <span class="step-num">{{ idx + 1 }}</span>
           <span class="step-label">{{
-            t(`app.pipeline.workbench.stages.${stKey}`)
+            t(`app.pipeline.workbench.stages.${stage.key}`)
           }}</span>
           <span
-            v-if="stageStatuses[stKey] === 'waiting-review'"
+            v-if="stageStatuses[stage.key] === 'waiting-review'"
             class="step-badge-review"
             >!</span
           >
         </button>
       </nav>
 
+      <section class="gate-summary" aria-labelledby="active-gate-title">
+        <div class="gate-summary-copy">
+          <span class="gate-eyebrow">
+            {{
+              t("app.pipeline.workbench.flow.gate", {
+                current: activeStageIndex + 1,
+                total: WORKBENCH_STAGES.length,
+              })
+            }}
+          </span>
+          <h3 id="active-gate-title">
+            {{ t(`app.pipeline.workbench.stages.${activeStage}`) }}
+          </h3>
+          <span class="workbench-pill" :class="`pill-${activeStageStatus}`">
+            {{ t(`app.pipeline.workbench.stageStatus.${activeStageStatus}`) }}
+          </span>
+        </div>
+        <div class="gate-progress-wrap">
+          <div
+            class="gate-progress"
+            role="progressbar"
+            :aria-label="t('app.pipeline.workbench.flow.progress')"
+            :aria-valuenow="stageProgress.percent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span :style="{ width: `${stageProgress.percent}%` }"></span>
+          </div>
+          <small>
+            {{
+              t("app.pipeline.workbench.flow.completed", {
+                completed: stageProgress.completed,
+                total: stageProgress.total,
+              })
+            }}
+          </small>
+        </div>
+        <div class="gate-pager">
+          <button
+            type="button"
+            class="workbench-btn btn-outline"
+            :disabled="activeStageIndex <= 0"
+            @click="moveToAdjacentStage(-1)"
+          >
+            {{ t("app.pipeline.workbench.flow.previous") }}
+          </button>
+          <button
+            type="button"
+            class="workbench-btn btn-secondary"
+            :disabled="activeStageIndex >= WORKBENCH_STAGES.length - 1"
+            @click="moveToAdjacentStage(1)"
+          >
+            {{ t("app.pipeline.workbench.flow.next") }}
+          </button>
+        </div>
+      </section>
+
       <!-- Main Workbench Body: 3-Pane Responsive Layout -->
       <div class="workbench-body">
-        <!-- PANE 1: Stage Overview List (Collapsible on compact) -->
-        <aside class="workbench-pane-nav">
-          <ul class="stage-nav-list">
+        <!-- Expert mode: canonical task/dependency rail. -->
+        <aside
+          v-if="expertMode"
+          class="workbench-pane-nav"
+          :aria-label="t('app.pipeline.workbench.flow.tasks')"
+        >
+          <div class="task-rail-heading">
+            <strong>{{ t("app.pipeline.workbench.flow.tasks") }}</strong>
+            <small>{{ t("app.pipeline.workbench.flow.fixedOrder") }}</small>
+          </div>
+          <ol class="canonical-task-list">
             <li
-              v-for="stKey in [
-                'materials',
-                'storyPlan',
-                'produceClips',
-                'previewQa',
-                'export',
-              ] as WorkbenchStageKey[]"
-              :key="stKey"
-              :class="{ selected: activeStage === stKey }"
-              @click="activeStage = stKey"
+              v-for="(step, index) in currentRecipe?.steps ?? []"
+              :key="step.id"
+              class="canonical-task-row"
+              :class="[
+                `status-${stepAttemptStatus(step.id)}`,
+                {
+                  selected:
+                    WORKBENCH_STAGES.find((stage) =>
+                      stage.stepIds.includes(step.id),
+                    )?.key === activeStage,
+                },
+              ]"
             >
-              <div class="stage-nav-title">
-                {{ t(`app.pipeline.workbench.stages.${stKey}`) }}
-              </div>
-              <span class="stage-nav-status" :class="stageStatuses[stKey]">
-                {{ stageStatuses[stKey] }}
+              <span class="task-connector" aria-hidden="true">
+                <span>{{ index + 1 }}</span>
               </span>
+              <button
+                type="button"
+                class="task-row-button"
+                @click="
+                  activeStage =
+                    WORKBENCH_STAGES.find((stage) =>
+                      stage.stepIds.includes(step.id),
+                    )?.key ?? activeStage
+                "
+              >
+                <span class="task-row-id">{{ step.id }}</span>
+                <strong>{{ t(`app.pipeline.steps.${step.type}`) }}</strong>
+                <small>{{ step.type }}</small>
+              </button>
+              <span
+                class="task-row-status"
+                :class="`status-${stepAttemptStatus(step.id)}`"
+              >
+                {{
+                  t(
+                    `app.pipeline.workbench.stageStatus.${stepAttemptStatus(step.id)}`,
+                  )
+                }}
+              </span>
+              <div v-if="step.inputs.length" class="task-dependencies">
+                {{
+                  t("app.pipeline.workbench.flow.dependsOn", {
+                    count: step.inputs.length,
+                  })
+                }}
+              </div>
             </li>
-          </ul>
+          </ol>
         </aside>
 
         <!-- PANE 2: Detailed Stage Card ("Used What", "Produced What", "Status", "CTA") -->
         <main class="workbench-pane-card">
+          <div
+            v-if="!expertMode && waitingReviewStep"
+            class="focused-action-card review-card"
+          >
+            <div>
+              <strong>{{
+                t("app.pipeline.review.title", {
+                  stepName: waitingReviewStep.stepId,
+                })
+              }}</strong>
+              <p>
+                {{ t("app.pipeline.workbench.disclosures.waitingUserPrompt") }}
+              </p>
+            </div>
+            <input
+              v-model="reviewNotes"
+              type="text"
+              class="workbench-input"
+              :placeholder="t('app.pipeline.review.notesPlaceholder')"
+            />
+            <div class="card-action-row">
+              <button
+                type="button"
+                class="workbench-btn btn-success"
+                :disabled="actionLoading"
+                @click="handleReviewDecision('accepted')"
+              >
+                {{ t("app.pipeline.review.acceptButton") }}
+              </button>
+              <button
+                type="button"
+                class="workbench-btn btn-danger"
+                :disabled="actionLoading"
+                @click="handleReviewDecision('rejected')"
+              >
+                {{ t("app.pipeline.review.rejectButton") }}
+              </button>
+            </div>
+          </div>
+          <div
+            v-if="!expertMode && currentRun?.status === 'failed'"
+            class="focused-action-card error-card"
+            role="alert"
+          >
+            <strong>{{ t("app.pipeline.workbench.flow.blocked") }}</strong>
+            <p>
+              {{
+                t("app.pipeline.workbench.disclosures.errorDiagnostic", {
+                  step:
+                    currentRun.stepAttempts[currentRun.currentStepIndex]
+                      ?.stepId ?? "Unknown",
+                  reason:
+                    currentRun.stepAttempts[currentRun.currentStepIndex]?.error
+                      ?.message ?? "Unknown error",
+                })
+              }}
+            </p>
+            <button
+              type="button"
+              class="workbench-btn btn-warning"
+              :disabled="actionLoading"
+              @click="handleRetryRun"
+            >
+              {{ t("app.pipeline.retryRun") }}
+            </button>
+          </div>
           <!-- STAGE 1: 選素材 (Materials) -->
           <article v-if="activeStage === 'materials'" class="stage-card">
             <header class="stage-card-header">
@@ -1556,7 +1724,7 @@ onUnmounted(() => {
         </main>
 
         <!-- PANE 3: Inspector, Review Action & Sub-steps -->
-        <aside class="workbench-pane-inspector">
+        <aside v-if="expertMode" class="workbench-pane-inspector">
           <!-- Waiting Review Action Card -->
           <div v-if="waitingReviewStep" class="inspector-card review-card">
             <h4>
@@ -1625,39 +1793,13 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Collapsible 8 Sub-steps & Dependencies -->
-          <div class="inspector-card sub-steps-card">
-            <button
-              type="button"
-              class="toggle-substeps-btn"
-              @click="showAdvancedSubSteps = !showAdvancedSubSteps"
-            >
-              <Icon
-                :name="showAdvancedSubSteps ? 'chevron' : 'plus'"
-                :size="14"
-              />
-              <span>Canonical 8 Steps &amp; Dependencies</span>
-            </button>
-
-            <div v-if="showAdvancedSubSteps" class="substeps-list">
-              <div
-                v-for="(st, idx) in currentRecipe?.steps ?? []"
-                :key="st.id"
-                class="substep-row"
-              >
-                <span class="substep-idx">{{ idx + 1 }}</span>
-                <div class="substep-meta">
-                  <strong>{{ st.name }}</strong>
-                  <small>{{ st.type }}</small>
-                </div>
-                <span
-                  class="substep-chip"
-                  :class="currentRun?.stepAttempts[idx]?.status ?? 'pending'"
-                >
-                  {{ currentRun?.stepAttempts[idx]?.status ?? "pending" }}
-                </span>
-              </div>
-            </div>
+          <div class="inspector-card run-context-card">
+            <span class="q-label">{{
+              t("app.pipeline.workbench.flow.runContext")
+            }}</span>
+            <strong>{{ currentRecipe?.name ?? selectedRecipeId }}</strong>
+            <code v-if="currentRun">{{ currentRun.id }}</code>
+            <small>{{ t("app.pipeline.workbench.flow.expertHint") }}</small>
           </div>
         </aside>
       </div>
@@ -2061,7 +2203,8 @@ onUnmounted(() => {
 
 .workbench-stepper {
   display: flex;
-  background: var(--color-bg-secondary, #282832);
+  padding: 0 var(--of-panel-inset);
+  background: var(--color-bg-panel, #1e1e24);
   border-bottom: 1px solid var(--color-border, #33333d);
   overflow-x: auto;
 }
@@ -2072,7 +2215,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 12px;
+  min-height: 48px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -2091,6 +2235,16 @@ onUnmounted(() => {
   color: var(--of-accent);
   border-bottom-color: var(--of-accent);
   background: var(--of-accent-soft);
+}
+
+.workbench-step-tab.is-succeeded .step-num {
+  color: var(--of-success);
+  background: var(--of-success-soft);
+}
+
+.workbench-step-tab.is-failed .step-num {
+  color: var(--of-danger);
+  background: var(--of-danger-soft);
 }
 
 .step-num {
@@ -2114,21 +2268,228 @@ onUnmounted(() => {
   border-radius: var(--of-radius-md);
 }
 
+.gate-summary {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.8fr) auto;
+  gap: var(--of-space-4);
+  align-items: center;
+  padding: var(--of-space-3) var(--of-panel-inset);
+  background: var(--of-surface-1);
+  border-bottom: 1px solid var(--of-border-subtle);
+}
+
+.gate-summary-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--of-space-2);
+}
+
+.gate-summary-copy h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--of-font-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gate-eyebrow {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.gate-progress-wrap {
+  display: grid;
+  gap: var(--of-space-1);
+}
+
+.gate-progress-wrap small {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+}
+
+.gate-progress {
+  height: 5px;
+  overflow: hidden;
+  background: var(--of-surface-3);
+  border-radius: var(--of-radius-round);
+}
+
+.gate-progress span {
+  display: block;
+  height: 100%;
+  background: var(--of-accent);
+  border-radius: inherit;
+  transition: width var(--of-motion-fast);
+}
+
+.gate-pager {
+  display: flex;
+  gap: var(--of-space-2);
+}
+
 /* =========================================
    3-Pane Layout
    ========================================= */
 .workbench-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr) 300px;
+  grid-template-columns: 260px minmax(0, 1fr) 300px;
   overflow: hidden;
   min-height: 0;
+}
+
+.pipeline-workbench-root[data-workspace-mode="standard"] .workbench-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pipeline-workbench-root[data-workspace-mode="standard"] .workbench-pane-card {
+  width: min(100%, 1100px);
+  margin-inline: auto;
 }
 
 .workbench-pane-nav {
   border-right: 1px solid var(--color-border, #33333d);
   padding: 12px;
   overflow-y: auto;
+}
+
+.task-rail-heading {
+  display: grid;
+  gap: var(--of-space-1);
+  padding: var(--of-space-1) var(--of-space-2) var(--of-space-3);
+}
+
+.task-rail-heading strong {
+  font-size: var(--of-font-small);
+}
+
+.task-rail-heading small {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+}
+
+.canonical-task-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.canonical-task-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  min-width: 0;
+  padding: var(--of-space-1) 0 var(--of-space-3);
+}
+
+.canonical-task-row:not(:last-child)::before {
+  position: absolute;
+  top: 28px;
+  bottom: -2px;
+  left: 13px;
+  width: 1px;
+  content: "";
+  background: var(--of-border-strong);
+}
+
+.task-connector {
+  z-index: 1;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  color: var(--of-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--of-surface-2);
+  border: 1px solid var(--of-border-strong);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.canonical-task-row.status-succeeded .task-connector {
+  color: var(--of-success);
+  background: var(--of-success-soft);
+  border-color: var(--of-success);
+}
+
+.canonical-task-row.status-running .task-connector,
+.canonical-task-row.status-waiting-review .task-connector {
+  color: var(--of-accent);
+  background: var(--of-accent-soft);
+  border-color: var(--of-accent);
+}
+
+.task-row-button {
+  display: grid;
+  min-width: 0;
+  padding: var(--of-space-1) var(--of-space-2);
+  color: var(--of-text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--of-radius-sm);
+  cursor: pointer;
+}
+
+.task-row-button:hover,
+.task-row-button:focus-visible,
+.canonical-task-row.selected .task-row-button {
+  background: var(--of-accent-soft);
+  outline: none;
+}
+
+.task-row-button strong {
+  overflow: hidden;
+  font-size: var(--of-font-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-row-button small,
+.task-row-id {
+  color: var(--of-text-secondary);
+  font-size: 10px;
+}
+
+.task-row-id {
+  font-family: var(--of-font-mono, monospace);
+  text-transform: uppercase;
+}
+
+.task-row-status {
+  margin-top: var(--of-space-1);
+  padding: 2px var(--of-space-1);
+  color: var(--of-text-secondary);
+  font-size: 9px;
+  border-radius: var(--of-radius-round);
+}
+
+.task-row-status.status-succeeded {
+  color: var(--of-success);
+  background: var(--of-success-soft);
+}
+
+.task-row-status.status-failed {
+  color: var(--of-danger);
+  background: var(--of-danger-soft);
+}
+
+.task-row-status.status-waiting-review {
+  color: var(--of-warning);
+  background: var(--of-warning-soft);
+}
+
+.task-dependencies {
+  grid-column: 2 / 4;
+  padding: 0 var(--of-space-2);
+  color: var(--of-text-muted);
+  font-size: 10px;
 }
 
 .stage-nav-list {
@@ -2168,6 +2529,19 @@ onUnmounted(() => {
   padding: var(--of-panel-inset);
   overflow-y: auto;
   min-width: 0;
+}
+
+.focused-action-card {
+  display: grid;
+  gap: var(--of-space-3);
+  margin-bottom: var(--of-space-4);
+  padding: var(--of-space-4);
+  border: 1px solid currentColor;
+  border-radius: var(--of-radius-md);
+}
+
+.focused-action-card p {
+  margin: var(--of-space-1) 0 0;
 }
 
 .stage-card-header h3 {
@@ -2283,6 +2657,18 @@ onUnmounted(() => {
   border: 0;
   border-radius: var(--of-radius-md);
   padding: var(--of-space-4);
+}
+
+.run-context-card {
+  display: grid;
+  gap: var(--of-space-2);
+}
+
+.run-context-card code,
+.run-context-card small {
+  overflow-wrap: anywhere;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
 }
 
 .review-card {
@@ -2522,6 +2908,13 @@ onUnmounted(() => {
   .bar-stages-track {
     display: none;
   }
+  .gate-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .gate-progress-wrap {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 @media (max-height: 600px) {
@@ -2538,6 +2931,17 @@ onUnmounted(() => {
   .bar-title {
     display: none;
   }
+  .gate-summary {
+    grid-template-columns: 1fr;
+  }
+  .gate-progress-wrap,
+  .gate-pager {
+    grid-column: 1;
+  }
+  .gate-pager .workbench-btn {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2546,6 +2950,9 @@ onUnmounted(() => {
   .indeterminate-bar {
     transition: none !important;
     animation: none !important;
+  }
+  .gate-progress span {
+    transition: none !important;
   }
 }
 </style>

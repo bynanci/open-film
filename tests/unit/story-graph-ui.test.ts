@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { beatTimelineDuration } from "../../apps/desktop/src/duration";
 import type {
   Composition,
+  GraphViewState,
   MediaAsset,
   Story,
   StoryGraph,
@@ -19,6 +20,7 @@ import {
   addAssetToBeatInGraph,
   computeStoryGraphAutoLayout,
   createEchoEdge,
+  inferStoryGraphEdgeType,
   removeGraphNode,
   setAsNextBeat,
 } from "@openfilm/story";
@@ -518,6 +520,311 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
 
       expect(Object.keys(layout500).length).toBe(500);
       expect(elapsed500).toBeLessThan(200); // 500 nodes deterministic under 200ms
+    });
+  });
+
+  describe("StoryGraph direct connections", () => {
+    it("connects focused nodes with the inferred typed operation in expert mode", async () => {
+      const initialGraph = createInitialStoryGraph(dummyStory, dummyAssets);
+      const calls: Array<Record<string, unknown>> = [];
+      const viewWrites: GraphViewState[] = [];
+      const listeners = new Map<string, Set<EventListener>>();
+      let pointerHitNodeId: string | null = null;
+      const previousWindow = globalThis.window;
+      const previousDocument = globalThis.document;
+      const previousDocumentConstructor = globalThis.Document;
+      class TestDocument {}
+      const testDocument = Object.assign(new TestDocument(), {
+        activeElement: null,
+        querySelector: () => null,
+        elementFromPoint: () =>
+          pointerHitNodeId
+            ? {
+                closest: () => ({ dataset: { nodeId: pointerHitNodeId } }),
+              }
+            : null,
+      });
+      Object.defineProperty(globalThis, "Document", {
+        configurable: true,
+        value: TestDocument,
+      });
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: testDocument,
+      });
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+          addEventListener(type: string, listener: EventListener) {
+            const entries = listeners.get(type) ?? new Set<EventListener>();
+            entries.add(listener);
+            listeners.set(type, entries);
+          },
+          removeEventListener(type: string, listener: EventListener) {
+            listeners.get(type)?.delete(listener);
+          },
+        },
+      });
+      const modePreferences = vue.reactive({ workspaceMode: "expert" });
+
+      const component = loadComponent(
+        "apps/desktop/src/components/StoryGraphView.vue",
+        {
+          "vue-i18n": {
+            useI18n: () => ({ t: (key: string) => key }),
+          },
+          "@openfilm/core": {
+            createInitialStoryGraph,
+            detectGraphCycle,
+          },
+          "@openfilm/story": {
+            computeStoryGraphAutoLayout,
+            inferStoryGraphEdgeType,
+          },
+          "../api": {
+            api: {
+              storyGraph: async () => ({ graph: initialGraph }),
+              storyGraphView: async () => ({
+                viewState: {
+                  version: 1,
+                  storyId: dummyStory.id,
+                  pan: { x: 0, y: 0 },
+                  zoom: 1,
+                  nodes: computeStoryGraphAutoLayout(initialGraph, dummyStory),
+                  selectedNodeId: null,
+                  selectedEdgeId: null,
+                },
+              }),
+              updateStoryGraphView: async (
+                _storyId: string,
+                state: GraphViewState,
+              ) => {
+                viewWrites.push(
+                  JSON.parse(JSON.stringify(state)) as GraphViewState,
+                );
+                return {};
+              },
+              updateStoryGraph: async () => ({ graph: initialGraph }),
+              storyGraphQuickAction: async (
+                _storyId: string,
+                body: Record<string, unknown>,
+              ) => {
+                calls.push(body);
+                return { graph: initialGraph, story: dummyStory };
+              },
+            },
+            thumbnailUrl: (id: string) => `/api/thumb/${id}`,
+          },
+          "../preferences": {
+            preferences: modePreferences,
+          },
+          "./Icon.vue": {
+            props: ["name", "size"],
+            template: '<span class="icon"></span>',
+          },
+          "./StoryPlanReviewModal.vue": {
+            props: ["show"],
+            setup: () => () => vue.h("div"),
+          },
+        },
+      );
+      const mounted = mountComponent(
+        component,
+        vue.reactive({
+          story: dummyStory,
+          composition: dummyComposition,
+          assets: dummyAssets,
+          activeBeatId: "beat-1",
+        }),
+      );
+
+      try {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vue.nextTick();
+        const nodes = flatten(mounted.root);
+        const source = nodes.find(
+          (node) =>
+            node.props["data-testid"] ===
+            "story-connect-handle-beat-node-beat-1",
+        );
+        const target = nodes.find(
+          (node) =>
+            node.props["data-testid"] ===
+            "story-connect-handle-asset-node-asset-2",
+        );
+        const targetNode = nodes.find(
+          (node) => node.props["data-node-id"] === "asset-node-asset-2",
+        );
+        const canvas = nodes.find((node) =>
+          String(node.props.class ?? "").includes("graph-main-canvas"),
+        );
+        expect(source).toBeDefined();
+        expect(target).toBeDefined();
+        expect(targetNode).toBeDefined();
+        expect(canvas).toBeDefined();
+
+        const keyboardEvent = {
+          key: "Enter",
+          preventDefault() {},
+          stopPropagation() {},
+        };
+        await (source!.props.onKeydown as (event: unknown) => Promise<void>)(
+          keyboardEvent,
+        );
+        await (target!.props.onKeydown as (event: unknown) => Promise<void>)(
+          keyboardEvent,
+        );
+        await vue.nextTick();
+
+        expect(calls).toContainEqual({
+          action: "connect-nodes",
+          fromNodeId: "beat-node-beat-1",
+          toNodeId: "asset-node-asset-2",
+          type: "supports",
+        });
+
+        const pointerEvent = {
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+          preventDefault() {},
+          stopPropagation() {},
+        };
+        (source!.props.onClick as (event: unknown) => void)({
+          stopPropagation() {},
+        });
+        pointerHitNodeId = "asset-node-asset-2";
+        await (source!.props.onPointerup as (event: unknown) => Promise<void>)(
+          pointerEvent,
+        );
+        expect(calls).toHaveLength(2);
+        expect(calls.at(-1)).toEqual({
+          action: "connect-nodes",
+          fromNodeId: "beat-node-beat-1",
+          toNodeId: "asset-node-asset-2",
+          type: "supports",
+        });
+        pointerHitNodeId = null;
+
+        (source!.props.onClick as (event: unknown) => void)({
+          stopPropagation() {},
+        });
+        let escapePrevented = false;
+        const escapeEvent = {
+          key: "Escape",
+          defaultPrevented: false,
+          target: { tagName: "BUTTON", isContentEditable: false },
+          preventDefault() {
+            escapePrevented = true;
+            this.defaultPrevented = true;
+          },
+          stopPropagation() {},
+        };
+        for (const listener of [...(listeners.get("keydown") ?? [])]) {
+          listener(escapeEvent as unknown as Event);
+        }
+        pointerHitNodeId = "asset-node-asset-2";
+        await (source!.props.onPointerup as (event: unknown) => Promise<void>)(
+          pointerEvent,
+        );
+        expect(escapePrevented).toBe(true);
+        expect(calls).toHaveLength(2);
+        pointerHitNodeId = null;
+
+        (source!.props.onClick as (event: unknown) => void)({
+          stopPropagation() {},
+        });
+        const targetPointerEvent = {
+          button: 0,
+          clientX: 280,
+          clientY: 160,
+          stopPropagation() {},
+        };
+        (targetNode!.props.onPointerdown as (event: unknown) => void)(
+          targetPointerEvent,
+        );
+        await (
+          targetNode!.props.onPointerup as (event: unknown) => Promise<void>
+        )(targetPointerEvent);
+        expect(calls).toHaveLength(3);
+
+        (canvas!.props.onPointerdown as (event: unknown) => void)({
+          button: 0,
+          clientX: 400,
+          clientY: 300,
+          target: { closest: () => null },
+        });
+        for (const listener of [...(listeners.get("pointermove") ?? [])]) {
+          listener({ clientX: 450, clientY: 330 } as unknown as Event);
+        }
+        for (const listener of [...(listeners.get("pointerup") ?? [])]) {
+          listener({ clientX: 450, clientY: 330 } as unknown as Event);
+        }
+        await Promise.resolve();
+        const initialTargetPosition = computeStoryGraphAutoLayout(
+          initialGraph,
+          dummyStory,
+        )["asset-node-asset-2"]!;
+        expect(viewWrites.at(-1)?.nodes["asset-node-asset-2"]).toEqual(
+          initialTargetPosition,
+        );
+        expect(viewWrites.at(-1)?.pan).toEqual({ x: 50, y: 30 });
+
+        let ordinaryDragReleaseStopped = false;
+        (targetNode!.props.onPointerdown as (event: unknown) => void)({
+          button: 0,
+          clientX: 280,
+          clientY: 160,
+          stopPropagation() {},
+        });
+        await (target!.props.onPointerup as (event: unknown) => Promise<void>)({
+          clientX: 300,
+          clientY: 180,
+          stopPropagation() {
+            ordinaryDragReleaseStopped = true;
+          },
+        });
+        expect(ordinaryDragReleaseStopped).toBe(false);
+        for (const listener of [...(listeners.get("pointerup") ?? [])]) {
+          listener({ clientX: 300, clientY: 180 } as unknown as Event);
+        }
+
+        (targetNode!.props.onKeydown as (event: unknown) => void)({
+          key: "Enter",
+          preventDefault() {},
+        });
+
+        modePreferences.workspaceMode = "standard";
+        await vue.nextTick();
+        const standardNodes = flatten(mounted.root);
+        expect(
+          standardNodes.some((node) =>
+            String(node.props["data-testid"] ?? "").startsWith(
+              "story-connect-handle-",
+            ),
+          ),
+        ).toBe(false);
+        expect(
+          standardNodes.some((node) =>
+            String(node.props.class ?? "").includes("connection-composer"),
+          ),
+        ).toBe(true);
+      } finally {
+        mounted.unmount();
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: previousDocument,
+        });
+        Object.defineProperty(globalThis, "Document", {
+          configurable: true,
+          value: previousDocumentConstructor,
+        });
+      }
     });
   });
 });

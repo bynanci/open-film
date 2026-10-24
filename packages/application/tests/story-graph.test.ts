@@ -216,6 +216,184 @@ describe("StoryGraphService Application Integration", () => {
     ).toBe(true);
   });
 
+  it("connects dragged nodes through canonical story operations", async () => {
+    const story: Story = {
+      id: "story-connect",
+      title: "Connection Test",
+      beats: [
+        { id: "b0", title: "Opening", targetDuration: 10 },
+        { id: "b1", title: "Middle", targetDuration: 10 },
+        { id: "b2", title: "Ending", targetDuration: 10 },
+      ],
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: "beat-node-b0",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b0",
+          },
+          {
+            id: "beat-node-b1",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b1",
+          },
+          {
+            id: "beat-node-b2",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b2",
+          },
+          {
+            id: "asset-node-asset-sunset",
+            type: "asset",
+            assetId: "asset-sunset",
+          },
+          {
+            id: "remembered-sunset",
+            type: "asset",
+            assetId: "asset-sunset",
+          },
+          {
+            id: "alternate-opening",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b0",
+          },
+          {
+            id: "alternate-ending",
+            type: "beat",
+            storyId: "story-connect",
+            beatId: "b2",
+          },
+        ],
+        edges: [],
+      },
+    };
+    app.project.stories.push(story);
+    await app.save();
+
+    const assetResult = await app.storyGraph.connectNodes(
+      story.id,
+      "beat-node-b0",
+      "asset-node-asset-sunset",
+      "supports",
+    );
+    expect(assetResult.story.beats[0]?.selectedAssetIds).toEqual([
+      "asset-sunset",
+    ]);
+    expect(
+      assetResult.graph.edges.filter(
+        (edge) =>
+          edge.from === "beat-node-b0" &&
+          edge.to === "asset-node-asset-sunset" &&
+          edge.type === "supports",
+      ),
+    ).toHaveLength(1);
+
+    const aliasResult = await app.storyGraph.connectNodes(
+      story.id,
+      "beat-node-b1",
+      "remembered-sunset",
+      "supports",
+    );
+    expect(aliasResult.story.beats[1]?.selectedAssetIds).toEqual([
+      "asset-sunset",
+    ]);
+    expect(
+      aliasResult.graph.edges.some(
+        (edge) =>
+          edge.from === "beat-node-b1" &&
+          edge.to === "remembered-sunset" &&
+          edge.type === "supports",
+      ),
+    ).toBe(true);
+    expect(
+      aliasResult.graph.edges.some(
+        (edge) =>
+          edge.from === "beat-node-b1" &&
+          edge.to === "asset-node-asset-sunset" &&
+          edge.type === "supports",
+      ),
+    ).toBe(false);
+
+    const orderResult = await app.storyGraph.connectNodes(
+      story.id,
+      "beat-node-b0",
+      "beat-node-b2",
+      "precedes",
+    );
+    expect(orderResult.story.beats.map((beat) => beat.id)).toEqual([
+      "b0",
+      "b2",
+      "b1",
+    ]);
+    expect(
+      orderResult.graph.edges.some(
+        (edge) =>
+          edge.from === "beat-node-b0" &&
+          edge.to === "beat-node-b2" &&
+          edge.type === "precedes",
+      ),
+    ).toBe(true);
+    expect(
+      orderResult.graph.edges.some(
+        (edge) =>
+          edge.from === "alternate-opening" &&
+          edge.to === "alternate-ending" &&
+          edge.type === "precedes",
+      ),
+    ).toBe(false);
+  });
+
+  it("restores the in-memory story when a connection save fails", async () => {
+    const story: Story = {
+      id: "story-save-rollback",
+      title: "Connection rollback",
+      beats: [{ id: "beat-1", title: "Opening", targetDuration: 10 }],
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: "beat-node-1",
+            type: "beat",
+            storyId: "story-save-rollback",
+            beatId: "beat-1",
+          },
+          {
+            id: "asset-node-1",
+            type: "asset",
+            assetId: "asset-sunset",
+          },
+        ],
+        edges: [],
+      },
+    };
+    app.project.stories.push(story);
+    await app.save();
+    const before = structuredClone(
+      app.project.stories.find((item) => item.id === story.id),
+    );
+    const save = vi
+      .spyOn(app, "save")
+      .mockRejectedValueOnce(new Error("synthetic save failure"));
+
+    await expect(
+      app.storyGraph.connectNodes(
+        story.id,
+        "beat-node-1",
+        "asset-node-1",
+        "supports",
+      ),
+    ).rejects.toThrow("synthetic save failure");
+    expect(app.project.stories.find((item) => item.id === story.id)).toEqual(
+      before,
+    );
+    save.mockRestore();
+  });
+
   it("removes graph node and edges without deleting original assets from catalog", async () => {
     const story: Story = {
       id: "story-del",

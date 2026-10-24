@@ -15,8 +15,12 @@ import type {
   StoryGraphNode,
 } from "@openfilm/core";
 import { createInitialStoryGraph, detectGraphCycle } from "@openfilm/core";
-import { computeStoryGraphAutoLayout } from "@openfilm/story";
+import {
+  computeStoryGraphAutoLayout,
+  inferStoryGraphEdgeType,
+} from "@openfilm/story";
 import { api, thumbnailUrl, type SourceStatus } from "../api";
+import { preferences } from "../preferences";
 import Icon from "./Icon.vue";
 import StoryPlanReviewModal from "./StoryPlanReviewModal.vue";
 
@@ -151,6 +155,20 @@ const draggingNodeId = ref<string | null>(null);
 const dragStartMousePos = ref({ x: 0, y: 0 });
 const dragStartNodePos = ref({ x: 0, y: 0 });
 
+// A semantic connection is distinct from layout dragging. The source is kept
+// only for the current gesture; the resulting typed edge is saved through the
+// application service so Story and StoryGraph stay in sync.
+const connectionSourceNodeId = ref<string | null>(null);
+const connectionHoverTargetId = ref<string | null>(null);
+const connectionPointer = ref<{ x: number; y: number } | null>(null);
+const connectionPointerOrigin = ref<{ x: number; y: number } | null>(null);
+const connectionPointerDragged = ref(false);
+const connectionTargetId = ref("");
+const connectionType = ref<StoryGraphEdgeType | "auto">("auto");
+const connectionBusy = ref(false);
+const connectionMessage = ref<string | null>(null);
+const connectionError = ref<string | null>(null);
+
 // Panning canvas state
 const isPanningCanvas = ref(false);
 const panStartMousePos = ref({ x: 0, y: 0 });
@@ -206,6 +224,7 @@ const mentionQuery = ref("");
 
 // --- Computed Helpers ---
 const assetMap = computed(() => new Map(props.assets.map((a) => [a.id, a])));
+const expertMode = computed(() => preferences.workspaceMode === "expert");
 
 const filteredAssets = computed(() => {
   if (!searchQuery.value.trim()) return props.assets;
@@ -225,6 +244,22 @@ const selectedNode = computed(() => {
 const selectedEdge = computed(() => {
   if (!selectedEdgeId.value) return null;
   return graph.value.edges.find((e) => e.id === selectedEdgeId.value) ?? null;
+});
+
+const connectionTargets = computed(() =>
+  graph.value.nodes.filter((node) => node.id !== selectedNodeId.value),
+);
+
+const connectionPreviewPath = computed(() => {
+  if (!connectionSourceNodeId.value || !connectionPointer.value) return null;
+  const fromPos = viewState.value.nodes[connectionSourceNodeId.value] ?? {
+    x: 100,
+    y: 100,
+  };
+  return computeBezierPath(
+    { x: fromPos.x + 120, y: fromPos.y + 60 },
+    connectionPointer.value,
+  );
 });
 
 const selectedBeat = computed((): StoryBeat | null => {
@@ -487,12 +522,14 @@ function clearSelection() {
   selectedNodeId.value = null;
   selectedEdgeId.value = null;
   edgeCycleError.value = null;
+  cancelConnection(true);
 }
 
 // --- Node Dragging ---
-function onNodeMouseDown(nodeId: string, event: MouseEvent) {
+function onNodePointerDown(nodeId: string, event: PointerEvent) {
   if (event.button !== 0) return;
   event.stopPropagation();
+  if (connectionSourceNodeId.value) return;
   selectNode(nodeId);
 
   isDraggingNode.value = true;
@@ -504,26 +541,44 @@ function onNodeMouseDown(nodeId: string, event: MouseEvent) {
 
   recordLayoutUndo();
 
-  window.addEventListener("mousemove", onMouseMove);
-  window.addEventListener("mouseup", onMouseUp);
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
 }
 
-function onCanvasMouseDown(event: MouseEvent) {
+function onCanvasPointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
   if ((event.target as HTMLElement).closest(".canvas-toolbar")) return;
   if ((event.target as HTMLElement).closest(".graph-node")) return;
-  if ((event.target as HTMLElement).closest(".graph-edge")) return;
+  if ((event.target as HTMLElement).closest(".edge-group")) return;
 
   clearSelection();
   isPanningCanvas.value = true;
   panStartMousePos.value = { x: event.clientX, y: event.clientY };
   panStartViewPos.value = { ...viewState.value.pan };
 
-  window.addEventListener("mousemove", onMouseMove);
-  window.addEventListener("mouseup", onMouseUp);
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
 }
 
-function onMouseMove(event: MouseEvent) {
+function onPointerMove(event: PointerEvent) {
+  if (connectionSourceNodeId.value) {
+    const origin = connectionPointerOrigin.value;
+    if (
+      origin &&
+      Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 4
+    ) {
+      connectionPointerDragged.value = true;
+    }
+    const hitNodeId = graphNodeIdAtPoint(event.clientX, event.clientY);
+    connectionHoverTargetId.value =
+      hitNodeId && hitNodeId !== connectionSourceNodeId.value
+        ? hitNodeId
+        : null;
+    connectionPointer.value = graphPointFromPointer(event);
+    return;
+  }
   if (isDraggingNode.value && draggingNodeId.value) {
     const dx =
       (event.clientX - dragStartMousePos.value.x) / viewState.value.zoom;
@@ -544,7 +599,8 @@ function onMouseMove(event: MouseEvent) {
   }
 }
 
-function onMouseUp() {
+function onPointerUp() {
+  if (connectionSourceNodeId.value) cancelConnection(true);
   if (isDraggingNode.value) {
     isDraggingNode.value = false;
     draggingNodeId.value = null;
@@ -554,8 +610,196 @@ function onMouseUp() {
     isPanningCanvas.value = false;
     persistViewState();
   }
-  window.removeEventListener("mousemove", onMouseMove);
-  window.removeEventListener("mouseup", onMouseUp);
+  removePointerListeners();
+}
+
+function removePointerListeners() {
+  window.removeEventListener("pointermove", onPointerMove);
+  window.removeEventListener("pointerup", onPointerUp);
+  window.removeEventListener("pointercancel", onPointerUp);
+}
+
+function graphPointFromPointer(event: PointerEvent) {
+  const canvas =
+    graphWorkspace.value?.querySelector<HTMLElement>(".graph-main-canvas");
+  const rect = canvas?.getBoundingClientRect();
+  return {
+    x:
+      (event.clientX - (rect?.left ?? 0) - viewState.value.pan.x) /
+      viewState.value.zoom,
+    y:
+      (event.clientY - (rect?.top ?? 0) - viewState.value.pan.y) /
+      viewState.value.zoom,
+  };
+}
+
+function graphNodeIdAtPoint(clientX: number, clientY: number) {
+  return (
+    document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>(".graph-node")?.dataset.nodeId ?? null
+  );
+}
+
+function nodeLabel(node: StoryGraphNode): string {
+  if (node.type === "theme") return node.title;
+  if (node.type === "beat")
+    return (
+      props.story.beats.find((beat) => beat.id === node.beatId)?.title ??
+      node.beatId
+    );
+  if (node.type === "asset")
+    return (
+      assetMap.value.get(node.assetId)?.name ?? node.caption ?? node.assetId
+    );
+  return node.text;
+}
+
+function startConnection(nodeId: string, event?: PointerEvent) {
+  if (!expertMode.value || props.mutationDisabled || connectionBusy.value)
+    return;
+  event?.stopPropagation();
+  if (connectionSourceNodeId.value) return;
+  selectNode(nodeId);
+  connectionSourceNodeId.value = nodeId;
+  connectionHoverTargetId.value = null;
+  connectionError.value = null;
+  connectionMessage.value = t("app.storyGraph.connections.chooseTarget");
+  connectionPointerDragged.value = false;
+  if (event) {
+    connectionPointer.value = graphPointFromPointer(event);
+    connectionPointerOrigin.value = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  } else {
+    const pos = viewState.value.nodes[nodeId] ?? { x: 100, y: 100 };
+    connectionPointer.value = { x: pos.x + 120, y: pos.y + 60 };
+    connectionPointerOrigin.value = null;
+  }
+  removePointerListeners();
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
+}
+
+function cancelConnection(announce = false) {
+  const hadConnection = Boolean(connectionSourceNodeId.value);
+  connectionSourceNodeId.value = null;
+  connectionHoverTargetId.value = null;
+  connectionPointer.value = null;
+  connectionPointerOrigin.value = null;
+  connectionPointerDragged.value = false;
+  removePointerListeners();
+  if (announce && hadConnection && !connectionBusy.value) {
+    connectionMessage.value = t("app.storyGraph.connections.cancelled");
+  }
+}
+
+async function connectNodes(fromNodeId: string, toNodeId: string) {
+  if (
+    props.mutationDisabled ||
+    connectionBusy.value ||
+    !fromNodeId ||
+    !toNodeId
+  )
+    return;
+  const source = graph.value.nodes.find((node) => node.id === fromNodeId);
+  const target = graph.value.nodes.find((node) => node.id === toNodeId);
+  if (!source || !target) return;
+
+  const type =
+    connectionType.value === "auto"
+      ? inferStoryGraphEdgeType(source, target)
+      : connectionType.value;
+  connectionBusy.value = true;
+  connectionError.value = null;
+  connectionMessage.value = null;
+  try {
+    const res = await api.storyGraphQuickAction(props.story.id, {
+      action: "connect-nodes",
+      fromNodeId,
+      toNodeId,
+      type,
+    });
+    if (res.story) emit("update-story", res.story);
+    if (res.graph) graph.value = res.graph;
+    const created = graph.value.edges.find(
+      (edge) =>
+        edge.from === fromNodeId && edge.to === toNodeId && edge.type === type,
+    );
+    connectionMessage.value = t("app.storyGraph.connections.created", {
+      type: t(`app.storyGraph.edgeTypes.${type}`),
+    });
+    connectionTargetId.value = "";
+    if (created) selectEdge(created.id);
+  } catch (error) {
+    connectionError.value = t("app.storyGraph.connections.failed", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    connectionBusy.value = false;
+    cancelConnection();
+  }
+}
+
+async function finishConnection(nodeId: string, event: PointerEvent) {
+  if (!connectionSourceNodeId.value) return;
+  event.stopPropagation();
+  const sourceId = connectionSourceNodeId.value;
+  const hitNodeId = graphNodeIdAtPoint(event.clientX, event.clientY);
+  const targetId =
+    hitNodeId && hitNodeId !== sourceId
+      ? hitNodeId
+      : nodeId !== sourceId
+        ? nodeId
+        : null;
+  if (!targetId) {
+    if (connectionPointerDragged.value) cancelConnection(true);
+    return;
+  }
+  await connectNodes(sourceId, targetId);
+}
+
+async function handleConnectionHandleKeydown(
+  nodeId: string,
+  event: KeyboardEvent,
+) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelConnection(true);
+    return;
+  }
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!connectionSourceNodeId.value) {
+    startConnection(nodeId);
+    return;
+  }
+  await connectNodes(connectionSourceNodeId.value, nodeId);
+}
+
+async function handleConnectionHandleClick(nodeId: string, event: MouseEvent) {
+  event.stopPropagation();
+  if (!connectionSourceNodeId.value) {
+    startConnection(nodeId);
+    return;
+  }
+  if (connectionSourceNodeId.value === nodeId) return;
+  await connectNodes(connectionSourceNodeId.value, nodeId);
+}
+
+function handleNodeKeydown(nodeId: string, event: KeyboardEvent) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  selectNode(nodeId);
+}
+
+async function connectSelectedNodes() {
+  if (!selectedNodeId.value || !connectionTargetId.value) return;
+  await connectNodes(selectedNodeId.value, connectionTargetId.value);
 }
 
 function onCanvasWheel(event: WheelEvent) {
@@ -825,6 +1069,11 @@ function insertAssetMention(asset: MediaAsset) {
 // Keyboard navigation
 function onKeyDown(event: KeyboardEvent) {
   if (event.defaultPrevented || isImeComposing.value) return;
+  if (event.key === "Escape" && connectionSourceNodeId.value) {
+    event.preventDefault();
+    cancelConnection(true);
+    return;
+  }
   if (
     (event.target as HTMLElement).tagName === "INPUT" ||
     (event.target as HTMLElement).tagName === "TEXTAREA" ||
@@ -867,6 +1116,16 @@ function onKeyDown(event: KeyboardEvent) {
 }
 
 // Edge path generator
+function computeBezierPath(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): string {
+  const dx = end.x - start.x;
+  const cp1X = start.x + dx * 0.5;
+  const cp2X = start.x + dx * 0.5;
+  return `M ${start.x} ${start.y} C ${cp1X} ${start.y}, ${cp2X} ${end.y}, ${end.x} ${end.y}`;
+}
+
 function computeEdgePath(edge: StoryGraphEdge): string {
   const fromPos = viewState.value.nodes[edge.from] ?? { x: 0, y: 0 };
   const toPos = viewState.value.nodes[edge.to] ?? { x: 200, y: 200 };
@@ -876,15 +1135,7 @@ function computeEdgePath(edge: StoryGraphEdge): string {
   const endX = toPos.x + 120;
   const endY = toPos.y + 60;
 
-  const dx = endX - startX;
-
-  // Bezier curve with control points
-  const cp1X = startX + dx * 0.5;
-  const cp1Y = startY;
-  const cp2X = startX + dx * 0.5;
-  const cp2Y = endY;
-
-  return `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
+  return computeBezierPath({ x: startX, y: startY }, { x: endX, y: endY });
 }
 
 // Sync selection when parent activeBeatId changes
@@ -910,6 +1161,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   graphResizeObserver?.disconnect();
+  removePointerListeners();
   window.removeEventListener("keydown", onKeyDown);
 });
 </script>
@@ -918,7 +1170,11 @@ onUnmounted(() => {
   <div
     ref="graphWorkspace"
     class="story-graph-workspace"
-    :class="{ 'is-compact': compactGraph }"
+    :class="{
+      'is-compact': compactGraph,
+      'is-connecting': Boolean(connectionSourceNodeId),
+    }"
+    :data-workspace-mode="preferences.workspaceMode"
     data-testid="story-graph-view"
     @keydown="handlePanelEscape"
   >
@@ -987,7 +1243,7 @@ onUnmounted(() => {
     <!-- Center Canvas Section -->
     <main
       class="graph-main-canvas"
-      @mousedown="onCanvasMouseDown"
+      @pointerdown="onCanvasPointerDown"
       @wheel="onCanvasWheel"
     >
       <!-- Toolbar -->
@@ -1084,6 +1340,19 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <div v-if="connectionSourceNodeId" class="connection-toast" role="status">
+        {{ t("app.storyGraph.connections.dragHint") }}
+        <kbd>Esc</kbd>
+      </div>
+      <div
+        v-else-if="connectionError || connectionMessage"
+        class="connection-toast connection-result-toast"
+        :class="{ 'is-error': connectionError }"
+        :role="connectionError ? 'alert' : 'status'"
+      >
+        {{ connectionError || connectionMessage }}
+      </div>
+
       <!-- Canvas Viewport -->
       <div
         class="canvas-viewport"
@@ -1170,6 +1439,11 @@ onUnmounted(() => {
               @click.stop="selectEdge(edge.id)"
             />
           </g>
+          <path
+            v-if="connectionPreviewPath"
+            :d="connectionPreviewPath"
+            class="connection-preview-path"
+          />
         </svg>
 
         <!-- HTML Nodes Layer -->
@@ -1188,15 +1462,28 @@ onUnmounted(() => {
                   matchingNodeIds === null || matchingNodeIds.has(node.id),
                 'is-dimmed':
                   matchingNodeIds !== null && !matchingNodeIds.has(node.id),
+                'is-connection-source': connectionSourceNodeId === node.id,
+                'is-connection-target': connectionHoverTargetId === node.id,
               },
             ]"
             :style="{
               transform: `translate(${viewState.nodes[node.id]?.x ?? 100}px, ${viewState.nodes[node.id]?.y ?? 100}px)`,
             }"
             tabindex="0"
-            role="button"
+            role="group"
             :aria-label="node.type"
-            @mousedown="onNodeMouseDown(node.id, $event)"
+            @pointerdown="onNodePointerDown(node.id, $event)"
+            @pointerup="finishConnection(node.id, $event)"
+            @pointerenter="
+              connectionHoverTargetId = connectionSourceNodeId ? node.id : null
+            "
+            @pointerleave="
+              connectionHoverTargetId =
+                connectionHoverTargetId === node.id
+                  ? null
+                  : connectionHoverTargetId
+            "
+            @keydown="handleNodeKeydown(node.id, $event)"
           >
             <!-- Theme Node -->
             <template v-if="node.type === 'theme'">
@@ -1298,6 +1585,32 @@ onUnmounted(() => {
                 }}</small>
               </div>
             </template>
+
+            <button
+              v-if="expertMode"
+              type="button"
+              class="connection-handle"
+              :class="{
+                active: connectionSourceNodeId === node.id,
+              }"
+              :data-testid="`story-connect-handle-${node.id}`"
+              :disabled="mutationDisabled || connectionBusy"
+              :aria-label="
+                connectionSourceNodeId
+                  ? t('app.storyGraph.connections.connectTo', {
+                      target: nodeLabel(node),
+                    })
+                  : t('app.storyGraph.connections.startFrom', {
+                      source: nodeLabel(node),
+                    })
+              "
+              @pointerdown.stop.prevent="startConnection(node.id, $event)"
+              @pointerup="finishConnection(node.id, $event)"
+              @click="handleConnectionHandleClick(node.id, $event)"
+              @keydown="handleConnectionHandleKeydown(node.id, $event)"
+            >
+              <span aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -1329,6 +1642,75 @@ onUnmounted(() => {
         v-show="inspectorSidebarOpen"
         class="sidebar-content inspector-content"
       >
+        <section
+          v-if="selectedNode"
+          class="inspector-section connection-composer"
+          :aria-label="t('app.storyGraph.connections.title')"
+        >
+          <div class="connection-composer-heading">
+            <strong>{{ t("app.storyGraph.connections.title") }}</strong>
+            <span>{{ nodeLabel(selectedNode) }}</span>
+          </div>
+          <label class="field">
+            <span>{{ t("app.storyGraph.connections.relationship") }}</span>
+            <select v-model="connectionType" :disabled="connectionBusy">
+              <option value="auto">
+                {{ t("app.storyGraph.connections.auto") }}
+              </option>
+              <option value="contains">
+                {{ t("app.storyGraph.edgeTypes.contains") }}
+              </option>
+              <option value="supports">
+                {{ t("app.storyGraph.edgeTypes.supports") }}
+              </option>
+              <option value="precedes">
+                {{ t("app.storyGraph.edgeTypes.precedes") }}
+              </option>
+              <option value="echoes">
+                {{ t("app.storyGraph.edgeTypes.echoes") }}
+              </option>
+              <option value="alternative">
+                {{ t("app.storyGraph.edgeTypes.alternative") }}
+              </option>
+            </select>
+          </label>
+          <label class="field">
+            <span>{{ t("app.storyGraph.connections.target") }}</span>
+            <select v-model="connectionTargetId" :disabled="connectionBusy">
+              <option value="">
+                {{ t("app.storyGraph.connections.chooseTarget") }}
+              </option>
+              <option
+                v-for="target in connectionTargets"
+                :key="target.id"
+                :value="target.id"
+              >
+                {{ nodeLabel(target) }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="primary-btn connection-submit"
+            :disabled="
+              mutationDisabled || connectionBusy || !connectionTargetId
+            "
+            @click="connectSelectedNodes"
+          >
+            {{
+              connectionBusy
+                ? t("app.storyGraph.connections.connecting")
+                : t("app.storyGraph.connections.connect")
+            }}
+          </button>
+          <p v-if="connectionMessage" class="success-notice" role="status">
+            {{ connectionMessage }}
+          </p>
+          <p v-if="connectionError" class="error-notice" role="alert">
+            {{ connectionError }}
+          </p>
+        </section>
+
         <!-- Beat Inspector -->
         <template
           v-if="selectedNode && selectedNode.type === 'beat' && selectedBeat"
@@ -1813,6 +2195,7 @@ onUnmounted(() => {
   overflow: hidden;
   background: radial-gradient(var(--of-border-subtle) 1px, transparent 1px);
   background-size: 24px 24px;
+  touch-action: none;
 }
 
 .canvas-toolbar {
@@ -1832,6 +2215,43 @@ onUnmounted(() => {
   z-index: 20;
   max-height: 45%;
   overflow-y: auto;
+}
+
+.connection-toast {
+  position: absolute;
+  top: calc(var(--of-space-3) + 52px);
+  left: 50%;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: var(--of-space-2);
+  max-width: calc(100% - var(--of-space-6));
+  padding: var(--of-space-2) var(--of-space-3);
+  color: var(--of-text-primary);
+  font-size: var(--of-font-small);
+  background: color-mix(in srgb, var(--of-surface-1) 92%, transparent);
+  border: 1px solid var(--of-accent);
+  border-radius: var(--of-radius-round);
+  box-shadow: var(--of-shadow-raised);
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+
+.connection-toast kbd {
+  padding: 1px var(--of-space-1);
+  color: var(--of-text-secondary);
+  font: inherit;
+  border: 1px solid var(--of-border-strong);
+  border-radius: var(--of-radius-xs);
+}
+
+.connection-result-toast {
+  border-color: var(--of-success);
+}
+
+.connection-result-toast.is-error {
+  color: var(--of-danger);
+  border-color: var(--of-danger);
 }
 
 .toolbar-group {
@@ -1900,6 +2320,22 @@ onUnmounted(() => {
   stroke-dasharray: 2 3;
 }
 
+.connection-preview-path {
+  fill: none;
+  stroke: var(--of-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 8 6;
+  pointer-events: none;
+  animation: connection-flow 0.7s linear infinite;
+}
+
+@keyframes connection-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
 /* HTML Nodes */
 .graph-nodes-layer {
   position: absolute;
@@ -1919,9 +2355,58 @@ onUnmounted(() => {
   box-shadow: var(--of-shadow-raised);
   user-select: none;
   cursor: grab;
+  touch-action: none;
   transition:
     border-color var(--of-motion-fast),
     box-shadow var(--of-motion-fast);
+}
+
+.graph-node.is-connection-source {
+  border-color: var(--of-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--of-accent) 28%, transparent);
+}
+
+.graph-node.is-connection-target {
+  border-color: var(--of-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--of-success) 24%, transparent);
+}
+
+.connection-handle {
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  color: var(--of-text-secondary);
+  background: var(--of-surface-1);
+  border: 1px solid var(--of-border-strong);
+  border-radius: 50%;
+  cursor: crosshair;
+  transform: translateY(-50%);
+}
+
+.connection-handle span {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.connection-handle:hover,
+.connection-handle:focus-visible,
+.connection-handle.active {
+  color: var(--of-accent);
+  border-color: var(--of-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--of-accent) 18%, transparent);
+  outline: none;
+}
+
+.connection-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .graph-node:active {
@@ -2062,6 +2547,41 @@ onUnmounted(() => {
   gap: var(--of-space-2);
 }
 
+.connection-composer {
+  display: grid;
+  gap: var(--of-space-3);
+  padding: var(--of-space-3);
+  background: var(--of-surface-2);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-md);
+}
+
+.connection-composer-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--of-space-2);
+}
+
+.connection-composer-heading span {
+  min-width: 0;
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-submit {
+  width: 100%;
+}
+
+.success-notice {
+  margin: 0;
+  color: var(--of-success);
+  font-size: var(--of-font-small);
+}
+
 .inline-select-row {
   display: flex;
   gap: var(--of-space-2);
@@ -2187,6 +2707,10 @@ onUnmounted(() => {
   .graph-edge-path,
   .graph-node {
     transition: none !important;
+  }
+
+  .connection-preview-path {
+    animation: none;
   }
 }
 </style>

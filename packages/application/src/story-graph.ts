@@ -14,6 +14,7 @@ import {
 } from "@openfilm/core";
 import {
   addAssetToBeatInGraph,
+  connectStoryGraphNodes,
   computeStoryGraphAutoLayout,
   createEchoEdge,
   removeGraphEdge,
@@ -245,6 +246,112 @@ export class StoryGraphService {
 
     await this.app.save();
     return updatedGraph;
+  }
+
+  /**
+   * Connects two graph nodes through one typed operation. Connections that
+   * carry canonical story meaning update the Story and graph together.
+   */
+  async connectNodes(
+    storyId: string,
+    fromNodeId: string,
+    toNodeId: string,
+    type: import("@openfilm/core").StoryGraphEdgeType,
+  ): Promise<{ story: Story; graph: StoryGraph }> {
+    const story = this.app.project.stories.find((item) => item.id === storyId);
+    if (!story) {
+      throw new ApplicationError(
+        "request.notFound",
+        `Story '${storyId}' not found.`,
+      );
+    }
+
+    const graph = this.getGraph(storyId);
+    const source = graph.nodes.find((node) => node.id === fromNodeId);
+    const target = graph.nodes.find((node) => node.id === toNodeId);
+    const validatedGraph = connectStoryGraphNodes(
+      graph,
+      fromNodeId,
+      toNodeId,
+      type,
+    );
+
+    let result: { story: Story; graph: StoryGraph };
+    if (
+      type === "supports" &&
+      source?.type === "beat" &&
+      target?.type === "asset"
+    ) {
+      const canonicalStory = addAssetToBeatInGraph(
+        story,
+        graph,
+        source.beatId,
+        target.assetId,
+      ).story;
+      result = { story: canonicalStory, graph: validatedGraph };
+    } else if (
+      type === "precedes" &&
+      source?.type === "beat" &&
+      target?.type === "beat"
+    ) {
+      const canonical = setAsNextBeat(
+        story,
+        graph,
+        source.beatId,
+        target.beatId,
+      );
+      const exactEdge = validatedGraph.edges.find(
+        (edge) =>
+          edge.type === "precedes" &&
+          edge.from === fromNodeId &&
+          edge.to === toNodeId,
+      );
+      const beatIdByNodeId = new Map(
+        graph.nodes.flatMap((node) =>
+          node.type === "beat" ? [[node.id, node.beatId] as const] : [],
+        ),
+      );
+      const canonicalPairIndex = canonical.graph.edges.findIndex(
+        (edge) =>
+          edge.type === "precedes" &&
+          beatIdByNodeId.get(edge.from) === source.beatId &&
+          beatIdByNodeId.get(edge.to) === target.beatId,
+      );
+      result = {
+        story: canonical.story,
+        graph:
+          exactEdge && canonicalPairIndex >= 0
+            ? {
+                ...canonical.graph,
+                edges: canonical.graph.edges.map((edge, index) =>
+                  index === canonicalPairIndex ? exactEdge : edge,
+                ),
+              }
+            : canonical.graph,
+      };
+    } else {
+      result = { story, graph: validatedGraph };
+    }
+
+    const storyIndex = this.app.project.stories.findIndex(
+      (item) => item.id === storyId,
+    );
+    const previousStory = this.app.project.stories[storyIndex]!;
+    this.app.project.stories[storyIndex] = {
+      ...result.story,
+      graph: result.graph,
+    };
+    try {
+      await this.app.save();
+    } catch (error) {
+      this.app.project.stories[storyIndex] = previousStory;
+      throw error;
+    }
+
+    return {
+      story: this.app.project.stories[storyIndex]!,
+      graph: result.graph,
+    };
   }
 
   /**

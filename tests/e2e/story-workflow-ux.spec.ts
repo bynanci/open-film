@@ -10,6 +10,9 @@ import { navigate, openFilm } from "./ui-helpers.js";
 const api = "http://127.0.0.1:4310/api";
 let root: string;
 let media: string;
+let activeStoryId: string;
+let firstBeatId: string;
+let crossBeatAssetId: string;
 
 test.use({ viewport: { width: 1280, height: 900 }, actionTimeout: 15_000 });
 test.beforeAll(async () => {
@@ -43,6 +46,9 @@ test.beforeEach(async ({ page, request }, info) => {
     saved.beats[1]!.selectedAssetIds = [
       assets.find((asset) => asset.mediaType === "video")!.id,
     ];
+    activeStoryId = saved.id;
+    firstBeatId = saved.beats[0]!.id;
+    crossBeatAssetId = assets.find((asset) => asset.mediaType === "video")!.id;
     await app.save();
   } finally {
     app.close();
@@ -245,6 +251,146 @@ test("uses keyboard tabs and previews full-size photos and playable video withou
   });
 });
 
+test("drags graph layout and creates a typed story connection through the expert handle", async ({
+  page,
+  request,
+}) => {
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "story");
+  await page.getByTestId("perspective-tab-graph").click();
+  await expect(page.getByTestId("story-graph-view")).toBeVisible();
+
+  const beatNodeId = `beat-node-${firstBeatId}`;
+  const assetNodeId = `asset-node-${crossBeatAssetId}`;
+  const beatNode = page.locator(`[data-node-id="${beatNodeId}"]`);
+  await expect(beatNode).toBeVisible();
+  const initialView = await (
+    await request.get(`${api}/stories/${activeStoryId}/graph-view`)
+  ).json();
+  const initialX = initialView.viewState.nodes[beatNodeId].x as number;
+  const beatBox = await beatNode.boundingBox();
+  expect(beatBox).not.toBeNull();
+  await page.mouse.move(
+    beatBox!.x + beatBox!.width / 2,
+    beatBox!.y + beatBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    beatBox!.x + beatBox!.width / 2 + 72,
+    beatBox!.y + beatBox!.height / 2 + 24,
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => {
+      const value = await (
+        await request.get(`${api}/stories/${activeStoryId}/graph-view`)
+      ).json();
+      return value.viewState.nodes[beatNodeId].x;
+    })
+    .not.toBe(initialX);
+
+  const sourceHandle = page.getByTestId(`story-connect-handle-${beatNodeId}`);
+  const targetNode = page.locator(`[data-node-id="${assetNodeId}"]`);
+  await page
+    .getByRole("button", { name: "Fit to content", exact: true })
+    .click();
+  const sourceBox = await sourceHandle.boundingBox();
+  const targetBox = await targetNode.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  const cancelledTargetPoint = {
+    x: Math.min(
+      targetBox!.x + Math.min(8, targetBox!.width / 2),
+      viewport.width - 2,
+    ),
+    y: Math.min(
+      targetBox!.y + Math.min(8, targetBox!.height / 2),
+      viewport.height - 2,
+    ),
+  };
+  await page.mouse.move(
+    sourceBox!.x + sourceBox!.width / 2,
+    sourceBox!.y + sourceBox!.height / 2,
+  );
+  await page.mouse.down();
+  await expect(sourceHandle).toHaveClass(/active/);
+  await page.keyboard.press("Escape");
+  await expect(sourceHandle).not.toHaveClass(/active/);
+  await page.mouse.move(cancelledTargetPoint.x, cancelledTargetPoint.y, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(async () => {
+      const project = (await (await request.get(`${api}/project`)).json())
+        .project;
+      const story = project.stories.find(
+        (item: { id: string }) => item.id === activeStoryId,
+      );
+      return story.graph.edges.some(
+        (edge: { from: string; to: string; type: string }) =>
+          edge.from === beatNodeId &&
+          edge.to === assetNodeId &&
+          edge.type === "supports",
+      );
+    })
+    .toBe(false);
+
+  const actualSourceBox = await sourceHandle.boundingBox();
+  expect(actualSourceBox).not.toBeNull();
+  await page.mouse.move(
+    actualSourceBox!.x + actualSourceBox!.width / 2,
+    actualSourceBox!.y + actualSourceBox!.height / 2,
+  );
+  await page.mouse.down();
+  await expect(sourceHandle).toHaveClass(/active/);
+  const actualTargetBox = await targetNode.boundingBox();
+  expect(actualTargetBox).not.toBeNull();
+  const actualTargetPoint = {
+    x: Math.min(
+      actualTargetBox!.x + Math.min(8, actualTargetBox!.width / 2),
+      viewport.width - 2,
+    ),
+    y: Math.min(
+      actualTargetBox!.y + Math.min(8, actualTargetBox!.height / 2),
+      viewport.height - 2,
+    ),
+  };
+  await page.mouse.move(actualTargetPoint.x, actualTargetPoint.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.locator(".connection-result-toast")).toContainText(
+    "Supports",
+  );
+  await expect
+    .poll(async () => {
+      const project = (await (await request.get(`${api}/project`)).json())
+        .project;
+      const story = project.stories.find(
+        (item: { id: string }) => item.id === activeStoryId,
+      );
+      return {
+        selectedAssetIds: story.beats.find(
+          (beat: { id: string }) => beat.id === firstBeatId,
+        ).selectedAssetIds,
+        connected: story.graph.edges.some(
+          (edge: { from: string; to: string; type: string }) =>
+            edge.from === beatNodeId &&
+            edge.to === assetNodeId &&
+            edge.type === "supports",
+        ),
+      };
+    })
+    .toEqual({
+      selectedAssetIds: expect.arrayContaining([crossBeatAssetId]),
+      connected: true,
+    });
+});
+
 test("recovers from an empty search with one action and offers a skip link", async ({
   page,
 }) => {
@@ -293,6 +439,64 @@ test("opens pipeline stages with the keyboard and returns focus without starting
   expect(
     (await (await request.get(`${api}/project`)).json()).project.timelines,
   ).toHaveLength(0);
+});
+
+test("keeps one focused pipeline gate in standard mode and exposes canonical tasks in expert mode", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const storyPlanStage = page
+    .locator(".pipeline-status-bar")
+    .getByRole("button", { name: /^2\. / });
+  await storyPlanStage.click();
+  const drawer = page.locator(".pipeline-workbench-container.is-drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator(".gate-summary")).toContainText("Gate 2 of 5");
+  await expect(drawer.locator(".workbench-pane-nav")).toHaveCount(0);
+  await expect(drawer.locator(".workbench-pane-inspector")).toHaveCount(0);
+  await expect(drawer.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuemax",
+    "100",
+  );
+  await drawer.getByRole("button", { name: "Next gate", exact: true }).click();
+  await expect(drawer.locator(".gate-summary")).toContainText("Gate 3 of 5");
+  await expect(drawer.locator(".stage-card h3")).toContainText("Produce Clips");
+  await page.keyboard.press("Escape");
+
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await page
+    .locator(".pipeline-status-bar")
+    .getByRole("button", { name: /^3\. / })
+    .click();
+  await expect(drawer.locator(".canonical-task-row")).toHaveCount(8);
+  await expect(drawer.locator(".workbench-pane-nav")).toBeVisible();
+  await expect(drawer.locator(".workbench-pane-inspector")).toBeVisible();
+  await expect(drawer.locator(".task-row-id")).toHaveText([
+    "step-1",
+    "step-2",
+    "step-3",
+    "step-4",
+    "step-5",
+    "step-6",
+    "step-7",
+    "step-8",
+  ]);
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 1024, height: 768 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(drawer.locator(".gate-summary")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+      `pipeline should not overflow at ${viewport.width}×${viewport.height}`,
+    ).toBe(true);
+  }
 });
 
 test("keeps story setup and storyboard readable in CJK, expanded text and both themes", async ({
