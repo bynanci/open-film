@@ -10,6 +10,7 @@ import {
 } from "../preferences";
 import type { FilmLocale } from "../appTypes";
 import Icon from "./Icon.vue";
+import WorkspaceModeSwitch from "./WorkspaceModeSwitch.vue";
 const props = defineProps<{
   contentLocale?: string;
   busy: boolean;
@@ -187,6 +188,7 @@ onBeforeUnmount(() => previousFocus?.focus());
           }}</span></label
         >
       </div>
+      <WorkspaceModeSwitch />
       <section class="settings-privacy">
         <h3>{{ t("app.settings.localTitle") }}</h3>
         <p>{{ t("app.settings.localDescription") }}</p>

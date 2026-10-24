@@ -664,6 +664,7 @@ describe("actual workspace readiness guards", () => {
       },
       tab,
       project,
+      restoreWorkspace: () => {},
       assets: ref([]),
       total: ref(0),
       librarySummary: ref({ total: 0, images: 0, videos: 0, audio: 0 }),
@@ -685,6 +686,7 @@ describe("actual workspace readiness guards", () => {
       restoreScriptReviewTarget: () => {},
       storyTitle: ref(""),
       storyTemplate: ref(""),
+      storyArc: ref(""),
       targetDuration: ref(0),
       maxDuration: ref(0),
       rememberProject: () => {},
@@ -1027,6 +1029,7 @@ describe("actual workspace readiness guards", () => {
     });
     const categories = categoryNavigationFixture(busy, error);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
+      graphBeatSaveTask: undefined,
       ...categories,
       storyScriptReview: ref(null),
       tab,
@@ -1039,6 +1042,10 @@ describe("actual workspace readiness guards", () => {
       clipCount,
       editorMountRequested,
       timelineEditor,
+      setWorkspace: (workspace: string) => {
+        tab.value = workspace;
+        if (workspace === "edit") editorMountRequested.value = true;
+      },
       nativeBenchmark: h.benchmark,
       window: { __TAURI_INTERNALS__: {} },
       checkMediaStatus: async () => {},
@@ -1392,6 +1399,7 @@ describe("actual workspace readiness guards", () => {
         return true;
       },
       refreshProject: async () => true,
+      restoreWorkspace: () => {},
       refreshRecents: async () => {},
       restoreScriptReviewTarget: () => {},
       document: { querySelector: () => ({ getClientRects: () => [1] }) },
@@ -1555,6 +1563,7 @@ describe("actual workspace readiness guards", () => {
     const categoryError = ref<unknown>("");
     const categories = categoryNavigationFixture(busy, categoryError);
     const changeTab = actualFunction("apps/desktop/src/App.vue", "changeTab", {
+      graphBeatSaveTask: undefined,
       ...categories,
       storyScriptReview: ref(null),
       tab,
@@ -1567,6 +1576,9 @@ describe("actual workspace readiness guards", () => {
       clipCount: ref(500),
       editorMountRequested: ref(false),
       timelineEditor: ref(null),
+      setWorkspace: (workspace: string) => {
+        tab.value = workspace;
+      },
       nativeBenchmark: {
         record: (kind: string) => calls.push({ kind, tab: tab.value }),
       },

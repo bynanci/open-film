@@ -346,6 +346,7 @@ test("completes a Traditional Chinese film and preserves authored text across ru
   await page
     .getByRole("button", { name: text("app.story.plan"), exact: true })
     .click();
+  await page.getByTestId("perspective-tab-outline").click();
   await expect(page.locator(".beat-list button")).toHaveCount(9);
   expect((await project(request)).stories[0]!.beats[0]!.title).toBe("序幕");
   const authoredTitle = "初次見面，與那些沒說出口的話 / Our first hello";
@@ -514,9 +515,10 @@ test("completes a Traditional Chinese film and preserves authored text across ru
     const reopened = await restarted.newPage();
     await reopened.goto("http://127.0.0.1:1420/");
     await expect(reopened.locator("html")).toHaveAttribute("lang", "ja-JP");
-    await expect(
-      reopened.getByRole("heading", { name: current.title, exact: true }),
-    ).toBeVisible();
+    await expect(reopened.locator(".workspace-export")).toBeVisible();
+    await expect(reopened.locator(".workspace-context strong")).toHaveText(
+      current.title,
+    );
     await reopened
       .getByRole("button", {
         name: uiText("ja-JP", "app.navigation.switchProject"),
@@ -652,6 +654,7 @@ for (const locale of ["en-US", "ja-JP"] as const) {
     await page
       .getByRole("button", { name: text("app.story.plan"), exact: true })
       .click();
+    await page.getByTestId("perspective-tab-outline").click();
     await expect(page.locator(".beat-list button")).toHaveCount(1);
     await page
       .getByLabel(text("app.story.beatTitle"), { exact: true })

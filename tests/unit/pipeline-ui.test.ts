@@ -77,7 +77,7 @@ describe("Phase M10A: Pipeline Orchestration Modal UI Component", () => {
 
     // Adoption handler switches to edit tab
     expect(content).toContain("async function handleRoughCutAdopted");
-    expect(content).toContain('tab.value = "edit"');
+    expect(content).toContain('setWorkspace("edit")');
   });
 
   it("validates that canonical recipe passes schema checks and contains all 8 whitelisted steps", () => {

@@ -1,3 +1,35 @@
+import type { Composition } from "@openfilm/core";
+
+/** Time covered by a beat; simultaneous image/video/audio clips count once. */
+export function beatTimelineDuration(
+  composition: Composition | null | undefined,
+  beatId: string,
+): number {
+  const spans = (composition?.tracks.flatMap((track) => track.clips) ?? [])
+    .filter(
+      (clip) =>
+        clip.beatId === beatId &&
+        Number.isFinite(clip.timelineStart) &&
+        Number.isFinite(clip.timelineDuration) &&
+        clip.timelineDuration > 0,
+    )
+    .map(
+      (clip) =>
+        [
+          clip.timelineStart,
+          clip.timelineStart + clip.timelineDuration,
+        ] as const,
+    )
+    .sort((a, b) => a[0] - b[0]);
+  let duration = 0;
+  let end = -Infinity;
+  for (const [start, nextEnd] of spans) {
+    if (nextEnd > end) duration += nextEnd - Math.max(start, end);
+    end = Math.max(end, nextEnd);
+  }
+  return duration;
+}
+
 export type DurationStatus =
   "ideal" | "near-target" | "near-maximum" | "over-maximum";
 

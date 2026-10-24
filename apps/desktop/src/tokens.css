@@ -1,27 +1,28 @@
-/* Local film-room surfaces, readable captions, and a single warm edit accent. */
+/* Graphite and mist surfaces with a restrained iris edit accent. */
 :root {
   color-scheme: dark;
-  --of-bg: #101215;
-  --of-surface-1: #181b20;
-  --of-surface-2: #22262c;
-  --of-surface-3: #2b3037;
-  --of-text-primary: #f4f2ee;
-  --of-text-secondary: #b8bdc6;
-  --of-text-muted: #a1a8b3;
-  --of-border-subtle: #353b45;
-  --of-border-strong: #6b7585;
-  --of-accent: #ecac7c;
-  --of-accent-hover: #f6bf95;
-  --of-accent-ink: #23180f;
-  --of-accent-soft: #392c23;
-  --of-success: #a6c7a1;
-  --of-success-soft: #26362b;
-  --of-warning: #f0c281;
-  --of-warning-soft: #3b2d1f;
-  --of-danger: #f3aaa3;
-  --of-danger-soft: #3d2428;
-  --of-focus: #f6bf95;
-  --of-player: #090b0d;
+  --of-bg: #101216;
+  --of-surface-1: #181b22;
+  --of-surface-2: #232732;
+  --of-surface-3: #2d3340;
+  --of-text-primary: #f4f6fa;
+  --of-text-secondary: #c1c7d3;
+  --of-text-muted: #a7b0c0;
+  --of-border-subtle: #2b303b;
+  --of-border-strong: #737f93;
+  --of-border-control: #768299;
+  --of-accent: #b5bcff;
+  --of-accent-hover: #cbd0ff;
+  --of-accent-ink: #171932;
+  --of-accent-soft: #2a2e4c;
+  --of-success: #a3cfb1;
+  --of-success-soft: #203b30;
+  --of-warning: #edcd98;
+  --of-warning-soft: #3a3021;
+  --of-danger: #f3b0ba;
+  --of-danger-soft: #3e2730;
+  --of-focus: #c3caff;
+  --of-player: #0b0d12;
   --of-on-media: #f7f5f1;
   --of-on-media-muted: #d6d9de;
   --of-media-scrim: #101215eb;
@@ -36,6 +37,11 @@
   --of-space-8: 32px;
   --of-space-10: 40px;
   --of-space-12: 48px;
+  --of-workspace-gutter: var(--of-space-6);
+  --of-panel-inset: var(--of-space-5);
+  --of-section-gap: var(--of-space-6);
+  --of-control-gap: var(--of-space-2);
+  --of-group-gap: var(--of-space-3);
   --of-radius-sm: 4px;
   --of-radius-md: 8px;
   --of-radius-lg: 12px;
@@ -86,51 +92,53 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --of-bg: #f2f3f5;
+  --of-bg: #f4f5f9;
   --of-surface-1: #ffffff;
-  --of-surface-2: #e8ebee;
-  --of-surface-3: #dce1e6;
-  --of-text-primary: #1b2026;
-  --of-text-secondary: #4f5866;
-  --of-text-muted: #596371;
-  --of-border-subtle: #d5dbe1;
-  --of-border-strong: #788391;
-  --of-accent: #9d4620;
-  --of-accent-hover: #873817;
+  --of-surface-2: #eef0f6;
+  --of-surface-3: #e4e7f0;
+  --of-text-primary: #1c2333;
+  --of-text-secondary: #475469;
+  --of-text-muted: #58657a;
+  --of-border-subtle: #dfe3ee;
+  --of-border-strong: #79869d;
+  --of-border-control: #7a869b;
+  --of-accent: #4f46b8;
+  --of-accent-hover: #42389e;
   --of-accent-ink: #ffffff;
-  --of-accent-soft: #f3e6dd;
-  --of-success: #315f3e;
-  --of-success-soft: #e2eee4;
-  --of-warning: #805213;
-  --of-warning-soft: #f7ecd9;
-  --of-danger: #a13238;
-  --of-danger-soft: #f9e7e8;
-  --of-focus: #873817;
+  --of-accent-soft: #ecebfc;
+  --of-success: #276341;
+  --of-success-soft: #e7f1eb;
+  --of-warning: #7e541b;
+  --of-warning-soft: #f7efdf;
+  --of-danger: #a43550;
+  --of-danger-soft: #fae9ee;
+  --of-focus: #6556d4;
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
     color-scheme: light;
-    --of-bg: #f2f3f5;
+    --of-bg: #f4f5f9;
     --of-surface-1: #ffffff;
-    --of-surface-2: #e8ebee;
-    --of-surface-3: #dce1e6;
-    --of-text-primary: #1b2026;
-    --of-text-secondary: #4f5866;
-    --of-text-muted: #596371;
-    --of-border-subtle: #d5dbe1;
-    --of-border-strong: #788391;
-    --of-accent: #9d4620;
-    --of-accent-hover: #873817;
+    --of-surface-2: #eef0f6;
+    --of-surface-3: #e4e7f0;
+    --of-text-primary: #1c2333;
+    --of-text-secondary: #475469;
+    --of-text-muted: #58657a;
+    --of-border-subtle: #dfe3ee;
+    --of-border-strong: #79869d;
+    --of-border-control: #7a869b;
+    --of-accent: #4f46b8;
+    --of-accent-hover: #42389e;
     --of-accent-ink: #ffffff;
-    --of-accent-soft: #f3e6dd;
-    --of-success: #315f3e;
-    --of-success-soft: #e2eee4;
-    --of-warning: #805213;
-    --of-warning-soft: #f7ecd9;
-    --of-danger: #a13238;
-    --of-danger-soft: #f9e7e8;
-    --of-focus: #873817;
+    --of-accent-soft: #ecebfc;
+    --of-success: #276341;
+    --of-success-soft: #e7f1eb;
+    --of-warning: #7e541b;
+    --of-warning-soft: #f7efdf;
+    --of-danger: #a43550;
+    --of-danger-soft: #fae9ee;
+    --of-focus: #6556d4;
   }
 }
 

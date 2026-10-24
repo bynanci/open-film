@@ -31,6 +31,7 @@ import ExportReport from "./ExportReport.vue";
 import Icon from "./Icon.vue";
 import FilmLookSelect from "./FilmLookSelect.vue";
 const props = defineProps<{
+  expertMode?: boolean;
   busy: boolean;
   projectId: string;
   projectSettings: ProjectSettings;
@@ -842,7 +843,7 @@ onUnmounted(() => {
       :composition="composition"
       :busy="busy"
     />
-    <details class="export-advanced">
+    <details class="export-advanced" :open="expertMode">
       <summary>{{ t("app.export.advanced") }}</summary>
       <div class="export-format-list">
         <button

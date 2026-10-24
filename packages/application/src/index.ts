@@ -85,6 +85,8 @@ import { ProjectCatalog } from "@openfilm/catalog";
 import { clusterEvents, findDuplicates } from "@openfilm/events";
 import {
   createStory,
+  createStoryArc,
+  STORY_ARC_IDS,
   resolveFilmSettings,
   localizeProjectContent,
   scoreAsset,
@@ -282,6 +284,8 @@ export interface StoryOptions {
   template?: string;
   targetDuration?: number;
   maxDuration?: number;
+  /** Ordered user-authored beat titles; only valid with `custom-outline`. */
+  customOutline?: string[];
   /** Explicit scope for large libraries; every locked asset is also included. */
   assetIds?: string[];
 }
@@ -1534,11 +1538,19 @@ export class OpenFilmApplication {
     };
     if (
       options.template &&
-      !["proposal-film", "blank"].includes(options.template)
+      !["proposal-film", "blank", ...STORY_ARC_IDS].includes(options.template)
     )
       throw new ApplicationError(
         "story.invalid",
         `Unknown story template: ${options.template}`,
+      );
+    if (
+      options.customOutline !== undefined &&
+      options.template !== "custom-outline"
+    )
+      throw new ApplicationError(
+        "story.invalid",
+        "A custom outline can only be used with the custom story structure.",
       );
     const assets: MediaAsset[] = [];
     if (options.assetIds) {
@@ -1589,18 +1601,35 @@ export class OpenFilmApplication {
         "story.mediaRequired",
         "No renderable media is available. Import flat exported photos/videos before creating a story.",
       );
-    const story = createStory(options.title ?? this.project.title, usable, {
-      contentLocale: this.project.projectContentLocale,
-      ...(options.template === "proposal-film"
-        ? { template: proposalTemplate }
-        : {}),
-      ...(options.targetDuration !== undefined
-        ? { targetDuration: options.targetDuration }
-        : {}),
-      ...(options.maxDuration !== undefined
-        ? { maxDuration: options.maxDuration }
-        : {}),
-    });
+    const storyTitle = options.title ?? this.project.title;
+    const story = STORY_ARC_IDS.includes(
+      options.template as (typeof STORY_ARC_IDS)[number],
+    )
+      ? createStoryArc(storyTitle, usable, {
+          arc: options.template as (typeof STORY_ARC_IDS)[number],
+          contentLocale: this.project.projectContentLocale,
+          ...(options.customOutline !== undefined
+            ? { customOutline: options.customOutline }
+            : {}),
+          ...(options.targetDuration !== undefined
+            ? { targetDuration: options.targetDuration }
+            : {}),
+          ...(options.maxDuration !== undefined
+            ? { maxDuration: options.maxDuration }
+            : {}),
+        })
+      : createStory(storyTitle, usable, {
+          contentLocale: this.project.projectContentLocale,
+          ...(options.template === "proposal-film"
+            ? { template: proposalTemplate }
+            : {}),
+          ...(options.targetDuration !== undefined
+            ? { targetDuration: options.targetDuration }
+            : {}),
+          ...(options.maxDuration !== undefined
+            ? { maxDuration: options.maxDuration }
+            : {}),
+        });
     this.publishProject({
       ...this.project,
       stories: [...this.project.stories, story],

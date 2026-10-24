@@ -14,6 +14,7 @@ import {
 
 export * from "./content.js";
 export * from "./scene-plan.js";
+export * from "./story-arcs.js";
 export * from "./graphic-templates.js";
 export * from "./story-graph-layout.js";
 export * from "./story-planner.js";

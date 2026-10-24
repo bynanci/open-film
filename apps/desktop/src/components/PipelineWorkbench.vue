@@ -1,6 +1,6 @@
 <!-- Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE. -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, sourceUrl, thumbnailUrl } from "../api.js";
 import Icon from "./Icon.vue";
@@ -55,6 +55,28 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const mode = ref<WorkbenchMode>(props.initialMode);
+const workbenchPanel = ref<HTMLElement | null>(null);
+let workbenchOrigin: HTMLElement | null = null;
+watch(mode, async (next, previous) => {
+  if (typeof document === "undefined") return;
+  if (previous === "bar" && document.activeElement instanceof HTMLElement)
+    workbenchOrigin = document.activeElement;
+  await nextTick();
+  if (mode.value !== next) return;
+  if (next !== "bar") {
+    workbenchPanel.value
+      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      ?.focus();
+  } else if (workbenchOrigin?.isConnected) {
+    workbenchOrigin.focus();
+  } else {
+    document
+      .querySelector<HTMLButtonElement>(
+        `.bar-stage-dot[data-stage="${activeStage.value}"]`,
+      )
+      ?.focus();
+  }
+});
 const activeStage = ref<WorkbenchStageKey>("produceClips");
 const showAdvancedSubSteps = ref(false);
 
@@ -492,7 +514,31 @@ function navigateToTimeline() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented) return;
   const target = e.target as HTMLElement | null;
+  if (
+    mode.value !== "bar" &&
+    target?.closest('[role="dialog"]') &&
+    !workbenchPanel.value?.contains(target)
+  )
+    return;
+  if (mode.value === "modal" && e.key === "Tab") {
+    const controls = Array.from(
+      workbenchPanel.value?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
+      ) ?? [],
+    ).filter((element) => element.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (
+      first &&
+      last &&
+      ((e.shiftKey && target === first) || (!e.shiftKey && target === last))
+    ) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    }
+  }
   // Protect inputs, textareas, and contenteditable elements from shortcut theft
   if (
     target &&
@@ -516,7 +562,13 @@ function handleKeydown(e: KeyboardEvent) {
   }
 
   // Number shortcuts 1-5 to switch stage
-  if (mode.value !== "bar" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+  if (
+    mode.value !== "bar" &&
+    workbenchPanel.value?.contains(target) &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.metaKey
+  ) {
     const stageMap: Record<string, WorkbenchStageKey> = {
       "1": "materials",
       "2": "storyPlan",
@@ -576,7 +628,7 @@ onUnmounted(() => {
 
         <!-- 5-Stage Indicator -->
         <div class="bar-stages-track">
-          <span
+          <button
             v-for="(stKey, idx) in [
               'materials',
               'storyPlan',
@@ -585,7 +637,9 @@ onUnmounted(() => {
               'export',
             ] as WorkbenchStageKey[]"
             :key="stKey"
+            type="button"
             class="bar-stage-dot"
+            :data-stage="stKey"
             :class="[
               `status-${stageStatuses[stKey]}`,
               { active: activeStage === stKey },
@@ -597,7 +651,7 @@ onUnmounted(() => {
             "
           >
             {{ idx + 1 }}. {{ t(`app.pipeline.workbench.stages.${stKey}`) }}
-          </span>
+          </button>
         </div>
       </div>
 
@@ -712,13 +766,14 @@ onUnmounted(() => {
     <!-- MODE 2 & 3: Drawer & Full-Viewport Modal -->
     <section
       v-else
+      ref="workbenchPanel"
       class="pipeline-workbench-container"
       :class="{
         'is-drawer': mode === 'drawer',
         'is-modal': mode === 'modal',
       }"
       role="dialog"
-      aria-modal="true"
+      :aria-modal="mode === 'modal' ? true : undefined"
       aria-labelledby="workbench-panel-title"
     >
       <!-- Workbench Header -->
@@ -767,6 +822,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="workbench-tool-btn"
+            :aria-label="t('app.pipeline.workbench.collapse')"
             :title="t('app.pipeline.workbench.collapse')"
             @click="switchMode('bar')"
           >
@@ -1611,6 +1667,12 @@ onUnmounted(() => {
 
 <style scoped>
 .pipeline-workbench-root {
+  --color-bg-panel: var(--of-surface-1);
+  --color-bg-secondary: var(--of-surface-2);
+  --color-border: var(--of-border-subtle);
+  --color-border-subtle: var(--of-border-subtle);
+  --color-text: var(--of-text-primary);
+  --color-text-muted: var(--of-text-secondary);
   font-family: inherit;
   color: var(--color-text, #f0f0f5);
 }
@@ -1651,7 +1713,7 @@ onUnmounted(() => {
 }
 
 .bar-expand-btn:hover {
-  color: #3b82f6;
+  color: var(--of-accent);
 }
 
 .bar-stages-track {
@@ -1661,33 +1723,36 @@ onUnmounted(() => {
 }
 
 .bar-stage-dot {
+  min-height: 28px;
+  border: 1px solid transparent;
+  font-family: inherit;
   font-size: 0.75rem;
   padding: 2px 8px;
   border-radius: 12px;
   background: var(--color-bg-secondary, #282832);
   color: var(--color-text-muted, #9999a8);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color var(--of-motion-fast);
 }
 
 .bar-stage-dot.status-succeeded {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .bar-stage-dot.status-waiting-review {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
   font-weight: 700;
 }
 
 .bar-stage-dot.status-failed {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .bar-stage-dot.active {
-  box-shadow: 0 0 0 1px #3b82f6;
+  border-color: var(--of-accent);
 }
 
 .bar-center {
@@ -1703,6 +1768,7 @@ onUnmounted(() => {
 }
 
 .bar-cta-btn {
+  min-height: 36px;
   padding: 5px 12px;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -1712,13 +1778,13 @@ onUnmounted(() => {
 }
 
 .bar-cta-primary {
-  background: #2563eb;
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .bar-cta-warning {
-  background: #d97706;
-  color: #fff;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .bar-icon-btn {
@@ -1733,8 +1799,8 @@ onUnmounted(() => {
 }
 
 .bar-icon-btn:hover {
-  color: #fff;
-  border-color: #555;
+  color: var(--of-text-primary);
+  border-color: var(--of-border-strong);
 }
 
 /* =========================================
@@ -1753,8 +1819,8 @@ onUnmounted(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 52vh;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  height: min(72dvh, 680px);
+  box-shadow: var(--of-shadow-dialog);
   border-top: 1px solid var(--color-border, #33333d);
 }
 
@@ -1772,14 +1838,18 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
+  padding: var(--of-space-4) var(--of-panel-inset);
   border-bottom: 1px solid var(--color-border, #33333d);
+  flex-wrap: wrap;
+  gap: var(--of-group-gap);
 }
 
 .workbench-header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .workbench-title {
@@ -1789,12 +1859,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .workbench-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .workbench-tool-btn {
@@ -1802,17 +1875,19 @@ onUnmounted(() => {
   border: 1px solid var(--color-border, #33333d);
   color: var(--color-text-muted, #9999a8);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
+  border-color: transparent;
+  min-height: 36px;
 }
 
 .workbench-tool-btn:hover {
-  color: #fff;
-  border-color: #555;
+  color: var(--of-text-primary);
+  border-color: var(--of-border-strong);
 }
 
 .workbench-alert-banner {
@@ -1824,9 +1899,9 @@ onUnmounted(() => {
 }
 
 .workbench-alert-banner.warning {
-  background: rgba(217, 119, 6, 0.15);
-  border-bottom: 1px solid #d97706;
-  color: #fcd34d;
+  background: var(--of-warning-soft);
+  border-bottom: 1px solid var(--of-warning);
+  color: var(--of-warning);
 }
 
 .banner-text p,
@@ -1943,23 +2018,23 @@ onUnmounted(() => {
 }
 
 .step-status-pill.pill-reuse {
-  background: rgba(46, 204, 113, 0.2);
-  color: #2ecc71;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .step-status-pill.pill-rerun {
-  background: rgba(52, 152, 219, 0.2);
-  color: #3498db;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .step-status-pill.pill-needs-review {
-  background: rgba(155, 89, 182, 0.2);
-  color: #9b59b6;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .step-status-pill.pill-unavailable {
-  background: rgba(231, 76, 60, 0.2);
-  color: #e74c3c;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .step-reason {
@@ -1969,7 +2044,7 @@ onUnmounted(() => {
 }
 
 .step-inputs-changed {
-  color: #f39c12;
+  color: var(--of-warning);
   margin-left: 4px;
 }
 
@@ -2006,13 +2081,13 @@ onUnmounted(() => {
 }
 
 .workbench-step-tab:hover {
-  color: #fff;
+  color: var(--of-text-primary);
 }
 
 .workbench-step-tab.active {
-  color: #60a5fa;
-  border-bottom-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.05);
+  color: var(--of-accent);
+  border-bottom-color: var(--of-accent);
+  background: var(--of-accent-soft);
 }
 
 .step-num {
@@ -2021,15 +2096,15 @@ onUnmounted(() => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #3e3e4a;
+  background: var(--of-surface-3);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .step-badge-review {
-  background: #d97706;
-  color: #fff;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
   font-size: 0.65rem;
   font-weight: 700;
   padding: 1px 5px;
@@ -2042,8 +2117,9 @@ onUnmounted(() => {
 .workbench-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 180px 1fr 300px;
+  grid-template-columns: 180px minmax(0, 1fr) 300px;
   overflow: hidden;
+  min-height: 0;
 }
 
 .workbench-pane-nav {
@@ -2071,8 +2147,8 @@ onUnmounted(() => {
 }
 
 .stage-nav-list li.selected {
-  background: rgba(59, 130, 246, 0.1);
-  border-left: 3px solid #3b82f6;
+  background: var(--of-accent-soft);
+  border-left: 3px solid var(--of-accent);
 }
 
 .stage-nav-title {
@@ -2086,8 +2162,9 @@ onUnmounted(() => {
 }
 
 .workbench-pane-card {
-  padding: 16px 20px;
+  padding: var(--of-panel-inset);
   overflow-y: auto;
+  min-width: 0;
 }
 
 .stage-card-header h3 {
@@ -2103,15 +2180,16 @@ onUnmounted(() => {
 
 .four-questions-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-group-gap);
 }
 
 .question-box {
   background: var(--color-bg-secondary, #282832);
-  border: 1px solid var(--color-border, #33333d);
-  border-radius: 6px;
-  padding: 12px;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--of-radius-md);
+  padding: var(--of-space-4);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2122,7 +2200,7 @@ onUnmounted(() => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #60a5fa;
+  color: var(--of-text-secondary);
 }
 
 .mini-asset-thumbnails {
@@ -2199,19 +2277,19 @@ onUnmounted(() => {
 
 .inspector-card {
   background: var(--color-bg-secondary, #282832);
-  border: 1px solid var(--color-border, #33333d);
-  border-radius: 6px;
-  padding: 12px;
+  border: 0;
+  border-radius: var(--of-radius-md);
+  padding: var(--of-space-4);
 }
 
 .review-card {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.08);
+  border-color: var(--of-warning);
+  background: var(--of-warning-soft);
 }
 
 .error-card {
-  border-color: #dc2626;
-  background: rgba(220, 38, 38, 0.08);
+  border-color: var(--of-danger);
+  background: var(--of-danger-soft);
 }
 
 .card-action-row {
@@ -2269,23 +2347,23 @@ onUnmounted(() => {
 }
 
 .substep-chip.pending {
-  color: #777;
+  color: var(--of-text-muted);
 }
 
 .substep-chip.running {
-  color: #60a5fa;
+  color: var(--of-accent);
 }
 
 .substep-chip.succeeded {
-  color: #34d399;
+  color: var(--of-success);
 }
 
 .substep-chip.waiting-review {
-  color: #fbbf24;
+  color: var(--of-warning);
 }
 
 .substep-chip.failed {
-  color: #f87171;
+  color: var(--of-danger);
 }
 
 /* =========================================
@@ -2303,40 +2381,40 @@ onUnmounted(() => {
 }
 
 .pill-succeeded {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .pill-warning {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .pill-review {
-  background: #d97706;
-  color: #fff;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .pill-running {
-  background: #2563eb;
-  color: #fff;
+  background: var(--of-accent-soft);
+  color: var(--of-accent);
 }
 
 .pill-failed {
-  background: rgba(220, 38, 38, 0.2);
-  color: #f87171;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .pill-idle {
-  background: #33333d;
-  color: #e5e7eb;
+  background: var(--of-surface-2);
+  color: var(--of-text-secondary);
 }
 
 .indeterminate-bar {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid #fff;
+  border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -2350,7 +2428,7 @@ onUnmounted(() => {
 
 .workbench-btn {
   padding: 6px 14px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   font-weight: 500;
   border: none;
@@ -2359,6 +2437,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   transition: opacity 0.15s ease;
+  min-height: 36px;
 }
 
 .workbench-btn:hover {
@@ -2371,28 +2450,28 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background: #2563eb;
-  color: #fff;
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
 }
 
 .btn-secondary {
-  background: #374151;
-  color: #f3f4f6;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
 }
 
 .btn-success {
-  background: #059669;
-  color: #fff;
+  background: var(--of-success-soft);
+  color: var(--of-success);
 }
 
 .btn-warning {
-  background: #d97706;
-  color: #fff;
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
 }
 
 .btn-danger {
-  background: #dc2626;
-  color: #fff;
+  background: var(--of-danger-soft);
+  color: var(--of-danger);
 }
 
 .btn-outline {
@@ -2406,9 +2485,9 @@ onUnmounted(() => {
   width: 100%;
   padding: 6px 10px;
   border-radius: 4px;
-  border: 1px solid var(--color-border, #33333d);
-  background: var(--color-bg-secondary, #282832);
-  color: var(--color-text, #f0f0f5);
+  border: 1px solid var(--of-border-control);
+  background: var(--of-bg);
+  color: var(--of-text-primary);
   font-size: 0.8rem;
 }
 
@@ -2417,7 +2496,7 @@ onUnmounted(() => {
    ========================================= */
 @media (max-width: 1280px) {
   .workbench-body {
-    grid-template-columns: 160px 1fr;
+    grid-template-columns: 160px minmax(0, 1fr);
   }
   .workbench-pane-inspector {
     display: none;
@@ -2426,7 +2505,7 @@ onUnmounted(() => {
 
 @media (max-width: 1024px) {
   .pipeline-workbench-container.is-drawer {
-    height: 65vh;
+    height: 72dvh;
   }
   .workbench-body {
     grid-template-columns: 1fr;
@@ -2439,6 +2518,12 @@ onUnmounted(() => {
   }
   .bar-stages-track {
     display: none;
+  }
+}
+
+@media (max-height: 600px) {
+  .pipeline-workbench-container.is-drawer {
+    height: calc(100dvh - 16px);
   }
 }
 

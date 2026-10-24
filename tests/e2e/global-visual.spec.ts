@@ -75,10 +75,22 @@ async function layout(page: Page, name: string) {
     .toBe("loaded");
   const problems = await page.evaluate(() => {
     const issues: string[] = [];
-    if (document.documentElement.scrollWidth > innerWidth + 2)
+    if (document.documentElement.scrollWidth > innerWidth + 2) {
+      const overflowers = [
+        document.documentElement,
+        document.body,
+        ...Array.from(document.querySelectorAll<HTMLElement>("body *")),
+      ]
+        .filter((element) => element.scrollWidth > element.clientWidth + 2)
+        .slice(-8)
+        .map((element) => {
+          const bounds = element.getBoundingClientRect();
+          return `${element.tagName.toLowerCase()}.${String(element.className)} right=${Math.round(bounds.right)} width=${Math.round(bounds.width)} scroll=${element.scrollWidth}/${element.clientWidth}`;
+        });
       issues.push(
-        `Page width ${document.documentElement.scrollWidth} exceeds viewport ${innerWidth}`,
+        `Page width ${document.documentElement.scrollWidth} exceeds viewport ${innerWidth}; ${overflowers.join(" | ")}`,
       );
+    }
     for (const element of Array.from(
       document.querySelectorAll<HTMLElement>("button, summary, h1, h2, h3"),
     )) {

@@ -95,6 +95,7 @@ function host(
     memory: { id: "memory", tags: ["Old category"] },
   });
   const dependencies = {
+    graphBeatSaveTask: undefined,
     computed: vue.computed,
     jobs,
     analysisRecovery,

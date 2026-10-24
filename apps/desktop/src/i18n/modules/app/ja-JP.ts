@@ -54,6 +54,7 @@ export default {
       clear: "クリア",
     },
     navigation: {
+      skip: "ワークスペースへ移動",
       home: "OpenFilm ホーム",
       label: "フィルムワークスペース",
       library: "ライブラリ",
@@ -132,6 +133,25 @@ export default {
         "OpenFilm はこの端末でメディアを処理します。アカウント、利用状況の追跡、クラウドサービスは使いません。",
       autosave:
         "タイムラインの編集は操作が途切れると自動保存されます。保存に失敗しても未保存の変更は復元できます。",
+    },
+    workspaceMode: {
+      label: "操作モード",
+      standard: "一般モード",
+      expert: "エキスパートモード",
+      standardHint: "手順に沿って制作し、必要なときに高度なツールを開きます。",
+      expertHint:
+        "コンパクトな配置、展開済みのツールとキーボード操作で編集を効率化します。",
+      moreTools: "高度なツール",
+      commands: "クイック操作",
+      search: "操作を検索",
+      placeholder: "編集、ストーリー図、書き出しへ…",
+      empty:
+        "一致する操作がありません。「編集」や「ストーリー」で検索してください。",
+      keyboard: "↑ ↓ 選択 · Enter 開く · Esc 閉じる",
+      close: "クイック操作を閉じる",
+      busy: "現在の操作が完了してから実行してください。",
+      noStory: "先にストーリーを作成してください。",
+      workspace: "ワークスペースを開く",
     },
     workflow: {
       label: "フィルムの進行状況",
@@ -385,6 +405,7 @@ export default {
       },
     },
     library: {
+      clearFilters: "検索と絞り込みをクリア",
       eyebrow: "あなたのコレクション",
       description: "覚えていたい瞬間を集める場所。",
       add: "メディアを追加",
@@ -480,11 +501,38 @@ export default {
       description: "思い出に始まりと展開を。そして心に残る理由を。",
       new: "新しいストーリー",
       createLabel: "ストーリーを作成",
+      closeSetup: "ストーリー設定を閉じる",
+      setupNext: "次にマインドマップでビートを整え、素材をつなぎます。",
+      outlinePreview: "ストーリーの流れ",
+      outlineCount: "{count} / 30 ビート",
+      outlinePreviewEmpty: "左側に書き始めると、ここで順序を確認できます。",
+      outlinePreviewHint:
+        "各見出しがビートになります。言葉も順序も後から編集できます。",
       createHeading: "どんなストーリーを伝えますか？",
       createHint: "ストーリーの構成とフィルムの長さを選びましょう。",
       title: "ストーリー名",
       titlePlaceholder: "ストーリーの名前",
       structure: "最初の構成",
+      arcs: {
+        journey: "旅の物語",
+        eventRecap: "イベントの記録",
+        thenNow: "あの頃から今へ",
+        portrait: "人物／題材の肖像",
+        dayInLife: "ある一日の記録",
+        letters: "誰かへの手紙",
+        collection: "思い出のコレクション",
+        custom: "自分で書くアウトライン",
+      },
+      customOutline: "ビートを1行ずつ入力",
+      customOutlinePlaceholder: "残しておいた手紙\n出会った日\n今伝えたいこと",
+      customOutlineHint:
+        "各行がこの順番でビートになります。作成後、Story Graphで意図やメディアを追加できます。",
+      workflow: {
+        label: "ストーリーの発想から編集まで",
+        mindMap: "物語を組み立てる",
+        pipeline: "パイプラインを確認",
+        composeEdit: "構成して編集",
+      },
       scope: "候補にするメディア",
       scopeAll: "プロジェクト内のすべてのメディア",
       scopePage: "現在のライブラリページ（{count} 件）",
@@ -528,6 +576,7 @@ export default {
     },
     storyGraph: {
       perspectives: {
+        label: "ストーリー表示",
         outline: "アウトライン",
         graph: "ストーリーグラフ",
         storyboard: "絵コンテ",
@@ -603,6 +652,16 @@ export default {
         cycleWarning: "循環依存関係が発生するため、この関係を作成できません。",
       },
       storyboard: {
+        reviewHint:
+          "画像と意図を確認してから、編集の対応するビートに移動します。",
+        beatCount: "{count} ビート",
+        previewMedia: "{name} をプレビュー",
+        closePreview: "素材プレビューを閉じる",
+        retryPreview: "プレビューを再試行",
+        detailsUnavailable: "素材の詳細を取得できません",
+        sourceUnavailable: "ソースがオフライン",
+        noSelected: "素材がまだ選ばれていません。",
+        suggestedCount: "アウトラインで {count} 件の候補を確認できます。",
         title: "絵コンテ表示",
         empty: "このストーリーにはまだビートがありません。",
         unmappedBadge: "未配置",
@@ -652,7 +711,7 @@ export default {
     },
     pipeline: {
       button: "制作ガイド",
-      title: "ガイド付きパイプライン制作",
+      title: "制作フロー",
       subtitle:
         "自動QAと確認ゲートを備えた、固定レシピ駆動型の映画制作ワークフロー。",
       recipeSelectLabel: "制作レシピ",
@@ -878,6 +937,8 @@ export default {
         "フィルムの言語を更新しました。自分で書いた文章は保持されています。",
       organized: "ライブラリを思い出と似たメディアのグループに整理しました。",
       storyName: "ストーリー名を入力してください。",
+      storyOutlineInvalid:
+        "アウトラインを1〜30件入力してください。各項目は300文字までです。",
       durationInvalid: "目標を正の値にし、最大の長さを目標以上にしてください。",
       restoreFirst:
         "ストーリーに選ぶ前に、ライブラリでこのメディアを元に戻してください。",
