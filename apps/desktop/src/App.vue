@@ -2675,105 +2675,136 @@ onUnmounted(() => {
       class="app-header"
       :class="{ 'workspace-topbar': !!project }"
     >
-      <a
-        class="wordmark"
-        href="#"
-        :aria-label="t('app.navigation.home')"
-        @click.prevent="changeTab('library')"
-        ><svg
-          class="wordmark-logo"
-          width="28"
-          height="28"
-          viewBox="0 0 28 28"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <rect
-            x="3"
-            y="10"
-            width="22"
-            height="15"
-            rx="3.5"
-            fill="#22262c"
-            stroke="#353b45"
-            stroke-width="1.2"
-          />
-          <polygon points="12,14.2 12,20.8 17.5,17.5" fill="#f4f2ee" />
-          <g transform="rotate(-10 4 9)">
-            <rect x="3" y="4.5" width="22" height="5.5" rx="2" fill="#ecac7c" />
-            <path
-              d="M8 4.5L6 10M14 4.5L12 10M20 4.5L18 10"
-              stroke="#23180f"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </g></svg
-        ><span class="wordmark-text">OpenFilm</span></a
-      >
-      <div v-if="project" class="workspace-context">
-        <strong :title="project.title">{{ project.title }}</strong>
-        <span>{{ t(`app.navigation.${tab}`) }}</span>
-      </div>
-      <button
-        v-if="project"
-        class="text-button project-switch"
-        :disabled="projectSwitchBlocked"
-        @click="changeWorkspace"
-      >
-        <Icon name="folder" :size="15" />{{ t("app.navigation.switchProject") }}
-      </button>
-      <label class="ui-language"
-        ><span class="sr-only">{{ t("app.settings.language") }}</span
-        ><select
-          :value="uiLocale"
-          @change="setUiLocale(($event.target as HTMLSelectElement).value)"
-        >
-          <option
-            v-for="item in interfaceLocales"
-            :key="item.code"
-            :value="item.code"
+      <div class="workspace-identity">
+        <a
+          class="wordmark"
+          href="#"
+          :aria-label="t('app.navigation.home')"
+          @click.prevent="changeTab('library')"
+          ><svg
+            class="wordmark-logo"
+            width="28"
+            height="28"
+            viewBox="0 0 28 28"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
           >
-            {{ item.label }}
-          </option>
-        </select></label
-      >
-      <WorkspaceModeSwitch compact />
-      <button
-        v-if="project"
-        class="text-button workspace-command-trigger"
-        :aria-label="t('app.workspaceMode.commands')"
-        :title="t('app.workspaceMode.commands')"
-        aria-keyshortcuts="Meta+K Control+K"
-        @keydown.space.stop
-        @keydown.enter.stop
-        @click="workspaceCommandsOpen = true"
-      >
-        <Icon name="search" :size="16" /><span>{{
-          t("app.workspaceMode.commands")
-        }}</span
-        ><kbd v-if="expertMode">⌘ / Ctrl K</kbd>
-      </button>
-      <button
-        v-if="project"
-        class="text-button pipeline-toggle"
-        :aria-label="t('app.pipeline.title')"
-        @click="
-          pipelineWorkbenchOpen = true;
-          pipelineWorkbenchMode = 'drawer';
-        "
-      >
-        <Icon name="layers" :size="16" />
-        {{ t("app.pipeline.title") }}
-      </button>
-      <button class="text-button settings-toggle" @click="settingsOpen = true">
-        {{ t("app.settings.title") }}
-      </button>
-      <span class="local-label"
-        ><span class="status-dot" :class="{ disconnected: !connected }" />{{
-          connected ? t("app.navigation.local") : t("app.navigation.workspace")
-        }}</span
-      >
+            <rect
+              x="3"
+              y="10"
+              width="22"
+              height="15"
+              rx="3.5"
+              fill="#22262c"
+              stroke="#353b45"
+              stroke-width="1.2"
+            />
+            <polygon points="12,14.2 12,20.8 17.5,17.5" fill="#f4f2ee" />
+            <g transform="rotate(-10 4 9)">
+              <rect
+                x="3"
+                y="4.5"
+                width="22"
+                height="5.5"
+                rx="2"
+                fill="#ecac7c"
+              />
+              <path
+                d="M8 4.5L6 10M14 4.5L12 10M20 4.5L18 10"
+                stroke="#23180f"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </g></svg
+          ><span class="wordmark-text">OpenFilm</span></a
+        >
+        <div v-if="project" class="workspace-context">
+          <strong :title="project.title">{{ project.title }}</strong>
+          <span>{{ t(`app.navigation.${tab}`) }}</span>
+        </div>
+        <button
+          v-if="project"
+          class="text-button project-switch"
+          :aria-label="t('app.navigation.switchProject')"
+          :title="t('app.navigation.switchProject')"
+          :disabled="projectSwitchBlocked"
+          @click="changeWorkspace"
+        >
+          <Icon name="folder" :size="18" />
+        </button>
+      </div>
+      <div class="workspace-preferences">
+        <label class="ui-language"
+          ><span class="sr-only">{{ t("app.settings.language") }}</span
+          ><select
+            :value="uiLocale"
+            @change="setUiLocale(($event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="item in interfaceLocales"
+              :key="item.code"
+              :value="item.code"
+            >
+              {{ item.label }}
+            </option>
+          </select></label
+        >
+        <WorkspaceModeSwitch compact />
+      </div>
+      <div class="workspace-topbar-actions">
+        <button
+          v-if="project"
+          class="text-button workspace-command-trigger"
+          :aria-label="t('app.workspaceMode.commands')"
+          :title="t('app.workspaceMode.commands')"
+          aria-keyshortcuts="Meta+K Control+K"
+          @keydown.space.stop
+          @keydown.enter.stop
+          @click="workspaceCommandsOpen = true"
+        >
+          <Icon name="search" :size="16" /><span>{{
+            t("app.workspaceMode.commands")
+          }}</span
+          ><kbd v-if="expertMode">⌘ / Ctrl K</kbd>
+        </button>
+        <button
+          v-if="project"
+          class="text-button pipeline-toggle"
+          :aria-label="t('app.pipeline.title')"
+          @click="
+            pipelineWorkbenchOpen = true;
+            pipelineWorkbenchMode = 'drawer';
+          "
+        >
+          <Icon name="layers" :size="16" />
+          {{ t("app.pipeline.title") }}
+        </button>
+        <button
+          class="text-button settings-toggle"
+          @click="settingsOpen = true"
+        >
+          <Icon name="settings" :size="17" /><span>{{
+            t("app.settings.title")
+          }}</span>
+        </button>
+        <span
+          class="local-label"
+          :title="
+            connected
+              ? t('app.navigation.local')
+              : t('app.navigation.workspace')
+          "
+          ><span
+            class="status-dot"
+            :class="{ disconnected: !connected }"
+          /><span class="local-label-copy">{{
+            connected
+              ? t("app.navigation.local")
+              : t("app.navigation.workspace")
+          }}</span></span
+        >
+      </div>
     </header>
 
     <div v-if="error" class="feedback error" role="alert">
@@ -2859,9 +2890,7 @@ onUnmounted(() => {
         :class="{ 'project-heading-compact': tab === 'edit' }"
       >
         <div v-if="tab !== 'edit'">
-          <span class="eyebrow">{{
-            `${tab.toUpperCase()} / LOCAL-FIRST`
-          }}</span>
+          <span class="eyebrow">{{ t(`app.navigation.${tab}`) }}</span>
           <h1>
             {{
               tab === "library"
@@ -4618,36 +4647,6 @@ onUnmounted(() => {
           >
             {{ t("app.composition.stale") }}
           </p>
-          <ExportWorkspace
-            v-if="tab === 'export'"
-            :project-id="project.id"
-            :composition="activeComposition"
-            :busy="!!busy"
-            :expert-mode="expertMode"
-            :path="exportPath"
-            :filename="exportFilename"
-            :format="exportFormat"
-            :stale="exportStale"
-            :report="exportReport"
-            :look-override="lookOverride"
-            :project-settings="project.settings"
-            :project-content-locale="project.projectContentLocale ?? 'en-US'"
-            :quality="outputQuality"
-            :caption-track-id="outputCaptionTrackId"
-            @look="changeOutputLook"
-            @quality="changeOutputQuality"
-            @caption-track="changeOutputCaptionTrack"
-            @export="exportFilm"
-            @profile-busy="exportProfileBusy"
-          />
-          <CollectMediaPanel
-            v-if="tab === 'export'"
-            :key="`${project.id}:${projectGeneration}`"
-            :project="project"
-            :composition="activeComposition"
-            :disabled="!!busy || relinkBusy || activeJobs.length > 0"
-            @busy="collectBusy = $event"
-          />
           <button
             v-if="previewVersion && tab === 'edit'"
             class="secondary preview-toggle"
@@ -4661,33 +4660,77 @@ onUnmounted(() => {
             }}
           </button>
           <div
-            v-if="previewVersion && (tab === 'export' || showRenderedPreview)"
-            class="preview-screen"
+            class="output-workspace"
+            :class="{ 'output-workspace-export': tab === 'export' }"
           >
-            <video
-              ref="renderedPlayer"
-              :key="previewVersion"
-              crossorigin="anonymous"
-              :src="previewUrl(previewVersion)"
-              controls
-              preload="metadata"
-              :aria-label="t('app.composition.preview')"
-              @error="error = message('feedback.playbackFailed')"
-            /><span class="preview-caption"
-              >{{ t("app.composition.yourFilm") }} ·
-              {{ duration(activeComposition.duration) }}</span
+            <div
+              v-show="
+                tab === 'export' || (previewVersion && showRenderedPreview)
+              "
+              class="output-preview"
             >
+              <div
+                v-if="
+                  previewVersion && (tab === 'export' || showRenderedPreview)
+                "
+                class="preview-screen"
+              >
+                <video
+                  ref="renderedPlayer"
+                  :key="previewVersion"
+                  crossorigin="anonymous"
+                  :src="previewUrl(previewVersion)"
+                  controls
+                  preload="metadata"
+                  :aria-label="t('app.composition.preview')"
+                  @error="error = message('feedback.playbackFailed')"
+                /><span class="preview-caption"
+                  >{{ t("app.composition.yourFilm") }} ·
+                  {{ duration(activeComposition.duration) }}</span
+                >
+              </div>
+              <div
+                v-else-if="tab === 'export' && !previewVersion"
+                class="preview-placeholder"
+              >
+                <Icon name="play" :size="36" /><span>{{
+                  busy === "renderingPreview"
+                    ? t("app.composition.renderHint")
+                    : t("app.composition.previewHint")
+                }}</span>
+              </div>
+            </div>
+            <ExportWorkspace
+              v-if="tab === 'export'"
+              :project-id="project.id"
+              :composition="activeComposition"
+              :busy="!!busy"
+              :expert-mode="expertMode"
+              :path="exportPath"
+              :filename="exportFilename"
+              :format="exportFormat"
+              :stale="exportStale"
+              :report="exportReport"
+              :look-override="lookOverride"
+              :project-settings="project.settings"
+              :project-content-locale="project.projectContentLocale ?? 'en-US'"
+              :quality="outputQuality"
+              :caption-track-id="outputCaptionTrackId"
+              @look="changeOutputLook"
+              @quality="changeOutputQuality"
+              @caption-track="changeOutputCaptionTrack"
+              @export="exportFilm"
+              @profile-busy="exportProfileBusy"
+            />
           </div>
-          <div
-            v-else-if="tab === 'export' && !previewVersion"
-            class="preview-placeholder"
-          >
-            <Icon name="play" :size="36" /><span>{{
-              busy === "renderingPreview"
-                ? t("app.composition.renderHint")
-                : t("app.composition.previewHint")
-            }}</span>
-          </div>
+          <CollectMediaPanel
+            v-if="tab === 'export'"
+            :key="`${project.id}:${projectGeneration}`"
+            :project="project"
+            :composition="activeComposition"
+            :disabled="!!busy || relinkBusy || activeJobs.length > 0"
+            @busy="collectBusy = $event"
+          />
           <TimelineEditor
             v-if="editorMountRequested"
             v-show="tab === 'edit'"

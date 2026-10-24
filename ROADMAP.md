@@ -51,14 +51,22 @@ improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 
 ## Current branch candidate — Story Arc Authoring
 
+The Quiet Studio redesign unifies carbon/pearl/blue surfaces, control and dialog
+geometry, project/preferences/actions in the top bar, and the creative components.
+Touch media controls remain discoverable; the export preview now accompanies its
+settings on desktop. These are presentation changes over the same General/Expert
+workspace, project and renderer contracts. See the
+[design](docs/superpowers/specs/2026-10-24-quiet-studio-redesign-design.md) and
+[validation](docs/validation-quiet-studio-redesign.md).
+
 General and Expert operation modes share one editor and project contract.
 Guided disclosure, compact expert spacing and searchable navigation commands
 serve first-time and frequent creators; mode changes retain edits and history.
 See [workspace modes](docs/workspace-modes.md) and its
 [validation](docs/validation-workspace-modes.md).
 
-The workspace surface refinement adds graphite/mist/iris colors, measured input
-boundaries, responsive spacing, bounded inspectors and viewport-aware graph
+The earlier responsive surface pass established measured input boundaries,
+responsive spacing, bounded inspectors and viewport-aware graph
 controls. Theme-switch frame contrast and durable graph text/save/selection
 recovery are covered by the same regression pass.
 See [responsive surface validation](docs/validation-responsive-surfaces.md)

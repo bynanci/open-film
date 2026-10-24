@@ -1687,7 +1687,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  min-height: 60px;
+  padding: var(--of-space-3) var(--of-workspace-gutter);
   background: var(--color-bg-panel, #1e1e24);
   border-top: 1px solid var(--color-border, #33333d);
   z-index: 100;
@@ -1728,7 +1729,7 @@ onUnmounted(() => {
   font-family: inherit;
   font-size: 0.75rem;
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: var(--of-radius-sm);
   background: var(--color-bg-secondary, #282832);
   color: var(--color-text-muted, #9999a8);
   cursor: pointer;
@@ -1770,7 +1771,7 @@ onUnmounted(() => {
 .bar-cta-btn {
   min-height: 36px;
   padding: 5px 12px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-md);
   font-size: 0.8rem;
   font-weight: 600;
   border: none;
@@ -1791,8 +1792,10 @@ onUnmounted(() => {
   background: transparent;
   border: 1px solid var(--color-border, #33333d);
   color: var(--color-text-muted, #9999a8);
-  border-radius: 4px;
-  padding: 4px 6px;
+  border-radius: var(--of-radius-md);
+  min-width: 32px;
+  min-height: 32px;
+  padding: var(--of-space-1) var(--of-space-2);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1920,7 +1923,7 @@ onUnmounted(() => {
   padding: 16px;
   background: var(--color-bg-secondary, #1e1e24);
   border: 1px solid var(--color-border-subtle, #33333d);
-  border-radius: 8px;
+  border-radius: var(--of-radius-md);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1948,19 +1951,19 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 600;
   padding: 4px 10px;
-  border-radius: 12px;
+  border-radius: var(--of-radius-lg);
 }
 
 .impact-chip.chip-reuse {
-  background: rgba(46, 204, 113, 0.15);
-  color: #2ecc71;
-  border: 1px solid rgba(46, 204, 113, 0.3);
+  background: var(--of-success-soft);
+  color: var(--of-success);
+  border: 1px solid transparent;
 }
 
 .impact-chip.chip-fallback {
-  background: rgba(241, 196, 15, 0.15);
-  color: #f1c40f;
-  border: 1px solid rgba(241, 196, 15, 0.3);
+  background: var(--of-warning-soft);
+  color: var(--of-warning);
+  border: 1px solid transparent;
 }
 
 .impact-fallback-notice {
@@ -1969,9 +1972,9 @@ onUnmounted(() => {
   gap: 8px;
   font-size: 12px;
   color: var(--color-text-muted, #c0c0d0);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--of-surface-2);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--of-radius-sm);
 }
 
 .impact-steps-table {
@@ -1987,8 +1990,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--of-radius-sm);
+  background: var(--of-surface-1);
   border: 1px solid var(--color-border-subtle, #2a2a35);
   font-size: 13px;
 }
@@ -2003,16 +2006,16 @@ onUnmounted(() => {
 .step-id-pill {
   font-size: 10px;
   font-family: monospace;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--of-surface-3);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
 }
 
 .step-status-pill {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--of-radius-md);
   min-width: 60px;
   text-align: center;
 }
@@ -2108,7 +2111,7 @@ onUnmounted(() => {
   font-size: 0.65rem;
   font-weight: 700;
   padding: 1px 5px;
-  border-radius: 10px;
+  border-radius: var(--of-radius-md);
 }
 
 /* =========================================
@@ -2139,7 +2142,7 @@ onUnmounted(() => {
 
 .stage-nav-list li {
   padding: 8px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -2213,7 +2216,7 @@ onUnmounted(() => {
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
   border: 1px solid #444;
 }
 
@@ -2222,7 +2225,7 @@ onUnmounted(() => {
   margin-top: 8px;
   padding: 10px;
   background: var(--color-bg-panel, #1e1e24);
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
   border: 1px solid var(--color-border, #33333d);
 }
 
@@ -2240,7 +2243,7 @@ onUnmounted(() => {
 .video-poster-box {
   height: 120px;
   background: #111;
-  border-radius: 6px;
+  border-radius: var(--of-radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2325,7 +2328,7 @@ onUnmounted(() => {
   font-size: 0.75rem;
   padding: 4px 6px;
   background: var(--color-bg-panel, #1e1e24);
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
 }
 
 .substep-idx {
@@ -2373,7 +2376,7 @@ onUnmounted(() => {
   font-size: 0.75rem;
   font-weight: 600;
   padding: 3px 8px;
-  border-radius: 12px;
+  border-radius: var(--of-radius-lg);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2484,7 +2487,7 @@ onUnmounted(() => {
 .workbench-select {
   width: 100%;
   padding: 6px 10px;
-  border-radius: 4px;
+  border-radius: var(--of-radius-sm);
   border: 1px solid var(--of-border-control);
   background: var(--of-bg);
   color: var(--of-text-primary);

@@ -489,7 +489,7 @@ watch(
   position: relative;
   min-width: 0;
   padding: var(--of-panel-inset);
-  border: 1px solid transparent;
+  border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-lg);
   background: var(--of-surface-1);
   transition: border-color var(--of-motion-fast) var(--of-motion-ease);
@@ -544,7 +544,7 @@ watch(
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: var(--of-font-base);
+  font-size: var(--of-font-subtitle);
   font-weight: 650;
 }
 .mapping-pill {

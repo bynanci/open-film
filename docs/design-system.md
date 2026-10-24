@@ -18,13 +18,13 @@ aliases so incremental changes share one palette.
 | Main action             | `--of-accent`, `--of-accent-hover`, `--of-accent-ink`, `--of-accent-soft`       |
 | Status                  | `--of-success`, `--of-warning`, `--of-danger` and corresponding soft surfaces   |
 | Media overlays          | `--of-player`, `--of-on-media`, `--of-on-media-muted`, `--of-media-scrim`       |
-| Geometry                | `--of-space-*`, `--of-radius-sm/md/lg/round`                                    |
+| Geometry                | `--of-space-*`, `--of-radius-sm/md/lg/dialog/round`                             |
 | Typography              | `--of-font-body/mono/caption/small/base/title`, `--of-line-body/heading`        |
 | Motion and layers       | `--of-motion-fast/normal/ease`, `--of-z-media/sticky/notice/dialog`             |
 
-Dark surfaces begin at graphite `#101216`, with cool neutral text and an iris
-accent (`#b5bcff` in dark and `#4f46b8` in light). The light workspace uses mist
-`#f4f5f9` with white editing surfaces. Decorative borders are quiet hairlines;
+The Quiet Studio revision uses carbon `#101216`, with cool neutral text and a blue
+accent (`#b6c8ff` in dark and `#3454c5` in light). The light workspace uses pearl
+`#f5f6f8` with white editing surfaces. Decorative borders are quiet hairlines;
 text fields and native selects use the separate `--of-border-control` role.
 Palette tests check actual text/surface pairs in both themes; core text targets
 WCAG AA. Focus and control boundaries use stronger contrast than decorative
@@ -58,12 +58,34 @@ filenames/trailing context with the complete value available as a tooltip or det
 
 These map to `--of-workspace-gutter`, `--of-panel-inset` and
 `--of-section-gap`. Related controls use an 8px gap and groups use 12px;
-multiline form fields retain 16px separation. A selected surface uses the iris
+multiline form fields retain 16px separation. A selected surface uses the blue
 fill/label or a single selected border. Neutral cards use surface separation,
 with fewer nested frames and no double selection outline. The original film
 logo and user-authored media/scene colors are independent of the workspace tint.
 
 ## Existing reusable primitives
+
+### Quiet Studio component geometry
+
+Controls share the 10px medium radius, content panels use the 16px large radius,
+and Settings/command dialogs use the 20px dialog radius. Segmented views use a
+shared inset surface and a raised selected segment; media tiles favor their
+thumbnail rather than an extra framed card. Use the small shared shadow only
+where an independently interactive surface benefits from elevation.
+
+The top bar groups project identity, preferences and task actions. The project
+switch is an accessible named icon button; the local connection indicator retains
+its text for assistive technology and a hover title. The normal English/Traditional
+Chinese desktop bar fits a single row at 1280px and wider; compact and expanded
+locale layouts can wrap. Touch media actions remain visible without hover, with
+44px action targets.
+
+Export keeps the existing App-owned native preview alongside its settings on
+desktop in a presentation-only grid. The same mounted player retains seek,
+volume and rate when switching Edit/Export. Below 900px the bounded preview and
+settings stack in reading order. No second player engine or renderer is introduced.
+See [redesign validation](validation-quiet-studio-redesign.md) for measured layout,
+interaction, contrast and remaining manual gates.
 
 ### Operation modes
 

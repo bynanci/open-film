@@ -159,15 +159,15 @@ onBeforeUnmount(() => {
 <style scoped>
 .workspace-commands {
   box-sizing: border-box;
-  width: min(600px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   margin: auto;
   padding: 0;
   overflow: auto;
   color: var(--of-text-primary);
   background: var(--of-surface-1);
-  border: 1px solid var(--of-border-strong);
-  border-radius: var(--of-radius-lg);
+  border: 1px solid var(--of-border-subtle);
+  border-radius: var(--of-radius-dialog);
   box-shadow: var(--of-shadow-dialog);
 }
 .workspace-commands::backdrop {
@@ -178,7 +178,7 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: var(--of-group-gap);
-  padding: var(--of-space-4);
+  padding: var(--of-space-5) var(--of-space-6) var(--of-space-4);
 }
 h2 {
   font-size: var(--of-font-subtitle);
@@ -186,23 +186,35 @@ h2 {
 .workspace-command-search {
   display: flex;
   align-items: center;
-  gap: var(--of-space-2);
+  gap: var(--of-space-3);
   margin: 0 var(--of-space-4) var(--of-space-3);
+  padding-inline: var(--of-space-3);
+  border: 1px solid var(--of-border-control);
+  border-radius: var(--of-radius-md);
+  background: var(--of-bg);
+  color: var(--of-text-secondary);
+}
+.workspace-command-search:focus-within {
+  outline: 2px solid var(--of-focus);
+  outline-offset: 3px;
 }
 input {
   min-width: 0;
   width: 100%;
-  min-height: 40px;
-  padding: var(--of-space-2) var(--of-space-3);
-  border: 1px solid var(--of-border-control);
-  border-radius: var(--of-radius-md);
-  background: var(--of-bg);
+  min-height: 46px;
+  padding: var(--of-space-2) 0;
+  border: 0;
+  background: transparent;
   color: var(--of-text-primary);
   font: inherit;
 }
+input:focus-visible {
+  /* The search group owns the visible ring around icon and input together. */
+  outline: none;
+}
 ul {
   margin: 0;
-  padding: var(--of-space-2);
+  padding: var(--of-space-3);
   max-height: 45dvh;
   overflow: auto;
   list-style: none;
@@ -237,7 +249,8 @@ footer {
 li.selected {
   color: var(--of-accent);
   background: var(--of-accent-soft);
-  border-color: var(--of-accent);
+  border-color: transparent;
+  box-shadow: inset 3px 0 var(--of-accent);
 }
 li.unavailable {
   cursor: default;

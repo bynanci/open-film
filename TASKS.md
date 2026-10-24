@@ -49,6 +49,17 @@ system or downstream NLE. Commands and test responsibilities are in
 
 ## In progress — Story Arc Authoring and Story-to-Pipeline flow
 
+- [x] Apply the Quiet Studio component redesign: carbon/pearl/blue tokens, shared
+      control/panel/dialog geometry, grouped top bar and calmer media/story views.
+- [x] Reproduce/fix 1280px Expert toolbar wrapping and invisible touch media
+      actions; keep native keyboard switching and 44px coarse-pointer targets.
+- [x] Move the actual App-owned export preview alongside settings on desktop,
+      with stacked compact layout; preserve existing native player/render behavior.
+- [x] Complete the redesign's local regression gates (278 files / 3,819 tests,
+      54 relevant browser cases), preserve review fixes and prepare the branch update;
+      record exact local gates and remaining workstation limits in
+      [validation](docs/validation-quiet-studio-redesign.md).
+
 Scope and contract: [Story arc authoring](docs/story-arc-authoring.md),
 [design](docs/superpowers/specs/2026-10-23-story-arc-authoring-design.md) and
 [validation](docs/validation-story-arc-authoring.md). Base is

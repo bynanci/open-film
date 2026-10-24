@@ -1908,10 +1908,10 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   width: 240px;
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-md);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--of-shadow-raised);
   user-select: none;
   cursor: grab;
   transition:

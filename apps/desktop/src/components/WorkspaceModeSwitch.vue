@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import Icon from "./Icon.vue";
 import {
   preferences,
   setWorkspaceMode,
@@ -37,7 +38,15 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
         :class="{ selected: preferences.workspaceMode === mode }"
         @click="setWorkspaceMode(mode)"
       >
-        <strong>{{ t(`app.workspaceMode.${mode}`) }}</strong>
+        <span class="workspace-mode-title"
+          ><Icon
+            :name="mode === 'standard' ? 'layers' : 'settings'"
+            :size="19" /><strong>{{ t(`app.workspaceMode.${mode}`) }}</strong
+          ><Icon
+            v-if="preferences.workspaceMode === mode"
+            name="check"
+            :size="17"
+        /></span>
         <span>{{ t(`app.workspaceMode.${mode}Hint`) }}</span>
       </button>
     </div>
@@ -51,12 +60,12 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
 }
 .workspace-mode-control select {
   width: auto;
-  max-width: 180px;
+  max-width: 160px;
   min-height: 36px;
   padding: var(--of-space-2) var(--of-space-3);
   border: 1px solid var(--of-border-control);
   border-radius: var(--of-radius-md);
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   color: var(--of-text-primary);
   font-family: var(--of-font-body);
   font-size: var(--of-font-small);
@@ -71,11 +80,11 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
   min-width: 0;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--of-space-2);
-  padding: var(--of-space-4);
-  border: 1px solid var(--of-border-control);
+  gap: var(--of-space-3);
+  padding: var(--of-space-5);
+  border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-lg);
-  background: var(--of-surface-1);
+  background: var(--of-bg);
   color: var(--of-text-primary);
   text-align: start;
   white-space: normal;
@@ -89,13 +98,28 @@ const modes: WorkspaceMode[] = ["standard", "expert"];
   border-color: var(--of-accent);
   background: var(--of-accent-soft);
 }
+.workspace-mode-title {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--of-space-2);
+}
+.workspace-mode-title > svg:last-child:not(:first-child) {
+  margin-inline-start: auto;
+  color: var(--of-accent);
+}
 .workspace-mode-options strong {
   font-size: var(--of-font-base);
 }
-.workspace-mode-options span {
+.workspace-mode-options button > span:not(.workspace-mode-title) {
   color: var(--of-text-secondary);
   font-size: var(--of-font-small);
   line-height: var(--of-line-body);
+}
+@media (pointer: coarse) {
+  .workspace-mode-control select {
+    min-height: 44px;
+  }
 }
 @media (max-width: 640px) {
   .workspace-mode-options {
