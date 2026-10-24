@@ -9,6 +9,15 @@ import {
   type StoryGraphNode,
 } from "@openfilm/core";
 
+function allocateStoryGraphEdgeId(graph: StoryGraph, baseId: string): string {
+  const existingIds = new Set(graph.edges.map((edge) => edge.id));
+  if (!existingIds.has(baseId)) return baseId;
+
+  let suffix = 2;
+  while (existingIds.has(`${baseId}-${suffix}`)) suffix += 1;
+  return `${baseId}-${suffix}`;
+}
+
 export function inferStoryGraphEdgeType(
   source: StoryGraphNode,
   target: StoryGraphNode,
@@ -48,7 +57,10 @@ export function connectStoryGraphNodes(
   }
 
   const edge: StoryGraphEdge = {
-    id: `edge-${type}-${fromNodeId}-${toNodeId}`,
+    id: allocateStoryGraphEdgeId(
+      graph,
+      `edge-${type}-${fromNodeId}-${toNodeId}`,
+    ),
     from: fromNodeId,
     to: toNodeId,
     type,

@@ -336,11 +336,17 @@ export class StoryGraphService {
     const storyIndex = this.app.project.stories.findIndex(
       (item) => item.id === storyId,
     );
+    const previousStory = this.app.project.stories[storyIndex]!;
     this.app.project.stories[storyIndex] = {
       ...result.story,
       graph: result.graph,
     };
-    await this.app.save();
+    try {
+      await this.app.save();
+    } catch (error) {
+      this.app.project.stories[storyIndex] = previousStory;
+      throw error;
+    }
 
     return {
       story: this.app.project.stories[storyIndex]!,

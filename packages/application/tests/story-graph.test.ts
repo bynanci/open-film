@@ -348,6 +348,52 @@ describe("StoryGraphService Application Integration", () => {
     ).toBe(false);
   });
 
+  it("restores the in-memory story when a connection save fails", async () => {
+    const story: Story = {
+      id: "story-save-rollback",
+      title: "Connection rollback",
+      beats: [{ id: "beat-1", title: "Opening", targetDuration: 10 }],
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: "beat-node-1",
+            type: "beat",
+            storyId: "story-save-rollback",
+            beatId: "beat-1",
+          },
+          {
+            id: "asset-node-1",
+            type: "asset",
+            assetId: "asset-sunset",
+          },
+        ],
+        edges: [],
+      },
+    };
+    app.project.stories.push(story);
+    await app.save();
+    const before = structuredClone(
+      app.project.stories.find((item) => item.id === story.id),
+    );
+    const save = vi
+      .spyOn(app, "save")
+      .mockRejectedValueOnce(new Error("synthetic save failure"));
+
+    await expect(
+      app.storyGraph.connectNodes(
+        story.id,
+        "beat-node-1",
+        "asset-node-1",
+        "supports",
+      ),
+    ).rejects.toThrow("synthetic save failure");
+    expect(app.project.stories.find((item) => item.id === story.id)).toEqual(
+      before,
+    );
+    save.mockRestore();
+  });
+
   it("removes graph node and edges without deleting original assets from catalog", async () => {
     const story: Story = {
       id: "story-del",

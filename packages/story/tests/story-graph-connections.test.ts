@@ -89,6 +89,30 @@ describe("story graph drag connections", () => {
     expect(connected.edges).toHaveLength(1);
   });
 
+  it("allocates a unique id when an edited relationship retains the base id", () => {
+    const edited = graph([
+      {
+        id: "edge-echoes-idea-1-beat-a",
+        from: "idea-1",
+        to: "beat-a",
+        type: "alternative",
+      },
+    ]);
+
+    const reconnected = connectStoryGraphNodes(
+      edited,
+      "idea-1",
+      "beat-a",
+      "echoes",
+    );
+
+    expect(reconnected.edges.map((edge) => edge.id)).toEqual([
+      "edge-echoes-idea-1-beat-a",
+      "edge-echoes-idea-1-beat-a-2",
+    ]);
+    expect(new Set(reconnected.edges.map((edge) => edge.id)).size).toBe(2);
+  });
+
   it("rejects a cyclic beat dependency and a dependency between non-beat nodes", () => {
     const ordered = graph([
       {
