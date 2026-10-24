@@ -8,6 +8,12 @@ import {
 } from "@openfilm/core";
 import type { StoryTemplate, TemplateBeatText } from "@openfilm/plugin-sdk";
 
+export type ProjectContentBeatResolver = (
+  templateId: string | undefined,
+  templateBeatKey: string,
+  locale: ProjectContentLocale,
+) => TemplateBeatText | undefined;
+
 export class StoryContentError extends ApplicationError {
   override name = "StoryContentError";
 
@@ -146,6 +152,7 @@ export function localizeProjectContent(
   project: OpenFilmProject,
   locale: ProjectContentLocale,
   templates: readonly StoryTemplate[] = [],
+  beatResolvers: readonly ProjectContentBeatResolver[] = [],
 ): OpenFilmProject {
   const contentLocale = resolveProjectContentLocale(locale);
   const next = structuredClone(project);
@@ -157,7 +164,13 @@ export function localizeProjectContent(
       const text =
         !story.template || story.template === "blank"
           ? genericBeatText(beat.templateBeatKey, contentLocale)
-          : template?.getBeatText?.(beat.templateBeatKey, contentLocale);
+          : (template?.getBeatText?.(beat.templateBeatKey, contentLocale) ??
+            beatResolvers.reduce<TemplateBeatText | undefined>(
+              (resolved, resolver) =>
+                resolved ??
+                resolver(story.template, beat.templateBeatKey!, contentLocale),
+              undefined,
+            ));
       if (!text) continue;
       if (beat.titleSource === "template") beat.title = text.title;
       if (beat.intentSource === "template") {

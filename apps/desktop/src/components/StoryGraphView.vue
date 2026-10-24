@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   Composition,
@@ -28,18 +28,85 @@ const props = defineProps<{
   assets: MediaAsset[];
   mediaStatuses?: Record<string, SourceStatus>;
   activeBeatId?: string | null;
+  mutationDisabled?: boolean;
+  editingDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
   "select-beat": [beatId: string];
   "update-story": [story: Story];
+  "edit-beat": [storyId: string, beat: StoryBeat];
   "navigate-timeline": [beatId: string];
   compose: [];
 }>();
 
-// --- Responsive Sidebar Toggles (for <=1024px) ---
+// Panels respond to the canvas container, including the workspace rail and zoom reflow.
 const assetsSidebarOpen = ref(true);
 const inspectorSidebarOpen = ref(true);
+const graphWorkspace = ref<HTMLElement | null>(null);
+const compactGraph = ref(false);
+const assetsToggle = ref<HTMLButtonElement | null>(null);
+const inspectorToggle = ref<HTMLButtonElement | null>(null);
+let graphResizeObserver: ResizeObserver | undefined;
+let widePanels = { assets: true, inspector: true };
+let panelOrigin: HTMLElement | null = null;
+function measureGraph() {
+  const element = graphWorkspace.value;
+  if (!element) return;
+  const compact = element.clientWidth < 960;
+  if (compact === compactGraph.value) return;
+  if (compact) {
+    widePanels = {
+      assets: assetsSidebarOpen.value,
+      inspector: inspectorSidebarOpen.value,
+    };
+    // Keep an active text field visible while the user resizes or zooms.
+    const active = document.activeElement;
+    assetsSidebarOpen.value = !!element
+      .querySelector(".assets-palette")
+      ?.contains(active);
+    inspectorSidebarOpen.value = !!element
+      .querySelector(".inspector-palette")
+      ?.contains(active);
+    if (assetsSidebarOpen.value) panelOrigin = assetsToggle.value;
+    else if (inspectorSidebarOpen.value) panelOrigin = inspectorToggle.value;
+  } else {
+    assetsSidebarOpen.value = widePanels.assets;
+    inspectorSidebarOpen.value = widePanels.inspector;
+  }
+  compactGraph.value = compact;
+}
+async function toggleGraphPanel(panel: "assets" | "inspector") {
+  const state = panel === "assets" ? assetsSidebarOpen : inspectorSidebarOpen;
+  const opening = !state.value;
+  if (
+    opening &&
+    compactGraph.value &&
+    document.activeElement instanceof HTMLElement
+  )
+    panelOrigin = document.activeElement;
+  state.value = opening;
+  if (!compactGraph.value) return;
+  if (panel === "assets") inspectorSidebarOpen.value = false;
+  else assetsSidebarOpen.value = false;
+  await nextTick();
+  if (state.value !== opening) return;
+  if (opening) {
+    graphWorkspace.value
+      ?.querySelector<HTMLElement>(
+        `.${panel}-palette input, .${panel}-palette button`,
+      )
+      ?.focus();
+  } else if (panelOrigin?.isConnected) panelOrigin.focus();
+}
+function handlePanelEscape(event: KeyboardEvent) {
+  if (event.key !== "Escape" || !compactGraph.value || event.isComposing)
+    return;
+  if (!assetsSidebarOpen.value && !inspectorSidebarOpen.value) return;
+  event.stopPropagation();
+  event.preventDefault();
+  void toggleGraphPanel(assetsSidebarOpen.value ? "assets" : "inspector");
+}
 
 // --- Graph & View State ---
 const graph = ref<StoryGraph>({
@@ -165,6 +232,9 @@ const selectedBeat = computed((): StoryBeat | null => {
   const beatId = selectedNode.value.beatId;
   return props.story.beats.find((b) => b.id === beatId) ?? null;
 });
+const beatEditingBlocked = computed(
+  () => props.editingDisabled || selectedBeat.value?.id !== props.activeBeatId,
+);
 
 // Clip mapping status for selected beat
 const selectedBeatClipMapping = computed(() => {
@@ -325,28 +395,51 @@ function fitContent() {
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  for (const pos of nodeEntries) {
+  const canvas =
+    graphWorkspace.value?.querySelector<HTMLElement>(".graph-main-canvas");
+  if (!canvas || canvas.clientWidth < 1 || canvas.clientHeight < 1) return;
+  const toolbar = canvas.querySelector<HTMLElement>(".canvas-toolbar");
+  const topInset = toolbar ? toolbar.offsetTop + toolbar.offsetHeight + 12 : 0;
+  const renderedNodes = new Map(
+    Array.from(canvas.querySelectorAll<HTMLElement>(".graph-node")).map(
+      (node) => [node.dataset.nodeId, node],
+    ),
+  );
+  for (const node of graph.value.nodes) {
+    const pos = viewState.value.nodes[node.id] ?? { x: 100, y: 100 };
+    const rendered = renderedNodes.get(node.id);
     if (pos.x < minX) minX = pos.x;
     if (pos.y < minY) minY = pos.y;
-    if (pos.x + 240 > maxX) maxX = pos.x + 240;
-    if (pos.y + 160 > maxY) maxY = pos.y + 160;
+    maxX = Math.max(maxX, pos.x + (rendered?.offsetWidth || 240));
+    maxY = Math.max(maxY, pos.y + (rendered?.offsetHeight || 160));
   }
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return;
 
-  const padding = 60;
-  const contentWidth = Math.max(maxX - minX + padding * 2, 400);
-  const contentHeight = Math.max(maxY - minY + padding * 2, 300);
+  const padding = 24;
+  const contentWidth = Math.max(maxX - minX, 1);
+  const contentHeight = Math.max(maxY - minY, 1);
 
-  const containerWidth = 900;
-  const containerHeight = 600;
+  const containerWidth = Math.max(canvas.clientWidth - padding * 2, 1);
+  const containerHeight = Math.max(
+    canvas.clientHeight - topInset - padding * 2,
+    1,
+  );
 
   const zoomX = containerWidth / contentWidth;
   const zoomY = containerHeight / contentHeight;
-  const fitZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.3), 1.5);
+  const fitZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.1), 1.5);
 
   viewState.value.zoom = fitZoom;
   viewState.value.pan = {
-    x: -minX * fitZoom + padding,
-    y: -minY * fitZoom + padding,
+    x:
+      -minX * fitZoom +
+      padding +
+      Math.max(0, (containerWidth - contentWidth * fitZoom) / 2),
+    y:
+      -minY * fitZoom +
+      topInset +
+      padding +
+      Math.max(0, (containerHeight - contentHeight * fitZoom) / 2),
   };
   persistViewState();
 }
@@ -417,6 +510,7 @@ function onNodeMouseDown(nodeId: string, event: MouseEvent) {
 
 function onCanvasMouseDown(event: MouseEvent) {
   if (event.button !== 0) return;
+  if ((event.target as HTMLElement).closest(".canvas-toolbar")) return;
   if ((event.target as HTMLElement).closest(".graph-node")) return;
   if ((event.target as HTMLElement).closest(".graph-edge")) return;
 
@@ -465,6 +559,7 @@ function onMouseUp() {
 }
 
 function onCanvasWheel(event: WheelEvent) {
+  if ((event.target as HTMLElement).closest(".canvas-toolbar")) return;
   event.preventDefault();
   const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
   const newZoom = Math.min(
@@ -477,6 +572,7 @@ function onCanvasWheel(event: WheelEvent) {
 
 // --- Quick Actions ---
 async function handleQuickAddAsset(assetId?: string) {
+  if (props.mutationDisabled) return;
   const targetAssetId = assetId || quickAddAssetId.value;
   if (!targetAssetId || !selectedBeat.value) return;
 
@@ -596,11 +692,12 @@ async function handleUpdateEdgeType(newType: StoryGraphEdgeType) {
 }
 
 async function saveBeatChanges() {
-  if (!selectedBeat.value) return;
+  if (!selectedBeat.value || beatEditingBlocked.value || isImeComposing.value)
+    return;
   const updatedBeat: StoryBeat = {
     ...selectedBeat.value,
-    title: beatDraft.value.title.trim() || selectedBeat.value.title,
-    targetDuration: Number(beatDraft.value.targetDuration) || 10,
+    title: beatDraft.value.title,
+    targetDuration: Number(beatDraft.value.targetDuration),
     intent: beatDraft.value.intent.trim() || undefined,
     script:
       beatDraft.value.narration.trim() || beatDraft.value.visualDirection.trim()
@@ -611,14 +708,12 @@ async function saveBeatChanges() {
         : undefined,
   };
 
-  const updatedBeats = props.story.beats.map((b) =>
-    b.id === updatedBeat.id ? updatedBeat : b,
-  );
-  const updatedStory: Story = {
-    ...props.story,
-    beats: updatedBeats,
-  };
-  emit("update-story", updatedStory);
+  emit("edit-beat", props.story.id, updatedBeat);
+}
+
+function finishBeatComposition() {
+  isImeComposing.value = false;
+  void saveBeatChanges();
 }
 
 async function saveIdeaChanges() {
@@ -729,10 +824,13 @@ function insertAssetMention(asset: MediaAsset) {
 
 // Keyboard navigation
 function onKeyDown(event: KeyboardEvent) {
-  if (isImeComposing.value) return;
+  if (event.defaultPrevented || isImeComposing.value) return;
   if (
     (event.target as HTMLElement).tagName === "INPUT" ||
-    (event.target as HTMLElement).tagName === "TEXTAREA"
+    (event.target as HTMLElement).tagName === "TEXTAREA" ||
+    (event.target as HTMLElement).tagName === "SELECT" ||
+    (event.target as HTMLElement).tagName === "BUTTON" ||
+    (event.target as HTMLElement).isContentEditable
   ) {
     return;
   }
@@ -801,17 +899,29 @@ watch(
 );
 
 onMounted(() => {
+  measureGraph();
+  if (typeof ResizeObserver !== "undefined" && graphWorkspace.value) {
+    graphResizeObserver = new ResizeObserver(measureGraph);
+    graphResizeObserver.observe(graphWorkspace.value);
+  }
   loadGraphAndState();
   window.addEventListener("keydown", onKeyDown);
 });
 
 onUnmounted(() => {
+  graphResizeObserver?.disconnect();
   window.removeEventListener("keydown", onKeyDown);
 });
 </script>
 
 <template>
-  <div class="story-graph-workspace" data-testid="story-graph-view">
+  <div
+    ref="graphWorkspace"
+    class="story-graph-workspace"
+    :class="{ 'is-compact': compactGraph }"
+    data-testid="story-graph-view"
+    @keydown="handlePanelEscape"
+  >
     <!-- Left Compatible Assets Panel -->
     <aside
       class="graph-sidebar assets-palette"
@@ -826,7 +936,9 @@ onUnmounted(() => {
         <button
           class="icon-btn"
           :title="t('app.storyGraph.toolbar.toggleAssets')"
-          @click="assetsSidebarOpen = !assetsSidebarOpen"
+          :aria-label="t('app.storyGraph.toolbar.toggleAssets')"
+          :aria-expanded="assetsSidebarOpen"
+          @click="toggleGraphPanel('assets')"
         >
           <Icon name="chevron" :size="14" />
         </button>
@@ -886,9 +998,11 @@ onUnmounted(() => {
       >
         <div class="toolbar-group">
           <button
+            ref="assetsToggle"
             class="secondary-btn"
             :class="{ active: assetsSidebarOpen }"
-            @click="assetsSidebarOpen = !assetsSidebarOpen"
+            :aria-expanded="assetsSidebarOpen"
+            @click="toggleGraphPanel('assets')"
           >
             <Icon name="film" :size="14" />
             {{ t("app.storyGraph.toolbar.toggleAssets") }}
@@ -940,7 +1054,7 @@ onUnmounted(() => {
           <button
             class="icon-btn"
             @click="
-              viewState.zoom = Math.max(0.25, viewState.zoom - 0.1);
+              viewState.zoom = Math.max(0.1, viewState.zoom - 0.1);
               persistViewState();
             "
           >
@@ -959,9 +1073,11 @@ onUnmounted(() => {
             +
           </button>
           <button
+            ref="inspectorToggle"
             class="secondary-btn"
             :class="{ active: inspectorSidebarOpen }"
-            @click="inspectorSidebarOpen = !inspectorSidebarOpen"
+            :aria-expanded="inspectorSidebarOpen"
+            @click="toggleGraphPanel('inspector')"
           >
             {{ t("app.storyGraph.toolbar.toggleInspector") }}
           </button>
@@ -1062,6 +1178,7 @@ onUnmounted(() => {
             v-for="node in graph.nodes"
             :key="node.id"
             class="graph-node"
+            :data-node-id="node.id"
             :class="[
               `node-${node.type}`,
               {
@@ -1200,7 +1317,9 @@ onUnmounted(() => {
         <button
           class="icon-btn"
           :title="t('app.storyGraph.inspector.title')"
-          @click="inspectorSidebarOpen = !inspectorSidebarOpen"
+          :aria-label="t('app.storyGraph.inspector.title')"
+          :aria-expanded="inspectorSidebarOpen"
+          @click="toggleGraphPanel('inspector')"
         >
           <Icon name="chevron" :size="14" />
         </button>
@@ -1220,8 +1339,9 @@ onUnmounted(() => {
             <span>{{ t("app.storyGraph.inspector.beatTitle") }}</span>
             <input
               v-model="beatDraft.title"
+              :disabled="beatEditingBlocked"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1230,6 +1350,7 @@ onUnmounted(() => {
             <span>{{ t("app.storyGraph.inspector.targetDuration") }}</span>
             <input
               v-model.number="beatDraft.targetDuration"
+              :disabled="beatEditingBlocked"
               type="number"
               min="1"
               @input="saveBeatChanges"
@@ -1240,8 +1361,9 @@ onUnmounted(() => {
             <span>{{ t("app.story.intent") }}</span>
             <input
               v-model="beatDraft.intent"
+              :disabled="beatEditingBlocked"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1250,9 +1372,10 @@ onUnmounted(() => {
             <span>{{ t("app.storyGraph.inspector.narration") }}</span>
             <textarea
               v-model="beatDraft.narration"
+              :disabled="beatEditingBlocked"
               rows="2"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1261,9 +1384,10 @@ onUnmounted(() => {
             <span>{{ t("app.storyGraph.inspector.visualDirection") }}</span>
             <textarea
               v-model="beatDraft.visualDirection"
+              :disabled="beatEditingBlocked"
               rows="2"
               @compositionstart="isImeComposing = true"
-              @compositionend="isImeComposing = false"
+              @compositionend="finishBeatComposition"
               @input="saveBeatChanges"
             />
           </label>
@@ -1551,6 +1675,7 @@ onUnmounted(() => {
 .story-graph-workspace {
   display: flex;
   width: 100%;
+  min-width: 0;
   height: calc(100vh - 120px);
   min-height: 500px;
   background: var(--of-bg);
@@ -1562,6 +1687,8 @@ onUnmounted(() => {
 /* Sidebars */
 .graph-sidebar {
   width: 280px;
+  flex: 0 0 280px;
+  min-width: 0;
   background: var(--of-surface-1);
   border-right: 1px solid var(--of-border-subtle);
   display: flex;
@@ -1577,6 +1704,28 @@ onUnmounted(() => {
 
 .graph-sidebar.is-collapsed {
   width: 48px;
+  flex-basis: 48px;
+}
+.graph-sidebar.is-collapsed .sidebar-header {
+  justify-content: center;
+  padding: var(--of-space-2) var(--of-space-1);
+}
+.graph-sidebar.is-collapsed .sidebar-header h3 {
+  display: none;
+}
+.story-graph-workspace.is-compact .graph-sidebar:not(.is-collapsed) {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  width: min(280px, calc(100% - 48px));
+  box-shadow: var(--of-shadow-dialog);
+}
+.story-graph-workspace.is-compact .assets-palette:not(.is-collapsed) {
+  left: 0;
+}
+.story-graph-workspace.is-compact .inspector-palette:not(.is-collapsed) {
+  right: 0;
 }
 
 .sidebar-header {
@@ -1588,6 +1737,7 @@ onUnmounted(() => {
 }
 
 .sidebar-header h3 {
+  min-width: 0;
   font-size: var(--of-font-base);
   margin: 0;
   display: flex;
@@ -1658,6 +1808,7 @@ onUnmounted(() => {
 /* Center Canvas */
 .graph-main-canvas {
   flex: 1;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   background: radial-gradient(var(--of-border-subtle) 1px, transparent 1px);
@@ -1670,6 +1821,8 @@ onUnmounted(() => {
   left: var(--of-space-3);
   right: var(--of-space-3);
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--of-group-gap);
   align-items: center;
   justify-content: space-between;
   padding: var(--of-space-2) var(--of-space-3);
@@ -1677,10 +1830,15 @@ onUnmounted(() => {
   border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-md);
   z-index: 20;
+  max-height: 45%;
+  overflow-y: auto;
 }
 
 .toolbar-group {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--of-space-2);
 }
@@ -1755,10 +1913,10 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   width: 240px;
-  background: var(--of-surface-2);
+  background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
   border-radius: var(--of-radius-md);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--of-shadow-raised);
   user-select: none;
   cursor: grab;
   transition:
@@ -1923,9 +2081,11 @@ onUnmounted(() => {
 .field input,
 .field textarea,
 .field select {
+  min-width: 0;
+  max-width: 100%;
   background: var(--of-surface-2);
   color: var(--of-text-primary);
-  border: 1px solid var(--of-border-subtle);
+  border: 1px solid var(--of-border-control);
   border-radius: var(--of-radius-sm);
   padding: var(--of-space-2);
 }
@@ -1967,19 +2127,25 @@ onUnmounted(() => {
 }
 
 .primary-btn {
-  background: var(--of-accent);
-  color: var(--of-accent-ink);
+  max-width: 100%;
+  background: var(--of-surface-2);
+  color: var(--of-text-primary);
   border: none;
   border-radius: var(--of-radius-sm);
   padding: var(--of-space-2) var(--of-space-3);
   cursor: pointer;
   font-weight: 500;
 }
+.plan-storyboard-btn {
+  background: var(--of-accent);
+  color: var(--of-accent-ink);
+}
 
 .secondary-btn {
+  max-width: 100%;
   background: var(--of-surface-2);
   color: var(--of-text-primary);
-  border: 1px solid var(--of-border-subtle);
+  border: 1px solid transparent;
   border-radius: var(--of-radius-sm);
   padding: var(--of-space-2) var(--of-space-3);
   cursor: pointer;
@@ -1995,6 +2161,8 @@ onUnmounted(() => {
 }
 
 .icon-btn {
+  min-width: 32px;
+  min-height: 32px;
   background: transparent;
   border: none;
   color: var(--of-text-secondary);

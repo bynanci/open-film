@@ -151,6 +151,11 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
     await page.getByLabel("Target (seconds)").fill("12");
     await page.getByLabel("Maximum (seconds)").fill("20");
     await page.getByRole("button", { name: "Plan story", exact: true }).click();
+    await expect(page.getByTestId("perspective-tab-graph")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await page.getByTestId("perspective-tab-outline").click();
     await expect(
       page.getByRole("heading", { name: "Cold Open", exact: true }),
     ).toBeVisible();
@@ -269,9 +274,10 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
     expect(unexpectedRequests).toEqual([]);
 
     await page.reload();
-    await expect(
-      page.getByRole("heading", { name: "The moments between" }),
-    ).toBeVisible();
+    await expect(page.locator(".workspace-context strong")).toHaveText(
+      "The moments between",
+    );
+    await navigate(page, "library");
     await expect(
       page.getByRole("button", {
         name: "Unfavorite 01-photo.png",
@@ -282,10 +288,11 @@ test("creates a local film, edits its story, renders, exports, and reopens it", 
       .getByRole("button", { name: "Switch project", exact: true })
       .click();
     await openFilm(page, fixture.project);
-    await expect(
-      page.getByRole("heading", { name: "The moments between" }),
-    ).toBeVisible();
+    await expect(page.locator(".workspace-context strong")).toHaveText(
+      "The moments between",
+    );
     await navigate(page, "story");
+    await page.getByTestId("perspective-tab-outline").click();
     await expect(
       page.getByRole("heading", { name: "The moment before", exact: true }),
     ).toBeVisible();

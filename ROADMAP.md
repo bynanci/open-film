@@ -49,6 +49,52 @@ OpenFilm's north star is ownership of media, story decisions, and the final edit
 The current release establishes a useful offline workflow; later milestones should
 improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 
+## Current branch candidate — Story Arc Authoring
+
+The Quiet Studio redesign unifies carbon/pearl/blue surfaces, control and dialog
+geometry, project/preferences/actions in the top bar, and the creative components.
+Touch media controls remain discoverable; the export preview now accompanies its
+settings on desktop. These are presentation changes over the same General/Expert
+workspace, project and renderer contracts. See the
+[design](docs/superpowers/specs/2026-10-24-quiet-studio-redesign-design.md) and
+[validation](docs/validation-quiet-studio-redesign.md).
+
+PR #53's final review pass also fences IME completion, localizes untouched arc
+prompts, binds timing defaults to the selected arc, isolates Pipeline keyboard
+focus and preserves the loopback image CORS boundary. The compact Export action
+remains visible through 1024x768 expanded-locale layouts. Full local evidence is
+3,821 Vitest tests and 228 Playwright tests from the final candidate.
+
+General and Expert operation modes share one editor and project contract.
+Guided disclosure, compact expert spacing and searchable navigation commands
+serve first-time and frequent creators; mode changes retain edits and history.
+See [workspace modes](docs/workspace-modes.md) and its
+[validation](docs/validation-workspace-modes.md).
+
+The earlier responsive surface pass established measured input boundaries,
+responsive spacing, bounded inspectors and viewport-aware graph
+controls. Theme-switch frame contrast and durable graph text/save/selection
+recovery are covered by the same regression pass.
+See [responsive surface validation](docs/validation-responsive-surfaces.md)
+for reproduced breakpoint defects, retained regression checks and manual gates.
+
+Expand the starting story structures and accept a user's own ordered beats,
+then guide the author through the existing StoryGraph mind map, Pipeline
+Workbench, and Compose/Edit flow. The Storyboard becomes a vertical reading
+thread. M9 StoryGraph, M9 StoryPlan, M10 Pipeline, the existing Composition,
+and project schema 1.0.0 remain the owners of their current contracts. See
+[story arc authoring](docs/story-arc-authoring.md) and the
+[validation record](docs/validation-story-arc-authoring.md) for this branch's
+exact checks and outstanding gates.
+
+The user-supplied cinema-foundation v1.1.0 and v1.0.0 archives now provide the
+shot-proposal and emotional-overlay reference contracts. Their UI guidance is
+applied in [workspace UX refinement](docs/workspace-ux-refinement.md), including
+explicit media status and image/intent/timing hierarchy. Runtime shot-level
+integration remains a separate follow-up requiring a reviewed scene/shot ID
+adapter and revision-fenced sidecar storage. No improvised StoryPlan fields or
+unimplemented shot-level behavior are claimed.
+
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.

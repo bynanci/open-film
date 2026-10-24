@@ -57,7 +57,7 @@
   padding: var(--of-space-5);
   background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 16px;
+  border-radius: var(--of-radius-lg);
 }
 .versions-create label,
 .version-rename label,
@@ -75,8 +75,8 @@
   padding: var(--of-space-2) var(--of-space-3);
   color: var(--of-text-primary);
   background: var(--of-bg);
-  border: 1px solid var(--of-border-strong);
-  border-radius: 10px;
+  border: 1px solid var(--of-border-control);
+  border-radius: var(--of-radius-md);
   font: inherit;
 }
 .versions-create button {
@@ -95,7 +95,7 @@
   text-align: center;
   background: var(--of-surface-1);
   border: 1px dashed var(--of-border-strong);
-  border-radius: 16px;
+  border-radius: var(--of-radius-lg);
 }
 .versions-layout {
   display: grid;
@@ -112,7 +112,7 @@
   padding: var(--of-space-5);
   background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 16px;
+  border-radius: var(--of-radius-lg);
 }
 .versions-list > h3,
 .versions-diff-heading > h3 {
@@ -124,7 +124,7 @@
   padding: var(--of-space-4);
   background: var(--of-surface-2);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 12px;
+  border-radius: var(--of-radius-lg);
 }
 .version-card.selected {
   background: var(--of-accent-soft);
@@ -175,7 +175,7 @@
   padding: var(--of-space-5);
   background: var(--of-surface-1);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 16px;
+  border-radius: var(--of-radius-lg);
 }
 .versions-diff-heading {
   align-items: end;
@@ -204,7 +204,7 @@
   padding: var(--of-space-4);
   background: var(--of-surface-2);
   border: 1px solid var(--of-border-subtle);
-  border-radius: 12px;
+  border-radius: var(--of-radius-lg);
 }
 .diff-entry-heading {
   justify-content: flex-start;

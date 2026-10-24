@@ -3511,6 +3511,15 @@ export async function startServer(options: ServerOptions = {}) {
               data.assetIds.some((id) => typeof id !== "string"))
           )
             throw new HttpError(400, "Story scope must contain media IDs.");
+          if (
+            data.customOutline !== undefined &&
+            (!Array.isArray(data.customOutline) ||
+              data.customOutline.some((heading) => typeof heading !== "string"))
+          )
+            throw new HttpError(
+              400,
+              "A custom story outline must contain text headings.",
+            );
           const story = application.generateStory({
             title: typeof data.title === "string" ? data.title : undefined,
             template:
@@ -3518,6 +3527,7 @@ export async function startServer(options: ServerOptions = {}) {
             targetDuration: number(data.targetDuration, "targetDuration"),
             maxDuration: number(data.maxDuration, "maxDuration"),
             assetIds: data.assetIds as string[] | undefined,
+            customOutline: data.customOutline as string[] | undefined,
           });
           json(response, 201, { story });
           return;

@@ -8,7 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { Job } from "@openfilm/core";
 import type { AnalysisJobRecoveryState } from "../../apps/desktop/src/api";
 
-const vue = createRequire(resolve("apps/desktop/package.json"))("vue") as {
+const requireDesktop = createRequire(resolve("apps/desktop/package.json"));
+const vue = requireDesktop("vue") as {
   ref: <T>(value: T) => { value: T };
   computed: <T>(value: () => T) => { value: T };
   proxyRefs: <T extends object>(value: T) => T;
@@ -47,10 +48,45 @@ const code = transformSync(
   ].join("\n"),
   { loader: "ts", format: "esm" },
 ).code;
-const disabledExpression = source.match(
-  /class="text-button project-switch"\s+:disabled="([\s\S]*?)"/u,
-)?.[1];
-if (!disabledExpression) throw new Error("Missing project switch button");
+type TemplateNode = {
+  tag?: string;
+  props?: {
+    type: number;
+    name: string;
+    value?: { content: string };
+    arg?: { content: string };
+    exp?: { content: string };
+  }[];
+  children?: TemplateNode[];
+};
+const { parse: parseComponent } = requireDesktop("vue/compiler-sfc") as {
+  parse(source: string): { descriptor: { template: { ast: TemplateNode } } };
+};
+function findProjectSwitch(node: TemplateNode): TemplateNode | undefined {
+  if (
+    node.tag === "button" &&
+    node.props?.some(
+      (prop) =>
+        prop.type === 6 &&
+        prop.name === "class" &&
+        prop.value?.content.split(/\s+/u).includes("project-switch"),
+    )
+  )
+    return node;
+  for (const child of node.children ?? []) {
+    const found = findProjectSwitch(child);
+    if (found) return found;
+  }
+}
+// Read the real Vue binding regardless of formatting or accessible attribute order.
+const disabledExpression = findProjectSwitch(
+  parseComponent(source).descriptor.template.ast,
+)?.props?.find(
+  (prop) =>
+    prop.type === 7 && prop.name === "bind" && prop.arg?.content === "disabled",
+)?.exp?.content;
+if (!disabledExpression)
+  throw new Error("Missing project-switch disabled binding");
 
 function deferred<T>() {
   let release!: (value: T) => void;
@@ -95,6 +131,7 @@ function host(
     memory: { id: "memory", tags: ["Old category"] },
   });
   const dependencies = {
+    graphBeatSaveTask: undefined,
     computed: vue.computed,
     jobs,
     analysisRecovery,

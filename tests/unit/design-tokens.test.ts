@@ -67,4 +67,19 @@ describe.each([
       contrast(palette["border-strong"]!, palette["surface-1"]!),
     ).toBeGreaterThanOrEqual(3);
   });
+  it("separates decorative hairlines from usable input boundaries", () => {
+    expect(
+      palette["border-control"],
+      "Controls need their own visible boundary role",
+    ).toBeDefined();
+    for (const surface of ["bg", "surface-1", "surface-2"])
+      expect(
+        contrast(palette["border-control"]!, palette[surface]!),
+        `control boundary on ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+    expect(
+      contrast(palette["accent"]!, palette["accent-soft"]!),
+      "selected labels",
+    ).toBeGreaterThanOrEqual(4.5);
+  });
 });

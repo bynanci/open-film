@@ -171,9 +171,10 @@ async function field(page: Page, label: string, value: string) {
 
 async function openProject(page: Page, path: string) {
   await openFilm(page, path);
-  await expect(
-    page.getByRole("heading", { name: "A film that travels", exact: true }),
-  ).toBeVisible();
+  await navigate(page, "library");
+  await expect(page.locator(".workspace-context strong")).toHaveText(
+    "A film that travels",
+  );
 }
 
 test("moves a real edited project and its media, restores sources and imports them without duplicate identities", async ({

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
+import { beatTimelineDuration } from "../../apps/desktop/src/duration";
 import type {
   Composition,
   MediaAsset,
@@ -118,13 +119,8 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
   it("compiles App.vue template with outline, graph, and storyboard perspective tabs", () => {
     const appSource = readFileSync(resolve("apps/desktop/src/App.vue"), "utf8");
     const parsed = parse(appSource).descriptor.template!.content;
-    const start = parsed.indexOf('<div class="story-selection">');
-    const end = parsed.indexOf("</template>\n      </template>", start);
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(-1);
-
     const compiled = compileTemplate({
-      source: parsed.slice(start, end),
+      source: parsed,
       id: "perspective-test",
     });
     expect(compiled.errors).toEqual([]);
@@ -148,6 +144,7 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
         }),
       },
       "../duration": {
+        beatTimelineDuration,
         durationStatus: () => "good",
       },
       "../i18n": {
@@ -271,6 +268,43 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
 
         const images = nodes.filter((n) => n.tag === "img");
         expect(images.length).toBeGreaterThanOrEqual(1);
+      } finally {
+        mounted.unmount();
+      }
+    });
+
+    it("requests a full-size storyboard photo with the loopback CORS contract", async () => {
+      const component = loadComponent(
+        "apps/desktop/src/components/StoryboardView.vue",
+        dependencies,
+      );
+      const props = vue.reactive({
+        story: dummyStory,
+        composition: dummyComposition,
+        assets: dummyAssets,
+        activeBeatId: "beat-2",
+      });
+
+      const mounted = mountComponent(component, props);
+      try {
+        await vue.nextTick();
+        const previewButton = flatten(mounted.root).find(
+          (node) => node.props["data-testid"] === "storyboard-preview-asset-2",
+        );
+        expect(previewButton).toBeDefined();
+        (
+          previewButton!.props.onClick as (event: {
+            currentTarget: object;
+            stopPropagation: () => void;
+          }) => void
+        )({ currentTarget: {}, stopPropagation: () => {} });
+        await vue.nextTick();
+
+        const fullSizeImage = flatten(mounted.root).find(
+          (node) => node.props.src === "/api/source/asset-2",
+        );
+        expect(fullSizeImage).toBeDefined();
+        expect(fullSizeImage!.props.crossorigin).toBe("anonymous");
       } finally {
         mounted.unmount();
       }

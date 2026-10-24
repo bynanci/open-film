@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
 import { runProcess } from "@openfilm/media";
-import { initialLocale, navigate } from "./ui-helpers.js";
+import { initialLocale, navigate, openAdvancedTools } from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
 
 const api = "http://127.0.0.1:4310/api";
@@ -130,6 +130,7 @@ test("renders a private contact sheet and locates manual-review findings in Edit
   const second = page.locator("#clip-qa-second");
   await first.click();
 
+  await openAdvancedTools(page);
   await page.getByRole("button", { name: "Open Visual QA panel" }).click();
   await expect(
     page.getByRole("dialog", { name: "Visual quality review" }),

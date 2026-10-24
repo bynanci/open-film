@@ -173,3 +173,10 @@ export async function openAdvancedExports(
       .getByText(uiText(locale, "app.export.advanced"), { exact: true })
       .click();
 }
+
+export async function openAdvancedTools(page: Page) {
+  const tools = page.locator(".editor-advanced-tools");
+  if ((await tools.getAttribute("open")) === null)
+    await tools.locator("summary").click();
+  await expect(tools).toHaveAttribute("open", "");
+}

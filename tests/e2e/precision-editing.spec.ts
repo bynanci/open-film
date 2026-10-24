@@ -304,6 +304,7 @@ async function createSourceFilm(
     .getByRole("button", { name: text(locale, "app.story.plan"), exact: true })
     .click();
   expect((await storyCreated).status()).toBe(201);
+  await page.getByTestId("perspective-tab-outline").click();
   await expect(page.locator(".beat-list button").first()).toBeVisible();
   const story = (await project(request)).stories[0]!;
   for (const asset of [video, audio]) {

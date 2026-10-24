@@ -54,6 +54,7 @@ export default {
       clear: "Clear",
     },
     navigation: {
+      skip: "Skip to workspace",
       home: "OpenFilm home",
       label: "Film workspace",
       library: "Library",
@@ -135,6 +136,25 @@ export default {
         "OpenFilm works on this computer. Media processing happens locally, without accounts, analytics, or cloud services.",
       autosave:
         "Timeline edits save automatically after a short pause. Unsaved changes remain recoverable if saving fails.",
+    },
+    workspaceMode: {
+      label: "Workspace mode",
+      standard: "General mode",
+      expert: "Expert mode",
+      standardHint:
+        "A guided workflow with fewer tools at once. Expand advanced tools when needed.",
+      expertHint:
+        "Compact spacing, expanded tools and fast keyboard navigation for frequent editing.",
+      moreTools: "Advanced tools",
+      commands: "Quick actions",
+      search: "Search actions",
+      placeholder: "Go to Edit, Story Graph, Export…",
+      empty: "No matching actions. Try Edit or Story.",
+      keyboard: "↑ ↓ select · Enter open · Esc close",
+      close: "Close quick actions",
+      busy: "Finish the current operation to use this action.",
+      noStory: "Create a story first.",
+      workspace: "Open workspace",
     },
     workflow: {
       label: "Film progress",
@@ -388,6 +408,7 @@ export default {
       },
     },
     library: {
+      clearFilters: "Clear search and filters",
       eyebrow: "YOUR COLLECTION",
       description: "A place for the moments you want to remember.",
       add: "Add media",
@@ -486,12 +507,40 @@ export default {
         "Give your memories a beginning, a middle, and a reason to stay.",
       new: "New story",
       createLabel: "Create story",
+      closeSetup: "Close story setup",
+      setupNext: "Next, refine the beats and connect media in the mind map.",
+      outlinePreview: "Your story flow",
+      outlineCount: "{count} / 30 beats",
+      outlinePreviewEmpty: "Start writing on the left to see the order here.",
+      outlinePreviewHint:
+        "Each heading becomes a beat. Your words and order stay yours to edit.",
       createHeading: "What story will you tell?",
       createHint:
         "Choose a starting structure and how long the film should feel.",
       title: "Story title",
       titlePlaceholder: "Give this story a name",
       structure: "Starting structure",
+      arcs: {
+        journey: "Journey",
+        eventRecap: "Event recap",
+        thenNow: "Then & now",
+        portrait: "Portrait",
+        dayInLife: "A day in life",
+        letters: "A letter",
+        collection: "Memory collection",
+        custom: "My own outline",
+      },
+      customOutline: "Write your beats, one per line",
+      customOutlinePlaceholder:
+        "The letter I kept\nThe day we met\nWhat I want to say now",
+      customOutlineHint:
+        "Each line becomes a beat in this order. You can add intent and connect media in the Story Graph.",
+      workflow: {
+        label: "From story idea to edit",
+        mindMap: "Shape the story",
+        pipeline: "Review the pipeline",
+        composeEdit: "Compose & edit",
+      },
       scope: "Media to consider",
       scopeAll: "All media in this project",
       scopePage: "Current library page ({count} media)",
@@ -534,6 +583,7 @@ export default {
     },
     storyGraph: {
       perspectives: {
+        label: "Story views",
         outline: "Outline",
         graph: "Story Graph",
         storyboard: "Storyboard",
@@ -609,6 +659,16 @@ export default {
           "Cannot create this relationship because it creates a circular dependency.",
       },
       storyboard: {
+        reviewHint:
+          "Review the images and intent, then locate each beat in Edit.",
+        beatCount: "{count} beats",
+        previewMedia: "Preview {name}",
+        closePreview: "Close media preview",
+        retryPreview: "Retry preview",
+        detailsUnavailable: "Media details unavailable",
+        sourceUnavailable: "Source offline",
+        noSelected: "No media chosen yet.",
+        suggestedCount: "{count} suggestions are available in Outline.",
         title: "Visual Storyboard",
         empty: "No beats in this story yet.",
         unmappedBadge: "Unmapped",
@@ -658,7 +718,7 @@ export default {
     },
     pipeline: {
       button: "Guided Production",
-      title: "Guided Pipeline Orchestration",
+      title: "Story pipeline",
       subtitle:
         "Fixed recipe-driven film production workflow with automated QA and review gates.",
       recipeSelectLabel: "Recipe",
@@ -885,6 +945,8 @@ export default {
       filmLanguageSaved: "Film language updated. Your own text is preserved.",
       organized: "Your library is grouped into moments and similar media.",
       storyName: "Give your story a title.",
+      storyOutlineInvalid:
+        "Enter 1–30 outline beats. Each beat can be up to 300 characters.",
       durationInvalid:
         "Set a positive target and a maximum at least as long as the target.",
       restoreFirst:

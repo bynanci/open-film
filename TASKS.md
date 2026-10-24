@@ -47,6 +47,72 @@ means behavior or a concrete artifact exists; it does not certify every operatin
 system or downstream NLE. Commands and test responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## In progress — Story Arc Authoring and Story-to-Pipeline flow
+
+- [x] Apply the Quiet Studio component redesign: carbon/pearl/blue tokens, shared
+      control/panel/dialog geometry, grouped top bar and calmer media/story views.
+- [x] Reproduce/fix 1280px Expert toolbar wrapping and invisible touch media
+      actions; keep native keyboard switching and 44px coarse-pointer targets.
+- [x] Move the actual App-owned export preview alongside settings on desktop,
+      with stacked compact layout; preserve existing native player/render behavior.
+- [x] Complete the redesign's local regression gates (278 files / 3,819 tests,
+      54 relevant browser cases), preserve review fixes and prepare the branch update;
+      record exact local gates and remaining workstation limits in
+      [validation](docs/validation-quiet-studio-redesign.md).
+- [x] Close PR #53 review and full-suite regressions for IME persistence, arc
+      localization/timing, Pipeline shortcut isolation, loopback image CORS,
+      progressive disclosure and compact Export geometry; pass 278 files / 3,821
+      tests and the complete 228-case browser suite from the final files.
+
+Scope and contract: [Story arc authoring](docs/story-arc-authoring.md),
+[design](docs/superpowers/specs/2026-10-23-story-arc-authoring-design.md) and
+[validation](docs/validation-story-arc-authoring.md). Base is
+`b39c2c369d584fa0bb4f75734737d4ebd68d928a`; the existing M9 StoryGraph,
+M9 StoryPlan and M10 Pipeline Workbench are reused.
+
+- [x] Add localized journey, event recap, then-and-now, portrait, day-in-life,
+      letter and memory-collection starters while retaining blank and Proposal Film.
+- [x] Accept a bounded user-authored outline in the specified order; keep beats
+      without media visible and avoid candidate reuse.
+- [x] Open newly created stories in StoryGraph and expose the existing
+      StoryGraph → Pipeline → Compose/Edit workflow.
+- [x] Present Storyboard beats as an accessible vertical reading thread.
+- [x] Pass focused unit, API/reopen, i18n and typecheck checks.
+- [x] Complete browser, full-suite, format, lint, typecheck and production-build
+      verification; exact results are recorded in the validation document.
+- [x] Review the supplied cinema-foundation v1.1.0/v1.0.0 guidance and verify
+      their manifests; record available reference contracts and provenance.
+- [ ] Review/adapt the supplied emotional-overlay and shot-proposal contracts,
+      including scene/shot ID mapping and sidecar revisions, before runtime integration.
+- [x] Refine story setup with authored-order preview, field validation and
+      draft/focus recovery; keep the existing project/schema/edit contracts.
+- [x] Correct storyboard covered duration and cross-story mapping, distinguish
+      offline sources and no selection, and add accessible source previews.
+- [x] Add keyboard story tabs, skip navigation and empty-search recovery.
+- [x] Complete workspace UX regression/visual gates (275 files / 3,781 tests,
+      29 relevant browser cases); record the corrected shared-port scheduling in
+      [validation](docs/validation-workspace-ux-refinement.md).
+- [x] Apply graphite/mist/iris workspace colors, distinct control boundaries,
+      responsive gutters/panel insets and fewer nested frames.
+- [x] Fix 768px inspector overflow, 640px export preview sizing, excessive
+      inspector/beat-rail height and expanded StoryGraph toolbar/Fit geometry.
+- [x] Repair StoryGraph beat autosave's duplicate API prefix through the existing
+      beat-save path; cover pending edits, fenced selection, failed-save retry/focus
+      and reopen.
+- [x] Keep theme-switch label contrast accessible throughout the transition;
+      retain border/opacity motion and verify rendered frame samples.
+- [x] Complete the responsive surface / palette gates (275 files / 3,788 tests,
+      37 relevant browser cases); record window and
+      zoom-equivalent reflow evidence in [validation](docs/validation-responsive-surfaces.md).
+
+- [x] Add General/Expert device modes with shared Settings/header controls,
+      progressive tool disclosure and responsive expert density.
+- [x] Add whitelisted, localized Quick actions with native dialog focus,
+      keyboard navigation, draft/review gates and stale-session fencing.
+- [x] Complete workspace-mode integration gates (278 files / 3,819 tests,
+      48 relevant browser cases) and record real results in
+      [validation](docs/validation-workspace-modes.md).
+
 ## Implemented — M3 / F01 Declarative GraphicScene
 
 Scope: [GraphicScene v1](docs/graphic-scenes.md),

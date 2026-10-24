@@ -9,7 +9,13 @@ import {
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Clip, Composition, Story } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
-import { initialLocale, navigate, openFilm, uiText } from "./ui-helpers.js";
+import {
+  initialLocale,
+  navigate,
+  openAdvancedTools,
+  openFilm,
+  uiText,
+} from "./ui-helpers.js";
 
 interface EditorState {
   composition: Composition;
@@ -521,6 +527,7 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
     clips(beforeRegeneration).filter((clip) => clip.beatId === "opening"),
   );
 
+  await openAdvancedTools(page);
   await page
     .getByRole("button", { name: "Fit to target", exact: true })
     .click();
@@ -821,6 +828,7 @@ test("previews and skips Fit without saving, protects skipped clips, and switche
   await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
   const before = await editorState(request);
+  await openAdvancedTools(page);
   await page
     .getByRole("button", { name: "Fit to target", exact: true })
     .click();

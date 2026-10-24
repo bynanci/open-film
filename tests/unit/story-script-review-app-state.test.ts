@@ -17,6 +17,7 @@ const functions = [
   "scriptReviewAccepted",
   "restoreScriptReviewTarget",
   "changeTab",
+  "handleSelectBeat",
 ];
 const code = transformSync(
   functions
@@ -36,7 +37,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function fixture() {
+function fixture(graphBeatSaveTask?: Promise<boolean>) {
   const story = {
     id: "original-story",
     title: "Our story",
@@ -102,12 +103,15 @@ function fixture() {
     visualDirection: "Keep this direction",
   });
   const beatDirty = vue.ref(true);
+  const tab = vue.ref("story");
   const storyScriptReview = vue.ref<{ flush: () => Promise<boolean> } | null>(
     null,
   );
   let savedStory = structuredClone(story);
   let gate: Promise<void> | undefined;
   const dependencies = {
+    graphBeatSaveTask,
+    projectGeneration: vue.ref(0),
     project,
     activeStory,
     activeBeat,
@@ -141,12 +145,15 @@ function fixture() {
       };
     }),
     message: (value: string) => value,
-    tab: vue.ref("story"),
+    tab,
     relinkBusy: vue.ref(false),
     window: {},
     editorMountRequested: vue.ref(false),
     activeComposition: vue.ref(null),
     clipCount: vue.ref(1),
+    setWorkspace: (workspace: string) => {
+      tab.value = workspace;
+    },
     nativeBenchmark: { record: vi.fn() },
     checkMediaStatus: vi.fn(async () => {}),
   };
@@ -159,6 +166,7 @@ function fixture() {
     scriptReviewAccepted: (story: (typeof original.stories)[0]) => void;
     restoreScriptReviewTarget: () => void;
     changeTab: (tab: string) => Promise<void>;
+    handleSelectBeat: (beatId: string) => Promise<void>;
   };
   return {
     ...dependencies,
@@ -176,6 +184,42 @@ async function drain() {
 }
 
 describe("Story review through the actual App draft and navigation functions", () => {
+  it("selects the requested beat after an in-flight graph save acknowledges the latest draft", async () => {
+    const gate = deferred<boolean>();
+    const h = fixture(gate.promise);
+    h.busy.value = "savingBeat";
+    const selecting = h.handleSelectBeat("second-beat");
+    await drain();
+    expect(h.activeBeatIndex.value).toBe(0);
+    expect(h.patch).not.toHaveBeenCalled();
+    h.busy.value = "";
+    h.beatDirty.value = false;
+    gate.resolve(true);
+    await selecting;
+    expect(h.activeBeatIndex.value).toBe(1);
+    expect(h.beatDraft.value.title).toBe("Second scene");
+    expect(h.project.value.timelines).toEqual(h.original.timelines);
+  });
+  it.each(["failed", "project", "story", "generation"])(
+    "does not apply a waiting graph selection after %s changes its owner or save result",
+    async (change) => {
+      const gate = deferred<boolean>();
+      const h = fixture(gate.promise);
+      h.busy.value = "savingBeat";
+      const selecting = h.handleSelectBeat("second-beat");
+      await drain();
+      if (change === "project") h.project.value.id = "other-project";
+      if (change === "story") h.activeStoryId.value = "last-story";
+      if (change === "generation") h.projectGeneration.value += 1;
+      h.busy.value = "";
+      h.beatDirty.value = false;
+      gate.resolve(change !== "failed");
+      await selecting;
+      expect(h.activeBeatIndex.value).toBe(0);
+      expect(h.beatDraft.value.narration).toBe("Draft words");
+      expect(h.patch).not.toHaveBeenCalled();
+    },
+  );
   it("prepares its own saved beat without awaiting its own review operation", async () => {
     const h = fixture();
     const gate = deferred<boolean>();

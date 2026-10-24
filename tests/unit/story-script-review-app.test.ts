@@ -101,7 +101,9 @@ describe("Story review integration in the actual App template", () => {
         "watch(\n",
         appSource.indexOf("function scriptReviewAccepted("),
       );
-      const end = appSource.indexOf("\nfunction chooseCandidate", start);
+      // Execute the manual-beat owner watcher only; the adjacent storyboard
+      // catalog watcher has a separate read scope and is not part of this test.
+      const end = appSource.indexOf("\nwatch(", start + 6);
       const project = vue.ref({ id: "project" });
       const activeStory = vue.ref({ id: "a:b" });
       const activeBeat = vue.ref({ id: "c" });

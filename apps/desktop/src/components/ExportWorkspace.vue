@@ -31,6 +31,7 @@ import ExportReport from "./ExportReport.vue";
 import Icon from "./Icon.vue";
 import FilmLookSelect from "./FilmLookSelect.vue";
 const props = defineProps<{
+  expertMode?: boolean;
   busy: boolean;
   projectId: string;
   projectSettings: ProjectSettings;
@@ -391,7 +392,7 @@ onUnmounted(() => {
       <h3>{{ t("app.export.mp4Title") }}</h3>
       <p>{{ t("app.export.mp4Hint") }}</p>
       <button
-        class="primary"
+        class="primary export-primary-action"
         data-testid="export-profile-mp4"
         :disabled="busy || !canExportCropped"
         @click="
@@ -842,7 +843,7 @@ onUnmounted(() => {
       :composition="composition"
       :busy="busy"
     />
-    <details class="export-advanced">
+    <details class="export-advanced" :open="expertMode">
       <summary>{{ t("app.export.advanced") }}</summary>
       <div class="export-format-list">
         <button

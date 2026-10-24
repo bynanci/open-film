@@ -1041,7 +1041,14 @@ export const api = {
         transition: plan.transition,
       },
     }),
-  createStory: (body: unknown) => post<{ story: Story }>("/stories", body),
+  createStory: (body: {
+    title: string;
+    template: string;
+    targetDuration: number;
+    maxDuration: number;
+    assetIds?: string[];
+    customOutline?: string[];
+  }) => post<{ story: Story }>("/stories", body),
   scriptReviewSuggestions: (
     storyId: string,
     input: {

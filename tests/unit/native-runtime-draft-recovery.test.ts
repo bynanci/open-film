@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isWorkspaceCommandShortcut } from "../../apps/desktop/src/workspace-commands";
 import {
   flatten,
   mountComponent,
@@ -292,6 +293,12 @@ async function fixture(initialStart?: () => Promise<unknown>) {
       "./nativeBenchmark": {
         nativeBenchmark: { afterFrames: () => noop, record: noop },
       },
+      "./preferences": {
+        preferences: vue.reactive({ workspaceMode: "standard" }),
+        getLastWorkspaceForProject: () => undefined,
+        setLastWorkspaceForProject: noop,
+      },
+      "./workspace-commands": { isWorkspaceCommandShortcut },
     },
     false,
   );

@@ -92,6 +92,7 @@ const props = defineProps<{
   projectId: string;
   compositionId: string;
   active: boolean;
+  expertMode?: boolean;
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   previewVisible?: boolean;
@@ -265,6 +266,13 @@ let nativeEditReadyForVisit = false;
 let cancelNativeEditReady: (() => void) | undefined;
 const showFit = ref(false);
 const inspectorOpen = ref(true);
+const advancedToolsOpen = ref(!!props.expertMode);
+watch(
+  () => props.expertMode,
+  (expert) => {
+    advancedToolsOpen.value = !!expert;
+  },
+);
 const editorElement = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
 const sourceScreenElement = ref<HTMLElement | null>(null);
@@ -1481,6 +1489,7 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   const element = event.target as HTMLElement | null;
+  if (element?.closest(".pipeline-workbench-root")) return;
   if (element?.closest("input, textarea, select, [contenteditable='true']"))
     return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
@@ -1783,7 +1792,13 @@ watch(selectedBeat, (beat, previous) => {
     beatFields.value = { ...beatFields.value, ...changed };
   }
 });
-defineExpose({ flush, hasPending, reload: load, navigateToTime });
+defineExpose({
+  flush,
+  hasPending,
+  loading: computed(() => status.value === "loading"),
+  reload: load,
+  navigateToTime,
+});
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
   playing.value = false;
@@ -1970,35 +1985,48 @@ onBeforeUnmount(() => {
         >
           {{ t("editor.redo") }}
         </button>
-        <button
-          v-show="editMode === 'story'"
-          class="editor-button"
-          :class="{ selected: showFit }"
-          :aria-expanded="showFit"
-          @click="toggleFit"
+        <details
+          class="editor-advanced-tools"
+          :open="advancedToolsOpen"
+          @toggle="
+            advancedToolsOpen = ($event.target as HTMLDetailsElement).open
+          "
         >
-          {{ t("editor.fit.title") }}
-        </button>
+          <summary @keydown.space.stop @keydown.enter.stop>
+            {{ t("app.workspaceMode.moreTools") }}
+          </summary>
+          <div class="editor-advanced-actions">
+            <button
+              v-show="editMode === 'story'"
+              class="editor-button"
+              :class="{ selected: showFit }"
+              :aria-expanded="showFit"
+              @click="toggleFit"
+            >
+              {{ t("editor.fit.title") }}
+            </button>
 
-        <button
-          class="editor-button"
-          :aria-expanded="audioQualityOpen"
-          aria-controls="audio-quality-panel"
-          @click="audioQualityOpen = !audioQualityOpen"
-        >
-          {{ t("editor.audioQuality.title") }}
-        </button>
-        <button
-          ref="visualQaToggle"
-          class="editor-button"
-          :aria-label="t('editor.visualQa.openPanel')"
-          :title="t('editor.visualQa.openPanel')"
-          aria-controls="visual-qa-review-panel"
-          :aria-expanded="visualQaOpen"
-          @click="toggleVisualQa"
-        >
-          <Icon name="grid" :size="15" />
-        </button>
+            <button
+              class="editor-button"
+              :aria-expanded="audioQualityOpen"
+              aria-controls="audio-quality-panel"
+              @click="audioQualityOpen = !audioQualityOpen"
+            >
+              {{ t("editor.audioQuality.title") }}
+            </button>
+            <button
+              ref="visualQaToggle"
+              class="editor-button"
+              :aria-label="t('editor.visualQa.openPanel')"
+              :title="t('editor.visualQa.openPanel')"
+              aria-controls="visual-qa-review-panel"
+              :aria-expanded="visualQaOpen"
+              @click="toggleVisualQa"
+            >
+              <Icon name="grid" :size="15" />
+            </button>
+          </div>
+        </details>
         <button
           v-show="editMode === 'story'"
           class="editor-button"
