@@ -14,6 +14,7 @@ import {
 } from "@openfilm/core";
 import {
   addAssetToBeatInGraph,
+  connectStoryGraphNodes,
   computeStoryGraphAutoLayout,
   createEchoEdge,
   removeGraphEdge,
@@ -245,6 +246,71 @@ export class StoryGraphService {
 
     await this.app.save();
     return updatedGraph;
+  }
+
+  /**
+   * Connects two graph nodes through one typed operation. Connections that
+   * carry canonical story meaning update the Story and graph together.
+   */
+  async connectNodes(
+    storyId: string,
+    fromNodeId: string,
+    toNodeId: string,
+    type: import("@openfilm/core").StoryGraphEdgeType,
+  ): Promise<{ story: Story; graph: StoryGraph }> {
+    const story = this.app.project.stories.find((item) => item.id === storyId);
+    if (!story) {
+      throw new ApplicationError(
+        "request.notFound",
+        `Story '${storyId}' not found.`,
+      );
+    }
+
+    const graph = this.getGraph(storyId);
+    const source = graph.nodes.find((node) => node.id === fromNodeId);
+    const target = graph.nodes.find((node) => node.id === toNodeId);
+    const validatedGraph = connectStoryGraphNodes(
+      graph,
+      fromNodeId,
+      toNodeId,
+      type,
+    );
+
+    let result: { story: Story; graph: StoryGraph };
+    if (
+      type === "supports" &&
+      source?.type === "beat" &&
+      target?.type === "asset"
+    ) {
+      result = addAssetToBeatInGraph(
+        story,
+        graph,
+        source.beatId,
+        target.assetId,
+      );
+    } else if (
+      type === "precedes" &&
+      source?.type === "beat" &&
+      target?.type === "beat"
+    ) {
+      result = setAsNextBeat(story, graph, source.beatId, target.beatId);
+    } else {
+      result = { story, graph: validatedGraph };
+    }
+
+    const storyIndex = this.app.project.stories.findIndex(
+      (item) => item.id === storyId,
+    );
+    this.app.project.stories[storyIndex] = {
+      ...result.story,
+      graph: result.graph,
+    };
+    await this.app.save();
+
+    return {
+      story: this.app.project.stories[storyIndex]!,
+      graph: result.graph,
+    };
   }
 
   /**

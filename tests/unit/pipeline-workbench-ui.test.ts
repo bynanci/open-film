@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { WORKBENCH_STAGES } from "../../apps/desktop/src/pipeline-workbench-model";
 
 describe("Phase M10B: Pipeline Workbench UI/UX Component", () => {
   it("verifies PipelineWorkbench SFC file structure, three modes and 5-stage architecture", () => {
@@ -73,6 +74,11 @@ describe("Phase M10B: Pipeline Workbench UI/UX Component", () => {
     expect(content).toContain("workbench-pane-nav");
     expect(content).toContain("workbench-pane-card");
     expect(content).toContain("workbench-pane-inspector");
+    expect(content).toContain("gate-summary");
+    expect(content).toContain("canonical-task-list");
+    expect(content).toContain(
+      ':data-workspace-mode="preferences.workspaceMode"',
+    );
     expect(content).toContain("@media (max-width: 1280px)");
     expect(content).toContain("@media (max-width: 1024px)");
     expect(content).toContain("@media (prefers-reduced-motion: reduce)");
@@ -111,16 +117,8 @@ describe("Phase M10B: Pipeline Workbench UI/UX Component", () => {
     // Stage 3: Produce Clips -> step 3 narration, step 4 timing, step 5 composition adopt
     // Stage 4: Preview & QA -> step 6 render, step 7 visual qa
     // Stage 5: Export -> step 8 export
-    const stages = [
-      { key: "materials", expectedSteps: ["step-1"] },
-      { key: "storyPlan", expectedSteps: ["step-1", "step-2"] },
-      { key: "produceClips", expectedSteps: ["step-3", "step-4", "step-5"] },
-      { key: "previewQa", expectedSteps: ["step-6", "step-7"] },
-      { key: "export", expectedSteps: ["step-8"] },
-    ];
-
-    expect(stages.length).toBe(5);
-    const allSteps = stages.flatMap((s) => s.expectedSteps);
+    expect(WORKBENCH_STAGES).toHaveLength(5);
+    const allSteps = WORKBENCH_STAGES.flatMap((stage) => stage.stepIds);
     expect(allSteps).toContain("step-1");
     expect(allSteps).toContain("step-3");
     expect(allSteps).toContain("step-5");

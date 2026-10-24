@@ -319,14 +319,18 @@ test("cancels a real import and keeps the project available", async ({
   const fixture = await createDesktopFixture(40);
   try {
     await page.goto("/");
-    if (
-      await page
-        .getByRole("button", { name: "Switch project", exact: true })
-        .isVisible()
-    ) {
-      await page
-        .getByRole("button", { name: "Switch project", exact: true })
-        .click();
+    const switchProject = page.getByRole("button", {
+      name: "Switch project",
+      exact: true,
+    });
+    const createProject = page.getByRole("button", {
+      name: "Create Film",
+      exact: true,
+    });
+    await expect(switchProject.or(createProject)).toBeVisible();
+    if (await switchProject.isVisible()) {
+      await switchProject.click();
+      await expect(createProject).toBeVisible();
     }
     await createFilm(page, {
       title: "An unfinished import",

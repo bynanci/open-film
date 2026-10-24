@@ -3603,6 +3603,16 @@ export async function startServer(options: ServerOptions = {}) {
             json(response, 200, result);
             return;
           }
+          if (action === "connect-nodes") {
+            const result = await application.storyGraph.connectNodes(
+              storyId,
+              String(data.fromNodeId),
+              String(data.toNodeId),
+              String(data.type) as import("@openfilm/core").StoryGraphEdgeType,
+            );
+            json(response, 200, result);
+            return;
+          }
           if (action === "remove-node") {
             const graph = await application.storyGraph.removeNode(
               storyId,

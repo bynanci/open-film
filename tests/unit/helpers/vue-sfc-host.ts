@@ -10,6 +10,7 @@ export interface HostNode {
   tag: string;
   tagName: string;
   props: Record<string, unknown>;
+  style: Record<string, string>;
   children: HostNode[];
   parent: HostNode | null;
   text: string;
@@ -27,6 +28,7 @@ function node(tag: string): HostNode {
     tag,
     tagName: tag.toUpperCase(),
     props: {},
+    style: {},
     children: [],
     parent: null,
     text: "",
@@ -114,6 +116,19 @@ export function mountComponent(
     nextSibling: (element: HostNode) =>
       element.parent?.children[element.parent.children.indexOf(element) + 1] ??
       null,
+    insertStaticContent: (
+      content: string,
+      parent: HostNode,
+      anchor?: HostNode,
+    ) => {
+      const element = node("static");
+      element.text = content;
+      element.parent = parent;
+      const index = anchor ? parent.children.indexOf(anchor) : -1;
+      if (index < 0) parent.children.push(element);
+      else parent.children.splice(index, 0, element);
+      return [element, element] as const;
+    },
   });
   const root = node("root");
   const app = renderer.createApp({

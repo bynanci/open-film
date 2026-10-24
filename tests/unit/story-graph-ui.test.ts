@@ -19,6 +19,7 @@ import {
   addAssetToBeatInGraph,
   computeStoryGraphAutoLayout,
   createEchoEdge,
+  inferStoryGraphEdgeType,
   removeGraphNode,
   setAsNextBeat,
 } from "@openfilm/story";
@@ -518,6 +519,201 @@ describe("Phase M9A: Story Graph & Perspectives UI Integration", () => {
 
       expect(Object.keys(layout500).length).toBe(500);
       expect(elapsed500).toBeLessThan(200); // 500 nodes deterministic under 200ms
+    });
+  });
+
+  describe("StoryGraph direct connections", () => {
+    it("connects focused nodes with the inferred typed operation in expert mode", async () => {
+      const initialGraph = createInitialStoryGraph(dummyStory, dummyAssets);
+      const calls: Array<Record<string, unknown>> = [];
+      const listeners = new Map<string, Set<EventListener>>();
+      const previousWindow = globalThis.window;
+      const previousDocument = globalThis.document;
+      const previousDocumentConstructor = globalThis.Document;
+      class TestDocument {}
+      const testDocument = Object.assign(new TestDocument(), {
+        activeElement: null,
+        querySelector: () => null,
+      });
+      Object.defineProperty(globalThis, "Document", {
+        configurable: true,
+        value: TestDocument,
+      });
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: testDocument,
+      });
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+          addEventListener(type: string, listener: EventListener) {
+            const entries = listeners.get(type) ?? new Set<EventListener>();
+            entries.add(listener);
+            listeners.set(type, entries);
+          },
+          removeEventListener(type: string, listener: EventListener) {
+            listeners.get(type)?.delete(listener);
+          },
+        },
+      });
+      const modePreferences = vue.reactive({ workspaceMode: "expert" });
+
+      const component = loadComponent(
+        "apps/desktop/src/components/StoryGraphView.vue",
+        {
+          "vue-i18n": {
+            useI18n: () => ({ t: (key: string) => key }),
+          },
+          "@openfilm/core": {
+            createInitialStoryGraph,
+            detectGraphCycle,
+          },
+          "@openfilm/story": {
+            computeStoryGraphAutoLayout,
+            inferStoryGraphEdgeType,
+          },
+          "../api": {
+            api: {
+              storyGraph: async () => ({ graph: initialGraph }),
+              storyGraphView: async () => ({
+                viewState: {
+                  version: 1,
+                  storyId: dummyStory.id,
+                  pan: { x: 0, y: 0 },
+                  zoom: 1,
+                  nodes: computeStoryGraphAutoLayout(initialGraph, dummyStory),
+                  selectedNodeId: null,
+                  selectedEdgeId: null,
+                },
+              }),
+              updateStoryGraphView: async () => ({}),
+              updateStoryGraph: async () => ({ graph: initialGraph }),
+              storyGraphQuickAction: async (
+                _storyId: string,
+                body: Record<string, unknown>,
+              ) => {
+                calls.push(body);
+                return { graph: initialGraph, story: dummyStory };
+              },
+            },
+            thumbnailUrl: (id: string) => `/api/thumb/${id}`,
+          },
+          "../preferences": {
+            preferences: modePreferences,
+          },
+          "./Icon.vue": {
+            props: ["name", "size"],
+            template: '<span class="icon"></span>',
+          },
+          "./StoryPlanReviewModal.vue": {
+            props: ["show"],
+            setup: () => () => vue.h("div"),
+          },
+        },
+      );
+      const mounted = mountComponent(
+        component,
+        vue.reactive({
+          story: dummyStory,
+          composition: dummyComposition,
+          assets: dummyAssets,
+          activeBeatId: "beat-1",
+        }),
+      );
+
+      try {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vue.nextTick();
+        const nodes = flatten(mounted.root);
+        const source = nodes.find(
+          (node) =>
+            node.props["data-testid"] ===
+            "story-connect-handle-beat-node-beat-1",
+        );
+        const target = nodes.find(
+          (node) =>
+            node.props["data-testid"] ===
+            "story-connect-handle-asset-node-asset-2",
+        );
+        expect(source).toBeDefined();
+        expect(target).toBeDefined();
+
+        const keyboardEvent = {
+          key: "Enter",
+          preventDefault() {},
+          stopPropagation() {},
+        };
+        await (source!.props.onKeydown as (event: unknown) => Promise<void>)(
+          keyboardEvent,
+        );
+        await (target!.props.onKeydown as (event: unknown) => Promise<void>)(
+          keyboardEvent,
+        );
+        await vue.nextTick();
+
+        expect(calls).toContainEqual({
+          action: "connect-nodes",
+          fromNodeId: "beat-node-beat-1",
+          toNodeId: "asset-node-asset-2",
+          type: "supports",
+        });
+
+        const pointerEvent = {
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+          preventDefault() {},
+          stopPropagation() {},
+        };
+        (source!.props.onClick as (event: unknown) => void)({
+          stopPropagation() {},
+        });
+        await (source!.props.onPointerup as (event: unknown) => Promise<void>)(
+          pointerEvent,
+        );
+        expect(calls).toHaveLength(1);
+        await (target!.props.onPointerup as (event: unknown) => Promise<void>)(
+          pointerEvent,
+        );
+        expect(calls).toHaveLength(2);
+        expect(calls.at(-1)).toEqual({
+          action: "connect-nodes",
+          fromNodeId: "beat-node-beat-1",
+          toNodeId: "asset-node-asset-2",
+          type: "supports",
+        });
+
+        modePreferences.workspaceMode = "standard";
+        await vue.nextTick();
+        const standardNodes = flatten(mounted.root);
+        expect(
+          standardNodes.some((node) =>
+            String(node.props["data-testid"] ?? "").startsWith(
+              "story-connect-handle-",
+            ),
+          ),
+        ).toBe(false);
+        expect(
+          standardNodes.some((node) =>
+            String(node.props.class ?? "").includes("connection-composer"),
+          ),
+        ).toBe(true);
+      } finally {
+        mounted.unmount();
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+        Object.defineProperty(globalThis, "document", {
+          configurable: true,
+          value: previousDocument,
+        });
+        Object.defineProperty(globalThis, "Document", {
+          configurable: true,
+          value: previousDocumentConstructor,
+        });
+      }
     });
   });
 });

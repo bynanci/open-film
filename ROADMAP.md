@@ -71,6 +71,16 @@ serve first-time and frequent creators; mode changes retain edits and history.
 See [workspace modes](docs/workspace-modes.md) and its
 [validation](docs/validation-workspace-modes.md).
 
+The current interaction follow-up adds direct StoryGraph movement and typed
+connections without introducing another story or timeline model. General mode
+uses an explicit source/relation/target form; Expert mode adds pointer and keyboard
+connection handles with a live path. Pipeline Workbench now advances through one
+of five fixed review gates at a time, while Expert mode exposes the canonical
+eight tasks, IDs, input dependencies and run diagnostics in a compact task rail.
+The same application services own all saves and pipeline execution. See the
+[design](docs/superpowers/specs/2026-10-24-story-connections-pipeline-flow-design.md)
+and [validation](docs/validation-story-connections-pipeline-flow.md).
+
 The earlier responsive surface pass established measured input boundaries,
 responsive spacing, bounded inspectors and viewport-aware graph
 controls. Theme-switch frame contrast and durable graph text/save/selection

@@ -112,6 +112,19 @@ M9 StoryPlan and M10 Pipeline Workbench are reused.
 - [x] Complete workspace-mode integration gates (278 files / 3,819 tests,
       48 relevant browser cases) and record real results in
       [validation](docs/validation-workspace-modes.md).
+- [x] Add pointer-based StoryGraph movement and expert connection handles with
+      live typed-edge preview; retain a keyboard-accessible Inspector composer
+      in General mode and keep layout state revision-neutral.
+- [x] Route beat/asset and beat/beat connections through shared application
+      operations so selected assets and canonical story order remain authoritative;
+      reject duplicate, self and cyclic links without saving a partial graph.
+- [x] Rework Pipeline Workbench around one focused 5-gate flow; expose the fixed
+      8-task recipe, task IDs, dependencies and diagnostics only in Expert mode.
+- [x] Complete the final available repository gate matrix for the StoryGraph
+      connection / Pipeline flow candidate: 3,831 Vitest and 230 Chromium cases,
+      build and OTIO interchange pass. Native was attempted but this environment
+      has no `cargo`; exact evidence is recorded in
+      [validation](docs/validation-story-connections-pipeline-flow.md).
 
 ## Implemented — M3 / F01 Declarative GraphicScene
 
