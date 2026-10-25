@@ -397,18 +397,122 @@ function operationalEvidenceKey(key: string): boolean {
   );
 }
 
+/**
+ * Analysis evidence is intentionally a closed portable vocabulary. Later
+ * milestones must add new semantic fields here together with their typed
+ * contract and redaction regression instead of copying plugin-shaped JSON.
+ */
+const PORTABLE_EVIDENCE_FIELDS = new Set([
+  "algorithmVersion",
+  "assetId",
+  "assetIds",
+  "axis",
+  "bindingId",
+  "bindingIds",
+  "capturedAt",
+  "category",
+  "code",
+  "confidence",
+  "contentHash",
+  "contentId",
+  "context",
+  "contextRevision",
+  "coordinates",
+  "createdAt",
+  "dependencies",
+  "description",
+  "distance",
+  "duration",
+  "elevation",
+  "end",
+  "endTime",
+  "evidence",
+  "evidenceKind",
+  "gap",
+  "height",
+  "id",
+  "index",
+  "kind",
+  "label",
+  "latitude",
+  "longitude",
+  "manifestId",
+  "memberIds",
+  "members",
+  "modelVersion",
+  "name",
+  "notes",
+  "observationId",
+  "observations",
+  "occurrenceId",
+  "occurrenceIds",
+  "payload",
+  "pointId",
+  "pointIds",
+  "position",
+  "promptVersion",
+  "providerId",
+  "range",
+  "ranges",
+  "reason",
+  "resultId",
+  "resultIds",
+  "reviewState",
+  "reviewStatus",
+  "runId",
+  "sampleId",
+  "sampleIds",
+  "score",
+  "scoreMeaning",
+  "segmentId",
+  "sourceRange",
+  "sourceRanges",
+  "sourceTime",
+  "start",
+  "startTime",
+  "status",
+  "suggestions",
+  "taxonomy",
+  "taxonomyVersion",
+  "timeRange",
+  "title",
+  "trackId",
+  "type",
+  "uncertainty",
+  "value",
+  "width",
+]);
+
+function privatePortableEvidenceText(value: string): boolean {
+  const trimmed = value.trim();
+  const normalized = trimmed.replaceAll("\\", "/");
+  return (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    trimmed.startsWith("~") ||
+    /^[a-z][a-z0-9+.-]*:/iu.test(trimmed) ||
+    normalized.split("/").includes("..") ||
+    /\bauthorization\s*:/iu.test(value) ||
+    /\bbearer\s+[a-z0-9._~+/=-]+/iu.test(value) ||
+    /\b(?:api[ _-]?key|password|secret|token)\s*[:=]/iu.test(value) ||
+    [...value].some((character) => {
+      const point = character.codePointAt(0)!;
+      return point === 0 || point === 127;
+    })
+  );
+}
+
 function sanitizePortableEvidence(
   value: unknown,
-  key = "evidence",
   depth = 0,
-): unknown {
+): unknown | undefined {
   if (depth > 16)
     throw new Error("Portable analysis evidence is nested too deeply.");
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "string") {
     if (value.length > 1024 * 1024)
       throw new Error("Portable analysis evidence text is too large.");
-    return value;
+    return privatePortableEvidenceText(value) ? undefined : value;
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value))
@@ -420,7 +524,9 @@ function sanitizePortableEvidence(
   if (Array.isArray(value)) {
     if (value.length > 50_000)
       throw new Error("Portable analysis evidence is too large.");
-    return value.map((item) => sanitizePortableEvidence(item, key, depth + 1));
+    return value
+      .map((item) => sanitizePortableEvidence(item, depth + 1))
+      .filter((item) => item !== undefined);
   }
   if (
     value === undefined ||
@@ -442,13 +548,12 @@ function sanitizePortableEvidence(
       field === "__proto__" ||
       field === "constructor" ||
       field === "prototype" ||
-      operationalEvidenceKey(field)
+      operationalEvidenceKey(field) ||
+      !PORTABLE_EVIDENCE_FIELDS.has(field)
     )
       continue;
-    result[field] =
-      field === "relativePath"
-        ? portableRelativePath(item, "source")
-        : sanitizePortableEvidence(item, field, depth + 1);
+    const sanitized = sanitizePortableEvidence(item, depth + 1);
+    if (sanitized !== undefined) result[field] = sanitized;
   }
   return result;
 }

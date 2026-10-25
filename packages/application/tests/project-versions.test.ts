@@ -89,7 +89,7 @@ async function installAuthenticV5Project(root: string): Promise<{
     throw new Error("The named-version v5 fixture file set is invalid.");
   for (const file of fixture.files) {
     const path = join(directory, file.path);
-    await mkdir(dirname(path), { recursive: true });
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(path, Buffer.from(file.bytes, "base64"), {
       flag: "wx",
       mode: 0o600,

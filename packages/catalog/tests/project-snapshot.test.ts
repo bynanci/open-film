@@ -315,7 +315,16 @@ describe("consistent project catalog snapshots", () => {
             payload: {
               label: "safe moment",
               confidence: 0.9,
-              nested: { localPath: privateSemanticSentinel },
+              path: `/Users/alice/${privateSemanticSentinel}.mov`,
+              relative_path: `../../${privateSemanticSentinel}.mov`,
+              headers: [`Authorization: Bearer ${privateSemanticSentinel}`],
+              opaque: { value: privateSemanticSentinel },
+              value: `/private/${privateSemanticSentinel}.mov`,
+              notes: [
+                "safe semantic note",
+                `Bearer ${privateSemanticSentinel}`,
+                `C:\\private\\${privateSemanticSentinel}.mov`,
+              ],
             },
             secret: privateSemanticSentinel,
           }),
@@ -505,7 +514,7 @@ describe("consistent project catalog snapshots", () => {
           payload: {
             label: "safe moment",
             confidence: 0.9,
-            nested: {},
+            notes: ["safe semantic note"],
           },
         },
       );

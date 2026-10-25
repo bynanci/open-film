@@ -193,6 +193,27 @@ describe("browser source access registry", () => {
     expect(probes).toBeLessThanOrEqual(64_000);
   });
 
+  it("rejects an ambiguous repeat instead of duplicating an older same-name handle", async () => {
+    const backend = new MemoryBackend();
+    const registry = new BrowserSourceAccessRegistry(backend);
+    await registry.rememberHandles(
+      "project-a",
+      Array.from({ length: 33 }, (_, index) =>
+        handle(`same-name-${index}`, "Shared camera folder"),
+      ),
+    );
+
+    await expect(
+      registry.rememberHandle(
+        "project-a",
+        handle("same-name-0", "Shared camera folder"),
+      ),
+    ).rejects.toThrow(/ambiguous/u);
+
+    expect(backend.records).toHaveLength(33);
+    expect(backend.putBatches).toBe(1);
+  });
+
   it("keeps ordinary File objects session-only and clears only their owning project", () => {
     const registry = new BrowserSourceAccessRegistry(
       new MemoryBackend(),
