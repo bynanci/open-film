@@ -37,6 +37,13 @@ and [validation](docs/validation-multi-source-analysis.md).
       IndexedDB by project, recover blocked opens, bound permission checks to 16,
       limit persistent checks to the visible 100-card page, and roll failed
       recursion controls back to authoritative state.
+- [x] M0/M1 final blocker closure: preserve typed manifest/review/failure data and
+      only bounded numeric/boolean structures from uncontracted analysis evidence;
+      verify a full hash-pinned v5 Named Version package, linear 4 MiB receipt
+      pruning, keyed handle reads, structural SQLite metadata and atomic ambiguity
+      rejection beyond 32 indistinguishable same-name browser handles. Independent
+      final review found no remaining Critical, Important or Minor issue; 3,904
+      Vitest and 234 Playwright tests pass on the corrected code head.
 - [ ] M2: streaming discovery, membership, private durable staging, content
       identity and Expected/Verified Manifests.
 - [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,

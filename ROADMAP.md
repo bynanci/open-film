@@ -29,9 +29,13 @@ disclosure, and preserves 44px coarse-pointer targets plus narrow-screen CJK
 reflow. Independent review additionally closes portable v6 metadata leakage,
 proves the 10,000-source storage boundary, bounds permission work, adds
 project-indexed/retryable IndexedDB access and replaces the manufactured legacy
-database with a hash-pinned fixture produced by the actual schema-v5 code. M2
-streaming discovery, membership, staging and manifest sealing are next and are
-not implied by the M1 UI.
+database with hash-pinned catalog and complete Named Version fixtures produced by
+the actual schema-v5 application. Final remediation preserves typed portable
+manifest/review semantics without admitting uncontracted evidence strings, makes
+near-limit receipt pruning linear, compares SQLite structure as well as DDL, reads
+only requested persistent handles and rejects identity ambiguity before a 33rd
+same-name browser source can be duplicated. M2 streaming discovery, membership,
+staging and manifest sealing are next and are not implied by the M1 UI.
 
 ## 0.4.0 reviewed source integration
 

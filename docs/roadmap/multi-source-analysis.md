@@ -150,11 +150,14 @@ Existing AC01–AC28 remain binding. The technical review adds:
 
 M0/M1 review closure makes AC29, AC30 and AC35 executable rather than
 fixture-dependent: AC29 uses a hash-pinned database emitted by the historical v5
-implementation; AC30 reconstructs retained semantic JSON and rewrites locators;
-AC35 covers the real 10,000 selection/storage boundary, project-indexed
-IndexedDB retry/version-change behavior, 16-way permission concurrency, visible
-page refresh and failed-control rollback. AC32 still belongs to M2 streaming
-discovery and is not claimed by the M1 picker boundary.
+implementation plus a complete historical Named Version package; AC30 reconstructs
+closed typed records, omits uncontracted analysis strings and rewrites locators
+before VACUUM; AC35 covers the real 10,000 selection/storage boundary,
+project-indexed IndexedDB retry/version-change behavior, requested-key reads,
+16-way permission concurrency, visible-page refresh, explicit same-name identity
+ambiguity and failed-control rollback. AC32 still belongs to M2 streaming
+discovery and is not claimed by the M1 picker boundary. M4–M6 must add each new
+portable evidence string together with its producer validator and privacy test.
 
 ## Validation and release policy
 

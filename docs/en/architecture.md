@@ -42,6 +42,15 @@ result. Named Version v5 payloads retain their original bytes/hash and are
 upgraded only through a private temporary copy for current-schema inspection or
 restore. See [multi-source analysis](roadmap/multi-source-analysis.md).
 
+Portable v6 closed-domain records are reconstructed from typed columns and
+validated semantic fields. Because M0/M1 has no producer contract for arbitrary
+analysis text, extensible result payloads currently retain only bounded typed
+numeric/boolean structures; unknown keys and all strings are omitted. Future
+analysis milestones must explicitly admit each semantic string with validation
+and a locator/credential redaction regression. Persistent browser access uses
+requested-key reads and bounded identity checks; an indistinguishable 33rd
+same-name handle fails explicitly before storage rather than creating a duplicate.
+
 ImportBatch, AnalysisRun and JobAttempt have independent state machines. A retry
 creates a new attempt against the same immutable manifest; changing selections or
 configuration creates a new batch/run. The legacy Activity `Job` is a UI/API

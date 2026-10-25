@@ -13,15 +13,19 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
 - Portable catalog projection retains selected asset/source/content evidence,
   removes unselected occurrences and identities, deletes local jobs/caches,
   rewrites logical/relative locators and rebuilds every retained v6 JSON payload
-  from explicit semantic columns before VACUUM, so arbitrary operational JSON
-  and removed private values are not recoverable from output.
+  from explicit semantic columns before VACUUM. Manifest and review strings use
+  dedicated typed serializers; extensible M0/M1 analysis evidence retains only
+  field-specific bounded numbers, booleans and containers. Uncontracted strings,
+  unknown fields, locators and credentials are omitted until a later producer
+  supplies a typed portable schema, so removed private bytes are not recoverable.
 - `upgradeCatalogSnapshot` validates the recorded old schema, migrates a private
   copy and leaves the original bytes unchanged.
-- A hash-pinned SQLite fixture produced by the actual schema-v5 code at baseline
-  `61a4659` can be inspected, diffed and restored under v6; its source bytes stay
-  unchanged and the automatic pre-restore checkpoint uses schema v6. DDL
-  comparison ignores formatting-only whitespace while still rejecting added or
-  structurally different objects.
+- Hash-pinned SQLite and complete Named Version fixtures produced by the actual
+  schema-v5 application at baseline `61a4659` can be inspected, diffed and
+  restored under v6. Historical project/record/index/catalog bytes stay unchanged
+  and the automatic pre-restore checkpoint uses schema v6. DDL comparison only
+  normalizes SQLite ASCII whitespace and also compares column, foreign-key and
+  index PRAGMAs, including the NBSP structural counterexample.
 - Core lifecycle regressions prove retry/terminal behavior for ImportBatch,
   AnalysisRun and JobAttempt.
 - A project-private, revisioned source draft accumulates repeated files and
@@ -67,26 +71,33 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
   with at most 16 workers. Only the visible 100 persistent sources are refreshed,
   while session-only files needed by the compatibility action remain checked.
   A rejected recursion mutation restores the checkbox from authoritative state.
+- Final blocker closure prunes a near-limit 512-receipt draft with one large-body
+  serialization, loads availability/removal handles by requested keys, caps
+  identity comparisons and atomically rejects an unresolved 33rd same-name
+  handle instead of silently duplicating it. Portable projection preserves typed
+  Expected/Verified Manifest and ReviewDecision semantics, failure codes and
+  numeric analysis evidence while adversarial generic paths, arrays, signed URLs,
+  opaque tokens and authorization strings are absent after production VACUUM.
 
 ## Commands actually run
 
-| Command                                                                            | Result                                                                                          |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                                                   | Passed; lockfile and supply-chain policy verified.                                              |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes | Passed: 280 files, 3,834 tests.                                                                 |
-| Focused core/catalog/application tests                                             | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5.     |
-| M1 application/HTTP/component/browser/native-contract tests                        | Passed: 7 focused files, 49 tests after UI/UX and lifecycle remediation.                        |
-| Independent-review focused catalog/application/UI regressions                      | Passed: 6 files, 76 tests, including authentic v5, privacy sentinels and 10,000 boundaries.     |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` at review head | Passed: 287 files, 3,897 tests in 355.58 seconds.                                               |
-| `pnpm format:check`                                                                | Passed; all tracked files match Prettier formatting.                                            |
-| `pnpm lint`                                                                        | Passed with zero warnings.                                                                      |
-| `pnpm typecheck`                                                                   | Passed after M1 implementation.                                                                 |
-| `pnpm test:i18n`                                                                   | Passed: 2,337 semantic keys aligned.                                                            |
-| `pnpm test:docs-i18n`                                                              | Passed: 9 README locales and 113 English reference mirrors.                                     |
-| `pnpm build`                                                                       | Passed: 274 modules transformed; the existing large-chunk advisory remains.                     |
-| Focused M1 Playwright regression                                                   | Passed: 4 tests at 375px, including disclosure, 44px touch targets and source-name containment. |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e`            | Passed: 234 Playwright tests in 18.9 minutes from the review-head files.                        |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:interchange`    | Passed: 18 tests, source hash/bounds and relocation gates; real Resolve import unverified.      |
+| Command                                                                                                     | Result                                                                                               |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                                                                            | Passed; lockfile and supply-chain policy verified.                                                   |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes                          | Passed: 280 files, 3,834 tests.                                                                      |
+| Focused core/catalog/application tests                                                                      | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5.          |
+| M1 application/HTTP/component/browser/native-contract tests                                                 | Passed: 7 focused files, 49 tests after UI/UX and lifecycle remediation.                             |
+| Independent-review focused catalog/application/UI regressions                                               | Passed; final privacy/access suite: 2 files, 24 tests, plus authentic full-v5 and 4 MiB regressions. |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` at `e49ae68`                            | Passed: 287 files, 3,904 tests in 355.25 seconds.                                                    |
+| `pnpm format:check`                                                                                         | Passed; all tracked files match Prettier formatting.                                                 |
+| `pnpm lint`                                                                                                 | Passed with zero warnings.                                                                           |
+| `pnpm typecheck`                                                                                            | Passed after M1 implementation.                                                                      |
+| `pnpm test:i18n`                                                                                            | Passed: 2,337 semantic keys aligned.                                                                 |
+| `pnpm test:docs-i18n`                                                                                       | Passed: 9 README locales and 113 English reference mirrors.                                          |
+| `pnpm build`                                                                                                | Passed: 274 modules transformed; the existing large-chunk advisory remains.                          |
+| Focused M1 Playwright regression                                                                            | Passed: 4 tests at 375px, including disclosure, 44px touch targets and source-name containment.      |
+| `OPENFILM_CHROMIUM=/usr/bin/chromium OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e` | Passed: 234/234 Playwright tests in 20.0 minutes at `e49ae68`.                                       |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:interchange`                             | Passed: 18 tests, source hash/bounds and relocation gates; real Resolve import unverified.           |
 
 The first unqualified baseline run had one environment-only failure because
 system Python lacked `opentimelineio`. The repository's existing pinned
@@ -118,6 +129,17 @@ authoritative draft, while unavailable reconciliation keeps access intact. Tests
 cover stale-reload-then-drop, add/remove completion after unmount, lost add/remove
 acknowledgements and unavailable reconciliation. A second independent review
 reported no Critical or Important findings before the final full runs above.
+
+A final adversarial review then demonstrated that key-name redaction alone could
+retain a private value under generic analysis fields, and that accepting a source
+beyond a bounded same-name identity window could create a duplicate. The final
+serializer therefore has no arbitrary-string path for extensible M0/M1 evidence;
+later milestones must add each semantic string together with its producer
+contract and redaction regression. Browser identity ambiguity now fails before
+the IndexedDB write, including same-call and reopened-store cases. The final
+independent review of `e49ae6883007464407d459d1e3fa3c5d4788aff5` reported zero
+Critical, Important or Minor findings. Exact-head Vitest and Playwright runs are
+the green results above; no assertion was skipped or weakened.
 
 The synthetic 10,000-source component benchmark reduced rendered host nodes from
 120,045 to 1,253, initial render time from 630ms to 31ms, and measured process
