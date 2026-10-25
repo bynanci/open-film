@@ -26,9 +26,15 @@ import {
   migrateSceneScriptReviewSchema,
 } from "./knowledge-store.js";
 import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
+import {
+  migrateMultiSourceSchema,
+  sanitizePortableMultiSourceRows,
+  validateMultiSourceSchema,
+} from "./multi-source-store.js";
 
 export * from "./transcript-editor-store.js";
 export * from "./knowledge-store.js";
+export * from "./multi-source-store.js";
 
 export {
   CATALOG_SCHEMA_VERSION,
@@ -83,7 +89,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 
 function withSnapshotDatabase<T>(
   image: Uint8Array,
-  read: (database: DatabaseSync) => T,
+  read: (database: DatabaseSync, path: string) => T,
 ): T {
   if (image.length === 0 || image.length > CATALOG_SNAPSHOT_MAX_BYTES)
     throw new Error("Catalog snapshot exceeds its size limit.");
@@ -93,13 +99,55 @@ function withSnapshotDatabase<T>(
   try {
     writeFileSync(path, image, { flag: "wx", mode: 0o600 });
     copy = new DatabaseSync(path);
-    return read(copy);
+    return read(copy, path);
   } finally {
     try {
       copy?.close();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  }
+}
+
+function validateDeclaredCatalogSchema(
+  database: DatabaseSync,
+  version: number,
+): void {
+  if (version >= 2) new CatalogIntelligenceStore(database);
+  if (version >= 3) {
+    new CatalogTranscriptEditorStore(database);
+    new CatalogKnowledgeStore(database, version >= 5);
+  }
+  if (version >= 6) validateMultiSourceSchema(database);
+}
+
+function migrateCatalogDatabase(database: DatabaseSync, version: number): void {
+  if (version >= CATALOG_SCHEMA_VERSION) return;
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS assets (
+        id TEXT PRIMARY KEY, uri TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+        media_type TEXT NOT NULL, captured_at TEXT, rating REAL,
+        favorite INTEGER NOT NULL DEFAULT 0, rejected INTEGER NOT NULL DEFAULT 0,
+        locked INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS assets_capture ON assets(captured_at, id);
+      CREATE INDEX IF NOT EXISTS assets_media_type ON assets(media_type);
+      CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
+    `);
+    if (version < 2) migrateIntelligenceSchema(database);
+    if (version < 3) {
+      migrateTranscriptEditorSchema(database);
+      migrateKnowledgeSchema(database);
+    }
+    if (version < 4) migrateTranscriptSegmentIdentity(database);
+    if (version < 5) migrateSceneScriptReviewSchema(database);
+    if (version < 6) migrateMultiSourceSchema(database);
+    database.exec(`PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`);
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
   }
 }
 
@@ -119,12 +167,96 @@ function validateCatalogDatabase(
     throw new Error("Catalog snapshot has invalid foreign-key references.");
 }
 
-function logicalCatalogRevision(database: DatabaseSync): string {
-  const schema = database
+function canonicalSchemaSql(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  let result = "";
+  let quote: "'" | '"' | "`" | "]" | undefined;
+  let whitespace = false;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index]!;
+    if (quote) {
+      result += character;
+      if (character === quote) {
+        if (quote !== "]" && value[index + 1] === quote)
+          result += value[++index]!;
+        else quote = undefined;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      if (whitespace && result) result += " ";
+      whitespace = false;
+      quote = character;
+      result += character;
+      continue;
+    }
+    if (character === "[") {
+      if (whitespace && result) result += " ";
+      whitespace = false;
+      quote = "]";
+      result += character;
+      continue;
+    }
+    const point = character.codePointAt(0)!;
+    if (
+      point === 0x09 ||
+      point === 0x0a ||
+      point === 0x0b ||
+      point === 0x0c ||
+      point === 0x0d ||
+      point === 0x20
+    ) {
+      whitespace = true;
+      continue;
+    }
+    if (whitespace && result) result += " ";
+    whitespace = false;
+    result += character;
+  }
+  return result.trim();
+}
+
+function catalogSchema(
+  database: DatabaseSync,
+  namespace: "main" | "version_snapshot" = "main",
+): unknown {
+  const objects = database
     .prepare(
-      "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
+      `SELECT type,name,tbl_name,sql FROM ${namespace}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
     )
-    .all();
+    .all()
+    .map((row) => ({
+      type: String(row.type),
+      name: String(row.name),
+      tbl_name: String(row.tbl_name),
+      sql: canonicalSchemaSql(row.sql),
+    }));
+  const quoted = (value: string) => `"${value.replaceAll('"', '""')}"`;
+  const pragma = (name: string, value: string) =>
+    database.prepare(`PRAGMA ${namespace}.${name}(${quoted(value)})`).all();
+  const tables = objects
+    .filter((row) => row.type === "table")
+    .map((row) => String(row.name))
+    .sort()
+    .map((table) => ({
+      table,
+      columns: pragma("table_xinfo", table),
+      foreignKeys: pragma("foreign_key_list", table),
+      indexes: pragma("index_list", table)
+        .map((index) => ({
+          name: String(index.name),
+          unique: index.unique,
+          origin: index.origin,
+          partial: index.partial,
+          columns: pragma("index_xinfo", String(index.name)),
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    }));
+  return { objects, tables };
+}
+
+function logicalCatalogRevision(database: DatabaseSync): string {
+  const schema = catalogSchema(database);
   const tables = database
     .prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -176,6 +308,39 @@ export function inspectCatalogSnapshot(
 }
 
 /**
+ * Upgrade an immutable historical image through a private temporary copy.
+ * The caller's bytes are never changed and remain the integrity authority.
+ */
+export function upgradeCatalogSnapshot(
+  image: Uint8Array,
+  expectedSourceVersion: number,
+): Buffer {
+  if (
+    !Number.isSafeInteger(expectedSourceVersion) ||
+    expectedSourceVersion < 1 ||
+    expectedSourceVersion > CATALOG_SCHEMA_VERSION
+  )
+    throw new Error("Catalog snapshot has an unsupported schema version.");
+  return withSnapshotDatabase(image, (database, path) => {
+    database.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+    validateCatalogDatabase(database, expectedSourceVersion);
+    validateDeclaredCatalogSchema(database, expectedSourceVersion);
+    migrateCatalogDatabase(database, expectedSourceVersion);
+    validateDeclaredCatalogSchema(database, CATALOG_SCHEMA_VERSION);
+    validateCatalogDatabase(database, CATALOG_SCHEMA_VERSION);
+    const mode = String(
+      database.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode ?? "",
+    ).toLowerCase();
+    if (mode !== "delete")
+      throw new Error("Catalog snapshot could not be finalized safely.");
+    database.exec("VACUUM;");
+    const result = readFileSync(path);
+    validateCatalogDatabase(database, CATALOG_SCHEMA_VERSION);
+    return Buffer.from(result);
+  });
+}
+
+/**
  * Build a portable catalog image containing only the explicitly selected
  * media rows. Transcript revisions for those assets remain available, while
  * transient jobs, caches, suggestions and unrelated catalog rows are omitted.
@@ -208,6 +373,7 @@ export function createPortableCatalogSnapshot(
     database.exec("BEGIN IMMEDIATE;");
     try {
       database.exec(`
+        CREATE TEMP TABLE collect_selected_assets(id TEXT PRIMARY KEY);
         DELETE FROM intelligence_cache;
         DELETE FROM intelligence_markers;
         DELETE FROM review_suggestions;
@@ -215,15 +381,97 @@ export function createPortableCatalogSnapshot(
         DELETE FROM scene_script_suggestions;
         DELETE FROM project_glossary;
         DELETE FROM jobs;
-        CREATE TEMP TABLE collect_selected_assets(id TEXT PRIMARY KEY);
       `);
       const insertId = database.prepare(
         "INSERT INTO collect_selected_assets(id) VALUES(?)",
       );
       for (const id of ids) insertId.run(id);
-      database.exec(
-        "DELETE FROM assets WHERE id NOT IN (SELECT id FROM collect_selected_assets)",
-      );
+      database.exec(`
+        CREATE TEMP TABLE collect_selected_bindings(id TEXT PRIMARY KEY);
+        INSERT INTO collect_selected_bindings(id)
+          SELECT id FROM asset_content_versions
+          WHERE asset_id IN (SELECT id FROM collect_selected_assets);
+
+        CREATE TEMP TABLE collect_selected_manifests(id TEXT PRIMARY KEY);
+        INSERT INTO collect_selected_manifests(id)
+          SELECT verified.id
+          FROM verified_manifests AS verified
+          WHERE EXISTS (
+            SELECT 1 FROM verified_manifest_entries AS member
+            WHERE member.manifest_id=verified.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM verified_manifest_entries AS member
+            WHERE member.manifest_id=verified.id
+              AND (
+                member.status!='verified'
+                OR member.binding_id NOT IN (SELECT id FROM collect_selected_bindings)
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM expected_manifest_entries AS expected
+            WHERE expected.manifest_id=verified.expected_manifest_id
+              AND (
+                expected.included!=1
+                OR NOT EXISTS (
+                  SELECT 1
+                  FROM verified_manifest_entries AS member
+                  JOIN asset_content_versions AS binding ON binding.id=member.binding_id
+                  WHERE member.manifest_id=verified.id
+                    AND member.status='verified'
+                    AND binding.occurrence_id=expected.occurrence_id
+                )
+              )
+          );
+
+        CREATE TEMP TABLE collect_selected_runs(id TEXT PRIMARY KEY);
+        INSERT INTO collect_selected_runs(id)
+          SELECT run.id
+          FROM analysis_runs AS run
+          WHERE run.manifest_id IN (SELECT id FROM collect_selected_manifests)
+            AND NOT EXISTS (
+              SELECT 1 FROM analysis_results AS result
+              WHERE result.run_id=run.id
+                AND (
+                  NOT EXISTS (
+                    SELECT 1 FROM analysis_result_members AS member
+                    WHERE member.result_id=result.id
+                  )
+                  OR EXISTS (
+                    SELECT 1 FROM analysis_result_members AS member
+                    WHERE member.result_id=result.id
+                      AND member.binding_id NOT IN (SELECT id FROM collect_selected_bindings)
+                  )
+                )
+            );
+
+        DELETE FROM review_decisions
+          WHERE base_run_id NOT IN (SELECT id FROM collect_selected_runs);
+        DELETE FROM analysis_runs
+          WHERE id NOT IN (SELECT id FROM collect_selected_runs);
+        DELETE FROM verified_manifests
+          WHERE id NOT IN (SELECT id FROM collect_selected_manifests);
+        DELETE FROM expected_manifests
+          WHERE id NOT IN (
+            SELECT expected_manifest_id FROM verified_manifests
+          );
+        DELETE FROM import_batches
+          WHERE id NOT IN (SELECT batch_id FROM expected_manifests);
+
+        DELETE FROM assets
+          WHERE id NOT IN (SELECT id FROM collect_selected_assets);
+        DELETE FROM selection_memberships
+          WHERE occurrence_id NOT IN (
+            SELECT occurrence_id FROM asset_content_versions
+          );
+        DELETE FROM source_selections
+          WHERE id NOT IN (SELECT selection_id FROM selection_memberships);
+        DELETE FROM file_occurrences
+          WHERE id NOT IN (SELECT occurrence_id FROM asset_content_versions);
+        DELETE FROM content_identities
+          WHERE id NOT IN (SELECT content_id FROM asset_content_versions);
+      `);
+      sanitizePortableMultiSourceRows(database);
       const update = database.prepare(`
         UPDATE assets SET uri=?,name=?,media_type=?,captured_at=?,rating=?,
           favorite=?,rejected=?,locked=?,data=? WHERE id=?
@@ -444,40 +692,9 @@ export class ProjectCatalog {
       `);
       // Verify older schemas before migrating; missing tables must not be
       // silently recreated and relabeled as a healthy project.
-      if (version >= 2) new CatalogIntelligenceStore(this.database);
-      if (version >= 3) {
-        new CatalogTranscriptEditorStore(this.database);
-        new CatalogKnowledgeStore(this.database, version >= 5);
-      }
-      if (version < CATALOG_SCHEMA_VERSION) {
-        this.database.exec("BEGIN IMMEDIATE");
-        try {
-          this.database.exec(`
-            CREATE TABLE IF NOT EXISTS assets (
-              id TEXT PRIMARY KEY, uri TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
-              media_type TEXT NOT NULL, captured_at TEXT, rating REAL,
-              favorite INTEGER NOT NULL DEFAULT 0, rejected INTEGER NOT NULL DEFAULT 0,
-              locked INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS assets_capture ON assets(captured_at, id);
-            CREATE INDEX IF NOT EXISTS assets_media_type ON assets(media_type);
-            CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL);
-          `);
-          if (version < 2) migrateIntelligenceSchema(this.database);
-          if (version < 3) {
-            migrateTranscriptEditorSchema(this.database);
-            migrateKnowledgeSchema(this.database);
-          }
-          if (version < 4) migrateTranscriptSegmentIdentity(this.database);
-          if (version < 5) migrateSceneScriptReviewSchema(this.database);
-          this.database.exec(
-            `PRAGMA user_version=${CATALOG_SCHEMA_VERSION}; COMMIT;`,
-          );
-        } catch (error) {
-          this.database.exec("ROLLBACK");
-          throw error;
-        }
-      }
+      validateDeclaredCatalogSchema(this.database, version);
+      migrateCatalogDatabase(this.database, version);
+      validateDeclaredCatalogSchema(this.database, CATALOG_SCHEMA_VERSION);
       this.intelligence = new CatalogIntelligenceStore(this.database);
       this.transcripts = new CatalogTranscriptEditorStore(this.database);
       this.knowledge = new CatalogKnowledgeStore(this.database);
@@ -578,6 +795,7 @@ export class ProjectCatalog {
     snapshotPath: string,
     publishManifest?: () => void,
     assertCurrent?: () => void,
+    snapshotSchemaVersion = CATALOG_SCHEMA_VERSION,
   ): void {
     if (this.database.isTransaction)
       throw new Error("Cannot restore a nested catalog snapshot.");
@@ -592,7 +810,24 @@ export class ProjectCatalog {
     )
       throw new Error("Catalog snapshot exceeds its size limit.");
     const image = readFileSync(snapshotPath);
-    validateCatalogImage(image, CATALOG_SCHEMA_VERSION);
+    validateCatalogImage(image, snapshotSchemaVersion);
+    let restorePath = snapshotPath;
+    let upgradedDirectory: string | undefined;
+    try {
+      if (snapshotSchemaVersion !== CATALOG_SCHEMA_VERSION) {
+        const upgraded = upgradeCatalogSnapshot(image, snapshotSchemaVersion);
+        upgradedDirectory = mkdtempSync(
+          join(tmpdir(), "openfilm-catalog-restore-upgrade-"),
+        );
+        restorePath = join(upgradedDirectory, "database.sqlite");
+        writeFileSync(restorePath, upgraded, { flag: "wx", mode: 0o600 });
+      }
+      validateCatalogImage(readFileSync(restorePath), CATALOG_SCHEMA_VERSION);
+    } catch (error) {
+      if (upgradedDirectory)
+        rmSync(upgradedDirectory, { recursive: true, force: true });
+      throw error;
+    }
 
     const previousMode = String(
       this.database.prepare("PRAGMA journal_mode").get()?.journal_mode ?? "",
@@ -630,6 +865,12 @@ export class ProjectCatalog {
       } catch (error) {
         errors.push(error);
       }
+      try {
+        if (upgradedDirectory)
+          rmSync(upgradedDirectory, { recursive: true, force: true });
+      } catch (error) {
+        errors.push(error);
+      }
       if (errors.length)
         throw new AggregateError(errors, "Catalog restore cleanup failed.");
     };
@@ -648,18 +889,12 @@ export class ProjectCatalog {
       transaction = true;
       this.database
         .prepare("ATTACH DATABASE ? AS version_snapshot")
-        .run(snapshotPath);
+        .run(restorePath);
       attached = true;
 
-      const schema = (database: "main" | "version_snapshot") =>
-        this.database
-          .prepare(
-            `SELECT type,name,tbl_name,sql FROM ${database}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
-          )
-          .all();
       if (
-        JSON.stringify(schema("main")) !==
-        JSON.stringify(schema("version_snapshot"))
+        JSON.stringify(catalogSchema(this.database, "main")) !==
+        JSON.stringify(catalogSchema(this.database, "version_snapshot"))
       )
         throw new Error("Catalog snapshot schema does not match this project.");
 

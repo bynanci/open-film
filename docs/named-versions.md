@@ -55,6 +55,14 @@ Successful restore replaces project-level saved state and resets stale editor
 state. It is not represented as Undo/Redo. The pre-restore checkpoint remains a
 named version, so the prior work remains available after close/reopen.
 
+Catalog schema upgrades do not rewrite an immutable version package. A version
+records the schema that produced its SQLite image and keeps that original image
+and SHA-256. When current code needs assets or restores an older schema-v5
+version, it validates the old schema and upgrades a permission-restricted
+temporary copy to schema v6. Restore publishes the upgraded live catalog while
+the stored version bytes remain unchanged; the automatic recovery checkpoint is
+captured from the current schema.
+
 ## Local data and limits
 
 Version packages and their index are private project data. They contain the same

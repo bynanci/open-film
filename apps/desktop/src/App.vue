@@ -1223,6 +1223,12 @@ async function uploadFiles(files: File[]) {
   if (busy.value || relinkBusy.value || !files.length) return;
   uploadController = new AbortController();
   uploading.value = true;
+  uploadProgress.value = {
+    completed: 0,
+    total: files.length,
+    bytesUploaded: 0,
+    totalBytes: files.reduce((total, file) => total + file.size, 0),
+  };
   await run("uploadingFiles", async () => {
     try {
       await api.uploadFiles(files, {
@@ -3001,14 +3007,17 @@ onUnmounted(() => {
 
       <ImportPanel
         v-if="importOpen"
+        :key="project.id"
+        :project-id="project.id"
         :native="native"
         :busy="!!busy || activeJobs.length > 0"
+        :expert="expertMode"
         :progress="uploadProgress"
         @folder="beginImport"
         @files="importFiles"
         @upload="uploadFiles"
-        @error="error = $event"
         @cancel="uploadController?.abort()"
+        @error="error = $event"
         @close="importOpen = false"
       />
 

@@ -91,6 +91,12 @@ async function importFolder(page: Page, path: string, first = false) {
     })
     .click();
   await chooseImportFolder(page, path);
+  // A previous completed import notice can still be visible while the new
+  // start request is in flight. The panel closes only after this import has
+  // been acknowledged, so fence the completion assertion with that state.
+  await expect(
+    page.getByRole("region", { name: "Import media", exact: true }),
+  ).toBeHidden({ timeout: 60_000 });
   await expect(page.getByText("Import complete", { exact: true })).toBeVisible({
     timeout: 60_000,
   });

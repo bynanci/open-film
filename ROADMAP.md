@@ -1,3 +1,42 @@
+## Current implementation — Multi-source import and common analysis
+
+OpenFilm is adding an additive source draft that can combine files, folders and
+drops before any work begins. An immutable Expected Manifest records the user's
+choice; a Verified Manifest binds successfully imported assets to exact content
+and context revisions. Common analysis reads only that scope, so an existing
+catalog item that reused import work is included while unrelated project media
+is not. See the [accepted roadmap](docs/roadmap/multi-source-analysis.md).
+
+M0 establishes catalog schema v6, a complete portability table policy, separate
+batch/run/attempt state machines and safe schema-v5 Named Version upgrades. M1–M3
+form the first releasable source-selection and common-analysis workflow. M4–M6
+add time/GPX, bounded representative-frame understanding and explicit review
+adoption. M7 records actual platform evidence; it does not treat mocks as native
+picker or external-drive verification.
+
+M1 is now implemented: repeated file/folder/drop choices accumulate in one
+project-owned revisioned draft; native drops reject symlinks without following
+them; persistent browser handles remain in IndexedDB while ordinary `File`
+objects expire to an explicit reselection state; and Standard/Expert modes are
+presentations over the same commands. Existing one-root imports remain available
+only after an explicit action. Review hardening fences delayed results, recovers
+stale revisions and transactionally releases browser access that the authoritative
+draft no longer retains. Ambiguous mutation responses reuse one idempotency
+receipt before reconciliation. The final M1 interaction pass batches permission
+lookups, pages large drafts at 100 source cards, turns typed drop failures into
+actionable feedback, moves host-path entry behind Standard-mode progressive
+disclosure, and preserves 44px coarse-pointer targets plus narrow-screen CJK
+reflow. Independent review additionally closes portable v6 metadata leakage,
+proves the 10,000-source storage boundary, bounds permission work, adds
+project-indexed/retryable IndexedDB access and replaces the manufactured legacy
+database with hash-pinned catalog and complete Named Version fixtures produced by
+the actual schema-v5 application. Final remediation preserves typed portable
+manifest/review semantics without admitting uncontracted evidence strings, makes
+near-limit receipt pruning linear, compares SQLite structure as well as DDL, reads
+only requested persistent handles and rejects identity ambiguity before a 33rd
+same-name browser source can be duplicated. M2 streaming discovery, membership,
+staging and manifest sealing are next and are not implied by the M1 UI.
+
 ## 0.4.0 reviewed source integration
 
 The next application release is 0.4.0; the existing project schema stays 1.0.0.

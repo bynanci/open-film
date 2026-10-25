@@ -1,6 +1,6 @@
 # Collect Media のポータブルパッケージ
 
-Collect Media は、保存済みのプロジェクトデータを複製し、映画を開いてレンダリングするために必要な持ち運び可能なパッケージを作成します。元ファイルを移動または書き換えることはありません。デスクトップ、HTTP、CLI は @openfilm/application の CollectMediaService を共有します。既存の Composition を唯一の編集タイムラインとして使い、プロジェクト schema 1.0.0 とカタログ schema v5 は変更しません。
+Collect Media は、保存済みのプロジェクトデータを複製し、映画を開いてレンダリングするために必要な持ち運び可能なパッケージを作成します。元ファイルを移動または書き換えることはありません。デスクトップ、HTTP、CLI は @openfilm/application の CollectMediaService を共有します。既存の Composition を唯一の編集タイムラインとして使い、プロジェクト schema は 1.0.0 のままです。カタログは追加型の schema v6 マイグレーションを使います。
 
 ## 範囲と確認
 

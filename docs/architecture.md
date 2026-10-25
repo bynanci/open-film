@@ -31,6 +31,32 @@ identity, and revision/source changes cannot publish a current-looking result.
 This workflow does not change project schema or execute project-authored code.
 See [Visual QA validation](validation-visual-qa.md).
 
+Multi-source analysis keeps project evidence separate from local capabilities.
+Catalog schema v6 stores logical selections, occurrences/membership, SHA-256
+content identities, immutable asset content versions, manifests, scoped runs and
+review decisions. Browser handles, native grants, staging paths, leases,
+credentials and attempt owners remain private operational state. Every durable
+catalog table has an explicit portable-semantic, local-operational or cache
+policy; Collect Media projects only selected reachable evidence and VACUUMs the
+result. Named Version v5 payloads retain their original bytes/hash and are
+upgraded only through a private temporary copy for current-schema inspection or
+restore. See [multi-source analysis](roadmap/multi-source-analysis.md).
+
+Portable v6 closed-domain records are reconstructed from typed columns and
+validated semantic fields. Because M0/M1 has no producer contract for arbitrary
+analysis text, extensible result payloads currently retain only bounded typed
+numeric/boolean structures; unknown keys and all strings are omitted. Future
+analysis milestones must explicitly admit each semantic string with validation
+and a locator/credential redaction regression. Persistent browser access uses
+requested-key reads and bounded identity checks; an indistinguishable 33rd
+same-name handle fails explicitly before storage rather than creating a duplicate.
+
+ImportBatch, AnalysisRun and JobAttempt have independent state machines. A retry
+creates a new attempt against the same immutable manifest; changing selections or
+configuration creates a new batch/run. The legacy Activity `Job` is a UI/API
+projection. Future Desktop, HTTP and CLI adapters call the same application
+orchestration and reject stale project, draft, manifest and owner generations.
+
 ```mermaid
 flowchart TD
   Desktop[Vue workspace / Tauri shell] --> API[Loopback HTTP API]
@@ -63,7 +89,7 @@ Scene-script review extends the existing generic `ReviewSuggestion` with a real
 Story/beat/field target. `SceneScriptReviewService` in application owns the
 whitelisted prompt, source binding, field-only mutation and retry; it calls the
 same KnowledgeService/ProviderRegistry that owns language-provider consent.
-Catalog schema v5 stores durable scene-script evidence separately from
+The catalog v5 migration introduced durable scene-script evidence separately from
 transcript-targeted suggestions. The atomic project-file update includes a small
 acceptance receipt alongside the changed script, allowing recovery across the
 project-file/SQLite boundary. Desktop, HTTP and CLI use that shared service.

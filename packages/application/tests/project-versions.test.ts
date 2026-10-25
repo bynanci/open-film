@@ -7,10 +7,11 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hashFile } from "@openfilm/media";
@@ -27,7 +28,129 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
+const AUTHENTIC_V5_PACKAGE_SHA256 =
+  "8596f6d84d71a69ff7f79e41c01be8c897df6e94972e7940af3bd8d643863730";
+const AUTHENTIC_V5_PACKAGE_BYTES = 462_222;
+const AUTHENTIC_V5_SOURCE_COMMIT = "61a46596d7a2cd17e1c993b2b6fd3f31c5ed807d";
+
+function sha256(value: Buffer | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+interface HistoricalProjectFixture {
+  schemaVersion: 1;
+  sourceCommit: string;
+  versionId: string;
+  files: Array<{ path: string; bytes: string }>;
+}
+
+function authenticV5Project(): HistoricalProjectFixture {
+  const encoded = readFileSync(
+    new URL("./fixtures/named-version-v5-61a4659.json.gz.b64", import.meta.url),
+    "utf8",
+  );
+  const fixture = gunzipSync(Buffer.from(encoded.trim(), "base64"));
+  if (
+    fixture.length !== AUTHENTIC_V5_PACKAGE_BYTES ||
+    sha256(fixture) !== AUTHENTIC_V5_PACKAGE_SHA256
+  )
+    throw new Error(
+      "The pinned named-version v5 fixture changed unexpectedly.",
+    );
+  return JSON.parse(fixture.toString("utf8")) as HistoricalProjectFixture;
+}
+
+async function installAuthenticV5Project(root: string): Promise<{
+  directory: string;
+  versionId: string;
+  immutablePackageFiles: string[];
+}> {
+  const fixture = authenticV5Project();
+  if (
+    fixture.schemaVersion !== 1 ||
+    fixture.sourceCommit !== AUTHENTIC_V5_SOURCE_COMMIT ||
+    !/^[0-9a-f-]{36}$/u.test(fixture.versionId)
+  )
+    throw new Error("The named-version v5 fixture metadata is invalid.");
+  const directory = join(root, "film.openfilm");
+  const versionRoot = `versions/${fixture.versionId}`;
+  const expected = [
+    "project.json",
+    "database.sqlite",
+    "versions/index.json",
+    `${versionRoot}/project.json`,
+    `${versionRoot}/database.sqlite`,
+    `${versionRoot}/record.json`,
+  ];
+  if (
+    JSON.stringify(fixture.files.map((file) => file.path)) !==
+    JSON.stringify(expected)
+  )
+    throw new Error("The named-version v5 fixture file set is invalid.");
+  for (const file of fixture.files) {
+    const path = join(directory, file.path);
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(path, Buffer.from(file.bytes, "base64"), {
+      flag: "wx",
+      mode: 0o600,
+    });
+  }
+  return {
+    directory,
+    versionId: fixture.versionId,
+    immutablePackageFiles: expected
+      .slice(3)
+      .map((path) => join(directory, path)),
+  };
+}
+
 describe("named project versions", () => {
+  it("restores a v5 named version without rewriting its immutable payload", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-v5-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const { directory, versionId, immutablePackageFiles } =
+      await installAuthenticV5Project(root);
+    const immutableHashes = new Map(
+      immutablePackageFiles.map((path) => [path, sha256(readFileSync(path))]),
+    );
+    const app = await OpenFilmApplication.open(directory);
+    cleanup.push(() => app.close());
+    expect(app.versions.inspect(versionId)).toMatchObject({
+      record: { id: versionId, name: "Historical v5" },
+      catalogSchemaVersion: 5,
+    });
+
+    app.project.title = "Current title";
+    await app.save();
+    const current = await app.versions.create({
+      name: "Current v6",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "50000000-0000-4000-8000-000000000003",
+    });
+    expect(app.versions.diff(versionId, current.id)).toMatchObject({
+      beforeVersionId: versionId,
+      afterVersionId: current.id,
+      entries: expect.arrayContaining([
+        expect.objectContaining({ category: "project", change: "changed" }),
+      ]),
+    });
+    const restored = await app.versions.restore(versionId, {
+      baseRevision: app.versions.currentRevision(),
+      requestId: "50000000-0000-4000-8000-000000000002",
+      confirmed: true,
+    });
+
+    expect(app.project.title).toBe("Historical v5 named version fixture");
+    expect(app.catalog.listAssets().map((asset) => asset.id)).toContain(
+      "legacy-asset",
+    );
+    for (const [path, hash] of immutableHashes)
+      expect(sha256(readFileSync(path))).toBe(hash);
+    expect(
+      app.versions.inspect(restored.checkpointVersionId).catalogSchemaVersion,
+    ).toBe(6);
+  });
+
   it("restores and renders captions, graphics, two synthetic photos, and audio across sessions", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-version-render-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));

@@ -27,6 +27,18 @@ are seconds. Capture timestamps are ISO 8601 with provenance/confidence.
 - `SimilarityGroup`: `id,kind:'exact'|'perceptual',assetIds,confidence`.
 - `Job`: `id,type,status:queued|running|completed|failed|cancelled,progress?,`
   `errors?: {uri,stage,message}[]`, `createdAt?,updatedAt?`.
+- Multi-source lifecycle types are independent: `ImportBatchStatus` is
+  `sealing|sealed|partial|failed|cancelled`; `AnalysisRunStatus` is
+  `queued|running|completed|partial|failed|cancelled`; `JobAttemptStatus` is
+  `queued|running|succeeded|failed|cancelled|abandoned`. Terminal attempts never
+  reopen; retry creates a new attempt. A sealed batch and completed run remain
+  terminal.
+- `SourceDraft` holds versioned `SourceSelection` descriptors and an explicit
+  `SourceAccessClass`. Browser handles are opaque local references rather than
+  JSON. `ExpectedManifest` freezes the requested occurrences and policy;
+  `VerifiedManifest` freezes successful asset/content/context bindings plus
+  failures and exclusions. `ReviewDecision` binds typed operations to base
+  run/result IDs, target IDs, a before fingerprint and manifest/story revisions.
 - `createProject(title: string): OpenFilmProject`; `validateProject(value:
 unknown): OpenFilmProject` throws on invalid/future schema; `migrateProject`
   supports documented versioned input without guessing or modifying originals.

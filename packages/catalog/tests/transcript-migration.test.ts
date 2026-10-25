@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { CATALOG_SCHEMA_VERSION, ProjectCatalog } from "../src/index";
+import { dropCatalogV6Tables } from "./catalog-version-fixtures.js";
 
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
@@ -48,6 +49,7 @@ async function legacyV2(segmentId = "segment", text = "Original words") {
   catalog.close();
   const path = join(directory, "database.sqlite"),
     database = new DatabaseSync(path);
+  dropCatalogV6Tables(database);
   database.exec(
     `DROP TABLE scene_script_suggestions;DROP TABLE transcript_edit_requests;DROP TABLE transcript_editor_history;DROP TABLE transcript_revision_metadata;DROP TABLE review_batches;DROP TABLE review_suggestions;DROP TABLE project_glossary;PRAGMA user_version=2;`,
   );

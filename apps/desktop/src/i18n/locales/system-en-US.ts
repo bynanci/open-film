@@ -114,6 +114,18 @@ export default {
     import: {
       failed:
         "Some memories couldn't be added. Check their locations and file types, then try again.",
+      draftStale:
+        "This source list changed in another view. Review the latest list before continuing.",
+      batchNotReady:
+        "This import batch is not ready for analysis. Finish or retry source verification first.",
+      sourceUnavailable:
+        "A selected source is no longer readable. Reconnect or select it again before continuing.",
+    },
+    analysis: {
+      scopeStale:
+        "The verified analysis scope changed. Start a new analysis from the latest source list.",
+      resultStale:
+        "This analysis result no longer matches the saved sources or story. Review the latest result.",
     },
     export: {
       directoryUnavailable:

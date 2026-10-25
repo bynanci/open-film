@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import { ApplicationError, errorInfo } from "../src/index.js";
+import {
+  ApplicationError,
+  applicationErrorCodes,
+  errorInfo,
+} from "../src/index.js";
 
 it("preserves stable error codes and readable diagnostics without interpreting error prose", () => {
   expect(
@@ -31,4 +35,16 @@ it("preserves stable error codes and readable diagnostics without interpreting e
     detail: "Native diagnostic",
     params: { valid: 2 },
   });
+});
+
+it("uses stable dotted errors for multi-source stale and unavailable states", () => {
+  expect(applicationErrorCodes).toEqual(
+    expect.arrayContaining([
+      "import.draftStale",
+      "import.batchNotReady",
+      "import.sourceUnavailable",
+      "analysis.scopeStale",
+      "analysis.resultStale",
+    ]),
+  );
 });

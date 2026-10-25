@@ -1,0 +1,296 @@
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApplicationError, SOURCE_DRAFT_LIMITS } from "@openfilm/core";
+import { OpenFilmApplication } from "../src/index.js";
+
+const cleanup: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+  for (const action of cleanup.splice(0).reverse()) await action();
+});
+
+async function fixture(title = "Source draft") {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-source-draft-"));
+  cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "film.openfilm");
+  let app = await OpenFilmApplication.create(directory, title);
+  cleanup.push(() => app.close());
+  return {
+    directory,
+    get app() {
+      return app;
+    },
+    async reopen() {
+      app.close();
+      app = await OpenFilmApplication.open(directory);
+      return app;
+    },
+  };
+}
+
+const nativeFiles = (start: number, count: number) =>
+  Array.from({ length: count }, (_, offset) => ({
+    kind: "file" as const,
+    displayName: `memory-${start + offset}.mp4`,
+    accessClass: "native-path" as const,
+    accessRef: `/synthetic/memory-${start + offset}.mp4`,
+    recursive: false,
+  }));
+
+describe("project-owned source draft", () => {
+  it("adds three then two sources without importing and survives reopening", async () => {
+    const test = await fixture();
+    const projectId = test.app.project.id;
+    const first = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 0,
+      requestId: "10000000-0000-4000-8000-000000000001",
+      sources: nativeFiles(1, 3),
+    });
+    expect(first).toMatchObject({ projectId, revision: 1 });
+    expect(first.selections).toHaveLength(3);
+
+    const second = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: first.revision,
+      requestId: "10000000-0000-4000-8000-000000000002",
+      sources: nativeFiles(4, 2),
+    });
+    expect(second.revision).toBe(2);
+    expect(second.selections.map((source) => source.displayName)).toEqual([
+      "memory-1.mp4",
+      "memory-2.mp4",
+      "memory-3.mp4",
+      "memory-4.mp4",
+      "memory-5.mp4",
+    ]);
+    expect(test.app.catalog.listAssets()).toEqual([]);
+    expect(test.app.catalog.listJobs()).toEqual([]);
+
+    expect((await test.reopen()).sourceDraft.get()).toEqual(second);
+  });
+
+  it("persists the documented 10,000-source boundary within its byte limit", async () => {
+    const test = await fixture("Maximum source draft");
+    const projectId = test.app.project.id;
+    const added = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 0,
+      requestId: "10000000-0000-4000-8000-000000000099",
+      sources: Array.from({ length: 10_000 }, (_, index) => ({
+        kind: "file" as const,
+        displayName: `f${index}`,
+        accessClass: "native-path" as const,
+        accessRef: `/f${index}`,
+        recursive: false,
+      })),
+    });
+
+    expect(added.selections).toHaveLength(10_000);
+    expect(
+      (await stat(join(test.directory, "analysis", "source-draft.json"))).size,
+    ).toBeLessThanOrEqual(SOURCE_DRAFT_LIMITS.bytes);
+    expect((await test.reopen()).sourceDraft.get().selections).toHaveLength(
+      10_000,
+    );
+  });
+
+  it("prunes a near-limit 512-receipt draft without repeatedly serializing its selections", async () => {
+    const test = await fixture("Receipt pruning boundary");
+    const projectId = test.app.project.id;
+    const analysis = join(test.directory, "analysis");
+    await mkdir(analysis, { recursive: true });
+    const receipts = Array.from({ length: 512 }, (_, index) => ({
+      requestId: `${String(index).padStart(46, "0")}${index === 511 ? "x".repeat(100) : ""}`,
+      fingerprint: "a".repeat(64),
+    }));
+    const selections = Array.from({ length: 853 }, (_, index) => ({
+      id: String(index).padStart(36, "0"),
+      projectId,
+      kind: "file" as const,
+      displayName: "n".repeat(512),
+      accessClass: "native-path" as const,
+      accessRef: `/${"a".repeat(4095)}`,
+      recursive: false,
+      selectionRevision: 1,
+    }));
+    const path = join(analysis, "source-draft.json");
+    await writeFile(
+      path,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        projectId,
+        revision: 1,
+        selections,
+        receipts,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    expect((await stat(path)).size).toBeLessThan(SOURCE_DRAFT_LIMITS.bytes);
+    const stringify = vi.spyOn(JSON, "stringify");
+
+    const result = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 1,
+      requestId: "90000000-0000-4000-8000-000000000001",
+      sources: Array.from({ length: 15 }, (_, index) => ({
+        kind: "file" as const,
+        displayName: "m".repeat(512),
+        accessClass: "native-path" as const,
+        accessRef: `/${String(index).padStart(4, "0")}/${"b".repeat(4090)}`,
+        recursive: false,
+      })),
+    });
+    const fullDraftSerializations = stringify.mock.calls.filter(
+      ([value]) =>
+        value !== null &&
+        typeof value === "object" &&
+        "selections" in value &&
+        "receipts" in value,
+    ).length;
+    stringify.mockRestore();
+
+    expect(result.selections).toHaveLength(868);
+    expect(fullDraftSerializations).toBeLessThanOrEqual(2);
+    const stored = JSON.parse(await readFile(path, "utf8")) as {
+      receipts: unknown[];
+    };
+    expect(stored.receipts.length).toBeGreaterThan(0);
+    expect(stored.receipts.length).toBeLessThan(512);
+    expect((await stat(path)).size).toBeLessThanOrEqual(
+      SOURCE_DRAFT_LIMITS.bytes,
+    );
+  });
+
+  it("is idempotent, rejects stale and cross-project mutations, and preserves catalog assets on removal", async () => {
+    const test = await fixture();
+    const projectId = test.app.project.id;
+    test.app.catalog.upsertAsset({
+      id: "existing",
+      uri: "file:///synthetic/existing.mp4",
+      name: "Existing",
+      mediaType: "video",
+      tags: [],
+      state: { locked: true },
+      metadata: {},
+    });
+    const request = {
+      projectId,
+      baseRevision: 0,
+      requestId: "20000000-0000-4000-8000-000000000001",
+      sources: nativeFiles(1, 1),
+    };
+    const added = test.app.sourceDraft.add(request);
+    expect(test.app.sourceDraft.add(request)).toEqual(added);
+    expect(() =>
+      test.app.sourceDraft.add({
+        ...request,
+        requestId: "20000000-0000-4000-8000-000000000002",
+      }),
+    ).toThrow(
+      expect.objectContaining<Partial<ApplicationError>>({
+        code: "import.draftStale",
+      }),
+    );
+    expect(() =>
+      test.app.sourceDraft.add({
+        ...request,
+        projectId: "another-project",
+        baseRevision: added.revision,
+        requestId: "20000000-0000-4000-8000-000000000003",
+      }),
+    ).toThrow(
+      expect.objectContaining<Partial<ApplicationError>>({
+        code: "request.forbidden",
+      }),
+    );
+
+    const removed = test.app.sourceDraft.remove({
+      projectId,
+      baseRevision: added.revision,
+      requestId: "20000000-0000-4000-8000-000000000004",
+      selectionId: added.selections[0]!.id,
+    });
+    expect(removed).toMatchObject({ revision: 2, selections: [] });
+    expect(test.app.catalog.getAsset("existing")).toMatchObject({
+      id: "existing",
+      state: { locked: true },
+    });
+  });
+
+  it("updates recursive policy without changing stable source identity", async () => {
+    const test = await fixture();
+    const projectId = test.app.project.id;
+    const added = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 0,
+      requestId: "30000000-0000-4000-8000-000000000001",
+      sources: [
+        {
+          kind: "folder",
+          displayName: "京都",
+          accessClass: "persistent-browser-handle",
+          accessRef: "browser-handle:kyoto",
+          recursive: true,
+        },
+      ],
+    });
+    const selectionId = added.selections[0]!.id;
+    const updated = test.app.sourceDraft.update({
+      projectId,
+      baseRevision: added.revision,
+      requestId: "30000000-0000-4000-8000-000000000002",
+      selectionId,
+      recursive: false,
+    });
+    expect(updated).toMatchObject({ revision: 2 });
+    expect(updated.selections[0]).toMatchObject({
+      id: selectionId,
+      recursive: false,
+      selectionRevision: 2,
+    });
+  });
+
+  it("rejects a saved folder whose recursive policy is not a boolean", async () => {
+    const test = await fixture();
+    const projectId = test.app.project.id;
+    const analysis = join(test.directory, "analysis");
+    await mkdir(analysis, { recursive: true });
+    await writeFile(
+      join(analysis, "source-draft.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projectId,
+        revision: 1,
+        selections: [
+          {
+            id: "invalid-recursive",
+            projectId,
+            kind: "folder",
+            displayName: "Synthetic",
+            accessClass: "native-path",
+            accessRef: "/synthetic",
+            recursive: "false",
+            selectionRevision: 1,
+          },
+        ],
+        receipts: [],
+      }),
+      { mode: 0o600 },
+    );
+
+    expect(() => test.app.sourceDraft.get()).toThrow(
+      expect.objectContaining<Partial<ApplicationError>>({
+        code: "request.invalid",
+      }),
+    );
+  });
+});

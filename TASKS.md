@@ -1,3 +1,58 @@
+## In progress — Multi-source import and common analysis
+
+Scope: [roadmap](docs/roadmap/multi-source-analysis.md),
+[implementation plan](docs/superpowers/plans/2026-10-25-multi-source-analysis.md),
+and [validation](docs/validation-multi-source-analysis.md).
+
+- [x] M0: define separate ImportBatch, AnalysisRun and JobAttempt state machines,
+      typed source/manifest/review contracts and dotted error identifiers.
+- [x] M0: add catalog schema v6, classify every durable table and filter selected
+      source/content evidence from Collect Media snapshots.
+- [x] M0: migrate immutable schema-v5 Named Version copies for inspect/restore
+      without changing historical payload hashes.
+- [x] M1: additive native/browser source draft, multi-folder picker, bounded
+      typed drop classification, IndexedDB handles, expired-file disclosure and
+      General/Expert views. The same project-owned application service backs
+      Desktop and HTTP; selection remains non-destructive and does not start an
+      import until the user explicitly continues. Native workstation picker
+      execution remains an M7 manual gate because this environment has no Rust
+      toolchain.
+- [x] M1 review hardening: fence delayed picker results, reload stale revisions,
+      keep upload cancellation reachable, prevent shallow folders entering the
+      recursive compatibility importer, and transactionally batch/release
+      browser access records with real Chromium IndexedDB reopen coverage. Keep
+      draft-read and native-listener lifecycles separate; reconcile ambiguous
+      add/remove/update results with the same idempotency receipt and an
+      authoritative draft before releasing browser access.
+- [x] M1 UI/UX hardening: batch browser permission reads, page large drafts at
+      100 source cards without changing the authoritative selection, keep
+      technical revision/path controls behind Expert or progressive disclosure,
+      expose typed rejection reasons, and preserve 44px coarse-pointer targets,
+      CJK wrapping, keyboard navigation, narrow-screen reflow and stale-project
+      interaction fencing.
+- [x] M0/M1 independent-review closure: rebuild every retained portable v6 JSON
+      payload from explicit semantic columns, scrub logical/relative locators,
+      verify a pinned catalog produced by the real schema-v5 code, align the
+      documented 10,000-source boundary with a 4 MiB compact draft, index
+      IndexedDB by project, recover blocked opens, bound permission checks to 16,
+      limit persistent checks to the visible 100-card page, and roll failed
+      recursion controls back to authoritative state.
+- [x] M0/M1 final blocker closure: preserve typed manifest/review/failure data and
+      only bounded numeric/boolean structures from uncontracted analysis evidence;
+      verify a full hash-pinned v5 Named Version package, linear 4 MiB receipt
+      pruning, keyed handle reads, structural SQLite metadata and atomic ambiguity
+      rejection beyond 32 indistinguishable same-name browser handles. Independent
+      final review found no remaining Critical, Important or Minor issue; 3,904
+      Vitest and 234 Playwright tests pass on the corrected code head.
+- [ ] M2: streaming discovery, membership, private durable staging, content
+      identity and Expected/Verified Manifests.
+- [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,
+      late-result fencing and shared Desktop/HTTP/CLI entry points.
+- [ ] M4: versioned time/clock evidence and GPX track assignment.
+- [ ] M5: deterministic frame samples and sample-only visual providers.
+- [ ] M6: immutable review decisions and explicit StoryGraph adoption.
+- [ ] M7: supported OS/browser, external-drive, stress and workstation evidence.
+
 ## 0.4.0 release — review remediation and integration
 
 - [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.

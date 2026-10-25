@@ -35,6 +35,7 @@ import {
   CATALOG_SCHEMA_VERSION,
   CATALOG_SNAPSHOT_MAX_BYTES,
   inspectCatalogSnapshot,
+  upgradeCatalogSnapshot,
 } from "@openfilm/catalog";
 import { hashFile, localPath, referenceFor } from "@openfilm/media";
 import { managedSourceUri } from "./path-safety.js";
@@ -356,9 +357,16 @@ function referencedAssetIds(project: OpenFilmProject): Set<string> {
   return ids;
 }
 
-function snapshotAssets(image: Buffer): Map<string, MediaAsset> {
+function snapshotAssets(
+  image: Buffer,
+  schemaVersion = CATALOG_SCHEMA_VERSION,
+): Map<string, MediaAsset> {
+  const readable =
+    schemaVersion === CATALOG_SCHEMA_VERSION
+      ? image
+      : upgradeCatalogSnapshot(image, schemaVersion);
   return new Map(
-    inspectCatalogSnapshot(image, CATALOG_SCHEMA_VERSION).assets.map(
+    inspectCatalogSnapshot(readable, CATALOG_SCHEMA_VERSION).assets.map(
       (asset) => [asset.id, asset],
     ),
   );
@@ -742,7 +750,10 @@ export class ProjectVersionService {
     assets: Map<string, MediaAsset>;
     changedAssets: MediaAsset[];
   } {
-    const assets = snapshotAssets(target.catalog);
+    const assets = snapshotAssets(
+      target.catalog,
+      target.record.catalogSchemaVersion,
+    );
     const changedAssets: MediaAsset[] = [];
     const libraryIds = new Set<string>();
     const managedRoot = join(this.app.directory, "sources");
@@ -795,8 +806,9 @@ export class ProjectVersionService {
   private async referencesFor(
     project: OpenFilmProject,
     catalog: Buffer,
+    schemaVersion = CATALOG_SCHEMA_VERSION,
   ): Promise<ProjectVersionSourceReference[]> {
-    const assets = snapshotAssets(catalog);
+    const assets = snapshotAssets(catalog, schemaVersion);
     const ids = [...referencedAssetIds(project)].sort();
     if (ids.length > PROJECT_VERSION_LIMITS.sourceReferences)
       fail(
@@ -1425,6 +1437,7 @@ export class ProjectVersionService {
           );
         },
         () => this.assertRestoreBaseline(before, markStale),
+        target.record.catalogSchemaVersion,
       );
       this.app.acceptRestoredProject(rebasedTarget.project);
       this.app.catalog.withProjectWrite(() => {
@@ -1544,6 +1557,8 @@ export class ProjectVersionService {
           join(this.app.directory, "project.json"),
           JSON.parse(checkpoint.manifest.toString("utf8")),
         ),
+      undefined,
+      checkpoint.record.catalogSchemaVersion,
     );
     this.app.acceptRestoredProject(checkpoint.project);
     this.removeJournal();

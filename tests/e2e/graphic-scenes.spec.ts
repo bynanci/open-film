@@ -4,7 +4,12 @@ import { hashFile, runProcess } from "@openfilm/media";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { initialLocale, navigate, openAdvancedTools } from "./ui-helpers.js";
+import {
+  chooseImportFolder,
+  initialLocale,
+  navigate,
+  openAdvancedTools,
+} from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
 const api = process.env.OPENFILM_E2E_API ?? "http://127.0.0.1:4310/api";
 const compositionId = "graphic-film";
@@ -1299,9 +1304,7 @@ test("authors local PhotoDepth layers, previews shared frames, and preserves und
     .getByRole("button", { name: "Import local photo layers", exact: true })
     .click();
   await expect(page.locator(".import-panel")).toBeVisible();
-  await page.locator(".import-actions .primary").click();
-  await page.locator("input[name='media-folder']").fill(dependencies);
-  await page.locator(".import-folder-form .primary").click();
+  await chooseImportFolder(page, dependencies);
   await expect(
     controls.getByLabel("Foreground alpha mask (PNG)"),
   ).toContainText("synthetic-depth-mask.png");
