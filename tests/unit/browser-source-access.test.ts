@@ -167,7 +167,7 @@ describe("browser source access registry", () => {
     expect(nameReads).toBeLessThanOrEqual(1_000);
   });
 
-  it("bounds identity comparisons for 1,000 distinct same-name handles", async () => {
+  it("bounds identity comparisons for a 1,000-handle same-name batch", async () => {
     const backend = new MemoryBackend();
     let probes = 0;
     const handles = Array.from({ length: 1_000 }, (_, index) => {
@@ -187,21 +187,25 @@ describe("browser source access registry", () => {
     });
     const registry = new BrowserSourceAccessRegistry(backend);
 
-    await registry.rememberHandles("project-a", handles);
+    await expect(
+      registry.rememberHandles("project-a", handles),
+    ).rejects.toThrow(/ambiguous/u);
 
-    expect(backend.records).toHaveLength(1_000);
-    expect(probes).toBeLessThanOrEqual(64_000);
+    expect(backend.records).toHaveLength(0);
+    expect(backend.putBatches).toBe(0);
+    expect(probes).toBeLessThanOrEqual(1_100);
   });
 
   it("rejects an ambiguous repeat instead of duplicating an older same-name handle", async () => {
     const backend = new MemoryBackend();
+    backend.records = Array.from({ length: 33 }, (_, index) => ({
+      key: `browser-handle:same-name-${index}`,
+      projectId: "project-a",
+      kind: "directory" as const,
+      name: "Shared camera folder",
+      handle: handle(`same-name-${index}`, "Shared camera folder"),
+    }));
     const registry = new BrowserSourceAccessRegistry(backend);
-    await registry.rememberHandles(
-      "project-a",
-      Array.from({ length: 33 }, (_, index) =>
-        handle(`same-name-${index}`, "Shared camera folder"),
-      ),
-    );
 
     await expect(
       registry.rememberHandle(
@@ -211,7 +215,22 @@ describe("browser source access registry", () => {
     ).rejects.toThrow(/ambiguous/u);
 
     expect(backend.records).toHaveLength(33);
-    expect(backend.putBatches).toBe(1);
+    expect(backend.putBatches).toBe(0);
+  });
+
+  it("rejects a same-call bucket before an oldest-handle repeat can duplicate", async () => {
+    const backend = new MemoryBackend();
+    const registry = new BrowserSourceAccessRegistry(backend);
+    const handles = Array.from({ length: 33 }, (_, index) =>
+      handle(`same-call-${index}`, "Shared camera folder"),
+    );
+
+    await expect(
+      registry.rememberHandles("project-a", [...handles, handles[0]!]),
+    ).rejects.toThrow(/ambiguous/u);
+
+    expect(backend.records).toHaveLength(0);
+    expect(backend.putBatches).toBe(0);
   });
 
   it("keeps ordinary File objects session-only and clears only their owning project", () => {

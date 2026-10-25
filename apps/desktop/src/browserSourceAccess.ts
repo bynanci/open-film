@@ -196,16 +196,11 @@ export class BrowserSourceAccessRegistry {
 
     const known = await this.backend.list(projectId);
     const candidates = new Map<string, StoredBrowserHandle[]>();
-    const persistedCandidateCounts = new Map<string, number>();
     for (const record of known) {
       const key = `${record.kind}:${record.name.length}:${record.name}`;
       const matches = candidates.get(key);
       if (matches) matches.push(record);
       else candidates.set(key, [record]);
-      persistedCandidateCounts.set(
-        key,
-        (persistedCandidateCounts.get(key) ?? 0) + 1,
-      );
     }
     const created: StoredBrowserHandle[] = [];
     const keys: string[] = [];
@@ -235,10 +230,7 @@ export class BrowserSourceAccessRegistry {
         keys.push(matching.key);
         continue;
       }
-      if (
-        (persistedCandidateCounts.get(candidateKey) ?? 0) >
-        MAX_IDENTITY_COMPARISONS
-      )
+      if (matches.length >= MAX_IDENTITY_COMPARISONS)
         throw new Error(
           "This source is ambiguous because too many saved sources share its name. Remove an existing same-name source before adding it again.",
         );

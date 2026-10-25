@@ -313,18 +313,22 @@ describe("consistent project catalog snapshots", () => {
           "accepted",
           JSON.stringify({
             payload: {
-              label: "safe moment",
               confidence: 0.9,
+              range: { start: 0.25, end: 0.75 },
               path: `/Users/alice/${privateSemanticSentinel}.mov`,
               relative_path: `../../${privateSemanticSentinel}.mov`,
               headers: [`Authorization: Bearer ${privateSemanticSentinel}`],
               opaque: { value: privateSemanticSentinel },
-              value: `/private/${privateSemanticSentinel}.mov`,
+              value: privateSemanticSentinel,
               notes: [
-                "safe semantic note",
+                "Failed to read /Users/alice/private.mov",
                 `Bearer ${privateSemanticSentinel}`,
                 `C:\\private\\${privateSemanticSentinel}.mov`,
               ],
+              description:
+                "Download from https://private.example/signed?credential=hidden",
+              label: "Scene: Arrival",
+              axis: "mood:warm",
             },
             secret: privateSemanticSentinel,
           }),
@@ -512,9 +516,8 @@ describe("consistent project catalog snapshots", () => {
       expect(dataFor("analysis_results", "id='result-selected'")).toMatchObject(
         {
           payload: {
-            label: "safe moment",
             confidence: 0.9,
-            notes: ["safe semantic note"],
+            range: { start: 0.25, end: 0.75 },
           },
         },
       );

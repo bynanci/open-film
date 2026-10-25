@@ -372,134 +372,74 @@ function optionalPortableNumber(
   return value;
 }
 
-function operationalEvidenceKey(key: string): boolean {
-  const normalized = key.replaceAll(/[-_]/gu, "").toLowerCase();
-  return (
-    normalized === "accessref" ||
-    normalized === "authorization" ||
-    normalized === "bearer" ||
-    normalized === "consentreceipt" ||
-    normalized.endsWith("credential") ||
-    normalized.endsWith("credentials") ||
-    normalized.endsWith("handle") ||
-    normalized.endsWith("localpath") ||
-    normalized.endsWith("nativepath") ||
-    normalized.endsWith("absolutepath") ||
-    normalized.endsWith("sourcepath") ||
-    normalized.endsWith("stagingpath") ||
-    normalized.endsWith("filepath") ||
-    normalized.endsWith("password") ||
-    normalized.endsWith("secret") ||
-    normalized.endsWith("token") ||
-    normalized.endsWith("apikey") ||
-    normalized.endsWith("uri") ||
-    normalized.endsWith("url")
-  );
-}
-
 /**
  * Analysis evidence is intentionally a closed portable vocabulary. Later
  * milestones must add new semantic fields here together with their typed
  * contract and redaction regression instead of copying plugin-shaped JSON.
  */
-const PORTABLE_EVIDENCE_FIELDS = new Set([
-  "algorithmVersion",
-  "assetId",
-  "assetIds",
-  "axis",
-  "bindingId",
-  "bindingIds",
-  "capturedAt",
-  "category",
-  "code",
-  "confidence",
-  "contentHash",
-  "contentId",
+const PORTABLE_EVIDENCE_CONTAINERS = new Set([
   "context",
-  "contextRevision",
   "coordinates",
-  "createdAt",
   "dependencies",
-  "description",
+  "evidence",
+  "members",
+  "observations",
+  "payload",
+  "range",
+  "ranges",
+  "sourceRange",
+  "sourceRanges",
+  "suggestions",
+  "timeRange",
+]);
+const PORTABLE_EVIDENCE_NUMBERS = new Set([
+  "confidence",
   "distance",
   "duration",
   "elevation",
   "end",
-  "endTime",
-  "evidence",
-  "evidenceKind",
   "gap",
   "height",
-  "id",
   "index",
-  "kind",
-  "label",
   "latitude",
   "longitude",
-  "manifestId",
-  "memberIds",
-  "members",
-  "modelVersion",
-  "name",
-  "notes",
-  "observationId",
-  "observations",
-  "occurrenceId",
-  "occurrenceIds",
-  "payload",
-  "pointId",
-  "pointIds",
   "position",
-  "promptVersion",
-  "providerId",
-  "range",
-  "ranges",
-  "reason",
-  "resultId",
-  "resultIds",
-  "reviewState",
-  "reviewStatus",
-  "runId",
-  "sampleId",
-  "sampleIds",
   "score",
-  "scoreMeaning",
-  "segmentId",
-  "sourceRange",
-  "sourceRanges",
-  "sourceTime",
   "start",
-  "startTime",
-  "status",
-  "suggestions",
-  "taxonomy",
-  "taxonomyVersion",
-  "timeRange",
-  "title",
-  "trackId",
-  "type",
   "uncertainty",
-  "value",
   "width",
 ]);
+const PORTABLE_EVIDENCE_BOOLEANS = new Set([
+  "ambiguous",
+  "manualReview",
+  "needsReview",
+  "timezoneUncertain",
+]);
 
-function privatePortableEvidenceText(value: string): boolean {
-  const trimmed = value.trim();
-  const normalized = trimmed.replaceAll("\\", "/");
-  return (
-    trimmed.startsWith("/") ||
-    trimmed.startsWith("\\") ||
-    trimmed.startsWith("~") ||
-    /^[a-z][a-z0-9+.-]*:/iu.test(trimmed) ||
-    normalized.split("/").includes("..") ||
-    /\bauthorization\s*:/iu.test(value) ||
-    /\bbearer\s+[a-z0-9._~+/=-]+/iu.test(value) ||
-    /\b(?:api[ _-]?key|password|secret|token)\s*[:=]/iu.test(value) ||
-    [...value].some((character) => {
-      const point = character.codePointAt(0)!;
-      return point === 0 || point === 127;
-    })
-  );
+function portableEvidenceNumber(field: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new Error(`Portable analysis evidence ${field} is invalid.`);
+  if (
+    ((field === "confidence" || field === "score") &&
+      (value < 0 || value > 1)) ||
+    (field === "latitude" && (value < -90 || value > 90)) ||
+    (field === "longitude" && (value < -180 || value > 180)) ||
+    ([
+      "distance",
+      "duration",
+      "end",
+      "gap",
+      "height",
+      "index",
+      "position",
+      "start",
+      "uncertainty",
+      "width",
+    ].includes(field) &&
+      value < 0)
+  )
+    throw new Error(`Portable analysis evidence ${field} is out of range.`);
+  return value;
 }
 
 function sanitizePortableEvidence(
@@ -508,12 +448,8 @@ function sanitizePortableEvidence(
 ): unknown | undefined {
   if (depth > 16)
     throw new Error("Portable analysis evidence is nested too deeply.");
-  if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    if (value.length > 1024 * 1024)
-      throw new Error("Portable analysis evidence text is too large.");
-    return privatePortableEvidenceText(value) ? undefined : value;
-  }
+  if (value === null || typeof value === "string") return undefined;
+  if (typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value))
       throw new Error(
@@ -547,13 +483,25 @@ function sanitizePortableEvidence(
       hasControlCharacters(field) ||
       field === "__proto__" ||
       field === "constructor" ||
-      field === "prototype" ||
-      operationalEvidenceKey(field) ||
-      !PORTABLE_EVIDENCE_FIELDS.has(field)
+      field === "prototype"
     )
       continue;
-    const sanitized = sanitizePortableEvidence(item, depth + 1);
-    if (sanitized !== undefined) result[field] = sanitized;
+    if (PORTABLE_EVIDENCE_NUMBERS.has(field)) {
+      result[field] = portableEvidenceNumber(field, item);
+      continue;
+    }
+    if (PORTABLE_EVIDENCE_BOOLEANS.has(field)) {
+      if (typeof item !== "boolean")
+        throw new Error(`Portable analysis evidence ${field} is invalid.`);
+      result[field] = item;
+      continue;
+    }
+    if (PORTABLE_EVIDENCE_CONTAINERS.has(field)) {
+      if (item === null || typeof item !== "object")
+        throw new Error(`Portable analysis evidence ${field} is invalid.`);
+      const sanitized = sanitizePortableEvidence(item, depth + 1);
+      if (sanitized !== undefined) result[field] = sanitized;
+    }
   }
   return result;
 }
