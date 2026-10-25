@@ -254,14 +254,31 @@ export class SourceDraftService {
       if (!info.isFile() || info.isSymbolicLink())
         fail("request.invalid", "Source draft storage is unsafe.");
     }
-    let serialized = `${JSON.stringify(value)}\n`;
-    while (
-      Buffer.byteLength(serialized) > SOURCE_DRAFT_LIMITS.bytes &&
-      value.receipts.length > 1
-    ) {
-      value.receipts.shift();
-      serialized = `${JSON.stringify(value)}\n`;
+    const { receipts, ...draft } = value;
+    const body = JSON.stringify(draft);
+    const prefix = `${body.slice(0, -1)},"receipts":[`;
+    const suffix = "]}\n";
+    const encodedReceipts = receipts.map((receipt) => JSON.stringify(receipt));
+    let retainedStart = encodedReceipts.length;
+    let bytes = Buffer.byteLength(prefix) + Buffer.byteLength(suffix);
+    for (let index = encodedReceipts.length - 1; index >= 0; index--) {
+      const added =
+        Buffer.byteLength(encodedReceipts[index]!) +
+        (retainedStart === encodedReceipts.length ? 0 : 1);
+      if (bytes + added > SOURCE_DRAFT_LIMITS.bytes) break;
+      bytes += added;
+      retainedStart = index;
     }
+    if (receipts.length && retainedStart === receipts.length)
+      fail(
+        "request.tooLarge",
+        "The source draft exceeds its storage limit.",
+        413,
+      );
+    value.receipts = receipts.slice(retainedStart);
+    const serialized = `${prefix}${encodedReceipts
+      .slice(retainedStart)
+      .join(",")}${suffix}`;
     if (Buffer.byteLength(serialized) > SOURCE_DRAFT_LIMITS.bytes)
       fail(
         "request.tooLarge",

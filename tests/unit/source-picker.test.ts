@@ -21,6 +21,12 @@ class MemoryBackend implements BrowserHandleBackend {
   async putMany(records: readonly StoredBrowserHandle[]) {
     this.records.push(...records);
   }
+  async getMany(projectId: string, keys: readonly string[]) {
+    const requested = new Set(keys);
+    return this.records.filter(
+      (record) => record.projectId === projectId && requested.has(record.key),
+    );
+  }
   async removeMany(keys: readonly string[]) {
     const removed = new Set(keys);
     this.records = this.records.filter((record) => !removed.has(record.key));

@@ -14,12 +14,24 @@ afterEach(() => {
 class MemoryBackend implements BrowserHandleBackend {
   records: StoredBrowserHandle[] = [];
   listCalls = 0;
+  getManyCalls = 0;
+  recordsReturned = 0;
   putBatches = 0;
   removeBatches = 0;
 
   async list(projectId: string) {
     this.listCalls++;
     return this.records.filter((record) => record.projectId === projectId);
+  }
+
+  async getMany(projectId: string, keys: readonly string[]) {
+    this.getManyCalls++;
+    const requested = new Set(keys);
+    const records = this.records.filter(
+      (record) => record.projectId === projectId && requested.has(record.key),
+    );
+    this.recordsReturned += records.length;
+    return records;
   }
 
   async putMany(records: readonly StoredBrowserHandle[]) {
@@ -108,12 +120,15 @@ describe("browser source access registry", () => {
     expect(backend.records).toHaveLength(3);
 
     const listCalls = backend.listCalls;
+    const getManyCalls = backend.getManyCalls;
     await registry.removeHandles("project-a", [
       "browser-handle:batch-1",
       "browser-handle:batch-2",
       "browser-handle:not-owned",
     ]);
-    expect(backend.listCalls).toBe(listCalls + 1);
+    expect(backend.listCalls).toBe(listCalls);
+    expect(backend.getManyCalls).toBe(getManyCalls + 1);
+    expect(backend.recordsReturned).toBe(2);
     expect(backend.removeBatches).toBe(1);
     expect(backend.records.map((record) => record.key)).toEqual([
       "browser-handle:batch-3",
@@ -150,6 +165,32 @@ describe("browser source access registry", () => {
     );
 
     expect(nameReads).toBeLessThanOrEqual(1_000);
+  });
+
+  it("bounds identity comparisons for 1,000 distinct same-name handles", async () => {
+    const backend = new MemoryBackend();
+    let probes = 0;
+    const handles = Array.from({ length: 1_000 }, (_, index) => {
+      const value: BrowserHandleLike & { identity: number } = {
+        kind: "directory",
+        name: "Shared camera folder",
+        identity: index,
+      };
+      Object.defineProperty(value, "isSameEntry", {
+        get() {
+          probes++;
+          return async (other: BrowserHandleLike) =>
+            (other as { identity?: number }).identity === index;
+        },
+      });
+      return value;
+    });
+    const registry = new BrowserSourceAccessRegistry(backend);
+
+    await registry.rememberHandles("project-a", handles);
+
+    expect(backend.records).toHaveLength(1_000);
+    expect(probes).toBeLessThanOrEqual(64_000);
   });
 
   it("keeps ordinary File objects session-only and clears only their owning project", () => {
@@ -260,7 +301,9 @@ describe("browser source access registry", () => {
       "needs-permission",
       "needs-reselection",
     ]);
-    expect(backend.listCalls).toBe(1);
+    expect(backend.listCalls).toBe(0);
+    expect(backend.getManyCalls).toBe(1);
+    expect(backend.recordsReturned).toBe(2);
     expect(granted).toHaveBeenCalledTimes(1);
     expect(prompt).toHaveBeenCalledTimes(1);
   });
@@ -320,6 +363,36 @@ describe("browser source access registry", () => {
     expect(duplicatePermission).toHaveBeenCalledTimes(1);
     expect(maximumActive).toBeGreaterThan(1);
     expect(maximumActive).toBeLessThanOrEqual(16);
+  });
+
+  it("loads only requested persistent records for a visible page", async () => {
+    const backend = new MemoryBackend();
+    backend.records = Array.from({ length: 10_000 }, (_, index) => ({
+      key: `browser-handle:${index}`,
+      projectId: "project-a",
+      kind: "directory" as const,
+      name: `Source ${index}`,
+      handle: {
+        kind: "directory" as const,
+        name: `Source ${index}`,
+        queryPermission: vi.fn(async () => "granted" as PermissionState),
+      },
+    }));
+    const registry = new BrowserSourceAccessRegistry(backend);
+
+    await expect(
+      registry.availabilities(
+        "project-a",
+        Array.from({ length: 100 }, (_, index) => ({
+          accessClass: "persistent-browser-handle" as const,
+          accessRef: `browser-handle:${5_000 + index}`,
+        })),
+      ),
+    ).resolves.toEqual(Array.from({ length: 100 }, () => "available"));
+
+    expect(backend.listCalls).toBe(0);
+    expect(backend.getManyCalls).toBe(1);
+    expect(backend.recordsReturned).toBe(100);
   });
 
   it("distinguishes expired file objects, missing handles and permission prompts", async () => {
@@ -423,10 +496,19 @@ describe("browser source access registry", () => {
     const database = {
       close: vi.fn(),
       transaction: vi.fn(() => transaction),
+      onversionchange: undefined as undefined | (() => void),
     };
     opens[1]!.result = database;
     opens[1]!.onsuccess!();
 
     await expect(second).resolves.toEqual([]);
+    expect(database.onversionchange).toBeTypeOf("function");
+    database.onversionchange!();
+    expect(database.close).toHaveBeenCalledTimes(1);
+
+    const third = backend.list("project-a");
+    expect(open).toHaveBeenCalledTimes(3);
+    opens[2]!.onblocked!();
+    await expect(third).rejects.toThrow("blocked");
   });
 });

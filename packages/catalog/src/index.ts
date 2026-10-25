@@ -197,7 +197,15 @@ function canonicalSchemaSql(value: unknown): unknown {
       result += character;
       continue;
     }
-    if (/\s/u.test(character)) {
+    const point = character.codePointAt(0)!;
+    if (
+      point === 0x09 ||
+      point === 0x0a ||
+      point === 0x0b ||
+      point === 0x0c ||
+      point === 0x0d ||
+      point === 0x20
+    ) {
       whitespace = true;
       continue;
     }
@@ -211,13 +219,40 @@ function canonicalSchemaSql(value: unknown): unknown {
 function catalogSchema(
   database: DatabaseSync,
   namespace: "main" | "version_snapshot" = "main",
-): unknown[] {
-  return database
+): unknown {
+  const objects = database
     .prepare(
       `SELECT type,name,tbl_name,sql FROM ${namespace}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
     )
     .all()
-    .map((row) => ({ ...row, sql: canonicalSchemaSql(row.sql) }));
+    .map((row) => ({
+      type: String(row.type),
+      name: String(row.name),
+      tbl_name: String(row.tbl_name),
+      sql: canonicalSchemaSql(row.sql),
+    }));
+  const quoted = (value: string) => `"${value.replaceAll('"', '""')}"`;
+  const pragma = (name: string, value: string) =>
+    database.prepare(`PRAGMA ${namespace}.${name}(${quoted(value)})`).all();
+  const tables = objects
+    .filter((row) => row.type === "table")
+    .map((row) => String(row.name))
+    .sort()
+    .map((table) => ({
+      table,
+      columns: pragma("table_xinfo", table),
+      foreignKeys: pragma("foreign_key_list", table),
+      indexes: pragma("index_list", table)
+        .map((index) => ({
+          name: String(index.name),
+          unique: index.unique,
+          origin: index.origin,
+          partial: index.partial,
+          columns: pragma("index_xinfo", String(index.name)),
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    }));
+  return { objects, tables };
 }
 
 function logicalCatalogRevision(database: DatabaseSync): string {

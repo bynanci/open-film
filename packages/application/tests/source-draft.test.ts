@@ -1,7 +1,14 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicationError, SOURCE_DRAFT_LIMITS } from "@openfilm/core";
 import { OpenFilmApplication } from "../src/index.js";
 
@@ -93,6 +100,73 @@ describe("project-owned source draft", () => {
     ).toBeLessThanOrEqual(SOURCE_DRAFT_LIMITS.bytes);
     expect((await test.reopen()).sourceDraft.get().selections).toHaveLength(
       10_000,
+    );
+  });
+
+  it("prunes a near-limit 512-receipt draft without repeatedly serializing its selections", async () => {
+    const test = await fixture("Receipt pruning boundary");
+    const projectId = test.app.project.id;
+    const analysis = join(test.directory, "analysis");
+    await mkdir(analysis, { recursive: true });
+    const receipts = Array.from({ length: 512 }, (_, index) => ({
+      requestId: `${String(index).padStart(46, "0")}${index === 511 ? "x".repeat(100) : ""}`,
+      fingerprint: "a".repeat(64),
+    }));
+    const selections = Array.from({ length: 853 }, (_, index) => ({
+      id: String(index).padStart(36, "0"),
+      projectId,
+      kind: "file" as const,
+      displayName: "n".repeat(512),
+      accessClass: "native-path" as const,
+      accessRef: `/${"a".repeat(4095)}`,
+      recursive: false,
+      selectionRevision: 1,
+    }));
+    const path = join(analysis, "source-draft.json");
+    await writeFile(
+      path,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        projectId,
+        revision: 1,
+        selections,
+        receipts,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    expect((await stat(path)).size).toBeLessThan(SOURCE_DRAFT_LIMITS.bytes);
+    const stringify = vi.spyOn(JSON, "stringify");
+
+    const result = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 1,
+      requestId: "90000000-0000-4000-8000-000000000001",
+      sources: Array.from({ length: 15 }, (_, index) => ({
+        kind: "file" as const,
+        displayName: "m".repeat(512),
+        accessClass: "native-path" as const,
+        accessRef: `/${String(index).padStart(4, "0")}/${"b".repeat(4090)}`,
+        recursive: false,
+      })),
+    });
+    const fullDraftSerializations = stringify.mock.calls.filter(
+      ([value]) =>
+        value !== null &&
+        typeof value === "object" &&
+        "selections" in value &&
+        "receipts" in value,
+    ).length;
+    stringify.mockRestore();
+
+    expect(result.selections).toHaveLength(868);
+    expect(fullDraftSerializations).toBeLessThanOrEqual(2);
+    const stored = JSON.parse(await readFile(path, "utf8")) as {
+      receipts: unknown[];
+    };
+    expect(stored.receipts.length).toBeGreaterThan(0);
+    expect(stored.receipts.length).toBeLessThan(512);
+    expect((await stat(path)).size).toBeLessThanOrEqual(
+      SOURCE_DRAFT_LIMITS.bytes,
     );
   });
 

@@ -22,6 +22,10 @@ export interface StoredBrowserHandle {
 
 export interface BrowserHandleBackend {
   list(projectId: string): Promise<StoredBrowserHandle[]>;
+  getMany(
+    projectId: string,
+    keys: readonly string[],
+  ): Promise<StoredBrowserHandle[]>;
   putMany(records: readonly StoredBrowserHandle[]): Promise<void>;
   removeMany(keys: readonly string[]): Promise<void>;
 }
@@ -31,6 +35,7 @@ const STORE_NAME = "handles";
 const PROJECT_INDEX = "projectId";
 const DATABASE_VERSION = 2;
 const MAX_PERMISSION_CHECKS = 16;
+const MAX_IDENTITY_COMPARISONS = 32;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -112,6 +117,28 @@ export class IndexedDbBrowserHandleBackend implements BrowserHandleBackend {
     return values;
   }
 
+  async getMany(
+    projectId: string,
+    keys: readonly string[],
+  ): Promise<StoredBrowserHandle[]> {
+    const uniqueKeys = [...new Set(keys)];
+    if (!uniqueKeys.length) return [];
+    const database = await this.open();
+    const transaction = database.transaction(STORE_NAME, "readonly");
+    const completed = transactionDone(transaction);
+    const store = transaction.objectStore(STORE_NAME);
+    const values = await Promise.all(
+      uniqueKeys.map((key) =>
+        requestResult<StoredBrowserHandle | undefined>(store.get(key)),
+      ),
+    );
+    await completed;
+    return values.filter(
+      (record): record is StoredBrowserHandle =>
+        record !== undefined && record.projectId === projectId,
+    );
+  }
+
   async putMany(records: readonly StoredBrowserHandle[]): Promise<void> {
     if (!records.length) return;
     const database = await this.open();
@@ -180,7 +207,13 @@ export class BrowserSourceAccessRegistry {
     for (const handle of handles) {
       let matching: StoredBrowserHandle | undefined;
       const candidateKey = `${handle.kind}:${handle.name.length}:${handle.name}`;
-      for (const record of candidates.get(candidateKey) ?? []) {
+      const matches = candidates.get(candidateKey) ?? [];
+      const firstCandidate = Math.max(
+        0,
+        matches.length - MAX_IDENTITY_COMPARISONS,
+      );
+      for (let index = matches.length - 1; index >= firstCandidate; index--) {
+        const record = matches[index]!;
         try {
           if (
             (await handle.isSameEntry?.(record.handle)) ||
@@ -205,8 +238,8 @@ export class BrowserSourceAccessRegistry {
         handle,
       };
       known.push(record);
-      const matches = candidates.get(candidateKey);
-      if (matches) matches.push(record);
+      const existing = candidates.get(candidateKey);
+      if (existing) existing.push(record);
       else candidates.set(candidateKey, [record]);
       created.push(record);
       keys.push(record.key);
@@ -244,15 +277,6 @@ export class BrowserSourceAccessRegistry {
     projectId: string,
     sources: readonly Pick<SourceSelection, "accessClass" | "accessRef">[],
   ): Promise<BrowserSourceAvailability[]> {
-    const needsPersistentLookup = sources.some(
-      (source) => source.accessClass === "persistent-browser-handle",
-    );
-    const persistent = new Map(
-      (needsPersistentLookup ? await this.backend.list(projectId) : []).map(
-        (record) => [record.key, record],
-      ),
-    );
-    const permissionResults = new Map<string, BrowserSourceAvailability>();
     const pendingRefs = [
       ...new Set(
         sources
@@ -262,6 +286,13 @@ export class BrowserSourceAccessRegistry {
           .map((source) => source.accessRef),
       ),
     ];
+    const persistent = new Map(
+      (await this.backend.getMany(projectId, pendingRefs)).map((record) => [
+        record.key,
+        record,
+      ]),
+    );
+    const permissionResults = new Map<string, BrowserSourceAvailability>();
     let nextRef = 0;
     const worker = async () => {
       while (nextRef < pendingRefs.length) {
@@ -316,9 +347,9 @@ export class BrowserSourceAccessRegistry {
   ): Promise<void> {
     const candidates = new Set(keys);
     if (!projectId || !candidates.size) return;
-    const owned = (await this.backend.list(projectId))
-      .filter((record) => candidates.has(record.key))
-      .map((record) => record.key);
+    const owned = (await this.backend.getMany(projectId, [...candidates])).map(
+      (record) => record.key,
+    );
     await this.backend.removeMany(owned);
   }
 }

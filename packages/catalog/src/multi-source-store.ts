@@ -268,8 +268,7 @@ function portableRelativePath(value: unknown, fallback: unknown): string {
   const candidate = String(value ?? "").replaceAll("\\", "/");
   const locator =
     candidate.startsWith("/") ||
-    candidate === "~" ||
-    candidate.startsWith("~/") ||
+    candidate.startsWith("~") ||
     /^[a-z][a-z0-9+.-]*:/iu.test(candidate) ||
     candidate.includes("://");
   const parts = candidate
@@ -305,11 +304,211 @@ function requiredSqlValue(
   return value as string | number | bigint | Uint8Array | null;
 }
 
+function portableObject(
+  value: unknown,
+  label: string,
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(value));
+  } catch {
+    throw new Error(`Portable ${label} data is not valid JSON.`);
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(parsed))
+  )
+    throw new Error(`Portable ${label} data must be an object.`);
+  return parsed as Record<string, unknown>;
+}
+
+function optionalPortableText(
+  data: Record<string, unknown>,
+  key: string,
+  maximum = 16_384,
+): string | undefined {
+  const value = data[key];
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "string" ||
+    !value ||
+    [...value].length > maximum ||
+    hasControlCharacters(value)
+  )
+    throw new Error(`Portable semantic field ${key} is invalid.`);
+  return value;
+}
+
+function optionalPortableStringArray(
+  data: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
+  const value = data[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 50_000)
+    throw new Error(`Portable semantic field ${key} is invalid.`);
+  return value.map((item) => {
+    if (
+      typeof item !== "string" ||
+      !item ||
+      item.length > 16_384 ||
+      hasControlCharacters(item)
+    )
+      throw new Error(`Portable semantic field ${key} is invalid.`);
+    return item;
+  });
+}
+
+function optionalPortableNumber(
+  data: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = data[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    throw new Error(`Portable semantic field ${key} is invalid.`);
+  return value;
+}
+
+function operationalEvidenceKey(key: string): boolean {
+  const normalized = key.replaceAll(/[-_]/gu, "").toLowerCase();
+  return (
+    normalized === "accessref" ||
+    normalized === "authorization" ||
+    normalized === "bearer" ||
+    normalized === "consentreceipt" ||
+    normalized.endsWith("credential") ||
+    normalized.endsWith("credentials") ||
+    normalized.endsWith("handle") ||
+    normalized.endsWith("localpath") ||
+    normalized.endsWith("nativepath") ||
+    normalized.endsWith("absolutepath") ||
+    normalized.endsWith("sourcepath") ||
+    normalized.endsWith("stagingpath") ||
+    normalized.endsWith("filepath") ||
+    normalized.endsWith("password") ||
+    normalized.endsWith("secret") ||
+    normalized.endsWith("token") ||
+    normalized.endsWith("apikey") ||
+    normalized.endsWith("uri") ||
+    normalized.endsWith("url")
+  );
+}
+
+function sanitizePortableEvidence(
+  value: unknown,
+  key = "evidence",
+  depth = 0,
+): unknown {
+  if (depth > 16)
+    throw new Error("Portable analysis evidence is nested too deeply.");
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.length > 1024 * 1024)
+      throw new Error("Portable analysis evidence text is too large.");
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      throw new Error(
+        "Portable analysis evidence contains a nonfinite number.",
+      );
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 50_000)
+      throw new Error("Portable analysis evidence is too large.");
+    return value.map((item) => sanitizePortableEvidence(item, key, depth + 1));
+  }
+  if (
+    value === undefined ||
+    typeof value !== "object" ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
+    throw new Error("Portable analysis evidence contains an invalid value.");
+  const result: Record<string, unknown> = Object.create(null) as Record<
+    string,
+    unknown
+  >;
+  const entries = Object.entries(value);
+  if (entries.length > 50_000)
+    throw new Error("Portable analysis evidence is too large.");
+  for (const [field, item] of entries) {
+    if (
+      field.length > 512 ||
+      hasControlCharacters(field) ||
+      field === "__proto__" ||
+      field === "constructor" ||
+      field === "prototype" ||
+      operationalEvidenceKey(field)
+    )
+      continue;
+    result[field] =
+      field === "relativePath"
+        ? portableRelativePath(item, "source")
+        : sanitizePortableEvidence(item, field, depth + 1);
+  }
+  return result;
+}
+
+function portableReviewOperation(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Portable review operation is invalid.");
+  const operation = value as Record<string, unknown>;
+  const kind = optionalPortableText(operation, "kind", 128);
+  if (kind === "merge-results" || kind === "reject-results")
+    return {
+      kind,
+      resultIds: optionalPortableStringArray(operation, "resultIds") ?? [],
+    };
+  if (kind === "split-result") {
+    const resultId = optionalPortableText(operation, "resultId");
+    if (!resultId || !Array.isArray(operation.ranges))
+      throw new Error("Portable split review operation is invalid.");
+    return {
+      kind,
+      resultId,
+      ranges: operation.ranges.map((range) => {
+        if (range === null || typeof range !== "object" || Array.isArray(range))
+          throw new Error("Portable split review range is invalid.");
+        const data = range as Record<string, unknown>;
+        const assetId = optionalPortableText(data, "assetId");
+        const start = optionalPortableNumber(data, "start");
+        const end = optionalPortableNumber(data, "end");
+        if (!assetId || start === undefined || end === undefined || end < start)
+          throw new Error("Portable split review range is invalid.");
+        return { assetId, start, end };
+      }),
+    };
+  }
+  if (kind === "set-observation") {
+    const resultId = optionalPortableText(operation, "resultId");
+    const axis = optionalPortableText(operation, "axis");
+    const observation = optionalPortableText(operation, "value");
+    if (!resultId || !axis || !observation)
+      throw new Error("Portable observation review operation is invalid.");
+    return { kind, resultId, axis, value: observation };
+  }
+  if (kind === "adopt-story") {
+    const storyId = optionalPortableText(operation, "storyId");
+    if (!storyId)
+      throw new Error("Portable story review operation is invalid.");
+    return {
+      kind,
+      storyId,
+      resultIds: optionalPortableStringArray(operation, "resultIds") ?? [],
+    };
+  }
+  throw new Error("Portable review operation kind is invalid.");
+}
+
 /**
  * Rebuild every retained multi-source JSON payload from typed columns before a
- * Collect Media catalog is published. M2+ must extend these serializers when a
- * new portable semantic field is added; arbitrary stored JSON is deliberately
- * never copied into a portable project.
+ * Collect Media catalog is published. Closed domain records keep only validated
+ * contract fields. Extensible analysis evidence is recursively validated while
+ * operational locators and secrets are removed at every depth.
  */
 export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
   const sourceUpdate = database.prepare(
@@ -317,14 +516,19 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
   );
   for (const row of database
     .prepare(
-      "SELECT id,kind,display_name,recursive,selection_revision FROM source_selections",
+      "SELECT id,kind,display_name,recursive,selection_revision,data FROM source_selections",
     )
     .all()) {
     const logicalRootId = `source:${String(row.id)}`;
+    const original = portableObject(row.data, "source selection");
+    const projectId = optionalPortableText(original, "projectId");
+    if (!projectId)
+      throw new Error("Portable source selection projectId is required.");
     sourceUpdate.run(
       logicalRootId,
       portableData({
         id: row.id,
+        projectId,
         kind: row.kind,
         displayName: row.display_name,
         logicalRootId,
@@ -340,9 +544,13 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
   );
   for (const row of database
     .prepare(
-      "SELECT id,display_name,relative_path,file_kind,byte_length,modified_at,availability,scan_revision FROM file_occurrences",
+      "SELECT id,display_name,relative_path,file_kind,byte_length,modified_at,availability,scan_revision,data FROM file_occurrences",
     )
     .all()) {
+    const original = portableObject(row.data, "file occurrence");
+    const logicalRootId = optionalPortableText(original, "logicalRootId");
+    if (!logicalRootId)
+      throw new Error("Portable file occurrence logicalRootId is required.");
     const relativePath = portableRelativePath(
       row.relative_path,
       row.display_name,
@@ -351,6 +559,7 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
       relativePath,
       portableData({
         id: row.id,
+        logicalRootId,
         displayName: row.display_name,
         relativePath,
         fileKind: row.file_kind,
@@ -391,7 +600,17 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
     );
   }
 
-  for (const specification of [
+  interface PortableTableSpecification {
+    table: string;
+    keys: readonly string[];
+    columns: readonly (readonly [string, string])[];
+    booleans?: readonly string[];
+    preserve?: (
+      original: Record<string, unknown>,
+      row: Record<string, unknown>,
+    ) => Record<string, unknown>;
+  }
+  const specifications: PortableTableSpecification[] = [
     {
       table: "content_identities",
       keys: ["id"],
@@ -425,6 +644,19 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["status", "status"],
         ["created_at", "createdAt"],
       ],
+      preserve: (original) => {
+        const projectId = optionalPortableText(original, "projectId");
+        const expectedManifestId = optionalPortableText(
+          original,
+          "expectedManifestId",
+        );
+        if (!projectId || !expectedManifestId)
+          throw new Error("Portable import batch semantics are incomplete.");
+        return {
+          projectId,
+          expectedManifestId,
+        };
+      },
     },
     {
       table: "expected_manifests",
@@ -448,6 +680,24 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["included", "included"],
       ],
       booleans: ["included"],
+      preserve: (original, row) => {
+        const expectedByteLength = optionalPortableNumber(
+          original,
+          "expectedByteLength",
+        );
+        const expectedModifiedAt = optionalPortableText(
+          original,
+          "expectedModifiedAt",
+        );
+        return {
+          relativePath: portableRelativePath(
+            original.relativePath,
+            row.occurrence_id,
+          ),
+          ...(expectedByteLength === undefined ? {} : { expectedByteLength }),
+          ...(expectedModifiedAt === undefined ? {} : { expectedModifiedAt }),
+        };
+      },
     },
     {
       table: "verified_manifests",
@@ -468,6 +718,19 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["binding_id", "bindingId"],
         ["status", "status"],
       ],
+      preserve: (original) => {
+        const data: Record<string, unknown> = {};
+        for (const field of [
+          "assetId",
+          "contentHash",
+          "contextRevision",
+          "code",
+        ]) {
+          const value = optionalPortableText(original, field);
+          if (value !== undefined) data[field] = value;
+        }
+        return data;
+      },
     },
     {
       table: "analysis_runs",
@@ -482,6 +745,12 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["status", "status"],
         ["created_at", "createdAt"],
       ],
+      preserve: (original) => {
+        const projectId = optionalPortableText(original, "projectId");
+        if (!projectId)
+          throw new Error("Portable analysis run projectId is required.");
+        return { projectId };
+      },
     },
     {
       table: "analysis_results",
@@ -492,6 +761,8 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["kind", "kind"],
         ["review_status", "reviewStatus"],
       ],
+      preserve: (original) =>
+        sanitizePortableEvidence(original) as Record<string, unknown>,
     },
     {
       table: "analysis_result_members",
@@ -501,6 +772,8 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["binding_id", "bindingId"],
         ["position", "position"],
       ],
+      preserve: (original) =>
+        sanitizePortableEvidence(original) as Record<string, unknown>,
     },
     {
       table: "review_decisions",
@@ -512,23 +785,53 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ["outcome", "outcome"],
         ["created_at", "createdAt"],
       ],
+      preserve: (original) => {
+        const result: Record<string, unknown> = {};
+        if (original.schemaVersion !== 1)
+          throw new Error("Portable review decision version is invalid.");
+        result.schemaVersion = 1;
+        const projectId = optionalPortableText(original, "projectId");
+        const manifestId = optionalPortableText(original, "manifestId");
+        const baseResultIds = optionalPortableStringArray(
+          original,
+          "baseResultIds",
+        );
+        const targetIds = optionalPortableStringArray(original, "targetIds");
+        if (
+          !projectId ||
+          !manifestId ||
+          !baseResultIds ||
+          !targetIds ||
+          original.operation === undefined
+        )
+          throw new Error("Portable review decision semantics are incomplete.");
+        result.projectId = projectId;
+        result.manifestId = manifestId;
+        result.baseResultIds = baseResultIds;
+        result.targetIds = targetIds;
+        result.operation = portableReviewOperation(original.operation);
+        for (const field of ["storyRevision", "supersedesDecisionId"]) {
+          const value = optionalPortableText(original, field);
+          if (value !== undefined) result[field] = value;
+        }
+        return result;
+      },
     },
-  ] as const) {
+  ];
+  for (const specification of specifications) {
     const selected = specification.columns.map(([column]) => column);
     const rows = database
-      .prepare(`SELECT ${selected.join(",")} FROM ${specification.table}`)
+      .prepare(`SELECT ${selected.join(",")},data FROM ${specification.table}`)
       .all();
     const where = specification.keys.map((key) => `${key}=?`).join(" AND ");
     const update = database.prepare(
       `UPDATE ${specification.table} SET data=? WHERE ${where}`,
     );
-    const booleanColumns = new Set<string>(
-      "booleans" in specification
-        ? (specification.booleans as readonly string[])
-        : [],
-    );
+    const booleanColumns = new Set<string>(specification.booleans ?? []);
     for (const row of rows) {
-      const data: Record<string, unknown> = {};
+      const original = portableObject(row.data, specification.table);
+      const data: Record<string, unknown> =
+        specification.preserve?.(original, row) ?? {};
       for (const [column, field] of specification.columns) {
         const value = row[column];
         if (value === null) continue;
@@ -539,5 +842,78 @@ export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
         ...specification.keys.map((key) => requiredSqlValue(row[key])),
       );
     }
+  }
+
+  const expectedEntries = database.prepare(
+    "SELECT data FROM expected_manifest_entries WHERE manifest_id=? ORDER BY position",
+  );
+  const expectedUpdate = database.prepare(
+    "UPDATE expected_manifests SET data=? WHERE id=?",
+  );
+  for (const row of database
+    .prepare("SELECT id,data FROM expected_manifests")
+    .all()) {
+    const manifest = portableObject(row.data, "expected manifest");
+    const entries = expectedEntries
+      .all(requiredSqlValue(row.id))
+      .map((entry) => {
+        const data = portableObject(entry.data, "expected manifest entry");
+        const {
+          manifestId: _manifestId,
+          position: _position,
+          ...semantic
+        } = data;
+        return semantic;
+      });
+    expectedUpdate.run(
+      portableData({ ...manifest, entries }),
+      requiredSqlValue(row.id),
+    );
+  }
+
+  const verifiedEntries = database.prepare(`
+    SELECT entry.status,entry.occurrence_id,entry.binding_id,entry.data,
+      binding.asset_id,binding.context_revision,identity.full_hash
+    FROM verified_manifest_entries AS entry
+    LEFT JOIN asset_content_versions AS binding ON binding.id=entry.binding_id
+    LEFT JOIN content_identities AS identity ON identity.id=binding.content_id
+    WHERE entry.manifest_id=? ORDER BY entry.position
+  `);
+  const verifiedUpdate = database.prepare(
+    "UPDATE verified_manifests SET data=? WHERE id=?",
+  );
+  for (const row of database
+    .prepare("SELECT id,data FROM verified_manifests")
+    .all()) {
+    const manifest = portableObject(row.data, "verified manifest");
+    const members: Record<string, unknown>[] = [];
+    const failures: Record<string, unknown>[] = [];
+    const excludedOccurrenceIds: string[] = [];
+    for (const entry of verifiedEntries.all(requiredSqlValue(row.id))) {
+      const data = portableObject(entry.data, "verified manifest entry");
+      if (entry.status === "verified")
+        members.push({
+          bindingId: entry.binding_id,
+          assetId: entry.asset_id ?? data.assetId,
+          contentHash: entry.full_hash ?? data.contentHash,
+          contextRevision: entry.context_revision ?? data.contextRevision,
+        });
+      else if (entry.status === "failed")
+        failures.push({
+          occurrenceId: entry.occurrence_id,
+          code: data.code ?? "unknown",
+        });
+      else if (entry.status === "excluded")
+        excludedOccurrenceIds.push(String(entry.occurrence_id));
+    }
+    verifiedUpdate.run(
+      portableData({
+        ...manifest,
+        members,
+        failures,
+        excludedOccurrenceIds,
+      }),
+      requiredSqlValue(row.id),
+    );
   }
 }
