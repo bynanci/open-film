@@ -3,8 +3,8 @@
 Collect Media makes a relocatable copy of the saved project material needed to
 open and render a film. It does not move or rewrite originals. Desktop, HTTP and
 CLI use `CollectMediaService` from `@openfilm/application`; the service keeps the
-existing Composition as the only edit timeline and does not change project
-schema 1.0.0 or catalog schema v5.
+existing Composition as the only edit timeline. Project schema remains 1.0.0;
+the catalog uses the additive schema-v6 migration.
 
 ## Scope and review
 
@@ -36,11 +36,13 @@ secret-like text are rejected from receipt fields; file URLs are not accepted.
 ## Package layout and privacy
 
 The application captures `project.json` and a SQLite-consistent catalog image
-while the existing catalog writer is fenced. The catalog is filtered to the
-selected assets and their transcript data; jobs, review suggestions, caches,
-unselected assets and free-page remnants are removed. The filtered SQLite image
-is vacuumed before publication. Named Versions snapshots are intentionally
-excluded and the UI/manifest report `versionsIncluded: false`.
+while the existing catalog writer is fenced. The catalog retains selected assets,
+their transcripts and safely reachable source/content/analysis evidence. Jobs,
+access grants, staging state, review suggestions, caches, unselected assets and
+free-page remnants are removed. Every durable table has an explicit portability
+policy and tests fail when a migration leaves a table unclassified. The filtered
+SQLite image is vacuumed before publication. Named Versions snapshots are
+intentionally excluded and the UI/manifest report `versionsIncluded: false`.
 
 Each distinct source byte sequence is stored once at
 `sources/<first-two-hash-characters>/<sha256>.<extension>`. Fonts are stored at

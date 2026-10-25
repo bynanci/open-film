@@ -7,8 +7,9 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,7 +28,99 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
+const multiSourceTables = [
+  "review_decisions",
+  "analysis_result_members",
+  "analysis_results",
+  "analysis_runs",
+  "verified_manifest_entries",
+  "verified_manifests",
+  "expected_manifest_entries",
+  "expected_manifests",
+  "import_batches",
+  "asset_content_versions",
+  "content_identities",
+  "selection_memberships",
+  "file_occurrences",
+  "source_selections",
+] as const;
+
+function sha256(value: Buffer | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function downgradeNamedVersionToV5(directory: string, versionId: string): void {
+  const versionDirectory = join(directory, "versions", versionId);
+  const catalogPath = join(versionDirectory, "database.sqlite");
+  const catalog = new DatabaseSync(catalogPath);
+  try {
+    catalog.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;");
+    for (const table of multiSourceTables)
+      catalog.exec(`DROP TABLE IF EXISTS "${table}"`);
+    catalog.exec("PRAGMA user_version=5; COMMIT; PRAGMA foreign_keys=ON;");
+  } finally {
+    catalog.close();
+  }
+  const catalogBytes = readFileSync(catalogPath);
+  const recordPath = join(versionDirectory, "record.json");
+  const record = JSON.parse(readFileSync(recordPath, "utf8")) as Record<
+    string,
+    unknown
+  >;
+  record.catalogHash = sha256(catalogBytes);
+  record.catalogSchemaVersion = 5;
+  const recordBytes = Buffer.from(`${JSON.stringify(record, null, 2)}\n`);
+  writeFileSync(recordPath, recordBytes);
+
+  const projectBytes = readFileSync(join(versionDirectory, "project.json"));
+  const indexPath = join(directory, "versions", "index.json");
+  const index = JSON.parse(readFileSync(indexPath, "utf8")) as {
+    entries: Array<Record<string, unknown>>;
+  };
+  const entry = index.entries.find((value) => value.id === versionId)!;
+  entry.payloadBytes =
+    projectBytes.length + catalogBytes.length + recordBytes.length;
+  entry.recordHash = sha256(recordBytes);
+  writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+}
+
 describe("named project versions", () => {
+  it("restores a v5 named version without rewriting its immutable payload", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-version-v5-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(directory, "Legacy title");
+    cleanup.push(() => app.close());
+    const version = await app.versions.create({
+      name: "Legacy v5",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "50000000-0000-4000-8000-000000000001",
+    });
+    downgradeNamedVersionToV5(directory, version.id);
+    const immutablePath = join(
+      directory,
+      "versions",
+      version.id,
+      "database.sqlite",
+    );
+    const immutableHash = sha256(readFileSync(immutablePath));
+    expect(app.versions.inspect(version.id).catalogSchemaVersion).toBe(5);
+
+    app.project.title = "Current title";
+    await app.save();
+    const restored = await app.versions.restore(version.id, {
+      baseRevision: app.versions.currentRevision(),
+      requestId: "50000000-0000-4000-8000-000000000002",
+      confirmed: true,
+    });
+
+    expect(app.project.title).toBe("Legacy title");
+    expect(sha256(readFileSync(immutablePath))).toBe(immutableHash);
+    expect(
+      app.versions.inspect(restored.checkpointVersionId).catalogSchemaVersion,
+    ).toBe(6);
+  });
+
   it("restores and renders captions, graphics, two synthetic photos, and audio across sessions", async () => {
     const root = await mkdtemp(join(tmpdir(), "openfilm-version-render-"));
     cleanup.push(() => rm(root, { recursive: true, force: true }));

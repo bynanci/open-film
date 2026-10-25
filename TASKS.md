@@ -1,3 +1,26 @@
+## In progress — Multi-source import and common analysis
+
+Scope: [roadmap](docs/roadmap/multi-source-analysis.md),
+[implementation plan](docs/superpowers/plans/2026-10-25-multi-source-analysis.md),
+and [validation](docs/validation-multi-source-analysis.md).
+
+- [x] M0: define separate ImportBatch, AnalysisRun and JobAttempt state machines,
+      typed source/manifest/review contracts and dotted error identifiers.
+- [x] M0: add catalog schema v6, classify every durable table and filter selected
+      source/content evidence from Collect Media snapshots.
+- [x] M0: migrate immutable schema-v5 Named Version copies for inspect/restore
+      without changing historical payload hashes.
+- [ ] M1: additive native/browser source draft, multi-folder picker, drop
+      classification, IndexedDB handles and General/Expert views.
+- [ ] M2: streaming discovery, membership, private durable staging, content
+      identity and Expected/Verified Manifests.
+- [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,
+      late-result fencing and shared Desktop/HTTP/CLI entry points.
+- [ ] M4: versioned time/clock evidence and GPX track assignment.
+- [ ] M5: deterministic frame samples and sample-only visual providers.
+- [ ] M6: immutable review decisions and explicit StoryGraph adoption.
+- [ ] M7: supported OS/browser, external-drive, stress and workstation evidence.
+
 ## 0.4.0 release — review remediation and integration
 
 - [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.

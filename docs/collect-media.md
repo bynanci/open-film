@@ -1,6 +1,6 @@
 # Collect Media 可攜式套件
 
-Collect Media 會複製開啟與算繪影片所需的已儲存專案資料，建立可搬移的套件；不會搬移或改寫原始檔案。桌面應用程式、HTTP 與 CLI 共用 @openfilm/application 的 CollectMediaService。此服務沿用既有 Composition 作為唯一剪輯時間軸，不變更專案 schema 1.0.0 或素材目錄 schema v5。
+Collect Media 會複製開啟與算繪影片所需的已儲存專案資料，建立可搬移的套件；不會搬移或改寫原始檔案。桌面應用程式、HTTP 與 CLI 共用 @openfilm/application 的 CollectMediaService。此服務沿用既有 Composition 作為唯一剪輯時間軸，專案 schema 保持 1.0.0；素材目錄使用可加成遷移的 schema v6。
 
 ## 範圍與檢查
 
@@ -17,7 +17,7 @@ Collect Media 會複製開啟與算繪影片所需的已儲存專案資料，建
 
 ## 套件結構與隱私
 
-應用程式會在既有素材目錄寫入器暫停期間，擷取 project.json 與具 SQLite 一致性的素材目錄快照。素材目錄只保留所選資產及其逐字稿資料；工作、審閱建議、快取、未選資產和舊版自由頁面殘留都會移除。發布前會對篩選後的 SQLite 快照執行 vacuum。Named Versions 快照會刻意排除，UI／manifest 會標示 versionsIncluded: false。
+應用程式會在既有素材目錄寫入器暫停期間，擷取 project.json 與具 SQLite 一致性的素材目錄快照。素材目錄只保留所選資產、逐字稿，以及可安全到達的來源／內容／分析證據；工作、存取授權、staging、審閱建議、快取、未選資產和舊版自由頁面殘留都會移除。每張 durable table 都有明確 portability policy，未分類的新表會使測試失敗。發布前會對篩選後的 SQLite 快照執行 vacuum。Named Versions 快照會刻意排除，UI／manifest 會標示 versionsIncluded: false。
 
 內容相同的來源位元組只儲存一次，位置為 sources/<雜湊前兩碼>/<sha256>.<副檔名>；字型位於 fonts/<sha256>.<副檔名>。每項資產的套件 URI 依穩定資產 ID 保持不透明且唯一；openfilm.managedSource.relativePath 則指向依雜湊命名的檔案。移動後重新開啟套件，只會重新定位套件內這些受管理來源，不會改動原始媒體。
 

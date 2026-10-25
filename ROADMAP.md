@@ -1,3 +1,19 @@
+## Current implementation — Multi-source import and common analysis
+
+OpenFilm is adding an additive source draft that can combine files, folders and
+drops before any work begins. An immutable Expected Manifest records the user's
+choice; a Verified Manifest binds successfully imported assets to exact content
+and context revisions. Common analysis reads only that scope, so an existing
+catalog item that reused import work is included while unrelated project media
+is not. See the [accepted roadmap](docs/roadmap/multi-source-analysis.md).
+
+M0 establishes catalog schema v6, a complete portability table policy, separate
+batch/run/attempt state machines and safe schema-v5 Named Version upgrades. M1–M3
+form the first releasable source-selection and common-analysis workflow. M4–M6
+add time/GPX, bounded representative-frame understanding and explicit review
+adoption. M7 records actual platform evidence; it does not treat mocks as native
+picker or external-drive verification.
+
 ## 0.4.0 reviewed source integration
 
 The next application release is 0.4.0; the existing project schema stays 1.0.0.

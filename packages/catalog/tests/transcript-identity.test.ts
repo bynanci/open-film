@@ -6,6 +6,7 @@ import { afterEach, expect, it } from "vitest";
 import type { TranscriptDocument } from "@openfilm/core";
 import { CATALOG_SCHEMA_VERSION, ProjectCatalog } from "../src/index";
 import { transcriptSegmentKey } from "../src/transcript-segment-identity";
+import { dropCatalogV6Tables } from "./catalog-version-fixtures.js";
 
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
@@ -85,6 +86,9 @@ function downgrade(path: string, version: 2 | 3): void {
   try {
     database.exec(`
       BEGIN IMMEDIATE;
+    `);
+    dropCatalogV6Tables(database);
+    database.exec(`
       DROP TABLE scene_script_suggestions;
       ALTER TABLE intelligence_segments RENAME TO preserved_segments;
       CREATE TABLE intelligence_segments (
