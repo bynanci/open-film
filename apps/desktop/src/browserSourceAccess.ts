@@ -22,8 +22,8 @@ export interface StoredBrowserHandle {
 
 export interface BrowserHandleBackend {
   list(projectId: string): Promise<StoredBrowserHandle[]>;
-  put(record: StoredBrowserHandle): Promise<void>;
-  remove(key: string): Promise<void>;
+  putMany(records: readonly StoredBrowserHandle[]): Promise<void>;
+  removeMany(keys: readonly string[]): Promise<void>;
 }
 
 const DATABASE_NAME = "openfilm-source-access";
@@ -79,19 +79,23 @@ export class IndexedDbBrowserHandleBackend implements BrowserHandleBackend {
     return values.filter((record) => record.projectId === projectId);
   }
 
-  async put(record: StoredBrowserHandle): Promise<void> {
+  async putMany(records: readonly StoredBrowserHandle[]): Promise<void> {
+    if (!records.length) return;
     const database = await this.open();
     const transaction = database.transaction(STORE_NAME, "readwrite");
     const completed = transactionDone(transaction);
-    transaction.objectStore(STORE_NAME).put(record);
+    const store = transaction.objectStore(STORE_NAME);
+    for (const record of records) store.put(record);
     await completed;
   }
 
-  async remove(key: string): Promise<void> {
+  async removeMany(keys: readonly string[]): Promise<void> {
+    if (!keys.length) return;
     const database = await this.open();
     const transaction = database.transaction(STORE_NAME, "readwrite");
     const completed = transactionDone(transaction);
-    transaction.objectStore(STORE_NAME).delete(key);
+    const store = transaction.objectStore(STORE_NAME);
+    for (const key of keys) store.delete(key);
     await completed;
   }
 }
@@ -113,31 +117,60 @@ export class BrowserSourceAccessRegistry {
     projectId: string,
     handle: BrowserHandleLike,
   ): Promise<string> {
+    return (await this.rememberHandles(projectId, [handle]))[0]!;
+  }
+
+  async rememberHandles(
+    projectId: string,
+    handles: readonly BrowserHandleLike[],
+  ): Promise<string[]> {
     if (
       !projectId ||
-      !handle.name ||
-      !["file", "directory"].includes(handle.kind)
+      handles.some(
+        (handle) =>
+          !handle.name || !["file", "directory"].includes(handle.kind),
+      )
     )
       throw new Error("Browser source handle is invalid.");
-    const existing = await this.backend.list(projectId);
-    for (const record of existing) {
-      if (record.kind !== handle.kind || record.name !== handle.name) continue;
-      try {
-        if (await handle.isSameEntry?.(record.handle)) return record.key;
-        if (await record.handle.isSameEntry?.(handle)) return record.key;
-      } catch {
-        // A revoked handle is not evidence that two entries are identical.
+    if (!handles.length) return [];
+
+    const known = await this.backend.list(projectId);
+    const created: StoredBrowserHandle[] = [];
+    const keys: string[] = [];
+    for (const handle of handles) {
+      let matching: StoredBrowserHandle | undefined;
+      for (const record of known) {
+        if (record.kind !== handle.kind || record.name !== handle.name)
+          continue;
+        try {
+          if (
+            (await handle.isSameEntry?.(record.handle)) ||
+            (await record.handle.isSameEntry?.(handle))
+          ) {
+            matching = record;
+            break;
+          }
+        } catch {
+          // A revoked handle is not evidence that two entries are identical.
+        }
       }
+      if (matching) {
+        keys.push(matching.key);
+        continue;
+      }
+      const record: StoredBrowserHandle = {
+        key: `browser-handle:${this.createId()}`,
+        projectId,
+        kind: handle.kind,
+        name: handle.name,
+        handle,
+      };
+      known.push(record);
+      created.push(record);
+      keys.push(record.key);
     }
-    const key = `browser-handle:${this.createId()}`;
-    await this.backend.put({
-      key,
-      projectId,
-      kind: handle.kind,
-      name: handle.name,
-      handle,
-    });
-    return key;
+    await this.backend.putMany(created);
+    return keys;
   }
 
   rememberFiles(projectId: string, files: readonly File[]): string {
@@ -151,6 +184,11 @@ export class BrowserSourceAccessRegistry {
   files(projectId: string, key: string): File[] | undefined {
     const value = this.ephemeral.get(key);
     return value?.projectId === projectId ? [...value.files] : undefined;
+  }
+
+  releaseFiles(projectId: string, key: string): void {
+    const value = this.ephemeral.get(key);
+    if (value?.projectId === projectId) this.ephemeral.delete(key);
   }
 
   async availability(
@@ -182,10 +220,19 @@ export class BrowserSourceAccessRegistry {
   }
 
   async removeHandle(projectId: string, key: string): Promise<void> {
-    const record = (await this.backend.list(projectId)).find(
-      (value) => value.key === key,
-    );
-    if (record) await this.backend.remove(key);
+    await this.removeHandles(projectId, [key]);
+  }
+
+  async removeHandles(
+    projectId: string,
+    keys: readonly string[],
+  ): Promise<void> {
+    const candidates = new Set(keys);
+    if (!projectId || !candidates.size) return;
+    const owned = (await this.backend.list(projectId))
+      .filter((record) => candidates.has(record.key))
+      .map((record) => record.key);
+    await this.backend.removeMany(owned);
   }
 }
 

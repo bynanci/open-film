@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SourceDraft, SourceSelection } from "@openfilm/core";
+import type { SourceSelectionInput } from "@openfilm/application";
 import {
   flatten,
   loadComponent,
@@ -35,6 +36,12 @@ function fixture(
     browserFolderError?: Error;
     nativeDropRegistration?: Promise<() => void>;
     addError?: Error;
+    nativeFilesResult?: Promise<{
+      sources: SourceSelectionInput[];
+      rejected: [];
+    }>;
+    staleAddDraft?: SourceDraft;
+    removeDraft?: SourceDraft;
   } = {},
 ) {
   let draft: SourceDraft =
@@ -52,6 +59,12 @@ function fixture(
   const addSourceSelections = vi.fn(
     async (request: { sources: ReturnType<typeof input>[] }) => {
       if (options.addError) throw options.addError;
+      if (options.staleAddDraft) {
+        draft = structuredClone(options.staleAddDraft);
+        throw Object.assign(new Error("draft changed"), {
+          code: "import.draftStale",
+        });
+      }
       draft = {
         ...draft,
         revision: draft.revision + 1,
@@ -68,19 +81,24 @@ function fixture(
       return { draft: structuredClone(draft) };
     },
   );
-  const removeSourceSelection = vi.fn();
+  const removeSourceSelection = vi.fn(async () => ({
+    draft: structuredClone(options.removeDraft ?? draft),
+  }));
   const updateSourceSelection = vi.fn();
-  const pickNativeFiles = vi
-    .fn()
-    .mockResolvedValueOnce({
-      sources: [input("1.mp4"), input("2.mp4"), input("3.mp4")],
-      rejected: [],
-    })
-    .mockResolvedValueOnce({
-      sources: [input("4.mp4"), input("5.mp4")],
-      rejected: [],
-    })
-    .mockResolvedValueOnce({ sources: [], rejected: [] });
+  const releaseBrowserSources = vi.fn(async () => {});
+  const pickNativeFiles = options.nativeFilesResult
+    ? vi.fn(() => options.nativeFilesResult!)
+    : vi
+        .fn()
+        .mockResolvedValueOnce({
+          sources: [input("1.mp4"), input("2.mp4"), input("3.mp4")],
+          rejected: [],
+        })
+        .mockResolvedValueOnce({
+          sources: [input("4.mp4"), input("5.mp4")],
+          rejected: [],
+        })
+        .mockResolvedValueOnce({ sources: [], rejected: [] });
   const component = loadComponent(
     "apps/desktop/src/components/ImportPanel.vue",
     {
@@ -105,6 +123,7 @@ function fixture(
         sourcesFromBrowserDrop: vi.fn(),
         classifyNativeDrop: vi.fn(),
         clearBrowserEphemeral: vi.fn(),
+        releaseBrowserSources,
         browserFilesForSelections: vi.fn(),
         sourceAvailability: vi.fn(
           async () => options.availability ?? "available",
@@ -122,6 +141,14 @@ function fixture(
     native: true,
     busy: false,
     expert: false,
+    progress: undefined as
+      | {
+          completed: number;
+          total: number;
+          bytesUploaded: number;
+          totalBytes: number;
+        }
+      | undefined,
     onError: vi.fn(),
     onClose: vi.fn(),
     onFolder: vi.fn(),
@@ -148,6 +175,8 @@ function fixture(
     button,
     sourceDraft,
     addSourceSelections,
+    removeSourceSelection,
+    releaseBrowserSources,
     pickNativeFiles,
     onFiles: props.onFiles,
   };
@@ -362,5 +391,192 @@ describe("additive source draft panel", () => {
       );
     expect(path?.props.value).toBe("/synthetic/retry");
     expect(h.props.onError).toHaveBeenCalledWith(failure);
+  });
+
+  it("does not offer the recursive legacy importer for a nonrecursive folder", async () => {
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [
+          {
+            id: "folder-shallow",
+            projectId: "project-a",
+            kind: "folder",
+            displayName: "Only this folder",
+            accessClass: "native-path",
+            accessRef: "/synthetic/shallow",
+            recursive: false,
+            selectionRevision: 1,
+          },
+        ],
+      },
+    });
+    await settle();
+    expect(h.button("app.import.startCompatible")?.props.disabled).toBe(true);
+    expect(h.props.onFolder).not.toHaveBeenCalled();
+  });
+
+  it("keeps close disabled and cancellation visible throughout an upload", async () => {
+    const h = fixture();
+    await settle();
+    h.props.busy = true;
+    await settle();
+    let close = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "button" &&
+          node.props["aria-label"] === "app.import.close",
+      );
+    expect(close?.props.disabled).toBe(false);
+    h.props.progress = {
+      completed: 0,
+      total: 1,
+      bytesUploaded: 0,
+      totalBytes: 9,
+    };
+    await settle();
+    close = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "button" &&
+          node.props["aria-label"] === "app.import.close",
+      );
+    expect(close?.props.disabled).toBe(true);
+    expect(h.button("app.import.cancelUpload")).toBeDefined();
+  });
+
+  it("discards and releases a picker result that resolves after the panel unmounts", async () => {
+    let resolve!: (result: {
+      sources: SourceSelectionInput[];
+      rejected: [];
+    }) => void;
+    const pending = new Promise<{
+      sources: SourceSelectionInput[];
+      rejected: [];
+    }>((done) => {
+      resolve = done;
+    });
+    const h = fixture({ nativeFilesResult: pending });
+    await settle();
+    const choosing = (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    h.unmount();
+    const late: SourceSelectionInput = {
+      ...input("late.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:late",
+    };
+    resolve({ sources: [late], rejected: [] });
+    await choosing;
+    await settle();
+    expect(h.addSourceSelections).not.toHaveBeenCalled();
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [late],
+      expect.any(Set),
+    );
+  });
+
+  it("releases browser access when adding its source to the draft fails", async () => {
+    const failure = new Error("draft unavailable");
+    const browserSource: SourceSelectionInput = {
+      ...input("private.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:private",
+    };
+    const h = fixture({
+      addError: failure,
+      nativeFilesResult: Promise.resolve({
+        sources: [browserSource],
+        rejected: [],
+      }),
+    });
+    await settle();
+    await (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [browserSource],
+      expect.any(Set),
+    );
+  });
+
+  it("releases removed browser access after the revised draft is accepted", async () => {
+    const source: SourceSelection = {
+      ...input("private.mp4"),
+      id: "private-source",
+      projectId: "project-a",
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:private",
+      selectionRevision: 1,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [source],
+      },
+      removeDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 2,
+        selections: [],
+      },
+    });
+    await settle();
+    const remove = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "button" &&
+          node.props["aria-label"] === "app.import.removeSource",
+      );
+    await (remove!.props.onClick as () => Promise<void>)();
+    await settle();
+    expect(h.removeSourceSelection).toHaveBeenCalledWith(
+      "private-source",
+      expect.any(Object),
+    );
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [source],
+      new Set(),
+    );
+  });
+
+  it("reloads the latest draft after a stale mutation and permits another edit", async () => {
+    const latest: SourceDraft = {
+      schemaVersion: 1,
+      projectId: "project-a",
+      revision: 1,
+      selections: [
+        {
+          ...input("remote.mp4"),
+          id: "remote",
+          projectId: "project-a",
+          selectionRevision: 1,
+        },
+      ],
+    };
+    const h = fixture({ staleAddDraft: latest });
+    await settle();
+    await (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+
+    expect(h.sourceDraft).toHaveBeenCalledTimes(2);
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "remote"),
+    ).toBe(true);
+    expect(h.button("app.import.addFiles")?.props.disabled).toBe(false);
   });
 });

@@ -113,6 +113,8 @@ function validateSource(
   const accessRef = cleanText(value.accessRef, "Source reference", 4096);
   if (value.accessClass === "native-path" && !isAbsolute(accessRef))
     fail("request.invalid", "Native source references must be absolute paths.");
+  if (value.recursive !== undefined && typeof value.recursive !== "boolean")
+    fail("request.invalid", "Source recursion policy must be a boolean.");
   return {
     kind: value.kind,
     displayName,

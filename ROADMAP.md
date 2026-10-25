@@ -19,8 +19,10 @@ project-owned revisioned draft; native drops reject symlinks without following
 them; persistent browser handles remain in IndexedDB while ordinary `File`
 objects expire to an explicit reselection state; and Standard/Expert modes are
 presentations over the same commands. Existing one-root imports remain available
-only after an explicit action. M2 streaming discovery, membership, staging and
-manifest sealing are next and are not implied by the M1 UI.
+only after an explicit action. Review hardening fences delayed results, recovers
+stale revisions and transactionally releases browser access that the accepted
+draft no longer retains. M2 streaming discovery, membership, staging and manifest
+sealing are next and are not implied by the M1 UI.
 
 ## 0.4.0 reviewed source integration
 

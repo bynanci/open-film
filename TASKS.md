@@ -17,6 +17,10 @@ and [validation](docs/validation-multi-source-analysis.md).
       import until the user explicitly continues. Native workstation picker
       execution remains an M7 manual gate because this environment has no Rust
       toolchain.
+- [x] M1 review hardening: fence delayed picker results, reload stale revisions,
+      keep upload cancellation reachable, prevent shallow folders entering the
+      recursive compatibility importer, and transactionally batch/release
+      browser access records with real Chromium IndexedDB reopen coverage.
 - [ ] M2: streaming discovery, membership, private durable staging, content
       identity and Expected/Verified Manifests.
 - [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,

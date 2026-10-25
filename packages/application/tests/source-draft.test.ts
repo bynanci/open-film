@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -158,5 +158,40 @@ describe("project-owned source draft", () => {
       recursive: false,
       selectionRevision: 2,
     });
+  });
+
+  it("rejects a saved folder whose recursive policy is not a boolean", async () => {
+    const test = await fixture();
+    const projectId = test.app.project.id;
+    const analysis = join(test.directory, "analysis");
+    await mkdir(analysis, { recursive: true });
+    await writeFile(
+      join(analysis, "source-draft.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projectId,
+        revision: 1,
+        selections: [
+          {
+            id: "invalid-recursive",
+            projectId,
+            kind: "folder",
+            displayName: "Synthetic",
+            accessClass: "native-path",
+            accessRef: "/synthetic",
+            recursive: "false",
+            selectionRevision: 1,
+          },
+        ],
+        receipts: [],
+      }),
+      { mode: 0o600 },
+    );
+
+    expect(() => test.app.sourceDraft.get()).toThrow(
+      expect.objectContaining<Partial<ApplicationError>>({
+        code: "request.invalid",
+      }),
+    );
   });
 });

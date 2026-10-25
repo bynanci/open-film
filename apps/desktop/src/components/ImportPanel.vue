@@ -15,6 +15,7 @@ import {
   pickBrowserFolder,
   pickNativeFiles,
   pickNativeFolders,
+  releaseBrowserSources,
   sourcesFromBrowserDrop,
   sourceAvailability,
   type PickedSources,
@@ -72,7 +73,8 @@ const compatibleStart = computed(() => {
   if (
     selections.length === 1 &&
     selections[0]!.kind === "folder" &&
-    selections[0]!.accessClass === "native-path"
+    selections[0]!.accessClass === "native-path" &&
+    selections[0]!.recursive
   )
     return true;
   if (
@@ -138,6 +140,29 @@ async function loadDraft(): Promise<void> {
   }
 }
 
+function applicationErrorCode(error: unknown): string | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  )
+    return error.code;
+  return undefined;
+}
+
+async function handleMutationError(
+  error: unknown,
+  owner: string,
+  token: number,
+): Promise<void> {
+  if (token !== generation || owner !== props.projectId) return;
+  emit("error", error);
+  if (applicationErrorCode(error) !== "import.draftStale") return;
+  mutating.value = false;
+  await loadDraft();
+}
+
 async function addSources(sources: SourceSelectionInput[]): Promise<boolean> {
   if (!sources.length) return true;
   if (blocked.value || !draft.value) return false;
@@ -154,10 +179,27 @@ async function addSources(sources: SourceSelectionInput[]): Promise<boolean> {
     acceptDraft(result.draft, owner, token);
     return true;
   } catch (error) {
-    if (token === generation && owner === props.projectId) emit("error", error);
+    await handleMutationError(error, owner, token);
     return false;
   } finally {
     if (token === generation) mutating.value = false;
+  }
+}
+
+function retainedAccessRefs(owner: string): Set<string> {
+  if (draft.value?.projectId !== owner) return new Set();
+  return new Set(draft.value.selections.map((source) => source.accessRef));
+}
+
+async function releaseSources(
+  owner: string,
+  sources: readonly Pick<SourceSelectionInput, "accessClass" | "accessRef">[],
+  token: number,
+): Promise<void> {
+  try {
+    await releaseBrowserSources(owner, sources, retainedAccessRefs(owner));
+  } catch (error) {
+    if (token === generation && owner === props.projectId) emit("error", error);
   }
 }
 
@@ -166,13 +208,19 @@ async function applyPicked(
 ): Promise<boolean> {
   if (blocked.value) return false;
   const owner = props.projectId;
+  const token = generation;
   try {
     const result = await action();
-    if (owner !== props.projectId) return false;
+    if (token !== generation || owner !== props.projectId) {
+      await releaseSources(owner, result.sources, token);
+      return false;
+    }
     rejected.value = result.rejected;
-    return await addSources(result.sources);
+    const saved = await addSources(result.sources);
+    await releaseSources(owner, result.sources, token);
+    return saved;
   } catch (error) {
-    if (owner === props.projectId) emit("error", error);
+    if (token === generation && owner === props.projectId) emit("error", error);
     return false;
   }
 }
@@ -180,13 +228,17 @@ async function applyPicked(
 async function chooseFolder() {
   if (props.native) return applyPicked(pickNativeFolders);
   const owner = props.projectId;
+  const token = generation;
   try {
     const picked = await pickBrowserFolder(owner);
-    if (owner !== props.projectId) return;
+    if (token !== generation || owner !== props.projectId) {
+      if (picked) await releaseSources(owner, picked.sources, token);
+      return;
+    }
     if (picked === undefined) folderInput.value?.click();
     else await applyPicked(() => picked);
   } catch (error) {
-    if (owner === props.projectId) emit("error", error);
+    if (token === generation && owner === props.projectId) emit("error", error);
   }
 }
 
@@ -270,8 +322,9 @@ async function removeSource(source: SourceSelection) {
       requestId: requestId(),
     });
     acceptDraft(result.draft, owner, token);
+    await releaseSources(owner, [source], token);
   } catch (error) {
-    if (token === generation && owner === props.projectId) emit("error", error);
+    await handleMutationError(error, owner, token);
   } finally {
     if (token === generation) mutating.value = false;
   }
@@ -291,7 +344,7 @@ async function setRecursive(source: SourceSelection, recursive: boolean) {
     });
     acceptDraft(result.draft, owner, token);
   } catch (error) {
-    if (token === generation && owner === props.projectId) emit("error", error);
+    await handleMutationError(error, owner, token);
   } finally {
     if (token === generation) mutating.value = false;
   }
@@ -347,6 +400,7 @@ onBeforeUnmount(() => {
       </div>
       <button
         class="icon-button"
+        :disabled="!!progress"
         :aria-label="t('app.import.close')"
         @click="emit('close')"
       >

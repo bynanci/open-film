@@ -241,7 +241,8 @@ export default {
       draftNext:
         "選取內容仍可編輯，而且不會自動匯入。下一步會先檢查掃描與共同分析範圍。",
       startCompatible: "匯入已選來源",
-      startPending: "混合資料夾與持久瀏覽器來源會在密封批次步驟開放。",
+      startPending:
+        "混合來源、未包含子資料夾的來源與持久瀏覽器來源會在密封批次步驟開放。",
       folder: "媒體資料夾",
       submit: "匯入資料夾",
       uploading: "正在加入檔案：{completed}／{total}",

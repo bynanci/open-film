@@ -30,6 +30,13 @@ interface BrowserDataTransferItem extends DataTransferItem {
   getAsFileSystemHandle?: () => Promise<BrowserHandleLike | null>;
 }
 
+const MAX_SELECTED_SOURCES = 10_000;
+
+function assertBoundedSelection(count: number): void {
+  if (count > MAX_SELECTED_SOURCES)
+    throw new Error("Choose no more than 10,000 source items at a time.");
+}
+
 function sourceName(path: string): string {
   return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
 }
@@ -111,6 +118,7 @@ export function pickBrowserFiles(
   files: readonly File[],
   access: BrowserSourceAccessRegistry = browserSourceAccess,
 ): PickedSources {
+  assertBoundedSelection(files.length);
   return {
     sources: files.map((file) => ({
       kind: "file",
@@ -128,6 +136,7 @@ function fallbackDirectorySources(
   files: readonly File[],
   access: BrowserSourceAccessRegistry,
 ): PickedSources {
+  assertBoundedSelection(files.length);
   const groups = new Map<string, File[]>();
   for (const file of files) {
     const relative = file.webkitRelativePath;
@@ -161,16 +170,15 @@ async function persistentSources(
   handles: readonly BrowserHandleLike[],
   access: BrowserSourceAccessRegistry,
 ): Promise<PickedSources> {
-  const sources: SourceSelectionInput[] = [];
-  for (const handle of handles) {
-    sources.push({
-      kind: handle.kind === "directory" ? "folder" : "file",
-      displayName: handle.name,
-      accessClass: "persistent-browser-handle",
-      accessRef: await access.rememberHandle(projectId, handle),
-      recursive: handle.kind === "directory",
-    });
-  }
+  assertBoundedSelection(handles.length);
+  const accessRefs = await access.rememberHandles(projectId, handles);
+  const sources: SourceSelectionInput[] = handles.map((handle, index) => ({
+    kind: handle.kind === "directory" ? "folder" : "file",
+    displayName: handle.name,
+    accessClass: "persistent-browser-handle",
+    accessRef: accessRefs[index]!,
+    recursive: handle.kind === "directory",
+  }));
   return { sources, rejected: [] };
 }
 
@@ -199,6 +207,7 @@ export async function sourcesFromBrowserDrop(
   access: BrowserSourceAccessRegistry = browserSourceAccess,
 ): Promise<PickedSources> {
   const items = Array.from(transfer.items) as BrowserDataTransferItem[];
+  assertBoundedSelection(items.length);
   // Handle promises must be acquired synchronously during the drop event.
   const handlePromises = items.map((item) =>
     typeof item.getAsFileSystemHandle === "function"
@@ -227,6 +236,26 @@ export async function sourcesFromBrowserDrop(
 
 export function clearBrowserEphemeral(projectId: string): void {
   browserSourceAccess.clearEphemeral(projectId);
+}
+
+export async function releaseBrowserSources(
+  projectId: string,
+  sources: readonly Pick<SourceSelection, "accessClass" | "accessRef">[],
+  retainedRefs: ReadonlySet<string> = new Set(),
+  access: BrowserSourceAccessRegistry = browserSourceAccess,
+): Promise<void> {
+  const released = new Set<string>();
+  const persistent: string[] = [];
+  for (const source of sources) {
+    if (retainedRefs.has(source.accessRef) || released.has(source.accessRef))
+      continue;
+    released.add(source.accessRef);
+    if (source.accessClass === "ephemeral-browser-file")
+      access.releaseFiles(projectId, source.accessRef);
+    else if (source.accessClass === "persistent-browser-handle")
+      persistent.push(source.accessRef);
+  }
+  await access.removeHandles(projectId, persistent);
 }
 
 export function browserFilesForSelections(

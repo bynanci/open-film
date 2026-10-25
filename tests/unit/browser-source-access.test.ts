@@ -8,20 +8,28 @@ import {
 
 class MemoryBackend implements BrowserHandleBackend {
   records: StoredBrowserHandle[] = [];
+  listCalls = 0;
+  putBatches = 0;
+  removeBatches = 0;
 
   async list(projectId: string) {
+    this.listCalls++;
     return this.records.filter((record) => record.projectId === projectId);
   }
 
-  async put(record: StoredBrowserHandle) {
-    this.records = [
-      ...this.records.filter((value) => value.key !== record.key),
-      record,
-    ];
+  async putMany(records: readonly StoredBrowserHandle[]) {
+    this.putBatches++;
+    for (const record of records)
+      this.records = [
+        ...this.records.filter((value) => value.key !== record.key),
+        record,
+      ];
   }
 
-  async remove(key: string) {
-    this.records = this.records.filter((record) => record.key !== key);
+  async removeMany(keys: readonly string[]) {
+    this.removeBatches++;
+    const removed = new Set(keys);
+    this.records = this.records.filter((record) => !removed.has(record.key));
   }
 }
 
@@ -38,7 +46,7 @@ const handle = (
 });
 
 describe("browser source access registry", () => {
-  it("structured-clones persistent handles through the backend and reuses the same entry", async () => {
+  it("persists handles through the backend and reuses the same entry", async () => {
     const backend = new MemoryBackend();
     let sequence = 0;
     const registry = new BrowserSourceAccessRegistry(
@@ -69,6 +77,44 @@ describe("browser source access registry", () => {
     });
   });
 
+  it("validates and persists a handle batch with one project lookup and one write transaction", async () => {
+    const backend = new MemoryBackend();
+    const registry = new BrowserSourceAccessRegistry(
+      backend,
+      (() => {
+        let sequence = 0;
+        return () => `batch-${++sequence}`;
+      })(),
+    );
+
+    await expect(
+      registry.rememberHandles("project-a", [
+        handle("one", "一"),
+        handle("two", "二"),
+        handle("three", "三"),
+      ]),
+    ).resolves.toEqual([
+      "browser-handle:batch-1",
+      "browser-handle:batch-2",
+      "browser-handle:batch-3",
+    ]);
+    expect(backend.listCalls).toBe(1);
+    expect(backend.putBatches).toBe(1);
+    expect(backend.records).toHaveLength(3);
+
+    const listCalls = backend.listCalls;
+    await registry.removeHandles("project-a", [
+      "browser-handle:batch-1",
+      "browser-handle:batch-2",
+      "browser-handle:not-owned",
+    ]);
+    expect(backend.listCalls).toBe(listCalls + 1);
+    expect(backend.removeBatches).toBe(1);
+    expect(backend.records.map((record) => record.key)).toEqual([
+      "browser-handle:batch-3",
+    ]);
+  });
+
   it("keeps ordinary File objects session-only and clears only their owning project", () => {
     const registry = new BrowserSourceAccessRegistry(
       new MemoryBackend(),
@@ -85,8 +131,13 @@ describe("browser source access registry", () => {
     expect(first).toBe("browser-file:file-1");
     expect(registry.files("project-a", first)).toEqual([a, b]);
     expect(registry.files("project-b", first)).toBeUndefined();
-    registry.clearEphemeral("project-a");
+    registry.releaseFiles("project-b", first);
+    expect(registry.files("project-a", first)).toEqual([a, b]);
+    registry.releaseFiles("project-a", first);
     expect(registry.files("project-a", first)).toBeUndefined();
+    const replacement = registry.rememberFiles("project-a", [a, b]);
+    registry.clearEphemeral("project-a");
+    expect(registry.files("project-a", replacement)).toBeUndefined();
     expect(registry.files("project-b", second)).toEqual([other]);
   });
 

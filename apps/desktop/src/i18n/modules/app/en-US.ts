@@ -260,7 +260,7 @@ export default {
         "Selections stay editable and do not start import. Scanning and common analysis are the next review step.",
       startCompatible: "Import selected sources",
       startPending:
-        "Mixed folders and persistent browser sources will be available in the sealed batch step.",
+        "Mixed sources, shallow folders, and persistent browser sources will be available in the sealed batch step.",
       folder: "Media folder",
       submit: "Import folder",
       uploading: "Adding files: {completed} of {total}",

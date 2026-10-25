@@ -1223,6 +1223,12 @@ async function uploadFiles(files: File[]) {
   if (busy.value || relinkBusy.value || !files.length) return;
   uploadController = new AbortController();
   uploading.value = true;
+  uploadProgress.value = {
+    completed: 0,
+    total: files.length,
+    bytesUploaded: 0,
+    totalBytes: files.reduce((total, file) => total + file.size, 0),
+  };
   await run("uploadingFiles", async () => {
     try {
       await api.uploadFiles(files, {

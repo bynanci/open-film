@@ -32,28 +32,37 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
   permission checks. Ordinary `File` values stay in a project-scoped in-memory
   registry and reopen as `needs-reselection`; opaque references, not handles or
   bytes, enter the private draft.
+- Browser choices are bounded before access retention. Persistent handles are
+  validated and saved or removed in one IndexedDB transaction per batch, while
+  failed/stale additions, delayed picker results and successful removals release
+  only references no longer retained by the accepted draft.
 - The redesigned Import Panel presents the same draft in Standard and Expert
   modes, preserves explicit legacy import compatibility, supports cancellation,
   CJK and long pseudo-localized labels, and fences delayed reads, picker results
   and native listener registration across project changes or unmount.
+- Review remediation disables the recursive legacy importer for shallow folders,
+  reloads the latest draft after `import.draftStale`, keeps browser-upload cancel
+  visible while closing is disabled, and rejects corrupted non-boolean recursion
+  policies. Chromium exercises the actual IndexedDB backend across a reload;
+  physical `FileSystemHandle` permission reopening remains a workstation gate.
 
 ## Commands actually run
 
-| Command                                                                            | Result                                                                                      |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                                                   | Passed; lockfile and supply-chain policy verified.                                          |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes | Passed: 280 files, 3,834 tests.                                                             |
-| Focused core/catalog/application tests                                             | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5. |
-| M1 application/HTTP/component/browser/native-contract tests                        | Passed: 6 files, 24 tests.                                                                  |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` after M1       | Passed: 287 files, 3,866 tests in 352.29 seconds.                                           |
-| `pnpm format:check`                                                                | Passed; all tracked files match Prettier formatting.                                        |
-| `pnpm lint`                                                                        | Passed with zero warnings.                                                                  |
-| `pnpm typecheck`                                                                   | Passed after M1 implementation.                                                             |
-| `pnpm test:i18n`                                                                   | Passed: 2,326 semantic keys aligned.                                                        |
-| `pnpm test:docs-i18n`                                                              | Passed: 9 README locales and 113 English reference mirrors.                                 |
-| `pnpm build`                                                                       | Passed: 274 modules transformed; the existing large-chunk advisory remains.                 |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e`            | Passed: 231 Playwright tests in 18.7 minutes.                                               |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:interchange`    | Passed: 18 tests, source hash/bounds and relocation gates; real Resolve import unverified.  |
+| Command                                                                            | Result                                                                                                 |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `pnpm install --frozen-lockfile`                                                   | Passed; lockfile and supply-chain policy verified.                                                     |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes | Passed: 280 files, 3,834 tests.                                                                        |
+| Focused core/catalog/application tests                                             | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5.            |
+| M1 application/HTTP/component/browser/native-contract tests                        | Passed: 6 files, 34 tests after review remediation.                                                    |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` after M1       | Passed: 287 files, 3,876 tests in 350.94 seconds.                                                      |
+| `pnpm format:check`                                                                | Passed; all tracked files match Prettier formatting.                                                   |
+| `pnpm lint`                                                                        | Passed with zero warnings.                                                                             |
+| `pnpm typecheck`                                                                   | Passed after M1 implementation.                                                                        |
+| `pnpm test:i18n`                                                                   | Passed: 2,326 semantic keys aligned.                                                                   |
+| `pnpm test:docs-i18n`                                                              | Passed: 9 README locales and 113 English reference mirrors.                                            |
+| `pnpm build`                                                                       | Passed: 274 modules transformed; the existing large-chunk advisory remains.                            |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e`            | Passed: 233 Playwright tests in 18.8 minutes, including real IndexedDB reopen and upload cancellation. |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:interchange`    | Passed: 18 tests, source hash/bounds and relocation gates; real Resolve import unverified.             |
 
 The first unqualified baseline run had one environment-only failure because
 system Python lacked `opentimelineio`. The repository's existing pinned
@@ -66,7 +75,14 @@ and two repeated legacy imports retaining an earlier draft source. The UI now
 wraps expanded labels, the PhotoDepth flow uses explicit add/continue controls,
 and the legacy single-folder test helper clears only its consumed compatibility
 selection. All four focused reruns passed, followed by the complete 231-test
-green run above.
+historical green run.
+
+Independent code review then found five lifecycle/semantic defects and two test
+coverage gaps. Focused failing regressions reproduced shallow-folder recursion,
+hidden upload cancellation, delayed picker completion, stale revisions, orphaned
+browser access and corrupted stored recursion. The fixes add generation fencing,
+draft reload, bounded transactional access storage and cleanup. The final full
+Vitest and Playwright runs above use the corrected files.
 
 ## Open gates
 
