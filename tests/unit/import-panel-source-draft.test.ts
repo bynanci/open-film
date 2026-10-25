@@ -41,7 +41,12 @@ function fixture(
       rejected: [];
     }>;
     staleAddDraft?: SourceDraft;
+    delayedAdd?: Promise<{ draft: SourceDraft }>;
+    lostAddDraft?: SourceDraft;
     removeDraft?: SourceDraft;
+    delayedRemove?: Promise<{ draft: SourceDraft }>;
+    lostRemoveDraft?: SourceDraft;
+    reloadError?: Error;
   } = {},
 ) {
   let draft: SourceDraft =
@@ -53,17 +58,36 @@ function fixture(
       selections: [],
     } satisfies SourceDraft);
   let sequence = 0;
-  const sourceDraft = vi.fn(
-    async () => options.delayedRead ?? { draft: structuredClone(draft) },
-  );
+  let staleThrown = false;
+  let lostAcknowledgement = false;
+  let lostRemoveAcknowledgement = false;
+  let draftReads = 0;
+  const sourceDraft = vi.fn(async () => {
+    draftReads++;
+    if (draftReads > 1 && options.reloadError) throw options.reloadError;
+    return options.delayedRead ?? { draft: structuredClone(draft) };
+  });
   const addSourceSelections = vi.fn(
-    async (request: { sources: ReturnType<typeof input>[] }) => {
+    async (request: {
+      requestId: string;
+      sources: ReturnType<typeof input>[];
+    }) => {
+      if (options.delayedAdd) return options.delayedAdd;
       if (options.addError) throw options.addError;
-      if (options.staleAddDraft) {
+      if (options.staleAddDraft && !staleThrown) {
+        staleThrown = true;
         draft = structuredClone(options.staleAddDraft);
         throw Object.assign(new Error("draft changed"), {
           code: "import.draftStale",
         });
+      }
+      if (options.lostAddDraft) {
+        draft = structuredClone(options.lostAddDraft);
+        if (!lostAcknowledgement) {
+          lostAcknowledgement = true;
+          throw new Error("response connection lost");
+        }
+        return { draft: structuredClone(draft) };
       }
       draft = {
         ...draft,
@@ -81,11 +105,40 @@ function fixture(
       return { draft: structuredClone(draft) };
     },
   );
-  const removeSourceSelection = vi.fn(async () => ({
-    draft: structuredClone(options.removeDraft ?? draft),
-  }));
+  const removeSourceSelection = vi.fn(
+    async (_selectionId: string, _request: { requestId: string }) => {
+      if (options.delayedRemove) return options.delayedRemove;
+      if (options.lostRemoveDraft) {
+        draft = structuredClone(options.lostRemoveDraft);
+        if (!lostRemoveAcknowledgement) {
+          lostRemoveAcknowledgement = true;
+          throw new Error("remove response connection lost");
+        }
+      }
+      return { draft: structuredClone(options.removeDraft ?? draft) };
+    },
+  );
   const updateSourceSelection = vi.fn();
-  const releaseBrowserSources = vi.fn(async () => {});
+  const releaseBrowserSources = vi.fn(
+    async (
+      _projectId: string,
+      _sources: readonly Pick<
+        SourceSelectionInput,
+        "accessClass" | "accessRef"
+      >[],
+      _retained: ReadonlySet<string>,
+    ) => {},
+  );
+  const classifyNativeDrop = vi.fn(async () => ({
+    sources: [input("dropped.mp4")],
+    rejected: [] as [],
+  }));
+  let nativeDropListener:
+    | ((event: {
+        type: "enter" | "over" | "drop" | "leave";
+        paths: string[];
+      }) => void)
+    | undefined;
   const pickNativeFiles = options.nativeFilesResult
     ? vi.fn(() => options.nativeFilesResult!)
     : vi
@@ -121,16 +174,17 @@ function fixture(
         }),
         pickBrowserFallbackFolders: vi.fn(),
         sourcesFromBrowserDrop: vi.fn(),
-        classifyNativeDrop: vi.fn(),
+        classifyNativeDrop,
         clearBrowserEphemeral: vi.fn(),
         releaseBrowserSources,
         browserFilesForSelections: vi.fn(),
         sourceAvailability: vi.fn(
           async () => options.availability ?? "available",
         ),
-        listenForNativeDrop: vi.fn(
-          async () => options.nativeDropRegistration ?? (() => {}),
-        ),
+        listenForNativeDrop: vi.fn(async (listener) => {
+          nativeDropListener = listener;
+          return options.nativeDropRegistration ?? (() => {});
+        }),
       },
       "../i18n": { formatNumber: String },
       "./Icon.vue": { render: () => null },
@@ -178,6 +232,13 @@ function fixture(
     removeSourceSelection,
     releaseBrowserSources,
     pickNativeFiles,
+    classifyNativeDrop,
+    nativeDrop(event: {
+      type: "enter" | "over" | "drop" | "leave";
+      paths: string[];
+    }) {
+      nativeDropListener?.(event);
+    },
     onFiles: props.onFiles,
   };
 }
@@ -483,7 +544,9 @@ describe("additive source draft panel", () => {
   });
 
   it("releases browser access when adding its source to the draft fails", async () => {
-    const failure = new Error("draft unavailable");
+    const failure = Object.assign(new Error("draft rejected"), {
+      code: "request.invalid",
+    });
     const browserSource: SourceSelectionInput = {
       ...input("private.mp4"),
       accessClass: "ephemeral-browser-file",
@@ -552,6 +615,247 @@ describe("additive source draft panel", () => {
     );
   });
 
+  it("retains access from an authoritative add response that arrives after unmount", async () => {
+    let resolve!: (value: { draft: SourceDraft }) => void;
+    const response = new Promise<{ draft: SourceDraft }>((done) => {
+      resolve = done;
+    });
+    const browserSource: SourceSelectionInput = {
+      ...input("committed.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:committed",
+    };
+    const committed: SourceDraft = {
+      schemaVersion: 1,
+      projectId: "project-a",
+      revision: 1,
+      selections: [
+        {
+          ...browserSource,
+          id: "committed-source",
+          projectId: "project-a",
+          recursive: false,
+          selectionRevision: 1,
+        },
+      ],
+    };
+    const h = fixture({
+      delayedAdd: response,
+      nativeFilesResult: Promise.resolve({
+        sources: [browserSource],
+        rejected: [],
+      }),
+    });
+    await settle();
+    const choosing = (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    h.unmount();
+    resolve({ draft: committed });
+    await choosing;
+
+    const retained = h.releaseBrowserSources.mock.calls[0]?.[2];
+    expect(retained).toContain("browser-file:committed");
+  });
+
+  it("reuses one request identity after a committed add loses its response", async () => {
+    const browserSource: SourceSelectionInput = {
+      ...input("reconciled.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:reconciled",
+    };
+    const committed: SourceDraft = {
+      schemaVersion: 1,
+      projectId: "project-a",
+      revision: 1,
+      selections: [
+        {
+          ...browserSource,
+          id: "reconciled-source",
+          projectId: "project-a",
+          recursive: false,
+          selectionRevision: 1,
+        },
+      ],
+    };
+    const h = fixture({
+      lostAddDraft: committed,
+      nativeFilesResult: Promise.resolve({
+        sources: [browserSource],
+        rejected: [],
+      }),
+    });
+    await settle();
+    await (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+
+    expect(h.addSourceSelections).toHaveBeenCalledTimes(2);
+    expect(h.addSourceSelections.mock.calls[0]![0].requestId).toBe(
+      h.addSourceSelections.mock.calls[1]![0].requestId,
+    );
+    const retained = h.releaseBrowserSources.mock.calls[0]?.[2];
+    expect(retained).toContain("browser-file:reconciled");
+  });
+
+  it("reloads authoritative state when both same-receipt mutation attempts lose their response", async () => {
+    const failure = new Error("workspace transport unavailable");
+    const browserSource: SourceSelectionInput = {
+      ...input("uncertain.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:uncertain",
+    };
+    const h = fixture({
+      addError: failure,
+      nativeFilesResult: Promise.resolve({
+        sources: [browserSource],
+        rejected: [],
+      }),
+    });
+    await settle();
+    await (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+
+    expect(h.addSourceSelections).toHaveBeenCalledTimes(2);
+    expect(h.addSourceSelections.mock.calls[0]![0].requestId).toBe(
+      h.addSourceSelections.mock.calls[1]![0].requestId,
+    );
+    expect(h.props.onError).toHaveBeenCalledWith(failure);
+    expect(h.sourceDraft).toHaveBeenCalledTimes(2);
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [browserSource],
+      new Set(),
+    );
+  });
+
+  it("conservatively retains access when mutation and authoritative reload are both unavailable", async () => {
+    const failure = new Error("workspace transport unavailable");
+    const reloadFailure = new Error("authoritative read unavailable");
+    const browserSource: SourceSelectionInput = {
+      ...input("uncertain.mp4"),
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:uncertain",
+    };
+    const h = fixture({
+      addError: failure,
+      reloadError: reloadFailure,
+      nativeFilesResult: Promise.resolve({
+        sources: [browserSource],
+        rejected: [],
+      }),
+    });
+    await settle();
+    await (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+
+    expect(h.addSourceSelections).toHaveBeenCalledTimes(2);
+    expect(h.sourceDraft).toHaveBeenCalledTimes(2);
+    expect(h.props.onError).toHaveBeenCalledWith(reloadFailure);
+    expect(h.releaseBrowserSources).not.toHaveBeenCalled();
+  });
+
+  it("releases a removed source from an authoritative response after unmount", async () => {
+    let resolve!: (value: { draft: SourceDraft }) => void;
+    const response = new Promise<{ draft: SourceDraft }>((done) => {
+      resolve = done;
+    });
+    const source: SourceSelection = {
+      ...input("removed.mp4"),
+      id: "removed-source",
+      projectId: "project-a",
+      accessClass: "persistent-browser-handle",
+      accessRef: "browser-handle:removed",
+      selectionRevision: 1,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [source],
+      },
+      delayedRemove: response,
+    });
+    await settle();
+    const remove = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "button" &&
+          node.props["aria-label"] === "app.import.removeSource",
+      );
+    const removing = (remove!.props.onClick as () => Promise<void>)();
+    await settle();
+    h.unmount();
+    resolve({
+      draft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 2,
+        selections: [],
+      },
+    });
+    await removing;
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [source],
+      new Set(),
+    );
+  });
+
+  it("reuses one request identity when a committed removal loses its response", async () => {
+    const source: SourceSelection = {
+      ...input("removed.mp4"),
+      id: "removed-source",
+      projectId: "project-a",
+      accessClass: "persistent-browser-handle",
+      accessRef: "browser-handle:removed",
+      selectionRevision: 1,
+    };
+    const removed: SourceDraft = {
+      schemaVersion: 1,
+      projectId: "project-a",
+      revision: 2,
+      selections: [],
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [source],
+      },
+      lostRemoveDraft: removed,
+    });
+    await settle();
+    const remove = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "button" &&
+          node.props["aria-label"] === "app.import.removeSource",
+      );
+    await (remove!.props.onClick as () => Promise<void>)();
+    await settle();
+
+    expect(h.removeSourceSelection).toHaveBeenCalledTimes(2);
+    expect(h.removeSourceSelection.mock.calls[0]![1].requestId).toBe(
+      h.removeSourceSelection.mock.calls[1]![1].requestId,
+    );
+    expect(h.releaseBrowserSources).toHaveBeenCalledWith(
+      "project-a",
+      [source],
+      new Set(),
+    );
+  });
+
   it("reloads the latest draft after a stale mutation and permits another edit", async () => {
     const latest: SourceDraft = {
       schemaVersion: 1,
@@ -578,5 +882,12 @@ describe("additive source draft panel", () => {
       h.nodes().some((node) => node.props["data-source-id"] === "remote"),
     ).toBe(true);
     expect(h.button("app.import.addFiles")?.props.disabled).toBe(false);
+
+    h.nativeDrop({ type: "drop", paths: ["/synthetic/dropped.mp4"] });
+    await settle();
+    expect(h.classifyNativeDrop).toHaveBeenCalledWith([
+      "/synthetic/dropped.mp4",
+    ]);
+    expect(h.addSourceSelections).toHaveBeenCalledTimes(2);
   });
 });

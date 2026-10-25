@@ -54,6 +54,7 @@ const folderInput = ref<HTMLInputElement | null>(null);
 const serverPath = ref("");
 const serverPathOpen = ref(false);
 let generation = 0;
+let draftReadSequence = 0;
 let removeNativeDrop: (() => void) | undefined;
 
 const blocked = computed(() => props.busy || loading.value || mutating.value);
@@ -125,18 +126,28 @@ function acceptDraft(next: SourceDraft, owner: string, token: number): void {
   });
 }
 
-async function loadDraft(): Promise<void> {
+async function loadDraft(): Promise<SourceDraft | undefined> {
   const owner = props.projectId;
-  const token = ++generation;
+  const token = generation;
+  const readSequence = ++draftReadSequence;
   loading.value = true;
   try {
     const result = await api.sourceDraft();
-    if (result.draft.projectId === owner)
+    if (result.draft.projectId !== owner) return undefined;
+    if (token === generation && readSequence === draftReadSequence)
       acceptDraft(result.draft, owner, token);
+    return result.draft;
   } catch (error) {
-    if (token === generation && owner === props.projectId) emit("error", error);
+    if (
+      token === generation &&
+      readSequence === draftReadSequence &&
+      owner === props.projectId
+    )
+      emit("error", error);
+    return undefined;
   } finally {
-    if (token === generation) loading.value = false;
+    if (token === generation && readSequence === draftReadSequence)
+      loading.value = false;
   }
 }
 
@@ -155,49 +166,124 @@ async function handleMutationError(
   error: unknown,
   owner: string,
   token: number,
-): Promise<void> {
-  if (token !== generation || owner !== props.projectId) return;
+): Promise<SourceDraft | undefined> {
+  if (token !== generation || owner !== props.projectId) return undefined;
   emit("error", error);
-  if (applicationErrorCode(error) !== "import.draftStale") return;
+  if (applicationErrorCode(error) !== "import.draftStale") return undefined;
   mutating.value = false;
-  await loadDraft();
+  return loadDraft();
 }
 
-async function addSources(sources: SourceSelectionInput[]): Promise<boolean> {
-  if (!sources.length) return true;
-  if (blocked.value || !draft.value) return false;
+type MutationAttempt<T> =
+  { ok: true; value: T } | { ok: false; error: unknown; ambiguous: boolean };
+
+async function reconcileMutationFailure(
+  attempted: Extract<MutationAttempt<unknown>, { ok: false }>,
+  owner: string,
+  token: number,
+): Promise<SourceDraft | undefined> {
+  const staleDraft = await handleMutationError(attempted.error, owner, token);
+  if (
+    staleDraft ||
+    !attempted.ambiguous ||
+    token !== generation ||
+    owner !== props.projectId
+  )
+    return staleDraft;
+  mutating.value = false;
+  return loadDraft();
+}
+
+async function attemptMutation<T>(
+  action: () => Promise<T>,
+): Promise<MutationAttempt<T>> {
+  try {
+    return { ok: true, value: await action() };
+  } catch (error) {
+    if (applicationErrorCode(error) !== undefined)
+      return { ok: false, error, ambiguous: false };
+    try {
+      return { ok: true, value: await action() };
+    } catch (retryError) {
+      return { ok: false, error: retryError, ambiguous: true };
+    }
+  }
+}
+
+interface AddSourcesOutcome {
+  saved: boolean;
+  cleanupSafe: boolean;
+  authoritative?: SourceDraft;
+}
+
+async function addSources(
+  sources: SourceSelectionInput[],
+): Promise<AddSourcesOutcome> {
+  if (!sources.length)
+    return { saved: true, cleanupSafe: true, authoritative: draft.value };
+  if (blocked.value || !draft.value) return { saved: false, cleanupSafe: true };
   const owner = props.projectId;
   const token = generation;
+  const mutationRequestId = requestId();
+  const baseRevision = draft.value.revision;
   mutating.value = true;
   try {
-    const result = await api.addSourceSelections({
-      projectId: owner,
-      baseRevision: draft.value.revision,
-      requestId: requestId(),
-      sources,
-    });
+    const attempted = await attemptMutation(() =>
+      api.addSourceSelections({
+        projectId: owner,
+        baseRevision,
+        requestId: mutationRequestId,
+        sources,
+      }),
+    );
+    if (!attempted.ok) {
+      const authoritative = await reconcileMutationFailure(
+        attempted,
+        owner,
+        token,
+      );
+      return {
+        saved: false,
+        cleanupSafe:
+          authoritative !== undefined ||
+          (!attempted.ambiguous &&
+            applicationErrorCode(attempted.error) !== undefined),
+        authoritative,
+      };
+    }
+    const result = attempted.value;
     acceptDraft(result.draft, owner, token);
-    return true;
-  } catch (error) {
-    await handleMutationError(error, owner, token);
-    return false;
+    return {
+      saved: true,
+      cleanupSafe: true,
+      authoritative: result.draft,
+    };
   } finally {
     if (token === generation) mutating.value = false;
   }
 }
 
-function retainedAccessRefs(owner: string): Set<string> {
-  if (draft.value?.projectId !== owner) return new Set();
-  return new Set(draft.value.selections.map((source) => source.accessRef));
+function retainedAccessRefs(
+  owner: string,
+  authoritative?: SourceDraft,
+): Set<string> {
+  const snapshot = authoritative ?? draft.value;
+  if (snapshot?.projectId !== owner) return new Set();
+  return new Set(snapshot.selections.map((source) => source.accessRef));
 }
 
 async function releaseSources(
   owner: string,
   sources: readonly Pick<SourceSelectionInput, "accessClass" | "accessRef">[],
   token: number,
+  authoritative?: SourceDraft,
 ): Promise<void> {
   try {
-    await releaseBrowserSources(owner, sources, retainedAccessRefs(owner));
+    await releaseBrowserSources(
+      owner,
+      sources,
+      retainedAccessRefs(owner, authoritative),
+    );
   } catch (error) {
     if (token === generation && owner === props.projectId) emit("error", error);
   }
@@ -216,9 +302,10 @@ async function applyPicked(
       return false;
     }
     rejected.value = result.rejected;
-    const saved = await addSources(result.sources);
-    await releaseSources(owner, result.sources, token);
-    return saved;
+    const outcome = await addSources(result.sources);
+    if (outcome.cleanupSafe)
+      await releaseSources(owner, result.sources, token, outcome.authoritative);
+    return outcome.saved;
   } catch (error) {
     if (token === generation && owner === props.projectId) emit("error", error);
     return false;
@@ -314,17 +401,30 @@ async function removeSource(source: SourceSelection) {
   if (blocked.value || !draft.value) return;
   const owner = props.projectId;
   const token = generation;
+  const mutationRequestId = requestId();
+  const baseRevision = draft.value.revision;
   mutating.value = true;
   try {
-    const result = await api.removeSourceSelection(source.id, {
-      projectId: owner,
-      baseRevision: draft.value.revision,
-      requestId: requestId(),
-    });
+    const attempted = await attemptMutation(() =>
+      api.removeSourceSelection(source.id, {
+        projectId: owner,
+        baseRevision,
+        requestId: mutationRequestId,
+      }),
+    );
+    if (!attempted.ok) {
+      const authoritative = await reconcileMutationFailure(
+        attempted,
+        owner,
+        token,
+      );
+      if (authoritative)
+        await releaseSources(owner, [source], token, authoritative);
+      return;
+    }
+    const result = attempted.value;
     acceptDraft(result.draft, owner, token);
-    await releaseSources(owner, [source], token);
-  } catch (error) {
-    await handleMutationError(error, owner, token);
+    await releaseSources(owner, [source], token, result.draft);
   } finally {
     if (token === generation) mutating.value = false;
   }
@@ -334,17 +434,24 @@ async function setRecursive(source: SourceSelection, recursive: boolean) {
   if (blocked.value || !draft.value) return;
   const owner = props.projectId;
   const token = generation;
+  const mutationRequestId = requestId();
+  const baseRevision = draft.value.revision;
   mutating.value = true;
   try {
-    const result = await api.updateSourceSelection(source.id, {
-      projectId: owner,
-      baseRevision: draft.value.revision,
-      requestId: requestId(),
-      recursive,
-    });
+    const attempted = await attemptMutation(() =>
+      api.updateSourceSelection(source.id, {
+        projectId: owner,
+        baseRevision,
+        requestId: mutationRequestId,
+        recursive,
+      }),
+    );
+    if (!attempted.ok) {
+      await reconcileMutationFailure(attempted, owner, token);
+      return;
+    }
+    const result = attempted.value;
     acceptDraft(result.draft, owner, token);
-  } catch (error) {
-    await handleMutationError(error, owner, token);
   } finally {
     if (token === generation) mutating.value = false;
   }
@@ -354,6 +461,7 @@ watch(
   () => props.projectId,
   (projectId, previous) => {
     generation++;
+    draftReadSequence++;
     draft.value = undefined;
     access.value = {};
     rejected.value = [];
