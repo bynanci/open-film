@@ -1,7 +1,7 @@
-use tauri::{Manager, RunEvent};
-use tauri_plugin_dialog::DialogExt;
 use serde::Serialize;
 use std::path::Path;
+use tauri::{Manager, RunEvent};
+use tauri_plugin_dialog::DialogExt;
 mod native_benchmark;
 mod native_runtime;
 use native_benchmark::{CheckpointKind, NativeBenchmark};
