@@ -162,6 +162,72 @@ describe("browser source access registry", () => {
     expect(queryPermission).toHaveBeenCalledWith({ mode: "read" });
   });
 
+  it("checks a mixed source batch with one persistent storage lookup", async () => {
+    const backend = new MemoryBackend();
+    const granted = vi.fn(async () => "granted" as PermissionState);
+    const prompt = vi.fn(async () => "prompt" as PermissionState);
+    backend.records.push(
+      {
+        key: "browser-handle:granted",
+        projectId: "project-a",
+        kind: "directory",
+        name: "Granted",
+        handle: {
+          kind: "directory",
+          name: "Granted",
+          queryPermission: granted,
+        },
+      },
+      {
+        key: "browser-handle:prompt",
+        projectId: "project-a",
+        kind: "directory",
+        name: "Prompt",
+        handle: {
+          kind: "directory",
+          name: "Prompt",
+          queryPermission: prompt,
+        },
+      },
+    );
+    const registry = new BrowserSourceAccessRegistry(backend);
+    const ephemeral = registry.rememberFiles("project-a", [
+      { name: "local.mp4" } as File,
+    ]);
+    backend.listCalls = 0;
+
+    await expect(
+      registry.availabilities("project-a", [
+        {
+          accessClass: "native-path",
+          accessRef: "/synthetic/native.mp4",
+        },
+        { accessClass: "ephemeral-browser-file", accessRef: ephemeral },
+        {
+          accessClass: "persistent-browser-handle",
+          accessRef: "browser-handle:granted",
+        },
+        {
+          accessClass: "persistent-browser-handle",
+          accessRef: "browser-handle:prompt",
+        },
+        {
+          accessClass: "persistent-browser-handle",
+          accessRef: "browser-handle:missing",
+        },
+      ]),
+    ).resolves.toEqual([
+      "available",
+      "available",
+      "available",
+      "needs-permission",
+      "needs-reselection",
+    ]);
+    expect(backend.listCalls).toBe(1);
+    expect(granted).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+
   it("distinguishes expired file objects, missing handles and permission prompts", async () => {
     const backend = new MemoryBackend();
     backend.records.push({

@@ -1,7 +1,7 @@
 # Multi-Source Import and Common Analysis
 
-Status: accepted implementation design  
-Baseline: `main@61a46596d7a2cd17e1c993b2b6fd3f31c5ed807d`  
+Status: accepted implementation design
+Baseline: `main@61a46596d7a2cd17e1c993b2b6fd3f31c5ed807d`
 Date: 2026-10-25
 
 ## Outcome

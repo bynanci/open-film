@@ -234,6 +234,7 @@ export default {
       drop: "ファイルまたはフォルダーをドロップするか、追加する素材を選んでください。",
       addFolder: "フォルダーを追加",
       addFiles: "ファイルを追加",
+      moreOptions: "その他の追加方法",
       addPath: "フォルダーパスを使用",
       addPathSubmit: "パスを下書きへ追加",
       folderCount: "フォルダー {count} 個",
@@ -243,6 +244,11 @@ export default {
       emptyDraft:
         "素材はまだありません。ファイルやフォルダーを何度でも追加できます。",
       sources: "選択した素材ソース",
+      sourceRange: "{total} 件中 {start}～{end} 件",
+      sourcePagination: "選択した素材のページ",
+      sourcePage: "{page}／{pages} ページ",
+      previousSources: "前へ",
+      nextSources: "次へ",
       kind: { file: "ファイル", folder: "フォルダー" },
       access: {
         "needs-permission": "走査する前にアクセス許可が必要です。",
@@ -252,6 +258,14 @@ export default {
       removeSource: "下書きから {name} を削除",
       rejected:
         "ドロップした {count} 項目は確認が必要なため追加されませんでした。",
+      rejectedReason: {
+        symlink: "シンボリックリンクはたどりません",
+        unsupported: "未対応の項目形式です",
+        unreadable: "この項目を読み取れません",
+        "directory-unsupported":
+          "フォルダーピッカーからこのフォルダーを選択してください",
+      },
+      rejectedMore: "ほか {count} 項目は追加されませんでした。",
       draftSaved: "素材の下書きを保存しました",
       draftNext:
         "選択内容は引き続き編集でき、自動では取り込みません。次の確認で走査と共同解析の範囲を決めます。",

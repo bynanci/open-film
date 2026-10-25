@@ -195,23 +195,41 @@ export class BrowserSourceAccessRegistry {
     projectId: string,
     source: Pick<SourceSelection, "accessClass" | "accessRef">,
   ): Promise<BrowserSourceAvailability> {
-    if (source.accessClass === "ephemeral-browser-file")
-      return this.files(projectId, source.accessRef)
-        ? "available"
-        : "needs-reselection";
-    if (source.accessClass !== "persistent-browser-handle") return "available";
-    const record = (await this.backend.list(projectId)).find(
-      (value) => value.key === source.accessRef,
+    return (await this.availabilities(projectId, [source]))[0]!;
+  }
+
+  async availabilities(
+    projectId: string,
+    sources: readonly Pick<SourceSelection, "accessClass" | "accessRef">[],
+  ): Promise<BrowserSourceAvailability[]> {
+    const needsPersistentLookup = sources.some(
+      (source) => source.accessClass === "persistent-browser-handle",
     );
-    if (!record) return "needs-reselection";
-    try {
-      return (await record.handle.queryPermission?.({ mode: "read" })) ===
-        "granted"
-        ? "available"
-        : "needs-permission";
-    } catch {
-      return "needs-permission";
-    }
+    const persistent = new Map(
+      (needsPersistentLookup ? await this.backend.list(projectId) : []).map(
+        (record) => [record.key, record],
+      ),
+    );
+    return Promise.all(
+      sources.map(async (source): Promise<BrowserSourceAvailability> => {
+        if (source.accessClass === "ephemeral-browser-file")
+          return this.files(projectId, source.accessRef)
+            ? "available"
+            : "needs-reselection";
+        if (source.accessClass !== "persistent-browser-handle")
+          return "available";
+        const record = persistent.get(source.accessRef);
+        if (!record) return "needs-reselection";
+        try {
+          return (await record.handle.queryPermission?.({ mode: "read" })) ===
+            "granted"
+            ? "available"
+            : "needs-permission";
+        } catch {
+          return "needs-permission";
+        }
+      }),
+    );
   }
 
   clearEphemeral(projectId: string): void {

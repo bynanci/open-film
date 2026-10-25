@@ -22,8 +22,12 @@ presentations over the same commands. Existing one-root imports remain available
 only after an explicit action. Review hardening fences delayed results, recovers
 stale revisions and transactionally releases browser access that the authoritative
 draft no longer retains. Ambiguous mutation responses reuse one idempotency
-receipt before reconciliation. M2 streaming discovery, membership, staging and
-manifest sealing are next and are not implied by the M1 UI.
+receipt before reconciliation. The final M1 interaction pass batches permission
+lookups, pages large drafts at 100 source cards, turns typed drop failures into
+actionable feedback, moves host-path entry behind Standard-mode progressive
+disclosure, and preserves 44px coarse-pointer targets plus narrow-screen CJK
+reflow. M2 streaming discovery, membership, staging and manifest sealing are
+next and are not implied by the M1 UI.
 
 ## 0.4.0 reviewed source integration
 

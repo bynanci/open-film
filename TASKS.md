@@ -24,6 +24,12 @@ and [validation](docs/validation-multi-source-analysis.md).
       draft-read and native-listener lifecycles separate; reconcile ambiguous
       add/remove/update results with the same idempotency receipt and an
       authoritative draft before releasing browser access.
+- [x] M1 UI/UX hardening: batch browser permission reads, page large drafts at
+      100 source cards without changing the authoritative selection, keep
+      technical revision/path controls behind Expert or progressive disclosure,
+      expose typed rejection reasons, and preserve 44px coarse-pointer targets,
+      CJK wrapping, keyboard navigation, narrow-screen reflow and stale-project
+      interaction fencing.
 - [ ] M2: streaming discovery, membership, private durable staging, content
       identity and Expected/Verified Manifests.
 - [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,

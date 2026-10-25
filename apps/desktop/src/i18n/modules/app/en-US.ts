@@ -238,6 +238,7 @@ export default {
       drop: "Drop files or folders here, or choose what to add.",
       addFolder: "Add Folder",
       addFiles: "Add Files",
+      moreOptions: "More ways to add",
       addPath: "Use a folder path",
       addPathSubmit: "Add path to draft",
       folderCount: "{count} folders",
@@ -247,6 +248,11 @@ export default {
       emptyDraft:
         "No sources yet. Add files or folders as many times as you need.",
       sources: "Selected sources",
+      sourceRange: "{start}–{end} of {total}",
+      sourcePagination: "Selected source pages",
+      sourcePage: "Page {page} of {pages}",
+      previousSources: "Previous",
+      nextSources: "Next",
       kind: { file: "File", folder: "Folder" },
       access: {
         "needs-permission": "Permission is required before scanning.",
@@ -255,6 +261,13 @@ export default {
       includeSubfolders: "Include subfolders",
       removeSource: "Remove {name} from this draft",
       rejected: "{count} dropped items need attention and were not added.",
+      rejectedReason: {
+        symlink: "Links are not followed",
+        unsupported: "Unsupported item type",
+        unreadable: "Cannot read this item",
+        "directory-unsupported": "Choose this folder with the folder picker",
+      },
+      rejectedMore: "{count} more items were not added.",
       draftSaved: "Source draft saved",
       draftNext:
         "Selections stay editable and do not start import. Scanning and common analysis are the next review step.",

@@ -149,13 +149,20 @@ export async function chooseImportFolder(
   // This helper exercises the legacy single-folder importer. Clear any prior
   // saved source draft so repeated calls keep their historical one-root scope;
   // the dedicated multi-source tests intentionally retain and combine sources.
-  await expect(panel.locator(".import-summary span")).toHaveCount(3);
+  // Summary counters exist while the draft request is still pending. Wait for
+  // the mutually exclusive loaded state before inspecting source cards.
+  await expect(
+    panel.locator(".import-empty, .import-source-section"),
+  ).toBeVisible();
   const cards = panel.locator(".import-source-card");
   while ((await cards.count()) > 0) {
     const before = await cards.count();
     await cards.first().locator(":scope > button.icon-button").click();
     await expect(cards).toHaveCount(before - 1);
   }
+  const moreOptions = panel.locator("details.import-more-options");
+  if ((await moreOptions.count()) && !(await moreOptions.getAttribute("open")))
+    await moreOptions.locator("summary").click();
   await panel
     .getByRole("button", {
       name: uiText(locale, "app.import.addPath"),

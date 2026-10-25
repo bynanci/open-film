@@ -17,7 +17,7 @@ import {
   pickNativeFolders,
   releaseBrowserSources,
   sourcesFromBrowserDrop,
-  sourceAvailability,
+  sourceAvailabilities,
   type PickedSources,
 } from "../sourcePicker";
 import Icon from "./Icon.vue";
@@ -53,9 +53,13 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const folderInput = ref<HTMLInputElement | null>(null);
 const serverPath = ref("");
 const serverPathOpen = ref(false);
+const sourcePage = ref(0);
 let generation = 0;
 let draftReadSequence = 0;
 let removeNativeDrop: (() => void) | undefined;
+
+const SOURCE_PAGE_SIZE = 100;
+const REJECTED_PREVIEW_SIZE = 5;
 
 const blocked = computed(() => props.busy || loading.value || mutating.value);
 const folderCount = computed(
@@ -67,6 +71,28 @@ const fileCount = computed(
   () =>
     draft.value?.selections.filter((source) => source.kind === "file").length ??
     0,
+);
+const sourcePageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil((draft.value?.selections.length ?? 0) / SOURCE_PAGE_SIZE),
+  ),
+);
+const visibleSources = computed(() => {
+  const start = sourcePage.value * SOURCE_PAGE_SIZE;
+  return (draft.value?.selections ?? []).slice(start, start + SOURCE_PAGE_SIZE);
+});
+const sourceRangeStart = computed(() =>
+  visibleSources.value.length ? sourcePage.value * SOURCE_PAGE_SIZE + 1 : 0,
+);
+const sourceRangeEnd = computed(
+  () => sourceRangeStart.value + visibleSources.value.length - 1,
+);
+const visibleRejected = computed(() =>
+  rejected.value.slice(0, REJECTED_PREVIEW_SIZE),
+);
+const hiddenRejectedCount = computed(() =>
+  Math.max(0, rejected.value.length - visibleRejected.value.length),
 );
 const compatibleStart = computed(() => {
   const selections = draft.value?.selections ?? [];
@@ -102,24 +128,23 @@ async function refreshAvailability(
   owner: string,
   token: number,
 ): Promise<void> {
-  const entries = await Promise.all(
-    snapshot.selections.map(
-      async (source) =>
-        [source.id, await sourceAvailability(owner, source)] as const,
-    ),
-  );
+  const entries = await sourceAvailabilities(owner, snapshot.selections);
   if (
     token !== generation ||
     owner !== props.projectId ||
     draft.value?.revision !== snapshot.revision
   )
     return;
-  access.value = Object.fromEntries(entries);
+  access.value = entries;
 }
 
 function acceptDraft(next: SourceDraft, owner: string, token: number): void {
   if (token !== generation || owner !== props.projectId) return;
   draft.value = next;
+  sourcePage.value = Math.min(
+    sourcePage.value,
+    Math.max(0, Math.ceil(next.selections.length / SOURCE_PAGE_SIZE) - 1),
+  );
   access.value = {};
   void refreshAvailability(next, owner, token).catch((error) => {
     if (token === generation && owner === props.projectId) emit("error", error);
@@ -267,6 +292,8 @@ async function addSources(
     }
     const result = attempted.value;
     acceptDraft(result.draft, owner, token);
+    if (token === generation && owner === props.projectId)
+      sourcePage.value = Math.max(0, sourcePageCount.value - 1);
     return {
       saved: true,
       cleanupSafe: true,
@@ -351,6 +378,8 @@ async function chooseFiles() {
 async function addServerFolder(): Promise<void> {
   const accessRef = serverPath.value.trim();
   if (!accessRef) return;
+  const owner = props.projectId;
+  const token = generation;
   const displayName =
     accessRef.split(/[\\/]/u).filter(Boolean).at(-1) ?? accessRef;
   const saved = await applyPicked(() => ({
@@ -365,7 +394,7 @@ async function addServerFolder(): Promise<void> {
     ],
     rejected: [],
   }));
-  if (saved) {
+  if (saved && token === generation && owner === props.projectId) {
     serverPath.value = "";
     serverPathOpen.value = false;
   }
@@ -479,6 +508,11 @@ watch(
     draft.value = undefined;
     access.value = {};
     rejected.value = [];
+    mutating.value = false;
+    dragging.value = false;
+    sourcePage.value = 0;
+    serverPath.value = "";
+    serverPathOpen.value = false;
     if (previous && previous !== projectId) clearBrowserEphemeral(previous);
     void loadDraft();
   },
@@ -555,13 +589,23 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <button
-          v-if="!native"
+          v-if="!native && expert"
           class="text-button import-server-path-toggle"
           :disabled="blocked"
           @click="serverPathOpen = !serverPathOpen"
         >
           {{ t("app.import.addPath") }}
         </button>
+        <details v-else-if="!native" class="import-more-options">
+          <summary>{{ t("app.import.moreOptions") }}</summary>
+          <button
+            class="text-button import-server-path-toggle"
+            :disabled="blocked"
+            @click="serverPathOpen = !serverPathOpen"
+          >
+            {{ t("app.import.addPath") }}
+          </button>
+        </details>
       </div>
       <input
         ref="fileInput"
@@ -605,7 +649,7 @@ onBeforeUnmount(() => {
     <div class="import-summary" role="status" aria-live="polite">
       <span>{{ t("app.import.folderCount", { count: folderCount }) }}</span>
       <span>{{ t("app.import.fileCount", { count: fileCount }) }}</span>
-      <span v-if="draft">{{
+      <span v-if="draft && expert">{{
         t("app.import.savedRevision", { revision: draft.revision })
       }}</span>
     </div>
@@ -616,58 +660,120 @@ onBeforeUnmount(() => {
     <p v-else-if="!draft?.selections.length" class="import-empty">
       {{ t("app.import.emptyDraft") }}
     </p>
-    <ul v-else class="import-source-list" :aria-label="t('app.import.sources')">
-      <li
-        v-for="source in draft.selections"
-        :key="source.id"
-        class="import-source-card"
-        :data-source-id="source.id"
-      >
-        <span class="import-source-kind" aria-hidden="true">
-          <Icon :name="source.kind === 'folder' ? 'folder' : 'media'" />
+    <div v-else class="import-source-section">
+      <div class="import-source-heading">
+        <strong>{{ t("app.import.sources") }}</strong>
+        <span>
+          {{
+            t("app.import.sourceRange", {
+              start: sourceRangeStart,
+              end: sourceRangeEnd,
+              total: draft.selections.length,
+            })
+          }}
         </span>
-        <div class="import-source-copy">
-          <strong>{{ source.displayName }}</strong>
-          <span>{{ t(`app.import.kind.${source.kind}`) }}</span>
-          <span
-            v-if="access[source.id] && access[source.id] !== 'available'"
-            class="import-access-warning"
-            role="status"
-          >
-            {{ t(`app.import.access.${access[source.id]}`) }}
-          </span>
-          <code v-if="expert">{{ source.accessRef }}</code>
-          <small v-if="expert"
-            >{{ source.accessClass }} · r{{ source.selectionRevision }}</small
-          >
-        </div>
-        <label v-if="source.kind === 'folder'" class="import-recursive">
-          <input
-            type="checkbox"
-            :checked="source.recursive"
-            :disabled="blocked"
-            @change="
-              setRecursive(source, ($event.target as HTMLInputElement).checked)
-            "
-          />
-          {{ t("app.import.includeSubfolders") }}
-        </label>
-        <button
-          class="icon-button"
-          :disabled="blocked"
-          :aria-label="
-            t('app.import.removeSource', { name: source.displayName })
-          "
-          @click="removeSource(source)"
+      </div>
+      <ul class="import-source-list" :aria-label="t('app.import.sources')">
+        <li
+          v-for="source in visibleSources"
+          :key="source.id"
+          class="import-source-card"
+          :data-source-id="source.id"
         >
-          <Icon name="reject" />
+          <span class="import-source-kind" aria-hidden="true">
+            <Icon :name="source.kind === 'folder' ? 'folder' : 'media'" />
+          </span>
+          <div class="import-source-copy">
+            <strong :title="source.displayName">{{
+              source.displayName
+            }}</strong>
+            <span>{{ t(`app.import.kind.${source.kind}`) }}</span>
+            <span
+              v-if="access[source.id] && access[source.id] !== 'available'"
+              class="import-access-warning"
+              role="status"
+            >
+              {{ t(`app.import.access.${access[source.id]}`) }}
+            </span>
+            <code v-if="expert">{{ source.accessRef }}</code>
+            <small v-if="expert"
+              >{{ source.accessClass }} · r{{ source.selectionRevision }}</small
+            >
+          </div>
+          <label v-if="source.kind === 'folder'" class="import-recursive">
+            <input
+              type="checkbox"
+              :checked="source.recursive"
+              :disabled="blocked"
+              @change="
+                setRecursive(
+                  source,
+                  ($event.target as HTMLInputElement).checked,
+                )
+              "
+            />
+            {{ t("app.import.includeSubfolders") }}
+          </label>
+          <button
+            class="icon-button"
+            :disabled="blocked"
+            :aria-label="
+              t('app.import.removeSource', { name: source.displayName })
+            "
+            @click="removeSource(source)"
+          >
+            <Icon name="reject" />
+          </button>
+        </li>
+      </ul>
+      <nav
+        v-if="sourcePageCount > 1"
+        class="import-source-pagination"
+        :aria-label="t('app.import.sourcePagination')"
+      >
+        <button
+          class="secondary"
+          :disabled="blocked || sourcePage === 0"
+          @click="sourcePage--"
+        >
+          {{ t("app.import.previousSources") }}
         </button>
-      </li>
-    </ul>
+        <span aria-live="polite">
+          {{
+            t("app.import.sourcePage", {
+              page: sourcePage + 1,
+              pages: sourcePageCount,
+            })
+          }}
+        </span>
+        <button
+          class="secondary"
+          :disabled="blocked || sourcePage + 1 >= sourcePageCount"
+          @click="sourcePage++"
+        >
+          {{ t("app.import.nextSources") }}
+        </button>
+      </nav>
+    </div>
 
-    <p v-if="rejected.length" class="callout warning" role="alert">
-      {{ t("app.import.rejected", { count: rejected.length }) }}
-    </p>
+    <section
+      v-if="rejected.length"
+      class="callout warning import-rejected"
+      role="alert"
+    >
+      <strong>{{
+        t("app.import.rejected", { count: rejected.length })
+      }}</strong>
+      <ul>
+        <li v-for="item in visibleRejected" :key="`${item.kind}:${item.label}`">
+          <span>{{ item.label }}</span>
+          <span>{{ t(`app.import.rejectedReason.${item.kind}`) }}</span>
+        </li>
+      </ul>
+      <p v-if="hiddenRejectedCount">
+        {{ t("app.import.rejectedMore", { count: hiddenRejectedCount }) }}
+      </p>
+    </section>
     <div v-if="progress" class="import-progress" role="status">
       <p>
         {{

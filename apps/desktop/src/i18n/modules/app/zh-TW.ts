@@ -221,6 +221,7 @@ export default {
       drop: "將檔案或資料夾拖到這裡，或選擇要加入的素材。",
       addFolder: "加入資料夾",
       addFiles: "加入檔案",
+      moreOptions: "更多加入方式",
       addPath: "使用資料夾路徑",
       addPathSubmit: "將路徑加入草稿",
       folderCount: "{count} 個資料夾",
@@ -229,6 +230,11 @@ export default {
       loadingDraft: "正在載入此影片儲存的來源清單…",
       emptyDraft: "尚未加入來源。你可以多次加入檔案或資料夾。",
       sources: "已選來源",
+      sourceRange: "第 {start}–{end} 項，共 {total} 項",
+      sourcePagination: "已選來源分頁",
+      sourcePage: "第 {page}／{pages} 頁",
+      previousSources: "上一頁",
+      nextSources: "下一頁",
       kind: { file: "檔案", folder: "資料夾" },
       access: {
         "needs-permission": "掃描前需要重新授予存取權限。",
@@ -237,6 +243,13 @@ export default {
       includeSubfolders: "包含子資料夾",
       removeSource: "從草稿移除 {name}",
       rejected: "有 {count} 個拖入項目需要處理，因此未加入。",
+      rejectedReason: {
+        symlink: "不會跟隨符號連結",
+        unsupported: "不支援此項目類型",
+        unreadable: "無法讀取此項目",
+        "directory-unsupported": "請改用資料夾選取器加入",
+      },
+      rejectedMore: "另有 {count} 個項目未加入。",
       draftSaved: "來源草稿已儲存",
       draftNext:
         "選取內容仍可編輯，而且不會自動匯入。下一步會先檢查掃描與共同分析範圍。",

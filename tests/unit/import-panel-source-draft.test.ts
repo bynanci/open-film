@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SourceDraft, SourceSelection } from "@openfilm/core";
 import type { SourceSelectionInput } from "@openfilm/application";
+import type { PickedSources } from "../../apps/desktop/src/sourcePicker.js";
 import {
   flatten,
   loadComponent,
@@ -32,6 +33,7 @@ function fixture(
   options: {
     delayedRead?: Promise<{ draft: SourceDraft }>;
     initialDraft?: SourceDraft;
+    switchedDraft?: SourceDraft;
     availability?: "available" | "needs-permission" | "needs-reselection";
     browserFolderError?: Error;
     nativeDropRegistration?: Promise<() => void>;
@@ -40,6 +42,7 @@ function fixture(
       sources: SourceSelectionInput[];
       rejected: [];
     }>;
+    nativeDropResult?: PickedSources;
     staleAddDraft?: SourceDraft;
     delayedAdd?: Promise<{ draft: SourceDraft }>;
     lostAddDraft?: SourceDraft;
@@ -65,6 +68,8 @@ function fixture(
   const sourceDraft = vi.fn(async () => {
     draftReads++;
     if (draftReads > 1 && options.reloadError) throw options.reloadError;
+    if (draftReads > 1 && options.switchedDraft)
+      return { draft: structuredClone(options.switchedDraft) };
     return options.delayedRead ?? { draft: structuredClone(draft) };
   });
   const addSourceSelections = vi.fn(
@@ -129,10 +134,14 @@ function fixture(
       _retained: ReadonlySet<string>,
     ) => {},
   );
-  const classifyNativeDrop = vi.fn(async () => ({
-    sources: [input("dropped.mp4")],
-    rejected: [] as [],
-  }));
+  const classifyNativeDrop = vi.fn(async () =>
+    Promise.resolve(
+      options.nativeDropResult ?? {
+        sources: [input("dropped.mp4")],
+        rejected: [] as [],
+      },
+    ),
+  );
   let nativeDropListener:
     | ((event: {
         type: "enter" | "over" | "drop" | "leave";
@@ -178,8 +187,14 @@ function fixture(
         clearBrowserEphemeral: vi.fn(),
         releaseBrowserSources,
         browserFilesForSelections: vi.fn(),
-        sourceAvailability: vi.fn(
-          async () => options.availability ?? "available",
+        sourceAvailabilities: vi.fn(
+          async (_owner: string, sources: SourceSelection[]) =>
+            Object.fromEntries(
+              sources.map((source) => [
+                source.id,
+                options.availability ?? "available",
+              ]),
+            ),
         ),
         listenForNativeDrop: vi.fn(async (listener) => {
           nativeDropListener = listener;
@@ -283,15 +298,268 @@ describe("additive source draft panel", () => {
       h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
     )();
     await settle();
+    h.props.native = false;
+    await settle();
     expect(
       h.nodes().some((node) => node.text.includes("/synthetic/1.mp4")),
     ).toBe(false);
+    expect(
+      h.nodes().some((node) => node.text.includes("app.import.savedRevision")),
+    ).toBe(false);
+    expect(h.nodes().some((node) => node.tag === "details")).toBe(true);
     h.props.expert = true;
     await settle();
     expect(
       h.nodes().some((node) => node.text.includes("/synthetic/1.mp4")),
     ).toBe(true);
+    expect(
+      h.nodes().some((node) => node.text.includes("app.import.savedRevision")),
+    ).toBe(true);
+    expect(h.nodes().some((node) => node.tag === "details")).toBe(false);
     expect(h.addSourceSelections).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders large drafts in bounded pages while keeping every source reachable", async () => {
+    const selections = Array.from(
+      { length: 205 },
+      (_, index): SourceSelection => ({
+        ...input(`clip-${index}.mp4`),
+        id: `source-${index}`,
+        projectId: "project-a",
+        selectionRevision: 1,
+      }),
+    );
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections,
+      },
+    });
+    await settle();
+
+    expect(
+      h.nodes().filter((node) => node.props["data-source-id"]).length,
+    ).toBe(100);
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "source-0"),
+    ).toBe(true);
+    await (
+      h.button("app.import.nextSources")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(
+      h.nodes().filter((node) => node.props["data-source-id"]).length,
+    ).toBe(100);
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "source-100"),
+    ).toBe(true);
+    await (
+      h.button("app.import.nextSources")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(
+      h.nodes().filter((node) => node.props["data-source-id"]).length,
+    ).toBe(5);
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "source-204"),
+    ).toBe(true);
+  });
+
+  it("does not move the new project's source page for a delayed add response", async () => {
+    let resolve!: (value: { draft: SourceDraft }) => void;
+    const delayedAdd = new Promise<{ draft: SourceDraft }>((done) => {
+      resolve = done;
+    });
+    const switchedSelections = Array.from(
+      { length: 205 },
+      (_, index): SourceSelection => ({
+        ...input(`switched-${index}.mp4`),
+        id: `switched-${index}`,
+        projectId: "project-b",
+        selectionRevision: 1,
+      }),
+    );
+    const h = fixture({
+      delayedAdd,
+      switchedDraft: {
+        schemaVersion: 1,
+        projectId: "project-b",
+        revision: 1,
+        selections: switchedSelections,
+      },
+      nativeFilesResult: Promise.resolve({
+        sources: [input("late.mp4")],
+        rejected: [],
+      }),
+    });
+    await settle();
+
+    const choosing = (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    h.props.projectId = "project-b";
+    await settle();
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "switched-0"),
+    ).toBe(true);
+
+    resolve({
+      draft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [],
+      },
+    });
+    await choosing;
+    await settle();
+
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "switched-0"),
+    ).toBe(true);
+    expect(
+      h.nodes().some((node) => node.props["data-source-id"] === "switched-200"),
+    ).toBe(false);
+  });
+
+  it("unblocks the new project while an old add response is delayed", async () => {
+    let resolve!: (value: { draft: SourceDraft }) => void;
+    const delayedAdd = new Promise<{ draft: SourceDraft }>((done) => {
+      resolve = done;
+    });
+    const h = fixture({
+      delayedAdd,
+      switchedDraft: {
+        schemaVersion: 1,
+        projectId: "project-b",
+        revision: 0,
+        selections: [],
+      },
+      nativeFilesResult: Promise.resolve({
+        sources: [input("late.mp4")],
+        rejected: [],
+      }),
+    });
+    await settle();
+
+    const choosing = (
+      h.button("app.import.addFiles")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.button("app.import.addFiles")?.props.disabled).toBe(true);
+
+    h.props.projectId = "project-b";
+    await settle();
+    expect(h.button("app.import.addFiles")?.props.disabled).toBe(false);
+
+    resolve({
+      draft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [],
+      },
+    });
+    await choosing;
+    await settle();
+    expect(h.button("app.import.addFiles")?.props.disabled).toBe(false);
+  });
+
+  it("keeps a new project's path input when an old path add finishes", async () => {
+    let resolve!: (value: { draft: SourceDraft }) => void;
+    const delayedAdd = new Promise<{ draft: SourceDraft }>((done) => {
+      resolve = done;
+    });
+    const h = fixture({
+      delayedAdd,
+      switchedDraft: {
+        schemaVersion: 1,
+        projectId: "project-b",
+        revision: 0,
+        selections: [],
+      },
+    });
+    h.props.native = false;
+    await settle();
+    await (h.button("app.import.addPath")!.props.onClick as () => void)();
+    await settle();
+    let path = h
+      .nodes()
+      .find(
+        (node) => node.tag === "input" && node.props.name === "media-folder",
+      );
+    (path!.props.onInput as (event: unknown) => void)({
+      target: { value: "/synthetic/project-a" },
+    });
+    await settle();
+    const form = h
+      .nodes()
+      .find((node) => node.tag === "form" && node.props.onSubmit);
+    const saving = (form!.props.onSubmit as (event: unknown) => Promise<void>)({
+      preventDefault() {},
+    });
+    await settle();
+
+    h.props.projectId = "project-b";
+    await settle();
+    await (h.button("app.import.addPath")!.props.onClick as () => void)();
+    await settle();
+    path = h
+      .nodes()
+      .find(
+        (node) => node.tag === "input" && node.props.name === "media-folder",
+      );
+    (path!.props.onInput as (event: unknown) => void)({
+      target: { value: "/synthetic/project-b" },
+    });
+    await settle();
+
+    resolve({
+      draft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [],
+      },
+    });
+    await saving;
+    await settle();
+
+    path = h
+      .nodes()
+      .find(
+        (node) => node.tag === "input" && node.props.name === "media-folder",
+      );
+    expect(path?.props.value).toBe("/synthetic/project-b");
+  });
+
+  it("shows bounded, actionable reasons for rejected dropped sources", async () => {
+    const h = fixture({
+      nativeDropResult: {
+        sources: [],
+        rejected: [
+          { label: "private-link", kind: "symlink" },
+          { label: "damaged.mov", kind: "unreadable" },
+          { label: "socket", kind: "unsupported" },
+        ],
+      },
+    });
+    await settle();
+    h.nativeDrop({ type: "drop", paths: ["ignored"] });
+    await settle();
+
+    const copy = h
+      .nodes()
+      .map((node) => node.text)
+      .join(" ");
+    expect(copy).toContain("private-link");
+    expect(copy).toContain("app.import.rejectedReason.symlink");
+    expect(copy).toContain("damaged.mov");
+    expect(copy).toContain("app.import.rejectedReason.unreadable");
+    expect(copy).toContain("app.import.rejectedReason.unsupported");
   });
 
   it("ignores a delayed draft read after the project changes", async () => {

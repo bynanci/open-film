@@ -9,6 +9,7 @@ let root: string;
 let firstProject: string;
 let secondProject: string;
 let uploadProject: string;
+let touchProject: string;
 let sources: string[];
 
 test.use({ viewport: { width: 1280, height: 800 }, actionTimeout: 15_000 });
@@ -18,6 +19,7 @@ test.beforeAll(async () => {
   firstProject = join(root, "旅程.openfilm");
   secondProject = join(root, "第二部.openfilm");
   uploadProject = join(root, "上傳取消.openfilm");
+  touchProject = join(root, "觸控匯入.openfilm");
   sources = await Promise.all(
     Array.from({ length: 5 }, async (_, index) => {
       const path = join(root, `合成片段-${index + 1}.mp4`);
@@ -101,10 +103,18 @@ test("accumulates a private source draft across choices, modes, reload and proje
     (await (await request.get(`${api}/import-draft`)).json()).draft,
   ).toEqual(firstDraft.draft);
 
-  await page.setViewportSize({ width: 640, height: 720 });
-  await expect(
-    importPanel.getByText("合成片段-1.mp4", { exact: true }),
-  ).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 720 });
+  const firstSourceName = importPanel.getByText("合成片段-1.mp4", {
+    exact: true,
+  });
+  await expect(firstSourceName).toBeVisible();
+  expect(
+    await firstSourceName.evaluate(
+      (element) =>
+        element.scrollWidth <= element.clientWidth + 1 &&
+        element.scrollHeight <= element.clientHeight + 1,
+    ),
+  ).toBe(true);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth + 2,
@@ -277,4 +287,46 @@ test("persists an opaque browser handle record through real IndexedDB transactio
       { owner: projectId, key: accessRef },
     ),
   ).resolves.toBe("needs-reselection");
+});
+
+test.describe("touch import controls", () => {
+  test.use({ hasTouch: true, viewport: { width: 375, height: 812 } });
+
+  test("keeps every visible import action at least 44 CSS pixels", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await createFilm(
+      page,
+      { title: "觸控匯入", path: touchProject, contentLocale: "zh-TW" },
+      "zh-TW",
+    );
+    const importPanel = panel(page);
+    const moreOptions = importPanel.locator("details.import-more-options");
+    await moreOptions.locator("summary").click();
+    const summaryBounds = await moreOptions.locator("summary").boundingBox();
+    expect(summaryBounds).not.toBeNull();
+    expect(summaryBounds!.height).toBeGreaterThanOrEqual(44);
+    await importPanel
+      .getByRole("button", {
+        name: uiText("zh-TW", "app.import.addPath"),
+        exact: true,
+      })
+      .click();
+    const controls = importPanel.locator("button:visible, input:visible");
+    expect(await controls.count()).toBeGreaterThan(2);
+    for (const control of await controls.all()) {
+      const bounds = await control.boundingBox();
+      const ariaLabel = await control.getAttribute("aria-label");
+      const controlLabel =
+        ariaLabel ||
+        (await control.innerText()) ||
+        (await control.getAttribute("name")) ||
+        "form control";
+      expect(bounds, controlLabel).not.toBeNull();
+      expect(bounds!.height, controlLabel).toBeGreaterThanOrEqual(44);
+      if (ariaLabel)
+        expect(bounds!.width, ariaLabel).toBeGreaterThanOrEqual(44);
+    }
+  });
 });

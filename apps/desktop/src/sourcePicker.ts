@@ -278,3 +278,14 @@ export function sourceAvailability(
 ): Promise<BrowserSourceAvailability> {
   return browserSourceAccess.availability(projectId, source);
 }
+
+export async function sourceAvailabilities(
+  projectId: string,
+  sources: readonly SourceSelection[],
+  access: BrowserSourceAccessRegistry = browserSourceAccess,
+): Promise<Record<string, BrowserSourceAvailability>> {
+  const statuses = await access.availabilities(projectId, sources);
+  return Object.fromEntries(
+    sources.map((source, index) => [source.id, statuses[index]!]),
+  );
+}
