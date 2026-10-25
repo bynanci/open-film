@@ -34,8 +34,10 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
   bytes, enter the private draft.
 - Browser choices are bounded before access retention. Persistent handles are
   validated and saved or removed in one IndexedDB transaction per batch, while
-  failed/stale additions, delayed picker results and successful removals release
-  only references no longer retained by the accepted draft.
+  definitively failed/stale additions, delayed picker results and successful
+  removals release only references no longer retained by the authoritative
+  draft. Ambiguous responses retry the exact receipt and reconcile with a fresh
+  draft read; access is conservatively retained if that read is also unavailable.
 - The redesigned Import Panel presents the same draft in Standard and Expert
   modes, preserves explicit legacy import compatibility, supports cancellation,
   CJK and long pseudo-localized labels, and fences delayed reads, picker results
@@ -53,8 +55,8 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
 | `pnpm install --frozen-lockfile`                                                   | Passed; lockfile and supply-chain policy verified.                                                     |
 | `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes | Passed: 280 files, 3,834 tests.                                                                        |
 | Focused core/catalog/application tests                                             | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5.            |
-| M1 application/HTTP/component/browser/native-contract tests                        | Passed: 6 files, 34 tests after review remediation.                                                    |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` after M1       | Passed: 287 files, 3,876 tests in 350.94 seconds.                                                      |
+| M1 application/HTTP/component/browser/native-contract tests                        | Passed: 6 files, 40 tests after two review rounds.                                                     |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` after M1       | Passed: 287 files, 3,882 tests in 353.86 seconds.                                                      |
 | `pnpm format:check`                                                                | Passed; all tracked files match Prettier formatting.                                                   |
 | `pnpm lint`                                                                        | Passed with zero warnings.                                                                             |
 | `pnpm typecheck`                                                                   | Passed after M1 implementation.                                                                        |
@@ -83,6 +85,17 @@ hidden upload cancellation, delayed picker completion, stale revisions, orphaned
 browser access and corrupted stored recursion. The fixes add generation fencing,
 draft reload, bounded transactional access storage and cleanup. The final full
 Vitest and Playwright runs above use the corrected files.
+
+Follow-up review found that stale reload shared a token with the native drop
+listener and that a mutation completing after close/project switch could clean
+access against an older local draft. Draft-read sequencing is now separate from
+component/project lifecycle fencing. Add, remove and recursion mutations retry
+an ambiguous transport result once with the identical request ID and body;
+successful retries and fresh reconciliation reads drive cleanup from the
+authoritative draft, while unavailable reconciliation keeps access intact. Tests
+cover stale-reload-then-drop, add/remove completion after unmount, lost add/remove
+acknowledgements and unavailable reconciliation. A second independent review
+reported no Critical or Important findings before the final full runs above.
 
 ## Open gates
 
