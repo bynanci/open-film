@@ -18,3 +18,4 @@ apps/desktop/src-tauri/gen/
 fixtures/sample-media/generated/
 apps/desktop/src-tauri/resources/runtime/
 runtime-inputs.local.json
+.worktrees/
