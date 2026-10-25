@@ -14,6 +14,14 @@ add time/GPX, bounded representative-frame understanding and explicit review
 adoption. M7 records actual platform evidence; it does not treat mocks as native
 picker or external-drive verification.
 
+M1 is now implemented: repeated file/folder/drop choices accumulate in one
+project-owned revisioned draft; native drops reject symlinks without following
+them; persistent browser handles remain in IndexedDB while ordinary `File`
+objects expire to an explicit reselection state; and Standard/Expert modes are
+presentations over the same commands. Existing one-root imports remain available
+only after an explicit action. M2 streaming discovery, membership, staging and
+manifest sealing are next and are not implied by the M1 UI.
+
 ## 0.4.0 reviewed source integration
 
 The next application release is 0.4.0; the existing project schema stays 1.0.0.

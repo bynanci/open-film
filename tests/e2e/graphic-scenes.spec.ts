@@ -1299,9 +1299,10 @@ test("authors local PhotoDepth layers, previews shared frames, and preserves und
     .getByRole("button", { name: "Import local photo layers", exact: true })
     .click();
   await expect(page.locator(".import-panel")).toBeVisible();
-  await page.locator(".import-actions .primary").click();
+  await page.getByRole("button", { name: "Use a folder path" }).click();
   await page.locator("input[name='media-folder']").fill(dependencies);
-  await page.locator(".import-folder-form .primary").click();
+  await page.getByRole("button", { name: "Add path to draft" }).click();
+  await page.getByRole("button", { name: "Import selected sources" }).click();
   await expect(
     controls.getByLabel("Foreground alpha mask (PNG)"),
   ).toContainText("synthetic-depth-mask.png");

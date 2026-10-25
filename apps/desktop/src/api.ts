@@ -38,6 +38,7 @@ import type {
   PipelineRecipe,
   PipelineRun,
   PipelineChangeImpactReport,
+  SourceDraft,
 } from "@openfilm/core";
 import type {
   CaptionPublication,
@@ -59,6 +60,7 @@ import type {
   ProfileFramePreview,
   ProfileExportArtifact,
   AudioProfileExport,
+  SourceSelectionInput,
 } from "@openfilm/application";
 export type {
   DirectionReviewPlan,
@@ -916,6 +918,38 @@ export const api = {
     projectContentLocale?: ProjectContentLocale;
     filmSettings?: Partial<FilmSettings>;
   }) => patch<{ project: OpenFilmProject; path: string }>("/project", input),
+  sourceDraft: () => request<{ draft: SourceDraft }>("/import-draft"),
+  addSourceSelections: (input: {
+    projectId: string;
+    baseRevision: number;
+    requestId: string;
+    sources: SourceSelectionInput[];
+  }) => post<{ draft: SourceDraft }>("/import-draft/sources", input),
+  updateSourceSelection: (
+    selectionId: string,
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      recursive: boolean;
+    },
+  ) =>
+    patch<{ draft: SourceDraft }>(
+      `/import-draft/sources/${encodeURIComponent(selectionId)}`,
+      input,
+    ),
+  removeSourceSelection: (
+    selectionId: string,
+    input: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+    },
+  ) =>
+    request<{ draft: SourceDraft }>(
+      `/import-draft/sources/${encodeURIComponent(selectionId)}`,
+      { method: "DELETE", body: JSON.stringify(input) },
+    ),
   importFiles: (files: string[]) =>
     post<{ jobId: string }>("/import", { files }),
   uploadFiles,

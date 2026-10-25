@@ -639,6 +639,12 @@ for (const locale of ["en-US", "ja-JP"] as const) {
     await panel
       .getByLabel(text("app.import.addFiles"), { exact: true })
       .setInputFiles(fixture.byId.landscape!);
+    await panel
+      .getByRole("button", {
+        name: text("app.import.startCompatible"),
+        exact: true,
+      })
+      .click();
     await expect(
       page.getByText(text("app.activity.import.complete"), { exact: true }),
     ).toBeVisible({ timeout: 60_000 });

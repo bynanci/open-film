@@ -1,5 +1,7 @@
 import { MotionGenerationService } from "./motion-generation.js";
 export * from "./motion-generation.js";
+import { SourceDraftService } from "./source-draft.js";
+export * from "./source-draft.js";
 
 import { NleHandoffService, type HandoffRequest } from "./nle-handoff.js";
 import type { HandoffOptions } from "@openfilm/exporters";
@@ -349,6 +351,7 @@ export class OpenFilmApplication {
   readonly storyPlan: StoryPlanService;
   readonly pipeline: PipelineService;
   readonly creativeVariants: CreativeVariantService;
+  readonly sourceDraft: SourceDraftService;
 
   readonly exportProfiles: ExportProfileService;
   private activeJobs = 0;
@@ -371,6 +374,7 @@ export class OpenFilmApplication {
     this.persistedProject = savedScriptProjectIdentity(project);
     this.catalog = new ProjectCatalog(directory);
     try {
+      this.sourceDraft = new SourceDraftService(directory, project.id);
       this.versions = new ProjectVersionService(this);
       this.collectMedia = new CollectMediaService(this);
 

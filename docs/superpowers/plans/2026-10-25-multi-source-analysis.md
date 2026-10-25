@@ -53,11 +53,11 @@ Playwright, FFmpeg/FFprobe.
 
 ### Task 2: M1 source draft and platform pickers
 
-- [ ] Add failing Rust, component, application, and browser tests.
-- [ ] Add `pick_folders`, additive source draft commands, typed native drop
+- [x] Add failing Rust, component, application, and browser tests.
+- [x] Add `pick_folders`, additive source draft commands, typed native drop
       classification, and browser handle storage in IndexedDB.
-- [ ] Add standard and expert presentations over the same source draft.
-- [ ] Verify keyboard, CJK, responsive, project-switch, and cancel behavior.
+- [x] Add standard and expert presentations over the same source draft.
+- [x] Verify keyboard, CJK, responsive, project-switch, and cancel behavior.
 
 ### Task 3: M2 streaming discovery and membership
 

@@ -10,8 +10,13 @@ and [validation](docs/validation-multi-source-analysis.md).
       source/content evidence from Collect Media snapshots.
 - [x] M0: migrate immutable schema-v5 Named Version copies for inspect/restore
       without changing historical payload hashes.
-- [ ] M1: additive native/browser source draft, multi-folder picker, drop
-      classification, IndexedDB handles and General/Expert views.
+- [x] M1: additive native/browser source draft, multi-folder picker, bounded
+      typed drop classification, IndexedDB handles, expired-file disclosure and
+      General/Expert views. The same project-owned application service backs
+      Desktop and HTTP; selection remains non-destructive and does not start an
+      import until the user explicitly continues. Native workstation picker
+      execution remains an M7 manual gate because this environment has no Rust
+      toolchain.
 - [ ] M2: streaming discovery, membership, private durable staging, content
       identity and Expected/Verified Manifests.
 - [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,

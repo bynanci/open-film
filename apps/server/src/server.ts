@@ -52,6 +52,7 @@ import {
   type ProjectVersionRestoreInput,
   type CollectPlanInput,
   type CollectMediaCreateInput,
+  type SourceSelectionInput,
 } from "@openfilm/application";
 import {
   validateProject,
@@ -225,6 +226,49 @@ function paths(data: Body, key: string, maximum = 10000): string[] {
       `${key} must contain between 1 and ${maximum} paths.`,
     );
   return [...new Set(value)] as string[];
+}
+function sourceSelectionInputs(data: Body): SourceSelectionInput[] {
+  if (
+    !Array.isArray(data.sources) ||
+    !data.sources.length ||
+    data.sources.length > 10_000
+  )
+    throw new HttpError(400, "Choose between 1 and 10,000 sources.");
+  return data.sources.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new HttpError(400, "Each source must be an object.");
+    const source = value as Record<string, unknown>;
+    keys(source, [
+      "kind",
+      "displayName",
+      "accessClass",
+      "accessRef",
+      "recursive",
+    ]);
+    if (
+      typeof source.kind !== "string" ||
+      typeof source.displayName !== "string" ||
+      typeof source.accessClass !== "string" ||
+      typeof source.accessRef !== "string" ||
+      (source.recursive !== undefined && typeof source.recursive !== "boolean")
+    )
+      throw new HttpError(400, "A source descriptor has invalid fields.");
+    return source as unknown as SourceSelectionInput;
+  });
+}
+
+function draftMutation(data: Body): {
+  projectId: string;
+  baseRevision: number;
+  requestId: string;
+} {
+  if (!Number.isSafeInteger(data.baseRevision) || Number(data.baseRevision) < 0)
+    throw new HttpError(400, "baseRevision must be a nonnegative integer.");
+  return {
+    projectId: text(data, "projectId"),
+    baseRevision: Number(data.baseRevision),
+    requestId: text(data, "requestId"),
+  };
 }
 function safeFilename(name: string): boolean {
   return (
@@ -967,6 +1011,45 @@ export async function startServer(options: ServerOptions = {}) {
           return;
         }
         const application = current();
+        if (route === "/api/import-draft" && method === "GET") {
+          json(response, 200, { draft: application.sourceDraft.get() });
+          return;
+        }
+        if (route === "/api/import-draft/sources" && method === "POST") {
+          const data = await body(request);
+          keys(data, ["projectId", "baseRevision", "requestId", "sources"]);
+          const draft = application.sourceDraft.add({
+            ...draftMutation(data),
+            sources: sourceSelectionInputs(data),
+          });
+          json(response, 200, { draft });
+          return;
+        }
+        const sourceDraftRoute =
+          /^\/api\/import-draft\/sources\/([^/]+)$/u.exec(route);
+        if (sourceDraftRoute && method === "PATCH") {
+          const data = await body(request);
+          keys(data, ["projectId", "baseRevision", "requestId", "recursive"]);
+          if (typeof data.recursive !== "boolean")
+            throw new HttpError(400, "recursive must be true or false.");
+          const draft = application.sourceDraft.update({
+            ...draftMutation(data),
+            selectionId: decodeURIComponent(sourceDraftRoute[1]!),
+            recursive: data.recursive,
+          });
+          json(response, 200, { draft });
+          return;
+        }
+        if (sourceDraftRoute && method === "DELETE") {
+          const data = await body(request);
+          keys(data, ["projectId", "baseRevision", "requestId"]);
+          const draft = application.sourceDraft.remove({
+            ...draftMutation(data),
+            selectionId: decodeURIComponent(sourceDraftRoute[1]!),
+          });
+          json(response, 200, { draft });
+          return;
+        }
         if (route === "/api/versions/revision" && method === "GET") {
           json(response, 200, {
             projectId: application.project.id,

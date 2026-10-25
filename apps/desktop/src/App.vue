@@ -3001,14 +3001,17 @@ onUnmounted(() => {
 
       <ImportPanel
         v-if="importOpen"
+        :key="project.id"
+        :project-id="project.id"
         :native="native"
         :busy="!!busy || activeJobs.length > 0"
+        :expert="expertMode"
         :progress="uploadProgress"
         @folder="beginImport"
         @files="importFiles"
         @upload="uploadFiles"
-        @error="error = $event"
         @cancel="uploadController?.abort()"
+        @error="error = $event"
         @close="importOpen = false"
       />
 

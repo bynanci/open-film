@@ -225,12 +225,39 @@ export default {
     },
     import: {
       label: "メディアの取り込み",
+      eyebrow: "素材ソース",
       title: "思い出を追加",
-      description: "写真、動画、録音。どれもストーリーの一部になります。",
+      description:
+        "先に一つの素材リストを作成します。確認するまで走査や取り込みは始まりません。",
       close: "取り込みを閉じる",
-      drop: "ここにファイルをドロップするか、追加するものを選んでください。",
+      dropTitle: "素材セットを作成",
+      drop: "ファイルまたはフォルダーをドロップするか、追加する素材を選んでください。",
       addFolder: "フォルダーを追加",
       addFiles: "ファイルを追加",
+      addPath: "フォルダーパスを使用",
+      addPathSubmit: "パスを下書きへ追加",
+      folderCount: "フォルダー {count} 個",
+      fileCount: "ファイル {count} 個",
+      savedRevision: "下書き r{revision}",
+      loadingDraft: "このフィルムに保存された素材リストを読み込んでいます…",
+      emptyDraft:
+        "素材はまだありません。ファイルやフォルダーを何度でも追加できます。",
+      sources: "選択した素材ソース",
+      kind: { file: "ファイル", folder: "フォルダー" },
+      access: {
+        "needs-permission": "走査する前にアクセス許可が必要です。",
+        "needs-reselection": "走査する前にこの素材を選び直してください。",
+      },
+      includeSubfolders: "サブフォルダーを含める",
+      removeSource: "下書きから {name} を削除",
+      rejected:
+        "ドロップした {count} 項目は確認が必要なため追加されませんでした。",
+      draftSaved: "素材の下書きを保存しました",
+      draftNext:
+        "選択内容は引き続き編集でき、自動では取り込みません。次の確認で走査と共同解析の範囲を決めます。",
+      startCompatible: "選択した素材を取り込む",
+      startPending:
+        "混在するフォルダーと永続ブラウザー素材は、確定バッチ工程で利用できます。",
       folder: "メディアフォルダー",
       submit: "フォルダーを取り込む",
       uploading: "ファイルを追加中：{completed}／{total}",

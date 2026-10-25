@@ -146,9 +146,19 @@ export async function chooseImportFolder(
     name: uiText(locale, "app.import.label"),
     exact: true,
   });
+  // This helper exercises the legacy single-folder importer. Clear any prior
+  // saved source draft so repeated calls keep their historical one-root scope;
+  // the dedicated multi-source tests intentionally retain and combine sources.
+  await expect(panel.locator(".import-summary span")).toHaveCount(3);
+  const cards = panel.locator(".import-source-card");
+  while ((await cards.count()) > 0) {
+    const before = await cards.count();
+    await cards.first().locator(":scope > button.icon-button").click();
+    await expect(cards).toHaveCount(before - 1);
+  }
   await panel
     .getByRole("button", {
-      name: uiText(locale, "app.import.addFolder"),
+      name: uiText(locale, "app.import.addPath"),
       exact: true,
     })
     .click();
@@ -157,7 +167,13 @@ export async function chooseImportFolder(
     .fill(path);
   await panel
     .getByRole("button", {
-      name: uiText(locale, "app.import.submit"),
+      name: uiText(locale, "app.import.addPathSubmit"),
+      exact: true,
+    })
+    .click();
+  await panel
+    .getByRole("button", {
+      name: uiText(locale, "app.import.startCompatible"),
       exact: true,
     })
     .click();
