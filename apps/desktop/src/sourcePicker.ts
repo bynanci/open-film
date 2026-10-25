@@ -1,6 +1,10 @@
 // Modified by OpenFilm contributors on 2026-10-25. See LICENSE and NOTICE.
 import type { SourceSelectionInput } from "@openfilm/application";
-import type { SourceSelection } from "@openfilm/core";
+import {
+  estimateSourceDraftBytes,
+  SOURCE_DRAFT_LIMITS,
+  type SourceSelection,
+} from "@openfilm/core";
 import {
   browserSourceAccess,
   type BrowserSourceAccessRegistry,
@@ -30,11 +34,19 @@ interface BrowserDataTransferItem extends DataTransferItem {
   getAsFileSystemHandle?: () => Promise<BrowserHandleLike | null>;
 }
 
-const MAX_SELECTED_SOURCES = 10_000;
-
 function assertBoundedSelection(count: number): void {
-  if (count > MAX_SELECTED_SOURCES)
+  if (count > SOURCE_DRAFT_LIMITS.selections)
     throw new Error("Choose no more than 10,000 source items at a time.");
+}
+
+function assertDraftStorageBudget(
+  projectId: string,
+  sources: readonly SourceSelectionInput[],
+): void {
+  if (estimateSourceDraftBytes(projectId, sources) > SOURCE_DRAFT_LIMITS.bytes)
+    throw new Error(
+      "The selected source details exceed the source draft storage limit.",
+    );
 }
 
 function sourceName(path: string): string {
@@ -119,6 +131,14 @@ export function pickBrowserFiles(
   access: BrowserSourceAccessRegistry = browserSourceAccess,
 ): PickedSources {
   assertBoundedSelection(files.length);
+  const predicted = files.map((file, index): SourceSelectionInput => ({
+    kind: "file",
+    displayName: file.name,
+    accessClass: "ephemeral-browser-file",
+    accessRef: `browser-file:00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    recursive: false,
+  }));
+  assertDraftStorageBudget(projectId, predicted);
   return {
     sources: files.map((file) => ({
       kind: "file",
@@ -142,9 +162,21 @@ function fallbackDirectorySources(
     const relative = file.webkitRelativePath;
     const root = relative.split("/").filter(Boolean)[0];
     if (!root) continue;
-    groups.set(root, [...(groups.get(root) ?? []), file]);
+    const group = groups.get(root);
+    if (group) group.push(file);
+    else groups.set(root, [file]);
   }
   if (!groups.size) return pickBrowserFiles(projectId, files, access);
+  const predicted = [...groups].map(
+    ([displayName], index): SourceSelectionInput => ({
+      kind: "folder",
+      displayName,
+      accessClass: "ephemeral-browser-file",
+      accessRef: `browser-file:00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      recursive: true,
+    }),
+  );
+  assertDraftStorageBudget(projectId, predicted);
   return {
     sources: [...groups].map(([displayName, members]) => ({
       kind: "folder",
@@ -171,6 +203,16 @@ async function persistentSources(
   access: BrowserSourceAccessRegistry,
 ): Promise<PickedSources> {
   assertBoundedSelection(handles.length);
+  assertDraftStorageBudget(
+    projectId,
+    handles.map((handle, index): SourceSelectionInput => ({
+      kind: handle.kind === "directory" ? "folder" : "file",
+      displayName: handle.name,
+      accessClass: "persistent-browser-handle",
+      accessRef: `browser-handle:00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      recursive: handle.kind === "directory",
+    })),
+  );
   const accessRefs = await access.rememberHandles(projectId, handles);
   const sources: SourceSelectionInput[] = handles.map((handle, index) => ({
     kind: handle.kind === "directory" ? "folder" : "file",

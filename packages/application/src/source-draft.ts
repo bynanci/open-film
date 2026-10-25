@@ -14,14 +14,13 @@ import {
 import { dirname, isAbsolute, join } from "node:path";
 import {
   ApplicationError,
+  SOURCE_DRAFT_LIMITS,
   type SourceAccessClass,
   type SourceDraft,
   type SourceSelection,
   type SourceSelectionKind,
 } from "@openfilm/core";
 
-const MAX_DRAFT_BYTES = 2 * 1024 * 1024;
-const MAX_SELECTIONS = 10_000;
 const MAX_RECEIPTS = 512;
 
 export interface SourceSelectionInput {
@@ -151,7 +150,7 @@ function validateStoredDraft(
     draft.projectId !== projectId ||
     !validRevision(draft.revision ?? -1) ||
     !Array.isArray(draft.selections) ||
-    draft.selections.length > MAX_SELECTIONS ||
+    draft.selections.length > SOURCE_DRAFT_LIMITS.selections ||
     !Array.isArray(draft.receipts) ||
     draft.receipts.length > MAX_RECEIPTS
   )
@@ -227,7 +226,11 @@ export class SourceDraftService {
   private read(): StoredSourceDraft {
     if (!existsSync(this.path)) return this.empty();
     const info = lstatSync(this.path);
-    if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_DRAFT_BYTES)
+    if (
+      info.isSymbolicLink() ||
+      !info.isFile() ||
+      info.size > SOURCE_DRAFT_LIMITS.bytes
+    )
       fail("request.invalid", "The saved source draft is unsafe or too large.");
     try {
       return validateStoredDraft(
@@ -251,8 +254,15 @@ export class SourceDraftService {
       if (!info.isFile() || info.isSymbolicLink())
         fail("request.invalid", "Source draft storage is unsafe.");
     }
-    const serialized = `${JSON.stringify(value, null, 2)}\n`;
-    if (Buffer.byteLength(serialized) > MAX_DRAFT_BYTES)
+    let serialized = `${JSON.stringify(value)}\n`;
+    while (
+      Buffer.byteLength(serialized) > SOURCE_DRAFT_LIMITS.bytes &&
+      value.receipts.length > 1
+    ) {
+      value.receipts.shift();
+      serialized = `${JSON.stringify(value)}\n`;
+    }
+    if (Buffer.byteLength(serialized) > SOURCE_DRAFT_LIMITS.bytes)
       fail(
         "request.tooLarge",
         "The source draft exceeds its storage limit.",
@@ -328,7 +338,7 @@ export class SourceDraftService {
   add(input: AddSourceSelectionsInput): SourceDraft {
     if (!Array.isArray(input.sources) || !input.sources.length)
       fail("request.invalid", "Choose at least one source.");
-    if (input.sources.length > MAX_SELECTIONS)
+    if (input.sources.length > SOURCE_DRAFT_LIMITS.selections)
       fail("request.tooLarge", "Too many sources were selected.", 413);
     const sources = input.sources.map(validateSource);
     return this.mutate("add", input, sources, (draft, nextRevision) => {
@@ -354,7 +364,10 @@ export class SourceDraftService {
           recursive: source.recursive ?? source.kind === "folder",
         });
       }
-      if (draft.selections.length + additions.length > MAX_SELECTIONS)
+      if (
+        draft.selections.length + additions.length >
+        SOURCE_DRAFT_LIMITS.selections
+      )
         fail(
           "request.tooLarge",
           "The source draft has too many selections.",

@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BrowserSourceAccessRegistry,
+  IndexedDbBrowserHandleBackend,
   type BrowserHandleBackend,
   type BrowserHandleLike,
   type StoredBrowserHandle,
 } from "../../apps/desktop/src/browserSourceAccess.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 class MemoryBackend implements BrowserHandleBackend {
   records: StoredBrowserHandle[] = [];
@@ -113,6 +118,38 @@ describe("browser source access registry", () => {
     expect(backend.records.map((record) => record.key)).toEqual([
       "browser-handle:batch-3",
     ]);
+  });
+
+  it("indexes handle candidates instead of scanning every known entry", async () => {
+    const backend = new MemoryBackend();
+    let nameReads = 0;
+    backend.records = Array.from({ length: 500 }, (_, index) => {
+      const record: StoredBrowserHandle = {
+        key: `browser-handle:known-${index}`,
+        projectId: "project-a",
+        kind: "directory" as const,
+        name: `known-${index}`,
+        handle: handle(`known-${index}`, `known-${index}`),
+      };
+      Object.defineProperty(record, "name", {
+        enumerable: true,
+        get() {
+          nameReads++;
+          return `known-${index}`;
+        },
+      });
+      return record;
+    });
+    const registry = new BrowserSourceAccessRegistry(backend);
+
+    await registry.rememberHandles(
+      "project-a",
+      Array.from({ length: 500 }, (_, index) =>
+        handle(`incoming-${index}`, `incoming-${index}`),
+      ),
+    );
+
+    expect(nameReads).toBeLessThanOrEqual(1_000);
   });
 
   it("keeps ordinary File objects session-only and clears only their owning project", () => {
@@ -228,6 +265,63 @@ describe("browser source access registry", () => {
     expect(prompt).toHaveBeenCalledTimes(1);
   });
 
+  it("bounds permission checks and reuses a result for duplicate access references", async () => {
+    const backend = new MemoryBackend();
+    let active = 0;
+    let maximumActive = 0;
+    const duplicatePermission = vi.fn(async () => "granted" as PermissionState);
+    backend.records.push({
+      key: "browser-handle:duplicate",
+      projectId: "project-a",
+      kind: "directory",
+      name: "Duplicate",
+      handle: {
+        kind: "directory",
+        name: "Duplicate",
+        queryPermission: duplicatePermission,
+      },
+    });
+    for (let index = 0; index < 48; index++) {
+      backend.records.push({
+        key: `browser-handle:${index}`,
+        projectId: "project-a",
+        kind: "directory",
+        name: `Source ${index}`,
+        handle: {
+          kind: "directory",
+          name: `Source ${index}`,
+          async queryPermission() {
+            active++;
+            maximumActive = Math.max(maximumActive, active);
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            active--;
+            return "granted" as PermissionState;
+          },
+        },
+      });
+    }
+    const registry = new BrowserSourceAccessRegistry(backend);
+    const duplicate = {
+      accessClass: "persistent-browser-handle" as const,
+      accessRef: "browser-handle:duplicate",
+    };
+
+    const results = await registry.availabilities("project-a", [
+      duplicate,
+      duplicate,
+      duplicate,
+      ...Array.from({ length: 48 }, (_, index) => ({
+        accessClass: "persistent-browser-handle" as const,
+        accessRef: `browser-handle:${index}`,
+      })),
+    ]);
+
+    expect(results).toEqual(Array.from({ length: 51 }, () => "available"));
+    expect(duplicatePermission).toHaveBeenCalledTimes(1);
+    expect(maximumActive).toBeGreaterThan(1);
+    expect(maximumActive).toBeLessThanOrEqual(16);
+  });
+
   it("distinguishes expired file objects, missing handles and permission prompts", async () => {
     const backend = new MemoryBackend();
     backend.records.push({
@@ -267,5 +361,72 @@ describe("browser source access registry", () => {
         accessRef: "browser-handle:prompt",
       }),
     ).resolves.toBe("needs-reselection");
+  });
+
+  it("retries a blocked IndexedDB open and closes a late connection", async () => {
+    interface MockOpenRequest {
+      result?: unknown;
+      onblocked?: () => void;
+      onsuccess?: () => void;
+    }
+    const opens: MockOpenRequest[] = [];
+    const open = vi.fn(() => {
+      const request: MockOpenRequest = {};
+      opens.push(request);
+      return request;
+    });
+    vi.stubGlobal("indexedDB", { open });
+    const backend = new IndexedDbBrowserHandleBackend();
+
+    const first = backend.list("project-a");
+    expect(open).toHaveBeenCalledTimes(1);
+    opens[0]!.onblocked!();
+    await expect(first).rejects.toThrow("blocked");
+
+    const lateDatabase = { close: vi.fn() };
+    opens[0]!.result = lateDatabase;
+    opens[0]!.onsuccess!();
+    expect(lateDatabase.close).toHaveBeenCalledTimes(1);
+
+    const second = backend.list("project-a");
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenLastCalledWith("openfilm-source-access", 2);
+    const allRequest: {
+      result?: StoredBrowserHandle[];
+      onsuccess?: () => void;
+    } = {};
+    const transaction: {
+      oncomplete?: () => void;
+      objectStore: () => {
+        index: (name: string) => {
+          getAll: (projectId: string) => typeof allRequest;
+        };
+      };
+    } = {
+      objectStore: vi.fn(() => ({
+        index: vi.fn((name: string) => {
+          expect(name).toBe("projectId");
+          return {
+            getAll: vi.fn((projectId: string) => {
+              expect(projectId).toBe("project-a");
+              queueMicrotask(() => {
+                allRequest.result = [];
+                allRequest.onsuccess!();
+                transaction.oncomplete!();
+              });
+              return allRequest;
+            }),
+          };
+        }),
+      })),
+    };
+    const database = {
+      close: vi.fn(),
+      transaction: vi.fn(() => transaction),
+    };
+    opens[1]!.result = database;
+    opens[1]!.onsuccess!();
+
+    await expect(second).resolves.toEqual([]);
   });
 });

@@ -11,13 +11,17 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
 - A policy registry classifies every durable SQLite table. The regression opens
   `sqlite_master` and fails when a table has no policy.
 - Portable catalog projection retains selected asset/source/content evidence,
-  removes unselected occurrences and identities, deletes local jobs/caches, and
-  VACUUMs free pages so removed private values are not recoverable from output.
+  removes unselected occurrences and identities, deletes local jobs/caches,
+  rewrites logical/relative locators and rebuilds every retained v6 JSON payload
+  from explicit semantic columns before VACUUM, so arbitrary operational JSON
+  and removed private values are not recoverable from output.
 - `upgradeCatalogSnapshot` validates the recorded old schema, migrates a private
   copy and leaves the original bytes unchanged.
-- A generated schema-v5 Named Version fixture can be inspected and restored under
-  v6; its stored catalog hash remains unchanged and the automatic pre-restore
-  checkpoint uses schema v6.
+- A hash-pinned SQLite fixture produced by the actual schema-v5 code at baseline
+  `61a4659` can be inspected, diffed and restored under v6; its source bytes stay
+  unchanged and the automatic pre-restore checkpoint uses schema v6. DDL
+  comparison ignores formatting-only whitespace while still rejecting added or
+  structurally different objects.
 - Core lifecycle regressions prove retry/terminal behavior for ImportBatch,
   AnalysisRun and JobAttempt.
 - A project-private, revisioned source draft accumulates repeated files and
@@ -54,6 +58,15 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
   44px coarse-pointer targets and narrow-screen CJK wrapping. Project switches
   reset obsolete interaction locks, and delayed old-project responses cannot
   move the current page or clear current path input.
+- Independent-review remediation aligns the picker and compact source-draft
+  limits at 10,000 selections / 4 MiB, proves both the individual-file and
+  fallback-folder 10,000 boundary, indexes persistent browser records by project,
+  clears failed IndexedDB opens for retry, closes late blocked connections and
+  invalidates connections on version changes. Candidate-key indexing replaces
+  quadratic handle scans; permission queries reuse duplicate references and run
+  with at most 16 workers. Only the visible 100 persistent sources are refreshed,
+  while session-only files needed by the compatibility action remain checked.
+  A rejected recursion mutation restores the checkbox from authoritative state.
 
 ## Commands actually run
 
@@ -63,7 +76,8 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
 | `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` before changes | Passed: 280 files, 3,834 tests.                                                                 |
 | Focused core/catalog/application tests                                             | Passed: 8 files, 68 tests; old-version fixtures remove later tables before declaring v2-v5.     |
 | M1 application/HTTP/component/browser/native-contract tests                        | Passed: 7 focused files, 49 tests after UI/UX and lifecycle remediation.                        |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` after M1       | Passed: 287 files, 3,888 tests in 353.40 seconds.                                               |
+| Independent-review focused catalog/application/UI regressions                      | Passed: 6 files, 76 tests, including authentic v5, privacy sentinels and 10,000 boundaries.     |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test` at review head | Passed: 287 files, 3,897 tests in 355.58 seconds.                                               |
 | `pnpm format:check`                                                                | Passed; all tracked files match Prettier formatting.                                            |
 | `pnpm lint`                                                                        | Passed with zero warnings.                                                                      |
 | `pnpm typecheck`                                                                   | Passed after M1 implementation.                                                                 |
@@ -71,7 +85,7 @@ Current slice: M0 contracts/catalog compatibility and M1 source selection
 | `pnpm test:docs-i18n`                                                              | Passed: 9 README locales and 113 English reference mirrors.                                     |
 | `pnpm build`                                                                       | Passed: 274 modules transformed; the existing large-chunk advisory remains.                     |
 | Focused M1 Playwright regression                                                   | Passed: 4 tests at 375px, including disclosure, 44px touch targets and source-name containment. |
-| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e`            | Passed: 234 Playwright tests in 18.8 minutes from the final files.                              |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:e2e`            | Passed: 234 Playwright tests in 18.9 minutes from the review-head files.                        |
 | `OPENFILM_OTIO_PYTHON=/tmp/openfilm-otio-venv/bin/python pnpm test:interchange`    | Passed: 18 tests, source hash/bounds and relocation gates; real Resolve import unverified.      |
 
 The first unqualified baseline run had one environment-only failure because
@@ -112,6 +126,12 @@ Manual Playwright probes at 375, 640 and 1280 pixels found no page or panel
 horizontal overflow. Axe WCAG A/AA scans in light and dark themes reported no
 violations; physical assistive-technology and high-DPI checks remain manual.
 
+The full 10,000-file picker and 10,000-member fallback-folder regression
+completed in 19 ms in this container; compact persistence and reopen completed in
+74 ms. These are evidence timings rather than workstation SLAs. The same tests
+assert the exact 10,000 boundary, pre-retention rejection above the byte/count
+limits, and reachability of the last retained file.
+
 The first complete browser pass after progressive disclosure passed 233 of 234
 tests. The one timeout showed that the shared legacy-folder helper treated
 always-visible summary counters as proof that the source draft had loaded, so it
@@ -124,7 +144,7 @@ no timeout or product assertion was weakened.
 ## Open gates
 
 M2–M7 remain incomplete. M1 does not claim streaming discovery, manifest sealing,
-common analysis, 10,000-candidate backpressure, GPX, remote sample-provider,
+common analysis, streaming-adapter backpressure, GPX, remote sample-provider,
 external-drive or private-media verification. `pnpm test:native` was not run
 because this environment has neither `cargo` nor `rustc`; the authored Rust tests
 therefore remain unexecuted here. Windows/macOS/Linux picker, permission-reopen,

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CATALOG_SCHEMA_VERSION,
@@ -12,34 +13,22 @@ import {
   ProjectCatalog,
   upgradeCatalogSnapshot,
 } from "../src/index.js";
-import {
-  CATALOG_V6_TABLES,
-  dropCatalogV6Tables,
-} from "./catalog-version-fixtures.js";
+import { CATALOG_V6_TABLES } from "./catalog-version-fixtures.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
-async function legacyV5Image(image: Uint8Array): Promise<Buffer> {
-  const directory = await mkdtemp(join(tmpdir(), "openfilm-catalog-v5-"));
-  cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, "database.sqlite");
-  await writeFile(path, image, { mode: 0o600, flag: "wx" });
-  const database = new DatabaseSync(path);
-  try {
-    if (
-      Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 6
-    ) {
-      database.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;");
-      dropCatalogV6Tables(database);
-      database.exec("PRAGMA user_version=5; COMMIT; PRAGMA foreign_keys=ON;");
-    }
-  } finally {
-    database.close();
-  }
-  return readFile(path);
+const AUTHENTIC_V5_SHA256 =
+  "11d5b3ac7d4093c59b329cd6a4840a9a2dacf62872bd776c01a3cb6d459d4a2d";
+
+async function authenticV5Image(): Promise<Buffer> {
+  const encoded = await readFile(
+    new URL("./fixtures/catalog-v5-61a4659.sqlite.gz.b64", import.meta.url),
+    "utf8",
+  );
+  return gunzipSync(Buffer.from(encoded.trim(), "base64"));
 }
 
 describe("consistent project catalog snapshots", () => {
@@ -70,24 +59,9 @@ describe("consistent project catalog snapshots", () => {
   });
 
   it("upgrades a private copy of a v5 snapshot without changing its bytes", async () => {
-    const directory = await mkdtemp(
-      join(tmpdir(), "openfilm-catalog-upgrade-"),
-    );
-    cleanup.push(() => rm(directory, { recursive: true, force: true }));
-    const catalog = new ProjectCatalog(directory);
-    cleanup.push(() => catalog.close());
-    catalog.upsertAsset({
-      id: "legacy-asset",
-      uri: "file:///synthetic/legacy.png",
-      name: "legacy.png",
-      mediaType: "image",
-      tags: [],
-      state: {},
-      metadata: {},
-    });
-    const current = catalog.withConsistentSnapshot((image) => image);
-    const legacy = await legacyV5Image(current);
+    const legacy = await authenticV5Image();
     const before = createHash("sha256").update(legacy).digest("hex");
+    expect(before).toBe(AUTHENTIC_V5_SHA256);
 
     const upgraded = upgradeCatalogSnapshot(legacy, 5);
 
@@ -142,6 +116,8 @@ describe("consistent project catalog snapshots", () => {
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const catalog = new ProjectCatalog(directory);
     cleanup.push(() => catalog.close());
+    const privateSemanticSentinel =
+      "PRIVATE_OPERATIONAL_TOKEN_DO_NOT_PACKAGE_7f04c8";
     const asset = (id: string) => ({
       id,
       uri: `file:///private/${id}.png`,
@@ -169,10 +145,10 @@ describe("consistent project catalog snapshots", () => {
             `selection-${id}`,
             "folder",
             id,
-            `logical-${id}`,
+            id === "selected" ? "/private/source/root" : `logical-${id}`,
             1,
             1,
-            JSON.stringify({ id }),
+            JSON.stringify({ id, accessRef: privateSemanticSentinel }),
           );
         live
           .prepare(
@@ -181,23 +157,38 @@ describe("consistent project catalog snapshots", () => {
           .run(
             `occurrence-${id}`,
             `${id}.png`,
-            `${id}.png`,
+            id === "selected" ? "C:private\\selected.png" : `${id}.png`,
             "image",
             64,
             "available",
             1,
-            JSON.stringify({ id }),
+            JSON.stringify({ id, stagingPath: privateSemanticSentinel }),
           );
         live
           .prepare(
             "INSERT INTO selection_memberships(selection_id,occurrence_id,relative_path,included,data) VALUES(?,?,?,?,?)",
           )
-          .run(`selection-${id}`, `occurrence-${id}`, `${id}.png`, 1, "{}");
+          .run(
+            `selection-${id}`,
+            `occurrence-${id}`,
+            id === "selected"
+              ? "file:C:\\private\\membership\\selected.png"
+              : `${id}.png`,
+            1,
+            JSON.stringify({ credential: privateSemanticSentinel }),
+          );
         live
           .prepare(
             "INSERT INTO content_identities(id,hash_algorithm,full_hash,byte_length,media_kind,data) VALUES(?,?,?,?,?,?)",
           )
-          .run(`content-${id}`, "sha256", suffix.repeat(64), 64, "image", "{}");
+          .run(
+            `content-${id}`,
+            "sha256",
+            suffix.repeat(64),
+            64,
+            "image",
+            JSON.stringify({ token: privateSemanticSentinel }),
+          );
         live
           .prepare(
             "INSERT INTO asset_content_versions(id,asset_id,occurrence_id,content_id,context_revision,descriptor_snapshot_id,data) VALUES(?,?,?,?,?,?,?)",
@@ -209,9 +200,115 @@ describe("consistent project catalog snapshots", () => {
             `content-${id}`,
             "context-1",
             "descriptor-1",
-            "{}",
+            JSON.stringify({ sourcePath: privateSemanticSentinel }),
           );
       }
+      live
+        .prepare(
+          "INSERT INTO import_batches(id,draft_revision,scope_mode,status,created_at,data) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          "batch-selected",
+          1,
+          "selected-sources",
+          "sealed",
+          "2026-10-25T00:00:00.000Z",
+          JSON.stringify({ ownerToken: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO expected_manifests(id,batch_id,revision,selection_hash,partial_policy,created_at,data) VALUES(?,?,?,?,?,?,?)",
+        )
+        .run(
+          "expected-selected",
+          "batch-selected",
+          1,
+          "e".repeat(64),
+          "require-all",
+          "2026-10-25T00:00:01.000Z",
+          JSON.stringify({ localPath: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO expected_manifest_entries(manifest_id,occurrence_id,position,included,data) VALUES(?,?,?,?,?)",
+        )
+        .run(
+          "expected-selected",
+          "occurrence-selected",
+          0,
+          1,
+          JSON.stringify({ accessRef: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO verified_manifests(id,expected_manifest_id,created_at,data) VALUES(?,?,?,?)",
+        )
+        .run(
+          "verified-selected",
+          "expected-selected",
+          "2026-10-25T00:00:02.000Z",
+          JSON.stringify({ stagingPath: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO verified_manifest_entries(manifest_id,position,occurrence_id,binding_id,status,data) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          "verified-selected",
+          0,
+          "occurrence-selected",
+          "binding-selected",
+          "verified",
+          JSON.stringify({ credential: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO analysis_runs(id,manifest_id,scope_mode,algorithm_version,taxonomy_version,config_hash,status,created_at,data) VALUES(?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          "run-selected",
+          "verified-selected",
+          "selected-sources",
+          "analysis-v1",
+          "taxonomy-v1",
+          "c".repeat(64),
+          "completed",
+          "2026-10-25T00:00:03.000Z",
+          JSON.stringify({ apiKey: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO analysis_results(id,run_id,kind,review_status,data) VALUES(?,?,?,?,?)",
+        )
+        .run(
+          "result-selected",
+          "run-selected",
+          "moment",
+          "accepted",
+          JSON.stringify({ secret: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO analysis_result_members(result_id,binding_id,position,data) VALUES(?,?,?,?)",
+        )
+        .run(
+          "result-selected",
+          "binding-selected",
+          0,
+          JSON.stringify({ localUri: privateSemanticSentinel }),
+        );
+      live
+        .prepare(
+          "INSERT INTO review_decisions(id,base_run_id,before_fingerprint,outcome,created_at,data) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          "decision-selected",
+          "run-selected",
+          "f".repeat(64),
+          "applied",
+          "2026-10-25T00:00:04.000Z",
+          JSON.stringify({ bearer: privateSemanticSentinel }),
+        );
       live
         .prepare("INSERT INTO jobs(id,created_at,data) VALUES(?,?,?)")
         .run(
@@ -238,6 +335,7 @@ describe("consistent project catalog snapshots", () => {
     expect(filtered.toString("utf8")).not.toContain("unselected-private-name");
     expect(filtered.toString("utf8")).not.toContain("file:///private");
     expect(filtered.toString("utf8")).not.toContain("/private/staging");
+    expect(filtered.toString("utf8")).not.toContain(privateSemanticSentinel);
 
     const projectedPath = join(directory, "portable.sqlite");
     await writeFile(projectedPath, filtered, { mode: 0o600, flag: "wx" });
@@ -255,6 +353,45 @@ describe("consistent project catalog snapshots", () => {
           .all(),
       ).toEqual([{ id: "content-selected" }]);
       expect(projected.prepare("SELECT id FROM jobs").all()).toEqual([]);
+      expect(
+        projected
+          .prepare(
+            "SELECT logical_root FROM source_selections WHERE id='selection-selected'",
+          )
+          .get()?.logical_root,
+      ).toBe("source:selection-selected");
+      expect(
+        projected
+          .prepare(
+            "SELECT relative_path FROM file_occurrences WHERE id='occurrence-selected'",
+          )
+          .get()?.relative_path,
+      ).toBe("selected.png");
+      expect(
+        projected
+          .prepare(
+            "SELECT relative_path FROM selection_memberships WHERE occurrence_id='occurrence-selected'",
+          )
+          .get()?.relative_path,
+      ).toBe("selected.png");
+      for (const table of [
+        "source_selections",
+        "file_occurrences",
+        "selection_memberships",
+        "content_identities",
+        "asset_content_versions",
+        "import_batches",
+        "expected_manifests",
+        "expected_manifest_entries",
+        "verified_manifests",
+        "verified_manifest_entries",
+        "analysis_runs",
+        "analysis_results",
+        "analysis_result_members",
+        "review_decisions",
+      ])
+        for (const row of projected.prepare(`SELECT data FROM ${table}`).all())
+          expect(String(row.data)).not.toContain(privateSemanticSentinel);
     } finally {
       projected.close();
     }
@@ -301,28 +438,11 @@ describe("consistent project catalog snapshots", () => {
   });
 
   it("restores a schema-v5 snapshot through an upgraded private copy", async () => {
-    const sourceDirectory = await mkdtemp(
-      join(tmpdir(), "openfilm-catalog-legacy-source-"),
-    );
     const targetDirectory = await mkdtemp(
       join(tmpdir(), "openfilm-catalog-legacy-target-"),
     );
-    cleanup.push(() => rm(sourceDirectory, { recursive: true, force: true }));
     cleanup.push(() => rm(targetDirectory, { recursive: true, force: true }));
-    const source = new ProjectCatalog(sourceDirectory);
-    cleanup.push(() => source.close());
-    source.upsertAsset({
-      id: "legacy",
-      uri: "file:///synthetic/legacy.png",
-      name: "legacy.png",
-      mediaType: "image",
-      tags: [],
-      state: {},
-      metadata: {},
-    });
-    const legacy = await legacyV5Image(
-      source.withConsistentSnapshot((image) => image),
-    );
+    const legacy = await authenticV5Image();
     const legacyPath = join(targetDirectory, "legacy-v5.sqlite");
     await writeFile(legacyPath, legacy, { mode: 0o600, flag: "wx" });
 
@@ -340,10 +460,34 @@ describe("consistent project catalog snapshots", () => {
 
     target.restoreFromSnapshot(legacyPath, undefined, undefined, 5);
 
-    expect(target.listAssets().map((asset) => asset.id)).toEqual(["legacy"]);
+    expect(target.listAssets().map((asset) => asset.id)).toEqual([
+      "legacy-asset",
+    ]);
     expect(
       target.withConsistentSnapshot((_, schemaVersion) => schemaVersion),
     ).toBe(6);
+  });
+
+  it("still rejects structurally different snapshot schemas", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-catalog-schema-mismatch-"),
+    );
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const catalog = new ProjectCatalog(directory);
+    cleanup.push(() => catalog.close());
+    const image = catalog.withConsistentSnapshot((value) => Buffer.from(value));
+    const snapshotPath = join(directory, "schema-mismatch.sqlite");
+    await writeFile(snapshotPath, image, { mode: 0o600, flag: "wx" });
+    const changed = new DatabaseSync(snapshotPath);
+    try {
+      changed.exec("CREATE TABLE unexpected_private_state(value TEXT)");
+    } finally {
+      changed.close();
+    }
+
+    expect(() => catalog.restoreFromSnapshot(snapshotPath)).toThrow(
+      "schema does not match",
+    );
   });
 
   it("rolls catalog restoration back when atomic manifest publication fails", async () => {

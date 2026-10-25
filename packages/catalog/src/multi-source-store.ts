@@ -247,3 +247,297 @@ export function validateMultiSourceSchema(database: DatabaseSync): void {
   ] as const)
     database.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`);
 }
+
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => {
+    const point = character.codePointAt(0)!;
+    return point < 32 || point === 127;
+  });
+}
+
+function withoutControlCharacters(value: string): string {
+  return [...value]
+    .filter((character) => {
+      const point = character.codePointAt(0)!;
+      return point >= 32 && point !== 127;
+    })
+    .join("");
+}
+
+function portableRelativePath(value: unknown, fallback: unknown): string {
+  const candidate = String(value ?? "").replaceAll("\\", "/");
+  const locator =
+    candidate.startsWith("/") ||
+    candidate === "~" ||
+    candidate.startsWith("~/") ||
+    /^[a-z][a-z0-9+.-]*:/iu.test(candidate) ||
+    candidate.includes("://");
+  const parts = candidate
+    .split("/")
+    .filter((part) => part && part !== "." && part !== "..");
+  if (
+    !locator &&
+    parts.length &&
+    !candidate.split("/").includes("..") &&
+    !parts.some(hasControlCharacters)
+  )
+    return parts.join("/");
+  const fallbackName = String(fallback ?? "")
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .at(-1);
+  const safeFallback = withoutControlCharacters(fallbackName ?? "").trim();
+  return safeFallback && safeFallback !== "." && safeFallback !== ".."
+    ? safeFallback
+    : "source";
+}
+
+function portableData(value: Record<string, unknown>): string {
+  return JSON.stringify(value);
+}
+
+function requiredSqlValue(
+  value: unknown,
+): string | number | bigint | Uint8Array | null {
+  if (value === undefined)
+    throw new Error("Portable multi-source row is missing a required value.");
+  return value as string | number | bigint | Uint8Array | null;
+}
+
+/**
+ * Rebuild every retained multi-source JSON payload from typed columns before a
+ * Collect Media catalog is published. M2+ must extend these serializers when a
+ * new portable semantic field is added; arbitrary stored JSON is deliberately
+ * never copied into a portable project.
+ */
+export function sanitizePortableMultiSourceRows(database: DatabaseSync): void {
+  const sourceUpdate = database.prepare(
+    "UPDATE source_selections SET logical_root=?,data=? WHERE id=?",
+  );
+  for (const row of database
+    .prepare(
+      "SELECT id,kind,display_name,recursive,selection_revision FROM source_selections",
+    )
+    .all()) {
+    const logicalRootId = `source:${String(row.id)}`;
+    sourceUpdate.run(
+      logicalRootId,
+      portableData({
+        id: row.id,
+        kind: row.kind,
+        displayName: row.display_name,
+        logicalRootId,
+        recursive: Boolean(row.recursive),
+        selectionRevision: row.selection_revision,
+      }),
+      requiredSqlValue(row.id),
+    );
+  }
+
+  const occurrenceUpdate = database.prepare(
+    "UPDATE file_occurrences SET relative_path=?,data=? WHERE id=?",
+  );
+  for (const row of database
+    .prepare(
+      "SELECT id,display_name,relative_path,file_kind,byte_length,modified_at,availability,scan_revision FROM file_occurrences",
+    )
+    .all()) {
+    const relativePath = portableRelativePath(
+      row.relative_path,
+      row.display_name,
+    );
+    occurrenceUpdate.run(
+      relativePath,
+      portableData({
+        id: row.id,
+        displayName: row.display_name,
+        relativePath,
+        fileKind: row.file_kind,
+        ...(row.byte_length === null ? {} : { byteLength: row.byte_length }),
+        ...(row.modified_at === null ? {} : { modifiedAt: row.modified_at }),
+        availability: row.availability,
+        scanRevision: row.scan_revision,
+      }),
+      requiredSqlValue(row.id),
+    );
+  }
+
+  const membershipUpdate = database.prepare(
+    "UPDATE selection_memberships SET relative_path=?,data=? WHERE selection_id=? AND occurrence_id=?",
+  );
+  for (const row of database
+    .prepare(
+      `SELECT membership.selection_id,membership.occurrence_id,
+        membership.relative_path,membership.included,occurrence.display_name
+       FROM selection_memberships AS membership
+       JOIN file_occurrences AS occurrence ON occurrence.id=membership.occurrence_id`,
+    )
+    .all()) {
+    const relativePath = portableRelativePath(
+      row.relative_path,
+      row.display_name,
+    );
+    membershipUpdate.run(
+      relativePath,
+      portableData({
+        selectionId: row.selection_id,
+        occurrenceId: row.occurrence_id,
+        relativePath,
+        included: Boolean(row.included),
+      }),
+      requiredSqlValue(row.selection_id),
+      requiredSqlValue(row.occurrence_id),
+    );
+  }
+
+  for (const specification of [
+    {
+      table: "content_identities",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["hash_algorithm", "hashAlgorithm"],
+        ["full_hash", "fullHash"],
+        ["byte_length", "byteLength"],
+        ["media_kind", "mediaKind"],
+      ],
+    },
+    {
+      table: "asset_content_versions",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["asset_id", "assetId"],
+        ["occurrence_id", "occurrenceId"],
+        ["content_id", "contentId"],
+        ["context_revision", "contextRevision"],
+        ["descriptor_snapshot_id", "descriptorSnapshotId"],
+      ],
+    },
+    {
+      table: "import_batches",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["draft_revision", "draftRevision"],
+        ["scope_mode", "scopeMode"],
+        ["status", "status"],
+        ["created_at", "createdAt"],
+      ],
+    },
+    {
+      table: "expected_manifests",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["batch_id", "batchId"],
+        ["revision", "revision"],
+        ["selection_hash", "selectionHash"],
+        ["partial_policy", "partialPolicy"],
+        ["created_at", "createdAt"],
+      ],
+    },
+    {
+      table: "expected_manifest_entries",
+      keys: ["manifest_id", "position"],
+      columns: [
+        ["manifest_id", "manifestId"],
+        ["occurrence_id", "occurrenceId"],
+        ["position", "position"],
+        ["included", "included"],
+      ],
+      booleans: ["included"],
+    },
+    {
+      table: "verified_manifests",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["expected_manifest_id", "expectedManifestId"],
+        ["created_at", "createdAt"],
+      ],
+    },
+    {
+      table: "verified_manifest_entries",
+      keys: ["manifest_id", "position"],
+      columns: [
+        ["manifest_id", "manifestId"],
+        ["position", "position"],
+        ["occurrence_id", "occurrenceId"],
+        ["binding_id", "bindingId"],
+        ["status", "status"],
+      ],
+    },
+    {
+      table: "analysis_runs",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["manifest_id", "manifestId"],
+        ["scope_mode", "scopeMode"],
+        ["algorithm_version", "algorithmVersion"],
+        ["taxonomy_version", "taxonomyVersion"],
+        ["config_hash", "configHash"],
+        ["status", "status"],
+        ["created_at", "createdAt"],
+      ],
+    },
+    {
+      table: "analysis_results",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["run_id", "runId"],
+        ["kind", "kind"],
+        ["review_status", "reviewStatus"],
+      ],
+    },
+    {
+      table: "analysis_result_members",
+      keys: ["result_id", "position"],
+      columns: [
+        ["result_id", "resultId"],
+        ["binding_id", "bindingId"],
+        ["position", "position"],
+      ],
+    },
+    {
+      table: "review_decisions",
+      keys: ["id"],
+      columns: [
+        ["id", "id"],
+        ["base_run_id", "baseRunId"],
+        ["before_fingerprint", "beforeFingerprint"],
+        ["outcome", "outcome"],
+        ["created_at", "createdAt"],
+      ],
+    },
+  ] as const) {
+    const selected = specification.columns.map(([column]) => column);
+    const rows = database
+      .prepare(`SELECT ${selected.join(",")} FROM ${specification.table}`)
+      .all();
+    const where = specification.keys.map((key) => `${key}=?`).join(" AND ");
+    const update = database.prepare(
+      `UPDATE ${specification.table} SET data=? WHERE ${where}`,
+    );
+    const booleanColumns = new Set<string>(
+      "booleans" in specification
+        ? (specification.booleans as readonly string[])
+        : [],
+    );
+    for (const row of rows) {
+      const data: Record<string, unknown> = {};
+      for (const [column, field] of specification.columns) {
+        const value = row[column];
+        if (value === null) continue;
+        data[field] = booleanColumns.has(column) ? Boolean(value) : value;
+      }
+      update.run(
+        portableData(data),
+        ...specification.keys.map((key) => requiredSqlValue(row[key])),
+      );
+    }
+  }
+}

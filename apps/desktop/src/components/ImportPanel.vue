@@ -56,6 +56,7 @@ const serverPathOpen = ref(false);
 const sourcePage = ref(0);
 let generation = 0;
 let draftReadSequence = 0;
+let availabilityReadSequence = 0;
 let removeNativeDrop: (() => void) | undefined;
 
 const SOURCE_PAGE_SIZE = 100;
@@ -128,14 +129,27 @@ async function refreshAvailability(
   owner: string,
   token: number,
 ): Promise<void> {
-  const entries = await sourceAvailabilities(owner, snapshot.selections);
+  const start = sourcePage.value * SOURCE_PAGE_SIZE;
+  const page = snapshot.selections.slice(start, start + SOURCE_PAGE_SIZE);
+  const included = new Set(page.map((source) => source.id));
+  const sources = [
+    ...page,
+    ...snapshot.selections.filter(
+      (source) =>
+        source.accessClass === "ephemeral-browser-file" &&
+        !included.has(source.id),
+    ),
+  ];
+  const readSequence = ++availabilityReadSequence;
+  const entries = await sourceAvailabilities(owner, sources);
   if (
+    readSequence !== availabilityReadSequence ||
     token !== generation ||
     owner !== props.projectId ||
     draft.value?.revision !== snapshot.revision
   )
     return;
-  access.value = entries;
+  access.value = { ...access.value, ...entries };
 }
 
 function acceptDraft(next: SourceDraft, owner: string, token: number): void {
@@ -473,8 +487,9 @@ async function removeSource(source: SourceSelection) {
   }
 }
 
-async function setRecursive(source: SourceSelection, recursive: boolean) {
+async function setRecursive(source: SourceSelection, input: HTMLInputElement) {
   if (blocked.value || !draft.value) return;
+  const recursive = input.checked;
   const owner = props.projectId;
   const token = generation;
   const mutationRequestId = requestId();
@@ -490,7 +505,17 @@ async function setRecursive(source: SourceSelection, recursive: boolean) {
       }),
     );
     if (!attempted.ok) {
-      await reconcileMutationFailure(attempted, owner, token);
+      const authoritative = await reconcileMutationFailure(
+        attempted,
+        owner,
+        token,
+      );
+      if (token === generation && owner === props.projectId) {
+        const saved = (authoritative ?? draft.value)?.selections.find(
+          (candidate) => candidate.id === source.id,
+        );
+        input.checked = saved?.recursive ?? source.recursive;
+      }
       return;
     }
     const result = attempted.value;
@@ -505,6 +530,7 @@ watch(
   (projectId, previous) => {
     generation++;
     draftReadSequence++;
+    availabilityReadSequence++;
     draft.value = undefined;
     access.value = {};
     rejected.value = [];
@@ -518,6 +544,15 @@ watch(
   },
   { immediate: true },
 );
+
+watch(sourcePage, () => {
+  if (!draft.value) return;
+  const owner = props.projectId;
+  const token = generation;
+  void refreshAvailability(draft.value, owner, token).catch((error) => {
+    if (token === generation && owner === props.projectId) emit("error", error);
+  });
+});
 
 onMounted(async () => {
   if (!props.native) return;
@@ -705,12 +740,7 @@ onBeforeUnmount(() => {
               type="checkbox"
               :checked="source.recursive"
               :disabled="blocked"
-              @change="
-                setRecursive(
-                  source,
-                  ($event.target as HTMLInputElement).checked,
-                )
-              "
+              @change="setRecursive(source, $event.target as HTMLInputElement)"
             />
             {{ t("app.import.includeSubfolders") }}
           </label>

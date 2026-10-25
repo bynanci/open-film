@@ -30,6 +30,13 @@ and [validation](docs/validation-multi-source-analysis.md).
       expose typed rejection reasons, and preserve 44px coarse-pointer targets,
       CJK wrapping, keyboard navigation, narrow-screen reflow and stale-project
       interaction fencing.
+- [x] M0/M1 independent-review closure: rebuild every retained portable v6 JSON
+      payload from explicit semantic columns, scrub logical/relative locators,
+      verify a pinned catalog produced by the real schema-v5 code, align the
+      documented 10,000-source boundary with a 4 MiB compact draft, index
+      IndexedDB by project, recover blocked opens, bound permission checks to 16,
+      limit persistent checks to the visible 100-card page, and roll failed
+      recursion controls back to authoritative state.
 - [ ] M2: streaming discovery, membership, private durable staging, content
       identity and Expected/Verified Manifests.
 - [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,

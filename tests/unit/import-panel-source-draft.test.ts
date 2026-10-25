@@ -49,6 +49,7 @@ function fixture(
     removeDraft?: SourceDraft;
     delayedRemove?: Promise<{ draft: SourceDraft }>;
     lostRemoveDraft?: SourceDraft;
+    updateError?: Error;
     reloadError?: Error;
   } = {},
 ) {
@@ -123,7 +124,28 @@ function fixture(
       return { draft: structuredClone(options.removeDraft ?? draft) };
     },
   );
-  const updateSourceSelection = vi.fn();
+  const updateSourceSelection = vi.fn(
+    async (
+      selectionId: string,
+      request: { recursive: boolean },
+    ): Promise<{ draft: SourceDraft }> => {
+      if (options.updateError) throw options.updateError;
+      draft = {
+        ...draft,
+        revision: draft.revision + 1,
+        selections: draft.selections.map((source) =>
+          source.id === selectionId
+            ? {
+                ...source,
+                recursive: request.recursive,
+                selectionRevision: draft.revision + 1,
+              }
+            : source,
+        ),
+      };
+      return { draft: structuredClone(draft) };
+    },
+  );
   const releaseBrowserSources = vi.fn(
     async (
       _projectId: string,
@@ -141,6 +163,15 @@ function fixture(
         rejected: [] as [],
       },
     ),
+  );
+  const sourceAvailabilities = vi.fn(
+    async (_owner: string, sources: SourceSelection[]) =>
+      Object.fromEntries(
+        sources.map((source) => [
+          source.id,
+          options.availability ?? "available",
+        ]),
+      ),
   );
   let nativeDropListener:
     | ((event: {
@@ -187,15 +218,7 @@ function fixture(
         clearBrowserEphemeral: vi.fn(),
         releaseBrowserSources,
         browserFilesForSelections: vi.fn(),
-        sourceAvailabilities: vi.fn(
-          async (_owner: string, sources: SourceSelection[]) =>
-            Object.fromEntries(
-              sources.map((source) => [
-                source.id,
-                options.availability ?? "available",
-              ]),
-            ),
-        ),
+        sourceAvailabilities,
         listenForNativeDrop: vi.fn(async (listener) => {
           nativeDropListener = listener;
           return options.nativeDropRegistration ?? (() => {});
@@ -245,6 +268,8 @@ function fixture(
     sourceDraft,
     addSourceSelections,
     removeSourceSelection,
+    updateSourceSelection,
+    sourceAvailabilities,
     releaseBrowserSources,
     pickNativeFiles,
     classifyNativeDrop,
@@ -365,6 +390,43 @@ describe("additive source draft panel", () => {
     expect(
       h.nodes().some((node) => node.props["data-source-id"] === "source-204"),
     ).toBe(true);
+  });
+
+  it("refreshes browser permissions only for the visible persistent-source page", async () => {
+    const selections = Array.from(
+      { length: 205 },
+      (_, index): SourceSelection => ({
+        ...input(`clip-${index}.mp4`),
+        id: `source-${index}`,
+        projectId: "project-a",
+        accessClass: "persistent-browser-handle",
+        accessRef: `browser-handle:${index}`,
+        selectionRevision: 1,
+      }),
+    );
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections,
+      },
+    });
+    h.props.native = false;
+    await settle();
+
+    expect(h.sourceAvailabilities).toHaveBeenLastCalledWith(
+      "project-a",
+      selections.slice(0, 100),
+    );
+    await (
+      h.button("app.import.nextSources")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.sourceAvailabilities).toHaveBeenLastCalledWith(
+      "project-a",
+      selections.slice(100, 200),
+    );
   });
 
   it("does not move the new project's source page for a delayed add response", async () => {
@@ -719,6 +781,46 @@ describe("additive source draft panel", () => {
         (node) => node.tag === "input" && node.props.name === "media-folder",
       );
     expect(path?.props.value).toBe("/synthetic/retry");
+    expect(h.props.onError).toHaveBeenCalledWith(failure);
+  });
+
+  it("rolls a recursive checkbox back when the saved mutation fails", async () => {
+    const failure = Object.assign(new Error("revision rejected"), {
+      code: "request.invalid",
+    });
+    const h = fixture({
+      updateError: failure,
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 1,
+        selections: [
+          {
+            id: "folder-recursive",
+            projectId: "project-a",
+            kind: "folder",
+            displayName: "Story",
+            accessClass: "native-path",
+            accessRef: "/synthetic/story",
+            recursive: true,
+            selectionRevision: 1,
+          },
+        ],
+      },
+    });
+    await settle();
+    const checkbox = h
+      .nodes()
+      .find((node) => node.tag === "input" && node.props.type === "checkbox");
+    const target = { checked: false };
+
+    await (checkbox!.props.onChange as (event: unknown) => Promise<void>)({
+      target,
+    });
+    await settle();
+
+    expect(h.updateSourceSelection).toHaveBeenCalledTimes(1);
+    expect(target.checked).toBe(true);
     expect(h.props.onError).toHaveBeenCalledWith(failure);
   });
 

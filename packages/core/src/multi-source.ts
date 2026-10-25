@@ -28,6 +28,41 @@ export interface SourceDraft {
   selections: SourceSelection[];
 }
 
+export const SOURCE_DRAFT_LIMITS = Object.freeze({
+  bytes: 4 * 1024 * 1024,
+  selections: 10_000,
+});
+
+export function estimateSourceDraftBytes(
+  projectId: string,
+  sources: readonly (Pick<
+    SourceSelection,
+    "kind" | "displayName" | "accessClass" | "accessRef"
+  > & { recursive?: boolean })[],
+): number {
+  const selections = sources.map((source, index) => ({
+    ...source,
+    recursive: source.recursive ?? source.kind === "folder",
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    projectId,
+    selectionRevision: 1,
+  }));
+  const representative = {
+    schemaVersion: 1,
+    projectId,
+    revision: 1,
+    selections,
+    receipts: [
+      {
+        requestId: "00000000-0000-4000-8000-000000000000",
+        fingerprint: "0".repeat(64),
+      },
+    ],
+  };
+  return new TextEncoder().encode(`${JSON.stringify(representative)}\n`)
+    .byteLength;
+}
+
 export type FileOccurrenceAvailability =
   "available" | "needs-reselection" | "missing" | "unreadable" | "staged";
 

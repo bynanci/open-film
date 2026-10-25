@@ -28,6 +28,7 @@ import {
 import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
 import {
   migrateMultiSourceSchema,
+  sanitizePortableMultiSourceRows,
   validateMultiSourceSchema,
 } from "./multi-source-store.js";
 
@@ -166,12 +167,61 @@ function validateCatalogDatabase(
     throw new Error("Catalog snapshot has invalid foreign-key references.");
 }
 
-function logicalCatalogRevision(database: DatabaseSync): string {
-  const schema = database
+function canonicalSchemaSql(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  let result = "";
+  let quote: "'" | '"' | "`" | "]" | undefined;
+  let whitespace = false;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index]!;
+    if (quote) {
+      result += character;
+      if (character === quote) {
+        if (quote !== "]" && value[index + 1] === quote)
+          result += value[++index]!;
+        else quote = undefined;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      if (whitespace && result) result += " ";
+      whitespace = false;
+      quote = character;
+      result += character;
+      continue;
+    }
+    if (character === "[") {
+      if (whitespace && result) result += " ";
+      whitespace = false;
+      quote = "]";
+      result += character;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      whitespace = true;
+      continue;
+    }
+    if (whitespace && result) result += " ";
+    whitespace = false;
+    result += character;
+  }
+  return result.trim();
+}
+
+function catalogSchema(
+  database: DatabaseSync,
+  namespace: "main" | "version_snapshot" = "main",
+): unknown[] {
+  return database
     .prepare(
-      "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
+      `SELECT type,name,tbl_name,sql FROM ${namespace}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
     )
-    .all();
+    .all()
+    .map((row) => ({ ...row, sql: canonicalSchemaSql(row.sql) }));
+}
+
+function logicalCatalogRevision(database: DatabaseSync): string {
+  const schema = catalogSchema(database);
   const tables = database
     .prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -386,6 +436,7 @@ export function createPortableCatalogSnapshot(
         DELETE FROM content_identities
           WHERE id NOT IN (SELECT content_id FROM asset_content_versions);
       `);
+      sanitizePortableMultiSourceRows(database);
       const update = database.prepare(`
         UPDATE assets SET uri=?,name=?,media_type=?,captured_at=?,rating=?,
           favorite=?,rejected=?,locked=?,data=? WHERE id=?
@@ -806,15 +857,9 @@ export class ProjectCatalog {
         .run(restorePath);
       attached = true;
 
-      const schema = (database: "main" | "version_snapshot") =>
-        this.database
-          .prepare(
-            `SELECT type,name,tbl_name,sql FROM ${database}.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`,
-          )
-          .all();
       if (
-        JSON.stringify(schema("main")) !==
-        JSON.stringify(schema("version_snapshot"))
+        JSON.stringify(catalogSchema(this.database, "main")) !==
+        JSON.stringify(catalogSchema(this.database, "version_snapshot"))
       )
         throw new Error("Catalog snapshot schema does not match this project.");
 

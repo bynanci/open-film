@@ -148,6 +148,14 @@ Existing AC01–AC28 remain binding. The technical review adds:
   keyboard, CJK, responsive layout, project switching, and private-fixture
   redaction pass their gates.
 
+M0/M1 review closure makes AC29, AC30 and AC35 executable rather than
+fixture-dependent: AC29 uses a hash-pinned database emitted by the historical v5
+implementation; AC30 reconstructs retained semantic JSON and rewrites locators;
+AC35 covers the real 10,000 selection/storage boundary, project-indexed
+IndexedDB retry/version-change behavior, 16-way permission concurrency, visible
+page refresh and failed-control rollback. AC32 still belongs to M2 streaming
+discovery and is not claimed by the M1 picker boundary.
+
 ## Validation and release policy
 
 Repository and CI media are synthetic or CC0. Private workstation data must not

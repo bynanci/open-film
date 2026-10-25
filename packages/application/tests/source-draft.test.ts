@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { ApplicationError } from "@openfilm/core";
+import { ApplicationError, SOURCE_DRAFT_LIMITS } from "@openfilm/core";
 import { OpenFilmApplication } from "../src/index.js";
 
 const cleanup: Array<() => void | Promise<void>> = [];
@@ -69,6 +69,31 @@ describe("project-owned source draft", () => {
     expect(test.app.catalog.listJobs()).toEqual([]);
 
     expect((await test.reopen()).sourceDraft.get()).toEqual(second);
+  });
+
+  it("persists the documented 10,000-source boundary within its byte limit", async () => {
+    const test = await fixture("Maximum source draft");
+    const projectId = test.app.project.id;
+    const added = test.app.sourceDraft.add({
+      projectId,
+      baseRevision: 0,
+      requestId: "10000000-0000-4000-8000-000000000099",
+      sources: Array.from({ length: 10_000 }, (_, index) => ({
+        kind: "file" as const,
+        displayName: `f${index}`,
+        accessClass: "native-path" as const,
+        accessRef: `/f${index}`,
+        recursive: false,
+      })),
+    });
+
+    expect(added.selections).toHaveLength(10_000);
+    expect(
+      (await stat(join(test.directory, "analysis", "source-draft.json"))).size,
+    ).toBeLessThanOrEqual(SOURCE_DRAFT_LIMITS.bytes);
+    expect((await test.reopen()).sourceDraft.get().selections).toHaveLength(
+      10_000,
+    );
   });
 
   it("is idempotent, rejects stale and cross-project mutations, and preserves catalog assets on removal", async () => {

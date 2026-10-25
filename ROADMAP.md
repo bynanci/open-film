@@ -26,8 +26,12 @@ receipt before reconciliation. The final M1 interaction pass batches permission
 lookups, pages large drafts at 100 source cards, turns typed drop failures into
 actionable feedback, moves host-path entry behind Standard-mode progressive
 disclosure, and preserves 44px coarse-pointer targets plus narrow-screen CJK
-reflow. M2 streaming discovery, membership, staging and manifest sealing are
-next and are not implied by the M1 UI.
+reflow. Independent review additionally closes portable v6 metadata leakage,
+proves the 10,000-source storage boundary, bounds permission work, adds
+project-indexed/retryable IndexedDB access and replaces the manufactured legacy
+database with a hash-pinned fixture produced by the actual schema-v5 code. M2
+streaming discovery, membership, staging and manifest sealing are next and are
+not implied by the M1 UI.
 
 ## 0.4.0 reviewed source integration
 

@@ -28,6 +28,9 @@ export interface BrowserHandleBackend {
 
 const DATABASE_NAME = "openfilm-source-access";
 const STORE_NAME = "handles";
+const PROJECT_INDEX = "projectId";
+const DATABASE_VERSION = 2;
+const MAX_PERMISSION_CHECKS = 16;
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -47,25 +50,52 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 export class IndexedDbBrowserHandleBackend implements BrowserHandleBackend {
   private database?: Promise<IDBDatabase>;
+  private connection?: IDBDatabase;
 
   private open(): Promise<IDBDatabase> {
     if (typeof indexedDB === "undefined")
       return Promise.reject(
         new Error("Persistent browser source storage is unavailable."),
       );
-    this.database ??= new Promise((resolve, reject) => {
-      const request = indexedDB.open(DATABASE_NAME, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(STORE_NAME))
-          request.result.createObjectStore(STORE_NAME, { keyPath: "key" });
+    if (this.database) return this.database;
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+      let settled = false;
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        if (this.database === opening) this.database = undefined;
+        reject(error);
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onupgradeneeded = () => {
+        const store = request.result.objectStoreNames.contains(STORE_NAME)
+          ? request.transaction!.objectStore(STORE_NAME)
+          : request.result.createObjectStore(STORE_NAME, { keyPath: "key" });
+        if (!store.indexNames.contains(PROJECT_INDEX))
+          store.createIndex(PROJECT_INDEX, "projectId", { unique: false });
+      };
+      request.onsuccess = () => {
+        const database = request.result;
+        if (settled) {
+          database.close();
+          return;
+        }
+        settled = true;
+        this.connection = database;
+        database.onversionchange = () => {
+          database.close();
+          if (this.connection === database) this.connection = undefined;
+          if (this.database === opening) this.database = undefined;
+        };
+        resolve(database);
+      };
       request.onerror = () =>
-        reject(request.error ?? new Error("Browser source storage failed."));
+        fail(request.error ?? new Error("Browser source storage failed."));
       request.onblocked = () =>
-        reject(new Error("Browser source storage is blocked by another tab."));
+        fail(new Error("Browser source storage is blocked by another tab."));
     });
-    return this.database;
+    this.database = opening;
+    return opening;
   }
 
   async list(projectId: string): Promise<StoredBrowserHandle[]> {
@@ -73,10 +103,13 @@ export class IndexedDbBrowserHandleBackend implements BrowserHandleBackend {
     const transaction = database.transaction(STORE_NAME, "readonly");
     const completed = transactionDone(transaction);
     const values = await requestResult<StoredBrowserHandle[]>(
-      transaction.objectStore(STORE_NAME).getAll(),
+      transaction
+        .objectStore(STORE_NAME)
+        .index(PROJECT_INDEX)
+        .getAll(projectId),
     );
     await completed;
-    return values.filter((record) => record.projectId === projectId);
+    return values;
   }
 
   async putMany(records: readonly StoredBrowserHandle[]): Promise<void> {
@@ -135,13 +168,19 @@ export class BrowserSourceAccessRegistry {
     if (!handles.length) return [];
 
     const known = await this.backend.list(projectId);
+    const candidates = new Map<string, StoredBrowserHandle[]>();
+    for (const record of known) {
+      const key = `${record.kind}:${record.name.length}:${record.name}`;
+      const matches = candidates.get(key);
+      if (matches) matches.push(record);
+      else candidates.set(key, [record]);
+    }
     const created: StoredBrowserHandle[] = [];
     const keys: string[] = [];
     for (const handle of handles) {
       let matching: StoredBrowserHandle | undefined;
-      for (const record of known) {
-        if (record.kind !== handle.kind || record.name !== handle.name)
-          continue;
+      const candidateKey = `${handle.kind}:${handle.name.length}:${handle.name}`;
+      for (const record of candidates.get(candidateKey) ?? []) {
         try {
           if (
             (await handle.isSameEntry?.(record.handle)) ||
@@ -166,6 +205,9 @@ export class BrowserSourceAccessRegistry {
         handle,
       };
       known.push(record);
+      const matches = candidates.get(candidateKey);
+      if (matches) matches.push(record);
+      else candidates.set(candidateKey, [record]);
       created.push(record);
       keys.push(record.key);
     }
@@ -210,26 +252,53 @@ export class BrowserSourceAccessRegistry {
         (record) => [record.key, record],
       ),
     );
-    return Promise.all(
-      sources.map(async (source): Promise<BrowserSourceAvailability> => {
-        if (source.accessClass === "ephemeral-browser-file")
-          return this.files(projectId, source.accessRef)
-            ? "available"
-            : "needs-reselection";
-        if (source.accessClass !== "persistent-browser-handle")
-          return "available";
-        const record = persistent.get(source.accessRef);
-        if (!record) return "needs-reselection";
-        try {
-          return (await record.handle.queryPermission?.({ mode: "read" })) ===
-            "granted"
-            ? "available"
-            : "needs-permission";
-        } catch {
-          return "needs-permission";
+    const permissionResults = new Map<string, BrowserSourceAvailability>();
+    const pendingRefs = [
+      ...new Set(
+        sources
+          .filter(
+            (source) => source.accessClass === "persistent-browser-handle",
+          )
+          .map((source) => source.accessRef),
+      ),
+    ];
+    let nextRef = 0;
+    const worker = async () => {
+      while (nextRef < pendingRefs.length) {
+        const accessRef = pendingRefs[nextRef++]!;
+        const record = persistent.get(accessRef);
+        if (!record) {
+          permissionResults.set(accessRef, "needs-reselection");
+          continue;
         }
-      }),
+        try {
+          permissionResults.set(
+            accessRef,
+            (await record.handle.queryPermission?.({ mode: "read" })) ===
+              "granted"
+              ? "available"
+              : "needs-permission",
+          );
+        } catch {
+          permissionResults.set(accessRef, "needs-permission");
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(MAX_PERMISSION_CHECKS, pendingRefs.length) },
+        worker,
+      ),
     );
+    return sources.map((source): BrowserSourceAvailability => {
+      if (source.accessClass === "ephemeral-browser-file")
+        return this.files(projectId, source.accessRef)
+          ? "available"
+          : "needs-reselection";
+      if (source.accessClass !== "persistent-browser-handle")
+        return "available";
+      return permissionResults.get(source.accessRef) ?? "needs-reselection";
+    });
   }
 
   clearEphemeral(projectId: string): void {

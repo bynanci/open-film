@@ -97,6 +97,47 @@ describe("browser source picker", () => {
     expect(getAsFileSystemHandle).not.toHaveBeenCalled();
   });
 
+  it("rejects a byte-oversized allowed-count choice before retaining files", () => {
+    const { access } = registry();
+    const rememberFiles = vi.spyOn(access, "rememberFiles");
+    const files = Array.from({ length: 10_000 }, (_, index) =>
+      file(`${"x".repeat(300)}-${index}.mp4`),
+    );
+
+    expect(() => pickBrowserFiles("project-a", files, access)).toThrow(
+      /storage limit/u,
+    );
+    expect(rememberFiles).not.toHaveBeenCalled();
+  });
+
+  it("accepts the full 10,000-file boundary and groups a 10,000-member fallback folder", () => {
+    const files = Array.from({ length: 10_000 }, (_, index) =>
+      file(`f${index}.mp4`),
+    );
+    const individual = registry();
+
+    const picked = pickBrowserFiles("project-a", files, individual.access);
+
+    expect(picked.sources).toHaveLength(10_000);
+    expect(
+      individual.access.files("project-a", picked.sources[9_999]!.accessRef),
+    ).toEqual([files[9_999]]);
+
+    const fallback = registry();
+    const members = files.map((entry, index) =>
+      file(entry.name, `Synthetic/Day-${index % 10}/${entry.name}`),
+    );
+    const grouped = pickBrowserFallbackFolders(
+      "project-a",
+      members,
+      fallback.access,
+    );
+    expect(grouped.sources).toHaveLength(1);
+    expect(
+      fallback.access.files("project-a", grouped.sources[0]!.accessRef),
+    ).toHaveLength(10_000);
+  });
+
   it("groups the webkitdirectory fallback by logical root without exposing a host path", () => {
     const { access } = registry();
     const picked = pickBrowserFallbackFolders(

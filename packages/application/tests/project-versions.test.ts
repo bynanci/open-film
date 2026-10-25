@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,40 +28,35 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
-const multiSourceTables = [
-  "review_decisions",
-  "analysis_result_members",
-  "analysis_results",
-  "analysis_runs",
-  "verified_manifest_entries",
-  "verified_manifests",
-  "expected_manifest_entries",
-  "expected_manifests",
-  "import_batches",
-  "asset_content_versions",
-  "content_identities",
-  "selection_memberships",
-  "file_occurrences",
-  "source_selections",
-] as const;
+const AUTHENTIC_V5_SHA256 =
+  "11d5b3ac7d4093c59b329cd6a4840a9a2dacf62872bd776c01a3cb6d459d4a2d";
 
 function sha256(value: Buffer | string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function downgradeNamedVersionToV5(directory: string, versionId: string): void {
+function authenticV5Catalog(): Buffer {
+  const encoded = readFileSync(
+    new URL(
+      "../../catalog/tests/fixtures/catalog-v5-61a4659.sqlite.gz.b64",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const fixture = gunzipSync(Buffer.from(encoded.trim(), "base64"));
+  if (sha256(fixture) !== AUTHENTIC_V5_SHA256)
+    throw new Error("The pinned catalog v5 fixture changed unexpectedly.");
+  return fixture;
+}
+
+function installAuthenticV5Catalog(
+  directory: string,
+  versionId: string,
+): Buffer {
   const versionDirectory = join(directory, "versions", versionId);
   const catalogPath = join(versionDirectory, "database.sqlite");
-  const catalog = new DatabaseSync(catalogPath);
-  try {
-    catalog.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;");
-    for (const table of multiSourceTables)
-      catalog.exec(`DROP TABLE IF EXISTS "${table}"`);
-    catalog.exec("PRAGMA user_version=5; COMMIT; PRAGMA foreign_keys=ON;");
-  } finally {
-    catalog.close();
-  }
-  const catalogBytes = readFileSync(catalogPath);
+  const catalogBytes = authenticV5Catalog();
+  writeFileSync(catalogPath, catalogBytes);
   const recordPath = join(versionDirectory, "record.json");
   const record = JSON.parse(readFileSync(recordPath, "utf8")) as Record<
     string,
@@ -82,6 +77,7 @@ function downgradeNamedVersionToV5(directory: string, versionId: string): void {
     projectBytes.length + catalogBytes.length + recordBytes.length;
   entry.recordHash = sha256(recordBytes);
   writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`);
+  return catalogBytes;
 }
 
 describe("named project versions", () => {
@@ -96,7 +92,7 @@ describe("named project versions", () => {
       baseRevision: app.versions.currentRevision(),
       requestId: "50000000-0000-4000-8000-000000000001",
     });
-    downgradeNamedVersionToV5(directory, version.id);
+    const fixtureBytes = installAuthenticV5Catalog(directory, version.id);
     const immutablePath = join(
       directory,
       "versions",
@@ -104,10 +100,24 @@ describe("named project versions", () => {
       "database.sqlite",
     );
     const immutableHash = sha256(readFileSync(immutablePath));
+    expect(immutableHash).toBe(AUTHENTIC_V5_SHA256);
+    expect(fixtureBytes.length).toBe(172_032);
     expect(app.versions.inspect(version.id).catalogSchemaVersion).toBe(5);
 
     app.project.title = "Current title";
     await app.save();
+    const current = await app.versions.create({
+      name: "Current v6",
+      baseRevision: app.versions.currentRevision(),
+      requestId: "50000000-0000-4000-8000-000000000003",
+    });
+    expect(app.versions.diff(version.id, current.id)).toMatchObject({
+      beforeVersionId: version.id,
+      afterVersionId: current.id,
+      entries: expect.arrayContaining([
+        expect.objectContaining({ category: "project", change: "changed" }),
+      ]),
+    });
     const restored = await app.versions.restore(version.id, {
       baseRevision: app.versions.currentRevision(),
       requestId: "50000000-0000-4000-8000-000000000002",
@@ -115,6 +125,9 @@ describe("named project versions", () => {
     });
 
     expect(app.project.title).toBe("Legacy title");
+    expect(app.catalog.listAssets().map((asset) => asset.id)).toContain(
+      "legacy-asset",
+    );
     expect(sha256(readFileSync(immutablePath))).toBe(immutableHash);
     expect(
       app.versions.inspect(restored.checkpointVersionId).catalogSchemaVersion,

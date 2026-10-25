@@ -239,6 +239,25 @@ test("persists an opaque browser handle record through real IndexedDB transactio
   page,
 }) => {
   await page.goto("/");
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const remove = indexedDB.deleteDatabase("openfilm-source-access");
+        remove.onerror = () => reject(remove.error);
+        remove.onblocked = () =>
+          reject(new Error("The synthetic v1 IndexedDB reset was blocked."));
+        remove.onsuccess = () => {
+          const seed = indexedDB.open("openfilm-source-access", 1);
+          seed.onerror = () => reject(seed.error);
+          seed.onupgradeneeded = () =>
+            seed.result.createObjectStore("handles", { keyPath: "key" });
+          seed.onsuccess = () => {
+            seed.result.close();
+            resolve();
+          };
+        };
+      }),
+  );
   const projectId = `indexeddb-regression-${Date.now()}`;
   const accessRef = await page.evaluate(async (owner) => {
     const modulePath = "/src/browserSourceAccess.ts";
@@ -252,6 +271,27 @@ test("persists an opaque browser handle record through real IndexedDB transactio
     });
   }, projectId);
   expect(accessRef).toMatch(/^browser-handle:/u);
+  await expect(
+    page.evaluate(
+      () =>
+        new Promise<{ version: number; indexes: string[] }>(
+          (resolve, reject) => {
+            const request = indexedDB.open("openfilm-source-access", 2);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const transaction = database.transaction("handles", "readonly");
+              const indexes = Array.from(
+                transaction.objectStore("handles").indexNames,
+              );
+              const version = database.version;
+              database.close();
+              resolve({ version, indexes });
+            };
+          },
+        ),
+    ),
+  ).resolves.toEqual({ version: 2, indexes: ["projectId"] });
 
   await page.reload();
   const reopened = await page.evaluate(
