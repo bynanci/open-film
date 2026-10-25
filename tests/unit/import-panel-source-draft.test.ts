@@ -701,7 +701,13 @@ describe("additive source draft panel", () => {
   });
 
   it("reloads authoritative state when both same-receipt mutation attempts lose their response", async () => {
-    const failure = new Error("workspace transport unavailable");
+    const failure = Object.assign(
+      new Error("workspace transport unavailable"),
+      {
+        code: "workspace.unavailable",
+        status: 0,
+      },
+    );
     const browserSource: SourceSelectionInput = {
       ...input("uncertain.mp4"),
       accessClass: "ephemeral-browser-file",
@@ -734,7 +740,13 @@ describe("additive source draft panel", () => {
   });
 
   it("conservatively retains access when mutation and authoritative reload are both unavailable", async () => {
-    const failure = new Error("workspace transport unavailable");
+    const failure = Object.assign(
+      new Error("workspace transport unavailable"),
+      {
+        code: "workspace.unavailable",
+        status: 0,
+      },
+    );
     const reloadFailure = new Error("authoritative read unavailable");
     const browserSource: SourceSelectionInput = {
       ...input("uncertain.mp4"),

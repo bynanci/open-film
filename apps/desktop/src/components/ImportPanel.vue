@@ -162,6 +162,20 @@ function applicationErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+function mutationFailureIsAmbiguous(error: unknown): boolean {
+  const code = applicationErrorCode(error);
+  if (code === "workspace.unavailable" || code === "workspace.invalidResponse")
+    return true;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+  )
+    return error.status === 0;
+  return code === undefined;
+}
+
 async function handleMutationError(
   error: unknown,
   owner: string,
@@ -200,7 +214,7 @@ async function attemptMutation<T>(
   try {
     return { ok: true, value: await action() };
   } catch (error) {
-    if (applicationErrorCode(error) !== undefined)
+    if (!mutationFailureIsAmbiguous(error))
       return { ok: false, error, ambiguous: false };
     try {
       return { ok: true, value: await action() };
