@@ -687,3 +687,45 @@ it("ignores a rejected old play operation after stop and a newer play", async ()
     false,
   );
 });
+
+it("bounds media URL versions with a large catalog and fences an in-place source URI change", async () => {
+  const assets = [
+    asset("a"),
+    asset("b"),
+    asset("c"),
+    ...Array.from({ length: 200 }, (_, index) => ({
+      ...asset(`unused-${index}`),
+      uri: `file:///library/${"long-path/".repeat(40)}${index}.mp4`,
+    })),
+  ];
+  const m = await mount(cut(), assets);
+  for (const bank of m.banks()) {
+    const version = decodeURIComponent(
+      (bank.props.src as string).split("?v=")[1]!,
+    );
+    expect(version.length).toBeLessThan(1024);
+    expect(version).not.toContain("long-path");
+  }
+  const old = await m.ready("a");
+  const staleReady = old.props.onCanplay as (event: unknown) => void;
+  m.transport().play();
+  await m.tick(1000);
+  m.props.assets[0]!.uri = "file:///relinked/a.mp4";
+  await settle();
+  const replacement = m
+    .banks()
+    .find((bank) => bank.props["data-clip-id"] === "a")!;
+  expect(replacement).not.toBe(old);
+  expect(replacement.props.src).not.toBe(old.props.src);
+  expect(m.transport().buffering).toBe(true);
+  const issues = m.issues.length;
+  staleReady({ currentTarget: old });
+  await settle();
+  expect(m.transport().buffering).toBe(true);
+  expect(m.issues).toHaveLength(issues);
+  await m.tick(9000);
+  expect(m.frames.at(-1)).toBe(10);
+  await m.ready("a");
+  await m.tick(9100);
+  expect(m.frames.at(-1)).toBe(11);
+});

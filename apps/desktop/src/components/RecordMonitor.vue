@@ -76,11 +76,19 @@ const ownerKey = computed(() =>
 );
 // Availability generations do not own the clock: only this owner's play intent
 // may survive a reconnect. Every generation gets fresh DOM event targets.
+const assetGeneration = shallowRef(0);
+watch(
+  () => props.assets.map((asset) => [asset.id, asset.uri]),
+  () => {
+    assetGeneration.value++;
+  },
+  { flush: "sync" },
+);
 const resourceOwner = computed(() =>
   JSON.stringify([
     ownerKey.value,
     props.sourceVersion ?? 0,
-    props.assets.map((asset) => [asset.id, asset.uri]),
+    assetGeneration.value,
   ]),
 );
 const transport = useRecordTransport({
