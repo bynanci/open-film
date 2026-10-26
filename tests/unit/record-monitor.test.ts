@@ -895,3 +895,62 @@ it("bounds a same-frame nested publication while retaining external explicit sou
   expect(publications).toBe(2);
   expect(writes).toBe(3); // External same-frame commands still resync.
 });
+
+it("updates unchanged readiness silently but still resyncs and publishes an external same-frame command", async () => {
+  const m = await mount();
+  const player = await m.ready("a");
+  await m.seek(1);
+  let writes = 0;
+  let time = player.currentTime;
+  Object.defineProperty(player, "currentTime", {
+    get: () => time,
+    set: (value: number) => {
+      writes++;
+      time = value;
+    },
+    configurable: true,
+  });
+  const publications = m.frames.length;
+  await m.event(player, "onWaiting");
+  expect(m.transport().buffering).toBe(true);
+  await m.event(player, "onCanplay");
+  expect(m.transport().buffering).toBe(false);
+  expect(m.frames).toHaveLength(publications);
+  expect(writes).toBe(0);
+  await m.seek(1);
+  expect(m.frames).toHaveLength(publications + 1);
+  expect(m.frames.at(-1)).toBe(1);
+  expect(writes).toBe(1);
+  await m.event(player, "onCanplay");
+  expect(m.frames).toHaveLength(publications + 1);
+  expect(writes).toBe(1);
+});
+
+it("retains queued explicit source resync when same-target readiness arrives during publication", async () => {
+  const m = await mount();
+  const player = await m.ready("a");
+  let writes = 0;
+  let time = player.currentTime;
+  Object.defineProperty(player, "currentTime", {
+    get: () => time,
+    set: (value: number) => {
+      writes++;
+      time = value;
+    },
+    configurable: true,
+  });
+  m.props.onFrame = (frame: number) => {
+    m.frames.push(frame);
+    if (frame === 1) {
+      m.transport().seek(frame);
+      (player.props.onCanplay as (event: unknown) => void)({
+        currentTarget: player,
+        target: player,
+      });
+    }
+  };
+  await settle();
+  await m.seek(1);
+  expect(writes).toBe(2);
+  expect(m.frames.filter((frame) => frame === 1)).toHaveLength(1);
+});

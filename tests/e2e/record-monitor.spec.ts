@@ -28,6 +28,7 @@ interface BrowserMonitor {
   frames: number[];
   issues: { code: string }[];
   events: { seeking: number; canplay: number };
+  onFrame?: (frame: number) => void;
 }
 declare global {
   interface Window {
@@ -85,7 +86,7 @@ test.beforeAll(async () => {
         const monitor=ref(); const frames=[]; const issues=[]; const events={seeking:0,canplay:0};
         document.addEventListener('seeking',()=>events.seeking++,true);
         document.addEventListener('canplay',()=>events.canplay++,true);
-        const app=createApp({render:()=>h(RecordMonitor,{...window.recordFixture,ref:monitor,onFrame:f=>frames.push(f),onIssue:i=>issues.push(i)})});
+        const app=createApp({render:()=>h(RecordMonitor,{...window.recordFixture,ref:monitor,onFrame:f=>{frames.push(f);window.recordTest?.onFrame?.(f)},onIssue:i=>issues.push(i)})});
         app.mount('#app'); window.recordTest={get monitor(){return monitor.value},frames,issues,events};`,
       resolveDir: resolve("apps/desktop"),
     },
@@ -267,6 +268,53 @@ test("canplay settles without seek feedback and actual video playback advances R
   expect(
     await page.evaluate(() => window.recordTest.events.seeking),
   ).toBeLessThan(20);
+});
+
+test("a frame consumer seeking the published frame cannot feed native readiness back into publication", async ({
+  page,
+}) => {
+  await page.route("http://127.0.0.1:4310/api/source/**", (route) =>
+    serve(route, false),
+  );
+  await mount(page, composition(), [asset("video")]);
+  await expect
+    .poll(() =>
+      page
+        .locator("video")
+        .evaluate((node) => (node as HTMLVideoElement).readyState),
+    )
+    .toBeGreaterThanOrEqual(3);
+  await page.evaluate(() => {
+    const probe = window.recordTest;
+    probe.onFrame = (frame) => probe.monitor.seek(frame);
+    probe.monitor.seek(1);
+  });
+  // Observe the native seek/canplay callbacks after the synchronous drain ends.
+  await page.waitForTimeout(300);
+  const observed = await page.evaluate(() => ({
+    ...window.recordTest.events,
+    publications: window.recordTest.frames.filter((frame) => frame === 1)
+      .length,
+    frame: window.recordTest.monitor.frame,
+    buffering: window.recordTest.monitor.buffering,
+  }));
+  console.log("Record frame-consumer/native feedback", observed);
+  expect(observed.publications).toBe(1);
+  expect(observed.seeking).toBeLessThan(10);
+  expect(observed.canplay).toBeLessThan(10);
+  expect(observed.frame).toBe(1);
+  expect(observed.buffering).toBe(false);
+  await page.evaluate(() => window.recordTest.monitor.seek(1));
+  await page.waitForTimeout(100);
+  expect(
+    await page.evaluate(
+      () => window.recordTest.frames.filter((frame) => frame === 1).length,
+    ),
+  ).toBe(2);
+  await page.evaluate(() => window.recordTest.monitor.play());
+  await expect
+    .poll(() => page.evaluate(() => window.recordTest.monitor.frame))
+    .toBeGreaterThanOrEqual(12);
 });
 
 for (const secondaryFails of [false, true]) {

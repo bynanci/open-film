@@ -117,8 +117,16 @@ const audible = shallowRef<Resource[]>([]);
 const filterId = `record-look-${useId().replaceAll(":", "")}`;
 let disposed = false;
 let reconciling = false;
+type ReconcileCause = "clock" | "command" | "lifecycle";
 let queuedReconcile:
-  { frame: number; crossing: boolean; force: boolean } | undefined;
+  | {
+      owner: string;
+      frame: number;
+      crossing: boolean;
+      force: boolean;
+      cause: ReconcileCause;
+    }
+  | undefined;
 let lastPublication: { owner: string; frame: number } | undefined;
 let previousFrame = 0;
 let explicitSeek = false;
@@ -248,16 +256,27 @@ function trim(collection: Map<string, Resource>, retained: Resource[]) {
 function reconcile(
   requested = transport.frame.value,
   crossing = false,
-  force = explicitSeek,
+  force = false,
+  cause: ReconcileCause = "lifecycle",
   nested = false,
 ) {
   if (disposed) return;
+  const owner = resourceOwner.value;
   if (reconciling) {
-    queuedReconcile = { frame: requested, crossing, force };
+    const previous = queuedReconcile;
+    const sameTarget =
+      previous?.owner === owner && previous.frame === requested;
+    // A same-target media callback cannot erase a queued position command.
+    queuedReconcile = {
+      owner,
+      frame: requested,
+      crossing: crossing || (sameTarget && previous.crossing),
+      force: force || (sameTarget && previous.force),
+      cause: sameTarget && previous.cause === "command" ? "command" : cause,
+    };
     return;
   }
   reconciling = true;
-  const owner = resourceOwner.value;
   try {
     if (!props.active) {
       clearResources();
@@ -309,12 +328,13 @@ function reconcile(
     if (disposed || owner !== resourceOwner.value) return;
     previousFrame = frame;
     syncMedia(force);
-    // A frame consumer may explicitly seek that same frame. Keep its source
-    // resync, but do not feed an identical nested publication back to it.
+    // Readiness/media lifecycle is not a sequence-position publication. An
+    // external command may republish an unchanged frame, but its nested echo
+    // and the native callbacks caused by its resync must stay silent.
     if (
-      !nested ||
       lastPublication?.owner !== owner ||
-      lastPublication.frame !== frame
+      lastPublication.frame !== frame ||
+      (cause === "command" && !nested)
     ) {
       lastPublication = { owner, frame };
       emit("frame", frame);
@@ -329,7 +349,14 @@ function reconcile(
     reconciling = false;
     const queued = queuedReconcile;
     queuedReconcile = undefined;
-    if (queued) reconcile(queued.frame, queued.crossing, queued.force, true);
+    if (queued)
+      reconcile(
+        queued.frame,
+        queued.crossing,
+        queued.force,
+        queued.cause,
+        true,
+      );
   }
 }
 const forward = computed(
@@ -548,7 +575,8 @@ function positionCommand(command: () => void) {
   const frame = transport.frame.value;
   try {
     command();
-    if (transport.frame.value === frame) reconcile();
+    if (transport.frame.value === frame)
+      reconcile(frame, false, true, "command");
   } finally {
     explicitSeek = false;
   }
@@ -590,7 +618,8 @@ watch(
 );
 watch(
   () => transport.frame.value,
-  (frame) => reconcile(frame, true),
+  (frame) =>
+    reconcile(frame, true, explicitSeek, explicitSeek ? "command" : "clock"),
   { flush: "sync" },
 );
 watch(
