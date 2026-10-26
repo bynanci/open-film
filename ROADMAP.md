@@ -1,3 +1,20 @@
+## Professional Cut Desk — Phase 1A foundation
+
+Expert Source/Record now presents one saved Composition with rational/DF
+timecode, continuous integer-frame Record transport, staged Source I/O and
+acknowledged one-gesture transactions. General retains Story/Precision over the
+same saved edits and session history. Original media remains immutable; markers
+remain Source-only. See the [guide](docs/professional-cut-desk.md),
+[approved phased design](docs/superpowers/specs/2026-10-26-professional-cut-desk-design.md)
+and [validation evidence](docs/validation-professional-cut-desk.md).
+
+The Phase 1A validation closes only its transport/transaction/timebase scope after
+the recorded gates. Phase 1B monitor/Ribbon/compare/gestures, Phase 1C responsive
+workspace completion, Phase 2 typed editing, Phase 3 tracks/proxies/audio and
+Phase 4 finishing remain incomplete. Chromium and synthetic FFmpeg evidence do
+not close physical Windows/macOS, high-DPI/color-managed display, hardware audio
+latency or long-form performance gates. Unrelated roadmap work remains open.
+
 ## Current implementation — Multi-source import and common analysis
 
 OpenFilm is adding an additive source draft that can combine files, folders and

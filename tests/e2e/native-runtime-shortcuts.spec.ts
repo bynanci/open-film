@@ -19,13 +19,10 @@ function keyboard(name: string, method = "keyboard") {
   );
   const start = source.indexOf(`function ${method}(`);
   if (start < 0) throw new Error(`Missing ${name} ${method} handler`);
-  const shared =
-    name === "PrecisionEditor"
-      ? transformSync(
-          readFileSync(resolve("apps/desktop/src/monitor.ts"), "utf8"),
-          { loader: "ts", format: "esm" },
-        ).code.replace(/^export /gm, "")
-      : "";
+  const shared = transformSync(
+    readFileSync(resolve("apps/desktop/src/monitor.ts"), "utf8"),
+    { loader: "ts", format: "esm" },
+  ).code.replace(/^export /gm, "");
   return (
     shared +
     transformSync(source.slice(start, source.indexOf("\n}", start) + 2), {
@@ -126,6 +123,8 @@ async function mount(page: Page) {
     state.shortcutCounts = counts;
     state.shortcutMode = mode;
     const timelineContext = {
+      shortcutIsolation: { value: false },
+      recordTarget: { value: false },
       directionBlocked: { value: false },
       editMode: mode,
       props: { active: true },
@@ -389,7 +388,7 @@ test("both Source trim handles preserve isolated defaults and retain intentional
     };
     (window as unknown as Record<string, unknown>).trimFixture = fixture;
     const context = {
-      editable: { value: true },
+      stageable: { value: true },
       trimIn: fixture.trimIn,
       trimOut: fixture.trimOut,
       trimSeparation: { value: 0.01 },

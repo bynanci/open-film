@@ -1,3 +1,21 @@
+## Professional Cut Desk — Phase 1A
+
+Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk-design.md),
+[plan](docs/superpowers/plans/2026-10-26-professional-cut-desk-phase-1a.md),
+[guide](docs/professional-cut-desk.md) and
+[validation](docs/validation-professional-cut-desk.md).
+
+- [x] Versioned rational timebase, exact DF entry/display and same-rate update policy.
+- [x] Shared Composition resolver, continuous Record transport and existing Source ownership.
+- [x] Revision-bound Source I/O, acknowledged atomic Apply/split and session Undo/Redo.
+- [x] Source-only markers, target-aware keyboard guards and operation-specific locks.
+- [ ] Complete exact-head FFmpeg/browser/accessibility and repository gate record.
+- [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
+- [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
+- [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
+- [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
+      color-managed displays and long-form workstation verification.
+
 ## In progress — Multi-source import and common analysis
 
 Scope: [roadmap](docs/roadmap/multi-source-analysis.md),
