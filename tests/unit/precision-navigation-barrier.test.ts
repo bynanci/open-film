@@ -239,6 +239,8 @@ async function precision(activeJobs: Job[] = []) {
   return { instance, props, exposed, response, request, emit, unmount };
 }
 function timeline(child: Partial<Barrier>) {
+  const document = { querySelector: () => null };
+  vi.stubGlobal("document", document);
   const calls: string[] = [];
   let compositionResult = true;
   let transcriptResult = true;
@@ -259,6 +261,7 @@ function timeline(child: Partial<Barrier>) {
     ...reactivity,
     useId: () => "precision-navigation-timeline",
     resolveFilmLook,
+    ownsSourceShortcut: monitor.ownsSourceShortcut,
     defineProps: () => ({
       projectId: "project",
       compositionId: "film",
@@ -273,7 +276,7 @@ function timeline(child: Partial<Barrier>) {
     onMounted: () => {},
     onBeforeUnmount: () => {},
     watch: () => {},
-    document: { querySelector: () => null },
+    document,
     useTimelineEditor: () => ({
       state,
       status: vue.ref("saved"),

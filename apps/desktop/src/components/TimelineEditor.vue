@@ -1697,8 +1697,11 @@ function keyboard(event: KeyboardEvent) {
         ctrlKey: false,
       } as KeyboardEvent)
     : event;
-  if (!ownsSourceShortcut(guarded) || !props.active || shortcutIsolation.value)
+  if (!ownsSourceShortcut(guarded) || !props.active) return;
+  if (shortcutIsolation.value) {
+    if (undo) event.preventDefault();
     return;
+  }
   if (editMode.value === "transcript") return;
   const element = event.target as HTMLElement | null;
   if (undo) {

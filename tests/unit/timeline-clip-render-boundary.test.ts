@@ -822,6 +822,10 @@ describe("Timeline clip render boundary", () => {
       (await view.key("ArrowRight")).preventDefault,
     ).not.toHaveBeenCalled();
     expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(frame);
+    expect(
+      (await view.key("z", { ctrlKey: true })).preventDefault,
+    ).toHaveBeenCalledOnce();
+    expect(view.api.history).not.toHaveBeenCalled();
     expect(view.api.edit).toHaveBeenCalledOnce();
   });
 
