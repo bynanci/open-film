@@ -156,6 +156,10 @@ const marksStale = computed(
 const shuttleTier = ref(0);
 let reverseTimer: ReturnType<typeof setInterval> | undefined;
 let transportGeneration = 0;
+const pendingPlayback = new Set<{
+  media: HTMLMediaElement;
+  generation: number;
+}>();
 let editController = new AbortController();
 const language = ref("auto");
 const languageChoices = [
@@ -687,23 +691,47 @@ function startPlayback() {
   const media = player.value;
   if (!media) return;
   const stamp = transportGeneration;
-  void media.play().catch((cause: unknown) => {
-    if (
-      disposed ||
-      stamp !== transportGeneration ||
-      media !== player.value ||
-      (typeof cause === "object" &&
-        cause !== null &&
-        "name" in cause &&
-        cause.name === "AbortError")
+  const request = { media, generation: stamp };
+  pendingPlayback.add(request);
+  void media
+    .play()
+    .then(
+      () => {
+        if (
+          disposed ||
+          media !== player.value ||
+          document.hidden ||
+          !props.active ||
+          (stamp !== transportGeneration && shuttleTier.value <= 0)
+        )
+          media.pause();
+      },
+      (cause: unknown) => {
+        if (
+          disposed ||
+          stamp !== transportGeneration ||
+          media !== player.value ||
+          (typeof cause === "object" &&
+            cause !== null &&
+            "name" in cause &&
+            cause.name === "AbortError")
+        )
+          return;
+        stop();
+        playbackError.value = true;
+      },
     )
-      return;
-    stop();
-    playbackError.value = true;
-  });
+    .finally(() => pendingPlayback.delete(request));
 }
 function play() {
-  if (!player.value || !playable.value) return;
+  if (
+    disposed ||
+    !props.active ||
+    document.hidden ||
+    !player.value ||
+    !playable.value
+  )
+    return;
   stop();
   const [minimum, maximum] = sourceRange.value;
   if (playhead.value < minimum || playhead.value >= maximum) seek(minimum);
@@ -712,7 +740,7 @@ function play() {
   startPlayback();
 }
 function shuttle(direction: -1 | 1) {
-  if (!playable.value) return;
+  if (disposed || !props.active || document.hidden || !playable.value) return;
   const tier = nextShuttleTier(shuttleTier.value, direction);
   stop();
   if (tier === 0) return;
@@ -765,6 +793,20 @@ function togglePlayback() {
 }
 function mediaPlayed() {
   if (!player.value || player.value.paused) return;
+  if (
+    disposed ||
+    !props.active ||
+    document.hidden ||
+    (pendingPlayback.size > 0 &&
+      ![...pendingPlayback].some(
+        (request) =>
+          request.media === player.value &&
+          request.generation === transportGeneration,
+      ))
+  ) {
+    player.value.pause();
+    return;
+  }
   if (reverseTimer !== undefined) clearInterval(reverseTimer);
   reverseTimer = undefined;
   if (shuttleTier.value <= 0) shuttleTier.value = 1;
@@ -1091,7 +1133,13 @@ watch(
   },
   { immediate: true },
 );
-onMounted(() => window.addEventListener("keydown", keyboard));
+function visibilityChanged() {
+  if (document.hidden) stop();
+}
+onMounted(() => {
+  window.addEventListener("keydown", keyboard);
+  document.addEventListener("visibilitychange", visibilityChanged);
+});
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
@@ -1100,6 +1148,7 @@ onBeforeUnmount(() => {
   haltPolling();
   cancelAnimationFrame(hoverFrame);
   window.removeEventListener("keydown", keyboard);
+  document.removeEventListener("visibilitychange", visibilityChanged);
   stop();
 });
 defineExpose({

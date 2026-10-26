@@ -100,6 +100,13 @@ async function settle() {
 async function mount(
   saved = cut(),
   assets = [asset("a"), asset("b"), asset("c")],
+  graphicFrame: (
+    compositionId: string,
+    projectId: string,
+    revision: string,
+    frame: number,
+    signal?: AbortSignal,
+  ) => Promise<Blob> = async () => new Blob(["frame"]),
 ) {
   // Missing adapter is an assertion failure in RED, rather than a loader error.
   expect(existsSync(path), "Composition RecordMonitor is implemented").toBe(
@@ -129,7 +136,7 @@ async function mount(
     sourceUrl: (key: string, version: string | number) =>
       `/source/${key}?v=${encodeURIComponent(version)}`,
     titlePreviewUrl: (_cut: string, clipId: string) => `/title/${clipId}.png`,
-    graphicFrame: async () => new Blob(["frame"]),
+    graphicFrame,
     ApiError: class extends Error {},
   };
   const look = loadComponent("apps/desktop/src/components/FilmLookFilter.vue", {
@@ -250,6 +257,147 @@ async function mount(
   };
 }
 
+it.each([
+  [23.976, 24000],
+  [29.97, 30000],
+  [59.94, 60000],
+  [30, 30030],
+])(
+  "requests exact GraphicScene boundary and final frames at legacy %s without mutating settings",
+  async (rate, numerator) => {
+    const duration = (180 * 1001) / numerator;
+    const saved = cut();
+    saved.duration = duration;
+    saved.tracks[0]!.clips = [
+      { id: "a", assetId: "a", timelineStart: 0, timelineDuration: duration },
+    ];
+    saved.graphicScenes = [
+      {
+        version: 1,
+        id: "g",
+        name: "graphic",
+        start: 0,
+        duration,
+        zIndex: 0,
+        nodes: [],
+      },
+    ];
+    const requests: number[] = [];
+    const m = await mount(
+      saved,
+      [asset("a")],
+      async (_cut, _project, _revision, frame) => {
+        requests.push(frame);
+        return new Blob([String(frame)]);
+      },
+    );
+    m.props.settings = { width: 320, height: 180, frameRate: rate };
+    const before = JSON.stringify(m.props.settings);
+    await settle();
+    for (const frame of [60, 179, 59, 120, 0, 119, 75, 178, 60, 179]) {
+      await m.seek(frame);
+      await m.graphics();
+      expect(requests.at(-1)).toBe(frame);
+      expect(
+        m
+          .nodes()
+          .find((node) => node.props["data-testid"] === "graphic-preview")
+          ?.props["data-frame"],
+      ).toBe(frame);
+    }
+    expect(JSON.stringify(m.props.settings)).toBe(before);
+    expect(m.props.settings.timebase).toBeUndefined();
+  },
+);
+
+it("retains the completed GraphicScene during bounded forward renders and fences seek, reverse, buffering and replacement requests", async () => {
+  const saved = cut();
+  saved.graphicScenes = [
+    {
+      version: 1,
+      id: "g",
+      name: "graphic",
+      start: 0,
+      duration: 6,
+      zIndex: 0,
+      nodes: [],
+    },
+  ];
+  const requests: Array<{
+    frame: number;
+    signal?: AbortSignal;
+    finish: () => void;
+  }> = [];
+  const m = await mount(
+    saved,
+    [asset("a"), asset("b"), asset("c")],
+    async (_cut, _project, _revision, frame, signal) =>
+      new Promise<Blob>((resolve) => {
+        requests.push({
+          frame,
+          signal,
+          finish: () => resolve(new Blob([String(frame)])),
+        });
+      }),
+  );
+  const image = () =>
+    m.nodes().find((node) => node.props["data-testid"] === "graphic-preview");
+  await m.ready("a");
+  await m.graphics();
+  requests[0]!.finish();
+  await settle();
+  expect(image()?.props["data-frame"]).toBe(0);
+  m.transport().play();
+  await m.tick(100);
+  await vi.advanceTimersByTimeAsync(120);
+  expect(requests).toHaveLength(2);
+  await m.tick(200);
+  await m.tick(300);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(image()?.props["data-frame"]).toBe(0);
+  expect(requests[1]!.signal?.aborted).toBe(false);
+  expect(requests).toHaveLength(2);
+  requests[1]!.finish();
+  await settle();
+  expect(image()?.props["data-frame"]).toBe(1);
+  await vi.advanceTimersByTimeAsync(120);
+  expect(requests.at(-1)?.frame).toBe(3);
+  await m.seek(15);
+  await m.graphics();
+  expect(requests[2]!.signal?.aborted).toBe(true);
+  expect(requests.at(-1)?.frame).toBe(15);
+  requests[2]!.finish();
+  await settle();
+  expect(image()).toBeUndefined();
+  requests.at(-1)!.finish();
+  await settle();
+  expect(image()?.props["data-frame"]).toBe(15);
+  const current = m.banks().find((node) => node.props["data-clip-id"] === "a")!;
+  await m.event(current, "onWaiting");
+  await m.graphics();
+  expect(requests.at(-1)?.frame).toBe(15);
+  requests.at(-1)!.finish();
+  await settle();
+  expect(image()?.props["data-frame"]).toBe(15);
+  await m.ready("a");
+  m.transport().shuttle(-1);
+  m.transport().shuttle(-1);
+  await m.tick(400);
+  await m.graphics();
+  expect(requests.at(-1)?.frame).toBe(14);
+  const old = requests.at(-1)!;
+  m.props.projectId = "replacement";
+  await settle();
+  await m.graphics();
+  expect(old.signal?.aborted).toBe(true);
+  old.finish();
+  await settle();
+  expect(image()).toBeUndefined();
+  requests.at(-1)!.finish();
+  await settle();
+  expect(image()?.props["data-frame"]).toBe(0);
+});
+
 it("prearms the next primary and freezes at the first unready edit without hidden elapsed time", async () => {
   const m = await mount();
   expect(m.banks().map((node) => node.props["data-clip-id"])).toEqual([
@@ -369,7 +517,7 @@ it("distinguishes decode failure from not-ready and ignores removed targets afte
   expect(m.callbacks.size).toBe(0);
 });
 
-it("preserves saved visual order, exact source times, geometry and transition opacity at arbitrary seeks", async () => {
+it("preserves renderer visual order, exact source times, geometry and transition opacity at arbitrary seeks", async () => {
   const saved = cut();
   saved.tracks[0]!.clips[1]!.transition = { type: "crossfade", duration: 1 };
   saved.tracks[0]!.clips[1]!.transform = {
@@ -423,6 +571,73 @@ it("preserves saved visual order, exact source times, geometry and transition op
     }
   }
   expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("composites reversed saved clips chronologically within each track while preserving saved identity and stable equal-start ties", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[1]!.transition = { type: "crossfade", duration: 1 };
+  saved.tracks[0]!.clips.reverse();
+  saved.tracks.push({
+    id: "overlay",
+    type: "overlay",
+    clips: [
+      {
+        id: "tie-first",
+        assetId: "photo",
+        timelineStart: 0,
+        timelineDuration: 6,
+      },
+      {
+        id: "tie-second",
+        assetId: "photo",
+        timelineStart: 0,
+        timelineDuration: 6,
+      },
+    ],
+  });
+  const before = JSON.stringify(saved);
+  const m = await mount(saved, [
+    asset("a"),
+    asset("b"),
+    asset("c"),
+    asset("photo", "image"),
+  ]);
+  for (const [frame, alpha] of [
+    [24, 0.4],
+    [20, 0],
+    [29, 0.9],
+  ] as const) {
+    await m.seek(frame);
+    await m.ready("b");
+    const visible = m
+      .nodes()
+      .filter((node) => node.props["data-record-layer"] !== undefined);
+    const stacked = visible.toSorted(
+      (a, b) =>
+        (a.props.style as { zIndex: number }).zIndex -
+        (b.props.style as { zIndex: number }).zIndex,
+    );
+    expect(stacked.map((node) => node.props["data-record-layer"])).toEqual([
+      "a",
+      "b",
+      "tie-first",
+      "tie-second",
+    ]);
+    expect(
+      (stacked[1]!.props.style as { opacity: number }).opacity,
+    ).toBeCloseTo(alpha);
+    expect(
+      m.banks().find((node) => node.props["data-clip-id"] === "b")!.props[
+        "data-bank"
+      ],
+    ).toBe("current");
+  }
+  expect(JSON.stringify(saved)).toBe(before);
+  expect(saved.tracks[0]!.clips.map((clip) => clip.id)).toEqual([
+    "c",
+    "b",
+    "a",
+  ]);
 });
 
 it("drives controlled photo local time and non-asset titles/GraphicScenes from Record sequence time", async () => {

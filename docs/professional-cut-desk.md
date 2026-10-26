@@ -42,7 +42,7 @@ editable content, dialogs, retained drafts, Pipeline Workbench and active IME.
 | J / K / L            | Reverse / stop / forward              | Reverse / stop / forward               |
 | Left / Right         | One source frame                      | One sequence frame                     |
 | Shift + Left / Right | One second at declared rate           | Nominal one-second step                |
-| Up / Down            | Existing Source navigation            | Previous/next primary edit boundary    |
+| Up / Down            | No Source edit-point shortcut         | Previous/next primary edit boundary    |
 | Home / End           | Staged source bounds                  | First/final complete sequence frame    |
 | I / O                | Stage source in/out                   | No source mark write                   |
 | B                    | Eligible selected source split        | Split resolved primary at Record frame |

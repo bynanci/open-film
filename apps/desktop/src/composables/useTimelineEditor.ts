@@ -566,7 +566,7 @@ export function useTimelineEditor(
     // published or cleared by this Discard's later authoritative reload.
     discarding = true;
     try {
-      if (transactionBase) {
+      if (transactionBase && !transactionNeedsReapply) {
         const acknowledged = await flushCommands();
         if (disposed || !acknowledged) return;
       }
@@ -584,6 +584,8 @@ export function useTimelineEditor(
       if (timer) clearTimeout(timer);
       pending = [];
       batch = null;
+      transactionBase = null;
+      transactionNeedsReapply = false;
       publish(saved);
       if (disposed) return;
       retainDraft();

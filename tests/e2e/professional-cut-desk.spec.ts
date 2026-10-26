@@ -11,7 +11,8 @@ import {
 import axe from "axe-core";
 import { OpenFilmApplication } from "@openfilm/application";
 import type { Composition } from "@openfilm/core";
-import { hashFile } from "@openfilm/media";
+import { hashFile, runProcess } from "@openfilm/media";
+import { FFmpegRenderer } from "@openfilm/render";
 import { professionalCutDeskFixture } from "../fixtures/professional-cut-desk.js";
 import { initialLocale, navigate, openFilm, uiText } from "./ui-helpers.js";
 
@@ -19,6 +20,15 @@ const api = "http://127.0.0.1:4310/api";
 let root: string;
 let media: Awaited<ReturnType<typeof professionalCutDeskFixture>>;
 let projectNumber = 0;
+declare global {
+  interface Window {
+    sourceVisibilityGate: {
+      media: HTMLVideoElement;
+      finish(): void;
+      reject(): void;
+    };
+  }
+}
 test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 });
 test.beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-professional-browser-"));
@@ -50,6 +60,7 @@ async function makeProject(
     overlayLocked?: boolean;
     long?: boolean;
     hostileName?: boolean;
+    reversed?: boolean;
   } = {},
 ) {
   const path = join(root, `project-${projectNumber++}.openfilm`);
@@ -61,6 +72,7 @@ async function makeProject(
   try {
     app.project.settings = structuredClone(media.settings);
     const cut = structuredClone(media.composition);
+    if (options.reversed) cut.tracks[0]!.clips.reverse();
     cut.tracks[0]!.clips[0]!.locked = options.clipLocked ?? false;
     cut.tracks[1]!.clips[0]!.locked = options.overlayLocked ?? false;
     if (options.long) {
@@ -135,6 +147,88 @@ async function seekRecord(page: Page, frame: number) {
     String(frame),
   );
 }
+
+test("reversed saved clips crossfade with the same distinct colors in the monitor and real renderer", async ({
+  page,
+  request,
+}) => {
+  await openCut(page, await makeProject({ reversed: true }));
+  const original = (await state(request)).composition;
+  expect(original.tracks[0]!.clips.map((clip) => clip.id)).toEqual([
+    "blue",
+    "green",
+    "red",
+  ]);
+  const output = join(root, "reversed-render.mp4");
+  await new FFmpegRenderer().render(
+    original,
+    media.assets,
+    output,
+    media.settings,
+    { quality: "high-detail" },
+  );
+  for (const [frame, color] of [
+    [60, [255, 0, 0]],
+    [67, [136, 119, 0]],
+    [75, [0, 255, 0]],
+  ] as const) {
+    await seekRecord(page, frame);
+    await expect(page.locator(".record-monitor")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator('[data-record-layer="green"] video')
+          .evaluate((node) => !(node as HTMLVideoElement).seeking),
+      )
+      .toBe(true);
+    const screenshot = join(root, `monitor-reversed-${frame}.png`);
+    await page.locator(".record-canvas").screenshot({ path: screenshot });
+    const monitor = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        screenshot,
+        "-vf",
+        "crop=1:1:floor(iw*145/160):floor(ih*10/90)",
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-",
+      ])
+    ).stdout;
+    const rendered = (
+      await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        output,
+        "-vf",
+        `select=eq(n\\,${frame}),format=rgb24,crop=1:1:145:10`,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-",
+      ])
+    ).stdout;
+    expect(monitor).toHaveLength(3);
+    expect(rendered).toHaveLength(3);
+    for (const pixel of [monitor, rendered])
+      [...pixel].forEach((value, channel) =>
+        expect(Math.abs(value - color[channel]!)).toBeLessThanOrEqual(12),
+      );
+  }
+  expect((await state(request)).composition).toEqual(original);
+});
 async function source(page: Page, clip = "red") {
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await page
@@ -147,6 +241,143 @@ async function source(page: Page, clip = "red") {
 }
 async function saved(page: Page) {
   await expect(page.getByTestId("editor-save-state")).toHaveText("Saved");
+}
+
+async function setSourceVisibility(page: Page, hidden: boolean) {
+  await page.evaluate((hidden) => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: hidden,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, hidden);
+}
+async function seekSourceMiddle(page: Page) {
+  const field = page.getByRole("textbox", {
+    name: "Source elapsed timecode",
+    exact: true,
+  });
+  await field.fill("00:00:01:15");
+  await field.press("Enter");
+  await expect(field).toHaveValue("00:00:01:15");
+  await expect
+    .poll(() =>
+      page
+        .locator(".precision-editor video")
+        .evaluate((node) => !(node as HTMLVideoElement).seeking),
+    )
+    .toBe(true);
+}
+for (const direction of ["backward", "forward"] as const) {
+  test(`Source ${direction} shuttle stops on document visibility loss without resuming`, async ({
+    page,
+    request,
+  }) => {
+    await openCut(page, await makeProject());
+    await source(page);
+    await seekSourceMiddle(page);
+    const original = (await state(request)).composition;
+    await page
+      .getByRole("button", { name: `Shuttle source ${direction}`, exact: true })
+      .click();
+    await expect(
+      page.getByText(`Source speed ${direction === "backward" ? "-1" : "1"}×`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await setSourceVisibility(page, true);
+    await expect(
+      page.getByText("Source speed 0×", { exact: true }),
+    ).toBeVisible();
+    const video = page.locator(".precision-editor video");
+    await expect
+      .poll(() => video.evaluate((node) => (node as HTMLVideoElement).paused))
+      .toBe(true);
+    const stopped = await video.evaluate(
+      (node) => (node as HTMLVideoElement).currentTime,
+    );
+    await setSourceVisibility(page, false);
+    // A bounded observation interval proves no reverse timer or native forward
+    // clock survives hidden/visible; this is not used to synchronize a seek.
+    await page.waitForTimeout(250);
+    expect(
+      await video.evaluate((node) => (node as HTMLVideoElement).currentTime),
+    ).toBe(stopped);
+    await expect(
+      page.getByText("Source speed 0×", { exact: true }),
+    ).toBeVisible();
+    expect((await state(request)).composition).toEqual(original);
+  });
+}
+for (const change of [
+  "same Source",
+  "replacement Source",
+  "unmount",
+] as const) {
+  for (const outcome of ["resolve", "reject"] as const) {
+    test(`Source hidden play ${outcome} cannot restart after ${change}`, async ({
+      page,
+      request,
+    }) => {
+      await openCut(page, await makeProject());
+      await source(page);
+      await seekSourceMiddle(page);
+      const original = (await state(request)).composition;
+      await page.locator(".precision-editor video").evaluate((node) => {
+        const media = node as HTMLVideoElement;
+        const nativePlay = media.play.bind(media);
+        let finish!: () => void;
+        let reject!: (cause: unknown) => void;
+        const pending = new Promise<void>((resolve, fail) => {
+          finish = resolve;
+          reject = fail;
+        });
+        media.play = () => pending;
+        window.sourceVisibilityGate = {
+          media,
+          finish: () => {
+            void nativePlay().catch(() => {});
+            finish();
+          },
+          reject: () =>
+            reject(new DOMException("Retired request", "NotAllowedError")),
+        };
+      });
+      await page
+        .getByRole("button", { name: "Play source", exact: true })
+        .click();
+      await setSourceVisibility(page, true);
+      await expect(
+        page.getByText("Source speed 0×", { exact: true }),
+      ).toBeVisible();
+      await setSourceVisibility(page, false);
+      if (change === "replacement Source") await source(page, "blue");
+      else if (change === "unmount")
+        await page.getByRole("button", { name: "Record", exact: true }).click();
+      await page.evaluate((outcome) => {
+        if (outcome === "resolve") window.sourceVisibilityGate.finish();
+        else window.sourceVisibilityGate.reject();
+      }, outcome);
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.sourceVisibilityGate.media.paused),
+        )
+        .toBe(true);
+      if (change !== "unmount") {
+        await expect(
+          page.getByText("Source speed 0×", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.locator(".precision-editor [role=alert]"),
+        ).toHaveCount(0);
+      } else
+        await expect(page.locator(".record-monitor")).toHaveAttribute(
+          "data-frame",
+          "0",
+        );
+      expect((await state(request)).composition).toEqual(original);
+    });
+  }
 }
 
 test("Record crosses both saved boundaries without selection restart and seeded seeks reproduce source and GraphicScene frames", async ({

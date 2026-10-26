@@ -108,7 +108,10 @@ async function mountPrecision(
     removeEventListener: vi.fn(),
   });
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
-  vi.stubGlobal("document", { activeElement: null });
+  vi.stubGlobal(
+    "document",
+    Object.assign(new EventTarget(), { activeElement: null, hidden: false }),
+  );
   vi.stubGlobal("Document", class {});
   vi.stubGlobal("ShadowRoot", class {});
   const wordLabels = vi.fn();

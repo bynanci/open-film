@@ -77,6 +77,8 @@ const precisionFactory = component<{
   playbackError: Ref<boolean>;
   step: (direction: -1 | 1, seconds?: boolean) => void;
   shuttleTier: Ref<number>;
+  playing: Ref<boolean>;
+  mediaPlayed: () => void;
   player: Ref<unknown>;
   moveTrim: (event: KeyboardEvent, side: "in" | "out") => void;
   finishDrag: (event: PointerEvent) => void;
@@ -104,6 +106,8 @@ const precisionFactory = component<{
   "playbackError",
   "step",
   "shuttleTier",
+  "playing",
+  "mediaPlayed",
   "player",
   "moveTrim",
   "finishDrag",
@@ -155,7 +159,11 @@ const clip: Clip = {
   timelineDuration: 10,
 };
 async function precision(activeJobs: Job[] = []) {
-  vi.stubGlobal("document", { querySelector: () => null });
+  const document = Object.assign(new EventTarget(), {
+    querySelector: () => null,
+    hidden: false,
+  });
+  vi.stubGlobal("document", document);
   const unmountCallbacks: Array<() => void> = [];
   const response = deferred<unknown>();
   const state: IntelligenceState = {
@@ -216,10 +224,11 @@ async function precision(activeJobs: Job[] = []) {
         exposed = value;
       },
       useI18n: () => ({ t: String, te: () => false }),
-      onMounted: () => {},
+      onMounted: (callback: () => void) => callback(),
       onBeforeUnmount: (stop: () => void) => unmountCallbacks.push(stop),
       cancelAnimationFrame: () => {},
-      window: { removeEventListener: () => {} },
+      window: new EventTarget(),
+      document,
       api: {
         intelligence: vi.fn(async () => state),
         intelligenceProviders: vi.fn(async () => ({
@@ -236,7 +245,16 @@ async function precision(activeJobs: Job[] = []) {
   cleanup.push(unmount);
   await vi.waitFor(() => expect(instance.sourceVerified.value).toBe(true));
   await vue.nextTick();
-  return { instance, props, exposed, response, request, emit, unmount };
+  return {
+    instance,
+    props,
+    exposed,
+    response,
+    request,
+    emit,
+    unmount,
+    document,
+  };
 }
 function timeline(child: Partial<Barrier>) {
   const document = { querySelector: () => null };
@@ -517,6 +535,88 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
       vi.useRealTimers();
     }
   });
+  it.each([-1, 1] as const)(
+    "visibility loss stops Source tier %s without auto-resume and removes its listener on disposal",
+    async (direction) => {
+      const h = await precision();
+      vi.useFakeTimers();
+      try {
+        const media = {
+          pause: vi.fn(),
+          play: vi.fn(async () => {}),
+          currentTime: 5,
+          playbackRate: 1,
+          volume: 1,
+        };
+        h.instance.player.value = media;
+        h.instance.playhead.value = 5;
+        h.instance.shuttle(direction);
+        await vi.advanceTimersByTimeAsync(100);
+        h.document.hidden = true;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+        expect(h.instance.shuttleTier.value).toBe(0);
+        expect(h.instance.playing.value).toBe(false);
+        const stopped = h.instance.playhead.value;
+        const playCount = media.play.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(h.instance.playhead.value).toBe(stopped);
+        h.document.hidden = false;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(100);
+        expect(media.play).toHaveBeenCalledTimes(playCount);
+        expect(h.instance.shuttleTier.value).toBe(0);
+        const remove = vi.spyOn(h.document, "removeEventListener");
+        h.unmount();
+        expect(remove).toHaveBeenCalledWith(
+          "visibilitychange",
+          expect.any(Function),
+        );
+        const pauseCount = media.pause.mock.calls.length;
+        h.document.hidden = true;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+        expect(media.pause).toHaveBeenCalledTimes(pauseCount);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+  it.each(["visibility", "selection", "unmount"] as const)(
+    "late resolved Source play cannot restart after %s retires ownership",
+    async (change) => {
+      const h = await precision();
+      const pending = deferred<void>();
+      const media = {
+        pause: vi.fn(),
+        play: vi.fn(() => pending.promise),
+        paused: false,
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      h.instance.playhead.value = 5;
+      h.instance.play();
+      if (change === "visibility") {
+        h.document.hidden = true;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+        h.document.hidden = false;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+      } else if (change === "selection")
+        h.props.clip = { ...clip, id: "replacement" };
+      else h.unmount();
+      await vue.nextTick();
+      const pauseCount = media.pause.mock.calls.length;
+      // Native play may complete after the document becomes visible or its
+      // component changes owner. Exercise the actual event and promise handlers.
+      h.instance.mediaPlayed();
+      pending.release();
+      await vue.nextTick();
+      expect(media.pause.mock.calls.length).toBeGreaterThan(pauseCount);
+      expect(h.instance.shuttleTier.value).toBe(0);
+      expect(h.instance.playing.value).toBe(false);
+      expect(h.instance.playbackError.value).toBe(false);
+    },
+  );
   it.each(["AbortError", "NotAllowedError"])(
     "an obsolete %s from rapid L/L does not stop the newest 2× play",
     async (name) => {
@@ -588,6 +688,7 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
     "source",
     "unmount",
     "media",
+    "visibility",
   ] as const)(
     "ignores pending play rejection after %s invalidates its owner",
     async (change) => {
@@ -610,7 +711,10 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
       else if (change === "timebase") h.props.settings.frameRate = 24;
       else if (change === "source") h.props.sourceVersion++;
       else if (change === "unmount") h.unmount();
-      else h.instance.player.value = { ...media, pause: vi.fn() };
+      else if (change === "visibility") {
+        h.document.hidden = true;
+        h.document.dispatchEvent(new Event("visibilitychange"));
+      } else h.instance.player.value = { ...media, pause: vi.fn() };
       await vue.nextTick();
       const expectedTier = h.instance.shuttleTier.value;
       pendingPlay.reject(

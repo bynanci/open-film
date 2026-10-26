@@ -943,6 +943,117 @@ describe("acknowledged professional edit transactions", () => {
     expect(second.storage.has(storageKey)).toBe(false);
   });
 
+  it("discards reconstructed professional recovery without editing the reopened authoritative project or history", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-recovered-discard-"));
+    let app: OpenFilmApplication | undefined;
+    let first: Awaited<ReturnType<typeof mountEditor>> | undefined;
+    let recovered: Awaited<ReturnType<typeof mountEditor>> | undefined;
+    try {
+      const directory = join(root, "film.openfilm");
+      app = await OpenFilmApplication.create(directory, "Discard recovery");
+      const initial = initialState();
+      for (const asset of initial.assets) app.catalog.upsertAsset(asset);
+      app.project.stories.push(initial.story);
+      app.project.timelines.push(initial.composition);
+      await app.save();
+      let server = new TimelineEditor(app);
+      const api = {
+        editor: vi.fn(async () => server.get("cut")),
+        edit: vi.fn(async (_id: string, request: TimelineEditInput) => {
+          await server.edit("cut", request);
+          throw new TypeError("Accepted response lost");
+        }),
+      };
+      first = await mountEditor(api);
+      expect(await first.editor.commitTransaction(gesture)).toEqual({
+        status: "failed",
+      });
+      first.dispose();
+      app.close();
+      app = await OpenFilmApplication.open(directory);
+      server = new TimelineEditor(app);
+      const path = join(directory, "project.json");
+      const bytes = await readFile(path);
+      const authoritative = server.get("cut");
+      recovered = await mountEditor(api, first.storage);
+      expect(recovered.editor.status.value).toBe("conflict");
+      api.edit.mockClear();
+      await recovered.editor.discardDraft();
+      expect(recovered.editor.status.value).toBe("saved");
+      expect(recovered.editor.hasPending.value).toBe(false);
+      expect(recovered.storage.has(storageKey)).toBe(false);
+      expect(recovered.editor.state.value).toEqual(authoritative);
+      expect(server.get("cut")).toEqual(authoritative);
+      expect(authoritative).toMatchObject({ canUndo: false, canRedo: false });
+      expect(await readFile(path)).toEqual(bytes);
+      expect(api.edit).not.toHaveBeenCalled();
+      expect(await recovered.editor.flush()).toBe(true);
+    } finally {
+      recovered?.dispose();
+      first?.dispose();
+      app?.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reserves reconstructed Discard and fences its delayed reload after disposal and replacement", async () => {
+    const initial = initialState();
+    const storage = new Map([
+      [
+        storageKey,
+        JSON.stringify({
+          state: savedState(11, "r1"),
+          pending: gesture,
+          batch: {
+            baseRevision: "r1",
+            requestId: "recovered",
+            commands: gesture,
+          },
+          transactionBase: initial,
+        }),
+      ],
+    ]);
+    const reload = deferred<EditorState>();
+    const api = {
+      editor: vi
+        .fn()
+        .mockResolvedValueOnce(initial)
+        .mockReturnValueOnce(reload.promise),
+      edit: vi.fn(),
+      history: vi.fn(),
+    };
+    const { editor, dispose, changed, edited } = await mountEditor(
+      api,
+      storage,
+    );
+    const discarding = editor.discardDraft();
+    expect(api.editor).toHaveBeenCalledTimes(2);
+    expect(editor.command({ type: "transform", clipId: "clip", x: 7 })).toBe(
+      false,
+    );
+    expect(await editor.history("undo")).toBe(false);
+    expect(await editor.commitTransaction(gesture)).toEqual({
+      status: "failed",
+    });
+    dispose();
+    const atDisposal = editor.state.value;
+    const changedCount = changed.mock.calls.length;
+    const editedCount = edited.mock.calls.length;
+    const replacement = JSON.stringify({
+      owner: "replacement",
+      requestId: "preserve",
+    });
+    storage.set(storageKey, replacement);
+    reload.resolve(savedState(3, "r2"));
+    await discarding;
+    expect(editor.state.value).toBe(atDisposal);
+    expect(storage.get(storageKey)).toBe(replacement);
+    expect(changed).toHaveBeenCalledTimes(changedCount);
+    expect(edited).toHaveBeenCalledTimes(editedCount);
+    expect(api.edit).not.toHaveBeenCalled();
+    expect(api.history).not.toHaveBeenCalled();
+  });
+
   it("keeps explicit Reapply available when the recovered professional snapshot read fails", async () => {
     const api = {
       editor: vi

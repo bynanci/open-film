@@ -23,12 +23,14 @@ interface BrowserMonitor {
     buffering: boolean;
     playing: boolean;
     play(): void;
+    pause(): void;
     seek(frame: number): void;
   };
   frames: number[];
   issues: { code: string }[];
   events: { seeking: number; canplay: number };
   onFrame?: (frame: number) => void;
+  replaceProject(projectId: string): void;
 }
 declare global {
   interface Window {
@@ -81,13 +83,14 @@ test.beforeAll(async () => {
   ];
   const output = await build({
     stdin: {
-      contents: `import {createApp,h,ref} from "vue";
+      contents: `import {createApp,h,ref,reactive} from "vue";
         import RecordMonitor from "./src/components/RecordMonitor.vue";
         const monitor=ref(); const frames=[]; const issues=[]; const events={seeking:0,canplay:0};
         document.addEventListener('seeking',()=>events.seeking++,true);
         document.addEventListener('canplay',()=>events.canplay++,true);
-        const app=createApp({render:()=>h(RecordMonitor,{...window.recordFixture,ref:monitor,onFrame:f=>{frames.push(f);window.recordTest?.onFrame?.(f)},onIssue:i=>issues.push(i)})});
-        app.mount('#app'); window.recordTest={get monitor(){return monitor.value},frames,issues,events};`,
+        const fixture=reactive(window.recordFixture);
+        const app=createApp({render:()=>h(RecordMonitor,{...fixture,ref:monitor,onFrame:f=>{frames.push(f);window.recordTest?.onFrame?.(f)},onIssue:i=>issues.push(i)})});
+        app.mount('#app'); window.recordTest={get monitor(){return monitor.value},frames,issues,events,replaceProject:id=>fixture.projectId=id};`,
       resolveDir: resolve("apps/desktop"),
     },
     bundle: true,
@@ -237,6 +240,89 @@ const composition = (): Composition => ({
       ],
     },
   ],
+});
+
+test("slow GraphicScene playback retains its texture with bounded requests and fences discontinuities and owner switches", async ({
+  page,
+}) => {
+  await page.route("http://127.0.0.1:4310/api/source/**", (route) =>
+    serve(route, false),
+  );
+  const pending: Array<{ route: Route; frame: number; projectId: string }> = [];
+  await page.route("**/compositions/record/graphics.png?**", async (route) => {
+    const url = new URL(route.request().url());
+    const frame = Number(url.searchParams.get("frame"));
+    const projectId = url.searchParams.get("projectId")!;
+    if (pending.length === 0 && frame === 0 && projectId === "project") {
+      pending.push({ route, frame, projectId });
+      await route.fulfill({ contentType: "image/png", body: photo });
+    } else pending.push({ route, frame, projectId });
+  });
+  const saved = composition();
+  saved.graphicScenes = [
+    {
+      version: 1,
+      id: "g",
+      name: "synthetic",
+      start: 0,
+      duration: 3,
+      zIndex: 0,
+      nodes: [],
+    },
+  ];
+  try {
+    await mount(page, saved, [asset("video")]);
+    const image = page.getByTestId("graphic-preview");
+    await expect(image).toHaveAttribute("data-frame", "0");
+    await expect
+      .poll(() => page.evaluate(() => window.recordTest.monitor.buffering))
+      .toBe(false);
+    await page.evaluate(() => window.recordTest.monitor.play());
+    await expect.poll(() => pending.length).toBe(2);
+    const slow = pending[1]!;
+    await expect
+      .poll(() => page.evaluate(() => window.recordTest.monitor.frame))
+      .toBeGreaterThanOrEqual(slow.frame + 4);
+    await expect(image).toHaveAttribute("data-frame", "0");
+    expect(pending).toHaveLength(2);
+    await slow.route.fulfill({ contentType: "image/png", body: photo });
+    await expect(image).toHaveAttribute("data-frame", String(slow.frame));
+    await expect.poll(() => pending.length).toBe(3);
+    const obsolete = pending[2]!;
+    await page.evaluate(() => {
+      window.recordTest.monitor.pause();
+      window.recordTest.monitor.seek(17);
+    });
+    await expect
+      .poll(() => pending.some((item) => item.frame === 17))
+      .toBe(true);
+    const exact = pending.findLast((item) => item.frame === 17)!;
+    await exact.route.fulfill({ contentType: "image/png", body: photo });
+    await expect(image).toHaveAttribute("data-frame", "17");
+    await obsolete.route
+      .fulfill({ contentType: "image/png", body: photo })
+      .catch(() => {});
+    await expect(image).toHaveAttribute("data-frame", "17");
+    await page.evaluate(() => window.recordTest.monitor.seek(22));
+    await expect
+      .poll(() => pending.some((item) => item.frame === 22))
+      .toBe(true);
+    const oldOwner = pending.findLast((item) => item.frame === 22)!;
+    await page.evaluate(() => window.recordTest.replaceProject("replacement"));
+    await expect
+      .poll(() => pending.some((item) => item.projectId === "replacement"))
+      .toBe(true);
+    await oldOwner.route
+      .fulfill({ contentType: "image/png", body: photo })
+      .catch(() => {});
+    await expect(image).toHaveCount(0);
+    await pending
+      .findLast((item) => item.projectId === "replacement")!
+      .route.fulfill({ contentType: "image/png", body: photo });
+    await expect(image).toHaveAttribute("data-frame", "0");
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
 });
 
 test("canplay settles without seek feedback and actual video playback advances Record", async ({

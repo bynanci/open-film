@@ -20,6 +20,7 @@ import {
   resolveProjectTimebase,
   sequenceTimeAt,
   timebaseKey,
+  timebaseRate,
   type Clip,
   type Composition,
   type MediaAsset,
@@ -130,6 +131,7 @@ let queuedReconcile:
 let lastPublication: { owner: string; frame: number } | undefined;
 let previousFrame = 0;
 let explicitSeek = false;
+const graphicSeekGeneration = shallowRef(0);
 let lastIssue = "";
 const gainIssues = new Set<string>();
 
@@ -510,6 +512,27 @@ const pictureResources = computed(() => [
   ...layers.value,
   ...banks.value.filter((resource) => !layers.value.includes(resource)),
 ]);
+// The saved clip index remains the resource identity. FFmpeg composites each
+// track chronologically, with original array order breaking equal-start ties.
+const compositeOrder = computed(
+  () =>
+    new Map(
+      props.composition.tracks
+        .flatMap((track, trackIndex) =>
+          track.clips
+            .map((clip, clipIndex) => ({ clip, clipIndex }))
+            .sort(
+              (a, b) =>
+                a.clip.timelineStart - b.clip.timelineStart ||
+                a.clipIndex - b.clipIndex,
+            )
+            .map(
+              ({ clip, clipIndex }) => `${trackIndex}:${clipIndex}:${clip.id}`,
+            ),
+        )
+        .map((key, index) => [key, index]),
+    ),
+);
 function shown(resource: Resource) {
   return (
     layers.value.includes(resource) &&
@@ -571,6 +594,9 @@ function titleClip(clip: Clip): Clip {
 }
 function positionCommand(command: () => void) {
   if (disposed) return;
+  // A discontinuous position command owns an exact new texture request, even
+  // while positive transport intent continues. Retire the sampled request.
+  graphicSeekGeneration.value++;
   explicitSeek = true;
   const frame = transport.frame.value;
   try {
@@ -674,8 +700,7 @@ defineExpose({
           :style="{
             opacity: resource.entry.opacity,
             visibility: shown(resource) ? 'visible' : 'hidden',
-            zIndex:
-              resource.entry.trackIndex * 100000 + resource.entry.clipIndex,
+            zIndex: compositeOrder.get(id(resource.entry)),
           }"
           @click="select(resource)"
         >
@@ -756,16 +781,16 @@ defineExpose({
         />
         <GraphicScenePreview
           v-if="composition.graphicScenes?.length && resolved"
-          :key="resourceOwner"
+          :key="`${resourceOwner}:${graphicSeekGeneration}`"
           :composition-id="composition.id"
           :project-id="projectId"
           :revision="revision"
           :source-version="sourceVersion"
           :time="resolved.time"
-          :frame-rate="settings.frameRate"
+          :frame-rate="timebaseRate(timebase)"
           :duration="composition.duration"
           :active="active"
-          :playing="false"
+          :playing="forward"
           :scenes="composition.graphicScenes"
         />
       </div>

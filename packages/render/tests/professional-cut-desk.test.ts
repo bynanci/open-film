@@ -8,13 +8,19 @@ import { hashFile, runProcess } from "@openfilm/media";
 import { professionalCutDeskFixture } from "../../../tests/fixtures/professional-cut-desk.js";
 import { FFmpegRenderer } from "../src/index.js";
 
-it("decodes 180 rational frames with saved edits, crossfade, graphics, tone gains and immutable source receipts", async () => {
+it("decodes 180 rational frames with saved edits, crossfade, graphics, tone gains and immutable source receipts", () =>
+  verifyProfessionalRender(false));
+it("decodes the same crossfade and source evidence with reversed saved clip order", () =>
+  verifyProfessionalRender(true));
+
+async function verifyProfessionalRender(reversed: boolean) {
   // Catches rate rounding, one-frame edit drift, lost outgoing tail/layer, wrong
   // source trim/audio gain/delay and receipt/source mutation. No resolver or
   // production evaluator computes the expected side of an assertion.
   const root = await mkdtemp(join(tmpdir(), "openfilm-professional-render-"));
   try {
     const fixture = await professionalCutDeskFixture(root);
+    if (reversed) fixture.composition.tracks[0]!.clips.reverse();
     const before = structuredClone(fixture.composition);
     const output = join(root, "professional.mp4");
     await new FFmpegRenderer().render(
@@ -320,4 +326,4 @@ it("decodes 180 rational frames with saved edits, crossfade, graphics, tone gain
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
+}
