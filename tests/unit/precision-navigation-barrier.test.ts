@@ -32,6 +32,7 @@ const reactivity = Object.fromEntries(
 const cleanup: Array<() => void> = [];
 afterEach(() => {
   for (const stop of cleanup.splice(0).reverse()) stop();
+  vi.unstubAllGlobals();
 });
 type Ref<T> = { value: T };
 type Barrier = { hasPending: Ref<boolean>; flush: () => Promise<boolean> };
@@ -72,6 +73,8 @@ const precisionFactory = component<{
   split: () => Promise<void>;
   shuttle: (direction: -1 | 1) => void;
   stop: () => void;
+  play: () => void;
+  playbackError: Ref<boolean>;
   step: (direction: -1 | 1, seconds?: boolean) => void;
   shuttleTier: Ref<number>;
   player: Ref<unknown>;
@@ -97,6 +100,8 @@ const precisionFactory = component<{
   "split",
   "shuttle",
   "stop",
+  "play",
+  "playbackError",
   "step",
   "shuttleTier",
   "player",
@@ -150,6 +155,8 @@ const clip: Clip = {
   timelineDuration: 10,
 };
 async function precision(activeJobs: Job[] = []) {
+  vi.stubGlobal("document", { querySelector: () => null });
+  const unmountCallbacks: Array<() => void> = [];
   const response = deferred<unknown>();
   const state: IntelligenceState = {
     sourceHash: "hash",
@@ -210,7 +217,7 @@ async function precision(activeJobs: Job[] = []) {
       },
       useI18n: () => ({ t: String, te: () => false }),
       onMounted: () => {},
-      onBeforeUnmount: (stop: () => void) => cleanup.push(stop),
+      onBeforeUnmount: (stop: () => void) => unmountCallbacks.push(stop),
       cancelAnimationFrame: () => {},
       window: { removeEventListener: () => {} },
       api: {
@@ -222,10 +229,14 @@ async function precision(activeJobs: Job[] = []) {
       request,
     }),
   )!;
-  cleanup.push(() => scope.stop());
+  function unmount() {
+    for (const stop of unmountCallbacks.splice(0).reverse()) stop();
+    scope.stop();
+  }
+  cleanup.push(unmount);
   await vi.waitFor(() => expect(instance.sourceVerified.value).toBe(true));
   await vue.nextTick();
-  return { instance, props, exposed, response, request, emit };
+  return { instance, props, exposed, response, request, emit, unmount };
 }
 function timeline(child: Partial<Barrier>) {
   const calls: string[] = [];
@@ -362,6 +373,83 @@ function mutate(
 }
 
 describe("Precision navigation retains in-flight mutation submissions", () => {
+  it.each(
+    (["in", "out"] as const).flatMap((side) =>
+      [
+        "ctrl",
+        "meta",
+        "alt",
+        "handled",
+        "ime",
+        "input",
+        "textarea",
+        "select",
+        "contenteditable",
+        "draft",
+        "pipeline",
+        "isolation",
+        "dialog",
+      ].map((context) => ({ side, context })),
+    ),
+  )(
+    "isolates the $side handle in $context without claiming the event",
+    async ({ side, context }) => {
+      const h = await precision();
+      h.instance.trimIn.value = 2;
+      h.instance.trimOut.value = 8;
+      const protectedTarget = [
+        "input",
+        "textarea",
+        "select",
+        "contenteditable",
+        "draft",
+        "pipeline",
+        "isolation",
+      ].includes(context);
+      vi.stubGlobal("document", {
+        querySelector: () => (context === "dialog" ? {} : null),
+      });
+      const event = {
+        key: "ArrowRight",
+        ctrlKey: context === "ctrl",
+        metaKey: context === "meta",
+        altKey: context === "alt",
+        defaultPrevented: context === "handled",
+        isComposing: context === "ime",
+        target: { closest: () => (protectedTarget ? {} : null) },
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      h.instance.moveTrim(event as unknown as KeyboardEvent, side);
+      expect([h.instance.trimIn.value, h.instance.trimOut.value]).toEqual([
+        2, 8,
+      ]);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(event.stopPropagation).not.toHaveBeenCalled();
+      expect(h.props.commit).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["in", "out"] as const)(
+    "keeps Shift adjustment owned by the %s handle",
+    async (side) => {
+      const h = await precision();
+      h.instance.trimIn.value = 2;
+      h.instance.trimOut.value = 8;
+      const event = {
+        key: side === "in" ? "ArrowRight" : "ArrowLeft",
+        shiftKey: true,
+        target: { closest: () => null },
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      h.instance.moveTrim(event as unknown as KeyboardEvent, side);
+      expect(
+        side === "in" ? h.instance.trimIn.value : h.instance.trimOut.value,
+      ).toBeCloseTo(side === "in" ? 2 + 10 / 30 : 8 - 10 / 30);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(h.props.commit).not.toHaveBeenCalled();
+    },
+  );
   it("keyboard trim stages without committing and preserves IME defaults", async () => {
     const h = await precision();
     const preventDefault = vi.fn();
@@ -425,6 +513,150 @@ describe("Precision navigation retains in-flight mutation submissions", () => {
       h.instance.stop();
       vi.useRealTimers();
     }
+  });
+  it.each(["AbortError", "NotAllowedError"])(
+    "an obsolete %s from rapid L/L does not stop the newest 2× play",
+    async (name) => {
+      const h = await precision();
+      const first = deferred<void>();
+      const second = deferred<void>();
+      const media = {
+        pause: vi.fn(),
+        play: vi
+          .fn()
+          .mockReturnValueOnce(first.promise)
+          .mockReturnValueOnce(second.promise),
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      h.instance.playhead.value = 5;
+      h.instance.shuttle(1);
+      h.instance.shuttle(1);
+      first.reject(new DOMException("Previous play was interrupted", name));
+      await vue.nextTick();
+      expect(h.instance.shuttleTier.value).toBe(2);
+      expect(media.playbackRate).toBe(2);
+      expect(h.instance.playbackError.value).toBe(false);
+      second.release();
+      await vue.nextTick();
+    },
+  );
+  it.each(["play", "shuttle"] as const)(
+    "a rejected %s promise cannot stop a later reverse shuttle",
+    async (start) => {
+      const h = await precision();
+      const pendingPlay = deferred<void>();
+      const media = {
+        pause: vi.fn(),
+        play: vi.fn(() => pendingPlay.promise),
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      h.instance.playhead.value = 5;
+      vi.useFakeTimers();
+      try {
+        if (start === "play") h.instance.play();
+        else h.instance.shuttle(1);
+        h.instance.shuttle(-1);
+        h.instance.shuttle(-1);
+        pendingPlay.reject(
+          new DOMException("Forward play interrupted", "AbortError"),
+        );
+        await vue.nextTick();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(h.instance.shuttleTier.value).toBe(-1);
+        expect(h.instance.playhead.value).toBeCloseTo(4.9, 6);
+        expect(h.instance.playbackError.value).toBe(false);
+      } finally {
+        h.instance.stop();
+        vi.useRealTimers();
+      }
+    },
+  );
+  it.each([
+    "stop",
+    "selection",
+    "revision",
+    "timebase",
+    "source",
+    "unmount",
+    "media",
+  ] as const)(
+    "ignores pending play rejection after %s invalidates its owner",
+    async (change) => {
+      const h = await precision();
+      const pendingPlay = deferred<void>();
+      const media = {
+        pause: vi.fn(),
+        play: vi.fn(() => pendingPlay.promise),
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      h.instance.playhead.value = 5;
+      h.instance.play();
+      if (change === "stop") h.instance.stop();
+      else if (change === "selection")
+        h.props.clip = { ...clip, id: "next-clip" };
+      else if (change === "revision") h.props.revision = "r2";
+      else if (change === "timebase") h.props.settings.frameRate = 24;
+      else if (change === "source") h.props.sourceVersion++;
+      else if (change === "unmount") h.unmount();
+      else h.instance.player.value = { ...media, pause: vi.fn() };
+      await vue.nextTick();
+      const expectedTier = h.instance.shuttleTier.value;
+      pendingPlay.reject(
+        new DOMException("Superseded media rejected", "NotAllowedError"),
+      );
+      await vue.nextTick();
+      expect(h.instance.shuttleTier.value).toBe(expectedTier);
+      expect(h.instance.playbackError.value).toBe(false);
+    },
+  );
+  it.each(["play", "shuttle"] as const)(
+    "reports and stops a current genuine %s rejection",
+    async (start) => {
+      const h = await precision();
+      const pendingPlay = deferred<void>();
+      const media = {
+        pause: vi.fn(),
+        play: vi.fn(() => pendingPlay.promise),
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      if (start === "play") h.instance.play();
+      else h.instance.shuttle(1);
+      pendingPlay.reject(
+        new DOMException("Current playback denied", "NotAllowedError"),
+      );
+      await vue.nextTick();
+      expect(h.instance.shuttleTier.value).toBe(0);
+      expect(h.instance.playbackError.value).toBe(true);
+    },
+  );
+  it("does not report an intentional current AbortError as a playback failure", async () => {
+    const h = await precision();
+    const pendingPlay = deferred<void>();
+    h.instance.player.value = {
+      pause: vi.fn(),
+      play: () => pendingPlay.promise,
+      currentTime: 5,
+      playbackRate: 1,
+      volume: 1,
+    };
+    h.instance.play();
+    pendingPlay.reject(
+      new DOMException("Intentional interruption", "AbortError"),
+    );
+    await vue.nextTick();
+    expect(h.instance.playbackError.value).toBe(false);
   });
   it("I/O and numeric entry only stage; Apply submits one trim transaction and resets", async () => {
     const h = await precision();

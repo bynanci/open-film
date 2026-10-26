@@ -155,6 +155,7 @@ const marksStale = computed(
 );
 const shuttleTier = ref(0);
 let reverseTimer: ReturnType<typeof setInterval> | undefined;
+let transportGeneration = 0;
 let editController = new AbortController();
 const language = ref("auto");
 const languageChoices = [
@@ -669,6 +670,7 @@ const sourceRange = computed(() =>
       ] as const),
 );
 function stop() {
+  transportGeneration++;
   if (reverseTimer !== undefined) clearInterval(reverseTimer);
   reverseTimer = undefined;
   shuttleTier.value = 0;
@@ -679,6 +681,25 @@ function stop() {
 function pause() {
   stop();
 }
+function startPlayback() {
+  const media = player.value;
+  if (!media) return;
+  const stamp = transportGeneration;
+  void media.play().catch((cause: unknown) => {
+    if (
+      disposed ||
+      stamp !== transportGeneration ||
+      media !== player.value ||
+      (typeof cause === "object" &&
+        cause !== null &&
+        "name" in cause &&
+        cause.name === "AbortError")
+    )
+      return;
+    stop();
+    playbackError.value = true;
+  });
+}
 function play() {
   if (!player.value || !playable.value) return;
   stop();
@@ -686,10 +707,7 @@ function play() {
   if (playhead.value < minimum || playhead.value >= maximum) seek(minimum);
   shuttleTier.value = 1;
   configurePlayback();
-  void player.value.play().catch(() => {
-    stop();
-    playbackError.value = true;
-  });
+  startPlayback();
 }
 function shuttle(direction: -1 | 1) {
   if (!playable.value) return;
@@ -702,10 +720,7 @@ function shuttle(direction: -1 | 1) {
   if (tier > 0) {
     if (playhead.value >= maximum) seek(minimum, false);
     configurePlayback();
-    void player.value?.play().catch(() => {
-      stop();
-      playbackError.value = true;
-    });
+    startPlayback();
   } else {
     playing.value = true;
     reverseTimer = setInterval(() => {
@@ -886,7 +901,7 @@ async function applyRange() {
 }
 function moveTrim(event: KeyboardEvent, side: "in" | "out") {
   if (
-    event.isComposing ||
+    !ownsSourceShortcut(event) ||
     !editable.value ||
     !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
   )
@@ -1000,6 +1015,11 @@ watch(
 watch(
   markOwner,
   (owner, previous) => {
+    if (
+      !sameSourceOwner(owner, previous) ||
+      owner.revision !== previous.revision
+    )
+      transportGeneration++;
     marks.value = reconcileSourceMarks(
       marks.value,
       owner,

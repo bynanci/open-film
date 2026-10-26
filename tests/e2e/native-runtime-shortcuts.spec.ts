@@ -12,13 +12,13 @@ const gate = compiler.compileScript(
     .descriptor,
   { id: "native-keyboard-fixture", inlineTemplate: true },
 ).content;
-function keyboard(name: string) {
+function keyboard(name: string, method = "keyboard") {
   const source = readFileSync(
     resolve(`apps/desktop/src/components/${name}.vue`),
     "utf8",
   );
-  const start = source.indexOf("function keyboard(event: KeyboardEvent)");
-  if (start < 0) throw new Error(`Missing ${name} keyboard handler`);
+  const start = source.indexOf(`function ${method}(`);
+  if (start < 0) throw new Error(`Missing ${name} ${method} handler`);
   const shared =
     name === "PrecisionEditor"
       ? transformSync(
@@ -36,6 +36,7 @@ function keyboard(name: string) {
 const handlers = {
   timeline: keyboard("TimelineEditor"),
   precision: keyboard("PrecisionEditor"),
+  trim: keyboard("PrecisionEditor", "moveTrim"),
 };
 let fixture: string;
 test.beforeAll(async () => {
@@ -371,4 +372,132 @@ test("Source shortcuts preserve Chromium defaults and counters in IME, editable,
     ),
   ).toEqual(["shuttle", "in", "out"]);
   expect(await counts(page)).toEqual({ deleted: 0, history: 0, marker: 1 });
+});
+
+test("both Source trim handles preserve isolated defaults and retain intentional Shift adjustment in Chromium", async ({
+  page,
+}) => {
+  await page.setContent(
+    '<div id="box"><button id="in" role="slider">In</button><button id="out" role="slider">Out</button></div><dialog id="dialog"></dialog>',
+  );
+  await page.evaluate((code) => {
+    const fixture = {
+      trimIn: { value: 2 },
+      trimOut: { value: 8 },
+      lastDefault: false,
+      handled: false,
+    };
+    (window as unknown as Record<string, unknown>).trimFixture = fixture;
+    const context = {
+      editable: { value: true },
+      trimIn: fixture.trimIn,
+      trimOut: fixture.trimOut,
+      trimSeparation: { value: 0.01 },
+      sourceDuration: { value: 10 },
+      frameStep: { value: 1 / 30 },
+      snapResult: { value: undefined },
+      clamp: (value: number, minimum: number, maximum: number) =>
+        Math.min(maximum, Math.max(minimum, value)),
+    };
+    const moveTrim = new Function(
+      "context",
+      `const {${Object.keys(context).join(",")}} = context; ${code}; return moveTrim;`,
+    )(context);
+    for (const side of ["in", "out"]) {
+      const handle = document.getElementById(side)!;
+      handle.addEventListener("keydown", (event) => {
+        if (fixture.handled) event.preventDefault();
+      });
+      handle.addEventListener("keydown", (event) => moveTrim(event, side));
+      handle.addEventListener("keydown", (event) => {
+        fixture.lastDefault = event.defaultPrevented;
+      });
+    }
+  }, handlers.trim);
+  const snapshot = () =>
+    page.evaluate(() => {
+      const fixture = (
+        window as unknown as {
+          trimFixture: {
+            trimIn: { value: number };
+            trimOut: { value: number };
+            lastDefault: boolean;
+          };
+        }
+      ).trimFixture;
+      return {
+        range: [fixture.trimIn.value, fixture.trimOut.value],
+        prevented: fixture.lastDefault,
+      };
+    });
+  for (const side of ["in", "out"]) {
+    for (const modifier of ["Control", "Meta", "Alt"]) {
+      await page.locator(`#${side}`).press(`${modifier}+ArrowRight`);
+      expect(await snapshot(), `${side} ${modifier}`).toEqual({
+        range: [2, 8],
+        prevented: false,
+      });
+    }
+    for (const context of [
+      "ime",
+      "handled",
+      "contenteditable",
+      "pipeline",
+      "draft",
+      "isolation",
+      "dialog",
+    ]) {
+      await page.evaluate(
+        ({ side, context }) => {
+          const box = document.getElementById("box")!;
+          const dialog = document.getElementById("dialog") as HTMLDialogElement;
+          box.className =
+            context === "pipeline"
+              ? "pipeline-workbench-root"
+              : context === "draft"
+                ? "runtime-drafts"
+                : "";
+          box.removeAttribute("contenteditable");
+          box.removeAttribute("data-shortcut-isolation");
+          if (context === "contenteditable")
+            box.setAttribute("contenteditable", "");
+          if (context === "isolation")
+            box.setAttribute("data-shortcut-isolation", "");
+          if (context === "dialog") {
+            dialog.append(box);
+            dialog.showModal();
+          } else document.body.append(box);
+          const fixture = (
+            window as unknown as { trimFixture: { handled: boolean } }
+          ).trimFixture;
+          fixture.handled = context === "handled";
+          const handle = document.getElementById(side)!;
+          handle.focus();
+          handle.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "ArrowRight",
+              isComposing: context === "ime",
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+          fixture.handled = false;
+          if (context === "dialog") {
+            dialog.close();
+            document.body.append(box);
+          }
+        },
+        { side, context },
+      );
+      expect(await snapshot(), `${side} ${context}`).toEqual({
+        range: [2, 8],
+        prevented: context === "handled",
+      });
+    }
+  }
+  await page.locator("#in").press("ArrowRight");
+  expect((await snapshot()).range[0]).toBeCloseTo(2 + 1 / 30);
+  await page.locator("#out").press("Shift+ArrowLeft");
+  expect((await snapshot()).range[1]).toBeCloseTo(8 - 10 / 30);
+  expect((await snapshot()).prevented).toBe(true);
 });
