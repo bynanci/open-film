@@ -1369,7 +1369,13 @@ export const api = {
       requestId: string;
       commands: TimelineCommand[];
     },
-  ) => post<EditorState>(`/compositions/${encodeURIComponent(id)}/edit`, body),
+    signal?: AbortSignal,
+  ) =>
+    post<EditorState>(
+      `/compositions/${encodeURIComponent(id)}/edit`,
+      body,
+      signal,
+    ),
   history: (id: string, direction: "undo" | "redo", baseRevision: string) =>
     post<EditorState>(`/compositions/${encodeURIComponent(id)}/${direction}`, {
       baseRevision,

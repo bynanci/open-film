@@ -21,7 +21,12 @@ type Draft = {
   state: EditorState;
   pending: TimelineCommand[];
   batch: Batch | null;
+  /** A professional batch rolls back on rejection instead of being rebased. */
+  transactionBase?: EditorState;
 };
+export type CommitTransactionResult =
+  | { status: "accepted"; revision: string }
+  | { status: "conflict" | "cancelled" | "failed" };
 
 /** Keep the command queue until acknowledgement, including across a reload. */
 export function useTimelineEditor(
@@ -57,40 +62,52 @@ export function useTimelineEditor(
   }
   const pendingCount = ref(0);
   const historyBusy = ref(false);
+  const transactionPreparing = ref(false);
+  const transactionSending = ref(false);
+  const transactionBusy = computed(
+    () => transactionPreparing.value || transactionSending.value,
+  );
   const storageKey = `openfilm:editor:${projectId}:${compositionId}`;
   let pending: TimelineCommand[] = [];
   let batch: Batch | null = null;
+  let transactionBase: EditorState | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let saving: Promise<boolean> | null = null;
   let historyRequest: Promise<boolean> | null = null;
+  let reapplying = false;
   let disposed = false;
   const hasPending = computed(() => pendingCount.value > 0);
 
   function publish(next: EditorState) {
+    if (disposed) return;
     state.value = next;
-    if (!disposed) changed(next);
+    changed(next);
   }
-  function retainDraft() {
+  function retainDraft(snapshot = state.value): boolean {
     pendingCount.value = pending.length;
     // Recovery owns the existing bytes until its initial snapshot/receipt is
     // available. Closing during that read must not erase the only saved draft.
-    if (pending.length && !state.value) return;
+    if (pending.length && !snapshot) return false;
     try {
-      if (pending.length && state.value) {
+      if (pending.length && snapshot) {
         localStorage.setItem(
           storageKey,
           JSON.stringify({
-            state: state.value,
+            state: snapshot,
             pending,
             batch,
+            ...(transactionBase ? { transactionBase } : {}),
           } satisfies Draft),
         );
       } else localStorage.removeItem(storageKey);
+      return true;
     } catch {
       // A blocked/full storage area must not interrupt the live save queue.
+      return false;
     }
   }
   function fail(cause: unknown) {
+    if (disposed) return;
     status.value =
       cause instanceof ApiError && cause.status === 409 ? "conflict" : "failed";
     reportError(cause);
@@ -101,8 +118,35 @@ export function useTimelineEditor(
       next = { ...next, ...applyTimelineCommand(next, next.assets, command) };
     return next;
   }
+  function assertComposition(next: EditorState) {
+    if (next.composition.id !== compositionId)
+      throw new ApiError("The edit belongs to another composition.", 409);
+  }
+  function definitiveRejection(cause: unknown) {
+    return (
+      cause instanceof ApiError && cause.status >= 400 && cause.status < 500
+    );
+  }
+  async function rejectTransaction(cause: unknown) {
+    if (disposed || !transactionBase) return;
+    const before = transactionBase;
+    pending = [];
+    batch = null;
+    transactionBase = null;
+    publish(before);
+    fail(cause);
+    try {
+      const saved = await api.editor(compositionId);
+      if (disposed) return;
+      assertComposition(saved);
+      publish(saved);
+      edited();
+    } catch {
+      /* Keep the original rejection and the non-optimistic baseline. */
+    }
+  }
   async function load() {
-    if (disposed) return;
+    if (disposed || transactionBusy.value || saving || historyRequest) return;
     status.value = "loading";
     let recovered: Draft | null = null;
     try {
@@ -124,6 +168,8 @@ export function useTimelineEditor(
         pending = recovered.pending;
         pendingCount.value = pending.length;
         batch = recovered.batch;
+        transactionBase = recovered.transactionBase ?? null;
+        transactionSending.value = !!transactionBase;
         if (batch) {
           const sending = batch;
           const acknowledged = await api.edit(compositionId, sending);
@@ -132,6 +178,8 @@ export function useTimelineEditor(
           batch = null;
           const saved = await api.editor(compositionId);
           if (disposed) return;
+          assertComposition(saved);
+          transactionBase = null;
           const acknowledgedRevision =
             acknowledged.acknowledgedRevision ?? acknowledged.revision;
           if (pending.length && saved.revision !== acknowledgedRevision) {
@@ -174,16 +222,30 @@ export function useTimelineEditor(
       if (recovered) {
         pending = recovered.pending;
         batch = recovered.batch;
+        transactionBase = recovered.transactionBase ?? null;
+        if (transactionBase && definitiveRejection(cause)) {
+          await rejectTransaction(cause);
+          return;
+        }
         publish(recovered.state);
       }
       fail(cause);
+    } finally {
+      transactionSending.value = false;
     }
   }
   function command(
     input: TimelineCommand | TimelineCommand[],
     referencedAssets: readonly MediaAsset[] = [],
   ): boolean {
-    if (!state.value || historyBusy.value || status.value === "loading")
+    if (
+      disposed ||
+      !state.value ||
+      historyBusy.value ||
+      transactionBusy.value ||
+      transactionBase ||
+      status.value === "loading"
+    )
       return false;
     const commands = Array.isArray(input) ? input : [input];
     try {
@@ -216,16 +278,19 @@ export function useTimelineEditor(
     }
   }
   function flush(): Promise<boolean> {
+    if (disposed || transactionPreparing.value) return Promise.resolve(false);
     if (historyRequest)
       return historyRequest.then((ok) => (ok ? flushCommands() : false));
     return flushCommands();
   }
-  function flushCommands(): Promise<boolean> {
+  function flushCommands(signal?: AbortSignal): Promise<boolean> {
     if (timer) clearTimeout(timer);
+    if (disposed) return Promise.resolve(false);
     if (saving) return saving;
     if (status.value === "loading" || !state.value)
       return Promise.resolve(false);
     if (!pending.length) return Promise.resolve(status.value !== "conflict");
+    transactionSending.value = !!transactionBase;
     saving = (async () => {
       while (pending.length && state.value) {
         if (!batch)
@@ -238,14 +303,21 @@ export function useTimelineEditor(
         status.value = "saving";
         retainDraft();
         try {
-          const saved = await api.edit(compositionId, sending);
+          const saved = await api.edit(compositionId, sending, signal);
+          if (disposed) return false;
+          if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+          assertComposition(saved);
           pending = pending.slice(sending.commands.length);
           batch = null;
+          transactionBase = null;
           publish(applyTo(saved, pending));
           retainDraft();
           reportNotice("");
         } catch (cause) {
-          fail(cause);
+          if (disposed) return false;
+          if (transactionBase && !signal?.aborted && definitiveRejection(cause))
+            await rejectTransaction(cause);
+          else fail(cause);
           return false;
         }
       }
@@ -253,14 +325,100 @@ export function useTimelineEditor(
       return true;
     })().finally(() => {
       saving = null;
+      transactionSending.value = false;
     });
     return saving;
   }
-  async function reapplyDraft() {
-    if (saving) await saving;
-    if (!pending.length) return;
+  async function commitTransaction(
+    input: TimelineCommand | TimelineCommand[],
+    referencedAssets: readonly MediaAsset[] = [],
+    signal?: AbortSignal,
+  ): Promise<CommitTransactionResult> {
+    if (disposed || signal?.aborted) return { status: "cancelled" };
+    if (
+      transactionBusy.value ||
+      reapplying ||
+      (historyBusy.value && !historyRequest)
+    )
+      return { status: "failed" };
+    transactionPreparing.value = true;
     try {
+      const commands = structuredClone(
+        toRaw(Array.isArray(input) ? input : [input]),
+      );
+      const assets = referencedAssets.map((asset) =>
+        structuredClone(toRaw(asset)),
+      );
+      if (!commands.length || commands.length > 100)
+        throw new Error(
+          "A transaction must contain between 1 and 100 commands.",
+        );
+      const historyAcknowledged = historyRequest ? await historyRequest : true;
+      if (disposed || signal?.aborted) return { status: "cancelled" };
+      const acknowledged = historyAcknowledged && (await flushCommands());
+      if (disposed || signal?.aborted) return { status: "cancelled" };
+      if (!acknowledged || !state.value)
+        return { status: status.value === "conflict" ? "conflict" : "failed" };
+      const before = state.value;
+      assertComposition(before);
+      const knownIds = new Set(before.assets.map((asset) => asset.id));
+      const additions = assets.filter((asset) => {
+        if (knownIds.has(asset.id)) return false;
+        knownIds.add(asset.id);
+        return true;
+      });
+      const next = applyTo(
+        additions.length
+          ? { ...before, assets: [...before.assets, ...additions] }
+          : before,
+        commands,
+      );
+      pending = commands;
+      batch = {
+        baseRevision: before.revision,
+        requestId: crypto.randomUUID(),
+        commands,
+      };
+      transactionBase = before;
+      // Store the exact request before optimistic publication or transport.
+      if (!retainDraft(next)) {
+        pending = [];
+        batch = null;
+        transactionBase = null;
+        retainDraft();
+        throw new Error("The edit recovery draft could not be saved.");
+      }
+      publish(next);
+      edited();
+      reportNotice("");
+      const accepted = await flushCommands(signal);
+      if (disposed || signal?.aborted) return { status: "cancelled" };
+      return accepted
+        ? {
+            status: "accepted",
+            revision: state.value.acknowledgedRevision ?? state.value.revision,
+          }
+        : { status: status.value === "conflict" ? "conflict" : "failed" };
+    } catch (cause) {
+      if (disposed || signal?.aborted) return { status: "cancelled" };
+      reportError(cause);
+      return { status: "failed" };
+    } finally {
+      transactionPreparing.value = false;
+    }
+  }
+  async function reapplyDraft() {
+    if (disposed || transactionBusy.value || reapplying) return;
+    if (transactionBase) {
+      await flush();
+      return;
+    }
+    reapplying = true;
+    try {
+      if (saving) await saving;
+      if (disposed || !pending.length) return;
       const saved = await api.editor(compositionId);
+      if (disposed) return;
       const next = applyTo(saved, pending);
       batch = null;
       publish(next);
@@ -268,6 +426,8 @@ export function useTimelineEditor(
       await flush();
     } catch (cause) {
       fail(cause);
+    } finally {
+      reapplying = false;
     }
   }
   async function addNativeCaptionTrack(
@@ -282,7 +442,8 @@ export function useTimelineEditor(
     signal?: AbortSignal,
   ): Promise<boolean> {
     if (historyRequest) await historyRequest;
-    if (disposed || !state.value || historyBusy.value) return false;
+    if (disposed || !state.value || historyBusy.value || transactionBusy.value)
+      return false;
     historyBusy.value = true;
     try {
       if (!(await flushCommands()) || !state.value) return false;
@@ -323,17 +484,22 @@ export function useTimelineEditor(
     }
   }
   function history(direction: "undo" | "redo"): Promise<boolean> {
+    if (disposed || transactionBusy.value) return Promise.resolve(false);
     if (historyRequest) return historyRequest;
     historyBusy.value = true;
     historyRequest = (async () => {
       try {
-        if (!(await flushCommands()) || !state.value) return false;
+        if (!(await flushCommands()) || disposed || !state.value) return false;
         if (direction === "undo" ? !state.value.canUndo : !state.value.canRedo)
           return true;
         status.value = "saving";
-        publish(
-          await api.history(compositionId, direction, state.value.revision),
+        const saved = await api.history(
+          compositionId,
+          direction,
+          state.value.revision,
         );
+        if (disposed) return false;
+        publish(saved);
         edited();
         status.value = "saved";
         reportNotice("");
@@ -350,6 +516,8 @@ export function useTimelineEditor(
     return historyRequest;
   }
   async function discardDraft() {
+    if (disposed || transactionBusy.value) return;
+    if (transactionBase && !(await flush())) return;
     if (saving) await saving;
     if (historyRequest) await historyRequest;
     historyBusy.value = true;
@@ -394,9 +562,10 @@ export function useTimelineEditor(
     window.addEventListener("beforeunload", beforeUnload);
   });
   onBeforeUnmount(() => {
-    disposed = true;
     retainDraft();
-    void flush();
+    if (!transactionBase) void flush();
+    disposed = true;
+    if (timer) clearTimeout(timer);
     window.removeEventListener("beforeunload", beforeUnload);
   });
   return {
@@ -408,6 +577,8 @@ export function useTimelineEditor(
     reportNotice,
     hasPending,
     historyBusy,
+    transactionBusy,
+    commitTransaction,
     command,
     flush,
     history,
