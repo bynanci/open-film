@@ -272,9 +272,9 @@ test("Source I/O stages without a write, Apply and Record split each have one Un
   await source(page);
   const player = page.locator(".precision-editor video");
   const waveform = page.locator(".precision-waveform");
-  for (const [time, key] of [
-    [0.7007, "i"],
-    [2.7027, "o"],
+  for (const [time, key, elapsed] of [
+    [0.7007, "i", "00:00:00:21"],
+    [2.7027, "o", "00:00:02:21"],
   ] as const) {
     await player.evaluate((node: HTMLVideoElement, at) => {
       node.pause();
@@ -283,6 +283,15 @@ test("Source I/O stages without a write, Apply and Record split each have one Un
     await expect
       .poll(() => player.evaluate((node: HTMLVideoElement) => node.currentTime))
       .toBeCloseTo(time, 5);
+    await expect
+      .poll(() => player.evaluate((node: HTMLVideoElement) => node.seeking))
+      .toBe(false);
+    await expect(
+      page.getByRole("textbox", {
+        name: uiText("en-US", "precision.sourceElapsed"),
+        exact: true,
+      }),
+    ).toHaveValue(elapsed);
     await waveform.press(key);
   }
   expect(writes).toEqual([]);

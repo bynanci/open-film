@@ -169,6 +169,47 @@ delivery report records the final before/after pins and actual outcomes without
 rewriting first-run failure evidence. Native and physical workstation gates remain
 explicitly open.
 
+## Second ordered run and Source seek synchronization
+
+The complete second sequence ran at clean head
+`56833b2b15b7137b0f741ef09495a2626e179bbc`; every command began and ended at that
+same SHA with a clean worktree:
+
+| Command                                                                                          | Exit | Seconds  |
+| ------------------------------------------------------------------------------------------------ | ---- | -------- |
+| `pnpm format:check`                                                                              | 0    | 14.858   |
+| `pnpm test:i18n`                                                                                 | 0    | 0.458    |
+| `pnpm lint`                                                                                      | 0    | 12.839   |
+| `pnpm typecheck`                                                                                 | 0    | 14.007   |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test`             | 0    | 374.4    |
+| `pnpm build`                                                                                     | 0    | 1.33     |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test:e2e`         | 1    | 1176.455 |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test:interchange` | 0    | 2.05     |
+| `pnpm test:native`                                                                               | 1    | 0.371    |
+
+The full test suite again passed 4,224 tests. Full Chromium passed 260 and failed
+one Source I/O test after all earlier focused/full passes. The trace shows a test
+synchronization error: native `currentTime` had already been assigned 2.7027, but
+the production displayed/reactive playhead still read 0.7007 when the test pressed
+O. Both marks therefore became 0.7007 and Apply correctly stayed disabled; the
+visible timecode updated to `00:00:02:21` in the following snapshot.
+
+The test now waits for native `seeking === false` and the real Source elapsed
+timecode to show independently derived `00:00:00:21` / `00:00:02:21` before I/O.
+It retains every original range, payload, history, pixel and timing assertion and
+tolerance. It injects no media event, adds no sleep and changes no production
+code. The four visual locale cases and official-parser Proposal case all passed
+in this second full run. Interchange passed; native remains unavailable because
+Cargo is absent.
+
+The corrected Source atomic workflow passed ten consecutive focused repetitions
+in 39.1 seconds with the original payload/history/stale-mark assertions intact.
+
+Committed tables intentionally retain these earlier failures. The final
+correction head is checked with all nine gates before delivery; its exact SHA,
+before/after cleanliness and executed results live in the PR/delivery report,
+which avoids a self-referential evidence commit and does not overwrite history.
+
 ## Scope, privacy and manual gates
 
 Only synthetic colors/shapes/tones are used. Source hashes are checked after each
