@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createExportProfile,
   resolvePreviewClipGeometry,
   type Composition,
   type MediaAsset,
@@ -41,37 +43,119 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
-  it("renders project settings with an explicit optional timebase", async () => {
+  it.each([
+    { frameRate: 24, expectedRate: 24 },
+    { frameRate: 25, expectedRate: 25 },
+    { frameRate: 30, expectedRate: 30 },
+    { frameRate: 29.97, expectedRate: 30000 / 1001 },
+    { frameRate: 30000 / 1001, expectedRate: 30000 / 1001 },
+  ])(
+    "renders the canonical project rate for legacy $frameRate fps without mutating approved settings",
+    async ({ frameRate, expectedRate }) => {
+      const directory = await mkdtemp(
+        join(tmpdir(), "openfilm-render-timebase-"),
+      );
+      directories.push(directory);
+      const output = join(directory, "timebase.mp4");
+      const settings: ProjectSettings = {
+        width: 64,
+        height: 36,
+        frameRate,
+      };
+      const saved: Composition = {
+        id: "timebase",
+        storyId: "story",
+        duration: 0.2,
+        tracks: [],
+      };
+      const before = structuredClone(settings);
+      const hash = (value: unknown) =>
+        createHash("sha256").update(JSON.stringify(value)).digest("hex");
+      await new FFmpegRenderer().render(saved, [], output, settings, {
+        snapshot: {
+          compositionSha256: hash(saved),
+          settingsSha256: hash(settings),
+          assetsSha256: hash([]),
+          assertCurrent: () => {},
+        },
+      });
+      const rendered = await inspectMedia({
+        path: output,
+        uri: pathToFileURL(output).href,
+        name: "timebase.mp4",
+      });
+      expect(rendered.dimensions).toEqual({ width: 64, height: 36 });
+      expect(rendered.frameRate).toBe(expectedRate);
+      expect(settings).toEqual(before);
+      expect(settings).not.toHaveProperty("timebase");
+    },
+  );
+
+  it("accepts an exact project timebase while preserving an independent decimal export rate", async () => {
     const directory = await mkdtemp(
-      join(tmpdir(), "openfilm-render-timebase-"),
+      join(tmpdir(), "openfilm-render-profile-rate-"),
     );
     directories.push(directory);
-    const output = join(directory, "timebase.mp4");
+    const output = join(directory, "profile.mp4");
     const settings: ProjectSettings = {
       width: 64,
-      height: 36,
-      frameRate: 30,
+      height: 64,
+      frameRate: 30000 / 1001,
       timebase: {
         version: 1,
-        rateNumerator: 30,
-        rateDenominator: 1,
-        dropFrame: false,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: true,
       },
     };
     await new FFmpegRenderer().render(
-      { id: "timebase", storyId: "story", duration: 0.2, tracks: [] },
+      { id: "profile", storyId: "story", duration: 0.2, tracks: [] },
       [],
       output,
       settings,
+      {
+        exportProfile: createExportProfile({
+          ratio: "1:1",
+          width: 64,
+          height: 64,
+          frameRate: 29.97,
+        }),
+      },
     );
     const rendered = await inspectMedia({
       path: output,
       uri: pathToFileURL(output).href,
-      name: "timebase.mp4",
+      name: "profile.mp4",
     });
-    expect(rendered.dimensions).toEqual({ width: 64, height: 36 });
-    expect(rendered.frameRate).toBe(30);
-    expect(rendered.duration).toBeCloseTo(0.2, 2);
+    expect(rendered.frameRate).toBe(29.97);
+    expect(settings.frameRate).toBe(30000 / 1001);
+    expect(settings.timebase?.dropFrame).toBe(true);
+  });
+
+  it("rejects mismatched project timebase metadata at admission", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-invalid-rate-"),
+    );
+    directories.push(directory);
+    await expect(
+      new FFmpegRenderer().render(
+        { id: "invalid", storyId: "story", duration: 0.2, tracks: [] },
+        [],
+        join(directory, "invalid.mp4"),
+        {
+          width: 64,
+          height: 36,
+          frameRate: 29.97,
+          timebase: {
+            version: 1,
+            rateNumerator: 30000,
+            rateDenominator: 1001,
+            dropFrame: false,
+          },
+        },
+      ),
+    ).rejects.toThrow(/frameRate does not match timebase rate/);
+    expect(await readdir(directory)).toEqual([]);
   });
 
   it.each([
