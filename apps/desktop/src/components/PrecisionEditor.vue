@@ -945,7 +945,13 @@ async function split() {
 }
 const addSourceMarker = addMarker;
 function keyboard(event: KeyboardEvent) {
-  if (!props.active || !playable.value || !ownsSourceShortcut(event)) return;
+  if (
+    !props.active ||
+    !playable.value ||
+    !ownsSourceShortcut(event) ||
+    props.busy
+  )
+    return;
   const element = event.target as HTMLElement | null;
   if (event.code === "Space" && !element?.closest("button")) {
     event.preventDefault();

@@ -273,6 +273,230 @@ test("does not report a timebase failure before a timebase update", async ({
   ).toHaveCount(0);
 });
 
+for (const expert of [false, true]) {
+  test(`retains verified Source mutations and blocks competing navigation in Expert=${expert}`, async ({
+    page,
+    request,
+  }) => {
+    await navigate(page, "edit", "en-US");
+    const workspaceMode = page.getByRole("combobox", {
+      name: "Workspace mode",
+      exact: true,
+    });
+    await workspaceMode.selectOption(expert ? "expert" : "standard");
+    const selected = page
+      .locator(".editor-clip")
+      .filter({ hasText: "04-motion.mp4" });
+    await selected.click();
+    const modes = page.getByRole("group", {
+      name: uiText("en-US", "precision.modeLabel"),
+    });
+    await modes
+      .getByRole("button", {
+        name: expert ? "Source" : "Precision",
+        exact: true,
+      })
+      .click();
+    const source = page.locator(".precision-editor");
+    const snap = source.getByRole("checkbox", { name: "Snap", exact: true });
+    await expect(snap).toBeEnabled();
+    const project = (await (await request.get(`${api}/project`)).json())
+      .project;
+    const state = await (
+      await request.get(`${api}/compositions/${project.timelines[0].id}/editor`)
+    ).json();
+    const assetId = state.assets.find(
+      (asset: { name: string }) => asset.name === "04-motion.mp4",
+    ).id;
+    const photoAssetId = state.assets.find(
+      (asset: { name: string }) => asset.name === "01-photo.png",
+    ).id;
+    const photoClip = state.composition.tracks
+      .flatMap(
+        (track: { clips: Array<{ id: string; assetId: string }> }) =>
+          track.clips,
+      )
+      .find((clip: { assetId: string }) => clip.assetId === photoAssetId);
+    let markerId = "";
+    for (const operation of ["add", "remove", "analyze"]) {
+      if (operation === "remove")
+        await source
+          .getByRole("button", {
+            name: uiText("en-US", "precision.markers"),
+            exact: true,
+          })
+          .click();
+      if (operation === "analyze")
+        await source
+          .getByRole("button", {
+            name: uiText("en-US", "precision.analysis"),
+            exact: true,
+          })
+          .click();
+      const method = operation === "remove" ? "DELETE" : "POST";
+      const path = `/api/assets/${assetId}/${operation === "analyze" ? "intelligence" : operation === "remove" ? `markers/${markerId}` : "markers"}`;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let responseBody:
+        { marker?: { id: string }; job?: { id: string } } | undefined;
+      let held = false;
+      await page.route(`**${path}`, async (route) => {
+        if (route.request().method() !== method) {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        expect(response.ok()).toBe(true);
+        responseBody = await response.json();
+        held = true;
+        await gate;
+        await route.fulfill({ response });
+      });
+      const media = await source.locator("video").elementHandle();
+      const action =
+        operation === "add"
+          ? source.getByRole("button", { name: "Add marker", exact: true })
+          : operation === "remove"
+            ? source.getByRole("button", { name: /^Remove marker at/ }).first()
+            : source.getByRole("button", {
+                name: "Analyze waveform",
+                exact: true,
+              });
+      try {
+        await action.click();
+        await expect.poll(() => held).toBe(true);
+        await expect(snap).toBeEnabled();
+        expect(await media!.evaluate((element) => element.isConnected)).toBe(
+          true,
+        );
+        await expect(
+          page.getByRole("button", {
+            name: uiText("en-US", "editor.undoLabel"),
+            exact: true,
+          }),
+        ).toBeDisabled();
+        const time = await media!.evaluate(
+          (element: HTMLVideoElement) => element.currentTime,
+        );
+        await page.locator("#workspace-main").focus();
+        await page.keyboard.press("ArrowRight");
+        expect(
+          await media!.evaluate(
+            (element: HTMLVideoElement) => element.currentTime,
+          ),
+        ).toBe(time);
+        await modes
+          .getByRole("button", {
+            name: expert ? "Record" : "Story",
+            exact: true,
+          })
+          .click();
+        await expect(source.locator("video")).toBeVisible();
+        await source
+          .getByLabel(uiText("en-US", "precision.selectedClip"))
+          .selectOption(photoClip.id);
+        await expect(selected).toHaveAttribute("aria-pressed", "true");
+        if (expert) {
+          await workspaceMode.selectOption("standard");
+          await expect(source.locator("video")).toBeVisible();
+          await expect(snap).toBeEnabled();
+          expect(await media!.evaluate((element) => element.isConnected)).toBe(
+            true,
+          );
+          await workspaceMode.selectOption("expert");
+        }
+      } finally {
+        release();
+      }
+      await expect(
+        source.getByRole("button", { name: "Add marker", exact: true }),
+      ).toBeEnabled();
+      await page.unroute(`**${path}`);
+      if (operation === "add") markerId = responseBody!.marker!.id;
+      if (operation === "analyze")
+        await expect
+          .poll(async () => {
+            const jobs = (await (await request.get(`${api}/jobs`)).json()).jobs;
+            return jobs.find(
+              (job: { id: string }) => job.id === responseBody!.job!.id,
+            )?.status;
+          })
+          .toBe("completed");
+    }
+    await modes
+      .getByRole("button", { name: expert ? "Record" : "Story", exact: true })
+      .click();
+    await expect(source.locator("video")).toHaveCount(0);
+  });
+}
+
+for (const transition of ["transcript", "general"]) {
+  test(`rejects retired Source timebase DOM callbacks after ${transition} and accepts current controls`, async ({
+    page,
+    request,
+  }) => {
+    await page
+      .getByRole("button", {
+        name: uiText("en-US", "app.navigation.switchProject"),
+        exact: true,
+      })
+      .click();
+    await openFilm(page, ntscProjectPath);
+    const mode = page.getByRole("combobox", {
+      name: "Workspace mode",
+      exact: true,
+    });
+    await mode.selectOption("expert");
+    await navigate(page, "edit", "en-US");
+    const modes = page.getByRole("group", {
+      name: uiText("en-US", "precision.modeLabel"),
+    });
+    await modes.getByRole("button", { name: "Source", exact: true }).click();
+    const selector = page.getByRole("combobox", {
+      name: "Sequence timebase",
+      exact: true,
+    });
+    const before = (await (await request.get(`${api}/project`)).json()).project
+      .settings;
+    const alternate = (await selector.inputValue()) === "df" ? "ndf" : "df";
+    const retired = await selector.elementHandle();
+    if (transition === "transcript")
+      await modes
+        .getByRole("button", { name: "Transcript", exact: true })
+        .click();
+    else await mode.selectOption("standard");
+    const unexpected = page
+      .waitForRequest(
+        (sent) =>
+          new URL(sent.url()).pathname === "/api/project/timebase" &&
+          sent.method() === "PATCH",
+        { timeout: 250 },
+      )
+      .catch(() => undefined);
+    await retired!.evaluate((element: HTMLSelectElement, value) => {
+      element.value = value;
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    }, alternate);
+    expect(await unexpected).toBeUndefined();
+    expect(
+      (await (await request.get(`${api}/project`)).json()).project.settings,
+    ).toEqual(before);
+    if (transition === "transcript")
+      await modes.getByRole("button", { name: "Source", exact: true }).click();
+    else await mode.selectOption("expert");
+    const accepted = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/project/timebase" &&
+        response.request().method() === "PATCH",
+    );
+    await selector.selectOption(alternate);
+    expect((await accepted).ok()).toBe(true);
+    await expect(selector).toHaveValue(alternate);
+  });
+}
+
 test("shows current Record readiness and sequence transport labels", async ({
   page,
 }) => {

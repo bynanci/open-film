@@ -320,6 +320,9 @@ const recordOwner = computed(() => ({
   timebase: timebaseKey(projectTimebase.value),
   sourceVersion: props.sourceVersion,
   active: recordActive.value,
+  workspaceActive: props.active,
+  expertMode: !!props.expertMode,
+  target: editMode.value,
 }));
 type RecordOwner = typeof recordOwner.value;
 function ownsRecord(owner: RecordOwner) {
@@ -419,7 +422,12 @@ const recordBindings = computed(() => {
 const cutDeskControls = computed(() => {
   const owner = recordOwner.value;
   const current = () =>
-    !recordDisposed && owner === recordOwner.value && !cutDeskBlocked.value;
+    !recordDisposed &&
+    owner === recordOwner.value &&
+    owner.workspaceActive &&
+    owner.expertMode &&
+    (owner.target === "story" || owner.target === "precision") &&
+    !cutDeskBlocked.value;
   return {
     timebase: {
       onChange: (event: Event) => {
@@ -2634,8 +2642,8 @@ onBeforeUnmount(() => {
           :commit="commitSource"
           :asset="selectedAsset"
           :clip="selectedClip"
-          :active="active && editMode === 'precision' && !cutDeskBlocked"
-          :busy="historyBusy"
+          :active="active && editMode === 'precision' && !draftAction"
+          :busy="shortcutIsolation"
           :source-edits-locked="lockedOverlaySource"
           :analysis-recovery="analysisRecovery"
           :recovering-analysis-jobs="recoveringAnalysisJobs"
