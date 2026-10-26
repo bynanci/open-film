@@ -4,6 +4,10 @@ import { useI18n } from "vue-i18n";
 import { supportedLocales, formatDate } from "../i18n";
 import { preferences } from "../preferences";
 import type { FilmCreation, FilmLocale, RecentProject } from "../appTypes";
+import {
+  DEFAULT_PROJECT_TIMEBASE_PRESET_ID,
+  PROJECT_TIMEBASE_PRESETS,
+} from "../projectTimebase";
 import Icon from "./Icon.vue";
 
 const props = defineProps<{
@@ -28,6 +32,7 @@ const filmLocaleEdited = ref(false);
 const target = ref(120);
 const maximum = ref(180);
 const timingEdited = ref(false);
+const timebasePresetId = ref(DEFAULT_PROJECT_TIMEBASE_PRESET_ID);
 const path = ref("");
 const issue = ref("");
 const contentLocales = computed(() => supportedLocales);
@@ -93,6 +98,11 @@ function submit() {
         ? { root: preferences.projectRoot }
         : {}),
     projectContentLocale: filmLocale.value,
+    timebase: {
+      ...PROJECT_TIMEBASE_PRESETS.find(
+        (item) => item.id === timebasePresetId.value,
+      )!.timebase,
+    },
     filmSettings: {
       templateId: template.value,
       targetDuration: target.value,
@@ -236,6 +246,18 @@ function submit() {
               autocomplete="off"
           /></label>
           <div class="create-film-grid">
+            <label class="field"
+              >{{ t("app.create.timebase")
+              }}<select v-model="timebasePresetId">
+                <option
+                  v-for="item in PROJECT_TIMEBASE_PRESETS"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ t(item.labelKey) }}
+                </option>
+              </select></label
+            >
             <label class="field"
               >{{ t("app.create.storyType")
               }}<select v-model="template">

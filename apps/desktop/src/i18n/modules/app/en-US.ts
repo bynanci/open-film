@@ -96,6 +96,7 @@ export default {
       openStory: "Open story",
       proposal: "Proposal Film",
       filmLanguage: "Film language",
+      timebase: "Project timebase",
       target: "Target (seconds)",
       maximum: "Maximum (seconds)",
       languageHint:
@@ -113,6 +114,20 @@ export default {
       nameRequired: "Give your film a title.",
       durationInvalid:
         "Set a positive target and a maximum at least as long as the target.",
+    },
+    timebase: {
+      presets: {
+        fps23976Ndf: "23.976 NDF",
+        fps24Ndf: "24 NDF",
+        fps25Ndf: "25 NDF",
+        fps2997Df: "29.97 DF",
+        fps2997Ndf: "29.97 NDF",
+        fps30Ndf: "30 NDF",
+        fps50Ndf: "50 NDF",
+        fps5994Df: "59.94 DF",
+        fps5994Ndf: "59.94 NDF",
+        fps60Ndf: "60 NDF",
+      },
     },
     settings: {
       title: "Settings",
@@ -992,6 +1007,7 @@ export default {
         startingImport: "Starting import",
         uploadingFiles: "Adding files",
         savingFilmLanguage: "Saving film language",
+        savingProjectTimebase: "Saving project timebase",
         savingSelection: "Saving selection",
         savingRating: "Saving rating",
         findingMedia: "Finding media",

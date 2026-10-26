@@ -60,6 +60,7 @@ export async function createFilm(
     contentLocale?: ProjectContentLocale;
     targetDuration?: number;
     maxDuration?: number;
+    timebasePresetId?: string;
   },
   locale: ProjectContentLocale = "en-US",
 ) {
@@ -74,6 +75,13 @@ export async function createFilm(
   await form
     .getByLabel(uiText(locale, "app.create.name"), { exact: true })
     .fill(value.title);
+  if (value.timebasePresetId)
+    await form
+      .getByRole("combobox", {
+        name: uiText(locale, "app.create.timebase"),
+        exact: true,
+      })
+      .selectOption(value.timebasePresetId);
   if (value.templateId)
     await form
       .getByLabel(uiText(locale, "app.create.storyType"))

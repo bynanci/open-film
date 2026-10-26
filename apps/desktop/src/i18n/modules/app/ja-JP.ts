@@ -94,6 +94,7 @@ export default {
       openStory: "自由なストーリー",
       proposal: "プロポーズフィルム",
       filmLanguage: "フィルムの言語",
+      timebase: "プロジェクトのタイムベース",
       target: "目標時間（秒）",
       maximum: "最大時間（秒）",
       languageHint:
@@ -110,6 +111,20 @@ export default {
       pathRequired: "プロジェクトフォルダーを選んでください。",
       nameRequired: "フィルム名を入力してください。",
       durationInvalid: "目標を正の値にし、最大の長さを目標以上にしてください。",
+    },
+    timebase: {
+      presets: {
+        fps23976Ndf: "23.976 NDF",
+        fps24Ndf: "24 NDF",
+        fps25Ndf: "25 NDF",
+        fps2997Df: "29.97 DF",
+        fps2997Ndf: "29.97 NDF",
+        fps30Ndf: "30 NDF",
+        fps50Ndf: "50 NDF",
+        fps5994Df: "59.94 DF",
+        fps5994Ndf: "59.94 NDF",
+        fps60Ndf: "60 NDF",
+      },
     },
     settings: {
       title: "設定",
@@ -987,6 +1002,7 @@ export default {
         startingImport: "取り込みを開始中",
         uploadingFiles: "ファイルを追加中",
         savingFilmLanguage: "フィルムの言語を保存中",
+        savingProjectTimebase: "プロジェクトのタイムベースを保存中",
         savingSelection: "選択状態を保存中",
         savingRating: "評価を保存中",
         findingMedia: "メディアを検索中",

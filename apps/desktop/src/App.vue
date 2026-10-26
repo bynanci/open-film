@@ -51,7 +51,9 @@ import type {
   Event,
   SimilarityGroup,
   Job,
+  ProjectTimebaseV1,
 } from "@openfilm/core";
+import { sameRateDropFrameChoice } from "./projectTimebase";
 import {
   api,
   post,
@@ -914,11 +916,18 @@ async function mediaRelinked(updated: MediaAsset[]) {
 }
 async function refreshProject(
   owned: () => boolean = () => true,
+  expectedProjectId?: string,
 ): Promise<boolean> {
   const mutationVersion = projectMutationVersion;
   const result = await api.project();
   // A pre-accept polling response must not erase a newly acknowledged plan.
-  if (mutationVersion !== projectMutationVersion || !owned()) return false;
+  if (
+    mutationVersion !== projectMutationVersion ||
+    !owned() ||
+    (expectedProjectId !== undefined &&
+      result.project?.id !== expectedProjectId)
+  )
+    return false;
   project.value = result.project;
   projectPath.value = result.path;
   connected.value = true;
@@ -1327,6 +1336,50 @@ async function changeFilmLocale(locale: FilmLocale) {
     await timelineEditor.value?.reload();
     hydrateBeat();
     notice.value = message("feedback.filmLanguageSaved");
+  });
+}
+async function changeProjectTimebase(
+  timebase: ProjectTimebaseV1,
+): Promise<void> {
+  if (
+    !project.value ||
+    busy.value ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value
+  )
+    return;
+  const owner = project.value.id;
+  const generation = projectGeneration.value;
+  const owned = () =>
+    project.value?.id === owner && projectGeneration.value === generation;
+  const choice = sameRateDropFrameChoice(project.value.settings);
+  if (
+    !choice ||
+    choice.version !== timebase.version ||
+    choice.rateNumerator !== timebase.rateNumerator ||
+    choice.rateDenominator !== timebase.rateDenominator ||
+    choice.dropFrame !== timebase.dropFrame
+  )
+    return;
+  if (!(await flushProjectPending()) || !owned()) return;
+  await run("savingProjectTimebase", async () => {
+    try {
+      const revision = await api.projectVersionRevision();
+      if (!owned()) return;
+      if (revision.projectId !== owner)
+        throw { code: "project.timebaseConflict" };
+      await api.updateProjectTimebase({
+        projectId: owner,
+        baseRevision: revision.revision,
+        timebase,
+      });
+      if (!owned()) return;
+      projectMutationVersion++;
+      if (!(await refreshProject(owned, owner)) && owned())
+        throw { code: "project.timebaseConflict" };
+    } catch (cause) {
+      if (owned()) throw cause;
+    }
   });
 }
 async function selectLibraryFilter(value: typeof libraryFilter.value) {
@@ -2622,6 +2675,7 @@ async function restoreNativeDrafts() {
   }
 }
 defineExpose({
+  changeProjectTimebase,
   prepareNativeClose,
   captureNativeDrafts,
   openNativeDraftProject: openProject,
