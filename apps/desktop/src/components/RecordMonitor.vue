@@ -119,6 +119,7 @@ let disposed = false;
 let reconciling = false;
 let queuedReconcile:
   { frame: number; crossing: boolean; force: boolean } | undefined;
+let lastPublication: { owner: string; frame: number } | undefined;
 let previousFrame = 0;
 let explicitSeek = false;
 let lastIssue = "";
@@ -248,6 +249,7 @@ function reconcile(
   requested = transport.frame.value,
   crossing = false,
   force = explicitSeek,
+  nested = false,
 ) {
   if (disposed) return;
   if (reconciling) {
@@ -307,7 +309,16 @@ function reconcile(
     if (disposed || owner !== resourceOwner.value) return;
     previousFrame = frame;
     syncMedia(force);
-    emit("frame", frame);
+    // A frame consumer may explicitly seek that same frame. Keep its source
+    // resync, but do not feed an identical nested publication back to it.
+    if (
+      !nested ||
+      lastPublication?.owner !== owner ||
+      lastPublication.frame !== frame
+    ) {
+      lastPublication = { owner, frame };
+      emit("frame", frame);
+    }
   } catch {
     transport.pause();
     transport.buffering.value = true;
@@ -318,7 +329,7 @@ function reconcile(
     reconciling = false;
     const queued = queuedReconcile;
     queuedReconcile = undefined;
-    if (queued) reconcile(queued.frame, queued.crossing, queued.force);
+    if (queued) reconcile(queued.frame, queued.crossing, queued.force, true);
   }
 }
 const forward = computed(

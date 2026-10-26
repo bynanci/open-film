@@ -861,3 +861,37 @@ it("leaves uncovered pixels of controlled photo overlays transparent", async () 
     "transparent",
   );
 });
+
+it("bounds a same-frame nested publication while retaining external explicit source resync", async () => {
+  const m = await mount();
+  const player = await m.ready("a");
+  let writes = 0;
+  let time = player.currentTime;
+  Object.defineProperty(player, "currentTime", {
+    get: () => time,
+    set: (value: number) => {
+      writes++;
+      time = value;
+    },
+    configurable: true,
+  });
+  let publications = 0;
+  let requestNested = true;
+  m.props.onFrame = (frame: number) => {
+    m.frames.push(frame);
+    if (frame === 1) {
+      publications++;
+      // The limit lets the broken implementation fail without overflowing.
+      if (requestNested && publications < 4) m.transport().seek(frame);
+    }
+  };
+  await settle();
+  await m.seek(1);
+  expect(publications).toBe(1);
+  expect(writes).toBe(2); // One external seek and the one queued resync.
+  expect(m.transport().frame).toBe(1);
+  requestNested = false;
+  await m.seek(1);
+  expect(publications).toBe(2);
+  expect(writes).toBe(3); // External same-frame commands still resync.
+});
