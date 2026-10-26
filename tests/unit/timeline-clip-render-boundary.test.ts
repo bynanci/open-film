@@ -18,6 +18,7 @@ import {
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
 import { canCreatePhotoDepth } from "../../apps/desktop/src/photo-depth-controls";
+import { sameRateDropFrameChoice } from "../../apps/desktop/src/projectTimebase";
 import {
   clampFrameStep,
   formatTimecode,
@@ -27,6 +28,8 @@ import {
   playbackBoundaryAction,
   restartTimeAtClipBoundary,
   roundFrameDimensions,
+  ownsSourceShortcut,
+  nextShuttleTier,
 } from "../../apps/desktop/src/monitor";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
@@ -61,6 +64,7 @@ interface EditorProxy {
   reload: () => Promise<void>;
   hasPending: boolean;
   navigateToTime: (time: number) => Promise<boolean>;
+  navigateToRecordFrame: (frame: number) => Promise<boolean>;
 }
 interface HostApp {
   mount: (root: HostNode) => EditorProxy;
@@ -225,6 +229,7 @@ async function settle() {
 async function mountTimeline(
   initial = fixture(),
   statuses: Record<string, SourceStatus> = {},
+  expertMode = false,
 ) {
   const storage = new Map<string, string>();
   const local = {
@@ -239,7 +244,15 @@ async function mountTimeline(
     matchMedia: () => ({ matches: false }),
     innerHeight: 900,
   });
-  vi.stubGlobal("document", { activeElement: null, querySelector: () => null });
+  vi.stubGlobal(
+    "document",
+    Object.assign(new EventTarget(), {
+      activeElement: null,
+      hidden: false,
+      querySelector: () => null,
+      getElementById: () => null,
+    }),
+  );
   vi.stubGlobal("Document", class {});
   vi.stubGlobal("ShadowRoot", class {});
   vi.stubGlobal(
@@ -334,7 +347,10 @@ async function mountTimeline(
       playbackBoundaryAction,
       restartTimeAtClipBoundary,
       roundFrameDimensions,
+      ownsSourceShortcut,
+      nextShuttleTier,
     },
+    "../projectTimebase": { sameRateDropFrameChoice },
     "../editorPresentation": { clipControls, shorteningAction },
     "../sourcePresentation": { sourcePresentation },
     "./Icon.vue": {
@@ -380,6 +396,33 @@ async function mountTimeline(
     resolve("apps/desktop/src/composables/useTimelineEditor.ts"),
     dependencies,
   );
+  dependencies["../composables/useRecordTransport"] = script(
+    resolve("apps/desktop/src/composables/useRecordTransport.ts"),
+    dependencies,
+  );
+  const monitor = script(
+    resolve("apps/desktop/src/components/RecordMonitor.vue"),
+    dependencies,
+    true,
+  ).default as {
+    setup: (props: object, context: object) => unknown;
+  };
+  const monitorInstances: Array<{
+    vnode: { props: Record<string, unknown> };
+    exposed: { frame: { value: number }; playing: { value: boolean } };
+  }> = [];
+  dependencies["./RecordMonitor.vue"] = {
+    __esModule: true,
+    default: {
+      ...monitor,
+      setup(props: object, context: object) {
+        monitorInstances.push(
+          (vue.getCurrentInstance as () => (typeof monitorInstances)[number])(),
+        );
+        return monitor.setup(props, context);
+      },
+    },
+  };
   const parent = script(
     resolve("apps/desktop/src/components/TimelineEditor.vue"),
     dependencies,
@@ -431,16 +474,27 @@ async function mountTimeline(
     projectId: "project",
     compositionId: "composition",
     active: true,
-    projectSettings: { width: 1920, height: 1080, frameRate: 30 },
+    expertMode,
+    shortcutsBlocked: false,
+    timebasePending: false,
+    timebaseError: "",
+    sourceVersion: 7,
+    projectSettings: {
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+    } as core.ProjectSettings,
     sourceStatuses: statuses,
     jobs: [] as core.Job[],
     analysisRecovery: {},
   });
   let editor!: EditorProxy;
+  const timebaseChange = vi.fn();
   const wrapper = {
     setup: () => () =>
       vue.h(parent, {
         ...props,
+        onTimebaseChange: timebaseChange,
         ref: (instance: EditorProxy | null) => {
           if (instance) editor = instance;
         },
@@ -482,16 +536,333 @@ async function mountTimeline(
     clipLabels,
     props,
     locale,
+    timebaseChange,
     button,
     buttons,
     click,
     reload,
+    monitorInstances,
+    mode: async (name: string) => {
+      const button = flatten(root).find(
+        (item) => item.tag === "button" && text(item).includes(name),
+      );
+      expect(button).toBeDefined();
+      await (button!.props.onClick as () => Promise<void>)();
+      await settle();
+    },
+    key: async (key: string, extra: object = {}) => {
+      await settle();
+      const event = {
+        key,
+        code: key === " " ? "Space" : key,
+        target: { closest: () => null },
+        preventDefault: vi.fn(),
+        ...extra,
+      };
+      const listener = (
+        window.addEventListener as ReturnType<typeof vi.fn>
+      ).mock.calls.find(([name]) => name === "keydown")![1];
+      listener(event);
+      await settle();
+      return event;
+    },
+    navigateToRecordFrame: (frame: number) =>
+      editor.navigateToRecordFrame?.(frame),
     navigateToTime: (time: number) => editor.navigateToTime(time),
     assertReadOnly,
   };
 }
 
 describe("Timeline clip render boundary", () => {
+  it("preserves General clip navigation and Undo while ordinary autosave is pending", async () => {
+    const view = await mountTimeline(fixture(3));
+    await view.key("Delete");
+    expect(view.button(0)).toBeUndefined();
+    expect(view.button(1).props["aria-pressed"]).toBe(true);
+    expect(view.api.edit).not.toHaveBeenCalled();
+    await view.key("ArrowRight");
+    expect(view.button(2).props["aria-pressed"]).toBe(true);
+    await view.key("z", { ctrlKey: true });
+    await vi.waitFor(() => expect(view.api.history).toHaveBeenCalledOnce());
+    expect(view.api.edit).toHaveBeenCalledOnce();
+  });
+  it("offers only the same-rate DF/NDF alternative and exposes update pending/errors", async () => {
+    const view = await mountTimeline(fixture(2), {}, true);
+    view.props.projectSettings = {
+      width: 1920,
+      height: 1080,
+      frameRate: 30000 / 1001,
+      timebase: {
+        version: 1,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: false,
+      },
+    };
+    await settle();
+    const select = () =>
+      flatten(view.root).find(
+        (item) =>
+          item.tag === "select" &&
+          String(item.props["aria-label"]).includes("cutDesk.timebase"),
+      )!;
+    expect(select()).toBeDefined();
+    expect(select().options).toHaveLength(2);
+    (select().props.onChange as (event: object) => void)({
+      target: { value: "df" },
+    });
+    expect(view.timebaseChange).toHaveBeenCalledWith({
+      version: 1,
+      rateNumerator: 30000,
+      rateDenominator: 1001,
+      dropFrame: true,
+    });
+    view.props.timebasePending = true;
+    view.props.timebaseError = "Original timebase rejection";
+    await settle();
+    expect(select().props.disabled).toBe(true);
+    expect(text(view.root)).toContain("cutDesk.timebaseSaving");
+    expect(text(view.root)).toContain("Original timebase rejection");
+    view.props.timebasePending = false;
+    view.props.projectSettings = { width: 1920, height: 1080, frameRate: 24 };
+    await settle();
+    expect(select().options).toHaveLength(1);
+    expect(select().props.disabled).toBe(true);
+  });
+
+  it.each(["timebase", "transport"])(
+    "rejects retained %s button callbacks after an owner switch",
+    async (control) => {
+      const view = await mountTimeline(fixture(2), {}, true);
+      view.props.projectSettings = {
+        width: 1920,
+        height: 1080,
+        frameRate: 30000 / 1001,
+      };
+      await settle();
+      const oldTimebase = flatten(view.root).find(
+        (item) =>
+          item.tag === "select" &&
+          String(item.props["aria-label"]).includes("cutDesk.timebase"),
+      )!.props.onChange as (event: object) => void;
+      const oldNext = flatten(view.root).find(
+        (item) =>
+          item.tag === "button" &&
+          String(item.props["aria-label"]).includes("editor.monitor.nextFrame"),
+      )!.props.onClick as () => void;
+      await view.reload({ ...fixture(2), revision: "replacement-revision" });
+      if (control === "timebase") oldTimebase({ target: { value: "df" } });
+      else oldNext();
+      await settle();
+      expect(view.timebaseChange).not.toHaveBeenCalled();
+      expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(0);
+    },
+  );
+  it("mounts the real Record only for active Expert Story and keeps General's player", async () => {
+    const view = await mountTimeline(fixture(2));
+    const records = () =>
+      flatten(view.root).filter((item) => hasClass(item, "record-monitor"));
+    expect(records()).toHaveLength(0);
+    expect(
+      flatten(view.root).some((item) => hasClass(item, "editor-source-screen")),
+    ).toBe(true);
+    view.props.expertMode = true;
+    await settle();
+    expect(records()).toHaveLength(1);
+    expect(
+      flatten(view.root).some((item) => hasClass(item, "editor-source-screen")),
+    ).toBe(false);
+    const bindings = view.monitorInstances.at(-1)!.vnode.props;
+    expect(bindings).toMatchObject({
+      "project-id": "project",
+      revision: "revision-before",
+      active: true,
+      "source-version": 7,
+    });
+    expect(bindings.composition).toEqual(fixture(2).composition);
+    expect(bindings.assets).toEqual(fixture(2).assets);
+    expect(bindings.settings).toBe(view.props.projectSettings);
+    expect(bindings["source-statuses"]).toBe(view.props.sourceStatuses);
+    await view.mode("cutDesk.source");
+    expect(records()).toHaveLength(0);
+    await view.mode("cutDesk.record");
+    expect(records()).toHaveLength(1);
+    view.props.active = false;
+    await settle();
+    expect(records()).toHaveLength(0);
+  });
+
+  it("routes Record frame/edit/bounds commands and makes M a handled no-op", async () => {
+    const view = await mountTimeline(fixture(2), {}, true);
+    expect(await view.navigateToRecordFrame(30)).toBe(true);
+    const frame = () =>
+      flatten(view.root).find((item) => hasClass(item, "record-monitor"))
+        ?.props["data-frame"];
+    await view.key("ArrowRight");
+    expect(frame()).toBe(31);
+    await view.key("ArrowRight", { shiftKey: true });
+    expect(frame()).toBe(61);
+    await view.key("ArrowDown");
+    expect(frame()).toBe(120);
+    await view.key("ArrowUp");
+    expect(frame()).toBe(0);
+    await view.key("End");
+    expect(frame()).toBe(239);
+    await view.key("Home");
+    expect(frame()).toBe(0);
+    expect((await view.key("m")).preventDefault).toHaveBeenCalledOnce();
+    expect(view.api.edit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { isComposing: true },
+    { defaultPrevented: true },
+    { ctrlKey: true },
+    { metaKey: true },
+    { altKey: true },
+    { target: { closest: () => ({}) } },
+  ])("isolates Record commands before routing: %j", async (extra) => {
+    const view = await mountTimeline(fixture(2), {}, true);
+    expect(await view.navigateToRecordFrame(30)).toBe(true);
+    const event = await view.key("ArrowRight", extra);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(30);
+    view.props.shortcutsBlocked = true;
+    expect(
+      (await view.key("ArrowRight")).preventDefault,
+    ).not.toHaveBeenCalled();
+    expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(30);
+  });
+
+  it("submits a single atomic split from the current Record frame rather than the event's clip/time", async () => {
+    const view = await mountTimeline(fixture(2), {}, true);
+    expect(await view.navigateToRecordFrame(150)).toBe(true);
+    const callback = view.monitorInstances.at(-1)!.vnode.props.onSplit as (
+      value: object,
+    ) => Promise<void>;
+    const pending = callback({ clipId: "instance-0", sourceTime: 3 });
+    await callback({ clipId: "instance-0", sourceTime: 3 });
+    await pending;
+    expect(view.api.edit).toHaveBeenCalledOnce();
+    expect(view.api.edit.mock.calls[0]).toEqual([
+      "composition",
+      expect.objectContaining({
+        baseRevision: "revision-before",
+        commands: [{ type: "clip.split", clipId: "instance-1", sourceTime: 1 }],
+      }),
+      undefined,
+    ]);
+  });
+
+  it.each([
+    ["clip lock", "locked"],
+    ["source lock", "locked"],
+    ["crossfade", "crossfade"],
+    ["bounds", "Split source time"],
+  ])(
+    "preserves the solver's %s rejection without writing or retargeting",
+    async (kind, detail) => {
+      const saved = fixture(2);
+      const clip = saved.composition.tracks[0]!.clips[0]!;
+      if (kind === "clip lock") clip.locked = true;
+      if (kind === "source lock") saved.assets[0]!.state.locked = true;
+      if (kind === "crossfade")
+        clip.transition = { type: "crossfade", duration: 2 };
+      const before = JSON.stringify(saved);
+      const view = await mountTimeline(saved, {}, true);
+      expect(await view.navigateToRecordFrame(kind === "bounds" ? 0 : 30)).toBe(
+        true,
+      );
+      await (
+        view.monitorInstances.at(-1)!.vnode.props.onSplit as () => Promise<void>
+      )();
+      await settle();
+      expect(view.api.edit).not.toHaveBeenCalled();
+      expect(JSON.stringify(saved)).toBe(before);
+      expect(text(view.root)).toContain(detail);
+    },
+  );
+
+  it("does not split a gap or a revision superseded while flushing", async () => {
+    const saved = fixture(2);
+    saved.composition.duration = 10;
+    saved.composition.tracks[0]!.clips[1]!.timelineStart = 6;
+    const view = await mountTimeline(saved, {}, true);
+    expect(await view.navigateToRecordFrame(150)).toBe(true);
+    await (
+      view.monitorInstances.at(-1)!.vnode.props.onSplit as () => Promise<void>
+    )();
+    expect(view.api.edit).not.toHaveBeenCalled();
+    expect(await view.navigateToRecordFrame(30)).toBe(true);
+    const pending = (
+      view.monitorInstances.at(-1)!.vnode.props.onSplit as () => Promise<void>
+    )();
+    await view.reload({ ...saved, revision: "superseded-revision" });
+    await pending;
+    expect(view.api.edit).not.toHaveBeenCalled();
+  });
+
+  it("isolates modal and retained conflict state before Record routing", async () => {
+    const view = await mountTimeline(fixture(2), {}, true);
+    expect(await view.navigateToRecordFrame(30)).toBe(true);
+    const modal = vi
+      .spyOn(document, "querySelector")
+      .mockReturnValue({} as Element);
+    expect(
+      (await view.key("ArrowRight")).preventDefault,
+    ).not.toHaveBeenCalled();
+    expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(30);
+    modal.mockRestore();
+    view.api.edit.mockRejectedValueOnce(new ApiError("Revision conflict", 409));
+    await (
+      view.monitorInstances.at(-1)!.vnode.props.onSplit as () => Promise<void>
+    )();
+    const frame = view.monitorInstances.at(-1)!.exposed.frame.value;
+    expect(
+      (await view.key("ArrowRight")).preventDefault,
+    ).not.toHaveBeenCalled();
+    expect(view.monitorInstances.at(-1)!.exposed.frame.value).toBe(frame);
+    expect(view.api.edit).toHaveBeenCalledOnce();
+  });
+
+  it.each(["projectId", "compositionId", "revision", "inactive", "target"])(
+    "fences prior Record callbacks and pending navigation after %s changes",
+    async (change) => {
+      const view = await mountTimeline(fixture(2), {}, true);
+      expect(await view.navigateToRecordFrame(30)).toBe(true);
+      const bindings = { ...view.monitorInstances.at(-1)!.vnode.props };
+      (bindings.onIssue as (issue: object) => void)({
+        code: "record.decode-failed",
+        frame: 30,
+      });
+      await settle();
+      expect(text(view.root)).toContain("cutDesk.issues.decode-failed");
+      const navigation =
+        change === "target" ? undefined : view.navigateToRecordFrame(150);
+      if (change === "revision")
+        await view.reload({ ...fixture(2), revision: "revision-new" });
+      else if (change === "inactive") view.props.active = false;
+      else if (change === "target") await view.mode("cutDesk.source");
+      else view.props[change as "projectId" | "compositionId"] = "replacement";
+      await settle();
+      if (navigation) expect(await navigation).toBe(false);
+      (bindings.onSelectClip as (id: string) => void)("instance-1");
+      (bindings.onIssue as (issue: object) => void)({
+        code: "record.decode-failed",
+        ownerKey: "old",
+        frame: 30,
+      });
+      await (bindings.onSplit as (value: object) => Promise<void>)({
+        clipId: "instance-1",
+        sourceTime: 1,
+      });
+      await settle();
+      expect(view.button(1).props["aria-pressed"]).toBe(false);
+      expect(text(view.root)).not.toContain("cutDesk.issues.decode-failed");
+      expect(view.api.edit).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps nearest-clip navigation for a visual gap without graphics", async () => {
     const state = fixture(2);
     state.composition.duration = 10;

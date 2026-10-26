@@ -1338,6 +1338,58 @@ async function changeFilmLocale(locale: FilmLocale) {
     notice.value = message("feedback.filmLanguageSaved");
   });
 }
+const cutDeskTimebaseRequest = ref<{
+  projectId: string;
+  generation: number;
+  epoch: number;
+} | null>(null);
+const cutDeskTimebaseIssue = ref<{
+  projectId: string;
+  generation: number;
+  cause: unknown;
+} | null>(null);
+let cutDeskTimebaseEpoch = 0;
+const cutDeskTimebasePending = computed(
+  () =>
+    cutDeskTimebaseRequest.value?.projectId === project.value?.id &&
+    cutDeskTimebaseRequest.value?.generation === projectGeneration.value,
+);
+const cutDeskTimebaseError = computed(() =>
+  cutDeskTimebaseIssue.value?.projectId === project.value?.id &&
+  cutDeskTimebaseIssue.value?.generation === projectGeneration.value
+    ? uiMessage(cutDeskTimebaseIssue.value.cause)
+    : "",
+);
+async function changeCutDeskTimebase(timebase: ProjectTimebaseV1) {
+  if (
+    !project.value ||
+    busy.value ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value ||
+    cutDeskTimebasePending.value
+  )
+    return;
+  const owner = {
+    projectId: project.value.id,
+    generation: projectGeneration.value,
+    epoch: ++cutDeskTimebaseEpoch,
+  };
+  cutDeskTimebaseRequest.value = owner;
+  cutDeskTimebaseIssue.value = null;
+  error.value = "";
+  try {
+    await changeProjectTimebase(timebase);
+    if (
+      project.value?.id === owner.projectId &&
+      projectGeneration.value === owner.generation &&
+      error.value
+    )
+      cutDeskTimebaseIssue.value = { ...owner, cause: error.value };
+  } finally {
+    if (cutDeskTimebaseRequest.value?.epoch === owner.epoch)
+      cutDeskTimebaseRequest.value = null;
+  }
+}
 async function changeProjectTimebase(
   timebase: ProjectTimebaseV1,
 ): Promise<void> {
@@ -4805,6 +4857,12 @@ onUnmounted(() => {
             :project-settings="project.settings"
             :active="tab === 'edit'"
             :expert-mode="expertMode"
+            :shortcuts-blocked="
+              !!busy ||
+              (pipelineWorkbenchOpen && pipelineWorkbenchMode !== 'bar')
+            "
+            :timebase-pending="cutDeskTimebasePending"
+            :timebase-error="cutDeskTimebaseError"
             :preview-visible="showRenderedPreview"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
@@ -4818,6 +4876,7 @@ onUnmounted(() => {
             @import-assets="importOpen = true"
             @activity="refreshJobs"
             @recover-analysis="recoverAnalysis"
+            @timebase-change="changeCutDeskTimebase"
           />
         </template>
       </section>

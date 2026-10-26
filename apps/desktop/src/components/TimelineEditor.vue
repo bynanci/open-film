@@ -17,12 +17,17 @@ import {
   resolveFilmLook,
   resolvePreviewClipGeometry,
   evaluateAudioGain,
+  resolveCompositionFrame,
+  resolveProjectTimebase,
+  sequenceFrameAt,
+  timebaseKey,
   type Clip,
   type CaptionTrack,
   type FrameSize,
   type Job,
   type MediaAsset,
   type ProjectSettings,
+  type ProjectTimebaseV1,
   type ProjectContentLocale,
   type StoryBeat,
 } from "@openfilm/core";
@@ -48,6 +53,9 @@ import Icon from "./Icon.vue";
 import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
+import RecordMonitor from "./RecordMonitor.vue";
+import TimecodeField from "./TimecodeField.vue";
+import { sameRateDropFrameChoice } from "../projectTimebase";
 import TranscriptEditor from "./TranscriptEditor.vue";
 import GraphicSceneInspector from "./GraphicSceneInspector.vue";
 import GraphicSceneTemplateStudio from "./GraphicSceneTemplateStudio.vue";
@@ -85,6 +93,7 @@ import {
   playbackBoundaryAction,
   restartTimeAtClipBoundary,
   roundFrameDimensions,
+  ownsSourceShortcut,
 } from "../monitor";
 const { t } = useI18n();
 
@@ -93,6 +102,9 @@ const props = defineProps<{
   compositionId: string;
   active: boolean;
   expertMode?: boolean;
+  shortcutsBlocked?: boolean;
+  timebasePending?: boolean;
+  timebaseError?: string;
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   previewVisible?: boolean;
@@ -110,6 +122,7 @@ const emit = defineEmits<{
   relink: [assetId: string];
   activity: [];
   recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
+  timebaseChange: [timebase: ProjectTimebaseV1];
 }>();
 const {
   state,
@@ -272,6 +285,179 @@ const photoPlayer = ref<InstanceType<typeof PhotoPresentationPreview> | null>(
   null,
 );
 const editMode = ref<"story" | "precision" | "transcript">("story");
+const recordMonitor = ref<InstanceType<typeof RecordMonitor> | null>(null);
+const recordTarget = computed(
+  () => !!props.expertMode && editMode.value === "story",
+);
+const recordActive = computed(() => props.active && recordTarget.value);
+const projectTimebase = computed(() =>
+  resolveProjectTimebase(props.projectSettings),
+);
+const timebaseAlternative = computed(() =>
+  sameRateDropFrameChoice(props.projectSettings),
+);
+const lastRecordFrame = computed(() =>
+  Math.max(
+    0,
+    sequenceFrameAt(
+      state.value?.composition.duration ?? 0,
+      projectTimebase.value,
+      "floor",
+    ) - 1,
+  ),
+);
+const recordFrame = computed(() => recordMonitor.value?.frame ?? 0);
+const recordSplitPending = ref(false);
+const recordIssue = ref("");
+let recordDisposed = false;
+// Identity, rather than equal field values, fences callbacks across leave/revisit.
+const recordOwner = computed(() => ({
+  projectId: props.projectId,
+  compositionId: props.compositionId,
+  composition: state.value?.composition,
+  assets: state.value?.assets,
+  revision: state.value?.revision,
+  timebase: timebaseKey(projectTimebase.value),
+  sourceVersion: props.sourceVersion,
+  active: recordActive.value,
+}));
+type RecordOwner = typeof recordOwner.value;
+function ownsRecord(owner: RecordOwner) {
+  return !recordDisposed && owner.active && recordOwner.value === owner;
+}
+const shortcutIsolation = computed(
+  () =>
+    !!props.shortcutsBlocked ||
+    !!props.timebasePending ||
+    directionBlocked.value ||
+    historyBusy.value ||
+    directionPending.value ||
+    !!transcriptEditor.value?.hasPending ||
+    !!precisionEditor.value?.hasPending ||
+    recordSplitPending.value ||
+    status.value === "failed" ||
+    status.value === "conflict" ||
+    !!draftAction.value,
+);
+const cutDeskBlocked = computed(
+  () => shortcutIsolation.value || hasPending.value || status.value !== "saved",
+);
+function changeTimebase(event: Event) {
+  const choice = timebaseAlternative.value;
+  const dropFrame = (event.target as HTMLSelectElement).value === "df";
+  if (!cutDeskBlocked.value && choice && choice.dropFrame === dropFrame)
+    emit("timebaseChange", choice);
+}
+async function navigateToRecordFrame(frame: number): Promise<boolean> {
+  const owner = recordOwner.value;
+  const monitor = recordMonitor.value;
+  if (
+    !ownsRecord(owner) ||
+    !monitor ||
+    !Number.isSafeInteger(frame) ||
+    frame < 0 ||
+    frame > lastRecordFrame.value ||
+    cutDeskBlocked.value
+  )
+    return false;
+  monitor.pause();
+  if (!(await flush()) || !ownsRecord(owner) || recordMonitor.value !== monitor)
+    return false;
+  monitor.seek(frame);
+  return true;
+}
+async function splitRecord(owner: RecordOwner) {
+  if (!ownsRecord(owner) || cutDeskBlocked.value || recordSplitPending.value)
+    return;
+  const monitor = recordMonitor.value;
+  if (!monitor) return;
+  monitor.pause();
+  const frame = monitor.frame;
+  recordSplitPending.value = true;
+  try {
+    if (
+      !(await flush()) ||
+      !ownsRecord(owner) ||
+      recordMonitor.value !== monitor
+    )
+      return;
+    const latest = state.value;
+    if (!latest || latest.revision !== owner.revision) return;
+    const primary = resolveCompositionFrame(
+      latest.composition,
+      latest.assets,
+      frame,
+      projectTimebase.value,
+    ).primary;
+    if (!primary) return;
+    // Task 5 owns solver validation, exact request identity, recovery and history.
+    await compositionCommitTransaction({
+      type: "clip.split",
+      clipId: primary.clip.id,
+      sourceTime: primary.sourceTime,
+    });
+  } catch (cause) {
+    if (ownsRecord(owner)) reportError(cause);
+  } finally {
+    recordSplitPending.value = false;
+  }
+}
+const recordBindings = computed(() => {
+  const owner = recordOwner.value;
+  return {
+    onSelectClip: (id: string) => {
+      if (!ownsRecord(owner) || cutDeskBlocked.value) return;
+      const clip = allClips.value.find((item) => item.id === id);
+      if (clip) chooseClip(clip);
+    },
+    onSplit: () => splitRecord(owner),
+    onIssue: (issue: { code: string }) => {
+      if (ownsRecord(owner)) recordIssue.value = issue.code;
+    },
+  };
+});
+const cutDeskControls = computed(() => {
+  const owner = recordOwner.value;
+  const current = () =>
+    !recordDisposed && owner === recordOwner.value && !cutDeskBlocked.value;
+  return {
+    timebase: {
+      onChange: (event: Event) => {
+        if (current()) changeTimebase(event);
+      },
+    },
+    seek: {
+      onSeek: (frame: number) => {
+        if (current()) void navigateToRecordFrame(frame);
+      },
+    },
+    back: {
+      onClick: () => {
+        if (current() && ownsRecord(owner)) recordMonitor.value?.step(-1);
+      },
+    },
+    forward: {
+      onClick: () => {
+        if (current() && ownsRecord(owner)) recordMonitor.value?.step(1);
+      },
+    },
+    toggle: {
+      onClick: () => {
+        if (!current() || !ownsRecord(owner)) return;
+        const monitor = recordMonitor.value;
+        if (monitor?.playing) monitor.pause();
+        else monitor?.play();
+      },
+    },
+  };
+});
+watch(
+  recordOwner,
+  () => {
+    recordIssue.value = "";
+  },
+  { flush: "sync" },
+);
 let nativeEditGeneration = 0;
 let nativeEditDisposed = false;
 let nativeEditReadyForVisit = false;
@@ -283,6 +469,10 @@ watch(
   () => props.expertMode,
   (expert) => {
     advancedToolsOpen.value = !!expert;
+    if (expert) {
+      sourcePlayer.value?.pause();
+      photoPlayer.value?.pause();
+    } else pendingSourceSeek.value = sourceTime.value;
   },
 );
 const editorElement = ref<HTMLElement | null>(null);
@@ -1492,24 +1682,63 @@ function togglePlayback() {
   } else player.pause();
 }
 function keyboard(event: KeyboardEvent) {
-  if (directionBlocked.value) return;
+  const undo =
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    event.key.toLowerCase() === "z";
+  // History shares the same input/modal/IME guard, with its own modifier chord.
+  const guarded = undo
+    ? ({
+        target: event.target,
+        isComposing: event.isComposing,
+        defaultPrevented: event.defaultPrevented,
+        altKey: event.altKey,
+        metaKey: false,
+        ctrlKey: false,
+      } as KeyboardEvent)
+    : event;
+  if (!ownsSourceShortcut(guarded) || !props.active || shortcutIsolation.value)
+    return;
   if (editMode.value === "transcript") return;
-  if (!props.active || event.defaultPrevented) return;
-  if (document.querySelector('[aria-modal="true"], dialog[open]')) return;
-  if (draftAction.value) {
-    if (event.key === "Escape") draftAction.value = null;
-    return;
-  }
   const element = event.target as HTMLElement | null;
-  if (element?.closest(".pipeline-workbench-root")) return;
-  if (element?.closest("input, textarea, select, [contenteditable='true']"))
-    return;
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+  if (undo) {
     event.preventDefault();
     void history(event.shiftKey ? "redo" : "undo");
     return;
   }
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (recordTarget.value) {
+    if (cutDeskBlocked.value) return;
+    const monitor = recordMonitor.value;
+    if (!monitor) return;
+    const key = event.key.toLowerCase();
+    if (event.code === "Space" && !element?.closest("button, summary")) {
+      event.preventDefault();
+      if (monitor.playing) monitor.pause();
+      else monitor.play();
+    } else if (key === "j" || key === "l") {
+      event.preventDefault();
+      if (!event.repeat) monitor.shuttle(key === "j" ? -1 : 1);
+    } else if (key === "k") {
+      event.preventDefault();
+      monitor.pause();
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      monitor.step(event.key === "ArrowRight" ? 1 : -1, event.shiftKey);
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      if (event.key === "ArrowUp") monitor.previousEdit();
+      else monitor.nextEdit();
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      monitor.seek(event.key === "Home" ? 0 : lastRecordFrame.value);
+    } else if (key === "b") {
+      event.preventDefault();
+      if (!event.repeat) void splitRecord(recordOwner.value);
+    } else if (key === "m") {
+      event.preventDefault();
+    }
+    return;
+  }
   if (editMode.value !== "story") return;
   if (event.key.toLowerCase() === "g") {
     event.preventDefault();
@@ -1810,6 +2039,7 @@ defineExpose({
   loading: computed(() => status.value === "loading"),
   reload: load,
   navigateToTime,
+  navigateToRecordFrame,
 });
 watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
   sourceError.value = "";
@@ -1906,6 +2136,7 @@ onMounted(() => {
   measureWorkspace();
 });
 onBeforeUnmount(() => {
+  recordDisposed = true;
   generationImportDisposed = true;
   generationImportEpoch++;
   captionImportController?.abort();
@@ -1948,9 +2179,13 @@ onBeforeUnmount(() => {
           {{
             t(
               mode === "story"
-                ? "precision.storyMode"
+                ? expertMode
+                  ? "cutDesk.record"
+                  : "precision.storyMode"
                 : mode === "precision"
-                  ? "precision.precisionMode"
+                  ? expertMode
+                    ? "cutDesk.source"
+                    : "precision.precisionMode"
                   : "transcript.mode",
             )
           }}
@@ -2053,6 +2288,59 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
+    <div
+      v-if="expertMode && editMode !== 'transcript'"
+      class="cut-desk-target-bar"
+    >
+      <p data-testid="cut-desk-target-status" role="status" aria-live="polite">
+        {{ t(recordTarget ? "cutDesk.record" : "cutDesk.source") }} ·
+        {{
+          t(
+            recordTarget
+              ? recordMonitor?.playing
+                ? "cutDesk.playing"
+                : "cutDesk.paused"
+              : "cutDesk.active",
+          )
+        }}
+      </p>
+      <label class="editor-field">
+        {{ t("cutDesk.timebase") }}
+        <select
+          :aria-label="t('cutDesk.timebase')"
+          :value="projectTimebase.dropFrame ? 'df' : 'ndf'"
+          :disabled="cutDeskBlocked || !timebaseAlternative"
+          :aria-busy="!!timebasePending"
+          v-bind="cutDeskControls.timebase"
+        >
+          <option :value="projectTimebase.dropFrame ? 'df' : 'ndf'">
+            {{
+              t(
+                projectTimebase.dropFrame
+                  ? "cutDesk.dropFrame"
+                  : "cutDesk.nonDropFrame",
+              )
+            }}
+          </option>
+          <option
+            v-if="timebaseAlternative"
+            :value="timebaseAlternative.dropFrame ? 'df' : 'ndf'"
+          >
+            {{
+              t(
+                timebaseAlternative.dropFrame
+                  ? "cutDesk.dropFrame"
+                  : "cutDesk.nonDropFrame",
+              )
+            }}
+          </option>
+        </select>
+      </label>
+      <span v-if="timebasePending" role="status">{{
+        t("cutDesk.timebaseSaving")
+      }}</span>
+      <span v-if="timebaseError" role="alert">{{ timebaseError }}</span>
+    </div>
     <AudioQualityPanel
       v-if="audioQualityOpen"
       id="audio-quality-panel"
@@ -2343,7 +2631,7 @@ onBeforeUnmount(() => {
           :commit="commitSource"
           :asset="selectedAsset"
           :clip="selectedClip"
-          :active="active && editMode === 'precision' && !draftAction"
+          :active="active && editMode === 'precision' && !cutDeskBlocked"
           :busy="historyBusy"
           :source-edits-locked="lockedOverlaySource"
           :analysis-recovery="analysisRecovery"
@@ -2412,7 +2700,79 @@ onBeforeUnmount(() => {
         "
       >
         <div class="editor-stage editor-main">
-          <div class="editor-player-region">
+          <div v-if="recordTarget" class="editor-player-region">
+            <section
+              v-if="recordActive"
+              class="cut-desk-record"
+              :aria-label="t('cutDesk.record')"
+            >
+              <RecordMonitor
+                :key="`${recordOwner.projectId}:${recordOwner.compositionId}:${recordOwner.revision}:${recordOwner.timebase}`"
+                ref="recordMonitor"
+                :project-id="projectId"
+                :composition="state.composition"
+                :assets="state.assets"
+                :revision="state.revision"
+                :settings="projectSettings"
+                :source-statuses="sourceStatuses"
+                :source-version="sourceVersion"
+                :active="!cutDeskBlocked"
+                v-bind="recordBindings"
+              />
+              <div
+                class="cut-desk-transport"
+                role="group"
+                :aria-label="t('cutDesk.transport')"
+              >
+                <TimecodeField
+                  :frame="recordFrame"
+                  :timebase="projectTimebase"
+                  :label="t('cutDesk.sequenceTimecode')"
+                  :min-frame="0"
+                  :max-frame="lastRecordFrame"
+                  :disabled="cutDeskBlocked"
+                  v-bind="cutDeskControls.seek"
+                />
+                <button
+                  class="editor-button"
+                  :disabled="cutDeskBlocked"
+                  v-bind="cutDeskControls.back"
+                  :aria-label="t('editor.monitor.previousFrame')"
+                >
+                  −1f
+                </button>
+                <button
+                  class="editor-button"
+                  :disabled="cutDeskBlocked"
+                  v-bind="cutDeskControls.toggle"
+                >
+                  {{
+                    t(recordMonitor?.playing ? "cutDesk.pause" : "cutDesk.play")
+                  }}
+                </button>
+                <button
+                  class="editor-button"
+                  :disabled="cutDeskBlocked"
+                  v-bind="cutDeskControls.forward"
+                  :aria-label="t('editor.monitor.nextFrame')"
+                >
+                  +1f
+                </button>
+              </div>
+              <p
+                v-if="
+                  recordIssue &&
+                  (recordIssue !== 'record.not-ready' ||
+                    recordMonitor?.buffering)
+                "
+                class="editor-note"
+                role="status"
+              >
+                {{ t(`cutDesk.issues.${recordIssue.replace("record.", "")}`) }}
+              </p>
+            </section>
+          </div>
+          <div v-else-if="!expertMode" class="editor-player-region">
             <div ref="sourceScreenElement" class="editor-source-screen">
               <FilmLookFilter :id="filmLookFilterId" :look="playbackLook" />
               <template v-if="playbackAsset">
@@ -3941,7 +4301,9 @@ onBeforeUnmount(() => {
       </div>
       <footer v-show="editMode === 'story'" class="editor-shortcuts">
         <span>{{ t("editor.originalsSafe") }}</span
-        ><span>{{ t("editor.shortcuts") }}</span>
+        ><span>{{
+          t(expertMode ? "cutDesk.shortcuts" : "editor.shortcuts")
+        }}</span>
       </footer>
     </template>
   </section>

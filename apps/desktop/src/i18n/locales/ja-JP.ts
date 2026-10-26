@@ -1,4 +1,5 @@
 import nleHandoff from "../modules/nle-handoff/ja-JP";
+import cutDesk from "../modules/cut-desk/ja-JP";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import looks from "../modules/looks/ja-JP";
@@ -13,6 +14,7 @@ import system from "./system-ja-JP";
 import motion from "../modules/motion/ja-JP";
 
 export default {
+  ...cutDesk,
   ...motion,
 
   ...nleHandoff,

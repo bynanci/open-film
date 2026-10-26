@@ -10,6 +10,7 @@ import { navigate, openFilm, uiText } from "./ui-helpers.js";
 const api = "http://127.0.0.1:4310/api";
 let root: string;
 let projectPath: string;
+let ntscProjectPath: string;
 test.use({ viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 });
 test.beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "openfilm-workspace-modes-"));
@@ -29,6 +30,31 @@ test.beforeAll(async () => {
     await app.save();
   } finally {
     app.close();
+  }
+  ntscProjectPath = join(root, "ntsc.openfilm");
+  const ntsc = await OpenFilmApplication.create(
+    ntscProjectPath,
+    "NTSC workflow",
+    {
+      filmSettings: {
+        templateId: "blank",
+        targetDuration: 12,
+        maxDuration: 18,
+      },
+      timebase: {
+        version: 1,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: false,
+      },
+    },
+  );
+  try {
+    await ntsc.importFiles([join(media, "04-motion.mp4")]);
+    ntsc.compose(ntsc.generateStory().id);
+    await ntsc.save();
+  } finally {
+    ntsc.close();
   }
 });
 test.beforeEach(async ({ page, request }) => {
@@ -81,6 +107,373 @@ test("offers a guided default and remembers the expert workspace without changin
   await expect(page.locator(".editor-advanced-tools")).not.toHaveAttribute(
     "open",
   );
+});
+
+test("routes Expert Record transport while preserving General and Source ownership", async ({
+  page,
+  request,
+}) => {
+  await navigate(page, "edit", "en-US");
+  const mode = page.getByRole("combobox", {
+    name: "Workspace mode",
+    exact: true,
+  });
+  const record = page.locator(".record-monitor");
+  await expect(record).toHaveCount(0);
+  await expect(page.locator(".editor-source-screen")).toBeVisible();
+  await mode.selectOption("expert");
+  await expect(
+    page.getByRole("button", { name: "Record", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(record).toHaveCount(1);
+  await expect(page.locator(".editor-source-screen")).toHaveCount(0);
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Record",
+  );
+  const timecode = page.getByRole("textbox", {
+    name: "Sequence timecode",
+    exact: true,
+  });
+  await timecode.fill("00:00:01:00");
+  await timecode.press("Enter");
+  await expect(record).toHaveAttribute("data-frame", "30");
+  await page.locator("#workspace-main").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(record).toHaveAttribute("data-frame", "31");
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(record).toHaveAttribute("data-frame", "61");
+  const before = (await (await request.get(`${api}/project`)).json()).project;
+  const markerWrites: string[] = [];
+  page.on("request", (sent) => {
+    if (
+      ["POST", "PATCH", "DELETE"].includes(sent.method()) &&
+      sent.url().startsWith(api)
+    )
+      markerWrites.push(sent.url());
+  });
+  await page.keyboard.press("m");
+  expect((await (await request.get(`${api}/project`)).json()).project).toEqual(
+    before,
+  );
+  expect(markerWrites).toEqual([]);
+  await page.keyboard.press("Space");
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Playing",
+  );
+  await page.keyboard.press("k");
+  await page.keyboard.press("l");
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Playing",
+  );
+  await page.keyboard.press("k");
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Paused",
+  );
+  await page.keyboard.press("j");
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Playing",
+  );
+  await page.keyboard.press("k");
+  await page.keyboard.press("End");
+  const last = String(Math.floor(before.timelines[0].duration * 30 + 1e-7) - 1);
+  await expect(record).toHaveAttribute("data-frame", last);
+  await page.keyboard.press("Home");
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await timecode.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await page.locator("#workspace-main").focus();
+  await page.evaluate(() =>
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        isComposing: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await page.locator(".app-header .pipeline-toggle").click();
+  await page.locator("#workspace-main").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await page
+    .locator(".pipeline-workbench-container.is-drawer")
+    .getByRole("button", { name: /close|collapse/i })
+    .first()
+    .click();
+  const retiredRecordVideo = await record
+    .locator("video")
+    .first()
+    .elementHandle();
+  await page
+    .locator(".editor-clip")
+    .filter({ hasText: "04-motion.mp4" })
+    .click();
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(record).toHaveCount(0);
+  await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+    "Source",
+  );
+  await expect(page.getByTestId("cut-desk-target-status")).toHaveText(
+    /Source\s*·\s*Active/,
+  );
+  await expect(page.getByTestId("cut-desk-target-status")).not.toContainText(
+    "Paused",
+  );
+  const sourcePlayer = page.locator(".precision-editor video");
+  await expect(sourcePlayer).toBeVisible();
+  await expect
+    .poll(() =>
+      sourcePlayer.evaluate((video: HTMLVideoElement) => video.readyState),
+    )
+    .toBeGreaterThanOrEqual(2);
+  const sourceTime = await sourcePlayer.evaluate(
+    (video: HTMLVideoElement) => video.currentTime,
+  );
+  await page.locator("#workspace-main").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() =>
+      sourcePlayer.evaluate((video: HTMLVideoElement) => video.currentTime),
+    )
+    .toBeGreaterThan(sourceTime);
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await retiredRecordVideo?.evaluate((video) => {
+    for (const type of ["timeupdate", "canplay", "error", "waiting"])
+      video.dispatchEvent(new Event(type));
+  });
+  await expect(record).toHaveAttribute("data-frame", "0");
+  await expect(page.locator(".cut-desk-record")).not.toContainText(
+    "could not be decoded",
+  );
+  await mode.selectOption("standard");
+  await expect(record).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("group", { name: uiText("en-US", "precision.modeLabel") })
+      .getByRole("button", {
+        name: uiText("en-US", "precision.storyMode"),
+        exact: true,
+      }),
+  ).toBeVisible();
+  await expect(page.locator(".editor-source-screen")).toBeVisible();
+});
+
+test("does not report a timebase failure before a timebase update", async ({
+  page,
+}) => {
+  await navigate(page, "edit", "en-US");
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await expect(
+    page.locator(".cut-desk-target-bar").getByRole("alert"),
+  ).toHaveCount(0);
+});
+
+test("shows current Record readiness and sequence transport labels", async ({
+  page,
+}) => {
+  await navigate(page, "edit", "en-US");
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await expect(page.locator(".record-monitor")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect
+    .soft(page.locator(".cut-desk-record"))
+    .not.toContainText("Waiting for Record media");
+  await expect
+    .soft(
+      page
+        .locator(".cut-desk-record")
+        .getByRole("button", { name: "Play sequence", exact: true }),
+    )
+    .toBeVisible();
+});
+
+test("keeps Record media and transport above the authoritative timeline rail", async ({
+  page,
+}) => {
+  await navigate(page, "edit", "en-US");
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  const picture = await page.locator(".record-frame").boundingBox();
+  const transport = await page.locator(".cut-desk-transport").boundingBox();
+  const rail = await page.locator(".editor-story-rail").boundingBox();
+  expect(picture).not.toBeNull();
+  expect(transport).not.toBeNull();
+  expect(rail).not.toBeNull();
+  expect(picture!.y + picture!.height).toBeLessThanOrEqual(transport!.y + 1);
+  expect(transport!.y + transport!.height).toBeLessThanOrEqual(rail!.y + 1);
+});
+
+test("changes only DF/NDF at the saved rational rate and shows pending and rejected updates", async ({
+  page,
+  request,
+}) => {
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await openFilm(page, ntscProjectPath);
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  await navigate(page, "edit", "en-US");
+  const selector = page.getByRole("combobox", {
+    name: "Sequence timebase",
+    exact: true,
+  });
+  await expect(selector.locator("option")).toHaveCount(2);
+  const before = (await (await request.get(`${api}/project`)).json()).project;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/api/project/timebase",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await selector.selectOption("df");
+  await expect(selector).toBeDisabled();
+  await expect(page.locator(".cut-desk-target-bar")).toContainText(
+    "Saving sequence timebase",
+  );
+  release();
+  await expect(selector).toBeEnabled();
+  await expect(selector).toHaveValue("df");
+  const after = (await (await request.get(`${api}/project`)).json()).project;
+  expect(after.timelines).toEqual(before.timelines);
+  expect(after.settings.timebase).toEqual({
+    version: 1,
+    rateNumerator: 30000,
+    rateDenominator: 1001,
+    dropFrame: true,
+  });
+  expect(after.settings.frameRate).toBe(before.settings.frameRate);
+  await page.route(
+    "**/api/project/timebase",
+    (route) =>
+      route.fulfill({
+        status: 409,
+        json: {
+          error: "Timebase was rejected",
+          code: "project.timebaseConflict",
+        },
+      }),
+    { times: 1 },
+  );
+  await selector.selectOption("ndf");
+  await expect(
+    page.locator(".cut-desk-target-bar").getByRole("alert"),
+  ).toBeVisible();
+  await expect(selector).toHaveValue("df");
+});
+
+test("splits Record at the authoritative frame as one request and one Undo/Redo step", async ({
+  page,
+  request,
+}) => {
+  await navigate(page, "edit", "en-US");
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  const before = (await (await request.get(`${api}/project`)).json()).project;
+  const composition = before.timelines[0];
+  const editor = await (
+    await request.get(`${api}/compositions/${composition.id}/editor`)
+  ).json();
+  const video = composition.tracks
+    .flatMap(
+      (track: {
+        clips: Array<{
+          id: string;
+          assetId: string;
+          timelineStart: number;
+          sourceIn?: number;
+        }>;
+      }) => track.clips,
+    )
+    .find((clip: { assetId: string }) =>
+      editor.assets.some(
+        (asset: { id: string; mediaType: string }) =>
+          asset.id === clip.assetId && asset.mediaType === "video",
+      ),
+    );
+  expect(video).toBeDefined();
+  const frame = Math.round((video.timelineStart + 0.5) * 30);
+  const timecode = page.getByRole("textbox", {
+    name: "Sequence timecode",
+    exact: true,
+  });
+  await timecode.fill(
+    `00:00:${String(Math.floor(frame / 30)).padStart(2, "0")}:${String(frame % 30).padStart(2, "0")}`,
+  );
+  await timecode.press("Enter");
+  await expect(page.locator(".record-monitor")).toHaveAttribute(
+    "data-frame",
+    String(frame),
+  );
+  const edits: unknown[] = [];
+  page.on("request", (sent) => {
+    if (
+      sent.method() === "POST" &&
+      new URL(sent.url()).pathname ===
+        `/api/compositions/${composition.id}/edit`
+    )
+      edits.push(sent.postDataJSON());
+  });
+  const clips = page.locator(".editor-clip");
+  const count = await clips.count();
+  await page.locator("#workspace-main").focus();
+  await page.keyboard.press("b");
+  await expect(clips).toHaveCount(count + 1);
+  await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
+  expect(edits).toEqual([
+    expect.objectContaining({
+      commands: [
+        {
+          type: "clip.split",
+          clipId: video.id,
+          sourceTime: (video.sourceIn ?? 0) + 0.5,
+        },
+      ],
+    }),
+  ]);
+  const split = (await (await request.get(`${api}/project`)).json()).project
+    .timelines;
+  const undo = page.getByRole("button", {
+    name: uiText("en-US", "editor.undoLabel"),
+    exact: true,
+  });
+  const redo = page.getByRole("button", {
+    name: uiText("en-US", "editor.redoLabel"),
+    exact: true,
+  });
+  await undo.click();
+  await expect(clips).toHaveCount(count);
+  expect(
+    (await (await request.get(`${api}/project`)).json()).project.timelines,
+  ).toEqual(before.timelines);
+  await redo.click();
+  await expect(clips).toHaveCount(count + 1);
+  expect(
+    (await (await request.get(`${api}/project`)).json()).project.timelines,
+  ).toEqual(split);
+  await undo.click();
+  await expect(clips).toHaveCount(count);
 });
 
 test("searches actions with the keyboard and restores focus without starting production", async ({
@@ -474,7 +867,7 @@ test("retains selection and Undo history across both workspace modes", async ({
   await expect(clock).not.toHaveText("00:00:00:00");
   const time = await clock.textContent();
   await mode.selectOption("expert");
-  await expect(clock).toHaveText(time!);
+  await expect(page.locator(".record-monitor")).toHaveCount(1);
   await page
     .getByRole("button", {
       name: uiText("en-US", "editor.clip.lock"),
@@ -558,11 +951,19 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
   await page
     .getByRole("combobox", { name: "Workspace mode", exact: true })
     .selectOption("expert");
-  for (const locale of ["zh-TW", "en-XA"] as const) {
+  for (const locale of ["en-US", "zh-TW", "ja-JP", "en-XA"] as const) {
     for (const workspace of ["story", "edit"] as const) {
       await page.locator(".ui-language select").selectOption("en-US");
       await navigate(page, workspace, "en-US");
       await page.locator(".ui-language select").selectOption(locale);
+      if (workspace === "edit") {
+        await expect(
+          page.getByTestId("cut-desk-target-status"),
+        ).not.toContainText("cutDesk.");
+        await expect(page.getByTestId("cut-desk-target-status")).toContainText(
+          locale === "en-XA" ? "" : uiText(locale, "cutDesk.record"),
+        );
+      }
       for (const width of [640, 780, 1100, 1280, 1920]) {
         await page.setViewportSize({ width, height: width < 900 ? 600 : 900 });
         const issues = await page.evaluate(() => {
