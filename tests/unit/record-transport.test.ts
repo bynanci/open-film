@@ -631,6 +631,107 @@ describe("Record transport cancellation and ownership", () => {
   });
 
   it.each(["play", "shuttle"] as const)(
+    "%s preserves play intent when a rate watcher synchronously enters buffering",
+    (command) => {
+      const { clock, transport } = setup();
+      transport.seek(30);
+      const unwatch = watch(
+        transport.shuttleRate,
+        (rate) => {
+          if (rate !== 0) transport.buffering.value = true;
+        },
+        { flush: "sync" },
+      );
+      cleanup.push(unwatch);
+      if (command === "play") transport.play();
+      else transport.shuttle(1);
+      expect(transport.playing.value).toBe(true);
+      expect(transport.shuttleRate.value).toBe(1);
+      expect(clock.pending.size).toBe(0);
+      clock.tick(10000);
+      expect(transport.frame.value).toBe(30);
+      transport.buffering.value = false;
+      expect(clock.pending.size).toBe(1);
+      clock.tick(11001);
+      expect(transport.frame.value).toBe(60);
+    },
+  );
+
+  it("pause completes its rate reset when a playing=false watcher clears buffering", () => {
+    const { clock, transport } = setup();
+    transport.seek(30);
+    transport.play();
+    const stale = clock.historicalCallbacks.at(-1)!;
+    transport.buffering.value = true;
+    expect(clock.pending.size).toBe(0);
+    const unwatch = watch(
+      transport.playing,
+      (playing) => {
+        if (!playing) transport.buffering.value = false;
+      },
+      { flush: "sync" },
+    );
+    cleanup.push(unwatch);
+    transport.pause();
+    expect(transport.playing.value).toBe(false);
+    expect(transport.shuttleRate.value).toBe(0);
+    expect(transport.buffering.value).toBe(false);
+    clock.at(10000);
+    stale(10000);
+    expect(transport.frame.value).toBe(30);
+    expect(clock.pending.size).toBe(0);
+  });
+
+  it("owner reset completes when a playing=false watcher releases its buffering hold", () => {
+    const { clock, inputs, transport } = setup();
+    transport.seek(30);
+    transport.play();
+    const stale = clock.historicalCallbacks.at(-1)!;
+    transport.buffering.value = true;
+    const unwatch = watch(
+      transport.playing,
+      (playing) => {
+        if (!playing) transport.buffering.value = false;
+      },
+      { flush: "sync" },
+    );
+    cleanup.push(unwatch);
+    inputs.ownerKey.value = "new-owner";
+    expect(transport.frame.value).toBe(0);
+    expect(transport.playing.value).toBe(false);
+    expect(transport.shuttleRate.value).toBe(0);
+    expect(transport.buffering.value).toBe(false);
+    clock.at(10000);
+    stale(10000);
+    expect(transport.frame.value).toBe(0);
+    expect(clock.pending.size).toBe(0);
+  });
+
+  it.each(["pause", "dispose", "owner"] as const)(
+    "a rate watcher issuing %s still supersedes an unfinished start",
+    (action) => {
+      const { clock, inputs, transport } = setup();
+      transport.seek(30);
+      const unwatch = watch(
+        transport.shuttleRate,
+        (rate) => {
+          if (rate === 0) return;
+          if (action === "pause") transport.pause();
+          if (action === "dispose") transport.dispose();
+          if (action === "owner") inputs.ownerKey.value = "new-owner";
+        },
+        { flush: "sync" },
+      );
+      cleanup.push(unwatch);
+      transport.play();
+      expect(transport.frame.value).toBe(action === "owner" ? 0 : 30);
+      expect(transport.playing.value).toBe(false);
+      expect(transport.shuttleRate.value).toBe(0);
+      expect(clock.pending.size).toBe(0);
+    },
+  );
+
+  it.each(["play", "shuttle"] as const)(
     "%s cannot publish rate or schedule after a playing=true watcher disposes",
     (command) => {
       const { clock, transport } = setup();

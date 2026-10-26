@@ -92,6 +92,8 @@ export function useRecordTransport(
   let disposed = false;
   let pending: number | undefined;
   let generation = 0;
+  // Buffering invalidates rAF anchors, but does not supersede a command.
+  let operationGeneration = 0;
   let anchor: { frame: number; now: number } | undefined;
 
   function invalidate() {
@@ -101,14 +103,15 @@ export function useRecordTransport(
     anchor = undefined;
   }
   function current(stamp: number) {
-    return !disposed && stamp === generation;
+    return !disposed && stamp === operationGeneration;
   }
   // Disposal also uses this path after closing the public-command fence.
-  function halt() {
+  function halt(supersede = true) {
+    if (supersede) operationGeneration++;
+    const stamp = operationGeneration;
     invalidate();
-    const stamp = generation;
     playing.value = false;
-    if (stamp === generation) shuttleRate.value = 0;
+    if (stamp === operationGeneration) shuttleRate.value = 0;
     return stamp;
   }
   function stop() {
@@ -156,21 +159,21 @@ export function useRecordTransport(
     if (disposed) return;
     invalidate();
     if (!eligible()) {
-      stop();
+      halt(false);
       return;
     }
     if (!playing.value || buffering.value) return;
     const endpoint = shuttleRate.value > 0 ? bounds.value.final : 0;
     if (frame.value === endpoint) {
-      stop();
+      halt(false);
       return;
     }
     anchor = { frame: frame.value, now: now() };
     schedule();
   }
   function start(rate: number) {
+    const stamp = ++operationGeneration;
     invalidate();
-    const stamp = generation;
     // Publish the direction before play intent so consumers see its rate.
     shuttleRate.value = rate;
     if (!current(stamp)) return;
@@ -194,7 +197,7 @@ export function useRecordTransport(
   }
   function seek(value: number) {
     if (disposed || !Number.isSafeInteger(value)) return;
-    const stamp = generation;
+    const stamp = ++operationGeneration;
     frame.value = Math.max(0, Math.min(bounds.value.final, value));
     if (current(stamp)) reanchor();
   }
