@@ -33,8 +33,8 @@ Existing preflight/application rules remain authoritative, including graphic and
 caption bounds. Missing/unready/decode-failed media holds or stops Record. Reverse
 audio, above-unity browser gain parity, synchronous GraphicScene playback and
 color-managed display parity are not claimed. See the
-[Phase 1A guide](../professional-cut-desk.md) and
-[validation](../validation-professional-cut-desk.md); Phase 1B–4 remain separate.
+[Phase 1A guide](professional-cut-desk.md) and
+[validation](validation-professional-cut-desk.md); Phase 1B–4 remain separate.
 
 `@openfilm/core` exports:
 
