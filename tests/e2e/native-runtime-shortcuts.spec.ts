@@ -12,20 +12,28 @@ const gate = compiler.compileScript(
     .descriptor,
   { id: "native-keyboard-fixture", inlineTemplate: true },
 ).content;
-function keyboard(name: string) {
+function keyboard(name: string, method = "keyboard") {
   const source = readFileSync(
     resolve(`apps/desktop/src/components/${name}.vue`),
     "utf8",
   );
-  const start = source.indexOf("function keyboard(event: KeyboardEvent)");
-  if (start < 0) throw new Error(`Missing ${name} keyboard handler`);
-  return transformSync(source.slice(start, source.indexOf("\n}", start) + 2), {
-    loader: "ts",
-  }).code;
+  const start = source.indexOf(`function ${method}(`);
+  if (start < 0) throw new Error(`Missing ${name} ${method} handler`);
+  const shared = transformSync(
+    readFileSync(resolve("apps/desktop/src/monitor.ts"), "utf8"),
+    { loader: "ts", format: "esm" },
+  ).code.replace(/^export /gm, "");
+  return (
+    shared +
+    transformSync(source.slice(start, source.indexOf("\n}", start) + 2), {
+      loader: "ts",
+    }).code
+  );
 }
 const handlers = {
   timeline: keyboard("TimelineEditor"),
   precision: keyboard("PrecisionEditor"),
+  trim: keyboard("PrecisionEditor", "moveTrim"),
 };
 let fixture: string;
 test.beforeAll(async () => {
@@ -109,10 +117,14 @@ async function mount(page: Page) {
   await page.evaluate(({ timeline, precision }) => {
     const state = window as unknown as Record<string, unknown>;
     const counts = { deleted: 0, history: 0, marker: 0 };
+    const sourceActions: string[] = [];
+    state.sourceActions = sourceActions;
     const mode = { value: "story" };
     state.shortcutCounts = counts;
     state.shortcutMode = mode;
     const timelineContext = {
+      shortcutIsolation: { value: false },
+      recordTarget: { value: false },
       directionBlocked: { value: false },
       editMode: mode,
       props: { active: true },
@@ -130,6 +142,21 @@ async function mount(page: Page) {
       addMarker: () => {
         counts.marker++;
       },
+      addSourceMarker: () => {
+        counts.marker++;
+      },
+      shuttle: () => sourceActions.push("shuttle"),
+      stop: () => sourceActions.push("stop"),
+      togglePlayback: () => sourceActions.push("play"),
+      step: () => sourceActions.push("step"),
+      stageIn: () => sourceActions.push("in"),
+      stageOut: () => sourceActions.push("out"),
+      split: () => sourceActions.push("split"),
+      seek: () => sourceActions.push("seek"),
+      trimIn: { value: 0 },
+      trimOut: { value: 10 },
+      playhead: { value: 2 },
+      frameStep: { value: 1 / 30 },
     };
     for (const [code, context] of [
       [timeline, timelineContext],
@@ -258,4 +285,218 @@ test("ready retained-draft controls isolate shortcuts and keep Tab, Enter and Sp
   await page.locator("#ready-control").focus();
   await pressShortcuts(page);
   expect(await counts(page)).toEqual({ deleted: 1, history: 1, marker: 1 });
+});
+
+test("Source shortcuts preserve Chromium defaults and counters in IME, editable, dialog, draft and Pipeline contexts", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const state = window as unknown as { shortcutMode: { value: string } };
+    state.shortcutMode.value = "precision";
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<input id="input"><select id="select"><option>A</option></select><div contenteditable="" id="editable" tabindex="0">文字</div><div class="pipeline-workbench-root"><button id="pipeline">Pipeline</button></div><div class="runtime-drafts"><button id="draft">Draft</button></div><dialog id="dialog"><button id="dialog-button">Dialog</button></dialog>',
+    );
+  });
+  const keys = [
+    "j",
+    "k",
+    "l",
+    "i",
+    "o",
+    "b",
+    "m",
+    " ",
+    "ArrowLeft",
+    "ArrowRight",
+    "Home",
+    "End",
+  ];
+  for (const context of [
+    "ime",
+    "input",
+    "select",
+    "editable",
+    "pipeline",
+    "draft",
+    "dialog-button",
+  ]) {
+    const prevented = await page.evaluate(
+      ({ context, keys }) => {
+        if (context === "dialog-button")
+          (document.getElementById("dialog") as HTMLDialogElement).showModal();
+        const target = document.getElementById(
+          context === "ime" ? "ready-control" : context,
+        )!;
+        target.focus();
+        const results = keys.map((key) => {
+          const event = new KeyboardEvent("keydown", {
+            key,
+            code: key === " " ? "Space" : key,
+            isComposing: context === "ime",
+            bubbles: true,
+            cancelable: true,
+          });
+          target.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        if (context === "dialog-button")
+          (document.getElementById("dialog") as HTMLDialogElement).close();
+        return results;
+      },
+      { context, keys },
+    );
+    expect(prevented, context).toEqual(keys.map(() => false));
+    expect(await counts(page), context).toEqual({
+      deleted: 0,
+      history: 0,
+      marker: 0,
+    });
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { sourceActions: string[] }).sourceActions,
+      ),
+      context,
+    ).toEqual([]);
+  }
+  await page.locator("#ready-control").focus();
+  await page.keyboard.press("j");
+  await page.keyboard.press("i");
+  await page.keyboard.press("o");
+  await page.keyboard.press("m");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { sourceActions: string[] }).sourceActions,
+    ),
+  ).toEqual(["shuttle", "in", "out"]);
+  expect(await counts(page)).toEqual({ deleted: 0, history: 0, marker: 1 });
+});
+
+test("both Source trim handles preserve isolated defaults and retain intentional Shift adjustment in Chromium", async ({
+  page,
+}) => {
+  await page.setContent(
+    '<div id="box"><button id="in" role="slider">In</button><button id="out" role="slider">Out</button></div><dialog id="dialog"></dialog>',
+  );
+  await page.evaluate((code) => {
+    const fixture = {
+      trimIn: { value: 2 },
+      trimOut: { value: 8 },
+      lastDefault: false,
+      handled: false,
+    };
+    (window as unknown as Record<string, unknown>).trimFixture = fixture;
+    const context = {
+      stageable: { value: true },
+      trimIn: fixture.trimIn,
+      trimOut: fixture.trimOut,
+      trimSeparation: { value: 0.01 },
+      sourceDuration: { value: 10 },
+      frameStep: { value: 1 / 30 },
+      snapResult: { value: undefined },
+      clamp: (value: number, minimum: number, maximum: number) =>
+        Math.min(maximum, Math.max(minimum, value)),
+    };
+    const moveTrim = new Function(
+      "context",
+      `const {${Object.keys(context).join(",")}} = context; ${code}; return moveTrim;`,
+    )(context);
+    for (const side of ["in", "out"]) {
+      const handle = document.getElementById(side)!;
+      handle.addEventListener("keydown", (event) => {
+        if (fixture.handled) event.preventDefault();
+      });
+      handle.addEventListener("keydown", (event) => moveTrim(event, side));
+      handle.addEventListener("keydown", (event) => {
+        fixture.lastDefault = event.defaultPrevented;
+      });
+    }
+  }, handlers.trim);
+  const snapshot = () =>
+    page.evaluate(() => {
+      const fixture = (
+        window as unknown as {
+          trimFixture: {
+            trimIn: { value: number };
+            trimOut: { value: number };
+            lastDefault: boolean;
+          };
+        }
+      ).trimFixture;
+      return {
+        range: [fixture.trimIn.value, fixture.trimOut.value],
+        prevented: fixture.lastDefault,
+      };
+    });
+  for (const side of ["in", "out"]) {
+    for (const modifier of ["Control", "Meta", "Alt"]) {
+      await page.locator(`#${side}`).press(`${modifier}+ArrowRight`);
+      expect(await snapshot(), `${side} ${modifier}`).toEqual({
+        range: [2, 8],
+        prevented: false,
+      });
+    }
+    for (const context of [
+      "ime",
+      "handled",
+      "contenteditable",
+      "pipeline",
+      "draft",
+      "isolation",
+      "dialog",
+    ]) {
+      await page.evaluate(
+        ({ side, context }) => {
+          const box = document.getElementById("box")!;
+          const dialog = document.getElementById("dialog") as HTMLDialogElement;
+          box.className =
+            context === "pipeline"
+              ? "pipeline-workbench-root"
+              : context === "draft"
+                ? "runtime-drafts"
+                : "";
+          box.removeAttribute("contenteditable");
+          box.removeAttribute("data-shortcut-isolation");
+          if (context === "contenteditable")
+            box.setAttribute("contenteditable", "");
+          if (context === "isolation")
+            box.setAttribute("data-shortcut-isolation", "");
+          if (context === "dialog") {
+            dialog.append(box);
+            dialog.showModal();
+          } else document.body.append(box);
+          const fixture = (
+            window as unknown as { trimFixture: { handled: boolean } }
+          ).trimFixture;
+          fixture.handled = context === "handled";
+          const handle = document.getElementById(side)!;
+          handle.focus();
+          handle.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "ArrowRight",
+              isComposing: context === "ime",
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+          fixture.handled = false;
+          if (context === "dialog") {
+            dialog.close();
+            document.body.append(box);
+          }
+        },
+        { side, context },
+      );
+      expect(await snapshot(), `${side} ${context}`).toEqual({
+        range: [2, 8],
+        prevented: context === "handled",
+      });
+    }
+  }
+  await page.locator("#in").press("ArrowRight");
+  expect((await snapshot()).range[0]).toBeCloseTo(2 + 1 / 30);
+  await page.locator("#out").press("Shift+ArrowLeft");
+  expect((await snapshot()).range[1]).toBeCloseTo(8 - 10 / 30);
+  expect((await snapshot()).prevented).toBe(true);
 });

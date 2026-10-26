@@ -1,5 +1,19 @@
 export default {
   precision: {
+    applyRange: "套用來源範圍",
+    resetRange: "重設來源入出點",
+    rangeStaged: "來源入出點已暫存。套用後才會儲存此範圍。",
+    rangeInvalid: "入點必須早於出點，且皆須位於來源長度內。",
+    marksStale: "剪輯已變更。請檢視已儲存的範圍並重設入出點，再套用。",
+    shuttleBack: "反向穿梭播放來源",
+    shuttleForward: "正向穿梭播放來源",
+    stop: "停止來源播放",
+    shuttleSpeed: "來源速度 {speed}×",
+    sourceElapsed: "來源經過時間碼",
+    projectRateElapsed: "經過時間碼（以專案影格率替代）",
+    timecodeHint:
+      "Enter 跳至時間 · Escape 重設。此為經過時間，無可用的內嵌來源時間碼。",
+    timecodeInvalid: "請使用顯示的影格分隔符號，輸入來源長度內的有效時間碼。",
     modeLabel: "剪輯模式",
     storyMode: "故事",
     precisionMode: "精準",
@@ -112,7 +126,8 @@ export default {
         "已復原中斷的分析，原有分析結果與編輯均保留。準備好時可重新分析。",
     },
     playbackError: "無法在此播放來源。請在故事模式中檢查來源檔案。",
-    shortcuts: "空白鍵 播放 · ← → 影格 · Shift + ← → 秒 · B 分割 · M 標記",
+    shortcuts:
+      "J/K/L 穿梭播放 · 空白鍵 播放 · ← → 影格 · Shift + ← → 秒 · I/O 暫存入出點 · Home/End 範圍 · B 分割 · M 來源標記",
     snapTypes: {
       manual: "標記",
       "scene-cut": "畫面切點",

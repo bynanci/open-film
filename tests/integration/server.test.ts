@@ -5,12 +5,306 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { startServer } from "../../apps/server/src/server.js";
+import {
+  api as desktopApi,
+  configureNativeConnection,
+  request as desktopRequest,
+} from "../../apps/desktop/src/api.js";
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 describe("loopback application boundary", () => {
+  it("passes typed Desktop timebase edits and suppresses aborted or replaced connection results", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-timebase-desktop-api-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const session = "a".repeat(64);
+    const runtime = await startServer({ port: 0, nativeSession: session });
+    cleanup.push(() => runtime.close());
+    configureNativeConnection(runtime.port, session);
+    const directory = join(root, "film.openfilm");
+    const timebase = {
+      version: 1,
+      rateNumerator: 30000,
+      rateDenominator: 1001,
+      dropFrame: false,
+    } as const;
+    const { project } = await desktopApi.createProject({
+      path: directory,
+      title: "Desktop timebase",
+      timebase,
+    });
+    expect(project.settings).toMatchObject({
+      timebase,
+      frameRate: 30000 / 1001,
+    });
+    const { revision } = await desktopRequest<{ revision: string }>(
+      "/versions/revision",
+    );
+    const input = {
+      projectId: project.id,
+      baseRevision: revision,
+      timebase: { ...timebase, dropFrame: true },
+    };
+    const before = await readFile(join(directory, "project.json"), "utf8");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      desktopApi.updateProjectTimebase(input, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(await readFile(join(directory, "project.json"), "utf8")).toBe(
+      before,
+    );
+    const updated = await desktopApi.updateProjectTimebase(input);
+    expect(updated.project.settings.timebase?.dropFrame).toBe(true);
+    const current = await desktopRequest<{ revision: string }>(
+      "/versions/revision",
+    );
+    const pending = desktopApi.updateProjectTimebase({
+      ...input,
+      baseRevision: current.revision,
+      timebase,
+    });
+    configureNativeConnection(runtime.port, "b".repeat(64));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    configureNativeConnection(runtime.port, session);
+    expect(
+      (await desktopRequest<{ project: { id: string } }>("/project")).project
+        .id,
+    ).toBe(project.id);
+  });
+
+  it("persists strict timebase creation and fences dedicated updates with revision digests", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-timebase-api-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    const base = `http://127.0.0.1:${runtime.port}`;
+    const send = (path: string, value: unknown, method = "PATCH") =>
+      fetch(`${base}/api${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(value),
+      });
+    const timebase = {
+      version: 1,
+      rateNumerator: 30000,
+      rateDenominator: 1001,
+      dropFrame: false,
+    };
+    const directory = join(root, "film.openfilm");
+    const created = await send(
+      "/project/create",
+      { path: directory, title: "Timebase", timebase },
+      "POST",
+    );
+    expect(created.status).toBe(200);
+    let { project } = await created.json();
+    expect(project.settings).toMatchObject({
+      timebase,
+      frameRate: 30000 / 1001,
+    });
+    const projectPath = join(directory, "project.json");
+    expect(JSON.parse(await readFile(projectPath, "utf8")).settings).toEqual(
+      project.settings,
+    );
+    const revision = async () =>
+      (await (await fetch(`${base}/api/versions/revision`)).json()).revision;
+    const baseRevision = await revision();
+    const input = {
+      projectId: project.id,
+      baseRevision,
+      timebase: { ...timebase, dropFrame: true },
+    };
+    const before = await readFile(projectPath, "utf8");
+    for (const value of [
+      { ...input, projectId: "foreign-project" },
+      { ...input, baseRevision: "0".repeat(64) },
+    ]) {
+      const response = await send("/project/timebase", value);
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe("project.timebaseConflict");
+      expect(await readFile(projectPath, "utf8")).toBe(before);
+    }
+    for (const value of [
+      { ...input, extra: true },
+      { ...input, timebase: { ...timebase, extra: true } },
+      { ...input, timebase: { ...timebase, version: 2 } },
+      { ...input, timebase: { ...timebase, rateNumerator: 0 } },
+      { ...input, timebase: { ...timebase, rateDenominator: 1.5 } },
+      { ...input, timebase: { ...timebase, dropFrame: "yes" } },
+      {
+        ...input,
+        timebase: {
+          ...timebase,
+          rateNumerator: 24,
+          rateDenominator: 1,
+          dropFrame: true,
+        },
+      },
+      { ...input, timebase: null },
+      { ...input, baseRevision: 123 },
+      { ...input, baseRevision: "yesterday" },
+    ]) {
+      expect((await send("/project/timebase", value)).status).toBe(400);
+      expect(await readFile(projectPath, "utf8")).toBe(before);
+    }
+    expect((await send("/project", { timebase })).status).toBe(400);
+    const updated = await send("/project/timebase", input);
+    expect(updated.status).toBe(200);
+    project = (await updated.json()).project;
+    expect(project.settings.timebase.dropFrame).toBe(true);
+    expect(JSON.parse(await readFile(projectPath, "utf8")).settings).toEqual(
+      project.settings,
+    );
+    const rational = {
+      version: 1,
+      rateNumerator: 24,
+      rateDenominator: 1,
+      dropFrame: false,
+    };
+    expect(
+      (
+        await send("/project/timebase", {
+          projectId: project.id,
+          baseRevision: await revision(),
+          timebase: rational,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      JSON.parse(await readFile(projectPath, "utf8")).settings,
+    ).toMatchObject({ timebase: rational, frameRate: 24 });
+    const staleBytes = await readFile(projectPath, "utf8");
+    expect((await send("/project/timebase", input)).status).toBe(409);
+    expect(await readFile(projectPath, "utf8")).toBe(staleBytes);
+  });
+
+  it("rejects extra or malformed timebase creation fields before writing a project", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-timebase-invalid-api-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    for (const timebase of [
+      {
+        version: 1,
+        rateNumerator: 24,
+        rateDenominator: 1,
+        dropFrame: false,
+        extra: true,
+      },
+      { version: 1, rateNumerator: 24, rateDenominator: 0, dropFrame: false },
+    ]) {
+      const response = await fetch(
+        `http://127.0.0.1:${runtime.port}/api/project/create`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: join(root, "invalid.openfilm"),
+            title: "Invalid",
+            timebase,
+          }),
+        },
+      );
+      expect(response.status).toBe(400);
+      await expect(
+        readFile(join(root, "invalid.openfilm", "project.json")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+
+  it("rejects HTTP rate conform for a populated project with byte-identical saved state", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-timebase-populated-api-"),
+    );
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const directory = join(root, "film.openfilm");
+    const app = await OpenFilmApplication.create(
+      directory,
+      "Populated timebase",
+      {
+        timebase: {
+          version: 1,
+          rateNumerator: 30000,
+          rateDenominator: 1001,
+          dropFrame: false,
+        },
+      },
+    );
+    app.project.stories.push({
+      id: "story",
+      title: "Story",
+      targetDuration: 6,
+      maxDuration: 8,
+      beats: [],
+    });
+    app.project.timelines.push({
+      id: "timed",
+      storyId: "story",
+      duration: 6,
+      tracks: [],
+    });
+    app.close({ requireSave: true });
+    const runtime = await startServer({ port: 0 });
+    cleanup.push(() => runtime.close());
+    const base = `http://127.0.0.1:${runtime.port}/api`;
+    const opened = await fetch(`${base}/project/open`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: directory }),
+    });
+    expect(opened.status).toBe(200);
+    const { project } = await opened.json();
+    const { revision } = await (
+      await fetch(`${base}/versions/revision`)
+    ).json();
+    const before = await readFile(join(directory, "project.json"), "utf8");
+    const response = await fetch(`${base}/project/timebase`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: project.id,
+        baseRevision: revision,
+        timebase: {
+          version: 1,
+          rateNumerator: 24,
+          rateDenominator: 1,
+          dropFrame: false,
+        },
+      }),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("project.timebaseConflict");
+    expect(await readFile(join(directory, "project.json"), "utf8")).toBe(
+      before,
+    );
+    expect((await (await fetch(`${base}/project`)).json()).project).toEqual(
+      project,
+    );
+    const df = await fetch(`${base}/project/timebase`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: project.id,
+        baseRevision: revision,
+        timebase: {
+          version: 1,
+          rateNumerator: 30000,
+          rateDenominator: 1001,
+          dropFrame: true,
+        },
+      }),
+    });
+    expect(df.status).toBe(200);
+    expect((await df.json()).project.settings.timebase.dropFrame).toBe(true);
+  });
+
   async function healthRequest(port: number, headers: Record<string, string>) {
     return new Promise<{ status: number; allowedOrigin: string }>(
       (accept, reject) => {

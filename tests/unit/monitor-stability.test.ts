@@ -8,9 +8,23 @@ import {
   playbackBoundaryAction,
   restartTimeAtClipBoundary,
   roundFrameDimensions,
+  nextShuttleTier,
 } from "../../apps/desktop/src/monitor";
 
 describe("monitor geometry and transport helpers", () => {
+  it("shuttles through only the bounded professional speed tiers", () => {
+    let tier = 0;
+    const forward = Array.from(
+      { length: 5 },
+      () => (tier = nextShuttleTier(tier, 1)),
+    );
+    expect(forward).toEqual([1, 2, 4, 4, 4]);
+    const reverse = Array.from(
+      { length: 8 },
+      () => (tier = nextShuttleTier(tier, -1)),
+    );
+    expect(reverse).toEqual([2, 1, 0, -1, -2, -4, -4, -4]);
+  });
   it("ignores workspace height noise below two pixels and accepts real changes", () => {
     expect(nextStableWorkspaceHeight(500, 501)).toBe(500);
     expect(nextStableWorkspaceHeight(500, 502)).toBe(502);

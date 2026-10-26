@@ -1,5 +1,35 @@
 import type { FrameSize } from "@openfilm/core";
 
+const shuttleTiers = [-4, -2, -1, 0, 1, 2, 4] as const;
+export function nextShuttleTier(tier: number, direction: -1 | 1): number {
+  const index = Math.max(
+    0,
+    shuttleTiers.indexOf(tier as (typeof shuttleTiers)[number]),
+  );
+  return shuttleTiers[
+    Math.max(0, Math.min(shuttleTiers.length - 1, index + direction))
+  ]!;
+}
+
+/** Check isolation before claiming or cancelling any Source shortcut. */
+export function ownsSourceShortcut(event: KeyboardEvent): boolean {
+  if (
+    event.isComposing ||
+    event.defaultPrevented ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  )
+    return false;
+  const target = event.target as Element | null;
+  return (
+    !document.querySelector('[aria-modal="true"], dialog[open]') &&
+    !target?.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .runtime-drafts, .pipeline-workbench-root, [data-shortcut-isolation]',
+    )
+  );
+}
+
 export function nextStableWorkspaceHeight(
   previous: number | undefined,
   next: number,

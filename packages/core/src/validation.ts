@@ -17,7 +17,9 @@ import {
   type FilmLook,
   type CaptionCueSource,
   type CaptionTrack,
+  type ProjectSettings,
 } from "./models.js";
+import { resolveProjectTimebase } from "./timebase.js";
 import {
   isCaptionTextValid,
   MAX_CAPTION_CUE_COUNT,
@@ -1191,6 +1193,16 @@ export function validateProject(
   for (const key of ["width", "height"])
     dimension(settings[key], `${path}.settings.${key}`);
   positive(settings.frameRate, `${path}.settings.frameRate`);
+  if (settings.timebase !== undefined) {
+    try {
+      resolveProjectTimebase(settings as unknown as ProjectSettings);
+    } catch (error) {
+      fail(
+        `${path}.settings`,
+        error instanceof Error ? error.message : "invalid timebase",
+      );
+    }
+  }
   const knownAssets = options.assetIds ? new Set(options.assetIds) : undefined;
   optional(data, "sceneScriptReviewReceipts", path, (value, receiptPath) => {
     const receipts = array(value, receiptPath);

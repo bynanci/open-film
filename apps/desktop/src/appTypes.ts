@@ -1,3 +1,5 @@
+import type { ProjectTimebaseV1 } from "@openfilm/core";
+
 export type WorkspaceId = "library" | "story" | "edit" | "export" | "versions";
 export type FilmLocale = "en-US" | "zh-TW" | "ja-JP";
 export interface FilmCreation {
@@ -5,6 +7,7 @@ export interface FilmCreation {
   path?: string;
   root?: string;
   projectContentLocale: FilmLocale;
+  timebase: ProjectTimebaseV1;
   filmSettings: {
     templateId: string;
     targetDuration: number;

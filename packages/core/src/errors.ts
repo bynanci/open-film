@@ -13,6 +13,7 @@ export const applicationErrorCodes = [
   "project.required",
   "project.unavailable",
   "project.destinationInvalid",
+  "project.timebaseConflict",
   "jobs.busy",
   "jobs.notRunning",
   "media.notFound",

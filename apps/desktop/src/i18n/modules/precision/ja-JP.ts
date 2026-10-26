@@ -1,5 +1,23 @@
 export default {
   precision: {
+    applyRange: "ソース範囲を適用",
+    resetRange: "ソースマークをリセット",
+    rangeStaged: "ソースマークは仮設定です。適用すると範囲が保存されます。",
+    rangeInvalid:
+      "イン点はアウト点より前で、両方ともソースの長さ以内である必要があります。",
+    marksStale:
+      "編集内容が変わりました。保存済み範囲を確認し、マークをリセットしてから適用してください。",
+    shuttleBack: "ソースを逆方向にシャトル再生",
+    shuttleForward: "ソースを順方向にシャトル再生",
+    stop: "ソースを停止",
+    shuttleSpeed: "ソース速度 {speed}×",
+    sourceElapsed: "ソースの経過タイムコード",
+    projectRateElapsed:
+      "経過タイムコード（プロジェクトのフレームレートで代用）",
+    timecodeHint:
+      "Enter で移動 · Escape でリセット。経過時間です。埋め込みソースタイムコードは利用できません。",
+    timecodeInvalid:
+      "表示されたフレーム区切り記号で、ソースの長さ以内の有効なタイムコードを入力してください。",
     modeLabel: "編集モード",
     storyMode: "ストーリー",
     precisionMode: "精密",
@@ -120,7 +138,7 @@ export default {
     playbackError:
       "この素材はここで再生できません。ストーリーモードで元のファイルを確認してください。",
     shortcuts:
-      "Space 再生 · ← → フレーム · Shift + ← → 秒 · B 分割 · M マーカー",
+      "J/K/L シャトル · Space 再生 · ← → フレーム · Shift + ← → 秒 · I/O マーク仮設定 · Home/End 範囲 · B 分割 · M ソースマーカー",
     snapTypes: {
       manual: "マーカー",
       "scene-cut": "シーン切り替わり",

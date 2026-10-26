@@ -5,8 +5,10 @@ import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { candidatesFromIntelligence, snapTime } from "@openfilm/analysis";
 import type { TranscriptSegment } from "@openfilm/core";
+import * as core from "@openfilm/core";
+import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
 import { waveformPath } from "../../apps/desktop/src/waveform";
-import { shouldSeekHover } from "../../apps/desktop/src/monitor";
+import * as monitor from "../../apps/desktop/src/monitor";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
 interface HostNode {
@@ -19,6 +21,7 @@ interface HostNode {
   pause: () => void;
   addEventListener: () => void;
   getBoundingClientRect: () => { left: number; width: number };
+  getRootNode: () => { activeElement: null };
 }
 interface HostApp {
   mount: (root: HostNode) => void;
@@ -47,6 +50,7 @@ function node(tag: string, text = ""): HostNode {
     pause: () => undefined,
     addEventListener: () => undefined,
     getBoundingClientRect: () => ({ left: 0, width: 800 }),
+    getRootNode: () => ({ activeElement: null }),
   };
 }
 function flatten(root: HostNode): HostNode[] {
@@ -104,7 +108,12 @@ async function mountPrecision(
     removeEventListener: vi.fn(),
   });
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
-  vi.stubGlobal("document", { activeElement: null });
+  vi.stubGlobal(
+    "document",
+    Object.assign(new EventTarget(), { activeElement: null, hidden: false }),
+  );
+  vi.stubGlobal("Document", class {});
+  vi.stubGlobal("ShadowRoot", class {});
   const wordLabels = vi.fn();
   const locale = vue.ref("en-US");
   const api = {
@@ -139,6 +148,8 @@ async function mountPrecision(
         }),
       },
       "@openfilm/analysis": { candidatesFromIntelligence, snapTime },
+      "@openfilm/core": core,
+      "../sourceMarks": sourceMarks,
       "../api": { api, request, sourceUrl: () => "fixture.mp4" },
       "../i18n": {
         errorDetail: String,
@@ -146,7 +157,7 @@ async function mountPrecision(
         localizeError: String,
       },
       "../waveform": { waveformPath },
-      "../monitor": { shouldSeekHover },
+      "../monitor": monitor,
     },
   );
   const renderer = vue.createRenderer({
@@ -192,6 +203,10 @@ async function mountPrecision(
   const root = node("root");
   const app = renderer.createApp(parent, {
     projectId: "project",
+    compositionId: "film",
+    revision: "r1",
+    settings: { frameRate: 30 },
+    commit: vi.fn(async () => ({ status: "accepted", revision: "r2" })),
     active: true,
     busy: false,
     asset: {

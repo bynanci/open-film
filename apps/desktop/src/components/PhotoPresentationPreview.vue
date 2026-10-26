@@ -19,18 +19,31 @@ import { sourceUrl, titlePreviewUrl } from "../api";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import { formatDuration } from "../i18n";
 
-const props = defineProps<{
-  clip: Clip;
-  assets: readonly MediaAsset[];
-  frame: ProjectSettings;
-  viewport: FrameSize;
-  transportTarget: string;
-  compositionId: string;
-  projectId: string;
-  revision: string;
-  active: boolean;
-  sourceVersion?: number;
-  look?: FilmLook;
+const props = withDefaults(
+  defineProps<{
+    clip: Clip;
+    assets: readonly MediaAsset[];
+    frame: ProjectSettings;
+    viewport: FrameSize;
+    transportTarget: string;
+    compositionId: string;
+    projectId: string;
+    revision: string;
+    active: boolean;
+    sourceVersion?: number;
+    look?: FilmLook;
+    externalTime?: number;
+    externalPlaying?: boolean;
+  }>(),
+  {
+    sourceVersion: undefined,
+    look: undefined,
+    externalTime: undefined,
+    externalPlaying: undefined,
+  },
+);
+const emit = defineEmits<{
+  readiness: [status: { ready: boolean; failed: boolean; assetId?: string }];
 }>();
 const { t } = useI18n();
 const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
@@ -39,7 +52,18 @@ const lookStyle = computed(() =>
     ? { filter: `url(#${lookFilterId})` }
     : {},
 );
-const time = ref(0);
+const ownedTime = ref(0);
+const controlled = computed(
+  () => props.externalTime !== undefined || props.externalPlaying !== undefined,
+);
+const time = computed(() =>
+  controlled.value
+    ? Math.max(
+        0,
+        Math.min(props.clip.timelineDuration, props.externalTime ?? 0),
+      )
+    : ownedTime.value,
+);
 const titleOpacity = computed(() => {
   try {
     return evaluateTitleOpacity(
@@ -52,8 +76,12 @@ const titleOpacity = computed(() => {
     return 1;
   }
 });
-const playing = ref(false);
+const ownedPlaying = ref(false);
+const playing = computed(() =>
+  controlled.value ? (props.externalPlaying ?? false) : ownedPlaying.value,
+);
 const failedSources = ref(new Set<string>());
+const loadedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
 let animation = 0;
@@ -104,14 +132,44 @@ watch(
     failedSources.value = new Set(
       [...failedSources.value].filter((key) => current.has(key)),
     );
+    loadedSources.value = new Set(
+      [...loadedSources.value].filter((key) => current.has(key)),
+    );
   },
+);
+const readiness = computed(() => ({
+  ready:
+    !!plan.value &&
+    renderLayers.value.length > 0 &&
+    renderLayers.value.every((layer) => loadedSources.value.has(layer.key)),
+  failed: !plan.value || sourceFailed.value,
+  assetId: renderLayers.value.find((layer) =>
+    failedSources.value.has(layer.key),
+  )?.assetId,
+}));
+watch(
+  readiness,
+  (status, previous) => {
+    if (
+      !previous ||
+      status.ready !== previous.ready ||
+      status.failed !== previous.failed ||
+      status.assetId !== previous.assetId
+    )
+      emit("readiness", status);
+  },
+  { immediate: true, flush: "post" },
 );
 function layerFailed(key: string) {
   if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  const remaining = new Set(loadedSources.value);
+  remaining.delete(key);
+  loadedSources.value = remaining;
   failedSources.value = new Set([...failedSources.value, key]);
 }
 function layerLoaded(key: string) {
   if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  loadedSources.value = new Set([...loadedSources.value, key]);
   if (!failedSources.value.has(key)) return;
   const remaining = new Set(failedSources.value);
   remaining.delete(key);
@@ -138,6 +196,8 @@ const transformStyle = computed(() => ({
   transform: `translate(${((plan.value?.transform.x ?? 0) / props.frame.width) * 100}%, ${((plan.value?.transform.y ?? 0) / props.frame.height) * 100}%) scale(${plan.value?.transform.scale ?? 1})`,
 }));
 const frameStyle = computed(() => {
+  if (controlled.value)
+    return { width: "100%", height: "100%", background: "transparent" };
   const ratio = props.frame.width / props.frame.height;
   const width = Math.max(
     1,
@@ -146,11 +206,11 @@ const frameStyle = computed(() => {
   return { width: `${width}px`, height: `${width / ratio}px` };
 });
 function pause() {
-  playing.value = false;
+  ownedPlaying.value = false;
   cancelAnimationFrame(animation);
 }
 function tick(now: number) {
-  time.value = Math.min(
+  ownedTime.value = Math.min(
     props.clip.timelineDuration,
     initialTime + (now - started) / 1000,
   );
@@ -158,17 +218,21 @@ function tick(now: number) {
   else animation = requestAnimationFrame(tick);
 }
 function toggle() {
+  if (controlled.value) return;
   if (playing.value) return pause();
-  if (time.value >= props.clip.timelineDuration) time.value = 0;
-  playing.value = true;
+  if (time.value >= props.clip.timelineDuration) ownedTime.value = 0;
+  ownedPlaying.value = true;
   initialTime = time.value;
   started = performance.now();
   animation = requestAnimationFrame(tick);
 }
 function seekTo(requested: number) {
-  if (!Number.isFinite(requested)) return;
+  if (controlled.value || !Number.isFinite(requested)) return;
   pause();
-  time.value = Math.max(0, Math.min(props.clip.timelineDuration, requested));
+  ownedTime.value = Math.max(
+    0,
+    Math.min(props.clip.timelineDuration, requested),
+  );
 }
 function seek(event: Event) {
   seekTo(Number((event.target as HTMLInputElement).value));
@@ -177,7 +241,7 @@ watch(
   () => props.clip.id,
   () => {
     pause();
-    time.value = 0;
+    ownedTime.value = 0;
   },
 );
 watch(
@@ -189,15 +253,21 @@ watch(
 watch(
   () => props.clip.timelineDuration,
   (duration) => {
-    time.value = Math.min(time.value, duration);
+    ownedTime.value = Math.min(ownedTime.value, duration);
   },
 );
 onBeforeUnmount(pause);
+watch(controlled, (value) => {
+  if (value) pause();
+});
 defineExpose({ toggle, pause, seekTo });
 </script>
 
 <template>
-  <div class="photo-presentation-preview">
+  <div
+    class="photo-presentation-preview"
+    :class="{ 'photo-presentation-controlled': controlled }"
+  >
     <FilmLookFilter v-if="look" :id="lookFilterId" :look="look" />
     <div
       class="photo-presentation-frame"
@@ -258,7 +328,7 @@ defineExpose({ toggle, pause, seekTo });
         {{ t("editor.presentation.retryTitle") }}
       </button>
     </p>
-    <Teleport defer :to="transportTarget">
+    <Teleport v-if="!controlled" defer :to="transportTarget">
       <div
         class="photo-presentation-transport"
         :title="t('editor.presentation.previewNote')"
@@ -280,3 +350,24 @@ defineExpose({ toggle, pause, seekTo });
     </Teleport>
   </div>
 </template>
+
+<style scoped>
+.photo-presentation-controlled {
+  padding: 0;
+  gap: 0;
+}
+.photo-presentation-controlled .photo-presentation-layers > img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+.photo-presentation-controlled .photo-presentation-title {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+</style>

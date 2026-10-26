@@ -89,10 +89,49 @@ describe("versioned projects", () => {
     expect(first.title).toBe("Archive");
     expect(first.id).not.toBe(second.id);
     expect(first.createdAt).toBe(first.updatedAt);
+    expect(first.settings.timebase).toEqual({
+      version: 1,
+      rateNumerator: 30,
+      rateDenominator: 1,
+      dropFrame: false,
+    });
     expect(validateProject(first)).toEqual(first);
+    first.settings.timebase!.dropFrame = true;
+    expect(second.settings.timebase!.dropFrame).toBe(false);
     first.stories.push({ id: "s", title: "One", beats: [] });
     expect(second.stories).toEqual([]);
     expect(() => createProject("   ")).toThrow("title");
+  });
+
+  it("preserves legacy settings and clones explicit timebases during validation", () => {
+    const legacy = project();
+    delete legacy.settings.timebase;
+    legacy.settings.frameRate = 29.97;
+    const json = JSON.stringify(legacy);
+    expect(JSON.stringify(validateProject(legacy))).toBe(json);
+    expect(JSON.stringify(migrateProject(legacy))).toBe(json);
+    expect(JSON.stringify(legacy)).toBe(json);
+    const explicit = project();
+    const parsed = validateProject(JSON.parse(JSON.stringify(explicit)));
+    parsed.settings.timebase!.rateNumerator = 24;
+    expect(explicit.settings.timebase!.rateNumerator).toBe(30);
+  });
+
+  it("rejects malformed and mismatched durable timebases", () => {
+    for (const timebase of [
+      null,
+      { version: 2, rateNumerator: 30, rateDenominator: 1, dropFrame: false },
+      { version: 1, rateNumerator: 30, rateDenominator: 0, dropFrame: false },
+      { version: 1, rateNumerator: 30, rateDenominator: 1, dropFrame: true },
+      { version: 1, rateNumerator: 24, rateDenominator: 1, dropFrame: false },
+    ]) {
+      const value = {
+        ...project(),
+        settings: { width: 1920, height: 1080, frameRate: 30, timebase },
+      };
+      expect(() => validateProject(value)).toThrow(ProjectValidationError);
+      expect(() => migrateProject(value)).toThrow("settings");
+    }
   });
 
   it("roundtrips stories and non-destructive composition operations", () => {

@@ -29,6 +29,8 @@ export default {
         "OpenFilm is closing the workspace. Wait for it to finish before trying again.",
     },
     project: {
+      timebaseConflict:
+        "This film changed or its timed content needs rate conform. Reopen the film and review its timebase.",
       required: "Create or open a film to continue.",
       unavailable:
         "This film can't be opened. Reconnect its drive or choose its current location.",

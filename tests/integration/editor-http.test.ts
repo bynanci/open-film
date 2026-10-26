@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,18 +7,21 @@ import { OpenFilmApplication } from "@openfilm/application";
 import type { Composition, MediaAsset, Story } from "@openfilm/core";
 import { startServer } from "../../apps/server/src/server.js";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
+import { api } from "../../apps/desktop/src/api";
 
 interface EditorState {
   composition: Composition;
   story: Story;
   assets: MediaAsset[];
   revision: string;
+  acknowledgedRevision?: string;
   canUndo: boolean;
   canRedo: boolean;
 }
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
@@ -106,6 +109,49 @@ async function openEditor() {
 }
 
 describe("real timeline HTTP editing", () => {
+  it("forwards edit cancellation and acknowledges a professional batch once without duplicating Undo", async () => {
+    const { base, post, state } = await openEditor();
+    const initial = await state();
+    const nativeFetch = globalThis.fetch;
+    const requests = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, options) =>
+        nativeFetch(new URL(String(input), base), options),
+      );
+    const aborted = new AbortController();
+    aborted.abort();
+    const input = {
+      baseRevision: initial.revision,
+      requestId: "professional-http-gesture",
+      commands: [
+        { type: "duration" as const, clipId: "photo", duration: 6 },
+        { type: "transform" as const, clipId: "photo", x: 0.4 },
+      ],
+    };
+    await expect(
+      api.edit("composition", input, aborted.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect((await state()).revision).toBe(initial.revision);
+    const controller = new AbortController();
+    const accepted = await api.edit("composition", input, controller.signal);
+    expect(
+      requests.mock.calls.some(
+        ([, options]) => options?.signal === controller.signal,
+      ),
+    ).toBe(true);
+    const receipt = await api.edit("composition", input);
+    expect(receipt.acknowledgedRevision).toBe(accepted.revision);
+    expect(receipt.composition.duration).toBe(9);
+    expect(receipt.composition.tracks[0]?.clips[0]?.transform?.x).toBe(0.4);
+    const undoneResponse = await post("/api/compositions/composition/undo", {
+      baseRevision: receipt.revision,
+    });
+    expect(undoneResponse.status).toBe(200);
+    const undone = (await undoneResponse.json()) as EditorState;
+    expect(undone.composition).toEqual(initial.composition);
+    expect(undone.canUndo).toBe(false);
+  });
+
   it("persists a command batch once, rejects stale writes, and reopens undo/redo results", async () => {
     const { directory, base, post, state } = await openEditor();
     const initial = await state();

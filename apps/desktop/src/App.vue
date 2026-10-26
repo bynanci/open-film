@@ -51,7 +51,9 @@ import type {
   Event,
   SimilarityGroup,
   Job,
+  ProjectTimebaseV1,
 } from "@openfilm/core";
+import { sameRateDropFrameChoice } from "./projectTimebase";
 import {
   api,
   post,
@@ -914,11 +916,18 @@ async function mediaRelinked(updated: MediaAsset[]) {
 }
 async function refreshProject(
   owned: () => boolean = () => true,
+  expectedProjectId?: string,
 ): Promise<boolean> {
   const mutationVersion = projectMutationVersion;
   const result = await api.project();
   // A pre-accept polling response must not erase a newly acknowledged plan.
-  if (mutationVersion !== projectMutationVersion || !owned()) return false;
+  if (
+    mutationVersion !== projectMutationVersion ||
+    !owned() ||
+    (expectedProjectId !== undefined &&
+      result.project?.id !== expectedProjectId)
+  )
+    return false;
   project.value = result.project;
   projectPath.value = result.path;
   connected.value = true;
@@ -1327,6 +1336,102 @@ async function changeFilmLocale(locale: FilmLocale) {
     await timelineEditor.value?.reload();
     hydrateBeat();
     notice.value = message("feedback.filmLanguageSaved");
+  });
+}
+const cutDeskTimebaseRequest = ref<{
+  projectId: string;
+  generation: number;
+  epoch: number;
+} | null>(null);
+const cutDeskTimebaseIssue = ref<{
+  projectId: string;
+  generation: number;
+  cause: unknown;
+} | null>(null);
+let cutDeskTimebaseEpoch = 0;
+const cutDeskTimebasePending = computed(
+  () =>
+    cutDeskTimebaseRequest.value?.projectId === project.value?.id &&
+    cutDeskTimebaseRequest.value?.generation === projectGeneration.value,
+);
+const cutDeskTimebaseError = computed(() =>
+  cutDeskTimebaseIssue.value?.projectId === project.value?.id &&
+  cutDeskTimebaseIssue.value?.generation === projectGeneration.value
+    ? uiMessage(cutDeskTimebaseIssue.value.cause)
+    : "",
+);
+async function changeCutDeskTimebase(timebase: ProjectTimebaseV1) {
+  if (
+    !project.value ||
+    busy.value ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value ||
+    cutDeskTimebasePending.value
+  )
+    return;
+  const owner = {
+    projectId: project.value.id,
+    generation: projectGeneration.value,
+    epoch: ++cutDeskTimebaseEpoch,
+  };
+  cutDeskTimebaseRequest.value = owner;
+  cutDeskTimebaseIssue.value = null;
+  error.value = "";
+  try {
+    await changeProjectTimebase(timebase);
+    if (
+      project.value?.id === owner.projectId &&
+      projectGeneration.value === owner.generation &&
+      error.value
+    )
+      cutDeskTimebaseIssue.value = { ...owner, cause: error.value };
+  } finally {
+    if (cutDeskTimebaseRequest.value?.epoch === owner.epoch)
+      cutDeskTimebaseRequest.value = null;
+  }
+}
+async function changeProjectTimebase(
+  timebase: ProjectTimebaseV1,
+): Promise<void> {
+  if (
+    !project.value ||
+    busy.value ||
+    relinkBusy.value ||
+    analysisRecoveryPending.value
+  )
+    return;
+  const owner = project.value.id;
+  const generation = projectGeneration.value;
+  const owned = () =>
+    project.value?.id === owner && projectGeneration.value === generation;
+  const choice = sameRateDropFrameChoice(project.value.settings);
+  if (
+    !choice ||
+    choice.version !== timebase.version ||
+    choice.rateNumerator !== timebase.rateNumerator ||
+    choice.rateDenominator !== timebase.rateDenominator ||
+    choice.dropFrame !== timebase.dropFrame
+  )
+    return;
+  if (!(await flushProjectPending()) || !owned()) return;
+  await run("savingProjectTimebase", async () => {
+    try {
+      const revision = await api.projectVersionRevision();
+      if (!owned()) return;
+      if (revision.projectId !== owner)
+        throw { code: "project.timebaseConflict" };
+      await api.updateProjectTimebase({
+        projectId: owner,
+        baseRevision: revision.revision,
+        timebase,
+      });
+      if (!owned()) return;
+      projectMutationVersion++;
+      if (!(await refreshProject(owned, owner)) && owned())
+        throw { code: "project.timebaseConflict" };
+    } catch (cause) {
+      if (owned()) throw cause;
+    }
   });
 }
 async function selectLibraryFilter(value: typeof libraryFilter.value) {
@@ -2622,6 +2727,7 @@ async function restoreNativeDrafts() {
   }
 }
 defineExpose({
+  changeProjectTimebase,
   prepareNativeClose,
   captureNativeDrafts,
   openNativeDraftProject: openProject,
@@ -4751,6 +4857,12 @@ onUnmounted(() => {
             :project-settings="project.settings"
             :active="tab === 'edit'"
             :expert-mode="expertMode"
+            :shortcuts-blocked="
+              !!busy ||
+              (pipelineWorkbenchOpen && pipelineWorkbenchMode !== 'bar')
+            "
+            :timebase-pending="cutDeskTimebasePending"
+            :timebase-error="cutDeskTimebaseError"
             :preview-visible="showRenderedPreview"
             :source-statuses="sourceStatuses"
             :source-version="sourceVersion"
@@ -4764,6 +4876,7 @@ onUnmounted(() => {
             @import-assets="importOpen = true"
             @activity="refreshJobs"
             @recover-analysis="recoverAnalysis"
+            @timebase-change="changeCutDeskTimebase"
           />
         </template>
       </section>

@@ -6,6 +6,7 @@ import {
   ApplicationError,
   graphicSceneAssetIds,
   migrateProject,
+  projectFrameRate,
 } from "@openfilm/core";
 import { checkAbort, safeProjectCachePath } from "@openfilm/media";
 import { prepareGraphicScenes } from "@openfilm/render";
@@ -72,11 +73,17 @@ export class GraphicSceneService {
             404,
           );
         const settings = { ...this.host.project.settings };
+        // Preserve saved settings for digest fencing; only the transient render
+        // adapter projects a legacy decimal onto the resolved rational rate.
+        const renderSettings = {
+          ...settings,
+          frameRate: projectFrameRate(settings),
+        };
         if (
           !Number.isSafeInteger(input.frameIndex) ||
           input.frameIndex < 0 ||
           input.frameIndex >=
-            Math.floor(composition.duration * settings.frameRate + 1e-7)
+            Math.floor(composition.duration * renderSettings.frameRate + 1e-7)
         )
           throw new ApplicationError(
             "graphics.invalid",
@@ -152,7 +159,7 @@ export class GraphicSceneService {
         const prepared = await prepareGraphicScenes(
           composition,
           assets,
-          settings,
+          renderSettings,
           work,
           {
             signal,

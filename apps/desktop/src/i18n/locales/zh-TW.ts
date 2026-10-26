@@ -1,4 +1,5 @@
 import nleHandoff from "../modules/nle-handoff/zh-TW";
+import cutDesk from "../modules/cut-desk/zh-TW";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import looks from "../modules/looks/zh-TW";
@@ -13,6 +14,7 @@ import system from "./system-zh-TW";
 import motion from "../modules/motion/zh-TW";
 
 export default {
+  ...cutDesk,
   ...motion,
 
   ...nleHandoff,

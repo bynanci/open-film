@@ -3,6 +3,39 @@
 All quantities called duration/sourceIn/sourceOut/timelineStart/timelineDuration
 are seconds. Capture timestamps are ISO 8601 with provenance/confidence.
 
+## Professional Cut Desk Phase 1A
+
+`ProjectSettings.timebase?` is version 1 with integer `rateNumerator`,
+`rateDenominator` and boolean `dropFrame`; its rational projection must match
+`frameRate`. Legacy derivation does not mutate saved settings. DF supports only
+`30000/1001` and `60000/1001`, rejects nonexistent minute labels and never retimes
+media. Populated projects permit only same-rational DF/NDF changes.
+
+`resolveCompositionFrame` maps integer frames onto the saved Composition's
+half-open clip ranges, source timing, crossfade tails, visual order and audio.
+Expert Source/Record and General Story/Precision share that Composition. Record
+has one transient monotonic frame clock with source readiness and owner fences;
+Source uses reliable source-rate metadata or labelled elapsed/project-rate
+fallback, not invented embedded timecode or word precision.
+
+Source I/O stages revision-bound session marks without a command. Apply and
+Record split use `commitTransaction`: flush older work, capture one base revision
+and request ID, acknowledge one validated batch and create one active-session
+Undo entry. Ambiguous requests retain recovery data for idempotent retry;
+conflict, disposal and project switching fence publication. Saved edits survive
+reopen; Undo and portable durable transaction receipts are not promised across
+sessions. M writes only existing Source catalog markers; Record M writes nothing.
+
+Clip locks block edits. Primary source locks allow clip-local trim/speed/volume
+but block split, presentation and identity removal. Overlay source/clip locks
+block timing/configuration; required/selected identities cannot be removed.
+Existing preflight/application rules remain authoritative, including graphic and
+caption bounds. Missing/unready/decode-failed media holds or stops Record. Reverse
+audio, above-unity browser gain parity, synchronous GraphicScene playback and
+color-managed display parity are not claimed. See the
+[Phase 1A guide](professional-cut-desk.md) and
+[validation](validation-professional-cut-desk.md); Phase 1B–4 remain separate.
+
 `@openfilm/core` exports:
 
 - `MediaAsset`: `id`, `uri`, `mediaType: image|video|audio|360-video`, `name`,
@@ -12,7 +45,7 @@ are seconds. Capture timestamps are ISO 8601 with provenance/confidence.
   `metadata: Record<string, unknown>`, `thumbnailUri?`, `proxyUri?`, `gps?`.
 - `OpenFilmProject`: `schemaVersion: '1.0.0'`, `id`, `title`, `createdAt`,
   `updatedAt`, `mediaLibraries`, `stories: Story[]`, `timelines: Composition[]`,
-  `settings: {width,height,frameRate}`. `MediaLibrary` has `id`, `uri`, `name`.
+  `settings: {width,height,frameRate,timebase?}`. `MediaLibrary` has `id`, `uri`, `name`.
 - `Story`: `id,title,template?,targetDuration?,maxDuration?,beats: StoryBeat[]`.
 - `StoryBeat`: `id,title,intent?,targetDuration?,minDuration?,maxDuration?,`
   `candidateAssetIds?: string[]`, `selectedAssetIds?: string[]`, `constraints?`.

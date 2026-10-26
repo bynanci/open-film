@@ -39,6 +39,22 @@ export default {
     range: "Source range {start}–{end}",
     setIn: "Set in at playhead",
     setOut: "Set out at playhead",
+    applyRange: "Apply source range",
+    resetRange: "Reset source marks",
+    rangeStaged: "Source marks are staged. Apply to save this range.",
+    rangeInvalid: "In must precede Out, within the source duration.",
+    marksStale:
+      "The cut changed. Review the saved range and reset marks before applying.",
+    shuttleBack: "Shuttle source backward",
+    shuttleForward: "Shuttle source forward",
+    stop: "Stop source",
+    shuttleSpeed: "Source speed {speed}×",
+    sourceElapsed: "Source elapsed timecode",
+    projectRateElapsed: "Elapsed timecode (project-rate fallback)",
+    timecodeHint:
+      "Enter to seek · Escape to reset. Elapsed time; embedded source timecode is unavailable.",
+    timecodeInvalid:
+      "Enter a valid timecode within the source duration, using the displayed frame separator.",
     split: "Split at playhead",
     addMarker: "Add marker",
     markers: "Source markers",
@@ -119,7 +135,7 @@ export default {
     playbackError:
       "This source cannot play here. Check its source in Story mode.",
     shortcuts:
-      "Space play · ← → frame · Shift + ← → second · B split · M marker",
+      "J/K/L shuttle · Space play · ← → frame · Shift + ← → second · I/O stage marks · Home/End range · B split · M source marker",
     snapTypes: {
       manual: "marker",
       "scene-cut": "scene cut",

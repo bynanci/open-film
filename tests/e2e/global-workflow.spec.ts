@@ -261,6 +261,13 @@ test("completes a Traditional Chinese film and preserves authored text across ru
     .getByRole("button", { name: text("app.welcome.create"), exact: true })
     .click();
   const creation = page.locator(".create-film-form");
+  await expect(
+    creation.getByRole("combobox", {
+      name: text("app.create.timebase"),
+      exact: true,
+    }),
+  ).toHaveValue("30-ndf");
+  await expect(creation).not.toContainText(/\bapp\.[\w.]+/u);
   const create = creation.getByRole("button", {
     name: text("app.create.submit"),
     exact: true,
@@ -287,11 +294,21 @@ test("completes a Traditional Chinese film and preserves authored text across ru
       contentLocale: locale,
       targetDuration: 18,
       maxDuration: 30,
+      timebasePresetId: "29.97-df",
     },
     locale,
   );
   expect(await project(request)).toMatchObject({
     projectContentLocale: locale,
+    settings: {
+      frameRate: 30000 / 1001,
+      timebase: {
+        version: 1,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: true,
+      },
+    },
     filmSettings: {
       templateId: "proposal-film",
       targetDuration: 18,
@@ -526,6 +543,22 @@ test("completes a Traditional Chinese film and preserves authored text across ru
       })
       .click();
     await openFilm(reopened, path, "ja-JP");
+    const persisted = JSON.parse(
+      await readFile(join(path, "project.json"), "utf8"),
+    );
+    expect(persisted.settings).toMatchObject({
+      frameRate: 30000 / 1001,
+      timebase: {
+        version: 1,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: true,
+      },
+    });
+    expect((await project(request)).settings).toEqual(persisted.settings);
+    await expect(reopened.locator("body")).not.toContainText(
+      /\b(?:app|common|errors|media|timeline|scenePlan)\.[A-Za-z]\w*\.[\w.]+/u,
+    );
     await navigate(reopened, "edit", "ja-JP");
     await saved(reopened, "ja-JP");
     expect((await project(request)).stories).toEqual(current.stories);

@@ -593,6 +593,99 @@ describe("durable timeline editor", () => {
     ).toEqual(first.composition);
   });
 
+  it("keeps one professional batch as one session Undo entry across lost-response retries", async () => {
+    const { app, editor, path } = await fixture();
+    const initial = editor.get("timeline");
+    const baseline = await editor.edit("timeline", {
+      baseRevision: initial.revision,
+      requestId: "older-coalesced-edit",
+      commands: [{ type: "volume", clipId: "video-clip", volume: 0.7 }],
+    });
+    const input: TimelineEditInput = {
+      baseRevision: baseline.revision,
+      requestId: "professional-gesture",
+      commands: [
+        { type: "duration", clipId: "photo-clip", duration: 6 },
+        { type: "transform", clipId: "photo-clip", x: 0.4 },
+      ],
+    };
+    // The caller loses this response; the exact retry must acknowledge it.
+    const accepted = await editor.edit("timeline", input);
+    const bytes = await readFile(path);
+    const receipt = await editor.edit("timeline", input);
+    expect(receipt.acknowledgedRevision).toBe(accepted.revision);
+    expect(await readFile(path)).toEqual(bytes);
+    const later = await editor.edit("timeline", {
+      baseRevision: accepted.revision,
+      commands: [{ type: "volume", clipId: "video-clip", volume: 0.2 }],
+    });
+    const laterReceipt = await editor.edit("timeline", input);
+    expect(laterReceipt.revision).toBe(later.revision);
+    expect(laterReceipt.acknowledgedRevision).toBe(accepted.revision);
+    const undoLater = await editor.undo("timeline", later.revision);
+    expect(undoLater.composition).toEqual(accepted.composition);
+    const undoGesture = await editor.undo("timeline", undoLater.revision);
+    expect(undoGesture.composition).toEqual(baseline.composition);
+    const undoOlder = await editor.undo("timeline", undoGesture.revision);
+    expect(undoOlder.composition).toEqual(initial.composition);
+    expect(undoOlder.canUndo).toBe(false);
+    const redoOlder = await editor.redo("timeline", undoOlder.revision);
+    const redoGesture = await editor.redo("timeline", redoOlder.revision);
+    expect(redoGesture.composition).toEqual(accepted.composition);
+
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(app.directory);
+    applications.add(reopened);
+    const reconstructed = new TimelineEditor(reopened);
+    const saved = reconstructed.get("timeline");
+    expect(saved.composition).toEqual(accepted.composition);
+    expect(saved.canUndo).toBe(false);
+    expect(saved.canRedo).toBe(false);
+    const reopenedBytes = await readFile(path);
+    await expect(reconstructed.edit("timeline", input)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(reconstructed.get("timeline")).toEqual(saved);
+    expect(await readFile(path)).toEqual(reopenedBytes);
+  });
+
+  it("keeps reconstructed matching-revision history empty until an explicit new-session reapply", async () => {
+    const { app, editor, path } = await fixture();
+    const base = editor.get("timeline");
+    const request: TimelineEditInput = {
+      baseRevision: base.revision,
+      requestId: "lost-then-undone-before-reconstruction",
+      commands: [
+        { type: "duration", clipId: "photo-clip", duration: 6 },
+        { type: "transform", clipId: "photo-clip", x: 0.4 },
+      ],
+    };
+    const accepted = await editor.edit("timeline", request);
+    expect((await editor.undo("timeline", accepted.revision)).revision).toBe(
+      base.revision,
+    );
+    app.close();
+    applications.delete(app);
+    const reopened = await OpenFilmApplication.open(app.directory);
+    applications.add(reopened);
+    const reconstructed = new TimelineEditor(reopened);
+    const bytes = await readFile(path);
+    const saved = reconstructed.get("timeline");
+    expect(saved.revision).toBe(request.baseRevision);
+    expect(saved.composition).toEqual(base.composition);
+    expect(saved.canUndo).toBe(false);
+    expect(saved.canRedo).toBe(false);
+    expect(await readFile(path)).toEqual(bytes);
+    // Only an explicit new-session Reapply is permitted to submit this again.
+    const reapplied = await reconstructed.edit("timeline", request);
+    expect(reapplied.composition).toEqual(accepted.composition);
+    expect(reapplied.canUndo).toBe(true);
+    const undone = await reconstructed.undo("timeline", reapplied.revision);
+    expect(undone.composition).toEqual(base.composition);
+    expect(undone.canUndo).toBe(false);
+  });
+
   it("protects locked clips, allows explicit unlocking, and persists manual over-limit cuts", async () => {
     const { editor, path } = await fixture();
     let state = await editor.edit("timeline", {

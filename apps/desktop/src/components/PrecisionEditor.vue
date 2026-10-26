@@ -9,7 +9,17 @@ import {
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
-import type { Clip, Job, MediaAsset, TimelineMarker } from "@openfilm/core";
+import {
+  resolveProjectTimebase,
+  timebaseKey,
+  sequenceFrameAt,
+  sequenceTimeAt,
+  type Clip,
+  type Job,
+  type MediaAsset,
+  type TimelineMarker,
+  type ProjectSettings,
+} from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import { candidatesFromIntelligence, snapTime } from "@openfilm/analysis";
 import {
@@ -23,12 +33,36 @@ import {
 } from "../api";
 import { errorDetail, formatNumber, localizeError } from "../i18n";
 import { waveformPath } from "../waveform";
-import { shouldSeekHover } from "../monitor";
+import {
+  clampFrameStep,
+  nextShuttleTier,
+  ownsSourceShortcut,
+  shouldSeekHover,
+} from "../monitor";
+import {
+  reset,
+  stageIn as stageSourceIn,
+  stageOut as stageSourceOut,
+  markStale,
+  reconcileSourceMarks,
+  sameSourceOwner,
+  validSourceRange,
+  type SourceMarkOwner,
+} from "../sourceMarks";
+import type { CommitTransactionResult } from "../composables/useTimelineEditor";
+import TimecodeField from "./TimecodeField.vue";
 import AnalysisJobActions from "./AnalysisJobActions.vue";
 import PrecisionTranscript from "./PrecisionTranscript.vue";
 
 const props = defineProps<{
   projectId: string;
+  compositionId: string;
+  revision: string;
+  settings: ProjectSettings;
+  commit: (
+    command: TimelineCommand,
+    signal?: AbortSignal,
+  ) => Promise<CommitTransactionResult>;
   asset?: MediaAsset;
   clip?: Clip;
   active: boolean;
@@ -67,7 +101,6 @@ const hasPending = computed(() => pendingMutations.value > 0);
 async function flush() {
   return !hasPending.value;
 }
-defineExpose({ flush, hasPending });
 const playing = ref(false);
 const playhead = ref(0);
 const hoverTime = ref<number>();
@@ -77,8 +110,57 @@ const snapEnabled = ref(true);
 const snapResult = ref<{ time: number; type: string }>();
 const zoom = ref(1);
 const viewStart = ref(0);
-const trimIn = ref(0);
-const trimOut = ref(0);
+const projectTimebase = computed(() => resolveProjectTimebase(props.settings));
+const sourceRateReliable = computed(
+  () =>
+    Number.isFinite(props.asset?.frameRate) &&
+    (props.asset?.frameRate ?? 0) > 0,
+);
+const sourceTimebase = computed(() =>
+  sourceRateReliable.value
+    ? resolveProjectTimebase({
+        ...props.settings,
+        frameRate: props.asset!.frameRate!,
+        timebase: undefined,
+      })
+    : projectTimebase.value,
+);
+const markOwner = computed<SourceMarkOwner>(() => ({
+  projectId: props.projectId,
+  compositionId: props.compositionId,
+  revision: props.revision,
+  clipId: props.clip?.id ?? "",
+  assetId: props.asset?.id ?? "",
+  timebaseKey: `${timebaseKey(projectTimebase.value)}:${timebaseKey(sourceTimebase.value)}`,
+}));
+const marks = shallowRef(
+  reset(markOwner.value, props.clip?.sourceIn ?? 0, props.clip?.sourceOut ?? 0),
+);
+const trimIn = computed({
+  get: () => marks.value.sourceIn,
+  set: (value: number) => {
+    marks.value = stageSourceIn(marks.value, Number(value));
+  },
+});
+const trimOut = computed({
+  get: () => marks.value.sourceOut,
+  set: (value: number) => {
+    marks.value = stageSourceOut(marks.value, Number(value));
+  },
+});
+const marksStale = computed(
+  () =>
+    marks.value.stale ||
+    (marks.value.staged && marks.value.owner.revision !== props.revision),
+);
+const shuttleTier = ref(0);
+let reverseTimer: ReturnType<typeof setInterval> | undefined;
+let transportGeneration = 0;
+const pendingPlayback = new Set<{
+  media: HTMLMediaElement;
+  generation: number;
+}>();
+let editController = new AbortController();
 const language = ref("auto");
 const languageChoices = [
   { value: "auto", label: "precision.languageAuto" },
@@ -138,14 +220,26 @@ const sourceDuration = computed(() => {
 const playable = computed(
   () => supported.value && !props.unavailable && sourceDuration.value > 0,
 );
-const editable = computed(
+// Marks are transient review state; locks protect accepted commands, not staging.
+const stageable = computed(
   () =>
+    props.active &&
     playable.value &&
     hasSourceDuration.value &&
     sourceVerified.value &&
-    !props.clip?.locked &&
-    !props.sourceEditsLocked &&
+    !hasPending.value &&
     !props.busy,
+);
+const editable = computed(
+  () => stageable.value && !props.clip?.locked && !props.sourceEditsLocked,
+);
+const canApply = computed(
+  () =>
+    editable.value &&
+    marks.value.staged &&
+    !marksStale.value &&
+    sameSourceOwner(marks.value.owner, markOwner.value) &&
+    validSourceRange(marks.value, sourceDuration.value),
 );
 const crossfadeBlocksSplit = computed(
   () =>
@@ -157,6 +251,8 @@ const crossfadeBlocksSplit = computed(
 const canSplit = computed(
   () =>
     editable.value &&
+    !marksStale.value &&
+    sameSourceOwner(marks.value.owner, markOwner.value) &&
     !props.asset?.state.locked &&
     !crossfadeBlocksSplit.value &&
     playhead.value > trimIn.value &&
@@ -177,11 +273,7 @@ const clipSnapshot = computed(() =>
     props.sourceEditsLocked,
   ]),
 );
-const frameStep = computed(() =>
-  props.asset?.frameRate && props.asset.frameRate > 0
-    ? 1 / props.asset.frameRate
-    : 0.01,
-);
+const frameStep = computed(() => sequenceTimeAt(1, sourceTimebase.value));
 // Numeric trims can create valid sub-frame ranges. Keep each handle's bounds
 // ordered even when that range is shorter than the usual 10ms separation.
 const trimSeparation = computed(() =>
@@ -536,9 +628,9 @@ function jobLabel(job: Job) {
 }
 function seek(value: number, pause = true) {
   if (!Number.isFinite(value) || !playable.value) return;
+  if (pause) stop();
   const next = clamp(value);
   if (player.value) {
-    if (pause) player.value.pause();
     try {
       player.value.currentTime = next;
     } catch {
@@ -550,7 +642,7 @@ function seek(value: number, pause = true) {
 function configurePlayback() {
   if (!player.value) return;
   // Precision navigation is in original source time, regardless of timeline speed.
-  player.value.playbackRate = 1;
+  player.value.playbackRate = shuttleTier.value > 0 ? shuttleTier.value : 1;
   player.value.volume = props.clip?.transform?.volume ?? 1;
 }
 function loaded() {
@@ -560,6 +652,10 @@ function loaded() {
 function updatedTime() {
   if (!player.value) return;
   playhead.value = player.value.currentTime;
+  if (shuttleTier.value > 0 && playhead.value >= sourceRange.value[1]) {
+    seek(sourceRange.value[1]);
+    return;
+  }
   if (
     follow.value &&
     playing.value &&
@@ -571,13 +667,155 @@ function updatedTime() {
       Math.max(0, sourceDuration.value - viewDuration.value),
     );
 }
+const sourceRange = computed(() =>
+  validSourceRange(marks.value, sourceDuration.value)
+    ? ([trimIn.value, trimOut.value] as const)
+    : ([
+        props.clip?.sourceIn ?? 0,
+        props.clip?.sourceOut ?? sourceDuration.value,
+      ] as const),
+);
+function stop() {
+  transportGeneration++;
+  if (reverseTimer !== undefined) clearInterval(reverseTimer);
+  reverseTimer = undefined;
+  shuttleTier.value = 0;
+  playing.value = false;
+  player.value?.pause();
+  if (player.value) player.value.playbackRate = 1;
+}
+function pause() {
+  stop();
+}
+function startPlayback() {
+  const media = player.value;
+  if (!media) return;
+  const stamp = transportGeneration;
+  const request = { media, generation: stamp };
+  pendingPlayback.add(request);
+  void media
+    .play()
+    .then(
+      () => {
+        if (
+          disposed ||
+          media !== player.value ||
+          document.hidden ||
+          !props.active ||
+          (stamp !== transportGeneration && shuttleTier.value <= 0)
+        )
+          media.pause();
+      },
+      (cause: unknown) => {
+        if (
+          disposed ||
+          stamp !== transportGeneration ||
+          media !== player.value ||
+          (typeof cause === "object" &&
+            cause !== null &&
+            "name" in cause &&
+            cause.name === "AbortError")
+        )
+          return;
+        stop();
+        playbackError.value = true;
+      },
+    )
+    .finally(() => pendingPlayback.delete(request));
+}
+function play() {
+  if (
+    disposed ||
+    !props.active ||
+    document.hidden ||
+    !player.value ||
+    !playable.value
+  )
+    return;
+  stop();
+  const [minimum, maximum] = sourceRange.value;
+  if (playhead.value < minimum || playhead.value >= maximum) seek(minimum);
+  shuttleTier.value = 1;
+  configurePlayback();
+  startPlayback();
+}
+function shuttle(direction: -1 | 1) {
+  if (disposed || !props.active || document.hidden || !playable.value) return;
+  const tier = nextShuttleTier(shuttleTier.value, direction);
+  stop();
+  if (tier === 0) return;
+  const [minimum, maximum] = sourceRange.value;
+  seek(clamp(playhead.value, minimum, maximum));
+  shuttleTier.value = tier;
+  if (tier > 0) {
+    if (playhead.value >= maximum) seek(minimum, false);
+    configurePlayback();
+    startPlayback();
+  } else {
+    playing.value = true;
+    reverseTimer = setInterval(() => {
+      const [minimum] = sourceRange.value;
+      const first = sequenceFrameAt(Math.max(0, minimum), sourceTimebase.value);
+      const frame = Math.max(
+        first,
+        sequenceFrameAt(playhead.value, sourceTimebase.value) + tier,
+      );
+      const next = Math.max(
+        minimum,
+        sequenceTimeAt(frame, sourceTimebase.value),
+      );
+      seek(next, false);
+      if (next <= minimum || frame === first) {
+        seek(minimum, false);
+        stop();
+      }
+    }, frameStep.value * 1000);
+  }
+}
+function step(direction: -1 | 1, seconds = false) {
+  if (!playable.value) return;
+  const [minimum, maximum] = sourceRange.value;
+  seek(
+    seconds
+      ? clamp(playhead.value + direction, minimum, maximum)
+      : clampFrameStep(
+          playhead.value,
+          direction,
+          1 / frameStep.value,
+          minimum,
+          maximum,
+        ),
+  );
+}
 function togglePlayback() {
-  if (!player.value || !playable.value) return;
-  if (!player.value.paused) player.value.pause();
-  else
-    void player.value.play().catch(() => {
-      playbackError.value = true;
-    });
+  if (playing.value || (player.value && !player.value.paused)) stop();
+  else play();
+}
+function mediaPlayed() {
+  if (!player.value || player.value.paused) return;
+  if (
+    disposed ||
+    !props.active ||
+    document.hidden ||
+    (pendingPlayback.size > 0 &&
+      ![...pendingPlayback].some(
+        (request) =>
+          request.media === player.value &&
+          request.generation === transportGeneration,
+      ))
+  ) {
+    player.value.pause();
+    return;
+  }
+  if (reverseTimer !== undefined) clearInterval(reverseTimer);
+  reverseTimer = undefined;
+  if (shuttleTier.value <= 0) shuttleTier.value = 1;
+  playing.value = true;
+  configurePlayback();
+}
+function mediaPaused() {
+  // A queued pause from changing shuttle direction must not stop a new play.
+  if (player.value?.paused && shuttleTier.value >= 0) stop();
 }
 function zoomBy(factor: number) {
   const center = playhead.value;
@@ -615,10 +853,10 @@ function snapped(value: number, minimum = 0, maximum = sourceDuration.value) {
   return result.time;
 }
 function startDrag(event: PointerEvent, side: "in" | "out") {
-  if (!editable.value || !surface.value) return;
+  if (!stageable.value || !surface.value) return;
   event.preventDefault();
   event.stopPropagation();
-  player.value?.pause();
+  stop();
   drag = { side, snapshot: clipSnapshot.value, pointerId: event.pointerId };
   surface.value.setPointerCapture(event.pointerId);
 }
@@ -645,28 +883,70 @@ function finishDrag(event: PointerEvent) {
   drag = null;
   if (surface.value?.hasPointerCapture(event.pointerId))
     surface.value.releasePointerCapture(event.pointerId);
-  if (captured && captured.snapshot === clipSnapshot.value) applyTrim();
+  if (captured && captured.snapshot !== clipSnapshot.value)
+    marks.value = markStale(marks.value);
 }
 function cancelDrag() {
   drag = null;
-  trimIn.value = props.clip?.sourceIn ?? 0;
-  trimOut.value = props.clip?.sourceOut ?? sourceDuration.value;
 }
-function applyTrim() {
-  if (!editable.value || !props.clip) return;
-  if (
-    !props.submit({
-      type: "trim",
-      clipId: props.clip.id,
-      sourceIn: Number(trimIn.value),
-      sourceOut: Number(trimOut.value),
-    })
-  )
-    cancelDrag();
+function resetRange() {
+  cancelDrag();
+  marks.value = reset(
+    markOwner.value,
+    props.clip?.sourceIn ?? 0,
+    props.clip?.sourceOut ?? sourceDuration.value,
+  );
+}
+function stageIn() {
+  if (stageable.value) trimIn.value = playhead.value;
+}
+function stageOut() {
+  if (stageable.value) trimOut.value = playhead.value;
+}
+async function applyRange() {
+  marks.value = reconcileSourceMarks(
+    marks.value,
+    markOwner.value,
+    props.clip?.sourceIn ?? 0,
+    props.clip?.sourceOut ?? sourceDuration.value,
+  );
+  if (!canApply.value || !props.clip) return;
+  const staged = marks.value;
+  const stamp = generation;
+  pendingMutations.value++;
+  stop();
+  try {
+    const result = await props.commit(
+      {
+        type: "trim",
+        clipId: props.clip.id,
+        sourceIn: staged.sourceIn,
+        sourceOut: staged.sourceOut,
+      },
+      editController.signal,
+    );
+    if (!current(stamp) || !sameSourceOwner(staged.owner, markOwner.value))
+      return;
+    if (result.status === "accepted")
+      marks.value = reset(
+        { ...markOwner.value, revision: result.revision },
+        staged.sourceIn,
+        staged.sourceOut,
+      );
+    else marks.value = markStale(staged);
+  } catch (cause) {
+    if (current(stamp)) {
+      marks.value = markStale(staged);
+      handleError(cause);
+    }
+  } finally {
+    pendingMutations.value--;
+  }
 }
 function moveTrim(event: KeyboardEvent, side: "in" | "out") {
   if (
-    !editable.value ||
+    !ownsSourceShortcut(event) ||
+    !stageable.value ||
     !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
   )
     return;
@@ -693,43 +973,55 @@ function moveTrim(event: KeyboardEvent, side: "in" | "out") {
           );
   if (side === "in") trimIn.value = next;
   else trimOut.value = next;
-  applyTrim();
 }
-function split() {
+async function split() {
   if (!canSplit.value || !props.clip) return;
-  props.submit({
-    type: "clip.split",
-    clipId: props.clip.id,
-    sourceTime: playhead.value,
-  });
+  pendingMutations.value++;
+  stop();
+  try {
+    await props.commit(
+      { type: "clip.split", clipId: props.clip.id, sourceTime: playhead.value },
+      editController.signal,
+    );
+  } finally {
+    pendingMutations.value--;
+  }
 }
+const addSourceMarker = addMarker;
 function keyboard(event: KeyboardEvent) {
   if (
     !props.active ||
-    event.defaultPrevented ||
     !playable.value ||
-    document.querySelector('[aria-modal="true"], dialog[open]')
+    !ownsSourceShortcut(event) ||
+    props.busy
   )
     return;
   const element = event.target as HTMLElement | null;
-  if (
-    element?.closest("input, textarea, select, [contenteditable='true']") ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.altKey
-  )
-    return;
   if (event.code === "Space" && !element?.closest("button")) {
     event.preventDefault();
     togglePlayback();
   }
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     event.preventDefault();
-    seek(
-      playhead.value +
-        (event.key === "ArrowRight" ? 1 : -1) *
-          (event.shiftKey ? 1 : frameStep.value),
-    );
+    step(event.key === "ArrowRight" ? 1 : -1, event.shiftKey);
+  }
+  const key = event.key.toLowerCase();
+  if (key === "j" || key === "l") {
+    event.preventDefault();
+    if (!event.repeat) shuttle(key === "j" ? -1 : 1);
+  }
+  if (key === "k") {
+    event.preventDefault();
+    stop();
+  }
+  if (key === "i" || key === "o") {
+    event.preventDefault();
+    if (key === "i") stageIn();
+    else stageOut();
+  }
+  if (event.key === "Home" || event.key === "End") {
+    event.preventDefault();
+    seek(event.key === "Home" ? trimIn.value : trimOut.value);
   }
   if (event.key.toLowerCase() === "b") {
     event.preventDefault();
@@ -737,7 +1029,7 @@ function keyboard(event: KeyboardEvent) {
   }
   if (event.key.toLowerCase() === "m") {
     event.preventDefault();
-    void addMarker();
+    void addSourceMarker();
   }
 }
 // Both editors stay mounted, so Story volume changes must update this player
@@ -760,9 +1052,38 @@ watch(
   clipSnapshot,
   () => {
     cancelDrag();
+    marks.value = reconcileSourceMarks(
+      marks.value,
+      markOwner.value,
+      props.clip?.sourceIn ?? 0,
+      props.clip?.sourceOut ?? sourceDuration.value,
+    );
     snapResult.value = undefined;
   },
   { immediate: true },
+);
+watch(
+  markOwner,
+  (owner, previous) => {
+    if (
+      !sameSourceOwner(owner, previous) ||
+      owner.revision !== previous.revision
+    )
+      transportGeneration++;
+    marks.value = reconcileSourceMarks(
+      marks.value,
+      owner,
+      props.clip?.sourceIn ?? 0,
+      props.clip?.sourceOut ?? sourceDuration.value,
+    );
+    if (!sameSourceOwner(owner, previous)) {
+      editController.abort();
+      editController = new AbortController();
+      stop();
+      cancelDrag();
+    }
+  },
+  { flush: "sync" },
 );
 watch(
   () => props.clip?.id,
@@ -791,8 +1112,9 @@ watch(
     snapResult.value = undefined;
     cancelDrag();
     discoveringJobs.value = false;
-    player.value?.pause();
+    stop();
     if (!previous || key !== previous[0]) {
+      resetRange();
       jobs.value = [];
       providers.value = null;
       error.value = null;
@@ -811,15 +1133,38 @@ watch(
   },
   { immediate: true },
 );
-onMounted(() => window.addEventListener("keydown", keyboard));
+function visibilityChanged() {
+  if (document.hidden) stop();
+}
+onMounted(() => {
+  window.addEventListener("keydown", keyboard);
+  document.addEventListener("visibilitychange", visibilityChanged);
+});
 onBeforeUnmount(() => {
   disposed = true;
   generation++;
   controller.abort();
+  editController.abort();
   haltPolling();
   cancelAnimationFrame(hoverFrame);
   window.removeEventListener("keydown", keyboard);
-  player.value?.pause();
+  document.removeEventListener("visibilitychange", visibilityChanged);
+  stop();
+});
+defineExpose({
+  flush,
+  hasPending,
+  play,
+  pause,
+  stop,
+  shuttle,
+  step,
+  stageIn,
+  stageOut,
+  applyRange,
+  addSourceMarker,
+  playhead,
+  marksStale,
 });
 </script>
 
@@ -841,6 +1186,21 @@ onBeforeUnmount(() => {
           </option>
         </select></label
       >
+      <TimecodeField
+        v-if="playable"
+        :frame="sequenceFrameAt(playhead, sourceTimebase)"
+        :timebase="sourceTimebase"
+        :label="
+          t(
+            sourceRateReliable
+              ? 'precision.sourceElapsed'
+              : 'precision.projectRateElapsed',
+          )
+        "
+        :min-frame="0"
+        :max-frame="sequenceFrameAt(sourceDuration, sourceTimebase)"
+        @seek="seek(sequenceTimeAt($event, sourceTimebase))"
+      />
     </div>
     <div v-if="!supported || !playable" class="editor-empty">
       <h3>{{ t("precision.emptyTitle") }}</h3>
@@ -881,8 +1241,9 @@ onBeforeUnmount(() => {
             :aria-label="t('precision.sourcePreview')"
             @loadedmetadata="loaded"
             @timeupdate="updatedTime"
-            @play="playing = true"
-            @pause="playing = false"
+            @play="mediaPlayed"
+            @pause="mediaPaused"
+            @ended="stop"
             @error="playbackError = true"
           />
           <audio
@@ -896,15 +1257,16 @@ onBeforeUnmount(() => {
             :aria-label="t('precision.sourcePreview')"
             @loadedmetadata="loaded"
             @timeupdate="updatedTime"
-            @play="playing = true"
-            @pause="playing = false"
+            @play="mediaPlayed"
+            @pause="mediaPaused"
+            @ended="stop"
             @error="playbackError = true"
           />
           <div class="precision-transport">
             <button
               class="editor-button"
               :aria-label="t('precision.frameBack')"
-              @click="seek(playhead - frameStep)"
+              @click="step(-1)"
             >
               −1</button
             ><button class="editor-button" @click="togglePlayback">
@@ -912,10 +1274,34 @@ onBeforeUnmount(() => {
             ><button
               class="editor-button"
               :aria-label="t('precision.frameForward')"
-              @click="seek(playhead + frameStep)"
+              @click="step(1)"
             >
               +1</button
-            ><span class="precision-time"
+            ><button
+              class="editor-button"
+              :aria-label="t('precision.shuttleBack')"
+              @click="shuttle(-1)"
+            >
+              J
+            </button>
+            <button
+              class="editor-button"
+              :aria-label="t('precision.stop')"
+              @click="stop"
+            >
+              K
+            </button>
+            <button
+              class="editor-button"
+              :aria-label="t('precision.shuttleForward')"
+              @click="shuttle(1)"
+            >
+              L
+            </button>
+            <span role="status">{{
+              t("precision.shuttleSpeed", { speed: shuttleTier })
+            }}</span>
+            <span class="precision-time"
               >{{ t("precision.sourceTime", { time: time(playhead) })
               }}<small>{{
                 clipTime === undefined
@@ -1340,7 +1726,7 @@ onBeforeUnmount(() => {
               :aria-valuemin="0"
               :aria-valuemax="trimOut"
               :aria-valuetext="time(trimIn)"
-              :disabled="!editable"
+              :disabled="!stageable"
               @pointerdown="startDrag($event, 'in')"
               @keydown="moveTrim($event, 'in')"
             />
@@ -1354,7 +1740,7 @@ onBeforeUnmount(() => {
               :aria-valuemin="trimIn"
               :aria-valuemax="sourceDuration"
               :aria-valuetext="time(trimOut)"
-              :disabled="!editable"
+              :disabled="!stageable"
               @pointerdown="startDrag($event, 'out')"
               @keydown="moveTrim($event, 'out')"
             />
@@ -1384,8 +1770,7 @@ onBeforeUnmount(() => {
                 min="0"
                 :max="trimOut"
                 step="0.001"
-                :disabled="!editable"
-                @change="applyTrim" /></label
+                :disabled="!stageable" /></label
             ><label class="editor-field"
               >{{ t("precision.trimOut")
               }}<input
@@ -1394,26 +1779,31 @@ onBeforeUnmount(() => {
                 :min="trimIn"
                 :max="sourceDuration"
                 step="0.001"
-                :disabled="!editable"
-                @change="applyTrim" /></label
+                :disabled="!stageable" /></label
             ><button
               class="editor-button"
-              :disabled="!editable || playhead >= trimOut"
-              @click="
-                trimIn = playhead;
-                applyTrim();
-              "
+              :disabled="!stageable"
+              @click="stageIn"
             >
               {{ t("precision.setIn") }}</button
             ><button
               class="editor-button"
-              :disabled="!editable || playhead <= trimIn"
-              @click="
-                trimOut = playhead;
-                applyTrim();
-              "
+              :disabled="!stageable"
+              @click="stageOut"
             >
               {{ t("precision.setOut") }}</button
+            ><button
+              class="editor-button"
+              :disabled="!canApply"
+              @click="applyRange"
+            >
+              {{ t("precision.applyRange") }}</button
+            ><button
+              class="editor-button"
+              :disabled="hasPending || !marks.staged"
+              @click="resetRange"
+            >
+              {{ t("precision.resetRange") }}</button
             ><button class="editor-button" :disabled="!canSplit" @click="split">
               {{ t("precision.split") }}</button
             ><button
@@ -1426,6 +1816,19 @@ onBeforeUnmount(() => {
               {{ t("precision.addMarker") }}
             </button>
           </div>
+          <p v-if="marksStale" class="editor-note" role="status">
+            {{ t("precision.marksStale") }}
+          </p>
+          <p
+            v-else-if="marks.staged && !validSourceRange(marks, sourceDuration)"
+            class="editor-note"
+            role="status"
+          >
+            {{ t("precision.rangeInvalid") }}
+          </p>
+          <p v-else-if="marks.staged" class="editor-note" role="status">
+            {{ t("precision.rangeStaged") }}
+          </p>
           <p v-if="!hasSourceDuration" class="editor-note">
             {{ t("precision.durationUnavailable") }}
           </p>
@@ -1464,3 +1867,12 @@ onBeforeUnmount(() => {
     </template>
   </section>
 </template>
+
+<style scoped>
+.precision-source-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--of-space-2) var(--of-space-4);
+}
+</style>

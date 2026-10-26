@@ -1,6 +1,8 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export * from "./models.js";
+export * from "./timebase.js";
+export * from "./sequence.js";
 export * from "./export-profile.js";
 export * from "./geometry.js";
 export * from "./presentation.js";

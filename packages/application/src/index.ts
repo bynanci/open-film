@@ -57,6 +57,8 @@ import { pathToFileURL } from "node:url";
 import {
   graphicSceneAssetIds,
   createProject,
+  resolveProjectTimebase,
+  projectSettingsWithTimebase,
   ApplicationError,
   errorInfo,
   migrateProject,
@@ -73,6 +75,7 @@ import {
   type FilmSettings,
   type FilmLook,
   type ProjectContentLocale,
+  type ProjectTimebaseV1,
   type TitleStyle,
   type ExportProfile,
   type AudioAutomation,
@@ -296,6 +299,13 @@ export interface StoryOptions {
 export interface CreateFilmOptions {
   projectContentLocale?: ProjectContentLocale;
   filmSettings?: Partial<FilmSettings>;
+  timebase?: ProjectTimebaseV1;
+}
+
+export interface ProjectTimebaseUpdateInput {
+  projectId: string;
+  baseRevision: string;
+  timebase: ProjectTimebaseV1;
 }
 
 export interface ExportReport {
@@ -495,6 +505,11 @@ export class OpenFilmApplication {
   ): Promise<OpenFilmApplication> {
     const path = resolve(directory);
     const project = createProject(title);
+    if (options.timebase !== undefined)
+      project.settings = projectSettingsWithTimebase(
+        project.settings,
+        options.timebase,
+      );
     if (options.projectContentLocale !== undefined)
       project.projectContentLocale = options.projectContentLocale;
     if (options.filmSettings !== undefined)
@@ -749,18 +764,21 @@ export class OpenFilmApplication {
     });
   }
 
-  private publishProject(next: OpenFilmProject): void {
+  private publishProject(
+    next: OpenFilmProject,
+    assertCurrent?: () => void,
+  ): void {
     const previous = this.project;
     try {
       this.project = next;
-      this.saveSync();
+      this.saveSync(assertCurrent);
     } catch (error) {
       this.project = previous;
       throw error;
     }
   }
 
-  private saveSync(): void {
+  private saveSync(assertCurrent?: () => void): void {
     if (this.persistenceConflict)
       throw new ApplicationError(
         "story.planConflict",
@@ -769,6 +787,7 @@ export class OpenFilmApplication {
       );
     try {
       const project = this.catalog.withProjectWrite(() => {
+        assertCurrent?.();
         let disk: unknown;
         try {
           disk = JSON.parse(
@@ -1496,7 +1515,77 @@ export class OpenFilmApplication {
     return result;
   }
 
-  updateFilm(options: CreateFilmOptions): OpenFilmProject {
+  updateProjectTimebase(input: ProjectTimebaseUpdateInput): OpenFilmProject {
+    const conflict = () =>
+      new ApplicationError(
+        "project.timebaseConflict",
+        "The project changed or its timed content requires rate conform. Reopen the film and review its timebase.",
+        409,
+      );
+    if (input.projectId !== this.project.id) throw conflict();
+    if (
+      typeof input.baseRevision !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(input.baseRevision)
+    )
+      throw new ApplicationError(
+        "request.invalid",
+        "baseRevision must be a SHA-256 revision.",
+      );
+    // Capture outside the publication transaction: version snapshots own their
+    // SQLite transaction. Fence catalog writers again under the publication lock.
+    const catalogRevision = this.catalog.logicalRevision();
+    let revision: string;
+    try {
+      revision = this.versions.currentRevision();
+    } catch (error) {
+      if (
+        error instanceof ApplicationError &&
+        error.code === "story.planConflict"
+      )
+        throw conflict();
+      throw error;
+    }
+    if (revision !== input.baseRevision) throw conflict();
+    const current = resolveProjectTimebase(this.project.settings);
+    const settings = projectSettingsWithTimebase(
+      this.project.settings,
+      input.timebase,
+    );
+    const rateChanged =
+      BigInt(current.rateNumerator) * BigInt(input.timebase.rateDenominator) !==
+      BigInt(input.timebase.rateNumerator) * BigInt(current.rateDenominator);
+    if (
+      rateChanged &&
+      this.project.timelines.some(
+        (composition) =>
+          composition.duration > 0 ||
+          composition.tracks.some((track) => track.clips.length > 0) ||
+          composition.captionTracks?.some((track) => track.cues.length > 0) ||
+          (composition.graphicScenes?.length ?? 0) > 0,
+      )
+    )
+      throw conflict();
+    const next = { ...this.project, settings };
+    validateProject(next);
+    try {
+      this.publishProject(next, () => {
+        if (this.catalog.logicalRevision() !== catalogRevision)
+          throw conflict();
+      });
+    } catch (error) {
+      if (
+        error instanceof ApplicationError &&
+        error.code === "story.planConflict"
+      )
+        throw conflict();
+      throw error;
+    }
+    return structuredClone(this.project);
+  }
+
+  updateFilm(
+    options: Pick<CreateFilmOptions, "projectContentLocale" | "filmSettings">,
+  ): OpenFilmProject {
     const previous = this.project;
     let next =
       options.projectContentLocale === undefined

@@ -61,6 +61,8 @@ export {
 } from "./titles.js";
 import {
   graphicSceneAssetIds,
+  projectFrameRate,
+  resolveClipSourceRange,
   resolveClipGeometry,
   resolveFilmLook,
   validateFilmLook,
@@ -76,6 +78,7 @@ import {
   type Clip,
   type Composition,
   type MediaAsset,
+  type ProjectTimebaseV1,
   type TitleStyle,
 } from "@openfilm/core";
 import {
@@ -92,6 +95,7 @@ export interface RenderSettings {
   width: number;
   height: number;
   frameRate: number;
+  timebase?: ProjectTimebaseV1;
 }
 /** An application-approved immutable plan, checked again at publication. */
 export interface RenderSnapshot {
@@ -305,7 +309,11 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
-    graphicFrameRanges(composition, settings);
+    const normalizedSettings = {
+      ...settings,
+      frameRate: projectFrameRate(settings),
+    };
+    graphicFrameRanges(composition, normalizedSettings);
     composition = structuredClone(composition);
     assets = structuredClone(assets);
     settings = { ...settings };
@@ -338,6 +346,7 @@ export class FFmpegRenderer {
       throw new Error(
         "Render plan changed after crop approval; review a new export frame.",
       );
+    settings = normalizedSettings;
     const exportProfile = options.exportProfile
       ? validateExportProfile(structuredClone(options.exportProfile))
       : undefined;
@@ -408,8 +417,8 @@ export class FFmpegRenderer {
     const resolvedLooks = new Map<Clip, FilmLook>();
     const looks: RenderLookEvidence[] = [];
     finite(composition.duration, "Composition duration", true);
-    for (const [key, value] of Object.entries(settings))
-      finite(value, key, true);
+    for (const key of ["width", "height", "frameRate"] as const)
+      finite(settings[key], key, true);
     if (
       !Number.isInteger(settings.width) ||
       !Number.isInteger(settings.height) ||
@@ -420,7 +429,7 @@ export class FFmpegRenderer {
     const outputFrameRate = Number(
       number(exportProfile?.frameRate ?? settings.frameRate),
     );
-    const renderFrameRate = Number(number(settings.frameRate));
+    const renderFrameRate = settings.frameRate;
     const outputDuration = audioOnly
       ? composition.duration
       : frameAlignedDuration(composition.duration, outputFrameRate);
@@ -714,17 +723,10 @@ export class FFmpegRenderer {
             continue;
           const issue = previewIssue(asset);
           if (issue) throw new Error(`${asset.name}: ${issue}`);
-          const sourceIn = clip.sourceIn ?? 0;
-          const speed = clip.transform?.speed ?? 1;
-          const sourceOut =
-            clip.sourceOut ??
-            (asset.duration
-              ? Math.min(asset.duration, sourceIn + duration * speed)
-              : sourceIn + duration * speed);
-          if (sourceOut <= sourceIn)
-            throw new Error(`Clip ${clip.id} has an empty source range`);
-          if (asset.duration && sourceOut > asset.duration + 0.05)
-            throw new Error(`Clip ${clip.id} trim exceeds the source duration`);
+          const { sourceIn, sourceOut, speed } = resolveClipSourceRange(
+            clip,
+            asset,
+          );
           const visual =
             !audioOnly &&
             track.type !== "audio" &&
