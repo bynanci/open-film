@@ -192,8 +192,7 @@ for (const locale of locales) {
       .locator('.create-film-form input[name="title"]')
       .fill(authoredTitle);
     await page
-      .locator(".create-film-form select")
-      .first()
+      .locator('.create-film-form select:has(option[value="proposal-film"])')
       .selectOption("proposal-film");
     await screenshot(page, info, `${locale}-create`);
     await page.locator(".settings-toggle").click();

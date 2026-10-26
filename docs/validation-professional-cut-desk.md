@@ -122,13 +122,52 @@ End and one renamed helper reference) were corrected before GREEN.
 
 ## Complete gates
 
-Pending exact committed-head execution. Commands will run serially in this order:
-`pnpm format:check`, `pnpm test:i18n`, `pnpm lint`, `pnpm typecheck`,
-`OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test`,
-`pnpm build`, `pnpm test:e2e`,
-`OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test:interchange`,
-`pnpm test:native`. Failure evidence is retained; native prerequisites are not
-replaced by skipped assertions.
+The first full ordered run used clean head `fea1743d5915152907ae0d8853766c5792081381`.
+Every command below began and ended at that exact SHA with a clean worktree.
+These are executed results, including the failed gates:
+
+| Command                                                                                          | Exit | Seconds  |
+| ------------------------------------------------------------------------------------------------ | ---- | -------- |
+| `pnpm format:check`                                                                              | 0    | 15.062   |
+| `pnpm test:i18n`                                                                                 | 0    | 0.444    |
+| `pnpm lint`                                                                                      | 0    | 12.439   |
+| `pnpm typecheck`                                                                                 | 0    | 13.822   |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test`             | 0    | 375.296  |
+| `pnpm build`                                                                                     | 0    | 1.335    |
+| `pnpm test:e2e`                                                                                  | 1    | 1624.532 |
+| `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test:interchange` | 0    | 1.943    |
+| `pnpm test:native`                                                                               | 1    | 0.37     |
+
+Unit/application/render validation: 294 files and 4,224 tests passed. Full
+Chromium: 256 passed, five failed. Four global-visual locale cases timed out at
+the old ordinal template selector: the new timebase select is correctly first.
+The compatibility correction targets the select containing
+`option[value="proposal-film"]` and retains every visual/axe/tolerance assertion.
+The Proposal Film case reached the official parser but system Python lacked
+`opentimelineio`; the existing verified private interpreter is used explicitly
+for final E2E: `OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm test:e2e`.
+No production change, assertion relaxation or system Python installation resolves
+either harness/prerequisite failure.
+
+After the selector correction, the focused command
+`OPENFILM_OTIO_PYTHON=/tmp/openfilm-professional-cut-desk-otio/bin/python pnpm exec playwright test tests/e2e/global-visual.spec.ts tests/e2e/proposal.spec.ts`
+passed all six tests in 57.7 seconds, including all four visual locales and the
+official-parser Proposal workflow.
+
+Interchange passed 18 parser tests and official OpenTimelineIO 0.18.1 read/write/read,
+source hashes/bounds, gaps/still/audio/multiple-track and relocation checks.
+Actual Resolve import remains manual. Native was actually invoked and exited 1:
+`sh: 1: cargo: not found`. Cargo/desktop compilation is an unavailable prerequisite,
+not a passing native gate. Build exited 0 with the existing >500 kB Vite chunk
+warning; browser startup reported the existing NO_COLOR/FORCE_COLOR warning.
+
+The evidence commit includes the small template-selector compatibility correction
+and this first-run record. The complete nine-gate sequence must then repeat at
+its clean head, with the same verified OTIO interpreter for test, E2E and
+interchange. That successor cannot contain its own SHA or later results; the
+delivery report records the final before/after pins and actual outcomes without
+rewriting first-run failure evidence. Native and physical workstation gates remain
+explicitly open.
 
 ## Scope, privacy and manual gates
 

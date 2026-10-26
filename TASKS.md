@@ -9,7 +9,9 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Shared Composition resolver, continuous Record transport and existing Source ownership.
 - [x] Revision-bound Source I/O, acknowledged atomic Apply/split and session Undo/Redo.
 - [x] Source-only markers, target-aware keyboard guards and operation-specific locks.
-- [ ] Complete exact-head FFmpeg/browser/accessibility and repository gate record.
+- [x] Produce synthetic FFmpeg/browser/accessibility evidence and an exact-head gate record;
+      retain first-run failures and rerun the complete sequence after compatibility corrections.
+- [ ] Native Rust/desktop gate on an equipped platform; local invocation is blocked by missing Cargo.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
