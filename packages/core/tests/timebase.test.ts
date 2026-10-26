@@ -67,6 +67,21 @@ describe("project timebase", () => {
     expect(timebaseKey(df)).toBe(timebaseKey({ ...df }));
   });
 
+  it.each([
+    [1.00000125, 800001, 800000],
+    [0.00000125, 1, 800000],
+  ])(
+    "preserves the exact reduced legacy ratio for %s",
+    (rate, numerator, denominator) => {
+      expect(resolveProjectTimebase(settings(rate))).toEqual({
+        version: 1,
+        rateNumerator: numerator,
+        rateDenominator: denominator,
+        dropFrame: false,
+      });
+    },
+  );
+
   it("roundtrips 29.97 and 59.94 drop-frame boundaries", () => {
     const cases: [ProjectTimebaseV1, number, string][] = [
       [df, 0, "00:00:00;00"],

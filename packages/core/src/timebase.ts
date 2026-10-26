@@ -69,6 +69,9 @@ function legacyTimebase(rate: number): ProjectTimebaseV1 {
   let denominator = 1n;
   if (exponent >= 0) numerator *= 10n ** BigInt(exponent);
   else denominator = 10n ** BigInt(-exponent);
+  const exactDivisor = gcd(numerator, denominator);
+  numerator /= exactDivisor;
+  denominator /= exactDivisor;
   const limit = BigInt(MAX_DENOMINATOR);
   if (denominator > limit) {
     numerator = (numerator * limit + denominator / 2n) / denominator;
