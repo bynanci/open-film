@@ -408,8 +408,8 @@ export class FFmpegRenderer {
     const resolvedLooks = new Map<Clip, FilmLook>();
     const looks: RenderLookEvidence[] = [];
     finite(composition.duration, "Composition duration", true);
-    for (const [key, value] of Object.entries(settings))
-      finite(value, key, true);
+    for (const key of ["width", "height", "frameRate"] as const)
+      finite(settings[key], key, true);
     if (
       !Number.isInteger(settings.width) ||
       !Number.isInteger(settings.height) ||

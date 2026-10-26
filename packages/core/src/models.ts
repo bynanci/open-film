@@ -55,10 +55,19 @@ export interface MediaLibrary {
   name: string;
 }
 
+export interface ProjectTimebaseV1 {
+  version: 1;
+  rateNumerator: number;
+  rateDenominator: number;
+  dropFrame: boolean;
+}
+
 export interface ProjectSettings {
   width: number;
   height: number;
   frameRate: number;
+  /** Absent in legacy schema-1 projects; derive without persisting on read. */
+  timebase?: ProjectTimebaseV1;
 }
 
 /** Render-only output intent; never persisted in project settings or edit history. */
@@ -486,6 +495,16 @@ export function createProject(title: string): OpenFilmProject {
     mediaLibraries: [],
     stories: [],
     timelines: [],
-    settings: { width: 1920, height: 1080, frameRate: 30 },
+    settings: {
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+      timebase: {
+        version: 1,
+        rateNumerator: 30,
+        rateDenominator: 1,
+        dropFrame: false,
+      },
+    },
   };
 }

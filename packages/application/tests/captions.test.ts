@@ -1726,10 +1726,14 @@ describe("caption preparation resource and output contracts", () => {
       expect(snapshot).toMatchObject({ frameRate: 30, outputDuration: 20 });
       const projectPath = join(test.directory, "project.json");
       const durableBefore = await fs.readFile(projectPath, "utf8");
-      if (location === "memory") test.app.project.settings.frameRate = 24;
+      const changedSettings = core.projectSettingsWithTimebase(
+        test.app.project.settings,
+        { version: 1, rateNumerator: 24, rateDenominator: 1, dropFrame: false },
+      );
+      if (location === "memory") test.app.project.settings = changedSettings;
       else {
         const durable = JSON.parse(durableBefore);
-        durable.settings.frameRate = 24;
+        durable.settings = changedSettings;
         await fs.writeFile(projectPath, JSON.stringify(durable));
       }
       expect(test.input().baseRevision).toBe(snapshot.compositionRevision);

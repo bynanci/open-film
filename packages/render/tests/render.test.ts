@@ -7,6 +7,7 @@ import {
   resolvePreviewClipGeometry,
   type Composition,
   type MediaAsset,
+  type ProjectSettings,
 } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import { FFmpegRenderer } from "../src/index";
@@ -40,6 +41,39 @@ async function frame(path: string, time: number): Promise<number> {
 }
 
 describe("real FFmpeg preview renderer", () => {
+  it("renders project settings with an explicit optional timebase", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "openfilm-render-timebase-"),
+    );
+    directories.push(directory);
+    const output = join(directory, "timebase.mp4");
+    const settings: ProjectSettings = {
+      width: 64,
+      height: 36,
+      frameRate: 30,
+      timebase: {
+        version: 1,
+        rateNumerator: 30,
+        rateDenominator: 1,
+        dropFrame: false,
+      },
+    };
+    await new FFmpegRenderer().render(
+      { id: "timebase", storyId: "story", duration: 0.2, tracks: [] },
+      [],
+      output,
+      settings,
+    );
+    const rendered = await inspectMedia({
+      path: output,
+      uri: pathToFileURL(output).href,
+      name: "timebase.mp4",
+    });
+    expect(rendered.dimensions).toEqual({ width: 64, height: 36 });
+    expect(rendered.frameRate).toBe(30);
+    expect(rendered.duration).toBeCloseTo(0.2, 2);
+  });
+
   it.each([
     { frameRate: 30, timelineStart: 0.01, expectedFrame: 0 },
     { frameRate: 30, timelineStart: 0.02, expectedFrame: 1 },
