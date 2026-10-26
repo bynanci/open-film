@@ -1388,7 +1388,7 @@ test("missing source duration preserves playback but disables duration-dependent
   );
 });
 
-test("source lock on video and audio overlays disables Precision mutations while playback and analysis remain available, then unlocking restores trims", async ({
+test("source and clip locks allow transient button and keyboard Source marks while blocking Apply and split, then unlocking restores trims", async ({
   page,
   request,
 }) => {
@@ -1490,7 +1490,7 @@ test("source lock on video and audio overlays disables Precision mutations while
       page.getByLabel(text(locale, "precision.snap"), { exact: true }),
     ).toBeEnabled();
   };
-  const expectMutationControlsDisabled = async () => {
+  const expectProtectedApplyAndSplit = async () => {
     for (const edge of ["trimIn", "trimOut"]) {
       for (const role of ["spinbutton", "slider"] as const)
         await expect(
@@ -1498,9 +1498,16 @@ test("source lock on video and audio overlays disables Precision mutations while
             name: text(locale, `precision.${edge}`),
             exact: true,
           }),
-        ).toBeDisabled();
+        ).toBeEnabled();
     }
-    for (const action of ["setIn", "setOut", "split"])
+    for (const action of ["setIn", "setOut"])
+      await expect(
+        page.getByRole("button", {
+          name: text(locale, `precision.${action}`),
+          exact: true,
+        }),
+      ).toBeEnabled();
+    for (const action of ["applyRange", "split"])
       await expect(
         page.getByRole("button", {
           name: text(locale, `precision.${action}`),
@@ -1509,10 +1516,55 @@ test("source lock on video and audio overlays disables Precision mutations while
       ).toBeDisabled();
   };
   const before = await composition(request);
+  const editWrites: string[] = [];
+  page.on("request", (sent) => {
+    if (
+      sent.method() === "POST" &&
+      new URL(sent.url()).pathname === `/api/compositions/${before.id}/edit`
+    )
+      editWrites.push(sent.url());
+  });
+  const assertTransientStaging = async () => {
+    await preview.evaluate((node) => {
+      const media = node as HTMLMediaElement;
+      media.pause();
+      media.currentTime = 1;
+      media.dispatchEvent(new Event("timeupdate"));
+    });
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.setIn"),
+        exact: true,
+      })
+      .click();
+    await expect(trimIn).toHaveValue("1");
+    await preview.evaluate((node) => {
+      const media = node as HTMLMediaElement;
+      media.currentTime = 2;
+      media.dispatchEvent(new Event("timeupdate"));
+    });
+    await waveform.press("o");
+    await expect(
+      page.getByRole("spinbutton", {
+        name: text(locale, "precision.trimOut"),
+        exact: true,
+      }),
+    ).toHaveValue("2");
+    await expectProtectedApplyAndSplit();
+    expect(await composition(request)).toEqual(before);
+    expect(editWrites).toEqual([]);
+    await page
+      .getByRole("button", {
+        name: text(locale, "precision.resetRange"),
+        exact: true,
+      })
+      .click();
+  };
   for (const { clipId, asset } of overlays) {
     expect(clipById(before, clipId).locked).not.toBe(true);
     await selectClip(clipId);
-    await expectMutationControlsDisabled();
+    await expectProtectedApplyAndSplit();
+    await assertTransientStaging();
     await expect(sourceNotice).toBeVisible();
     await expect(sourceNotice).toContainText("Library");
     const bounds = (await waveform.boundingBox())!;
@@ -1568,7 +1620,8 @@ test("source lock on video and audio overlays disables Precision mutations while
   expect(await composition(request)).toEqual(before);
   await expect(page.locator(".editor-message.error")).toHaveCount(0);
   await selectClip("locked-primary-clip");
-  await expectMutationControlsDisabled();
+  await expectProtectedApplyAndSplit();
+  await assertTransientStaging();
   await expect(
     page.getByText(text(locale, "precision.locked"), { exact: true }),
   ).toBeVisible();
@@ -1594,7 +1647,7 @@ test("source lock on video and audio overlays disables Precision mutations while
       .toBe(0.75);
   }
   await selectClip("locked-primary-clip");
-  await expectMutationControlsDisabled();
+  await expectProtectedApplyAndSplit();
   expect(clipById(await composition(request), "locked-primary-clip")).toEqual(
     clipById(before, "locked-primary-clip"),
   );

@@ -216,16 +216,18 @@ const sourceDuration = computed(() => {
 const playable = computed(
   () => supported.value && !props.unavailable && sourceDuration.value > 0,
 );
-const editable = computed(
+// Marks are transient review state; locks protect accepted commands, not staging.
+const stageable = computed(
   () =>
     props.active &&
     playable.value &&
     hasSourceDuration.value &&
     sourceVerified.value &&
-    !props.clip?.locked &&
-    !props.sourceEditsLocked &&
     !hasPending.value &&
     !props.busy,
+);
+const editable = computed(
+  () => stageable.value && !props.clip?.locked && !props.sourceEditsLocked,
 );
 const canApply = computed(
   () =>
@@ -809,7 +811,7 @@ function snapped(value: number, minimum = 0, maximum = sourceDuration.value) {
   return result.time;
 }
 function startDrag(event: PointerEvent, side: "in" | "out") {
-  if (!editable.value || !surface.value) return;
+  if (!stageable.value || !surface.value) return;
   event.preventDefault();
   event.stopPropagation();
   stop();
@@ -854,10 +856,10 @@ function resetRange() {
   );
 }
 function stageIn() {
-  if (editable.value) trimIn.value = playhead.value;
+  if (stageable.value) trimIn.value = playhead.value;
 }
 function stageOut() {
-  if (editable.value) trimOut.value = playhead.value;
+  if (stageable.value) trimOut.value = playhead.value;
 }
 async function applyRange() {
   marks.value = reconcileSourceMarks(
@@ -902,7 +904,7 @@ async function applyRange() {
 function moveTrim(event: KeyboardEvent, side: "in" | "out") {
   if (
     !ownsSourceShortcut(event) ||
-    !editable.value ||
+    !stageable.value ||
     !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
   )
     return;
@@ -1675,7 +1677,7 @@ defineExpose({
               :aria-valuemin="0"
               :aria-valuemax="trimOut"
               :aria-valuetext="time(trimIn)"
-              :disabled="!editable"
+              :disabled="!stageable"
               @pointerdown="startDrag($event, 'in')"
               @keydown="moveTrim($event, 'in')"
             />
@@ -1689,7 +1691,7 @@ defineExpose({
               :aria-valuemin="trimIn"
               :aria-valuemax="sourceDuration"
               :aria-valuetext="time(trimOut)"
-              :disabled="!editable"
+              :disabled="!stageable"
               @pointerdown="startDrag($event, 'out')"
               @keydown="moveTrim($event, 'out')"
             />
@@ -1719,7 +1721,7 @@ defineExpose({
                 min="0"
                 :max="trimOut"
                 step="0.001"
-                :disabled="!editable" /></label
+                :disabled="!stageable" /></label
             ><label class="editor-field"
               >{{ t("precision.trimOut")
               }}<input
@@ -1728,16 +1730,16 @@ defineExpose({
                 :min="trimIn"
                 :max="sourceDuration"
                 step="0.001"
-                :disabled="!editable" /></label
+                :disabled="!stageable" /></label
             ><button
               class="editor-button"
-              :disabled="!editable"
+              :disabled="!stageable"
               @click="stageIn"
             >
               {{ t("precision.setIn") }}</button
             ><button
               class="editor-button"
-              :disabled="!editable"
+              :disabled="!stageable"
               @click="stageOut"
             >
               {{ t("precision.setOut") }}</button
