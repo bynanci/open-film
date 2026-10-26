@@ -14,6 +14,7 @@ import type {
   OpenFilmError,
   FilmSettings,
   ProjectContentLocale,
+  ProjectTimebaseV1,
   TranscriptDocument,
   TranscriptSegment,
   WaveformData,
@@ -53,6 +54,7 @@ import type {
   ProjectVersionCreateInput,
   ProjectVersionRestoreInput,
   ProjectVersionRestoreResult,
+  ProjectTimebaseUpdateInput,
   CollectMediaPlan,
   CollectPlanInput,
   CollectMediaCreateResult,
@@ -283,6 +285,7 @@ export interface CreateFilmInput {
   root?: string;
   projectContentLocale?: ProjectContentLocale;
   filmSettings?: Partial<FilmSettings>;
+  timebase?: ProjectTimebaseV1;
 }
 export interface UploadProgress {
   completed: number;
@@ -914,6 +917,29 @@ export const api = {
     }>("/projects/availability", { paths }),
   createProject: (input: CreateFilmInput) =>
     post<{ project: OpenFilmProject; path: string }>("/project/create", input),
+  updateProjectTimebase: async (
+    input: ProjectTimebaseUpdateInput,
+    signal?: AbortSignal,
+  ): Promise<{ project: OpenFilmProject; path: string }> => {
+    signal?.throwIfAborted();
+    const connection = prefix;
+    const result = await request<{ project: OpenFilmProject; path: string }>(
+      "/project/timebase",
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+        ...(signal ? { signal } : {}),
+      },
+    );
+    signal?.throwIfAborted();
+    if (prefix !== connection)
+      throw new DOMException("The local connection changed.", "AbortError");
+    if (result.project.id !== input.projectId)
+      throw new ApiError("The film belongs to another project.", 409, {
+        code: "project.timebaseConflict",
+      });
+    return result;
+  },
   updateProject: (input: {
     projectContentLocale?: ProjectContentLocale;
     filmSettings?: Partial<FilmSettings>;

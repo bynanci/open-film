@@ -58,6 +58,7 @@ import {
   validateProject,
   validateFilmLook,
   validateExportProfile,
+  timebaseRate,
   migrateProject,
   validateStory,
   validateTranscriptSegmentId,
@@ -74,6 +75,7 @@ import {
   type ReviewSuggestion,
   type ProjectVersionDiff,
   type ProjectVersionRecord,
+  type ProjectTimebaseV1,
 } from "@openfilm/core";
 import { previewIssue, isSupportedMediaFile } from "@openfilm/media";
 import { resolveFilmSettings, preserveUserBeatText } from "@openfilm/story";
@@ -184,6 +186,32 @@ function filePath(data: Body, key: string): string {
     throw new HttpError(400, `${key} is required.`);
   return value;
 }
+function projectTimebase(value: unknown): ProjectTimebaseV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new HttpError(400, "timebase must be an object.");
+  keys(value as Body, [
+    "version",
+    "rateNumerator",
+    "rateDenominator",
+    "dropFrame",
+  ]);
+  const timebase = value as ProjectTimebaseV1;
+  try {
+    timebaseRate(timebase);
+  } catch (error) {
+    throw new HttpError(
+      400,
+      error instanceof Error ? error.message : "Invalid timebase.",
+    );
+  }
+  return {
+    version: timebase.version,
+    rateNumerator: timebase.rateNumerator,
+    rateDenominator: timebase.rateDenominator,
+    dropFrame: timebase.dropFrame,
+  };
+}
+
 function filmOptions(data: Body): CreateFilmOptions {
   if (
     data.projectContentLocale !== undefined &&
@@ -198,6 +226,9 @@ function filmOptions(data: Body): CreateFilmOptions {
   )
     throw new HttpError(400, "Film settings must be an object.");
   return {
+    ...(data.timebase === undefined
+      ? {}
+      : { timebase: projectTimebase(data.timebase) }),
     ...(data.projectContentLocale === undefined
       ? {}
       : {
@@ -2376,6 +2407,17 @@ export async function startServer(options: ServerOptions = {}) {
             decodeURIComponent(markers[2]),
           );
           json(response, 200, { ok: true });
+          return;
+        }
+        if (method === "PATCH" && route === "/api/project/timebase") {
+          const data = await body(request);
+          keys(data, ["projectId", "baseRevision", "timebase"]);
+          const project = application.updateProjectTimebase({
+            projectId: text(data, "projectId"),
+            baseRevision: text(data, "baseRevision"),
+            timebase: projectTimebase(data.timebase),
+          });
+          json(response, 200, { project, path: application.directory });
           return;
         }
         if (method === "PATCH" && route === "/api/project") {

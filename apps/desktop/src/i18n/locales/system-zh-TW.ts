@@ -23,6 +23,8 @@ export default {
       closing: "OpenFilm 正在關閉工作區。請等候完成後再試一次。",
     },
     project: {
+      timebaseConflict:
+        "這支影片已變更，或其時間軸內容需要幀率轉換。請重新開啟影片並檢查時基設定。",
       required: "請先建立或開啟影片。",
       unavailable: "無法開啟這支影片。請重新連接硬碟，或選擇目前的儲存位置。",
       destinationInvalid:
