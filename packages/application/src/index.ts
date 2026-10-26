@@ -764,18 +764,21 @@ export class OpenFilmApplication {
     });
   }
 
-  private publishProject(next: OpenFilmProject): void {
+  private publishProject(
+    next: OpenFilmProject,
+    assertCurrent?: () => void,
+  ): void {
     const previous = this.project;
     try {
       this.project = next;
-      this.saveSync();
+      this.saveSync(assertCurrent);
     } catch (error) {
       this.project = previous;
       throw error;
     }
   }
 
-  private saveSync(): void {
+  private saveSync(assertCurrent?: () => void): void {
     if (this.persistenceConflict)
       throw new ApplicationError(
         "story.planConflict",
@@ -784,6 +787,7 @@ export class OpenFilmApplication {
       );
     try {
       const project = this.catalog.withProjectWrite(() => {
+        assertCurrent?.();
         let disk: unknown;
         try {
           disk = JSON.parse(
@@ -1563,19 +1567,19 @@ export class OpenFilmApplication {
       throw conflict();
     const next = { ...this.project, settings };
     validateProject(next);
-    this.catalog.withProjectWrite(() => {
-      if (this.catalog.logicalRevision() !== catalogRevision) throw conflict();
-      try {
-        this.publishProject(next);
-      } catch (error) {
-        if (
-          error instanceof ApplicationError &&
-          error.code === "story.planConflict"
-        )
+    try {
+      this.publishProject(next, () => {
+        if (this.catalog.logicalRevision() !== catalogRevision)
           throw conflict();
-        throw error;
-      }
-    });
+      });
+    } catch (error) {
+      if (
+        error instanceof ApplicationError &&
+        error.code === "story.planConflict"
+      )
+        throw conflict();
+      throw error;
+    }
     return structuredClone(this.project);
   }
 

@@ -119,6 +119,56 @@ async function timebaseFixture(timebase?: ProjectTimebaseV1) {
 }
 
 describe("safe project timebase mutations", () => {
+  it.each(["save", "close"] as const)(
+    "retains the previous state and fails closed on later %s after the publication COMMIT fails",
+    async (followup) => {
+      const { app, projectPath } = await timebaseFixture(ntsc);
+      const baseRevision = app.versions.currentRevision();
+      const previousReference = app.project;
+      const previous = structuredClone(app.project);
+      const previousBaseline = Reflect.get(app, "persistedProject");
+      const previousBytes = await readFile(projectPath, "utf8");
+      const database = Reflect.get(app.catalog, "database") as DatabaseSync;
+      const exec = database.exec.bind(database);
+      const commitFailure = new Error(
+        "Injected final publication COMMIT failure",
+      );
+      const fault = vi.spyOn(database, "exec").mockImplementation((sql) => {
+        if (sql === "COMMIT") throw commitFailure;
+        return exec(sql);
+      });
+
+      expect(() =>
+        app.updateProjectTimebase({
+          projectId: app.project.id,
+          baseRevision,
+          timebase: film24,
+        }),
+      ).toThrow(commitFailure);
+      fault.mockRestore();
+
+      // The manifest was published before COMMIT failed. Retaining the old
+      // baseline must stop cleanup from accepting or overwriting those bytes.
+      const publishedBytes = await readFile(projectPath, "utf8");
+      expect(publishedBytes).not.toBe(previousBytes);
+      expect(JSON.parse(publishedBytes).settings.frameRate).toBe(24);
+      expect.soft(app.project).toBe(previousReference);
+      expect.soft(app.project).toEqual(previous);
+      expect.soft(Reflect.get(app, "persistedProject")).toBe(previousBaseline);
+      if (followup === "save")
+        await expect(app.save()).rejects.toMatchObject({
+          code: "story.planConflict",
+          status: 409,
+        });
+      else
+        expect(() => app.close({ requireSave: true })).toThrowError(
+          expect.objectContaining({ code: "story.planConflict", status: 409 }),
+        );
+      expect(app.project).toBe(previousReference);
+      expect(await readFile(projectPath, "utf8")).toBe(publishedBytes);
+    },
+  );
+
   it("creates and persists the exact rational and projected frame rate", async () => {
     const { app, projectPath } = await timebaseFixture(ntsc);
     expect(app.project.settings).toMatchObject({
