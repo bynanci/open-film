@@ -100,11 +100,19 @@ export function useRecordTransport(
     pending = undefined;
     anchor = undefined;
   }
-  function stop() {
-    if (disposed) return;
+  function current(stamp: number) {
+    return !disposed && stamp === generation;
+  }
+  // Disposal also uses this path after closing the public-command fence.
+  function halt() {
     invalidate();
+    const stamp = generation;
     playing.value = false;
-    shuttleRate.value = 0;
+    if (stamp === generation) shuttleRate.value = 0;
+    return stamp;
+  }
+  function stop() {
+    if (!disposed) halt();
   }
   function eligible() {
     return !disposed && toValue(options.active) && !getHidden();
@@ -145,6 +153,7 @@ export function useRecordTransport(
     });
   }
   function reanchor() {
+    if (disposed) return;
     invalidate();
     if (!eligible()) {
       stop();
@@ -159,12 +168,20 @@ export function useRecordTransport(
     anchor = { frame: frame.value, now: now() };
     schedule();
   }
+  function start(rate: number) {
+    invalidate();
+    const stamp = generation;
+    // Publish the direction before play intent so consumers see its rate.
+    shuttleRate.value = rate;
+    if (!current(stamp)) return;
+    playing.value = true;
+    if (!current(stamp)) return;
+    reanchor();
+  }
   function play() {
     if (!eligible()) return;
     if (playing.value && shuttleRate.value === 1) return;
-    playing.value = true;
-    shuttleRate.value = 1;
-    reanchor();
+    start(1);
   }
   function shuttle(direction: -1 | 1) {
     if (!eligible()) return;
@@ -173,18 +190,18 @@ export function useRecordTransport(
       stop();
       return;
     }
-    playing.value = true;
-    shuttleRate.value = tier;
-    reanchor();
+    start(tier);
   }
   function seek(value: number) {
     if (disposed || !Number.isSafeInteger(value)) return;
+    const stamp = generation;
     frame.value = Math.max(0, Math.min(bounds.value.final, value));
-    reanchor();
+    if (current(stamp)) reanchor();
   }
   function step(direction: -1 | 1, seconds = false) {
     if (disposed) return;
-    stop();
+    const stamp = halt();
+    if (!current(stamp)) return;
     const amount = seconds ? nominalFrameRate(bounds.value.timebase) : 1;
     const distance =
       direction > 0 ? bounds.value.final - frame.value : frame.value;
@@ -205,9 +222,11 @@ export function useRecordTransport(
     watch(
       () => toValue(options.ownerKey),
       () => {
-        stop();
+        if (disposed) return;
+        const stamp = halt();
+        if (!current(stamp)) return;
         frame.value = 0;
-        buffering.value = false;
+        if (current(stamp)) buffering.value = false;
       },
       { flush: "sync" },
     ),
@@ -221,7 +240,9 @@ export function useRecordTransport(
     watch(
       bounds,
       () => {
-        stop();
+        if (disposed) return;
+        const stamp = halt();
+        if (!current(stamp)) return;
         frame.value = Math.min(frame.value, bounds.value.final);
       },
       { flush: "sync" },
@@ -233,10 +254,11 @@ export function useRecordTransport(
   });
   function dispose() {
     if (disposed) return;
-    stop();
+    // Close the fence before any reactive publication can reenter commands.
     disposed = true;
     for (const unwatch of stopWatchers) unwatch();
     unsubscribeVisibility();
+    halt();
   }
   if (getCurrentScope()) onScopeDispose(dispose);
   return {

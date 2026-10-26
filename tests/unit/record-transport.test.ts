@@ -16,9 +16,9 @@ const { shallowRef, effectScope, watch } = createRequire(
 )("vue") as {
   shallowRef: <T>(value: T) => { value: T };
   effectScope: () => { run: (fn: () => void) => void; stop: () => void };
-  watch: (
-    source: { readonly value: number },
-    callback: (value: number) => void,
+  watch: <T>(
+    source: { readonly value: T },
+    callback: (value: T) => void,
     options: { flush: "sync" },
   ) => () => void;
 };
@@ -629,6 +629,91 @@ describe("Record transport cancellation and ownership", () => {
     expect(clock.listeners.size).toBe(0);
     expect(clock.unsubscribeCalls).toBe(1);
   });
+
+  it.each(["play", "shuttle"] as const)(
+    "%s cannot publish rate or schedule after a playing=true watcher disposes",
+    (command) => {
+      const { clock, transport } = setup();
+      transport.seek(30);
+      const unwatch = watch(
+        transport.playing,
+        (playing) => {
+          if (playing) transport.dispose();
+        },
+        { flush: "sync" },
+      );
+      cleanup.push(unwatch);
+      if (command === "play") transport.play();
+      else transport.shuttle(1);
+      expect(transport.frame.value).toBe(30);
+      expect(transport.playing.value).toBe(false);
+      expect(transport.shuttleRate.value).toBe(0);
+      expect(clock.pending.size).toBe(0);
+      expect(clock.listeners.size).toBe(0);
+      expect(clock.unsubscribeCalls).toBe(1);
+    },
+  );
+
+  it("dispose fences a nested dispose from a playing=false watcher before publishing", () => {
+    const { clock, transport } = setup();
+    transport.play();
+    const unwatch = watch(
+      transport.playing,
+      (playing) => {
+        if (!playing) transport.dispose();
+      },
+      { flush: "sync" },
+    );
+    cleanup.push(unwatch);
+    transport.dispose();
+    expect(clock.unsubscribeCalls).toBe(1);
+    expect(clock.listeners.size).toBe(0);
+    expect(clock.pending.size).toBe(0);
+    expect(transport.shuttleRate.value).toBe(0);
+  });
+
+  it("dispose fences reentrant play from a playing=false watcher without leaking rAF", () => {
+    const { clock, transport } = setup();
+    transport.play();
+    const unwatch = watch(
+      transport.playing,
+      (playing) => {
+        if (!playing) transport.play();
+      },
+      { flush: "sync" },
+    );
+    cleanup.push(unwatch);
+    transport.dispose();
+    expect(clock.pending.size).toBe(0);
+    expect(clock.listeners.size).toBe(0);
+    expect(clock.unsubscribeCalls).toBe(1);
+    expect(transport.playing.value).toBe(false);
+    expect(transport.shuttleRate.value).toBe(0);
+  });
+
+  it.each(["step", "owner"] as const)(
+    "%s cannot publish more state after its playing=false watcher disposes",
+    (command) => {
+      const { clock, inputs, transport } = setup();
+      transport.seek(30);
+      transport.play();
+      const unwatch = watch(
+        transport.playing,
+        (playing) => {
+          if (!playing) transport.dispose();
+        },
+        { flush: "sync" },
+      );
+      cleanup.push(unwatch);
+      if (command === "step") transport.step(1);
+      else inputs.ownerKey.value = "new-owner";
+      expect(transport.frame.value).toBe(30);
+      expect(transport.playing.value).toBe(false);
+      expect(transport.shuttleRate.value).toBe(0);
+      expect(clock.pending.size).toBe(0);
+      expect(clock.unsubscribeCalls).toBe(1);
+    },
+  );
 
   it("owning Vue scope disposal also releases the transport", () => {
     const scope = effectScope();
