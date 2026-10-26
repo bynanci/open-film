@@ -13,6 +13,7 @@ import {
   evaluateAudioGain,
   primaryEditFrames,
   resolveClipFrameRange,
+  resolveClipSourceRange,
   resolveCompositionFrame,
   resolveFilmLook,
   resolvePreviewClipGeometry,
@@ -116,6 +117,8 @@ const audible = shallowRef<Resource[]>([]);
 const filterId = `record-look-${useId().replaceAll(":", "")}`;
 let disposed = false;
 let reconciling = false;
+let queuedReconcile:
+  { frame: number; crossing: boolean; force: boolean } | undefined;
 let previousFrame = 0;
 let explicitSeek = false;
 let lastIssue = "";
@@ -241,9 +244,16 @@ function trim(collection: Map<string, Resource>, retained: Resource[]) {
       collection.delete(key);
     }
 }
-function reconcile(requested = transport.frame.value, crossing = false) {
+function reconcile(
+  requested = transport.frame.value,
+  crossing = false,
+  force = explicitSeek,
+) {
   if (disposed) return;
-  if (reconciling) return;
+  if (reconciling) {
+    queuedReconcile = { frame: requested, crossing, force };
+    return;
+  }
   reconciling = true;
   const owner = resourceOwner.value;
   try {
@@ -252,7 +262,7 @@ function reconcile(requested = transport.frame.value, crossing = false) {
       return;
     }
     let frame = requested;
-    if (crossing && transport.playing.value && !explicitSeek) {
+    if (crossing && transport.playing.value && !force) {
       const boundaries =
         transport.shuttleRate.value > 0
           ? edits.value.filter(
@@ -296,7 +306,7 @@ function reconcile(requested = transport.frame.value, crossing = false) {
     } else lastIssue = "";
     if (disposed || owner !== resourceOwner.value) return;
     previousFrame = frame;
-    syncMedia(explicitSeek);
+    syncMedia(force);
     emit("frame", frame);
   } catch {
     transport.pause();
@@ -306,6 +316,9 @@ function reconcile(requested = transport.frame.value, crossing = false) {
     publishIssue("record.invalid-composition");
   } finally {
     reconciling = false;
+    const queued = queuedReconcile;
+    queuedReconcile = undefined;
+    if (queued) reconcile(queued.frame, queued.crossing, queued.force);
   }
 }
 const forward = computed(
@@ -333,6 +346,7 @@ function syncPosition(resource: Resource, force: boolean) {
 function run(resource: Resource, running: boolean) {
   const element = media(resource);
   if (!element) return;
+  running = running && !exhausted(resource.entry);
   element.muted = !running || pictures.get(resource.key) === resource;
   if (running) {
     element.playbackRate =
@@ -359,6 +373,12 @@ function run(resource: Resource, running: boolean) {
     resource.playGeneration++;
     element.pause();
   }
+}
+function exhausted(entry: ResolvedSequenceClip) {
+  return (
+    entry.sourceTime >=
+    resolveClipSourceRange(entry.clip, entry.asset).sourceOut
+  );
 }
 function syncMedia(force = false) {
   for (const resource of pictures.values()) {
@@ -413,7 +433,9 @@ function ready(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
   resource.ready = true;
   resource.failed = false;
-  syncPosition(resource, true);
+  // Native canplay also follows a seek. Do not turn a satisfied seek into
+  // another seek/readiness cycle; retain the reliable half-frame tolerance.
+  syncPosition(resource, false);
   reconcile();
 }
 function failed(resource: Resource, event: Event) {
@@ -430,6 +452,16 @@ function waiting(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
   resource.ready = false;
   if (banks.value[0] === resource) reconcile();
+}
+function photoReadiness(
+  resource: Resource,
+  status: { ready: boolean; failed: boolean },
+) {
+  if (!valid(resource)) return;
+  resource.ready = status.ready;
+  resource.failed = status.failed;
+  if (banks.value[0] === resource) reconcile();
+  else if (status.failed) publishIssue("record.decode-failed", resource.entry);
 }
 function timeupdate(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
@@ -486,11 +518,7 @@ const titles = computed(() => {
           return [
             {
               key: `${trackIndex}:${clipIndex}:${clip.id}`,
-              clip: {
-                ...clip,
-                sourceIn: 0,
-                transform: { ...clip.transform, speed: 1 },
-              } as Clip,
+              clip: titleClip(clip),
               time: sequenceTimeAt(
                 resolved.value!.frame - range.startFrame,
                 timebase.value,
@@ -500,6 +528,9 @@ const titles = computed(() => {
         }),
   );
 });
+function titleClip(clip: Clip): Clip {
+  return { ...clip, sourceIn: 0, transform: { ...clip.transform, speed: 1 } };
+}
 function positionCommand(command: () => void) {
   if (disposed) return;
   explicitSeek = true;
@@ -635,23 +666,9 @@ defineExpose({
             @error="failed(resource, $event)"
           />
           <template v-else>
-            <img
-              :ref="(element) => bind(resource, element)"
-              class="record-preload"
+            <PhotoPresentationPreview
               :data-bank="bankRole(resource)"
               :data-clip-id="resource.entry.clip.id"
-              alt=""
-              crossorigin="anonymous"
-              :src="
-                availability(resource.entry)
-                  ? undefined
-                  : sourceUrl(resource.entry.asset.id, resource.key)
-              "
-              @load="ready(resource, $event)"
-              @error="failed(resource, $event)"
-            />
-            <PhotoPresentationPreview
-              v-if="layers.includes(resource)"
               :clip="resource.entry.clip"
               :assets="assets"
               :frame="settings"
@@ -665,6 +682,7 @@ defineExpose({
               :look="resolveFilmLook(composition, resource.entry.clip).look"
               :external-time="resource.entry.localTime"
               :external-playing="forward"
+              @readiness="photoReadiness(resource, $event)"
             />
           </template>
           <NativeTitlePreview
@@ -674,8 +692,8 @@ defineExpose({
               layers.includes(resource)
             "
             class="record-title"
-            :clip="resource.entry.clip"
-            :source-time="resource.entry.sourceTime"
+            :clip="titleClip(resource.entry.clip)"
+            :source-time="resource.entry.localTime"
             :src="
               titlePreviewUrl(
                 composition.id,
@@ -720,7 +738,7 @@ defineExpose({
       crossorigin="anonymous"
       :src="sourceUrl(resource.entry.asset.id, resource.key)"
       preload="auto"
-      :muted="!forward"
+      :muted="!forward || exhausted(resource.entry) || resource.failed"
       @canplay="ready(resource, $event)"
       @timeupdate="timeupdate(resource, $event)"
       @error="failed(resource, $event)"
@@ -752,9 +770,6 @@ defineExpose({
   top: 50%;
   translate: -50% -50%;
   object-fit: contain;
-}
-.record-preload {
-  display: none;
 }
 .record-title {
   object-fit: contain;

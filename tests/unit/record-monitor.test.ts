@@ -207,7 +207,12 @@ async function mount(
   const ready = async (clipId: string) => {
     const bank = banks().find((node) => node.props["data-clip-id"] === clipId)!;
     expect(bank, `prearmed media for ${clipId}`).toBeDefined();
-    await event(bank, bank.tag === "img" ? "onLoad" : "onCanplay");
+    if (bank.tag === "video") await event(bank, "onCanplay");
+    else
+      for (const image of flatten(bank).filter(
+        (node) => node.tag === "img" && !node.props.class,
+      ))
+        await event(image, "onLoad");
     return bank;
   };
   const seek = async (frame: number) => {
@@ -728,4 +733,131 @@ it("bounds media URL versions with a large catalog and fences an in-place source
   await m.ready("a");
   await m.tick(9100);
   expect(m.frames.at(-1)).toBe(11);
+});
+
+it("reconciles the newest seek made synchronously by a frame listener", async () => {
+  const m = await mount();
+  await m.ready("a");
+  m.props.onFrame = (frame: number) => {
+    m.frames.push(frame);
+    if (frame === 1) {
+      m.transport().seek(12);
+      m.transport().seek(15);
+    }
+  };
+  await settle();
+  await m.seek(1);
+  expect(m.transport().frame).toBe(15);
+  expect(
+    m.nodes().find((node) => node.props.class === "record-monitor")!.props[
+      "data-frame"
+    ],
+  ).toBe(15);
+  expect(m.frames.at(-1)).toBe(15);
+  expect(m.frames).not.toContain(12);
+  expect(m.transport().playing).toBe(false);
+  expect(m.banks()[0]!.currentTime).toBe(2.5);
+});
+
+it("fades embedded titles by continuing sequence-local time through a short trim and outgoing tail", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips = [
+    {
+      id: "a",
+      assetId: "a",
+      timelineStart: 0,
+      timelineDuration: 3,
+      sourceIn: 2,
+      sourceOut: 3,
+      transform: { speed: 2 },
+      title: "Trimmed title",
+      titleStyle: { version: 1, role: "subtitle", fadeOut: 1 },
+    },
+    {
+      id: "b",
+      assetId: "b",
+      timelineStart: 3,
+      timelineDuration: 3,
+      transition: { type: "crossfade", duration: 1 },
+    },
+  ];
+  const m = await mount(saved);
+  const before = JSON.stringify(saved);
+  await m.ready("a");
+  for (const [frame, opacity] of [
+    [25, 0.5],
+    [35, 0],
+    [22, 0.8],
+  ] as const) {
+    await m.seek(frame);
+    const title = m.nodes().find((node) => node.props.src === "/title/a.png")!;
+    expect((title.props.style as { opacity: number }).opacity).toBeCloseTo(
+      opacity,
+    );
+  }
+  expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("silences exhausted trimmed audio while the Record sequence keeps playing", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[0] = {
+    id: "a",
+    assetId: "a",
+    timelineStart: 0,
+    timelineDuration: 2,
+    sourceIn: 0,
+    sourceOut: 1,
+  };
+  const m = await mount(saved);
+  await m.ready("a");
+  await m.seek(15);
+  const sound = m.audio()[0]!;
+  let plays = 0;
+  Object.assign(sound, {
+    play: () => {
+      plays++;
+      return Promise.resolve();
+    },
+  });
+  m.transport().play();
+  await settle();
+  expect(sound.props.muted).toBe(true);
+  expect(plays).toBe(0);
+  await m.tick(100);
+  expect(m.transport().frame).toBe(16);
+  expect(m.transport().playing).toBe(true);
+  expect(sound.props.muted).toBe(true);
+  expect(plays).toBe(0);
+});
+
+it("leaves uncovered pixels of controlled photo overlays transparent", async () => {
+  const saved = cut();
+  saved.tracks.push({
+    id: "overlay",
+    type: "overlay",
+    clips: [
+      {
+        id: "portrait",
+        assetId: "portrait",
+        timelineStart: 0,
+        timelineDuration: 6,
+        transform: { scale: 0.5 },
+      },
+    ],
+  });
+  const m = await mount(saved, [
+    asset("a"),
+    asset("b"),
+    asset("c"),
+    {
+      ...asset("portrait", "image"),
+      dimensions: { width: 90, height: 160 },
+    },
+  ]);
+  const photoFrame = m
+    .nodes()
+    .find((node) => node.props.class === "photo-presentation-frame")!;
+  expect((photoFrame.props.style as { background: string }).background).toBe(
+    "transparent",
+  );
 });

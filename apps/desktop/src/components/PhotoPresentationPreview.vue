@@ -42,6 +42,9 @@ const props = withDefaults(
     externalPlaying: undefined,
   },
 );
+const emit = defineEmits<{
+  readiness: [status: { ready: boolean; failed: boolean; assetId?: string }];
+}>();
 const { t } = useI18n();
 const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
 const lookStyle = computed(() =>
@@ -78,6 +81,7 @@ const playing = computed(() =>
   controlled.value ? (props.externalPlaying ?? false) : ownedPlaying.value,
 );
 const failedSources = ref(new Set<string>());
+const loadedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
 let animation = 0;
@@ -128,14 +132,44 @@ watch(
     failedSources.value = new Set(
       [...failedSources.value].filter((key) => current.has(key)),
     );
+    loadedSources.value = new Set(
+      [...loadedSources.value].filter((key) => current.has(key)),
+    );
   },
+);
+const readiness = computed(() => ({
+  ready:
+    !!plan.value &&
+    renderLayers.value.length > 0 &&
+    renderLayers.value.every((layer) => loadedSources.value.has(layer.key)),
+  failed: !plan.value || sourceFailed.value,
+  assetId: renderLayers.value.find((layer) =>
+    failedSources.value.has(layer.key),
+  )?.assetId,
+}));
+watch(
+  readiness,
+  (status, previous) => {
+    if (
+      !previous ||
+      status.ready !== previous.ready ||
+      status.failed !== previous.failed ||
+      status.assetId !== previous.assetId
+    )
+      emit("readiness", status);
+  },
+  { immediate: true, flush: "post" },
 );
 function layerFailed(key: string) {
   if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  const remaining = new Set(loadedSources.value);
+  remaining.delete(key);
+  loadedSources.value = remaining;
   failedSources.value = new Set([...failedSources.value, key]);
 }
 function layerLoaded(key: string) {
   if (!renderLayers.value.some((layer) => layer.key === key)) return;
+  loadedSources.value = new Set([...loadedSources.value, key]);
   if (!failedSources.value.has(key)) return;
   const remaining = new Set(failedSources.value);
   remaining.delete(key);
@@ -162,7 +196,8 @@ const transformStyle = computed(() => ({
   transform: `translate(${((plan.value?.transform.x ?? 0) / props.frame.width) * 100}%, ${((plan.value?.transform.y ?? 0) / props.frame.height) * 100}%) scale(${plan.value?.transform.scale ?? 1})`,
 }));
 const frameStyle = computed(() => {
-  if (controlled.value) return { width: "100%", height: "100%" };
+  if (controlled.value)
+    return { width: "100%", height: "100%", background: "transparent" };
   const ratio = props.frame.width / props.frame.height;
   const width = Math.max(
     1,
