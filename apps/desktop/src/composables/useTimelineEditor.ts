@@ -71,10 +71,12 @@ export function useTimelineEditor(
   let pending: TimelineCommand[] = [];
   let batch: Batch | null = null;
   let transactionBase: EditorState | null = null;
+  let transactionNeedsReapply = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let saving: Promise<boolean> | null = null;
   let historyRequest: Promise<boolean> | null = null;
   let reapplying = false;
+  let discarding = false;
   let disposed = false;
   const hasPending = computed(() => pendingCount.value > 0);
 
@@ -146,7 +148,14 @@ export function useTimelineEditor(
     }
   }
   async function load() {
-    if (disposed || transactionBusy.value || saving || historyRequest) return;
+    if (
+      disposed ||
+      discarding ||
+      transactionBusy.value ||
+      saving ||
+      historyRequest
+    )
+      return;
     status.value = "loading";
     let recovered: Draft | null = null;
     try {
@@ -169,7 +178,21 @@ export function useTimelineEditor(
         pendingCount.value = pending.length;
         batch = recovered.batch;
         transactionBase = recovered.transactionBase ?? null;
+        transactionNeedsReapply = !!transactionBase;
         transactionSending.value = !!transactionBase;
+        if (transactionBase) {
+          // Generic receipts are server-session-only. Mount cannot establish
+          // continuity, even when the saved digest matches the original base.
+          // Show authoritative content and keep the exact request for Reapply.
+          const saved = await api.editor(compositionId);
+          if (disposed) return;
+          assertComposition(saved);
+          publish(saved);
+          status.value = "conflict";
+          reportNotice("editor.draft.conflictRecovered");
+          edited();
+          return;
+        }
         if (batch) {
           const sending = batch;
           const acknowledged = await api.edit(compositionId, sending);
@@ -223,13 +246,12 @@ export function useTimelineEditor(
         pending = recovered.pending;
         batch = recovered.batch;
         transactionBase = recovered.transactionBase ?? null;
-        if (transactionBase && definitiveRejection(cause)) {
-          await rejectTransaction(cause);
-          return;
-        }
         publish(recovered.state);
       }
       fail(cause);
+      // The existing conflict recovery surface exposes explicit Reapply even
+      // when its initial read failed; generic Retry must remain send-free.
+      if (transactionNeedsReapply) status.value = "conflict";
     } finally {
       transactionSending.value = false;
     }
@@ -240,6 +262,7 @@ export function useTimelineEditor(
   ): boolean {
     if (
       disposed ||
+      discarding ||
       !state.value ||
       historyBusy.value ||
       transactionBusy.value ||
@@ -278,14 +301,20 @@ export function useTimelineEditor(
     }
   }
   function flush(): Promise<boolean> {
-    if (disposed || transactionPreparing.value) return Promise.resolve(false);
+    if (
+      disposed ||
+      discarding ||
+      transactionNeedsReapply ||
+      transactionPreparing.value
+    )
+      return Promise.resolve(false);
     if (historyRequest)
       return historyRequest.then((ok) => (ok ? flushCommands() : false));
     return flushCommands();
   }
   function flushCommands(signal?: AbortSignal): Promise<boolean> {
     if (timer) clearTimeout(timer);
-    if (disposed) return Promise.resolve(false);
+    if (disposed || transactionNeedsReapply) return Promise.resolve(false);
     if (saving) return saving;
     if (status.value === "loading" || !state.value)
       return Promise.resolve(false);
@@ -337,6 +366,7 @@ export function useTimelineEditor(
     if (disposed || signal?.aborted) return { status: "cancelled" };
     if (
       transactionBusy.value ||
+      discarding ||
       reapplying ||
       (historyBusy.value && !historyRequest)
     )
@@ -408,8 +438,9 @@ export function useTimelineEditor(
     }
   }
   async function reapplyDraft() {
-    if (disposed || transactionBusy.value || reapplying) return;
+    if (disposed || discarding || transactionBusy.value || reapplying) return;
     if (transactionBase) {
+      transactionNeedsReapply = false;
       await flush();
       return;
     }
@@ -442,7 +473,13 @@ export function useTimelineEditor(
     signal?: AbortSignal,
   ): Promise<boolean> {
     if (historyRequest) await historyRequest;
-    if (disposed || !state.value || historyBusy.value || transactionBusy.value)
+    if (
+      disposed ||
+      discarding ||
+      !state.value ||
+      historyBusy.value ||
+      transactionBusy.value
+    )
       return false;
     historyBusy.value = true;
     try {
@@ -484,7 +521,8 @@ export function useTimelineEditor(
     }
   }
   function history(direction: "undo" | "redo"): Promise<boolean> {
-    if (disposed || transactionBusy.value) return Promise.resolve(false);
+    if (disposed || discarding || transactionBusy.value)
+      return Promise.resolve(false);
     if (historyRequest) return historyRequest;
     historyBusy.value = true;
     historyRequest = (async () => {
@@ -516,17 +554,38 @@ export function useTimelineEditor(
     return historyRequest;
   }
   async function discardDraft() {
-    if (disposed || transactionBusy.value) return;
-    if (transactionBase && !(await flush())) return;
-    if (saving) await saving;
-    if (historyRequest) await historyRequest;
-    historyBusy.value = true;
+    if (
+      disposed ||
+      discarding ||
+      reapplying ||
+      transactionBusy.value ||
+      (historyBusy.value && !historyRequest)
+    )
+      return;
+    // Own admission before waiting for older work, so no newer batch can be
+    // published or cleared by this Discard's later authoritative reload.
+    discarding = true;
     try {
+      if (transactionBase) {
+        const acknowledged = await flushCommands();
+        if (disposed || !acknowledged) return;
+      }
+      if (saving) {
+        await saving;
+        if (disposed) return;
+      }
+      if (historyRequest) {
+        await historyRequest;
+        if (disposed) return;
+      }
       const saved = await api.editor(compositionId);
+      if (disposed) return;
+      assertComposition(saved);
       if (timer) clearTimeout(timer);
       pending = [];
       batch = null;
       publish(saved);
+      if (disposed) return;
       retainDraft();
       status.value = "saved";
       reportNotice("");
@@ -534,7 +593,7 @@ export function useTimelineEditor(
     } catch (cause) {
       fail(cause);
     } finally {
-      historyBusy.value = false;
+      discarding = false;
     }
   }
   function downloadDraft() {

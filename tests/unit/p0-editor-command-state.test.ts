@@ -1,9 +1,16 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { transform } from "esbuild";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyTimelineCommand, type TimelineCommand } from "@openfilm/solver";
 import type { MediaAsset } from "@openfilm/core";
+import {
+  OpenFilmApplication,
+  TimelineEditor,
+  type TimelineEditInput,
+} from "@openfilm/application";
 import { ApiError, type EditorState } from "../../apps/desktop/src/api";
 import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
 
@@ -521,7 +528,7 @@ describe("acknowledged professional edit transactions", () => {
     expect(storage.has(storageKey)).toBe(false);
   });
 
-  it("retains the exact request after a lost response and recovers it on remount", async () => {
+  it("retains the exact request on remount until explicit Reapply resolves the lost response", async () => {
     const acknowledgement = deferred<EditorState>();
     const saved = { ...savedState(11, "r2"), acknowledgedRevision: "r2" };
     const api = {
@@ -542,11 +549,16 @@ describe("acknowledged professional edit transactions", () => {
     const request = JSON.parse(bytes).batch;
     first.dispose();
     expect(first.storage.get(storageKey)).toBe(bytes);
-    const remounting = mountEditor(api, first.storage);
+    const second = await mountEditor(api, first.storage);
+    expect(api.edit).toHaveBeenCalledTimes(1);
+    expect(second.editor.state.value?.revision).toBe("r2");
+    expect(second.editor.hasPending.value).toBe(true);
+    expect(JSON.parse(second.storage.get(storageKey)!).batch).toEqual(request);
+    const reapplying = second.editor.reapplyDraft();
     await vi.waitFor(() => expect(api.edit).toHaveBeenCalledTimes(2));
     expect(api.edit.mock.calls[1]![1]).toEqual(request);
     acknowledgement.resolve(saved);
-    const second = await remounting;
+    await reapplying;
     expect(second.editor.state.value?.revision).toBe("r2");
     expect(second.editor.hasPending.value).toBe(false);
     expect(second.storage.has(storageKey)).toBe(false);
@@ -661,7 +673,242 @@ describe("acknowledged professional edit transactions", () => {
     expect(api.edit.mock.calls[1]![1]).toEqual(api.edit.mock.calls[0]![1]);
   });
 
-  it("reloads saved state and drops a stale recovery envelope after session reconstruction", async () => {
+  it("keeps replacement-owner bytes and callbacks untouched when disposed after Discard resolves a professional receipt", async () => {
+    const reload = deferred<EditorState>();
+    const saved = savedState(11, "r2");
+    const api = {
+      editor: vi
+        .fn()
+        .mockResolvedValueOnce(initialState())
+        .mockReturnValueOnce(reload.promise),
+      edit: vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("ACK lost"))
+        .mockResolvedValue(saved),
+    };
+    const { editor, storage, dispose, changed, edited } =
+      await mountEditor(api);
+    expect(await editor.commitTransaction(gesture)).toEqual({
+      status: "failed",
+    });
+    const request = JSON.parse(storage.get(storageKey)!).batch;
+    const discarding = editor.discardDraft();
+    await vi.waitFor(() => expect(api.editor).toHaveBeenCalledTimes(2));
+    expect(api.edit.mock.calls[1]![1]).toEqual(request);
+    dispose();
+    const atDisposal = editor.state.value;
+    const changedCount = changed.mock.calls.length;
+    const editedCount = edited.mock.calls.length;
+    const replacement = JSON.stringify({
+      owner: "replacement",
+      requestId: "keep-this-draft",
+    });
+    storage.set(storageKey, replacement);
+    reload.resolve(saved);
+    await discarding;
+    expect(storage.get(storageKey)).toBe(replacement);
+    expect(editor.state.value).toBe(atDisposal);
+    expect(changed).toHaveBeenCalledTimes(changedCount);
+    expect(edited).toHaveBeenCalledTimes(editedCount);
+  });
+
+  it("reserves Discard before an older save ACK and preserves the next transaction's lost-ACK recovery", async () => {
+    const older = deferred<EditorState>();
+    const reload = deferred<EditorState>();
+    const lostResponse = deferred<void>();
+    const baseline = savedState(7, "r2");
+    const api = {
+      editor: vi
+        .fn()
+        .mockResolvedValueOnce(initialState())
+        .mockReturnValueOnce(reload.promise),
+      edit: vi
+        .fn()
+        .mockReturnValueOnce(older.promise)
+        .mockImplementation(async () => {
+          await lostResponse.promise;
+          throw new TypeError("Professional ACK lost");
+        }),
+    };
+    const { editor, storage } = await mountEditor(api);
+    editor.command({ type: "transform", clipId: "clip", x: 7 });
+    const saving = editor.flush();
+    const discarding = editor.discardDraft();
+    const overlapping = editor.commitTransaction(gesture);
+    older.resolve(baseline);
+    expect(await saving).toBe(true);
+    await vi.waitFor(() => expect(api.editor).toHaveBeenCalledTimes(2));
+    const requestsDuringDiscard = api.edit.mock.calls.length;
+    reload.resolve(baseline);
+    await discarding;
+    lostResponse.resolve();
+    expect(await overlapping).toEqual({ status: "failed" });
+    expect(requestsDuringDiscard).toBe(1);
+    expect(api.edit).toHaveBeenCalledTimes(1);
+    expect(await editor.commitTransaction(gesture)).toEqual({
+      status: "failed",
+    });
+    const retained = JSON.parse(storage.get(storageKey)!);
+    expect(api.edit).toHaveBeenCalledTimes(2);
+    expect(retained.batch).toEqual(api.edit.mock.calls[1]![1]);
+    expect(retained.batch.baseRevision).toBe("r2");
+    expect(retained.pending).toEqual(gesture);
+    expect(editor.hasPending.value).toBe(true);
+  });
+
+  it("refuses ordinary commands and new history while Discard is waiting for an older save", async () => {
+    const older = deferred<EditorState>();
+    const baseline = savedState(7, "r2");
+    const api = {
+      editor: vi
+        .fn()
+        .mockResolvedValueOnce(initialState())
+        .mockResolvedValue(baseline),
+      edit: vi.fn(() => older.promise),
+      history: vi.fn(async () => initialState()),
+    };
+    const { editor } = await mountEditor(api);
+    editor.command({ type: "transform", clipId: "clip", x: 7 });
+    const saving = editor.flush();
+    const discarding = editor.discardDraft();
+    const ordinaryAccepted = editor.command({
+      type: "duration",
+      clipId: "clip",
+      duration: 9,
+    });
+    const undoing = editor.history("undo");
+    older.resolve(baseline);
+    await saving;
+    await discarding;
+    const undone = await undoing;
+    expect(ordinaryAccepted).toBe(false);
+    expect(undone).toBe(false);
+    expect(api.history).not.toHaveBeenCalled();
+    expect(api.edit).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["save", "history"] as const)(
+    "does not reload or touch a replacement draft after disposal during Discard's %s wait",
+    async (barrier) => {
+      const acknowledged = deferred<EditorState>();
+      const api = {
+        editor: vi.fn(async () => ({ ...initialState(), canUndo: true })),
+        edit: vi.fn(() => acknowledged.promise),
+        history: vi.fn(() => acknowledged.promise),
+      };
+      const { editor, storage, dispose, edited } = await mountEditor(api);
+      if (barrier === "save")
+        editor.command({ type: "transform", clipId: "clip", x: 7 });
+      const older =
+        barrier === "save" ? editor.flush() : editor.history("undo");
+      await vi.waitFor(() =>
+        expect(
+          barrier === "save" ? api.edit : api.history,
+        ).toHaveBeenCalledTimes(1),
+      );
+      const discarding = editor.discardDraft();
+      dispose();
+      const editedCount = edited.mock.calls.length;
+      const replacement = JSON.stringify({
+        owner: "replacement",
+        requestId: "preserve",
+      });
+      storage.set(storageKey, replacement);
+      acknowledged.resolve(initialState());
+      await older;
+      await discarding;
+      expect(api.editor).toHaveBeenCalledTimes(1);
+      expect(storage.get(storageKey)).toBe(replacement);
+      expect(edited).toHaveBeenCalledTimes(editedCount);
+    },
+  );
+
+  it("does not resurrect an undone professional edit on mount after real application reconstruction", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "openfilm-transaction-reconstruction-"),
+    );
+    let app: OpenFilmApplication | undefined;
+    let first: Awaited<ReturnType<typeof mountEditor>> | undefined;
+    let second: Awaited<ReturnType<typeof mountEditor>> | undefined;
+    try {
+      const directory = join(root, "film.openfilm");
+      app = await OpenFilmApplication.create(directory, "Recovery boundary");
+      const initial = initialState();
+      for (const asset of initial.assets) app.catalog.upsertAsset(asset);
+      app.project.stories.push(initial.story);
+      app.project.timelines.push(initial.composition);
+      await app.save();
+      let server = new TimelineEditor(app);
+      let loseAcknowledgement = true;
+      const api = {
+        editor: vi.fn(async () => server.get("cut")),
+        edit: vi.fn(async (_id: string, request: TimelineEditInput) => {
+          const saved = await server.edit("cut", request);
+          if (loseAcknowledgement) {
+            loseAcknowledgement = false;
+            throw new TypeError("Accepted response lost");
+          }
+          return saved;
+        }),
+      };
+      first = await mountEditor(api);
+      const base = server.get("cut");
+      expect(await first.editor.commitTransaction(gesture)).toEqual({
+        status: "failed",
+      });
+      const request = JSON.parse(first.storage.get(storageKey)!).batch;
+      const undone = await server.undo("cut", server.get("cut").revision);
+      expect(undone.revision).toBe(base.revision);
+      first.dispose();
+      app.close();
+      app = await OpenFilmApplication.open(directory);
+      server = new TimelineEditor(app);
+      expect(server.get("cut")).toMatchObject({
+        canUndo: false,
+        canRedo: false,
+      });
+      const path = join(directory, "project.json");
+      const beforeMount = await readFile(path);
+      second = await mountEditor(api, first.storage);
+      expect(api.edit).toHaveBeenCalledTimes(1);
+      expect(server.get("cut")).toMatchObject({
+        canUndo: false,
+        canRedo: false,
+      });
+      expect(server.get("cut").composition).toEqual(base.composition);
+      expect(second.editor.state.value?.composition).toEqual(base.composition);
+      expect(await readFile(path)).toEqual(beforeMount);
+      expect(second.editor.hasPending.value).toBe(true);
+      expect(second.editor.status.value).toBe("conflict");
+      expect(JSON.parse(second.storage.get(storageKey)!).batch).toEqual(
+        request,
+      );
+      window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+      expect(await second.editor.flush()).toBe(false);
+      expect(await second.editor.history("undo")).toBe(false);
+      expect(await second.editor.commitTransaction(gesture)).toEqual({
+        status: "conflict",
+      });
+      expect(api.edit).toHaveBeenCalledTimes(1);
+      await second.editor.reapplyDraft();
+      expect(api.edit).toHaveBeenCalledTimes(2);
+      expect(api.edit.mock.calls[1]![1]).toEqual(request);
+      expect(server.get("cut")).toMatchObject({
+        canUndo: true,
+        canRedo: false,
+      });
+      expect(server.get("cut").composition.duration).toBe(6);
+      expect(second.editor.hasPending.value).toBe(false);
+      expect(second.storage.has(storageKey)).toBe(false);
+    } finally {
+      second?.dispose();
+      first?.dispose();
+      app?.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retains reconstructed work until explicit Reapply gets a stale-base rejection", async () => {
     const saved = { ...savedState(11, "r2"), canUndo: false };
     const api = {
       editor: vi
@@ -685,11 +932,44 @@ describe("acknowledged professional edit transactions", () => {
     await vi.waitFor(() =>
       expect(second.editor.transactionBusy.value).toBe(false),
     );
-    expect(api.edit.mock.calls[1]![1]).toEqual(request);
+    expect(api.edit).toHaveBeenCalledTimes(1);
     expect(second.editor.state.value).toEqual(saved);
     expect(second.editor.state.value?.canUndo).toBe(false);
+    expect(second.editor.hasPending.value).toBe(true);
+    expect(JSON.parse(second.storage.get(storageKey)!).batch).toEqual(request);
+    await second.editor.reapplyDraft();
+    expect(api.edit.mock.calls[1]![1]).toEqual(request);
     expect(second.editor.hasPending.value).toBe(false);
     expect(second.storage.has(storageKey)).toBe(false);
+  });
+
+  it("keeps explicit Reapply available when the recovered professional snapshot read fails", async () => {
+    const api = {
+      editor: vi
+        .fn()
+        .mockResolvedValueOnce(initialState())
+        .mockRejectedValueOnce(new TypeError("Snapshot unavailable")),
+      edit: vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("ACK lost"))
+        .mockResolvedValue(savedState(11, "r2")),
+    };
+    const first = await mountEditor(api);
+    expect(await first.editor.commitTransaction(gesture)).toEqual({
+      status: "failed",
+    });
+    const request = JSON.parse(first.storage.get(storageKey)!).batch;
+    first.dispose();
+    const second = await mountEditor(api, first.storage);
+    expect(api.edit).toHaveBeenCalledTimes(1);
+    expect(second.editor.status.value).toBe("conflict");
+    expect(second.editor.hasPending.value).toBe(true);
+    expect(JSON.parse(second.storage.get(storageKey)!).batch).toEqual(request);
+    expect(await second.editor.flush()).toBe(false);
+    await second.editor.reapplyDraft();
+    expect(api.edit.mock.calls[1]![1]).toEqual(request);
+    expect(second.editor.status.value).toBe("saved");
+    expect(second.editor.hasPending.value).toBe(false);
   });
 
   it("sends nothing when already aborted", async () => {
@@ -768,6 +1048,9 @@ describe("acknowledged professional edit transactions", () => {
       expect(storage.get(storageKey)).toBe(bytes);
       expect(editor.hasPending.value).toBe(true);
       await editor.load();
+      expect(api.edit).toHaveBeenCalledTimes(1);
+      expect(editor.hasPending.value).toBe(true);
+      await editor.reapplyDraft();
       expect(api.edit.mock.calls[1]![1]).toEqual(JSON.parse(bytes).batch);
       expect(storage.has(storageKey)).toBe(false);
     },
