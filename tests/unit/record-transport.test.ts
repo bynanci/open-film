@@ -682,6 +682,42 @@ describe("Record transport cancellation and ownership", () => {
     expect(clock.pending.size).toBe(0);
   });
 
+  it.each([
+    [299, false, 0, 0, 299],
+    [150, true, 2, 1, 210],
+  ] as const)(
+    "releasing a shuttle hold at frame %s respects the endpoint while preserving interior starts",
+    (initial, playing, rate, pending, next) => {
+      const { clock, transport } = setup(
+        { ...composition, duration: 10, tracks: [] },
+        { ...timebase, rateNumerator: 30, rateDenominator: 1 },
+      );
+      transport.seek(initial);
+      transport.buffering.value = true;
+      transport.play();
+      expect(transport.playing.value).toBe(true);
+      expect(clock.pending.size).toBe(0);
+      const unwatch = watch(
+        transport.shuttleRate,
+        (tier) => {
+          if (tier > 1) transport.buffering.value = false;
+        },
+        { flush: "sync" },
+      );
+      cleanup.push(unwatch);
+      transport.shuttle(1);
+      expect(transport.frame.value).toBe(initial);
+      expect(transport.playing.value).toBe(playing);
+      expect(transport.shuttleRate.value).toBe(rate);
+      expect(transport.buffering.value).toBe(false);
+      expect(clock.pending.size).toBe(pending);
+      clock.tick(1000);
+      expect(transport.frame.value).toBe(next);
+      expect(transport.playing.value).toBe(playing);
+      expect(clock.pending.size).toBe(pending);
+    },
+  );
+
   it("owner reset completes when a playing=false watcher releases its buffering hold", () => {
     const { clock, inputs, transport } = setup();
     transport.seek(30);

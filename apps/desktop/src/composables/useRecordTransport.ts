@@ -165,7 +165,8 @@ export function useRecordTransport(
     if (!playing.value || buffering.value) return;
     const endpoint = shuttleRate.value > 0 ? bounds.value.final : 0;
     if (frame.value === endpoint) {
-      halt(false);
+      // A boundary stop supersedes a start interrupted by hold release.
+      halt();
       return;
     }
     anchor = { frame: frame.value, now: now() };
