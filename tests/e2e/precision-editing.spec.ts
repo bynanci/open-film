@@ -233,6 +233,15 @@ async function saved(page: Page, locale: ProjectContentLocale) {
     text(locale, "editor.save.saved"),
   );
 }
+async function applySourceRange(page: Page, locale: ProjectContentLocale) {
+  await page
+    .getByRole("button", {
+      name: text(locale, "precision.applyRange"),
+      exact: true,
+    })
+    .click();
+  await saved(page, locale);
+}
 async function mode(
   page: Page,
   locale: ProjectContentLocale,
@@ -529,6 +538,129 @@ async function seekSource(
     )
     .toBeCloseTo(sourceTime, 4);
 }
+
+test("staged Source marks require one Apply transaction, one Undo, reject stale marks and reopen only accepted range", async ({
+  page,
+  request,
+}) => {
+  const locale = "en-US";
+  const { path, clip } = await createSourceFilm(
+    page,
+    request,
+    locale,
+    "-staged",
+  );
+  const before = await composition(request);
+  const writes: unknown[] = [];
+  page.on("request", (event) => {
+    if (
+      event.method() === "POST" &&
+      new URL(event.url()).pathname === `/api/compositions/${before.id}/edit`
+    )
+      writes.push(event.postDataJSON());
+  });
+  const input = page.getByRole("spinbutton", {
+    name: text(locale, "precision.trimIn"),
+    exact: true,
+  });
+  const apply = page.getByRole("button", {
+    name: text(locale, "precision.applyRange"),
+    exact: true,
+  });
+  const reset = page.getByRole("button", {
+    name: text(locale, "precision.resetRange"),
+    exact: true,
+  });
+  const waveform = page.locator(".precision-waveform");
+  await expect(input).toBeEnabled();
+  const preview = page.getByLabel(text(locale, "precision.sourcePreview"), {
+    exact: true,
+  });
+  const timecode = page.getByRole("textbox", {
+    name: text(locale, "precision.sourceElapsed"),
+    exact: true,
+  });
+  await timecode.fill("00:99:00:00");
+  await timecode.press("Enter");
+  await expect(timecode).toHaveAttribute("aria-invalid", "true");
+  await timecode.press("Escape");
+  await expect(timecode).toHaveAttribute("aria-invalid", "false");
+  await timecode.fill("00:00:01:00");
+  await timecode.press("Enter");
+  await expect
+    .poll(() =>
+      preview.evaluate((node) => (node as HTMLMediaElement).currentTime),
+    )
+    .toBeCloseTo(1, 4);
+  await waveform.press("l");
+  await waveform.press("l");
+  await waveform.press("l");
+  await expect
+    .poll(() =>
+      preview.evaluate((node) => (node as HTMLMediaElement).playbackRate),
+    )
+    .toBe(4);
+  await preview.evaluate((node) => (node as HTMLMediaElement).pause());
+  await expect(
+    page.getByText("Source speed 0×", { exact: true }),
+  ).toBeVisible();
+  await seekSource(page, locale, clip.sourceIn! + 0.2);
+  await waveform.press("i");
+  await seekSource(page, locale, clip.sourceOut! - 0.2);
+  await waveform.press("o");
+  const acceptedIn = clip.sourceIn! + 0.5;
+  await input.fill(String(acceptedIn));
+  await input.press("Tab");
+  expect(await composition(request)).toEqual(before);
+  expect(writes).toEqual([]);
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await saved(page, locale);
+  await expect.poll(() => writes.length).toBe(1);
+  expect(writes[0]).toMatchObject({
+    commands: [{ type: "trim", clipId: clip.id, sourceIn: acceptedIn }],
+  });
+  const accepted = await composition(request);
+  expect(clipById(accepted, clip.id).sourceIn).toBeCloseTo(acceptedIn, 6);
+  await expect(apply).toBeDisabled();
+  const undo = page.getByRole("button", { name: "Undo edit", exact: true });
+  await undo.click();
+  await saved(page, locale);
+  expect(await composition(request)).toEqual(before);
+  const redo = page.getByRole("button", { name: "Redo edit", exact: true });
+  await redo.click();
+  await saved(page, locale);
+  await input.fill(String(acceptedIn + 0.1));
+  await input.press("Tab");
+  await undo.click();
+  await saved(page, locale);
+  await expect(
+    page.getByText(text(locale, "precision.marksStale"), { exact: true }),
+  ).toBeVisible();
+  await expect(apply).toBeDisabled();
+  expect(writes).toHaveLength(1);
+  await reset.click();
+  await input.fill(String(acceptedIn));
+  await input.press("Tab");
+  await apply.click();
+  await saved(page, locale);
+  await input.fill(String(acceptedIn + 0.25));
+  await input.press("Tab");
+  await page
+    .getByRole("button", {
+      name: text(locale, "app.navigation.switchProject"),
+      exact: true,
+    })
+    .click();
+  await openFilm(page, path, locale);
+  await navigate(page, "edit", locale);
+  await mode(page, locale, "precision");
+  expect(clipById(await composition(request), clip.id).sourceIn).toBeCloseTo(
+    acceptedIn,
+    6,
+  );
+  await expect(apply).toBeDisabled();
+});
 
 test("transcription languages follow provider capabilities while valid user choices survive refresh and source reload", async ({
   page,
@@ -1239,7 +1371,7 @@ test("missing source duration preserves playback but disables duration-dependent
   const newIn = clip.sourceIn! + 0.1;
   await trimIn.fill(String(newIn));
   await trimIn.press("Tab");
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   const repaired = await composition(request);
   expect(clipById(repaired, clip.id).sourceIn).toBeCloseTo(newIn, 6);
   await seekSource(page, locale, sourceTime);
@@ -1256,7 +1388,7 @@ test("missing source duration preserves playback but disables duration-dependent
   );
 });
 
-test("source-locked video and audio overlays disable Precision mutations while playback and analysis remain available, then unlocking restores trims", async ({
+test("source lock on video and audio overlays disables Precision mutations while playback and analysis remain available, then unlocking restores trims", async ({
   page,
   request,
 }) => {
@@ -1456,7 +1588,7 @@ test("source-locked video and audio overlays disable Precision mutations while p
     await expect(trimIn).toBeEnabled();
     await trimIn.fill("0.75");
     await trimIn.press("Tab");
-    await saved(page, locale);
+    await applySourceRange(page, locale);
     await expect
       .poll(async () => clipById(await composition(request), clipId).sourceIn)
       .toBe(0.75);
@@ -1468,7 +1600,7 @@ test("source-locked video and audio overlays disable Precision mutations while p
   );
 });
 
-test("Library asset locks prevent precision splits while allowing trims, then unlocking restores splitting", async ({
+test("primary source lock prevents precision splits while allowing staged trims, then unlocking restores splitting", async ({
   page,
   request,
 }) => {
@@ -1540,7 +1672,8 @@ test("Library asset locks prevent precision splits while allowing trims, then un
   const newIn = clip.sourceIn! + (sourceTime - clip.sourceIn!) / 2;
   await trimIn.fill(String(newIn));
   await trimIn.press("Tab");
-  await saved(page, locale);
+  expect(await composition(request)).toEqual(before);
+  await applySourceRange(page, locale);
   const trimmed = await composition(request);
   expect(clipById(trimmed, clip.id).sourceIn).toBeCloseTo(newIn, 6);
   expect(allClips(trimmed)).toHaveLength(allClips(before).length);
@@ -1825,7 +1958,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
     });
     await input.fill(String(value));
     await input.press("Tab");
-    await saved(page, locale);
+    await applySourceRange(page, locale);
   };
   const undoEdits = async (count: number) => {
     for (let index = 0; index < count; index++) {
@@ -1845,7 +1978,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
       exact: true,
     })
     .press("ArrowLeft");
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   const tinyStart = clipById(await composition(request), clip.id);
   expect(tinyStart.sourceIn).toBe(0);
   expect(tinyStart.sourceOut).toBeGreaterThan(0);
@@ -1859,7 +1992,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
       exact: true,
     })
     .press("ArrowRight");
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   const tinyEnd = clipById(await composition(request), clip.id);
   expect(tinyEnd.sourceIn).toBeGreaterThan(video.duration! - 0.005);
   expect(tinyEnd.sourceIn).toBeLessThan(video.duration!);
@@ -1981,7 +2114,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
   });
   await trimOut.fill("10");
   await trimOut.press("Tab");
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   const words = evidence.transcript!.segments.flatMap(
     (segment) => segment.words!,
   );
@@ -2045,7 +2178,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
     "Snapped to marker",
   );
   await page.mouse.up();
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   const trimmed = await composition(request);
   expect(clipById(trimmed, clip.id).sourceIn).toBeCloseTo(markerTime, 3);
   expect(clipById(trimmed, clip.id).sourceOut).toBe(10);
@@ -2058,7 +2191,7 @@ test("uses real source analysis, a disclosed protocol transcript, snapped trim a
       exact: true,
     })
     .press("ArrowRight");
-  await saved(page, locale);
+  await applySourceRange(page, locale);
   expect(clipById(await composition(request), clip.id).sourceIn).toBeCloseTo(
     markerTime + 1 / video.frameRate!,
     6,
@@ -2240,7 +2373,7 @@ test("a first-visit Precision editor retains mutation barriers and history acros
   for (const offset of [0.25, 0.5]) {
     await trimIn.fill(String(initialIn + offset));
     await trimIn.press("Tab");
-    await saved(page, locale);
+    await applySourceRange(page, locale);
     expect(clipById(await composition(request), clip.id).sourceIn).toBeCloseTo(
       initialIn + offset,
       6,

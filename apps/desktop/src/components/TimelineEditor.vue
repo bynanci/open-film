@@ -121,6 +121,7 @@ const {
   hasPending: compositionHasPending,
   historyBusy: compositionHistoryBusy,
   command: compositionCommand,
+  commitTransaction: compositionCommitTransaction,
   flush: flushComposition,
   history: compositionHistory,
   reapplyDraft,
@@ -207,6 +208,17 @@ function command(
     return false;
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
+}
+async function commitSource(input: TimelineCommand, signal?: AbortSignal) {
+  if (
+    generationImportBusy.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value
+  )
+    return { status: "failed" as const };
+  directionPreview.value = null;
+  return compositionCommitTransaction(input, [], signal);
 }
 function templateCommand(
   input: TimelineCommand,
@@ -2325,6 +2337,10 @@ onBeforeUnmount(() => {
         <PrecisionEditor
           ref="precisionEditor"
           :project-id="projectId"
+          :composition-id="compositionId"
+          :revision="state?.revision ?? ''"
+          :settings="projectSettings"
+          :commit="commitSource"
           :asset="selectedAsset"
           :clip="selectedClip"
           :active="active && editMode === 'precision' && !draftAction"

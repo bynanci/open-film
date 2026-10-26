@@ -19,9 +19,19 @@ function keyboard(name: string) {
   );
   const start = source.indexOf("function keyboard(event: KeyboardEvent)");
   if (start < 0) throw new Error(`Missing ${name} keyboard handler`);
-  return transformSync(source.slice(start, source.indexOf("\n}", start) + 2), {
-    loader: "ts",
-  }).code;
+  const shared =
+    name === "PrecisionEditor"
+      ? transformSync(
+          readFileSync(resolve("apps/desktop/src/monitor.ts"), "utf8"),
+          { loader: "ts", format: "esm" },
+        ).code.replace(/^export /gm, "")
+      : "";
+  return (
+    shared +
+    transformSync(source.slice(start, source.indexOf("\n}", start) + 2), {
+      loader: "ts",
+    }).code
+  );
 }
 const handlers = {
   timeline: keyboard("TimelineEditor"),
@@ -109,6 +119,8 @@ async function mount(page: Page) {
   await page.evaluate(({ timeline, precision }) => {
     const state = window as unknown as Record<string, unknown>;
     const counts = { deleted: 0, history: 0, marker: 0 };
+    const sourceActions: string[] = [];
+    state.sourceActions = sourceActions;
     const mode = { value: "story" };
     state.shortcutCounts = counts;
     state.shortcutMode = mode;
@@ -130,6 +142,21 @@ async function mount(page: Page) {
       addMarker: () => {
         counts.marker++;
       },
+      addSourceMarker: () => {
+        counts.marker++;
+      },
+      shuttle: () => sourceActions.push("shuttle"),
+      stop: () => sourceActions.push("stop"),
+      togglePlayback: () => sourceActions.push("play"),
+      step: () => sourceActions.push("step"),
+      stageIn: () => sourceActions.push("in"),
+      stageOut: () => sourceActions.push("out"),
+      split: () => sourceActions.push("split"),
+      seek: () => sourceActions.push("seek"),
+      trimIn: { value: 0 },
+      trimOut: { value: 10 },
+      playhead: { value: 2 },
+      frameStep: { value: 1 / 30 },
     };
     for (const [code, context] of [
       [timeline, timelineContext],
@@ -258,4 +285,90 @@ test("ready retained-draft controls isolate shortcuts and keep Tab, Enter and Sp
   await page.locator("#ready-control").focus();
   await pressShortcuts(page);
   expect(await counts(page)).toEqual({ deleted: 1, history: 1, marker: 1 });
+});
+
+test("Source shortcuts preserve Chromium defaults and counters in IME, editable, dialog, draft and Pipeline contexts", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const state = window as unknown as { shortcutMode: { value: string } };
+    state.shortcutMode.value = "precision";
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<input id="input"><select id="select"><option>A</option></select><div contenteditable="" id="editable" tabindex="0">文字</div><div class="pipeline-workbench-root"><button id="pipeline">Pipeline</button></div><div class="runtime-drafts"><button id="draft">Draft</button></div><dialog id="dialog"><button id="dialog-button">Dialog</button></dialog>',
+    );
+  });
+  const keys = [
+    "j",
+    "k",
+    "l",
+    "i",
+    "o",
+    "b",
+    "m",
+    " ",
+    "ArrowLeft",
+    "ArrowRight",
+    "Home",
+    "End",
+  ];
+  for (const context of [
+    "ime",
+    "input",
+    "select",
+    "editable",
+    "pipeline",
+    "draft",
+    "dialog-button",
+  ]) {
+    const prevented = await page.evaluate(
+      ({ context, keys }) => {
+        if (context === "dialog-button")
+          (document.getElementById("dialog") as HTMLDialogElement).showModal();
+        const target = document.getElementById(
+          context === "ime" ? "ready-control" : context,
+        )!;
+        target.focus();
+        const results = keys.map((key) => {
+          const event = new KeyboardEvent("keydown", {
+            key,
+            code: key === " " ? "Space" : key,
+            isComposing: context === "ime",
+            bubbles: true,
+            cancelable: true,
+          });
+          target.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        if (context === "dialog-button")
+          (document.getElementById("dialog") as HTMLDialogElement).close();
+        return results;
+      },
+      { context, keys },
+    );
+    expect(prevented, context).toEqual(keys.map(() => false));
+    expect(await counts(page), context).toEqual({
+      deleted: 0,
+      history: 0,
+      marker: 0,
+    });
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { sourceActions: string[] }).sourceActions,
+      ),
+      context,
+    ).toEqual([]);
+  }
+  await page.locator("#ready-control").focus();
+  await page.keyboard.press("j");
+  await page.keyboard.press("i");
+  await page.keyboard.press("o");
+  await page.keyboard.press("m");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { sourceActions: string[] }).sourceActions,
+    ),
+  ).toEqual(["shuttle", "in", "out"]);
+  expect(await counts(page)).toEqual({ deleted: 0, history: 0, marker: 1 });
 });

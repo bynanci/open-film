@@ -7,12 +7,20 @@ import { transformSync } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resolveFilmLook,
+  resolveProjectTimebase,
+  timebaseKey,
+  sequenceFrameAt,
+  sequenceTimeAt,
   type Clip,
   type Job,
   type MediaAsset,
   type TimelineMarker,
 } from "@openfilm/core";
 import type { IntelligenceState } from "../../apps/desktop/src/api";
+import type { TimelineCommand } from "@openfilm/solver";
+import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
+import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
+import * as monitor from "../../apps/desktop/src/monitor";
 
 const vue = createRequire(resolve("apps/desktop/package.json"))("vue");
 const reactivity = Object.fromEntries(
@@ -53,6 +61,22 @@ const precisionFactory = component<{
   transcriptionReady: Ref<boolean>;
   hasSourceDuration: Ref<boolean>;
   analysisBusy: Ref<boolean>;
+  playhead: Ref<number>;
+  trimIn: Ref<number>;
+  trimOut: Ref<number>;
+  marksStale: Ref<boolean>;
+  canApply: Ref<boolean>;
+  stageIn: () => void;
+  stageOut: () => void;
+  applyRange: () => Promise<void>;
+  split: () => Promise<void>;
+  shuttle: (direction: -1 | 1) => void;
+  stop: () => void;
+  step: (direction: -1 | 1, seconds?: boolean) => void;
+  shuttleTier: Ref<number>;
+  player: Ref<unknown>;
+  moveTrim: (event: KeyboardEvent, side: "in" | "out") => void;
+  finishDrag: (event: PointerEvent) => void;
 }>("PrecisionEditor", [
   "addMarker",
   "removeMarker",
@@ -62,6 +86,22 @@ const precisionFactory = component<{
   "transcriptionReady",
   "hasSourceDuration",
   "analysisBusy",
+  "playhead",
+  "trimIn",
+  "trimOut",
+  "marksStale",
+  "canApply",
+  "stageIn",
+  "stageOut",
+  "applyRange",
+  "split",
+  "shuttle",
+  "stop",
+  "step",
+  "shuttleTier",
+  "player",
+  "moveTrim",
+  "finishDrag",
 ]);
 const timelineFactory = component<{
   precisionEditor?: Ref<unknown>;
@@ -119,6 +159,9 @@ async function precision(activeJobs: Job[] = []) {
   };
   const props = vue.reactive({
     projectId: "project",
+    compositionId: "film",
+    revision: "r1",
+    settings: { frameRate: 30, width: 1920, height: 1080 },
     asset: { ...asset },
     clip: { ...clip },
     active: true,
@@ -126,6 +169,16 @@ async function precision(activeJobs: Job[] = []) {
     sourceVersion: 0,
     clips: [],
     submit: vi.fn(),
+    commit: vi.fn(
+      async (
+        _command: TimelineCommand,
+        _signal?: AbortSignal,
+      ): Promise<CommitTransactionResult> => ({
+        status: "accepted",
+        revision: "r2",
+      }),
+    ),
+    sourceEditsLocked: false,
   });
   let exposed: Partial<Barrier> = {};
   const emit = vi.fn();
@@ -138,6 +191,18 @@ async function precision(activeJobs: Job[] = []) {
   const instance = scope.run(() =>
     precisionFactory({
       ...reactivity,
+      reset: sourceMarks.reset,
+      markStale: sourceMarks.markStale,
+      reconcileSourceMarks: sourceMarks.reconcileSourceMarks,
+      sameSourceOwner: sourceMarks.sameSourceOwner,
+      validSourceRange: sourceMarks.validSourceRange,
+      ...monitor,
+      stageSourceIn: sourceMarks.stageIn,
+      stageSourceOut: sourceMarks.stageOut,
+      resolveProjectTimebase,
+      timebaseKey,
+      sequenceFrameAt,
+      sequenceTimeAt,
       defineProps: () => props,
       defineEmits: () => emit,
       defineExpose: (value: Barrier) => {
@@ -297,6 +362,163 @@ function mutate(
 }
 
 describe("Precision navigation retains in-flight mutation submissions", () => {
+  it("keyboard trim stages without committing and preserves IME defaults", async () => {
+    const h = await precision();
+    const preventDefault = vi.fn();
+    const event = {
+      key: "ArrowRight",
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as unknown as KeyboardEvent;
+    h.instance.moveTrim(event, "in");
+    expect(h.instance.trimIn.value).toBeCloseTo(1 / 30);
+    expect(h.props.commit).not.toHaveBeenCalled();
+    h.instance.moveTrim({ ...event, isComposing: true } as KeyboardEvent, "in");
+    expect(h.instance.trimIn.value).toBeCloseTo(1 / 30);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+  it("positive playback tiers and reverse integer frames stop cleanly at the range boundary", async () => {
+    const h = await precision();
+    vi.useFakeTimers();
+    try {
+      const media = {
+        pause: vi.fn(),
+        play: vi.fn(async () => {}),
+        currentTime: 5,
+        playbackRate: 1,
+        volume: 1,
+      };
+      h.instance.player.value = media;
+      h.instance.playhead.value = 5;
+      h.instance.shuttle(1);
+      h.instance.shuttle(1);
+      expect(media.playbackRate).toBe(2);
+      h.instance.stop();
+      h.instance.shuttle(-1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(h.instance.playhead.value).toBeCloseTo(4, 6);
+      h.props.settings.frameRate = 24;
+      expect(h.instance.shuttleTier.value).toBe(0);
+      const stopped = h.instance.playhead.value;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(h.instance.playhead.value).toBe(stopped);
+      h.instance.playhead.value = 1 / 24;
+      h.instance.shuttle(-1);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(h.instance.playhead.value).toBe(0);
+      expect(h.instance.shuttleTier.value).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("reverse shuttle observes a newly staged In bound without crossing it", async () => {
+    const h = await precision();
+    vi.useFakeTimers();
+    try {
+      h.instance.playhead.value = 5;
+      h.instance.shuttle(-1);
+      h.instance.trimIn.value = 4.5;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(h.instance.playhead.value).toBe(4.5);
+      expect(h.instance.shuttleTier.value).toBe(0);
+    } finally {
+      h.instance.stop();
+      vi.useRealTimers();
+    }
+  });
+  it("I/O and numeric entry only stage; Apply submits one trim transaction and resets", async () => {
+    const h = await precision();
+    h.instance.playhead.value = 2;
+    h.instance.stageIn();
+    h.instance.playhead.value = 8;
+    h.instance.stageOut();
+    h.instance.trimIn.value = 3;
+    expect(h.props.submit).not.toHaveBeenCalled();
+    expect(h.props.commit).not.toHaveBeenCalled();
+    expect(h.instance.canApply.value).toBe(true);
+    await h.instance.applyRange();
+    expect(h.props.commit).toHaveBeenCalledExactlyOnceWith(
+      { type: "trim", clipId: "clip", sourceIn: 3, sourceOut: 8 },
+      expect.any(AbortSignal),
+    );
+    expect(h.instance.canApply.value).toBe(false);
+    expect(h.instance.marksStale.value).toBe(false);
+  });
+  it("invalid and stale ranges never commit, including a revision change before the watcher runs", async () => {
+    const h = await precision();
+    h.instance.trimIn.value = 11;
+    expect(h.instance.canApply.value).toBe(false);
+    await h.instance.applyRange();
+    h.instance.trimIn.value = 2;
+    h.props.revision = "r2";
+    await h.instance.applyRange();
+    expect(h.props.commit).not.toHaveBeenCalled();
+    expect(h.instance.marksStale.value).toBe(true);
+    expect(h.instance.trimIn.value).toBe(2);
+    h.instance.playhead.value = 5;
+    await h.instance.split();
+    expect(h.props.commit).not.toHaveBeenCalled();
+  });
+  it.each(["projectId", "compositionId", "clip", "settings"] as const)(
+    "clears staged marks on %s owner changes",
+    async (key) => {
+      const h = await precision();
+      h.instance.trimIn.value = 2;
+      if (key === "clip") h.props.clip = { ...clip, id: "other" };
+      else if (key === "settings") h.props.settings.frameRate = 24;
+      else h.props[key] = "other";
+      await vue.nextTick();
+      expect(h.instance.trimIn.value).toBe(0);
+      expect(h.instance.canApply.value).toBe(false);
+    },
+  );
+  it("failed transactions retain stale marks and block a second Apply", async () => {
+    const h = await precision();
+    h.props.commit.mockResolvedValue({ status: "conflict" });
+    h.instance.trimIn.value = 2;
+    await h.instance.applyRange();
+    expect(h.instance.trimIn.value).toBe(2);
+    expect(h.instance.marksStale.value).toBe(true);
+    await h.instance.applyRange();
+    expect(h.props.commit).toHaveBeenCalledTimes(1);
+  });
+  it("holds the navigation barrier for Apply, deduplicates clicks, and cancels an owner change", async () => {
+    const h = await precision();
+    const response = deferred<CommitTransactionResult>();
+    h.props.commit.mockImplementation(() => response.promise);
+    h.instance.trimIn.value = 2;
+    const apply = h.instance.applyRange();
+    expect(await h.exposed.flush?.()).toBe(false);
+    await h.instance.applyRange();
+    expect(h.props.commit).toHaveBeenCalledTimes(1);
+    const signal = h.props.commit.mock.calls[0]![1] as AbortSignal;
+    h.props.clip = { ...clip, id: "other" };
+    expect(signal.aborted).toBe(true);
+    response.release({ status: "accepted", revision: "r2" });
+    await apply;
+    expect(h.instance.trimIn.value).toBe(0);
+    expect(h.instance.canApply.value).toBe(false);
+    expect(await h.exposed.flush?.()).toBe(true);
+  });
+  it("primary source lock allows trim but blocks split; clip and overlay protection block both", async () => {
+    const h = await precision();
+    h.props.asset.state.locked = true;
+    h.instance.trimIn.value = 2;
+    h.instance.playhead.value = 5;
+    await h.instance.split();
+    expect(h.props.commit).not.toHaveBeenCalled();
+    await h.instance.applyRange();
+    expect(h.props.commit).toHaveBeenCalledTimes(1);
+    for (const lock of ["clip", "overlay"]) {
+      h.props.clip.locked = lock === "clip";
+      h.props.sourceEditsLocked = lock === "overlay";
+      h.instance.trimIn.value = 3;
+      await h.instance.applyRange();
+      await h.instance.split();
+    }
+    expect(h.props.commit).toHaveBeenCalledTimes(1);
+    expect(h.props.submit).not.toHaveBeenCalled();
+  });
   it.each(["add", "remove", "analyze"] as const)(
     "blocks navigation until the %s request settles",
     async (operation) => {
