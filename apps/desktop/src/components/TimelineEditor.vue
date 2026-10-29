@@ -19,6 +19,7 @@ import {
   evaluateAudioGain,
   resolveCompositionFrame,
   resolveProjectTimebase,
+  formatSequenceTimecode,
   sequenceFrameAt,
   timebaseKey,
   type Clip,
@@ -54,6 +55,7 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
+import EditDecisionRibbon from "./EditDecisionRibbon.vue";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
@@ -943,6 +945,198 @@ watch(
 const selectedBeat = computed(() =>
   state.value?.story.beats.find((beat) => beat.id === selectedBeatId.value),
 );
+const recordResolvedFrame = computed(() => {
+  const current = state.value;
+  if (!current || !recordTarget.value) return undefined;
+  try {
+    return resolveCompositionFrame(
+      current.composition,
+      current.assets,
+      recordFrame.value,
+      projectTimebase.value,
+    );
+  } catch {
+    return undefined;
+  }
+});
+const ribbonClip = computed(() =>
+  recordTarget.value
+    ? recordResolvedFrame.value?.primary?.clip
+    : selectedClip.value,
+);
+const ribbonAsset = computed(() =>
+  recordTarget.value
+    ? recordResolvedFrame.value?.primary?.asset
+    : selectedAsset.value,
+);
+const ribbonBeat = computed(() => {
+  const beatId = ribbonClip.value?.beatId;
+  return state.value?.story.beats.find((beat) => beat.id === beatId);
+});
+const ribbonSourceSeconds = computed(() =>
+  recordTarget.value
+    ? (recordResolvedFrame.value?.primary?.sourceTime ?? 0)
+    : (precisionEditor.value?.playhead ?? selectedClip.value?.sourceIn ?? 0),
+);
+const ribbonSequenceFrame = computed(() =>
+  recordTarget.value
+    ? recordFrame.value
+    : sequenceFrameAt(
+        selectedClip.value?.timelineStart ?? 0,
+        projectTimebase.value,
+        "nearest",
+      ),
+);
+const ribbonSnapState = computed<"on" | "off" | "unavailable">(() => {
+  if (recordTarget.value || precisionEditor.value?.snapEnabled === undefined)
+    return "unavailable";
+  return precisionEditor.value.snapEnabled ? "on" : "off";
+});
+const ribbonAction = computed(() =>
+  recordSplitPending.value
+    ? t("cutDesk.ribbon.splitPending")
+    : t(`editor.save.${status.value}`),
+);
+const ribbonTransportStatus = computed<"active" | "playing" | "paused">(() =>
+  recordTarget.value
+    ? recordMonitor.value?.playing
+      ? "playing"
+      : "paused"
+    : "active",
+);
+
+const recordVisualLooks = computed(() => {
+  const current = state.value;
+  if (!current || !recordResolvedFrame.value) return [];
+  try {
+    return recordResolvedFrame.value.visual.map((entry) => ({
+      clipId: entry.clip.id,
+      assetId: entry.asset.id,
+      look: resolveFilmLook(current.composition, entry.clip).look,
+    }));
+  } catch {
+    return [];
+  }
+});
+const recordLookAvailable = computed(() =>
+  recordVisualLooks.value.some(
+    ({ look }) => look.preset !== "none" && look.strength > 0,
+  ),
+);
+const lookCompareHeld = ref(false);
+const lookCompareLatched = ref(false);
+const lookCompareActive = computed(
+  () =>
+    recordLookAvailable.value &&
+    (lookCompareHeld.value || lookCompareLatched.value),
+);
+const recordCompareContextKey = computed(() =>
+  JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    state.value?.revision ?? "",
+    props.sourceVersion ?? 0,
+    timebaseKey(projectTimebase.value),
+    props.active,
+    recordTarget.value,
+    recordVisualLooks.value.map(({ clipId, assetId }) => [clipId, assetId]),
+  ]),
+);
+let comparePointer:
+  | {
+      owner: string;
+      pointerId: number;
+      element: HTMLElement;
+    }
+  | undefined;
+let compareKeyboardOwner: string | undefined;
+function clearCompareHold(releaseCapture = true) {
+  const pointer = comparePointer;
+  comparePointer = undefined;
+  compareKeyboardOwner = undefined;
+  lookCompareHeld.value = false;
+  if (releaseCapture && pointer?.element.hasPointerCapture?.(pointer.pointerId))
+    pointer.element.releasePointerCapture?.(pointer.pointerId);
+}
+function clearLookCompare() {
+  clearCompareHold();
+  lookCompareLatched.value = false;
+}
+function compareCurrent(owner: string) {
+  return (
+    owner === recordCompareContextKey.value &&
+    recordTarget.value &&
+    recordLookAvailable.value &&
+    !cutDeskBlocked.value
+  );
+}
+function beginComparePointer(owner: string, event: PointerEvent) {
+  if (!compareCurrent(owner) || event.button !== 0 || event.isPrimary === false)
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  clearCompareHold();
+  const element = event.currentTarget as HTMLElement;
+  try {
+    element.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Synthetic/assistive pointer events may not own an active native pointer.
+    // Window-level release handling still gives the preview a bounded lifetime.
+  }
+  comparePointer = { owner, pointerId: event.pointerId, element };
+  lookCompareHeld.value = true;
+}
+function endComparePointer(event: PointerEvent, releaseCapture = true) {
+  if (!comparePointer || comparePointer.pointerId !== event.pointerId) return;
+  clearCompareHold(releaseCapture);
+}
+function setCompareKey(owner: string, event: KeyboardEvent, pressed: boolean) {
+  if (event.code !== "Space" && event.key !== "Enter") return;
+  if (pressed) {
+    if (!ownsSourceShortcut(event) || !compareCurrent(owner) || event.repeat)
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearCompareHold();
+    compareKeyboardOwner = owner;
+    lookCompareHeld.value = true;
+  } else if (compareKeyboardOwner === owner) {
+    // Release an owned hold even if modifiers, focus or modal ownership
+    // changed after keydown, so original-view preview cannot become stuck.
+    event.preventDefault();
+    event.stopPropagation();
+    clearCompareHold();
+  }
+}
+const compareControls = computed(() => {
+  const owner = recordCompareContextKey.value;
+  return {
+    hold: {
+      onPointerdown: (event: PointerEvent) => beginComparePointer(owner, event),
+      onPointerup: (event: PointerEvent) => endComparePointer(event),
+      onPointercancel: (event: PointerEvent) => endComparePointer(event),
+      onLostpointercapture: (event: PointerEvent) =>
+        endComparePointer(event, false),
+      onKeydown: (event: KeyboardEvent) => setCompareKey(owner, event, true),
+      onKeyup: (event: KeyboardEvent) => setCompareKey(owner, event, false),
+      onBlur: () => {
+        if (compareKeyboardOwner === owner || comparePointer?.owner === owner)
+          clearCompareHold();
+      },
+      onClick: (event: MouseEvent) => event.preventDefault(),
+    },
+    latch: {
+      onClick: () => {
+        if (compareCurrent(owner))
+          lookCompareLatched.value = !lookCompareLatched.value;
+      },
+    },
+  };
+});
+watch(recordCompareContextKey, clearLookCompare, { flush: "sync" });
+watch(recordLookAvailable, (available) => {
+  if (!available) clearLookCompare();
+});
 const groups = computed(() => {
   const beats = state.value?.story.beats ?? [];
   const storyClips =
@@ -1787,6 +1981,13 @@ function togglePlayback() {
   } else player.pause();
 }
 function keyboard(event: KeyboardEvent) {
+  if (
+    event.key === "Escape" &&
+    props.active &&
+    ownsSourceShortcut(event) &&
+    (lookCompareHeld.value || lookCompareLatched.value)
+  )
+    clearLookCompare();
   const undo =
     (event.metaKey || event.ctrlKey) &&
     !event.altKey &&
@@ -1928,6 +2129,15 @@ function measureWorkspace() {
     if (stableHeight !== workspaceHeight.value)
       workspaceHeight.value = stableHeight;
   });
+}
+function compareWindowBlur() {
+  clearCompareHold();
+}
+function compareVisibilityChanged() {
+  if (document.hidden) clearCompareHold();
+}
+function comparePointerReleased(event: PointerEvent) {
+  endComparePointer(event);
 }
 watch(
   allClips,
@@ -2241,6 +2451,10 @@ onMounted(() => {
   inspectorOpen.value = !window.matchMedia("(max-width: 1100px)").matches;
   window.addEventListener("keydown", keyboard);
   window.addEventListener("resize", measureWorkspace);
+  window.addEventListener("blur", compareWindowBlur);
+  window.addEventListener("pointerup", comparePointerReleased);
+  window.addEventListener("pointercancel", comparePointerReleased);
+  document.addEventListener("visibilitychange", compareVisibilityChanged);
   layoutObserver = new ResizeObserver(measureWorkspace);
   if (sourceScreenElement.value && props.active && editMode.value === "story")
     layoutObserver.observe(sourceScreenElement.value);
@@ -2258,6 +2472,11 @@ onBeforeUnmount(() => {
   cancelNativeEditReady = undefined;
   window.removeEventListener("keydown", keyboard);
   window.removeEventListener("resize", measureWorkspace);
+  window.removeEventListener("blur", compareWindowBlur);
+  window.removeEventListener("pointerup", comparePointerReleased);
+  window.removeEventListener("pointercancel", comparePointerReleased);
+  document.removeEventListener("visibilitychange", compareVisibilityChanged);
+  clearLookCompare();
   layoutObserver?.disconnect();
   cancelAnimationFrame(layoutFrame);
 });
@@ -2399,22 +2618,28 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </header>
-    <div
+    <EditDecisionRibbon
       v-if="expertMode && editMode !== 'transcript'"
-      class="cut-desk-target-bar"
+      :sequence="state?.story.title ?? state?.composition.id ?? ''"
+      :beat="ribbonBeat?.title"
+      :clip="ribbonClip ? ribbonClip.title || name(ribbonClip) : undefined"
+      :source="ribbonAsset?.name"
+      :target="recordTarget ? 'record' : 'source'"
+      :transport-status="ribbonTransportStatus"
+      :sequence-timecode="
+        formatSequenceTimecode(ribbonSequenceFrame, projectTimebase)
+      "
+      :source-timecode="
+        formatTimecode(
+          ribbonSourceSeconds,
+          ribbonAsset?.frameRate ?? projectSettings.frameRate,
+        )
+      "
+      :clip-locked="!!ribbonClip?.locked"
+      :source-locked="!!ribbonAsset?.state.locked"
+      :snap-state="ribbonSnapState"
+      :action="ribbonAction"
     >
-      <p data-testid="cut-desk-target-status" role="status" aria-live="polite">
-        {{ t(recordTarget ? "cutDesk.record" : "cutDesk.source") }} ·
-        {{
-          t(
-            recordTarget
-              ? recordMonitor?.playing
-                ? "cutDesk.playing"
-                : "cutDesk.paused"
-              : "cutDesk.active",
-          )
-        }}
-      </p>
       <label class="editor-field">
         {{ t("cutDesk.timebase") }}
         <select
@@ -2451,7 +2676,7 @@ onBeforeUnmount(() => {
         t("cutDesk.timebaseSaving")
       }}</span>
       <span v-if="timebaseError" role="alert">{{ timebaseError }}</span>
-    </div>
+    </EditDecisionRibbon>
     <AudioQualityPanel
       v-if="audioQualityOpen"
       id="audio-quality-panel"
@@ -2828,6 +3053,7 @@ onBeforeUnmount(() => {
                 :source-statuses="sourceStatuses"
                 :source-version="sourceVersion"
                 :active="!cutDeskBlocked"
+                :bypass-look="lookCompareActive"
                 v-bind="recordBindings"
               />
               <div
@@ -2869,6 +3095,59 @@ onBeforeUnmount(() => {
                 >
                   +1f
                 </button>
+                <div
+                  v-if="recordLookAvailable"
+                  class="cut-desk-monitor-actions"
+                >
+                  <div
+                    class="cut-desk-compare"
+                    role="group"
+                    :aria-label="t('cutDesk.compare.group')"
+                    aria-describedby="cut-desk-compare-hint"
+                  >
+                    <button
+                      type="button"
+                      class="editor-button"
+                      :disabled="cutDeskBlocked"
+                      :aria-label="t('cutDesk.compare.hold')"
+                      :aria-pressed="lookCompareHeld"
+                      v-bind="compareControls.hold"
+                    >
+                      {{ t("cutDesk.compare.holdShort") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="editor-button"
+                      :disabled="cutDeskBlocked"
+                      :aria-label="t('cutDesk.compare.latch')"
+                      :aria-pressed="lookCompareLatched"
+                      v-bind="compareControls.latch"
+                    >
+                      {{ t("cutDesk.compare.latchShort") }}
+                    </button>
+                  </div>
+                  <p
+                    class="cut-desk-compare-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {{
+                      t(
+                        lookCompareHeld
+                          ? "cutDesk.compare.held"
+                          : lookCompareLatched
+                            ? "cutDesk.compare.latched"
+                            : "cutDesk.compare.inactive",
+                      )
+                    }}
+                  </p>
+                  <p
+                    id="cut-desk-compare-hint"
+                    class="cut-desk-compare-hint sr-only"
+                  >
+                    {{ t("cutDesk.compare.hint") }}
+                  </p>
+                </div>
               </div>
               <p
                 v-if="

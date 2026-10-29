@@ -1165,6 +1165,7 @@ defineExpose({
   addSourceMarker,
   playhead,
   marksStale,
+  snapEnabled,
 });
 </script>
 

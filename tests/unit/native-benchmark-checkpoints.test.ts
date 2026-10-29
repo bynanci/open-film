@@ -1275,6 +1275,9 @@ describe("actual workspace readiness guards", () => {
         () => true,
       );
       const abortCaptionImport = vi.fn();
+      const removeWindowListener = vi.fn();
+      const removeDocumentListener = vi.fn();
+      const clearLookCompare = vi.fn();
       await turn();
       expect(h.visibilityListeners.size).toBe(1);
       const cleanup = actualFunction(
@@ -1295,7 +1298,8 @@ describe("actual workspace readiness guards", () => {
           nativeBootGeneration: 1,
           nativeEditGeneration: 1,
           poll: undefined,
-          window: { removeEventListener: vi.fn() },
+          window: { removeEventListener: removeWindowListener },
+          document: { removeEventListener: removeDocumentListener },
           handleKeyboard: () => {},
           protectDrafts: actualFunction(
             "apps/desktop/src/App.vue",
@@ -1310,6 +1314,10 @@ describe("actual workspace readiness guards", () => {
           ),
           keyboard: () => {},
           measureWorkspace: () => {},
+          compareWindowBlur: () => {},
+          comparePointerReleased: () => {},
+          compareVisibilityChanged: () => {},
+          clearLookCompare,
           layoutObserver: undefined,
           layoutFrame: 0,
           cancelAnimationFrame: vi.fn(),
@@ -1318,6 +1326,25 @@ describe("actual workspace readiness guards", () => {
       cleanup();
       if (workspace === "editor")
         expect(abortCaptionImport).toHaveBeenCalledTimes(1);
+      if (workspace === "editor") {
+        expect(removeWindowListener).toHaveBeenCalledWith(
+          "blur",
+          expect.any(Function),
+        );
+        expect(removeWindowListener).toHaveBeenCalledWith(
+          "pointerup",
+          expect.any(Function),
+        );
+        expect(removeWindowListener).toHaveBeenCalledWith(
+          "pointercancel",
+          expect.any(Function),
+        );
+        expect(removeDocumentListener).toHaveBeenCalledWith(
+          "visibilitychange",
+          expect.any(Function),
+        );
+        expect(clearLookCompare).toHaveBeenCalledOnce();
+      }
       expect(h.visibilityListeners.size).toBe(0);
       h.visible();
       expect(h.frames).toHaveLength(0);

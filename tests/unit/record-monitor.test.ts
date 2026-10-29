@@ -188,6 +188,7 @@ async function mount(
     sourceStatuses: {} as Record<string, SourceStatus>,
     sourceVersion: 0,
     active: true,
+    bypassLook: false,
     ref: (value: MonitorHandle) => {
       if (value) transport = value;
     },
@@ -570,6 +571,62 @@ it("preserves renderer visual order, exact source times, geometry and transition
       expect(JSON.stringify(player.props.style)).toContain("rotate(90deg)");
     }
   }
+  expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("bypasses the effective look in place without changing media identity or saved composition", async () => {
+  const saved = cut();
+  saved.defaultLook = { version: 1, preset: "retro", strength: 0.8 };
+  const before = JSON.stringify(saved);
+  const m = await mount(saved);
+  const player = m.banks().find((node) => node.props["data-clip-id"] === "a")!;
+
+  expect((player.props.style as { filter?: string }).filter).toContain(
+    "record-look-",
+  );
+  m.props.bypassLook = true;
+  await settle();
+  expect(m.banks().find((node) => node.props["data-clip-id"] === "a")).toBe(
+    player,
+  );
+  expect((player.props.style as { filter?: string }).filter).toBeUndefined();
+  expect(JSON.stringify(saved)).toBe(before);
+
+  m.props.bypassLook = false;
+  await settle();
+  expect((player.props.style as { filter?: string }).filter).toContain(
+    "record-look-",
+  );
+  expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("bypasses PhotoPresentation layers without rebuilding the controlled photo", async () => {
+  const saved = cut();
+  saved.defaultLook = { version: 1, preset: "natural", strength: 1 };
+  saved.tracks[0]!.clips = [
+    {
+      id: "photo",
+      assetId: "photo",
+      timelineStart: 0,
+      timelineDuration: 6,
+      layout: { version: 1, preset: "contain" },
+    },
+  ];
+  const before = JSON.stringify(saved);
+  const m = await mount(saved, [asset("photo", "image")]);
+  const image = m
+    .nodes()
+    .find((node) => node.tag === "img" && node.props.alt === "photo")!;
+
+  expect((image.props.style as { filter?: string }).filter).toContain(
+    "photo-look-",
+  );
+  m.props.bypassLook = true;
+  await settle();
+  expect(
+    m.nodes().find((node) => node.tag === "img" && node.props.alt === "photo"),
+  ).toBe(image);
+  expect((image.props.style as { filter?: string }).filter).toBeUndefined();
   expect(JSON.stringify(saved)).toBe(before);
 });
 

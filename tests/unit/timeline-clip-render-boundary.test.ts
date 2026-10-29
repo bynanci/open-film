@@ -971,6 +971,221 @@ describe("Timeline clip render boundary", () => {
     expect(records()).toHaveLength(0);
   });
 
+  it("derives the Ribbon and look comparison from the active Record owner without saving", async () => {
+    const saved = fixture(2);
+    saved.composition.defaultLook = {
+      version: 1,
+      preset: "retro",
+      strength: 0.8,
+    };
+    saved.composition.tracks[0]!.clips[0]!.locked = true;
+    saved.assets[0]!.state.locked = true;
+    const before = JSON.stringify(saved.composition);
+    const view = await mountTimeline(saved, {}, true);
+    const nodes = () => flatten(view.root);
+    const ribbon = () =>
+      nodes().find(
+        (item) => item.props["data-testid"] === "edit-decision-ribbon",
+      )!;
+    const control = (label: string) =>
+      nodes().find(
+        (item) =>
+          item.tag === "button" &&
+          String(item.props["aria-label"]).includes(label),
+      )!;
+
+    expect(text(ribbon())).toContain("Our memories");
+    expect(text(ribbon())).toContain("Beat 0");
+    expect(text(ribbon())).toContain("Memory 0");
+    expect(text(ribbon())).toContain("00:00:00:00");
+    expect(text(ribbon())).toContain("cutDesk.ribbon.clipAndSourceLocked");
+    expect(text(ribbon())).toContain("cutDesk.ribbon.snapUnavailable");
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+
+    const hold = control("cutDesk.compare.hold");
+    for (const blocked of [
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { isComposing: true },
+      { defaultPrevented: true },
+    ]) {
+      const ignoredKey = {
+        key: " ",
+        code: "Space",
+        repeat: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        ...blocked,
+      };
+      (hold.props.onKeydown as (event: object) => void)(ignoredKey);
+      await settle();
+      expect(ignoredKey.preventDefault).not.toHaveBeenCalled();
+      expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+        false,
+      );
+    }
+    const modal = vi
+      .spyOn(document, "querySelector")
+      .mockReturnValue({} as Element);
+    const modalKey = {
+      key: "Enter",
+      code: "Enter",
+      repeat: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    (hold.props.onKeydown as (event: object) => void)(modalKey);
+    await settle();
+    expect(modalKey.preventDefault).not.toHaveBeenCalled();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+    modal.mockRestore();
+    const holdKey = {
+      key: " ",
+      code: "Space",
+      repeat: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    (hold.props.onKeydown as (event: object) => void)(holdKey);
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+    (hold.props.onKeyup as (event: object) => void)({
+      ...holdKey,
+      ctrlKey: true,
+    });
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+
+    const latch = control("cutDesk.compare.latch");
+    (latch.props.onClick as () => void)();
+    await settle();
+    expect(latch.props["aria-pressed"]).toBe(true);
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+    await view.key("Escape");
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+    expect(JSON.stringify(saved.composition)).toBe(before);
+    view.assertReadOnly();
+  });
+
+  it("clears momentary comparison on pointer loss and fences latched comparison across Record contexts", async () => {
+    const saved = fixture(2);
+    saved.composition.defaultLook = {
+      version: 1,
+      preset: "soft-film",
+      strength: 1,
+    };
+    const before = JSON.stringify(saved.composition);
+    const view = await mountTimeline(saved, {}, true);
+    const control = (label: string) =>
+      flatten(view.root).find(
+        (item) =>
+          item.tag === "button" &&
+          String(item.props["aria-label"]).includes(label),
+      )!;
+    const hold = control("cutDesk.compare.hold");
+    let captured = -1;
+    Object.assign(hold, {
+      setPointerCapture: (id: number) => {
+        captured = id;
+      },
+      hasPointerCapture: (id: number) => captured === id,
+      releasePointerCapture: () => {
+        captured = -1;
+      },
+    });
+    const pointer = {
+      pointerId: 9,
+      button: 0,
+      isPrimary: true,
+      currentTarget: hold,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    (hold.props.onPointerdown as (event: object) => void)(pointer);
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+    const blur = (
+      window.addEventListener as ReturnType<typeof vi.fn>
+    ).mock.calls.find(([name]) => name === "blur")![1] as () => void;
+    blur();
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+    (hold.props.onPointerdown as (event: object) => void)(pointer);
+    await settle();
+    (hold.props.onLostpointercapture as (event: object) => void)(pointer);
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+
+    const latch = control("cutDesk.compare.latch");
+    const oldLatch = latch.props.onClick as () => void;
+    oldLatch();
+    await settle();
+    blur();
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+
+    expect(await view.navigateToRecordFrame(120)).toBe(true);
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+    expect(
+      text(
+        flatten(view.root).find(
+          (item) => item.props["data-testid"] === "edit-decision-ribbon",
+        )!,
+      ),
+    ).toContain("Memory 1");
+    oldLatch();
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+
+    const currentLatch = control("cutDesk.compare.latch");
+    (currentLatch.props.onClick as () => void)();
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+    view.props.projectSettings = {
+      width: 1920,
+      height: 1080,
+      frameRate: 30000 / 1001,
+      timebase: {
+        version: 1,
+        rateNumerator: 30000,
+        rateDenominator: 1001,
+        dropFrame: false,
+      },
+    };
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+
+    (control("cutDesk.compare.latch").props.onClick as () => void)();
+    await settle();
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(true);
+    await view.reload({ ...saved, revision: "replacement-revision" });
+    expect(view.monitorInstances.at(-1)!.vnode.props["bypass-look"]).toBe(
+      false,
+    );
+    expect(JSON.stringify(saved.composition)).toBe(before);
+    view.assertReadOnly();
+  });
+
   it("routes Record frame/edit/bounds commands and makes M a handled no-op", async () => {
     const view = await mountTimeline(fixture(2), {}, true);
     expect(await view.navigateToRecordFrame(30)).toBe(true);

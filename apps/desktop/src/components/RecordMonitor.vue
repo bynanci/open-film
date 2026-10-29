@@ -43,6 +43,8 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   sourceVersion?: number;
   active: boolean;
+  /** Diagnostic preview only. Never enters media ownership or saved state. */
+  bypassLook?: boolean;
 }>();
 type IssueCode =
   | "record.not-ready"
@@ -557,7 +559,7 @@ function geometry(resource: Resource) {
     width: `${(geometry.media.width / props.settings.width) * 100}%`,
     height: `${(geometry.media.height / props.settings.height) * 100}%`,
     transform: `translate(${(geometry.x / geometry.media.width) * 100}%, ${(geometry.y / geometry.media.height) * 100}%) rotate(${geometry.rotation}deg) scale(${geometry.scale})`,
-    ...(look.preset !== "none" && look.strength > 0
+    ...(!props.bypassLook && look.preset !== "none" && look.strength > 0
       ? { filter: `url(#${filterId}-${id(entry)})` }
       : {}),
   };
@@ -744,7 +746,11 @@ defineExpose({
               :revision="revision"
               :source-version="sourceVersion"
               :active="active"
-              :look="resolveFilmLook(composition, resource.entry.clip).look"
+              :look="
+                bypassLook
+                  ? undefined
+                  : resolveFilmLook(composition, resource.entry.clip).look
+              "
               :external-time="resource.entry.localTime"
               :external-playing="forward"
               @readiness="photoReadiness(resource, $event)"
