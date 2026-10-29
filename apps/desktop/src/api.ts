@@ -989,7 +989,8 @@ export const api = {
       total: number;
       summary: { total: number; images: number; videos: number; audio: number };
     }>(`/assets?${params}`),
-  jobs: () => request<JobsState>("/jobs"),
+  jobs: (signal?: AbortSignal) =>
+    request<JobsState>("/jobs", { ...(signal ? { signal } : {}) }),
   clearMotion: (projectId: string) =>
     post<{ ok: boolean }>("/motion-generation/clear", { projectId }),
   motionProviders: () =>
