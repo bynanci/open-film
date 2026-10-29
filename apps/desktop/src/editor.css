@@ -166,6 +166,41 @@
   max-width: 100%;
 }
 
+.cut-desk-monitor-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--of-space-1) var(--of-space-2);
+  min-width: 0;
+  margin-inline-start: auto;
+}
+
+.cut-desk-compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--of-space-2);
+}
+
+.cut-desk-compare .editor-button[aria-pressed="true"] {
+  border-color: var(--editor-accent);
+  color: var(--editor-accent);
+  background: var(--editor-accent-soft);
+}
+
+.cut-desk-compare-status,
+.cut-desk-compare-hint {
+  margin: 0;
+  color: var(--editor-muted);
+  font-size: var(--of-font-caption);
+  overflow-wrap: anywhere;
+}
+
+.cut-desk-compare-hint {
+  max-width: 32rem;
+}
+
 .cut-desk-record .cut-desk-transport {
   flex: none;
 }
@@ -1431,6 +1466,17 @@ button.editor-beat-heading:hover {
 
   .editor-fit-panel {
     margin: 14px 14px 0;
+  }
+
+  .cut-desk-monitor-actions {
+    justify-content: flex-start;
+    margin-inline-start: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .cut-desk-compare .editor-button {
+    min-height: 44px;
   }
 }
 

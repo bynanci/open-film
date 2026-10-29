@@ -165,6 +165,133 @@ test("film, scene and clip looks inherit without changing timing, then undo, red
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("Expert Record compares the original momentarily or latched without saving or rebuilding media", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request);
+  await openEditor(page);
+  const panel = page.getByRole("group", { name: "Film look", exact: true });
+  await panel.getByLabel("Whole film", { exact: true }).selectOption("natural");
+  await expect
+    .poll(async () => (await editor(request)).composition.defaultLook?.preset)
+    .toBe("natural");
+  const before = (await editor(request)).composition;
+
+  await page
+    .getByRole("combobox", { name: "Workspace mode", exact: true })
+    .selectOption("expert");
+  const record = page.locator(".record-monitor");
+  const image = record.locator(".photo-presentation-layers img").first();
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .not.toBe("");
+  await image.evaluate((element) => {
+    Object.assign(window, { openFilmCompareImage: element });
+  });
+  const writes: string[] = [];
+  page.on("request", (sent) => {
+    if (
+      ["POST", "PATCH", "PUT", "DELETE"].includes(sent.method()) &&
+      sent.url().includes("/api/")
+    )
+      writes.push(`${sent.method()} ${sent.url()}`);
+  });
+
+  const hold = page.getByRole("button", {
+    name: "Hold to view original",
+    exact: true,
+  });
+  await hold.dispatchEvent("pointerdown", {
+    pointerId: 7,
+    button: 0,
+    isPrimary: true,
+  });
+  await expect(hold).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .toBe("");
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerId: 7,
+        button: 0,
+        isPrimary: true,
+        bubbles: true,
+      }),
+    ),
+  );
+  await expect(hold).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .not.toBe("");
+  await hold.focus();
+  await page.keyboard.down("Space");
+  await expect(hold).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .toBe("");
+  await page.keyboard.up("Space");
+  await expect(hold).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .not.toBe("");
+  expect(
+    await image.evaluate(
+      (element) =>
+        element ===
+        (window as Window & { openFilmCompareImage?: Element })
+          .openFilmCompareImage,
+    ),
+  ).toBe(true);
+
+  const latch = page.getByRole("button", {
+    name: "Keep original view",
+    exact: true,
+  });
+  await latch.click();
+  await expect(latch).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .toBe("");
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect(latch).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(latch).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() => image.evaluate((element) => element.style.filter))
+    .not.toBe("");
+
+  await latch.click();
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(record).toHaveCount(0);
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await expect(record).toBeVisible();
+  await expect
+    .poll(() =>
+      record
+        .locator(".photo-presentation-layers img")
+        .first()
+        .evaluate(
+          (element) =>
+            element ===
+            (window as Window & { openFilmCompareImage?: Element })
+              .openFilmCompareImage,
+        ),
+    )
+    .toBe(false);
+  expect(
+    await record
+      .locator(".photo-presentation-layers img")
+      .first()
+      .evaluate((element) => element.style.filter),
+  ).not.toBe("");
+  expect(writes).toEqual([]);
+  expect((await editor(request)).composition).toEqual(before);
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
 test("output-only look is shared by preview and MP4 without mutating the saved film or editable export", async ({
   page,
   request,

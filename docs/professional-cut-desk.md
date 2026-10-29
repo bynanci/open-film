@@ -1,10 +1,11 @@
-# Professional Cut Desk — Phase 1A
+# Professional Cut Desk — Phase 1A + contextual Phase 1B
 
 Expert mode presents the saved Composition as Record and the existing Precision
 editor as Source. General mode retains Story/Precision over the same project,
-commands and history. This delivery covers transport, transactions and timebase;
-the Edit Decision Ribbon, dual-monitor layout, compare, pointer-centred gestures
-and later editing tools remain separate Phase 1B–4 work.
+commands and history. Phase 1A covers transport, transactions and timebase. A
+bounded Phase 1B slice adds the Edit Decision Ribbon and diagnostic film-look
+comparison. Dual-monitor layout, pointer-centred Precision zoom/pan and later
+editing tools remain separate Phase 1B–4 work.
 
 ## Time and ownership
 
@@ -52,6 +53,32 @@ Shuttle tiers are bounded to −4, −2, −1, 0, 1, 2, 4. Reverse uses determin
 frame seeks and pauses/mutes audio; it is not reverse audio playback. Record
 markers have no saved contract and M creates neither sequence nor source markers
 while Record owns the keyboard.
+
+## Decision context and film-look comparison
+
+The Expert Ribbon reads `Sequence → Beat → Clip → Source` from the current saved
+Composition. In Record, Beat/Clip/Source are resolved at the Record frame rather
+than copied from the selected Story card, so crossing an edit updates the context
+used by split and review. In Source, the selected clip and Precision playhead own
+the source context: the sequence clock is explicitly labelled as the selected
+clip's **Sequence in**, while Source TC follows the movable Precision playhead.
+The Ribbon also shows clip and library source protection, the real Precision
+snapping state when applicable and the current save/action status. It is
+presentation only and is not another timeline.
+
+When any visual layer at the current Record frame has an effective film look,
+**Original (hold)** temporarily removes visual look filters while the pointer,
+Space or Enter is held. **Original (lock)** keeps that diagnostic view until it
+is toggled, Escape is pressed or the project/revision/timebase/target/active
+visual source changes. Pointer cancellation, capture loss, button blur, window
+blur and visibility loss always release the momentary state. Blur deliberately
+does not clear the explicit latched state. Compare keyboard presses use the same
+input, modal, IME and modifier isolation as the rest of the Cut Desk.
+
+Comparison bypasses every current visual layer without changing media resource
+ownership, the saved Composition, Undo/Redo, render settings or FFmpeg output.
+It does not claim color-managed A/B monitoring; browser color preview remains
+approximate and the revision-bound output is authoritative.
 
 ## Apply, history and protection
 
@@ -101,7 +128,9 @@ synchronous per-frame playback throughput. Browser color preview is approximate.
 All regression media is locally generated colors, shapes and tones. Projects
 contain declarative data; untrusted names remain text, and HTML/JavaScript/remote
 GraphicScene properties are rejected. Sources remain byte-identical. See the
-[validation record](validation-professional-cut-desk.md) for commands and results.
+Phase 1A [validation record](validation-professional-cut-desk.md) and contextual
+Phase 1B [validation record](validation-cut-desk-contextual-ui.md) for commands
+and results.
 Chromium evidence does not establish physical Windows/macOS keyboard/trackpad,
 hardware audio latency, long-form performance, high-DPI or color-managed display
 behavior; those manual gates remain open.

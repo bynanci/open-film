@@ -27,6 +27,11 @@ test.beforeAll(async () => {
     ]);
     const story = app.generateStory();
     app.compose(story.id);
+    app.project.timelines.at(-1)!.defaultLook = {
+      version: 1,
+      preset: "soft-film",
+      strength: 0.7,
+    };
     await app.save();
   } finally {
     app.close();
@@ -1172,6 +1177,7 @@ test("keeps both mode layouts and command dialog accessible at narrow and wide s
 test("keeps expert tools readable with Traditional Chinese and expanded labels", async ({
   page,
 }, info) => {
+  await page.addScriptTag({ content: axe.source });
   await page
     .getByRole("combobox", { name: "Workspace mode", exact: true })
     .selectOption("expert");
@@ -1187,6 +1193,7 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
         await expect(page.getByTestId("cut-desk-target-status")).toContainText(
           locale === "en-XA" ? "" : uiText(locale, "cutDesk.record"),
         );
+        await expect(page.locator(".cut-desk-compare button")).toHaveCount(2);
       }
       for (const width of [640, 780, 1100, 1280, 1920]) {
         await page.setViewportSize({ width, height: width < 900 ? 600 : 900 });
@@ -1196,7 +1203,7 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
             result.push("page overflow");
           for (const element of Array.from(
             document.querySelectorAll<HTMLElement>(
-              ".workspace-topbar button, .workspace-topbar select, .editor-toolbar button, .editor-toolbar summary, .editor-inspector-tabs button",
+              ".workspace-topbar button, .workspace-topbar select, .editor-toolbar button, .editor-toolbar summary, .cut-desk-target-bar button, .cut-desk-target-bar select, .cut-desk-transport button, .editor-inspector-tabs button",
             ),
           )) {
             if (!element.getClientRects().length) continue;
@@ -1219,6 +1226,43 @@ test("keeps expert tools readable with Traditional Chinese and expanded labels",
         expect(issues, `${locale} expert ${workspace} ${width}`).toEqual([]);
       }
       await page.setViewportSize({ width: 1440, height: 900 });
+      if (workspace === "edit") {
+        const latch = page.locator(".cut-desk-compare button").last();
+        await latch.click();
+        await expect(latch).toHaveAttribute("aria-pressed", "true");
+        for (const theme of locale === "en-US"
+          ? (["dark", "light"] as const)
+          : (["dark"] as const)) {
+          await page.evaluate((value) => {
+            document.documentElement.dataset.theme = value;
+          }, theme);
+          const violations = await page.evaluate(async () =>
+            (
+              await (window as unknown as { axe: typeof axe }).axe.run(
+                ".cut-desk-record",
+                {
+                  runOnly: {
+                    type: "tag",
+                    values: ["wcag2a", "wcag2aa", "wcag21aa"],
+                  },
+                },
+              )
+            ).violations.map((rule) => ({
+              id: rule.id,
+              targets: rule.nodes.map((node) => node.target),
+            })),
+          );
+          expect(
+            violations,
+            `${locale} ${theme} pressed Cut Desk accessibility`,
+          ).toEqual([]);
+        }
+        await latch.click();
+        await expect(latch).toHaveAttribute("aria-pressed", "false");
+        await page.evaluate(() => {
+          document.documentElement.dataset.theme = "dark";
+        });
+      }
       await page.screenshot({
         path: info.outputPath(`expert-${locale}-${workspace}.png`),
         fullPage: true,

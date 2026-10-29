@@ -9,11 +9,13 @@ remain Source-only. See the [guide](docs/professional-cut-desk.md),
 and [validation evidence](docs/validation-professional-cut-desk.md).
 
 The Phase 1A validation closes only its transport/transaction/timebase scope after
-the recorded gates. Phase 1B monitor/Ribbon/compare/gestures, Phase 1C responsive
-workspace completion, Phase 2 typed editing, Phase 3 tracks/proxies/audio and
-Phase 4 finishing remain incomplete. Chromium and synthetic FFmpeg evidence do
-not close physical Windows/macOS, high-DPI/color-managed display, hardware audio
-latency or long-form performance gates. Unrelated roadmap work remains open.
+the recorded gates. A bounded Phase 1B context slice now provides the Edit
+Decision Ribbon and transient film-look comparison; remaining Precision gestures,
+dual-monitor/resizable completion, Phase 2 typed editing, Phase 3
+tracks/proxies/audio and Phase 4 finishing remain incomplete. Chromium and
+synthetic FFmpeg evidence do not close physical Windows/macOS,
+high-DPI/color-managed display, hardware audio latency or long-form performance
+gates. Unrelated roadmap work remains open.
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct
 clip-picture move and proportional corner resize in the existing Story monitor.
@@ -21,10 +23,15 @@ It uses the shared frame-pixel geometry and one acknowledged transform
 transaction per completed gesture, with cancellation on stale owner, revision
 or viewport changes. The reviewed old proportional-track preview and gesture
 queue were not recovered because they diverge from current overlay ripple and
-transaction recovery semantics. The Ribbon, compare workflow and remaining
-Expert precision gestures are still incomplete. See the
+transaction recovery semantics. Expert Record now derives its decision Ribbon
+from the same Composition resolver used by split and bypasses effective visual
+looks only as a held or explicitly latched diagnostic preview. It does not save
+or rebuild media, and stale context clears the bypass. Pointer-centred Precision
+zoom/pan and the rest of Phase 1B remain incomplete. See the
 [recovery review](docs/superpowers/reviews/2026-10-29-direct-manipulation-recovery.md)
-and [validation evidence](docs/validation-direct-clip-manipulation.md).
+and the gesture and contextual UI validation records:
+[direct manipulation](docs/validation-direct-clip-manipulation.md) and
+[Ribbon/compare](docs/validation-cut-desk-contextual-ui.md).
 
 ## Current implementation — Multi-source import and common analysis
 
