@@ -33,11 +33,11 @@
 ## Persistent Goal Ledger
 
 - [x] **A — Dependency:** upgrade the vulnerable production dependency, verify audit and project gates, and record evidence.
-- [ ] **B — Interaction recovery:** compare every old-branch behavior against latest main, classify it with evidence, and port only confirmed gaps through a fresh plan/branch.
-- [ ] **C — Cut Desk refinement:** use the B findings and the approved Phase 1B/1C design to implement one coherent, testable architecture/UX journey.
-- [ ] **D — Evidence-backed roadmap:** audit all seven proposed subsystems and v0.5.0–v1.0.0 capabilities against latest main, then queue only verified gaps.
+- [x] **B — Interaction recovery:** compare every old-branch behavior against latest main, classify it with evidence, and port only confirmed gaps through a fresh plan/branch.
+- [x] **C — Cut Desk refinement:** use the B findings and the approved Phase 1B/1C design to implement one coherent, testable architecture/UX journey.
+- [x] **D — Evidence-backed roadmap:** audit all seven proposed subsystems and v0.5.0–v1.0.0 capabilities against latest main, then queue only verified gaps.
 - [ ] **Issue #7:** remains open until real workstation evidence exists; CI is not a substitute.
-- [ ] **PR handoff:** create independent reviewable PRs for delivered changes; do not merge absent explicit authorization.
+- [x] **PR handoff:** create independent reviewable PRs for delivered changes; merge only after explicit authorization and exact-head validation.
 
 ## Baseline on Approved Design Base
 

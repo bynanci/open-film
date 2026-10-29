@@ -1,7 +1,8 @@
 # OpenFilm project format
 
 An `.openfilm` project is a directory. **Project schema 1.0.0** is independent of
-the **OpenFilm application release 0.1.0**. A project refers to source media by
+OpenFilm application releases. The latest tagged application release is `v0.4.0`;
+current `main` is unreleased. A project refers to source media by
 local file URI. Native file/folder import references originals in place; browser
 file selection copies the chosen bytes into project-managed `sources/` because a
 browser does not expose their original local paths. Neither route modifies originals.
@@ -79,13 +80,15 @@ fields change when the film language changes. Existing text with no provenance
 remains verbatim. These additive fields retain schema 1.0.0 and require no catalog
 migration. UI language and theme are local preferences outside the project.
 
-The manifest is validated before atomic temporary-file replacement. The catalog
-uses SQLite schema `PRAGMA user_version=2`, WAL mode, indexed fields for listing,
-and JSON descriptors for extensible asset data. Version 1 migrates atomically to
-version 2 by adding transcript revision/segment tables, derived-analysis caches
-and source-bound manual markers. Existing asset/job descriptors are preserved;
-failed migration rolls back. Large transcripts use bounded segment pages, with
-words stored alongside each segment. Manifest schema remains 1.0.0. See
+The manifest is validated before atomic temporary-file replacement. The current
+catalog uses SQLite schema `PRAGMA user_version=6`, WAL mode, indexed fields for
+listing and typed columns plus bounded JSON descriptors for extensible asset
+data. Versioned migrations through v6 preserve prior assets and jobs while adding
+transcript/knowledge identity, review evidence and multi-source semantic tables;
+some steps rebuild affected tables, while the complete migration runs
+transactionally and rolls back on failure. Large
+transcripts use bounded segment pages, with words stored alongside each segment.
+Manifest schema remains 1.0.0. See
 [media intelligence](../media-intelligence.md).
 User preference patches change rating/state/tags while keeping source descriptors.
 Future catalog schema versions are rejected. Access through `ProjectCatalog`
@@ -156,14 +159,19 @@ detection is not implemented. See [media portability](media-portability.md) and
 ## Named versions
 
 The optional `versions/` directory is application-owned data outside project
-schema 1.0.0 and catalog schema v5. Projects without it open normally. Version
-creation captures the saved manifest and a bounded catalog image while the
-catalog writer is excluded; it validates the SQLite schema, integrity and
-foreign keys before staging and publishing the package. Snapshot metadata and
-hashes do not copy source media or expose absolute source URIs through API/CLI
-records. Names and descriptions live in the index and can change without
-rewriting a saved version. The store has explicit count and byte caps and does
-not silently prune versions.
+schema 1.0.0. The current catalog is v6, while every version record preserves the
+schema version of its captured image. Historical v5 images remain immutable:
+inspect validates and reports the saved schema, and diff uses saved project and
+source-reference metadata without rewriting the catalog. Restore/rebase paths
+that need assets upgrade only a private temporary copy and publish the upgraded
+live catalog during restore. Projects without `versions/` open normally.
+Version creation captures the saved manifest and a bounded catalog
+image while the catalog writer is excluded; it validates the SQLite schema,
+integrity and foreign keys before staging and publishing the package. Snapshot
+metadata and hashes do not copy source media or expose absolute source URIs
+through API/CLI records. Names and descriptions live in the index and can change
+without rewriting a saved version. The store has explicit count and byte caps
+and does not silently prune versions.
 
 Restore validates the selected manifest/catalog/source fingerprints, current
 revision and locks, then first creates a named recovery checkpoint. Manifest
@@ -190,10 +198,10 @@ provider credentials and named-version snapshots are not included. Each distinct
 source byte sequence is stored once beneath `sources/<hash-prefix>/`; asset URIs
 remain unique and opaque while their `openfilm.managedSource.relativePath` points
 to the shared source bytes. Font files and their resolver bindings are stored in
-`fonts/` and checked by hash when a collected project opens. These package
-receipts live outside schema 1.0.0 and catalog schema v5; projects without them
-continue to open as before. See [Collect Media](collect-media.md) for the
-directory/ZIP and Verify contract.
+`fonts/` and checked by hash when a collected project opens. Package receipts
+remain outside project schema 1.0.0; the filtered portable catalog uses current
+schema v6. Projects without those receipts continue to open as before. See
+[Collect Media](collect-media.md) for the directory/ZIP and Verify contract.
 
 ## Validation and migration
 
