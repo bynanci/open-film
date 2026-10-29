@@ -1,4 +1,4 @@
-# Integration contracts for v0.1
+# Current integration contracts
 
 All quantities called duration/sourceIn/sourceOut/timelineStart/timelineDuration
 are seconds. Capture timestamps are ISO 8601 with provenance/confidence.
@@ -211,12 +211,16 @@ not remote provider authenticity or speech-quality certification.
 ## M7A named project versions
 
 `ProjectVersionRecord` v1 is an application-side record and does not change
-project schema 1.0.0 or catalog schema v5. It binds a stable version ID,
-project ID, request ID, saved project revision, manifest/catalog SHA-256,
-catalog schema version, software version and a sorted source-reference manifest
-containing only asset IDs, hashes, sizes, media types and managed/external kind.
-Absolute media paths and credentials are excluded. Version content is immutable;
-renaming changes only private index metadata.
+project schema 1.0.0 or the current catalog schema v6. It binds a stable version
+ID, project ID, request ID, saved project revision, manifest/catalog SHA-256,
+the catalog schema version captured by that snapshot, software version and a
+sorted source-reference manifest containing only asset IDs, hashes, sizes,
+media types and managed/external kind. Historical v5 images remain immutable;
+inspect validates and reports their stored schema, while diff compares saved
+project/source-reference metadata without rewriting the catalog. Asset-aware
+restore/rebase paths upgrade only a private temporary copy to v6 before publishing
+the live catalog. Absolute media paths and credentials are excluded. Version
+content is immutable; renaming changes only private index metadata.
 
 `app.versions` exposes `currentRevision()`, `create()`, `list()`, `inspect()`,
 `diff()`, `rename()`, `restore()` and startup recovery. Create/list/inspect/diff/

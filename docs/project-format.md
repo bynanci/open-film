@@ -1,6 +1,6 @@
 # OpenFilm 專案格式
 
-.openfilm 專案是一個資料夾。專案 schema 1.0.0 與 OpenFilm 應用程式版本 0.1.0 各自獨立。專案以本機 file URI 參照來源媒體。原生檔案／資料夾匯入會直接參照原檔；瀏覽器選取檔案時，因瀏覽器不會提供原始本機路徑，所選位元組會複製到專案管理的 sources/。兩種匯入方式都不會修改原檔。
+.openfilm 專案是一個資料夾。專案 schema 1.0.0 與 OpenFilm 應用程式版本各自獨立；最新標記的應用程式版本是 v0.4.0，目前 main 尚未發布。專案以本機 file URI 參照來源媒體。原生檔案／資料夾匯入會直接參照原檔；瀏覽器選取檔案時，因瀏覽器不會提供原始本機路徑，所選位元組會複製到專案管理的 sources/。兩種匯入方式都不會修改原檔。
 
 機器可讀契約已發布於 [專案 schema](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.0.0.schema.json)、[媒體資產 schema](https://github.com/bynanci/open-film/blob/main/schemas/media-asset-1.0.0.schema.json) 和 [外掛 manifest schema](https://github.com/bynanci/open-film/blob/main/schemas/plugin-manifest-1.schema.json)。
 
@@ -49,7 +49,7 @@ Composition 也可額外包含 graphicScenes；場景可以帶有綁定至根 Im
 
 可選的 projectContentLocale（en-US、zh-TW、ja-JP）和 filmSettings（templateId、targetDuration、maxDuration）會描述新影片的預設值，不會自行建立故事；Story 仍可設定個別覆寫。範本段落可選擇包含 templateBeatKey、titleSource 和 intentSource；只有明確標為範本擁有的欄位會隨影片語言更新。沒有來源標記的既有文字會原樣保留。這些新增欄位維持 schema 1.0.0，不需要素材目錄遷移。介面語言與主題是專案以外的本機偏好。
 
-manifest 通過驗證後才會以暫存檔原子替換。素材目錄使用 SQLite schema PRAGMA user_version=2、WAL 模式、供清單查詢的索引欄位，以及可擴充資產資料的 JSON 描述。版本 1 會以原子方式新增逐字稿修訂／片段表、衍生分析快取和來源綁定手動標記，遷移至版本 2。既有資產／工作描述會保留；遷移失敗會回復。大型逐字稿使用有界分段頁面，文字保存在各段旁。Manifest schema 維持 1.0.0。使用者偏好補丁可變更評分／狀態／標籤，同時保留來源描述。未來的素材目錄 schema 版本會被拒絕。請透過 ProjectCatalog 存取資料，以維持 schema 不變條件；避免直接執行任意 SQL 變更。
+manifest 通過驗證後才會以暫存檔原子替換。目前素材目錄使用 SQLite schema PRAGMA user_version=6、WAL 模式、供清單查詢的索引欄位，以及 typed columns 與有界 JSON 描述。版本化的 v1→v6 遷移會保留既有資產與工作，並加入逐字稿／知識身分、審閱證據和多來源語意表；部分步驟會重建受影響的資料表，完整遷移仍在單一交易內執行，失敗會回復。大型逐字稿使用有界分段頁面，文字保存在各段旁。Manifest schema 維持 1.0.0。使用者偏好補丁可變更評分／狀態／標籤，同時保留來源描述。未來的素材目錄 schema 版本會被拒絕。請透過 ProjectCatalog 存取資料，以維持 schema 不變條件；避免直接執行任意 SQL 變更。
 
 複製專案資料夾作為檔案備份前，請先關閉應用程式；若要備份正在使用的素材目錄，請使用理解 SQLite 的備份工具。來源媒體需另行備份。只有 manifest 無法保留素材目錄偏好，也無法讓遺失的原始檔重新可用。
 
@@ -79,13 +79,13 @@ sourceIn、sourceOut、timelineStart、timelineDuration 和 Story 片長都以�
 
 ## 具名版本
 
-可選的 versions/ 資料夾屬於應用程式管理資料，不屬於專案 schema 1.0.0 或素材目錄 schema v5。沒有此資料夾的專案仍可正常開啟。建立版本時會排除素材目錄寫入器，同時擷取已儲存 manifest 和有界素材目錄快照；暫存與發布前會驗證 SQLite schema、完整性和外鍵。快照中繼資料與雜湊不會複製來源媒體，也不會透過 API／CLI 紀錄暴露絕對來源 URI。名稱與描述儲存在索引，可在不重寫快照的情況下變更。儲存區有明確數量和位元組上限，不會默默刪除舊版本。
+可選的 versions/ 資料夾屬於應用程式管理資料，不屬於專案 schema 1.0.0。目前素材目錄為 v6；每筆版本記錄會保留擷取影像的實際 schema 版本。歷史 v5 影像維持不可變：檢視會驗證並回報已儲存的 schema，比較只使用已儲存的專案與來源參照中繼資料；需要讀取資產的還原／重新定位路徑才會升級私人暫存副本，並在還原時發布升級後的即時素材目錄。沒有此資料夾的專案仍可正常開啟。建立版本時會排除素材目錄寫入器，同時擷取已儲存 manifest 和有界素材目錄快照；暫存與發布前會驗證 SQLite schema、完整性和外鍵。快照中繼資料與雜湊不會複製來源媒體，也不會透過 API／CLI 紀錄暴露絕對來源 URI。名稱與描述儲存在索引，可在不重寫快照的情況下變更。儲存區有明確數量和位元組上限，不會默默刪除舊版本。
 
 還原前會驗證所選 manifest／素材目錄／來源指紋、目前修訂和鎖定，然後先建立具名復原檢查點。Manifest 發布在素材目錄還原交易中進行；若啟動時偵測到發布中斷，小型私人日誌會回復至檢查點。目前專案 manifest 和素材目錄會一併替換，編輯器快照也會失效。還原不會恢復快取／輸出或原始素材，也不等同工作階段復原／重做。完整生命週期與失敗行為請見[具名版本](/named-versions)。
 
 瀏覽器管理的副本會在 openfilm.managedSource 中記錄已驗證的來源相對路徑和原管理 URI。搬移專案後，只有仍指向受管理來源的資產會重新定位；明確重新連結至外部檔案的素材會維持外部參照。ID 和原始來源資訊不變。來源路徑必須在 sources/ 之內；專案快取或任意中繼資料路徑不會被當成受管理媒體匯入。
 
-Collect Media 套件使用相同的受管理來源邊界。可選 collect-manifest.json 會記錄所選 Story／Composition、相對路徑、內容雜湊／大小、必要字型綁定、明確權利聲明及原 URI 摘要。專案素材目錄只保留參照資產與其選定逐字稿資料；無關素材庫資產、快取、工作、供應商憑證和具名版本快照不會納入。相同來源位元組只存一份；資產 URI 仍保持不透明且唯一，openfilm.managedSource.relativePath 則指向共用檔案。字型檔和解析器綁定保存在 fonts/，開啟套件時會檢查雜湊。這些回條位於 schema 1.0.0 和素材目錄 schema v5 之外；既有專案照常開啟。完整目錄／ZIP 與驗證契約請見[Collect Media](/collect-media)。
+Collect Media 套件使用相同的受管理來源邊界。可選 collect-manifest.json 會記錄所選 Story／Composition、相對路徑、內容雜湊／大小、必要字型綁定、明確權利聲明及原 URI 摘要。專案素材目錄只保留參照資產與其選定逐字稿資料；無關素材庫資產、快取、工作、供應商憑證和具名版本快照不會納入。相同來源位元組只存一份；資產 URI 仍保持不透明且唯一，openfilm.managedSource.relativePath 則指向共用檔案。字型檔和解析器綁定保存在 fonts/，開啟套件時會檢查雜湊。套件回條位於專案 schema 1.0.0 之外；經篩選的可攜式素材目錄使用目前的 schema v6。沒有這些回條的既有專案照常開啟。完整目錄／ZIP 與驗證契約請見[Collect Media](/collect-media)。
 
 ## 驗證與遷移
 

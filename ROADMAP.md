@@ -72,10 +72,29 @@ only requested persistent handles and rejects identity ambiguity before a 33rd
 same-name browser source can be duplicated. M2 streaming discovery, membership,
 staging and manifest sealing are next and are not implied by the M1 UI.
 
-## 0.4.0 reviewed source integration
+## Evidence reconciliation and next stable series
 
-The next application release is 0.4.0; the existing project schema stays 1.0.0.
-This maintenance pass hardens Named Versions and integrates independently
+The latest tagged release is `v0.4.0`; current `main` contains unreleased work and
+the next stable version is not preassigned. The
+[seven-subsystem reconciliation](docs/roadmap/seven-subsystem-reconciliation.md)
+distinguishes merged evidence, partial behavior, true gaps and workstation gates.
+It corrects current Catalog v6 and PR history, and prevents future work from
+rebuilding existing HDR tone mapping, Source waveform, proxy generation,
+CaptionTrack, fixed easing, focal contracts, Hero titles, Collect Media or
+synthetic fixtures.
+
+The delivery order preserves the accepted Multi-source M2 → M3 infrastructure
+route, then reviews continuity/A-B-roll, rhythm and transcript transactions,
+tactile photo/title/color increments, proxy/Collect lifecycle, reproducible
+cross-platform rendering, native release closure and a local data-only preset
+registry. Each is a separate reviewable PR with explicit acceptance and manual
+gates only when implemented; the owner crosswalk does not create duplicate
+checklists. None creates a second timeline or silently uploads media.
+
+## Released 0.4.0 source integration
+
+Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens
+Named Versions and integrates independently
 reviewed Photo Depth, Professional Export, Collect Media, Native Installer
 candidate tooling, NLE Fidelity and Motion Candidates (PRs 35–40). Shared-source
 contracts, non-destructive editing and explicit provider consent remain intact.
@@ -120,10 +139,10 @@ The earlier F05 photo-framing work remains deferred.
 # Roadmap
 
 OpenFilm's north star is ownership of media, story decisions, and the final edit.
-The current release establishes a useful offline workflow; later milestones should
+The latest tagged release establishes a useful offline workflow; later milestones should
 improve that workflow without tying the portable domain to a UI, cloud, or NLE.
 
-## Current branch candidate — Story Arc Authoring
+## Integrated on main — Story Arc Authoring (PR #53)
 
 The Quiet Studio redesign unifies carbon/pearl/blue surfaces, control and dialog
 geometry, project/preferences/actions in the top bar, and the creative components.
@@ -137,7 +156,8 @@ PR #53's final review pass also fences IME completion, localizes untouched arc
 prompts, binds timing defaults to the selected arc, isolates Pipeline keyboard
 focus and preserves the loopback image CORS boundary. The compact Export action
 remains visible through 1024x768 expanded-locale layouts. Full local evidence is
-3,821 Vitest tests and 228 Playwright tests from the final candidate.
+3,821 Vitest tests and 228 Playwright tests from the merged head
+`d19bf94ee0299005faa9e3e9e412cca61b965592`.
 
 General and Expert operation modes share one editor and project contract.
 Guided disclosure, compact expert spacing and searchable navigation commands
@@ -168,7 +188,7 @@ Workbench, and Compose/Edit flow. The Storyboard becomes a vertical reading
 thread. M9 StoryGraph, M9 StoryPlan, M10 Pipeline, the existing Composition,
 and project schema 1.0.0 remain the owners of their current contracts. See
 [story arc authoring](docs/story-arc-authoring.md) and the
-[validation record](docs/validation-story-arc-authoring.md) for this branch's
+[validation record](docs/validation-story-arc-authoring.md) for the integration's
 exact checks and outstanding gates.
 
 The user-supplied cinema-foundation v1.1.0 and v1.0.0 archives now provide the
@@ -615,46 +635,54 @@ native resize behavior remain workstation checks.
 
 ## Composition-aware subtitle handoff
 
-The first caption slice reuses corrected transcripts to preview and export
+The first historical caption slice reuses corrected transcripts to preview and export
 composition-bound SRT/WebVTT with immutable source/revision receipts. One selected
 track, conservative segment boundaries, explicit warnings and stale checks keep
-the workflow local and non-destructive. This does not add a caption track,
-burn-in, karaoke or styling. See [the contract](docs/composition-captions.md) and
+the workflow local and non-destructive. That slice did not add a caption track,
+burn-in, karaoke or styling. Native CaptionTrack and MP4 burn-in were integrated
+later; SRT/VTT remains a separate derived export. See
+[the contract](docs/composition-captions.md) and
 [the OpenCut gap matrix](docs/opencut-reference.md).
 
-A future product flow is an explicit **derived composition / story variant**,
-preserving the original and comparing selections, constraints and duration.
-Recipes build on the existing headless CLI only when a repeatable workflow needs
-them. A real extension must justify plugin lifecycle/permissions; MCP begins with
-queries and revision-bound proposals. Further keyframes and compositor work require a
-specific editing limitation and shared preview/render semantics. None of these
-broader platforms is implemented by subtitle export. Existing workstation gates
-remain open independently of file-parser or browser success.
+Later work also added explicit derived composition/story variants that preserve
+the original and compare selections, constraints and duration. Recipes build on
+the existing headless CLI only when a repeatable workflow needs them. Executable
+extensions still require a separate plugin lifecycle/permission threat model;
+MCP begins with queries and revision-bound proposals. Further keyframes and
+compositor work require a specific editing limitation and shared preview/render
+semantics. Existing workstation gates remain open independently of file-parser
+or browser success.
 
 _Modified by OpenFilm contributors on 2026-10-18. Current OpenFilm first-party material is Apache-2.0; historical grants remain available. See LICENSE and NOTICE._
 
-## 0.4.0 — Reviewed creative-workflow integration
+## 0.4.0 — Tagged creative-scene release
 
-| Phase                             | Included source behavior                                                                                                                                                                                                                                                                                                                                                                             | Remaining boundary                                                                                                           |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| M7A                               | Named snapshots, ordered/collision-free diff, explicit deletion and protected checkpoint/source verification                                                                                                                                                                                                                                                                                         | Workstation permissions/recovery                                                                                             |
-| M7B #36                           | Profile previews, PNG, MP4 ratios, WAV and aligned role stems; review-bound crop and selected look/caption/quality                                                                                                                                                                                                                                                                                   | Real-photo framing, sustained 4K and target-player QA                                                                        |
-| M7C #39                           | Native/metadata/baked/unsupported report, portable opaque precomps/full mix and receipts                                                                                                                                                                                                                                                                                                             | Real NLE/Resolve import/relink; transparent overlays unsupported                                                             |
-| M7D #37                           | Referenced media/fonts, explicit rights, safe ZIP/directory and actual relocation/reopen render proof                                                                                                                                                                                                                                                                                                | Cross-machine filesystems, typography and license suitability                                                                |
-| M7E #38                           | Verified owned runtime lifecycle and manual installer-candidate tooling                                                                                                                                                                                                                                                                                                                              | **Partial:** audited runtime inputs, Windows/macOS clean-machine signing/update/rollback evidence; no installer distribution |
-| M8A #35                           | Protected local photo layers, bounded deterministic parallax/fallback, alpha-safe masks and typed Visual QA                                                                                                                                                                                                                                                                                          | Real subjects, edge aesthetics, display/HDR and4K                                                                            |
-| M8B #40                           | Local fixture/external video comparison, explicit accept/replace/restore, protected history and bounded private cache                                                                                                                                                                                                                                                                                | Remote motion disabled; provider/API/terms/cost/retention and human fidelity require separate review                         |
-| M9A                               | Story Graph & Multi-Perspective Workspace (Outline, Graph, Storyboard); canonical Story/Beat integrity, 4 node types, 5 edge types with cycle rejection, revision-separated GraphViewState, quick actions, and synthetic benchmarks                                                                                                                                                                  | Touch/pen gestures and large high-DPI display workstation validation                                                         |
-| M9B                               | Graph to Reviewable Storyboard Proposal (`StoryPlan`); 5 storyboard dimensions, deterministic input signature, echo clip solver support, source nature preservation, cycle/alternative conflict detection, ephemeral preview, and new rough cut adoption                                                                                                                                             | Live voice narration recording and multi-track audio listening QA                                                            |
-| M10A                              | Guided Pipeline Orchestration; canonical 8-step recipe, typed ports and DAG acyclicity validation, immutable input snapshot digest, execution state vs. freshness separation, legal adoption receipts, concurrency = 1 serialization, tone mock rejection, zero-lock review gates, and reopen persistence                                                                                            | Hardware-accelerated multi-pass video export, listening QA, and high-DPI workstation verification                            |
-| M10B                              | Pipeline Workbench UI/UX; docked bottom bar, expandable drawer, fullscreen modal, simplified 5-stage overview, 4-question stage cards, audio audition player, click-to-play video preview, cross-view navigation, outdated draft transparency, keyboard & IME protection, and responsive 3-pane layout                                                                                               | Touch/pen gesture workbench validation, high-DPI display QA, and live multi-track audio listening                            |
-| M11A                              | Change Impact and Incremental Runs; composition revision vs. per-step consumed-input signature separation, 8-case impact matrix, verified artifact reuse with tampering detection, full-render fallback transparency, immutable run/receipt history, referenced asset pruning protection, and workbench UI                                                                                           | Real-photo multi-track listening QA and remote TTS latency verification                                                      |
-| M11B                              | Creative Variants and A/B Review; three-layer versioning separation (snapshot vs. session undo vs. variant), section isolation proof ("只改本段"), edit lock preservation, zero-render A/B comparison, single-audio playback safety, section-based timeline alignment, mandatory pre-adoption version checkpoints, post-restore run invalidation, shared media protection, and Collect Media privacy | Touch/pen gesture workbench validation, high-DPI display QA, and live multi-track audio listening QA                         |
-| Story Graph × Pipeline Acceptance | Comprehensive end-to-end integration acceptance connecting M9A through M11B with fixed synthetic fixture (6 photos, 3 memories, 3 chats, route, WAV tone, TC subtitles; 30s/30fps -> 900 frames); 7 verified journeys, tamper-proof artifact reuse, fault injection resilience, A/B adoption/restoration, and Collect Media privacy                                                                  | Clean-machine physical GPU playback, live hardware audio listening QA, and workstation gates intentionally remain open       |
+| Phase   | Included source behavior                                                                                              | Remaining boundary                                                                                                           |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| M7A #34 | Named snapshots, ordered/collision-free diff, explicit deletion and protected checkpoint/source verification          | Workstation permissions/recovery                                                                                             |
+| M7B #36 | Profile previews, PNG, MP4 ratios, WAV and aligned role stems; review-bound crop and selected look/caption/quality    | Real-photo framing, sustained 4K and target-player QA                                                                        |
+| M7C #39 | Native/metadata/baked/unsupported report, portable opaque precomps/full mix and receipts                              | Real NLE/Resolve import/relink; transparent overlays unsupported                                                             |
+| M7D #37 | Referenced media/fonts, explicit rights, safe ZIP/directory and actual relocation/reopen render proof                 | Cross-machine filesystems, typography and license suitability                                                                |
+| M7E #38 | Verified owned runtime lifecycle and manual installer-candidate tooling                                               | **Partial:** audited runtime inputs, Windows/macOS clean-machine signing/update/rollback evidence; no installer distribution |
+| M8A #35 | Protected local photo layers, bounded deterministic parallax/fallback, alpha-safe masks and typed Visual QA           | Real subjects, edge aesthetics, display/HDR and 4K                                                                           |
+| M8B #40 | Local fixture/external video comparison, explicit accept/replace/restore, protected history and bounded private cache | Remote motion disabled; provider/API/terms/cost/retention and human fidelity require separate review                         |
+
+## Unreleased main after v0.4.0 — reviewed workflow integration
+
+| Phase                             | Included source behavior                                                                                                                                                                                                                                                                                                                                                                             | Remaining boundary                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| M9A                               | Story Graph & Multi-Perspective Workspace (Outline, Graph, Storyboard); canonical Story/Beat integrity, 4 node types, 5 edge types with cycle rejection, revision-separated GraphViewState, quick actions, and synthetic benchmarks                                                                                                                                                                  | Touch/pen gestures and large high-DPI display workstation validation                                                   |
+| M9B                               | Graph to Reviewable Storyboard Proposal (`StoryPlan`); 5 storyboard dimensions, deterministic input signature, echo clip solver support, source nature preservation, cycle/alternative conflict detection, ephemeral preview, and new rough cut adoption                                                                                                                                             | Live voice narration recording and multi-track audio listening QA                                                      |
+| M10A                              | Guided Pipeline Orchestration; canonical 8-step recipe, typed ports and DAG acyclicity validation, immutable input snapshot digest, execution state vs. freshness separation, legal adoption receipts, concurrency = 1 serialization, tone mock rejection, zero-lock review gates, and reopen persistence                                                                                            | Hardware-accelerated multi-pass video export, listening QA, and high-DPI workstation verification                      |
+| M10B                              | Pipeline Workbench UI/UX; docked bottom bar, expandable drawer, fullscreen modal, simplified 5-stage overview, 4-question stage cards, audio audition player, click-to-play video preview, cross-view navigation, outdated draft transparency, keyboard & IME protection, and responsive 3-pane layout                                                                                               | Touch/pen gesture workbench validation, high-DPI display QA, and live multi-track audio listening                      |
+| M11A                              | Change Impact and Incremental Runs; composition revision vs. per-step consumed-input signature separation, 8-case impact matrix, verified artifact reuse with tampering detection, full-render fallback transparency, immutable run/receipt history, referenced asset pruning protection, and workbench UI                                                                                           | Real-photo multi-track listening QA and remote TTS latency verification                                                |
+| M11B                              | Creative Variants and A/B Review; three-layer versioning separation (snapshot vs. session undo vs. variant), section isolation proof ("只改本段"), edit lock preservation, zero-render A/B comparison, single-audio playback safety, section-based timeline alignment, mandatory pre-adoption version checkpoints, post-restore run invalidation, shared media protection, and Collect Media privacy | Touch/pen gesture workbench validation, high-DPI display QA, and live multi-track audio listening QA                   |
+| Story Graph × Pipeline Acceptance | Comprehensive end-to-end integration acceptance connecting M9A through M11B with fixed synthetic fixture (6 photos, 3 memories, 3 chats, route, WAV tone, TC subtitles; 30s/30fps -> 900 frames); 7 verified journeys, tamper-proof artifact reuse, fault injection resilience, A/B adoption/restoration, and Collect Media privacy                                                                  | Clean-machine physical GPU playback, live hardware audio listening QA, and workstation gates intentionally remain open |
 
 See [release validation](docs/validation-stable-release.md) for exact inputs,
-combined gate status and preserved original feature evidence. Main remains the
-release base; no separate timeline or project-schema migration is introduced.
+combined gate status and preserved original feature evidence. The `v0.4.0` tag
+is the latest stable release; current `main` is the unreleased development base.
+No separate timeline or project-schema migration is introduced.
 
 ## Next milestone — workstation evidence and delivery
 

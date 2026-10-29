@@ -3,7 +3,7 @@
 **[繁體中文](README.zh-TW.md) · [English](README.md) · [日本語](README.ja.md)**
 
 [![Official Website](https://img.shields.io/badge/Website-bynanci.github.io%2Fopen--film-06b6d4?style=for-the-badge&logo=github)](https://bynanci.github.io/open-film/)
-[![Release](https://img.shields.io/badge/Release-v0.4.0-8b5cf6?style=for-the-badge)](https://github.com/bynanci/open-film/pull/41)
+[![Release](https://img.shields.io/badge/Release-v0.4.0-8b5cf6?style=for-the-badge)](https://github.com/bynanci/open-film/releases/tag/v0.4.0)
 [![License](https://img.shields.io/badge/License-Apache_2.0-10b981?style=for-the-badge)](https://github.com/bynanci/open-film/pull/25)
 [![XERJ Corpus Hub](https://img.shields.io/badge/XERJ_Corpus_Hub-Selected_v0.3.3-f59e0b?style=for-the-badge)](https://hub.xerj.org)
 

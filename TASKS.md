@@ -24,6 +24,14 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         and snap-bypass gestures without introducing a second timeline.
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
+  - [ ] D3A1: project existing source peaks into Sequence time with shared
+        source-range and rational-frame resolvers, including trim/speed/clamps.
+  - [ ] D3B1: after an edit/audio compatibility design, add the versioned
+        audio-policy primitive/evaluator for J/L mechanics; default B-roll to
+        `keep-primary`, with explicit role/gain modes and no coverage persistence
+        or implicit/double mix in this slice.
+  - [ ] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
+        quota/eviction, rebuild and health UI through the existing generator.
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.
 
@@ -37,8 +45,9 @@ and [validation](docs/validation-multi-source-analysis.md).
       typed source/manifest/review contracts and dotted error identifiers.
 - [x] M0: add catalog schema v6, classify every durable table and filter selected
       source/content evidence from Collect Media snapshots.
-- [x] M0: migrate immutable schema-v5 Named Version copies for inspect/restore
-      without changing historical payload hashes.
+- [x] M0: preserve immutable schema-v5 Named Version inspect/diff behavior and
+      privately upgrade asset-aware restore/rebase paths without changing
+      historical payload hashes.
 - [x] M1: additive native/browser source draft, multi-folder picker, bounded
       typed drop classification, IndexedDB handles, expired-file disclosure and
       General/Expert views. The same project-owned application service backs
@@ -82,7 +91,71 @@ and [validation](docs/validation-multi-source-analysis.md).
 - [ ] M6: immutable review decisions and explicit StoryGraph adoption.
 - [ ] M7: supported OS/browser, external-drive, stress and workstation evidence.
 
-## 0.4.0 release — review remediation and integration
+## Seven-subsystem evidence reconciliation and next stable queue
+
+Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-reconciliation.md).
+
+- [x] Reconcile Story, photo/render, Cut Desk/audio, transcript/title, color,
+      catalog/portability and cross-platform claims against current source,
+      contracts, regressions and Git history.
+- [x] Correct current Catalog v6, released-v0.4.0 versus unreleased-main and
+      historical subtitle/Named Version wording without rewriting historical
+      v5 compatibility evidence.
+- [x] D1 dependency: keep the existing Multi-source M2 and M3 items above as the
+      only authoritative implementation queue; do not duplicate their checkboxes.
+- D2 crosswalk: the nested D2A item under the existing emotional-overlay/
+  shot-proposal owner is authoritative for typed-evidence continuity diagnostics,
+  advisory emotion guidance and `manual-review` when shot language is absent.
+- [ ] D2B: after a transition compatibility design, add bounded adjacent-scene
+      micro-preview and Dip-to-Black/White through the existing transition owner;
+      reuse rather than rebuild the implemented crossfade.
+- D3A1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for background
+  waveform preparation and Sequence projection through the existing source-range
+  and rational-frame contract.
+- [ ] D3A2: after an analysis/reliability design, add source-hash-bound
+      onset/downbeat/phrase evidence and an explicit bounded solver snap proposal;
+      do not imply the existing generic snap primitive produces beat markers.
+- D3B1 crosswalk: the nested Professional Cut Desk Phase 3 item is authoritative for J/L-cut
+  mechanics and explicit embedded-audio policy on the existing Composition.
+- [ ] D3B2: after a Story/solver coverage design, add reviewable A-roll/B-roll
+      visual coverage roles and proposals that persist the D3B1 policy receipt;
+      product implementation depends on D3B1 and introduces no second timeline.
+- [ ] D4: design and implement reliable-timing-only Transcript ripple proposals
+      through one application-level compound operation with typed cross-track
+      retime/conflict policy; estimated timing must fail closed.
+- D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
+  focal interaction, ambient fill, versioned bounded custom easing and bounded
+  bilingual title finishing.
+- [ ] D5C: after an independent color/compatibility design, add versioned primary
+      correction before Film Looks. Auto Match remains reviewable measured
+      evidence, never a source mutation.
+- D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
+  lifecycle; use the existing generator and add cancel/resume, stale fencing,
+  quota/eviction, rebuild and health acceptance there.
+- [ ] D6B: add Collect Media trimmed-original and explicitly offline proxy modes
+      with derivative provenance, handles, relocation/reopen, decoded
+      picture/audio/time parity against the original project baseline and
+      explicit quality disclosure.
+- D7A crosswalk: the nested open F13 item is authoritative for a licensed
+  fixed test font/tool record, metric-specific tolerances, deliberate failure
+  controls and focused Windows/macOS render evidence.
+- D7B crosswalk: the released-0.4.0 GLib gate and M7E installer checkboxes remain
+  authoritative for remediation **and** reachability re-audit, audited runtime,
+  signing/notarization, clean-machine install, update, rollback and uninstall.
+- [ ] D8: add a strict local data-only preset registry without enabling project
+      JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
+
+Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
+D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
+contract, D5B title contract, D5C color processing, D6B media consolidation, D7B
+installer sidecars/runtime inputs and D8 plugin/preset schemas each require an
+independent threat/compatibility design and implementation plan. These gates are
+contract work, not permission to bundle the slices into one PR.
+
+No queue item implies a version number. The next stable version is selected only
+after its included contracts and exact-head/manual gates are known.
+
+## Released 0.4.0 — review remediation and integration
 
 - [x] Fix named-version source fencing, collision-free/order-aware diffs and linear source validation.
 - [x] Add explicit confirmed deletion through shared application/API/CLI/Desktop to free bounded version capacity without automatic pruning.
@@ -98,8 +171,8 @@ and [validation](docs/validation-multi-source-analysis.md).
 - [x] Remediate the failed JavaScript advisory gate with exact Vite 8.2.4, verified registry/provenance, zero-audit and bounded launcher/build/native/browser controls; see [validation](docs/validation-vite-security.md).
 - [ ] Resolve the existing GLib 0.18.5 / `RUSTSEC-2024-0429` native distribution gate through compatible upstream remediation and reachability review before publishing installers.
 
-The Vite-patched candidate must repeat every combined/browser/hosted gate before
-merge or release. Final browser/native CI, merge and publication status is recorded on
+The Vite-patched candidate repeated the required combined/browser/hosted gates
+before the tagged release. Final browser/native CI, merge and publication status is recorded on
 [integration PR #41](https://github.com/bynanci/open-film/pull/41) and the
 [0.4.0 source release](https://github.com/bynanci/open-film/releases/tag/v0.4.0).
 Exact base/head/merge identities, changed paths and completed gates accompany the
@@ -126,9 +199,10 @@ F05 photo-framing expansion stays deferred; this does not relabel it as complete
 
 # Task status
 
-This checklist describes implementation in the 0.4.0 source tree. A checked item
-means behavior or a concrete artifact exists; it does not certify every operating
-system or downstream NLE. Commands and test responsibilities are in
+This checklist includes released v0.4.0 history and later unreleased `main`
+development. A checked item means behavior or a concrete artifact exists; it
+does not certify every operating system or downstream NLE. Commands and test
+responsibilities are in
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## In progress — Story Arc Authoring and Story-to-Pipeline flow
@@ -168,6 +242,8 @@ M9 StoryPlan and M10 Pipeline Workbench are reused.
       their manifests; record available reference contracts and provenance.
 - [ ] Review/adapt the supplied emotional-overlay and shot-proposal contracts,
       including scene/shot ID mapping and sidecar revisions, before runtime integration.
+  - [ ] D2A: derive motion/duration/density continuity diagnostics from typed
+        saved evidence; missing shot-scale/eyeline evidence stays manual review.
 - [x] Refine story setup with authored-order preview, field validation and
       draft/focus recovery; keep the existing project/schema/edit contracts.
 - [x] Correct storyboard covered duration and cross-story mapping, distinguish
@@ -351,6 +427,12 @@ not retroactively rename completed project capabilities.
 - [ ] **M6 / F05 + F06 + F10 + F13 — Photo/audio/output review.** Add decoded
       audio diagnostics and repeatable output evidence; keep hardware, real media,
       4K and NLE finishing as separately recorded manual gates.
+  - [ ] D5A: add focal interaction, ambient fill and a separately versioned
+        bounded custom-easing contract with legacy reopen and output parity.
+  - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
+        with legacy reopen, missing-font evidence and output parity.
+  - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
+        tolerance policy and add deliberate failures plus focused OS evidence.
 
 The candidate for each milestone requires its complete exact-head automated gate
 before merge. Synthetic media proves bounded behavior only; it does not certify

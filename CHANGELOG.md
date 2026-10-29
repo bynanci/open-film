@@ -2,7 +2,25 @@
 
 Changes use release versions; the project schema has its own version.
 
-## Unreleased — 0.3.1 Transcript Productivity
+## Unreleased — main after v0.4.0
+
+- Catalog v6 and the multi-source M0/M1 foundation add bounded source drafts,
+  browser/native selection evidence and safe historical v5 snapshot compatibility.
+- Story Arc authoring, StoryPlan, Pipeline orchestration and Creative Variants
+  extend reviewable story-to-cut work without creating another timeline.
+- Professional Cut Desk adds shared Source/Record ownership and direct General
+  monitor manipulation; later slices remain explicitly incomplete.
+- The next stable version remains TBD. Native installer signing/update/rollback,
+  GLib advisory closure and physical workstation gates are still open.
+
+## 0.4.0 — Creative-scene integration and reviewed recovery
+
+- Integrated Named Versions, Photo Depth, Professional Export, Collect Media,
+  NLE fidelity, motion candidates and verified native-runtime candidate tooling.
+- Preserved project schema 1.0.0, restored Apache-2.0 first-party licensing and
+  published exact source validation at the `v0.4.0` release.
+
+## Historical unreleased slice — 0.3.1 Transcript Productivity
 
 - Added shared transcript commands, revisions, independent Undo/Redo, paged
   search/replace and durable autosave in Edit's Transcript mode.
@@ -17,7 +35,7 @@ Changes use release versions; the project schema has its own version.
 Real ASR/GPU/camera quality, native installation and actual Resolve import remain
 manual gates. Captions, vision, reframing and derived films remain deferred.
 
-## Unreleased — Real Editing Workflow
+## Historical unreleased slice — Real Editing Workflow
 
 - Added a story-first graphical timeline with clip/beat editing, locks, scoped
   regeneration, duration feedback, explainable fit, undo/redo and recoverable

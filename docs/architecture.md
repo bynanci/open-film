@@ -38,9 +38,11 @@ review decisions. Browser handles, native grants, staging paths, leases,
 credentials and attempt owners remain private operational state. Every durable
 catalog table has an explicit portable-semantic, local-operational or cache
 policy; Collect Media projects only selected reachable evidence and VACUUMs the
-result. Named Version v5 payloads retain their original bytes/hash and are
-upgraded only through a private temporary copy for current-schema inspection or
-restore. See [multi-source analysis](roadmap/multi-source-analysis.md).
+result. Named Version v5 payloads retain their original bytes/hash. Public
+inspect validates and reports the saved schema, while diff uses saved metadata;
+asset-aware restore/rebase paths upgrade only a private temporary copy before
+publishing the live catalog. See
+[multi-source analysis](roadmap/multi-source-analysis.md).
 
 Portable v6 closed-domain records are reconstructed from typed columns and
 validated semantic fields. Because M0/M1 has no producer contract for arbitrary
@@ -287,12 +289,15 @@ remounting, with physical-volume auto-detection deferred. See
 
 ## Interchange boundaries
 
-Composition subtitle export is a read-only derived use case alongside timeline
-interchange. `core/captions.ts` maps saved source segments to the selected track's
-clip instances. `exporters/captions.ts` serializes plain subtitles;
-`application/captions.ts` owns source/revision checks, bounded snapshot reads and
-atomic publication of file plus provenance. Desktop, HTTP and CLI reuse that
-service. No caption-track model, history engine or catalog migration is added.
+The original composition subtitle handoff remains a read-only derived use case
+alongside timeline interchange. `core/captions.ts` maps saved source segments to
+the selected track's clip instances. `exporters/captions.ts` serializes plain
+subtitles; `application/captions.ts` owns source/revision checks, bounded snapshot
+reads and atomic publication of file plus provenance. Desktop, HTTP and CLI reuse
+that service. That historical slice did not add a caption-track model, history
+engine or catalog migration. The later native `CaptionTrack` is saved Composition
+content with ordinary edit history and MP4 burn-in; SRT/VTT handoff remains an
+independent derived export.
 The CLI export session skips workspace recovery/repair and does not save project
 JSON on close; it cannot overwrite another process's edit after a stale failure.
 See [subtitle contracts](composition-captions.md).
