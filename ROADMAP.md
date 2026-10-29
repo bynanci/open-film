@@ -15,6 +15,17 @@ Phase 4 finishing remain incomplete. Chromium and synthetic FFmpeg evidence do
 not close physical Windows/macOS, high-DPI/color-managed display, hardware audio
 latency or long-form performance gates. Unrelated roadmap work remains open.
 
+A bounded Phase 1B gesture slice now gives General-mode editors direct
+clip-picture move and proportional corner resize in the existing Story monitor.
+It uses the shared frame-pixel geometry and one acknowledged transform
+transaction per completed gesture, with cancellation on stale owner, revision
+or viewport changes. The reviewed old proportional-track preview and gesture
+queue were not recovered because they diverge from current overlay ripple and
+transaction recovery semantics. The Ribbon, compare workflow and remaining
+Expert precision gestures are still incomplete. See the
+[recovery review](docs/superpowers/reviews/2026-10-29-direct-manipulation-recovery.md)
+and [validation evidence](docs/validation-direct-clip-manipulation.md).
+
 ## Current implementation — Multi-source import and common analysis
 
 OpenFilm is adding an additive source draft that can combine files, folders and

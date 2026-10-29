@@ -54,6 +54,7 @@ import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
+import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
 import { sameRateDropFrameChoice } from "../projectTimebase";
 import TranscriptEditor from "./TranscriptEditor.vue";
@@ -71,6 +72,7 @@ import VisualQaPanel from "./VisualQaPanel.vue";
 import AudioGenerationPanel from "./AudioGenerationPanel.vue";
 import MotionGenerationPanel from "./MotionGenerationPanel.vue";
 import AudioQualityPanel from "./AudioQualityPanel.vue";
+import type { ClipTransformDraft } from "../clipTransformInteraction";
 const audioQualityOpen = ref(false);
 import { sourcePresentation } from "../sourcePresentation";
 import { useI18n } from "vue-i18n";
@@ -133,6 +135,7 @@ const {
   reportNotice,
   hasPending: compositionHasPending,
   historyBusy: compositionHistoryBusy,
+  transactionBusy: compositionTransactionBusy,
   command: compositionCommand,
   commitTransaction: compositionCommitTransaction,
   flush: flushComposition,
@@ -152,6 +155,12 @@ const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
 );
 const precisionEditor = ref<InstanceType<typeof PrecisionEditor> | null>(null);
+const clipTransformOverlay = ref<InstanceType<
+  typeof ClipTransformOverlay
+> | null>(null);
+const pictureAdjusting = ref(false);
+const pictureGestureActive = ref(false);
+const pictureTransactionPending = ref(false);
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
@@ -186,6 +195,9 @@ const historyBusy = computed(
   () =>
     generationImportBusy.value ||
     compositionHistoryBusy.value ||
+    compositionTransactionBusy.value ||
+    pictureGestureActive.value ||
+    pictureTransactionPending.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
     graphicAgentPending.value,
@@ -244,6 +256,8 @@ const hasPending = computed(
   () =>
     generationImportBusy.value ||
     compositionHasPending.value ||
+    pictureGestureActive.value ||
+    pictureTransactionPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
     directionPending.value ||
@@ -251,9 +265,11 @@ const hasPending = computed(
 );
 async function history(direction: "undo" | "redo") {
   if (precisionEditor.value?.hasPending || historyBusy.value) return false;
+  clipTransformOverlay.value?.cancel();
   return compositionHistory(direction);
 }
 async function flushInputs() {
+  clipTransformOverlay.value?.cancel();
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
     return false;
@@ -1059,6 +1075,7 @@ function chooseClip(clip: Clip, openInspector = true) {
   applyClipSelection(clip, openInspector);
 }
 function applyClipSelection(clip: Clip, openInspector = true) {
+  clipTransformOverlay.value?.cancel();
   graphicPreviewTime.value = undefined;
   pendingSourceSeek.value = undefined;
   fitPreview.value = null;
@@ -1313,23 +1330,103 @@ function previewNumber(
     ? value
     : fallback;
 }
+const pictureValue = computed<ClipTransformDraft>(() => {
+  const committed = resolveClipGeometry(selectedClip.value?.transform);
+  return {
+    scale: previewNumber(clipFields.value.scale, committed.scale, true),
+    rotation: previewNumber(clipFields.value.rotation, committed.rotation),
+    x: previewNumber(clipFields.value.x, committed.x),
+    y: previewNumber(clipFields.value.y, committed.y),
+  };
+});
+const pictureSessionKey = computed(
+  () =>
+    `${props.projectId}:${props.compositionId}:${state.value?.revision ?? ""}:${selectedClipId.value}:${sourcePlaybackKey.value}`,
+);
+const pictureOwnsPreview = computed(
+  () =>
+    graphicPreviewTime.value === undefined &&
+    playbackClip.value === selectedClip.value,
+);
+const pictureCapable = computed(
+  () =>
+    !props.expertMode &&
+    pictureOwnsPreview.value &&
+    !photoPresentationActive.value &&
+    !!selectedClip.value &&
+    !selectedClip.value.locked &&
+    controls.value.visual &&
+    !lockedOverlaySource.value &&
+    !sourceUnavailable.value &&
+    !sourceError.value &&
+    selectedSourceInfo.value?.previewSupported !== false &&
+    !!selectedAsset.value,
+);
+const pictureBlocked = computed(
+  () =>
+    compositionHistoryBusy.value ||
+    compositionTransactionBusy.value ||
+    pictureTransactionPending.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value ||
+    status.value !== "saved" ||
+    !!precisionEditor.value?.hasPending,
+);
+function previewPicture(value: ClipTransformDraft) {
+  Object.assign(clipFields.value, value);
+}
+function resetPicturePreview() {
+  previewPicture(resolveClipGeometry(selectedClip.value?.transform));
+}
+async function commitPicture(value: ClipTransformDraft) {
+  const clip = selectedClip.value;
+  if (!clip || !pictureCapable.value || pictureBlocked.value) return;
+  const current = resolveClipGeometry(clip.transform);
+  if (
+    current.x === value.x &&
+    current.y === value.y &&
+    current.scale === value.scale &&
+    current.rotation === value.rotation
+  ) {
+    previewPicture(current);
+    reportNotice("");
+    return;
+  }
+  pictureTransactionPending.value = true;
+  try {
+    const result = await commitSource({
+      type: "transform",
+      clipId: clip.id,
+      ...value,
+    });
+    if (result.status !== "accepted") resetPicturePreview();
+  } finally {
+    pictureTransactionPending.value = false;
+  }
+}
+function resetPicture(centerOnly = false) {
+  clipTransformOverlay.value?.cancel();
+  const value = {
+    ...pictureValue.value,
+    x: 0,
+    y: 0,
+    ...(centerOnly ? {} : { scale: 1, rotation: 0 }),
+  };
+  previewPicture(value);
+  void commitPicture(value);
+}
+function togglePictureAdjustment() {
+  clipTransformOverlay.value?.cancel();
+  pictureAdjusting.value = !pictureAdjusting.value;
+}
 const previewGeometry = computed(() => {
   const graphics = graphicPreviewTime.value !== undefined;
   const committed = resolveClipGeometry(
     (graphics ? playbackClip.value : selectedClip.value)?.transform,
   );
   return resolvePreviewClipGeometry(
-    graphics
-      ? committed
-      : {
-          scale: previewNumber(clipFields.value.scale, committed.scale, true),
-          rotation: previewNumber(
-            clipFields.value.rotation,
-            committed.rotation,
-          ),
-          x: previewNumber(clipFields.value.x, committed.x),
-          y: previewNumber(clipFields.value.y, committed.y),
-        },
+    graphics ? committed : pictureValue.value,
     sourcePreviewSize.value ??
       (graphics ? playbackAsset.value : selectedAsset.value)?.dimensions ??
       props.projectSettings,
@@ -2061,8 +2158,10 @@ watch([sourcePlaybackKey, () => selectedSourceStatus.value?.status], () => {
 watch(
   () => props.active,
   (active) => {
-    if (!active) sourcePlayer.value?.pause();
-    else void nextTick(measureWorkspace);
+    if (!active) {
+      clipTransformOverlay.value?.cancel();
+      sourcePlayer.value?.pause();
+    } else void nextTick(measureWorkspace);
   },
 );
 watch(
@@ -2070,6 +2169,7 @@ watch(
   () => void nextTick(measureWorkspace),
 );
 watch(editMode, () => {
+  clipTransformOverlay.value?.cancel();
   directionPreview.value = null;
   sourcePlayer.value?.pause();
   fitPreview.value = null;
@@ -2972,7 +3072,7 @@ onBeforeUnmount(() => {
                         ? thumbnailUrl(playbackAsset.id)
                         : undefined
                     "
-                    :controls="!playbackLookActive"
+                    :controls="!playbackLookActive && !pictureAdjusting"
                     preload="metadata"
                     :aria-label="t('editor.source.preview')"
                     :style="[previewMediaStyle, playbackLookStyle]"
@@ -3069,6 +3169,18 @@ onBeforeUnmount(() => {
                   t("editor.source.choose")
                 }}</span>
               </div>
+              <ClipTransformOverlay
+                v-if="pictureAdjusting && pictureCapable"
+                ref="clipTransformOverlay"
+                :value="pictureValue"
+                :geometry="previewGeometry"
+                :disabled="pictureBlocked"
+                :session-key="pictureSessionKey"
+                @preview="previewPicture"
+                @commit="commitPicture"
+                @activity="pictureGestureActive = $event"
+                @cancelled="resetPicturePreview"
+              />
               <template
                 v-if="
                   playbackAsset &&
@@ -3112,6 +3224,38 @@ onBeforeUnmount(() => {
                   <span class="editor-monitor-guide-note">{{
                     t("editor.monitor.previewOnly")
                   }}</span>
+                  <button
+                    class="editor-button"
+                    :class="{ selected: pictureAdjusting }"
+                    :aria-pressed="pictureAdjusting"
+                    :title="
+                      t(
+                        photoPresentationActive
+                          ? 'editor.picture.presentationHint'
+                          : 'editor.picture.hint',
+                      )
+                    "
+                    :disabled="!pictureCapable || pictureBlocked"
+                    @click="togglePictureAdjustment"
+                  >
+                    {{ t("editor.picture.toggle") }}
+                  </button>
+                  <template v-if="pictureAdjusting">
+                    <button
+                      class="editor-button"
+                      :disabled="!pictureCapable || pictureBlocked"
+                      @click="resetPicture(true)"
+                    >
+                      {{ t("editor.picture.center") }}
+                    </button>
+                    <button
+                      class="editor-button"
+                      :disabled="!pictureCapable || pictureBlocked"
+                      @click="resetPicture()"
+                    >
+                      {{ t("editor.picture.reset") }}
+                    </button>
+                  </template>
                 </div>
                 <div
                   v-if="showRuleOfThirds || showSafeFrame"

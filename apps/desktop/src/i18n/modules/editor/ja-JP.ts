@@ -2,6 +2,20 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    picture: {
+      toggle: "画面を調整",
+      group: "画面の変形",
+      move: "画面を移動",
+      nw: "画面の左上を拡大縮小",
+      ne: "画面の右上を拡大縮小",
+      se: "画面の右下を拡大縮小",
+      sw: "画面の左下を拡大縮小",
+      center: "画面を中央に配置",
+      reset: "画面をリセット",
+      hint: "ドラッグで移動、角で等比例に拡大縮小。矢印キーで微調整、Shift で加速、Escape でキャンセル。",
+      presentationHint:
+        "レイアウト、モーション、タイトルフェード付きの画像は「写真プレゼンテーション」で調整してください。",
+    },
     audioGeneration: {
       title: "音声を生成",
       disclosure:

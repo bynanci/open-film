@@ -13,6 +13,12 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
       retain first-run failures and rerun the complete sequence after compatibility corrections.
 - [ ] Native Rust/desktop gate on an equipped platform; local invocation is blocked by missing Cargo.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
+  - [x] Selectively recover General Story-monitor clip-picture move and
+        proportional corner resize through the current geometry and atomic
+        transaction boundaries; preserve cancellation, locks, Undo/Redo,
+        autosave/reopen and 44 px coarse-pointer targets.
+  - [ ] Complete the Expert Edit Decision Ribbon, compare workflow and remaining
+        solver-backed precision gestures without introducing a second timeline.
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
