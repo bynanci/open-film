@@ -1591,9 +1591,11 @@ async function pollJobs() {
   if (!project.value || polling) return;
   const generation = ++jobsGeneration;
   const projectId = project.value.id;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   polling = true;
   try {
-    const result = await api.jobs();
+    const result = await api.jobs(controller.signal);
     if (generation !== jobsGeneration || project.value?.id !== projectId)
       return;
     const importChanged = result.jobs.some(
@@ -1652,6 +1654,7 @@ async function pollJobs() {
   } catch {
     /* A transient disconnect must not replace an in-progress edit. */
   } finally {
+    clearTimeout(timeout);
     polling = false;
   }
 }

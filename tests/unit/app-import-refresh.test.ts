@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { transformSync } from "esbuild";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Job } from "@openfilm/core";
 
 const desktopRequire = createRequire(resolve("apps/desktop/package.json"));
@@ -77,6 +77,7 @@ function host(
   } = {},
 ) {
   const reads: ReturnType<typeof deferred<JobSnapshot>>[] = [];
+  const jobSignals: (AbortSignal | undefined)[] = [];
   const posts: { path: string; body: unknown }[] = [];
   const acknowledgement = deferred<void>();
   const project = ref<{ id: string } | null>({ id: "our-film" });
@@ -91,9 +92,15 @@ function host(
   const search = ref("");
   const dependencies = {
     api: {
-      jobs: () => {
+      jobs: (signal?: AbortSignal) => {
         const read = deferred<JobSnapshot>();
         reads.push(read);
+        jobSignals.push(signal);
+        signal?.addEventListener(
+          "abort",
+          () => read.reject(signal.reason ?? new Error("Jobs read aborted")),
+          { once: true },
+        );
         return read.promise;
       },
       assets: () => {
@@ -173,6 +180,7 @@ function host(
     analysisRecovery,
     acknowledgement,
     reads,
+    jobSignals,
     posts,
     project,
     jobs,
@@ -184,6 +192,28 @@ function host(
 }
 
 describe("App import completion refresh", () => {
+  it("aborts a stalled periodic jobs read before allowing the next poll", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = host();
+      const stalled = h.pollJobs();
+      expect(h.reads).toHaveLength(1);
+      expect(h.jobSignals[0]?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(h.jobSignals[0]?.aborted).toBe(true);
+      await stalled;
+
+      const recovered = h.pollJobs();
+      expect(h.reads).toHaveLength(2);
+      expect(h.jobSignals[1]?.aborted).toBe(false);
+      h.reads[1]!.resolve({ jobs: [] });
+      await recovered;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retains pending import refresh when its actual asset read is superseded and the newer query fails", async () => {
     const h = host({ realAssets: true });
     h.jobs.value = [imported("running")];

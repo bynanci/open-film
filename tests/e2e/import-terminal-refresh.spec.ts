@@ -7,6 +7,102 @@ import { chooseImportFolder, createFilm, initialLocale } from "./ui-helpers.js";
 
 const base = "http://127.0.0.1:4310";
 
+test("recovers periodic activity polling after one local jobs read stalls", async ({
+  page,
+  request,
+}) => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-jobs-poll-timeout-"));
+  try {
+    await page.addInitScript(() => {
+      type JobsPollProbe = {
+        calls: number;
+        aborted: boolean;
+        hasSignal: boolean;
+      };
+      const scope = window as unknown as Window & {
+        __openfilmJobsPollProbe: JobsPollProbe;
+      };
+      const nativeFetch = window.fetch.bind(window);
+      scope.__openfilmJobsPollProbe = {
+        calls: 0,
+        aborted: false,
+        hasSignal: false,
+      };
+      window.fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const stack = new Error().stack ?? "";
+        if (
+          new URL(url, location.href).pathname === "/api/jobs" &&
+          stack.includes("pollJobs")
+        ) {
+          const probe = scope.__openfilmJobsPollProbe;
+          probe.calls++;
+          if (probe.calls === 1) {
+            const signal =
+              init?.signal ??
+              (input instanceof Request ? input.signal : undefined);
+            probe.hasSignal = !!signal;
+            return new Promise<Response>((_resolve, reject) => {
+              if (!signal) return;
+              const abort = () => {
+                probe.aborted = true;
+                reject(
+                  signal.reason ?? new DOMException("Aborted", "AbortError"),
+                );
+              };
+              if (signal.aborted) abort();
+              else signal.addEventListener("abort", abort, { once: true });
+            });
+          }
+        }
+        return nativeFetch(input, init);
+      };
+    });
+    await initialLocale(page);
+    await page.goto("/");
+    await createFilm(page, {
+      title: "Jobs poll recovery",
+      path: join(root, "jobs-poll-recovery.openfilm"),
+    });
+    await expect(
+      page.getByRole("heading", { name: "Jobs poll recovery", exact: true }),
+    ).toBeVisible();
+
+    const probe = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as Window & {
+              __openfilmJobsPollProbe: {
+                calls: number;
+                aborted: boolean;
+                hasSignal: boolean;
+              };
+            }
+          ).__openfilmJobsPollProbe,
+      );
+    await expect
+      .poll(async () => (await probe()).calls, { timeout: 5_000 })
+      .toBeGreaterThanOrEqual(1);
+    expect((await probe()).hasSignal).toBe(true);
+    await expect
+      .poll(async () => (await probe()).aborted, {
+        timeout: 8_000,
+        intervals: [100],
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => (await probe()).calls, {
+        timeout: 3_000,
+        intervals: [100],
+      })
+      .toBeGreaterThanOrEqual(2);
+  } finally {
+    await request.post(`${base}/api/project/close`, { data: {} });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("refreshes the library when an import finishes before its acknowledgement", async ({
   page,
   request,
