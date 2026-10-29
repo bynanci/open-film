@@ -2,6 +2,20 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    picture: {
+      toggle: "Adjust picture",
+      group: "Picture transform",
+      move: "Move picture",
+      nw: "Resize picture top left",
+      ne: "Resize picture top right",
+      se: "Resize picture bottom right",
+      sw: "Resize picture bottom left",
+      center: "Center picture",
+      reset: "Reset picture",
+      hint: "Drag to move. Pull a corner to resize. Arrow keys fine-tune; Shift moves faster. Escape cancels.",
+      presentationHint:
+        "Use Photo presentation controls for a picture with layout, motion, or title fade.",
+    },
     audioGeneration: {
       title: "Generate audio",
       disclosure:

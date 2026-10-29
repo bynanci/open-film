@@ -2,6 +2,20 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    picture: {
+      toggle: "調整畫面",
+      group: "畫面變形",
+      move: "移動畫面",
+      nw: "縮放畫面左上角",
+      ne: "縮放畫面右上角",
+      se: "縮放畫面右下角",
+      sw: "縮放畫面左下角",
+      center: "畫面置中",
+      reset: "重設畫面",
+      hint: "拖曳可移動，拉動角點可等比例縮放；方向鍵微調，Shift 加速，Escape 取消。",
+      presentationHint:
+        "含版面、運鏡或標題淡出的照片，請使用「照片呈現」控制項調整。",
+    },
     audioGeneration: {
       title: "生成音訊",
       disclosure:

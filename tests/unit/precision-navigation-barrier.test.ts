@@ -265,6 +265,7 @@ function timeline(child: Partial<Barrier>) {
   let exposed!: Barrier;
   const compositionPending = vue.ref(false);
   const historyBusy = vue.ref(false);
+  const transactionBusy = vue.ref(false);
   const state = vue.ref({ canUndo: false, canRedo: true });
   const compositionHistory = vi.fn(async (_direction: "undo" | "redo") => true);
   const compositionFlush = vi.fn(async () => {
@@ -300,6 +301,7 @@ function timeline(child: Partial<Barrier>) {
       status: vue.ref("saved"),
       hasPending: compositionPending,
       historyBusy,
+      transactionBusy,
       history: compositionHistory,
       flush: compositionFlush,
     }),

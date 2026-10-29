@@ -22,6 +22,7 @@ import {
 import { durationStatus } from "../../apps/desktop/src/duration";
 import { createNativeBenchmark } from "../../apps/desktop/src/nativeBenchmark";
 import { canCreatePhotoDepth } from "../../apps/desktop/src/photo-depth-controls";
+import * as clipTransformInteraction from "../../apps/desktop/src/clipTransformInteraction";
 import { sameRateDropFrameChoice } from "../../apps/desktop/src/projectTimebase";
 import {
   clampFrameStep,
@@ -360,6 +361,7 @@ async function mountTimeline(
     "../waveform": { waveformPath },
     "../api": io,
     "../photo-depth-controls": { canCreatePhotoDepth },
+    "../clipTransformInteraction": clipTransformInteraction,
     "../i18n": i18n,
     "../duration": { durationStatus },
     "../nativeBenchmark": {
@@ -1250,6 +1252,85 @@ describe("Timeline clip render boundary", () => {
         /translate3d\(0\.4166666666666667px, 0px, 0\)/,
       ),
     });
+  });
+
+  it("routes direct clip-picture keyboard movement through one atomic transaction", async () => {
+    const view = await mountTimeline(fixture(2));
+    await view.clickControl("editor.picture.toggle");
+    const group = flatten(view.root).find(
+      (item) =>
+        item.props.role === "group" &&
+        String(item.props["aria-label"]).includes("editor.picture.group"),
+    );
+    const move = flatten(view.root).find(
+      (item) =>
+        item.tag === "button" &&
+        String(item.props["aria-label"]).includes("editor.picture.move"),
+    );
+
+    expect(group).toBeDefined();
+    expect(move?.props["aria-disabled"]).toBe(false);
+    (move!.props.onKeydown as (event: KeyboardEvent) => void)({
+      key: "ArrowRight",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as KeyboardEvent);
+    await settle();
+
+    expect(view.api.edit).toHaveBeenCalledOnce();
+    expect((view.api.edit.mock.calls as unknown[][])[0]![1]).toMatchObject({
+      baseRevision: "revision-before",
+      commands: [
+        {
+          type: "transform",
+          clipId: "instance-0",
+          x: 10,
+          y: 0,
+          scale: 1,
+          rotation: 0,
+        },
+      ],
+    });
+  });
+
+  it("keeps direct picture manipulation out of locked and Expert Record states", async () => {
+    const locked = fixture(2);
+    locked.composition.tracks[0]!.clips[0]!.locked = true;
+    const general = await mountTimeline(locked);
+    const toggle = flatten(general.root).find(
+      (item) =>
+        item.tag === "button" && text(item).includes("editor.picture.toggle"),
+    );
+    expect(toggle?.props.disabled).toBe(true);
+
+    const expert = await mountTimeline(fixture(2), {}, true);
+    expect(
+      flatten(expert.root).some(
+        (item) =>
+          item.tag === "button" && text(item).includes("editor.picture.toggle"),
+      ),
+    ).toBe(false);
+
+    const presentation = fixture(2);
+    presentation.assets[0]!.mediaType = "image";
+    presentation.assets[0]!.uri = "file:///synthetic-0.png";
+    presentation.composition.tracks[0]!.clips[0]!.layout = {
+      version: 1,
+      preset: "contain",
+    };
+    const presented = await mountTimeline(presentation);
+    const presentationToggle = flatten(presented.root).find(
+      (item) =>
+        item.tag === "button" && text(item).includes("editor.picture.toggle"),
+    );
+    expect(presentationToggle?.props.disabled).toBe(true);
+    expect(presentationToggle?.props.title).toContain(
+      "editor.picture.presentationHint",
+    );
   });
 
   it("records actual clip body work and keeps selection read-only", async () => {
