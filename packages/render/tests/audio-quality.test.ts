@@ -1,3 +1,7 @@
+import {
+  assertRenderQaMetric,
+  renderQaPolicy,
+} from "../../../tests/helpers/render-qa-policy.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,14 +38,14 @@ it("measures decoded AAC MP4 loudness, peaks and meter bins; silence stays unmea
       output,
     ]);
     const measured = await measureAudioOutput(output);
-    expect(measured.integratedLufs).toBeGreaterThan(-35);
-    expect(measured.integratedLufs).toBeLessThan(-10);
+    assertRenderQaMetric("audio.integratedLufs", measured.integratedLufs!);
     expect(measured.truePeakDbtp).toBeGreaterThanOrEqual(
-      measured.samplePeakDbfs! - 0.2,
+      measured.samplePeakDbfs! +
+        renderQaPolicy["audio.trueMinusSamplePeak"].limit,
     );
     expect(measured.meterBins.length).toBeGreaterThan(10);
     expect(measured.meterBins.some((bin) => bin.peakDbfs !== null)).toBe(true);
-    expect(measured.duration).toBeCloseTo(4, 1);
+    assertRenderQaMetric("audio.duration", measured.duration, 4);
     const silence = join(root, "silence.mp4");
     await runProcess("ffmpeg", [
       "-v",

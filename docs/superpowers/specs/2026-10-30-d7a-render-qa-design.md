@@ -177,38 +177,39 @@ Missing, NaN or infinite data cannot become a pass. Preserve strict bounds.
 finite positive frameRate and records its effective `1/frameRate+0.001` limit.
 No caller-supplied threshold or comparator override is accepted.
 
-| Metric ID                     | Observable/unit                                             | Exact acceptance                           | Existing owner                        |
-| ----------------------------- | ----------------------------------------------------------- | ------------------------------------------ | ------------------------------------- |
-| photoDepth.rgbMae             | mean absolute RGB channel error, 0..255 units               | <12                                        | photo-depth.test.ts:971               |
-| photoDepth.edgeChannelError   | absolute channel error, 0..255 units                        | <=8                                        | photo-depth.test.ts:304               |
-| photoDepth.alphaChannelError  | absolute channel error, 0..255 units                        | <=8                                        | photo-depth.test.ts:466               |
-| filmLook.channelError         | absolute channel error, 0..255 units                        | <=3                                        | film-looks.test.ts:138                |
-| cutDesk.channelError          | absolute channel error, 0..255 units                        | <=12                                       | professional-cut-desk.test.ts:82      |
-| cutDesk.pts                   | frame presentation time, seconds                            | existing toBeCloseTo(expected,6) semantics | professional-cut-desk.test.ts:100     |
-| cutDesk.primaryAmplitudeError | Fourier peak amplitude error, linear f32 full scale         | <0.006                                     | professional-cut-desk.test.ts:192,280 |
-| cutDesk.overlayAmplitudeError | Fourier peak amplitude error, linear f32 full scale         | <0.004                                     | professional-cut-desk.test.ts:195,270 |
-| cutDesk.absentAmplitude       | Fourier peak amplitude, linear f32 full scale               | <0.003                                     | professional-cut-desk.test.ts:199,285 |
-| cutDesk.onsetGainRatio        | measured/expected positive peak, ratio                      | >0.9                                       | professional-cut-desk.test.ts:281     |
-| title.textDelta               | first visible text minus source luminance, 0..255 units     | >60                                        | native-title-controls.test.ts:209     |
-| title.scrimDelta              | first visible scrim minus source luminance, 0..255 units    | <-60                                       | native-title-controls.test.ts:210     |
-| title.opacityRatio            | later delta / first delta, ratio                            | existing toBeCloseTo(expected,1) semantics | native-title-controls.test.ts:221,224 |
-| title.sourceLuminance         | source luminance, 0..255 units                              | existing toBeCloseTo(expected,0) semantics | native-title-controls.test.ts:225     |
-| title.exclusiveGateLuminance  | decoded luminance before start/at exclusive end             | <5                                         | native-title-controls.test.ts:228,231 |
-| audio.integratedLufs          | integrated loudness, LUFS                                   | >-35 and <-10                              | audio-quality.test.ts:37,38           |
-| audio.trueMinusSamplePeak     | true peak dBTP minus sample peak dBFS, dB                   | >=-0.2                                     | audio-quality.test.ts:39              |
-| audio.duration                | seconds                                                     | existing toBeCloseTo(expected,1) semantics | audio-quality.test.ts:44              |
-| photo.subjectEdgeError        | source-feature position error, output pixels                | <=1.5                                      | photo-quality.test.ts:179,516         |
-| photo.firstFrameCenterError   | luminance-weighted center displacement, pixels              | <0.12                                      | photo-quality.test.ts:360             |
-| photo.panTravel               | last minus first weighted center, pixels                    | >1.5                                       | photo-quality.test.ts:418             |
-| photo.panStep                 | maximum adjacent weighted-center displacement, pixels/frame | <0.18                                      | photo-quality.test.ts:422             |
-| photo.fadeOutRmsRatio         | endpoint/baseline decoded RMS, ratio                        | <0.2                                       | photo-quality.test.ts:595             |
-| photo.fadeInRmsRatio          | start/baseline decoded RMS, ratio                           | <0.5                                       | photo-quality.test.ts:596             |
-| photo.duration                | seconds                                                     | existing toBeCloseTo(expected,1) semantics | photo-quality.test.ts:608             |
-| photoFilm.durationError       | absolute duration error, seconds                            | <=1/frameRate+0.001                        | scripts/photo-film-quality.ts:236     |
-| identity.frameCount           | decoded video frames, integer                               | exact expected count                       | existing render/export fixtures       |
-| identity.sourceHash           | lowercase SHA-256 of source bytes                           | exact expected hash                        | existing render manifests             |
-| identity.fontHash             | lowercase SHA-256 of resolved font bytes                    | exact pinned face hash                     | existing font receipts                |
-| identity.decodedLossless      | decoded bytes of compared lossless frames                   | exact within the same run                  | existing PNG preview/still fixtures   |
+| Metric ID                     | Observable/unit                                                           | Exact acceptance                           | Existing owner                               |
+| ----------------------------- | ------------------------------------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
+| photoDepth.rgbMae             | mean absolute RGB channel error, 0..255 units                             | <12                                        | photo-depth.test.ts:971                      |
+| photoDepth.edgeChannelError   | absolute channel error, 0..255 units                                      | <=8                                        | photo-depth.test.ts:304                      |
+| photoDepth.alphaChannelError  | absolute channel error, 0..255 units                                      | <=8                                        | photo-depth.test.ts:466                      |
+| filmLook.channelError         | absolute channel error, 0..255 units                                      | <=3                                        | film-looks.test.ts:138                       |
+| filmLook.losslessChannelError | absolute channel error for existing lossless/black controls, 0..255 units | <=1                                        | film-looks.test.ts explicit tolerance1 calls |
+| cutDesk.channelError          | absolute channel error, 0..255 units                                      | <=12                                       | professional-cut-desk.test.ts:82             |
+| cutDesk.pts                   | frame presentation time, seconds                                          | existing toBeCloseTo(expected,6) semantics | professional-cut-desk.test.ts:100            |
+| cutDesk.primaryAmplitudeError | Fourier peak amplitude error, linear f32 full scale                       | <0.006                                     | professional-cut-desk.test.ts:192,280        |
+| cutDesk.overlayAmplitudeError | Fourier peak amplitude error, linear f32 full scale                       | <0.004                                     | professional-cut-desk.test.ts:195,270        |
+| cutDesk.absentAmplitude       | Fourier peak amplitude, linear f32 full scale                             | <0.003                                     | professional-cut-desk.test.ts:199,285        |
+| cutDesk.onsetGainRatio        | measured/expected positive peak, ratio                                    | >0.9                                       | professional-cut-desk.test.ts:281            |
+| title.textDelta               | first visible text minus source luminance, 0..255 units                   | >60                                        | native-title-controls.test.ts:209            |
+| title.scrimDelta              | first visible scrim minus source luminance, 0..255 units                  | <-60                                       | native-title-controls.test.ts:210            |
+| title.opacityRatio            | later delta / first delta, ratio                                          | existing toBeCloseTo(expected,1) semantics | native-title-controls.test.ts:221,224        |
+| title.sourceLuminance         | source luminance, 0..255 units                                            | existing toBeCloseTo(expected,0) semantics | native-title-controls.test.ts:225            |
+| title.exclusiveGateLuminance  | decoded luminance before start/at exclusive end                           | <5                                         | native-title-controls.test.ts:228,231        |
+| audio.integratedLufs          | integrated loudness, LUFS                                                 | >-35 and <-10                              | audio-quality.test.ts:37,38                  |
+| audio.trueMinusSamplePeak     | true peak dBTP minus sample peak dBFS, dB                                 | >=-0.2                                     | audio-quality.test.ts:39                     |
+| audio.duration                | seconds                                                                   | existing toBeCloseTo(expected,1) semantics | audio-quality.test.ts:44                     |
+| photo.subjectEdgeError        | source-feature position error, output pixels                              | <=1.5                                      | photo-quality.test.ts:179,516                |
+| photo.firstFrameCenterError   | luminance-weighted center displacement, pixels                            | <0.12                                      | photo-quality.test.ts:360                    |
+| photo.panTravel               | last minus first weighted center, pixels                                  | >1.5                                       | photo-quality.test.ts:418                    |
+| photo.panStep                 | maximum adjacent weighted-center displacement, pixels/frame               | <0.18                                      | photo-quality.test.ts:422                    |
+| photo.fadeOutRmsRatio         | endpoint/baseline decoded RMS, ratio                                      | <0.2                                       | photo-quality.test.ts:595                    |
+| photo.fadeInRmsRatio          | start/baseline decoded RMS, ratio                                         | <0.5                                       | photo-quality.test.ts:596                    |
+| photo.duration                | seconds                                                                   | existing toBeCloseTo(expected,1) semantics | photo-quality.test.ts:608                    |
+| photoFilm.durationError       | absolute duration error, seconds                                          | <=1/frameRate+0.001                        | scripts/photo-film-quality.ts:236            |
+| identity.frameCount           | decoded video frames, integer                                             | exact expected count                       | existing render/export fixtures              |
+| identity.sourceHash           | lowercase SHA-256 of source bytes                                         | exact expected hash                        | existing render manifests                    |
+| identity.fontHash             | lowercase SHA-256 of resolved font bytes                                  | exact pinned face hash                     | existing font receipts                       |
+| identity.decodedLossless      | decoded bytes of compared lossless frames                                 | exact within the same run                  | existing PNG preview/still fixtures          |
 
 Keep the photo-quality duration assertion with precision 3 at line220 as a
 separate `photo.tightDuration` rule (`closeTo`, digits 3); do not merge it into
