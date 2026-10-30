@@ -21,6 +21,7 @@ import {
 } from "@openfilm/core";
 import {
   createHandoffPlan,
+  collectDeliveryMetadata,
   exportTimeline,
   serializeCaptions,
   type HandoffOptions,
@@ -324,6 +325,18 @@ export class NleHandoffService {
       return structuredClone(asset);
     });
     const exchange = exchangeComposition(composition, plan.bakeAudio);
+    const offline = assets.some(
+      (asset) => collectDeliveryMetadata(asset)?.quality === "offline-only",
+    );
+    const bakedDelivery = offline
+      ? {
+          "openfilm.collectDelivery": {
+            version: 1,
+            mode: "offline-proxies",
+            quality: "offline-only",
+          },
+        }
+      : {};
     exportTimeline("otio", exchange, assets, settings);
     const id = randomUUID();
     const staging = await safeProjectCachePath(
@@ -443,6 +456,9 @@ export class NleHandoffService {
           uri: file,
           name: `Source ${index + 1}`,
           metadata: {
+            ...(collectDeliveryMetadata(asset)
+              ? { "openfilm.collectDelivery": collectDeliveryMetadata(asset) }
+              : {}),
             "openfilm.reference": {
               id: asset.id,
               uri: file,
@@ -560,15 +576,17 @@ export class NleHandoffService {
               compositionSha256: manifest.compositionSha256,
               fonts: manifest.fonts,
               warnings: manifest.warnings.map((message) =>
-                /Requested font/u.test(message)
-                  ? "font.fallback"
-                  : /shorter than one output frame/u.test(message)
-                    ? "caption.short"
-                    : /estimated segment/u.test(message)
-                      ? "caption.estimated"
-                      : /stale transcript/u.test(message)
-                        ? "caption.stale"
-                        : "renderer.warning",
+                message === "collect.offline-quality"
+                  ? message
+                  : /Requested font/u.test(message)
+                    ? "font.fallback"
+                    : /shorter than one output frame/u.test(message)
+                      ? "caption.short"
+                      : /estimated segment/u.test(message)
+                        ? "caption.estimated"
+                        : /stale transcript/u.test(message)
+                          ? "caption.stale"
+                          : "renderer.warning",
               ),
               measured: referenceProof,
               realNleVerified: false,
@@ -663,7 +681,7 @@ export class NleHandoffService {
             contentHash: await hashFile(join(staging, name), signal),
             tags: [],
             state: {},
-            metadata: {},
+            metadata: { ...bakedDelivery },
           } as MediaAsset);
           for (const track of exchange.tracks) {
             if (["audio", "music"].includes(track.type)) continue;
@@ -800,7 +818,7 @@ export class NleHandoffService {
             contentHash: await hashFile(join(staging, name), signal),
             tags: [],
             state: {},
-            metadata: {},
+            metadata: { ...bakedDelivery },
           } as MediaAsset);
           exchange.tracks = exchange.tracks.filter(
             (t) => !["audio", "music"].includes(t.type),

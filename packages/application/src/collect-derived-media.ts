@@ -66,6 +66,8 @@ interface Stream {
   avg_frame_rate?: string;
   r_frame_rate?: string;
   sample_rate?: string;
+  sample_fmt?: string;
+  channels?: number;
   width?: number;
   height?: number;
   pix_fmt?: string;
@@ -116,6 +118,19 @@ export async function createCollectDerivative(
   const inspected = await probe(sourcePath, signal);
   const video = inspected.streams.filter((s) => s.codec_type === "video"),
     audio = inspected.streams.filter((s) => s.codec_type === "audio");
+  const pcmCodecs: Record<string, string> = {
+    u8: "pcm_u8",
+    u8p: "pcm_u8",
+    s16: "pcm_s16le",
+    s16p: "pcm_s16le",
+    s32: "pcm_s32le",
+    s32p: "pcm_s32le",
+    flt: "pcm_f32le",
+    fltp: "pcm_f32le",
+    dbl: "pcm_f64le",
+    dblp: "pcm_f64le",
+  };
+  const pcmCodec = pcmCodecs[audio[0]?.sample_fmt ?? ""];
   const duration = Number(asset.duration),
     fps = rate(video[0]?.avg_frame_rate),
     sampleRate = Number(audio[0]?.sample_rate);
@@ -143,7 +158,9 @@ export async function createCollectDerivative(
         video[0]!.side_data_list?.length ||
         video[0]!.tags?.rotate)) ||
     (audio.length &&
-      (!Number.isSafeInteger(sampleRate) ||
+      (!pcmCodec ||
+        ![1, 2].includes(audio[0]?.channels ?? 0) ||
+        !Number.isSafeInteger(sampleRate) ||
         sampleRate < 8000 ||
         sampleRate > 192000))
   )
@@ -268,7 +285,7 @@ export async function createCollectDerivative(
               "cfr",
             ]
           : []),
-        ...(audio.length ? ["-map", "[a]", "-c:a", "pcm_f32le"] : []),
+        ...(audio.length ? ["-map", "[a]", "-c:a", pcmCodec!] : []),
         "-map_metadata",
         "-1",
         "-fs",
@@ -300,6 +317,34 @@ export async function createCollectDerivative(
     Math.abs(derived.duration - expected) > (video.length ? 1 / fps : 0.05)
   )
     fail("Derived media did not preserve its measured source windows.");
+  if (options.mode === "trimmed-originals") {
+    // A lossy MP4 comparison cannot establish native source losslessness.
+    // Independently compare all retained decoded pixels and native-precision
+    // samples, including handles outside the final film, before saying lossless.
+    for (const kind of ["video", "audio"] as const) {
+      if (kind === "video" ? !video.length : !audio.length) continue;
+      const original = await retainedHash(
+        sourcePath,
+        kind,
+        windows.map((w) => ({ start: w.sourceStart, end: w.sourceEnd })),
+        sampleRate,
+        pcmCodec,
+        signal,
+      );
+      const delivered = await retainedHash(
+        outputPath,
+        kind,
+        [{ start: 0, end: offset }],
+        sampleRate,
+        pcmCodec,
+        signal,
+      );
+      if (original !== delivered)
+        fail(
+          "Derived source windows failed native-precision decoded pixel/sample parity.",
+        );
+    }
+  }
   return {
     asset: {
       ...asset,
@@ -338,6 +383,77 @@ export async function createCollectDerivative(
       windows,
     },
   };
+}
+
+async function retainedHash(
+  path: string,
+  kind: "video" | "audio",
+  windows: { start: number; end: number }[],
+  sampleRate: number,
+  pcmCodec: string | undefined,
+  signal?: AbortSignal,
+): Promise<string> {
+  const audio = kind === "audio",
+    prefix = audio ? "a" : "v",
+    filters = windows.map((w, index) =>
+      audio
+        ? `[0:a:0]atrim=start_sample=${Math.round(w.start * sampleRate)}:end_sample=${Math.round(w.end * sampleRate)},asetpts=PTS-STARTPTS[part${index}]`
+        : `[0:v:0]trim=start=${w.start}:end=${w.end},setpts=PTS-STARTPTS[part${index}]`,
+    );
+  filters.push(
+    `${windows.map((_, index) => `[part${index}]`).join("")}concat=n=${windows.length}:v=${audio ? 0 : 1}:a=${audio ? 1 : 0}[kept]`,
+  );
+  const result = await runProcess(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-nostdin",
+      "-threads",
+      "1",
+      ...(await localMediaInputOptions(path, signal)),
+      "-i",
+      path,
+      "-filter_complex_threads",
+      "1",
+      "-filter_complex",
+      filters.join(";"),
+      "-map",
+      "[kept]",
+      `-c:${prefix}`,
+      audio ? pcmCodec! : "rawvideo",
+      "-threads",
+      "1",
+      ...(audio ? ["-vn"] : ["-an", "-fps_mode", "passthrough"]),
+      "-f",
+      "hash",
+      "-hash",
+      "sha256",
+      "-",
+    ],
+    processOptions(signal),
+  );
+  const hash = /SHA256=([a-f0-9]{64})/u.exec(
+    result.stdout.toString("utf8"),
+  )?.[1];
+  if (!hash) fail("Derived sources require complete native decoded evidence.");
+  return hash;
+}
+
+export const COLLECT_PRIVATE_RENDER_BYTES = MAX_BYTES;
+export function assertCollectRenderBudget(project: OpenFilmProject): void {
+  if (
+    project.timelines.length > 100 ||
+    project.timelines.some((c) => c.duration > 300) ||
+    project.settings.width > 1920 ||
+    project.settings.height > 1080 ||
+    projectFrameRate(project.settings) > 60
+  )
+    throw new ApplicationError(
+      "request.tooLarge",
+      "Derived Collect validation supports at most 100 five-minute 1080p/60 Compositions per package.",
+      413,
+    );
 }
 
 /** Rewrite source clocks only in the private portable capture. */

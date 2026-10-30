@@ -90,6 +90,7 @@ async function review() {
     delivery: { version: 1, mode: mode.value, handlesSeconds: handles.value },
   };
   busy.value = true;
+  accepted.value = false;
   error.value = "";
   reviewState.value = undefined;
   emit("busy", true);

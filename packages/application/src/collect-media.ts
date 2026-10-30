@@ -81,6 +81,8 @@ import {
   remapCollectProject,
   renderCollectParity,
   collectDecodedSignature,
+  assertCollectRenderBudget,
+  COLLECT_PRIVATE_RENDER_BYTES,
   type CollectDerivativeReceipt,
   type CollectParityReceipt,
 } from "./collect-derived-media.js";
@@ -2469,18 +2471,7 @@ export class CollectMediaService {
       let convertedProject = selected.project;
       let parity: CollectParityReceipt[] = [];
       if (delivery && delivery.mode !== "originals") {
-        if (
-          selected.project.timelines.length > 100 ||
-          selected.project.timelines.some((c) => c.duration > 300) ||
-          selected.project.settings.width > 1920 ||
-          selected.project.settings.height > 1080 ||
-          selected.project.settings.frameRate > 60
-        )
-          fail(
-            "request.tooLarge",
-            "Derived Collect validation supports at most 100 five-minute 1080p/60 Compositions per package.",
-            413,
-          );
+        assertCollectRenderBudget(selected.project);
         let stagedBytes = plan.uniqueMediaBytes;
         const work = join(temp, "derived-work");
         await mkdir(work, { mode: 0o700 });
@@ -2843,8 +2834,10 @@ export class CollectMediaService {
       const expectedIds = manifest.assets.map((asset) => asset.id).sort();
       const actualIds = catalogSnapshot.assets.map((asset) => asset.id).sort();
       const project = validateProject(projectData, { assetIds: actualIds });
-      if (manifest.version === 2)
+      if (manifest.version === 2) {
         validateDerivedProjectClocks(project, manifest.derivatives!);
+        assertCollectRenderBudget(project);
+      }
       if (project.id !== manifest.projectId)
         fail(
           "request.invalid",
@@ -2951,13 +2944,21 @@ export class CollectMediaService {
           "Package has no Composition to preview or render.",
         );
       checkAbortAndStatus(signal);
-      const previewPath = await application.render(firstComposition.id, {
+      const renderOptions = {
         signal,
-      });
+        maximumOutputBytes: COLLECT_PRIVATE_RENDER_BYTES,
+      };
+      const previewPath = await application.render(
+        firstComposition.id,
+        renderOptions,
+      );
       const previewSha256 = await hashFile(previewPath, signal);
-      const exported = await application.exportMp4(firstComposition.id, {
-        signal,
-      });
+      await rm(previewPath);
+      await rm(`${previewPath}.manifest.json`);
+      const exported = await application.exportMp4(
+        firstComposition.id,
+        renderOptions,
+      );
       const outputSha256 = await hashFile(exported.path, signal);
       const renderReceiptPath = `${exported.path}.manifest.json`;
       const renderReceiptInfo = await lstat(renderReceiptPath);
@@ -3124,7 +3125,10 @@ export class CollectMediaService {
           const output =
             evidence.compositionId === firstComposition.id
               ? exported
-              : await application.exportMp4(evidence.compositionId, { signal });
+              : await application.exportMp4(
+                  evidence.compositionId,
+                  renderOptions,
+                );
           const decoded = await collectDecodedSignature(output.path, signal);
           if (!sameCollectSignature(decoded, evidence.derived))
             fail(
@@ -3132,6 +3136,8 @@ export class CollectMediaService {
               "Relocated output no longer matches the package's decoded delivery receipt.",
               422,
             );
+          await rm(output.path);
+          await rm(`${output.path}.manifest.json`);
         }
       }
       const packageWarnings = [...exported.report.warnings];

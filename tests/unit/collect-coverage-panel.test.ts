@@ -164,6 +164,34 @@ it("requires an explicit quality acceptance and clears it when the delivery chan
   expect(f.button("collectDelivery.create")).toBeUndefined();
   expect(f.create).not.toHaveBeenCalled();
 });
+it("requires new acceptance when a fresh revision is reviewed with unchanged request props", async () => {
+  let count = 0;
+  const f = await fixture(
+    vi.fn(async () => {
+      const result = response(`Review ${++count}`);
+      result.review.baseline.complete = true;
+      result.review.coverageId = String(count).repeat(64);
+      result.review.baseline.revision = String(count).repeat(64);
+      return result;
+    }),
+  );
+  await f.click("collectDelivery.review");
+  let checkbox = flatten(f.root).find(
+    (node) => node.tag === "input" && node.props.type === "checkbox",
+  )!;
+  (checkbox.props.onChange as (event: unknown) => void)({
+    target: { checked: true },
+  });
+  await vue.nextTick();
+  expect(f.button("collectDelivery.create")!.props.disabled).toBe(false);
+  await f.click("collectDelivery.review");
+  checkbox = flatten(f.root).find(
+    (node) => node.tag === "input" && node.props.type === "checkbox",
+  )!;
+  expect(checkbox.props.checked).toBe(false);
+  expect(f.button("collectDelivery.create")!.props.disabled).toBe(true);
+  expect(f.create).not.toHaveBeenCalled();
+});
 it("aborts and discards a late review after the project changes", async () => {
   let finish!: (value: { review: CollectCoverageReview }) => void;
   const read = vi.fn<Read>(

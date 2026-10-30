@@ -89,7 +89,7 @@ external drives, Windows/macOS/NLE finishing remain separate evidence gates.
 
 ## Implemented bounded recipe decision (2026-10-30)
 
-Lossless eligible CFR SDR video uses FFV1/float PCM AVI and audio uses float PCM
+Lossless eligible CFR SDR video uses FFV1/precision-preserving PCM AVI and audio uses PCM
 WAV, within existing allowed demuxers. Frame/sample windows expand outward and
 compact disjoint intervals; clock/protection uncertainty retains originals. AVI
 is a derived source, not an interoperable browser codec; new-machine playback

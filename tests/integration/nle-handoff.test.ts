@@ -25,6 +25,64 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const fn of cleanup.splice(0).reverse()) await fn();
 });
+it.each(["preserve-editability", "preserve-visual-fidelity"] as const)(
+  "preserves offline quality through %s source copies and precomps",
+  async (mode) => {
+    const f = await fixture(),
+      assetId = f.composition.tracks[0]!.clips[0]!.assetId,
+      asset = f.app.catalog.getAsset(assetId)!;
+    f.app.catalog.upsertAsset({
+      ...asset,
+      metadata: {
+        ...asset.metadata,
+        "openfilm.collectDelivery": {
+          version: 1,
+          mode: "offline-proxies",
+          quality: "offline-only",
+          originalSha256: "a".repeat(64),
+        },
+      },
+    });
+    const review = f.app.reviewHandoff(f.composition.id, { mode });
+    const publication = await f.app.exportHandoff({
+      projectId: review.projectId,
+      revision: review.revision,
+      compositionId: f.composition.id,
+      mode,
+    });
+    const index = publication.files.findIndex(
+      (file) => file.name === "timeline.otio",
+    );
+    const timeline = JSON.parse(
+      await readFile(await f.app.handoff.file(publication.id, index), "utf8"),
+    );
+    expect(timeline.metadata.openfilm.compatibility.warnings).toContain(
+      "collect.offline-quality",
+    );
+    const clips = timeline.tracks.children
+      .flatMap(
+        (track: {
+          children: {
+            media_reference?: {
+              metadata?: {
+                openfilm?: { collectDelivery?: { quality: string } };
+              };
+            };
+          }[];
+        }) => track.children,
+      )
+      .filter(
+        (clip: {
+          media_reference?: {
+            metadata?: { openfilm?: { collectDelivery?: { quality: string } } };
+          };
+        }) =>
+          clip.media_reference?.metadata?.openfilm?.collectDelivery?.quality ===
+          "offline-only",
+      );
+    expect(clips.length).toBeGreaterThan(0);
+  },
+);
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "openfilm-handoff-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));

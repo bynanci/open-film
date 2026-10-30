@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { inspectMedia, runProcess, hashFile } from "@openfilm/media";
 import { OpenFilmApplication } from "../src/index.js";
 import { extractStoredZip } from "../src/collect-archive.js";
@@ -553,3 +553,156 @@ it.each([0.5, 1.5])(
     expect(await hashFile(f.source)).toBe(f.before.hash);
   },
 );
+
+it("preserves every retained native PCM32 sample rather than relying on lossy AAC parity", async () => {
+  const f = await fixture(),
+    source = join(f.root, "precision.wav");
+  await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    "aevalsrc=0.5+1/2147483648:s=48000:d=8",
+    "-c:a",
+    "pcm_s32le",
+    source,
+  ]);
+  const audio = await inspectMedia({
+    path: source,
+    uri: pathToFileURL(source).href,
+    name: "Synthetic PCM32",
+  });
+  f.app.catalog.upsertAsset({
+    ...audio,
+    id: f.asset.id,
+    metadata: { "openfilm.ffprobe": audio.metadata["openfilm.ffprobe"] },
+  });
+  const review = await f.app.collectMedia.coverage({
+    ...f.base,
+    projectId: f.app.project.id,
+    delivery: f.delivery,
+  });
+  const destination = join(f.root, "precision.openfilm");
+  await f.app.collectMedia.create({
+    ...f.input,
+    planId: review.baseline.id,
+    baseRevision: review.baseline.revision,
+    coverageId: review.coverageId,
+    destination,
+    format: "directory",
+  });
+  const manifest = JSON.parse(
+    await readFile(join(destination, "collect-manifest.json"), "utf8"),
+  );
+  expect(manifest.derivatives[0].quality).toBe("lossless");
+  const decoded = await runProcess(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-i",
+      join(destination, manifest.assets[0].path),
+      "-map",
+      "0:a:0",
+      "-c:a",
+      "pcm_s32le",
+      "-f",
+      "s32le",
+      "-",
+    ],
+    { maxOutputBytes: 1024 * 1024 },
+  );
+  expect(decoded.stdout.length).toBe(192000 * 4);
+  for (let offset = 0; offset < decoded.stdout.length; offset += 4)
+    expect(decoded.stdout.readInt32LE(offset)).toBe(1073741825);
+});
+
+it("rejects an oversized v2 project before invoking a renderer", async () => {
+  const f = await fixture(),
+    destination = join(f.root, "oversized.openfilm");
+  await f.app.collectMedia.create({
+    ...f.input,
+    destination,
+    format: "directory",
+  });
+  const { writeFile } = await import("node:fs/promises");
+  const projectPath = join(destination, "project.json"),
+    manifestPath = join(destination, "collect-manifest.json");
+  const project = JSON.parse(await readFile(projectPath, "utf8"));
+  project.settings.width = 3840;
+  project.settings.height = 2160;
+  await writeFile(projectPath, JSON.stringify(project));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")),
+    record = manifest.files.find(
+      (file: { path: string }) => file.path === "project.json",
+    );
+  record.sha256 = await hashFile(projectPath);
+  record.size = (await readFile(projectPath)).length;
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const render = vi.spyOn(FFmpegRenderer.prototype, "render");
+  try {
+    await expect(f.app.collectMedia.verify(destination)).rejects.toMatchObject({
+      code: "request.tooLarge",
+    });
+    expect(render).not.toHaveBeenCalled();
+  } finally {
+    render.mockRestore();
+  }
+});
+
+it("bounds each relocated render and removes previous film outputs before the next film", async () => {
+  const f = await fixture();
+  f.app.project.timelines.push({
+    ...structuredClone(f.app.project.timelines[0]!),
+    id: "second-film",
+  });
+  await f.app.save();
+  const base = { ...f.base, scope: "entire-project" as const };
+  delete (base as { compositionId?: string }).compositionId;
+  const review = await f.app.collectMedia.coverage({
+      ...base,
+      projectId: f.app.project.id,
+      delivery: f.delivery,
+    }),
+    destination = join(f.root, "several.openfilm");
+  await f.app.collectMedia.create({
+    ...f.input,
+    ...base,
+    planId: review.baseline.id,
+    baseRevision: review.baseline.revision,
+    coverageId: review.coverageId,
+    destination,
+    format: "directory",
+  });
+  const real = FFmpegRenderer.prototype.render,
+    observed: { limit?: number; existing: number }[] = [];
+  const { readdir } = await import("node:fs/promises");
+  const { dirname } = await import("node:path");
+  const render = vi
+    .spyOn(FFmpegRenderer.prototype, "render")
+    .mockImplementation(async function (this: FFmpegRenderer, ...args) {
+      const folder = dirname(args[2]);
+      let existing = 0;
+      try {
+        existing = (await readdir(folder)).filter((name) =>
+          name.endsWith(".mp4"),
+        ).length;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      observed.push({ limit: args[4]?.maximumOutputBytes, existing });
+      return real.apply(this, args);
+    });
+  try {
+    await f.app.collectMedia.verify(destination);
+  } finally {
+    render.mockRestore();
+  }
+  expect(observed.length).toBe(3);
+  expect(observed.every((item) => item.limit === 2 * 1024 * 1024 * 1024)).toBe(
+    true,
+  );
+  expect(observed.every((item) => item.existing === 0)).toBe(true);
+});

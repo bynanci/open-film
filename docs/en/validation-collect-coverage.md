@@ -25,7 +25,7 @@ Project schema remains 1.0.0 and Catalog v6; no dependency or license changes.
 ## Recipes, clocks and bounds
 
 - `trimmed-originals`: measured zero-origin CFR SDR yuv420p video becomes FFV1 +
-  float PCM AVI; audio becomes float PCM WAV. These are newly encoded lossless
+  precision-preserving PCM AVI; audio becomes PCM WAV. These are newly encoded lossless
   derivatives, not unchanged originals. They can be larger than compressed source
   files. No byte saving is inferred from retained seconds.
 - Handles default to 2 seconds, bounded 0–10. Windows expand outward to measured
@@ -54,7 +54,9 @@ private playback cache. FFmpeg output continues to read the portable source.
 ## Actual output and relocation
 
 Every selected Composition is rendered twice before publication: captured
-originals and the converted package. Both real MP4s are decoded to per-frame
+originals and the converted package. Retained source windows are independently decoded and hashed, preserving native
+integer/float sample precision as well as pixels, including unused handles. Both
+real MP4s are decoded to per-frame
 SHA-256 records and float PCM audio hashes. Frame count, duration, picture and
 samples must match exactly for trimmed delivery; no epsilon or weakened assertion
 is used. Offline delivery records both signatures and requires complete timing,
@@ -74,7 +76,7 @@ measurements, not signed third-party attestations.
 - Prior D6A logs really contain 314 files / 4,464 tests and 288 Chromium passes;
   those are predecessor evidence, not a D6B full-gate claim.
 - Task2 checkpoint: 11 focused suites / 140 tests; 3 read-only browser workflows.
-- Task3: 11 real derivative regressions pass (`/tmp/openfilm-d6b-final-derivatives.log`):
+- Task3: 14 real derivative regressions pass (`/tmp/openfilm-d6b-review-green.log`):
   synthetic 8-second long-GOP H.264/AAC, two disjoint uses, speeds 0.5/1.5/2, quarter-second
   handles, real ZIP/directory relocation, unchanged original hash/project/catalog,
   locked transcript identity, manually revised Traditional Chinese captions,
@@ -128,6 +130,44 @@ exact HTTP bytes; existing corruption/alias defenses remain asserted. RED:
 `/tmp/openfilm-proxy-publication-red.log`; GREEN: 39 tests across 2 suites in
 `/tmp/openfilm-proxy-publication-green.log`. No retries, sleeps or assertion
 weakening mask the race.
+
+## Independent final review and fixes
+
+Fresh-context review of candidate `7f00e06dc51590f39edc58fd3abb7aeeac0d8d01`
+identified four Important findings. A single TDD fix pass addresses all four:
+
+1. Preserve native PCM precision (including every PCM32 low bit), and independently
+   hash all retained source pixels/samples. Lossy MP4/AAC equality is an additional
+   film gate, not proof of source losslessness. Unhandled precision/layout keeps
+   originals; the first recipe supports measured mono/stereo layouts.
+2. A new review clears acceptance even when request props stay identical; a new
+   coverage ID/revision always requires another explicit acceptance.
+3. Verify enforces v2 duration/resolution/count limits before render, propagates
+   the 2 GiB output cap, deletes preview before export, and deletes each completed
+   film before rendering the next. Actual small-byte truncation is rejected
+   before publication; tests never fill the disk deliberately.
+4. JSON/OTIO/FCPXML/EDL reports and supported artifact metadata/comments retain
+   offline status and sanitized lineage. Native source copies, baked precomps and
+   full-mix handoff preserve the warning; no extension secrets are copied.
+
+All eight reproductions failed before the fixes (`/tmp/openfilm-d6b-review-red.log`)
+and the 25 focused cases pass afterward. Native/baked NLE handoff also had two
+real failing cases before its propagation fix. A broader NLE run initially used
+a Python without OpenTimelineIO; that failed environment attempt is retained,
+then rerun with the existing pinned 0.18.1 virtual environment. No parser test
+was skipped or weakened. Whole-suite and full browser runs are refreshed after
+these final source changes.
+
+Deferred Minor: Collect's verification section still summarizes warning count;
+the specific offline-quality explanation is shown during explicit acceptance and
+in reopened Export/renderer/NLE reports. This presentation improvement remains a
+follow-up, not a hidden claim that the review had no findings.
+
+Review boundaries: physical workstation/filesystem/NLE/hardware observations and
+cross-version FFmpeg/perceptual quality are unverified. Exact signature checks
+fail closed if toolchain behavior differs; a legitimate package may require
+reverification/recreation with its intended toolchain. Automated evidence does not
+replace these manual observations.
 
 ## Open gates
 
