@@ -111,6 +111,11 @@ rebuilding existing HDR tone mapping, Source waveform, proxy generation,
 CaptionTrack, fixed easing, focal contracts, Hero titles, Collect Media or
 synthetic fixtures.
 
+External research inputs are indexed in [research/](research/README.md). They are
+non-authoritative hypotheses; reconcile feature status and proposed work against
+this roadmap, [TASKS.md](TASKS.md) and the seven-subsystem evidence before adding
+or changing roadmap items.
+
 The delivery order preserves the accepted Multi-source M2 → M3 infrastructure
 route, then reviews continuity/A-B-roll, rhythm and transcript transactions,
 tactile photo/title/color increments, proxy/Collect lifecycle, reproducible
