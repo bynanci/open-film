@@ -187,6 +187,42 @@ it("flattens only decorative fill alpha against black before darkening and leave
   expect(await hashFile(localPath(half.uri))).toBe(sourceHash);
 });
 
+it("preserves the black diptych separator after a grouped color look with lift", async () => {
+  const { root, source, image, clip } = await fixture();
+  const other = await image("second-portrait", "color=green:s=100x200");
+  const paired: Clip = {
+    ...clip,
+    timelineDuration: 0.2,
+    layout: {
+      version: 2,
+      preset: "diptych",
+      gap: 8,
+      secondary: { assetId: other.id },
+      fill,
+    },
+    look: { version: 1, preset: "retro", strength: 1 },
+  };
+  const output = join(root, "gap-look.mp4");
+  await new render.FFmpegRenderer().render(
+    {
+      id: "gap",
+      storyId: "story",
+      duration: 0.2,
+      tracks: [{ id: "visual", type: "video", clips: [paired] }],
+    },
+    [source, other],
+    output,
+    settings,
+  );
+  const rgb = await pixels(output, 0);
+  for (const x of [159, 160])
+    for (const value of rgb.subarray(
+      (90 * 320 + x) * 3,
+      (90 * 320 + x) * 3 + 3,
+    ))
+      expect(value).toBeLessThanOrEqual(8);
+});
+
 it("rejects budget, missing and cancelled fill work without replacing a completed render", async () => {
   const { root, work, source, clip } = await fixture();
   await expect(

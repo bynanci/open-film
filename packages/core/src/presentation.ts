@@ -44,6 +44,17 @@ export interface PhotoAmbientPlan {
   sigma: number;
   dim: number;
 }
+/** Layout separators remain black independently of photographic color lifts. */
+export function photoAmbientGaps(
+  plan: PhotoAmbientPlan | undefined,
+): PhotoAmbientLayer["cell"][] {
+  if (!plan || plan.layers.length < 2) return [];
+  const left = plan.layers[0]!.cell,
+    right = plan.layers[1]!.cell;
+  const x = left.x + left.width,
+    width = right.x - x;
+  return width > 0 ? [{ x, y: left.y, width, height: left.height }] : [];
+}
 type PresentationClip = Pick<
   Clip,
   "assetId" | "layout" | "motion" | "timelineDuration" | "transform"

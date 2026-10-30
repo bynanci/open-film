@@ -3,6 +3,7 @@
 import {
   assetDisplayDimensions,
   resolvePhotoPlan,
+  photoAmbientGaps,
   type Clip,
   type FilmLook,
   type FrameSize,
@@ -104,6 +105,14 @@ export async function photoPresentationFilters(
   if (groupedLook.length) {
     const output = `photo-color${options.suffix}`;
     filters.push(`[${label}]${groupedLook.join(",")}[${output}]`);
+    label = output;
+  }
+  const gaps = photoAmbientGaps(plan.ambient);
+  if (gaps.length) {
+    const output = `photo-gap${options.suffix}`;
+    filters.push(
+      `[${label}]${gaps.map((gap) => `drawbox=x=${gap.x}:y=${gap.y}:w=${gap.width}:h=${gap.height}:color=black:t=fill`).join(",")}[${output}]`,
+    );
     label = output;
   }
   const { from, to, easing } = plan.motion;

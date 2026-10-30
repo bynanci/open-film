@@ -177,6 +177,9 @@ describe("versioned photo finishing", () => {
       { x: 0, y: 0, width: 156, height: 180 },
       { x: 164, y: 0, width: 156, height: 180 },
     ]);
+    expect(core.photoAmbientGaps(plan.ambient)).toEqual([
+      { x: 156, y: 0, width: 8, height: 180 },
+    ]);
     expect(() =>
       core.resolvePhotoPlan(
         { ...clip, layout: { ...paired, gap: 319 } },
