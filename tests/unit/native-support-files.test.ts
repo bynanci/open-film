@@ -1,6 +1,10 @@
 import { afterEach, expect, it } from "vitest";
 import {
   link,
+  cp,
+  copyFile,
+  realpath,
+  unlink,
   mkdir,
   mkdtemp,
   readFile,
@@ -9,7 +13,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { build } from "esbuild";
+import {
+  createBuildContributions,
+  mergeBuildContributions,
+  recordEsbuildContributions,
+} from "../../scripts/build-attribution.mjs";
 import {
   stageRuntime,
   type RuntimeInputs,
@@ -110,6 +121,76 @@ async function fixture() {
   inputs.tools.ffmpeg.supportFiles = [support];
   return { root, repository, inputs, support, output: join(root, "runtime") };
 }
+async function privateRuntimeDependencies(repository: string): Promise<void> {
+  await unlink(join(repository, "node_modules")); // This fixture's link only.
+  const copied = new Map<string, string>();
+  const copy = async (require: NodeJS.Require, id: string): Promise<void> => {
+    let root: string;
+    try {
+      root = dirname(require.resolve(`${id}/package.json`));
+    } catch {
+      root = dirname(require.resolve(id));
+      for (;;) {
+        try {
+          if (
+            JSON.parse(await readFile(join(root, "package.json"), "utf8"))
+              .name === id
+          )
+            break;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        const parent = dirname(root);
+        if (parent === root)
+          throw new Error("Installed fixture dependency missing");
+        root = parent;
+      }
+    }
+    root = await realpath(root);
+    if (copied.has(id)) {
+      if (copied.get(id) !== root)
+        throw new Error("Fixture dependency version conflict");
+      return;
+    }
+    copied.set(id, root);
+    const data = JSON.parse(
+      await readFile(join(root, "package.json"), "utf8"),
+    ) as {
+      dependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+    };
+    const destination = join(repository, "node_modules", id);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(root, destination, {
+      recursive: true,
+      filter: (path) => path !== join(root, "node_modules"),
+    });
+    const dependencyRequire = createRequire(join(root, "package.json"));
+    for (const name of Object.keys(data.dependencies ?? {}))
+      await copy(dependencyRequire, name);
+    const optional =
+      id === "koffi"
+        ? [`@koromix/koffi-${process.platform}-${process.arch}`]
+        : id === "@resvg/resvg-js"
+          ? Object.keys(data.optionalDependencies ?? {}).filter((name) =>
+              name.includes(`-${process.platform}-${process.arch}`),
+            )
+          : [];
+    for (const name of optional) {
+      try {
+        dependencyRequire.resolve(`${name}/package.json`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND")
+          continue;
+        throw error;
+      }
+      await copy(dependencyRequire, name);
+    }
+  };
+  const require = createRequire(resolve("package.json"));
+  for (const id of ["fontkit", "@resvg/resvg-js", "koffi"])
+    await copy(require, id);
+}
 it("stages a loader-relative sidecar with its unique owner and complete notice in v1 inventory", async () => {
   const f = await fixture();
   const m = await stageRuntime(f.inputs, f.output, f.repository);
@@ -198,13 +279,97 @@ it("does not accept a generic review text as executed target import evidence", a
 });
 it("hash-covers attribution/SPDX receipts while retaining full first-party historical grants", async () => {
   const f = await fixture();
-  const m = await stageRuntime(f.inputs, f.output, process.cwd());
+  // A clean checkout has no build output. Produce real private contribution
+  // evidence and retain the actual first-party grant bytes in this fixture.
+  await privateRuntimeDependencies(f.repository);
+  for (const path of ["LICENSE", "NOTICE"])
+    await copyFile(resolve(path), join(f.repository, path));
+  await cp(resolve("LICENSES"), join(f.repository, "LICENSES"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(f.repository, "package.json"),
+    JSON.stringify({
+      name: "openfilm",
+      version: "0.4.0",
+      license: "Apache-2.0",
+      type: "module",
+    }),
+  );
+  await copyFile(
+    resolve("pnpm-lock.yaml"),
+    join(f.repository, "pnpm-lock.yaml"),
+  );
+  const contributions: string[] = [];
+  for (const [delivery, output] of [
+    ["service", "dist/server/index.mjs"],
+    ["launcher", "dist/native/launcher.mjs"],
+    ["frontend", "apps/desktop/dist/index.js"],
+  ] as const) {
+    const entry = join(f.repository, `${delivery}.js`);
+    await writeFile(
+      entry,
+      'export const fixture = "synthetic, never executed";',
+    );
+    const result = await build({
+      entryPoints: [entry],
+      outfile: join(f.repository, output),
+      absWorkingDir: f.repository,
+      bundle: true,
+      format: "esm",
+      metafile: true,
+    });
+    const receipt = `dist/attribution/${delivery}.json`;
+    if (delivery === "frontend") {
+      const outputs = Object.entries(result.metafile.outputs).map(
+        ([path, data]) => ({
+          path,
+          delivery,
+          inputs: Object.entries(data.inputs).map(([path, contribution]) => ({
+            path,
+            bytesInOutput: contribution.bytesInOutput,
+          })),
+        }),
+      );
+      const raw = "dist/attribution/frontend.modules.json";
+      await writeFile(join(f.repository, raw), JSON.stringify(outputs));
+      await writeFile(
+        join(f.repository, receipt),
+        JSON.stringify(
+          await createBuildContributions({
+            repository: f.repository,
+            outputs,
+            evidence: [raw],
+          }),
+        ),
+      );
+    } else
+      await recordEsbuildContributions(
+        f.repository,
+        result.metafile,
+        delivery,
+        receipt,
+      );
+    contributions.push(receipt);
+  }
+  await mergeBuildContributions(
+    f.repository,
+    contributions,
+    "dist/build-contributions.json",
+  );
+  const m = await stageRuntime(f.inputs, f.output, f.repository);
   const evidence = JSON.parse(
     await readFile(join(f.output, "receipts/attribution.json"), "utf8"),
   );
   expect(evidence.reviewStatus).toBe("blocked");
   expect(evidence.distributionApproved).toBe(false);
   expect(evidence.blockers).toContain("native-build-evidence-missing");
+  expect(evidence.buildContributionsSha256).toMatch(/^[a-f0-9]{64}$/u);
+  expect(
+    evidence.artifacts.some(
+      (artifact: { delivery: string }) => artifact.delivery === "frontend",
+    ),
+  ).toBe(true);
   expect(
     m.files.find((x) => x.path === "receipts/attribution.json")?.sha256,
   ).toBe(await runtimeHash(join(f.output, "receipts/attribution.json")));
