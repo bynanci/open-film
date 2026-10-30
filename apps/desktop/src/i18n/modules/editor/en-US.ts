@@ -124,6 +124,10 @@ export default {
           "The candidate lacks −1 dBTP headroom; acceptance is unavailable.",
         "manual-review":
           "Listen for balance, clarity and intent. Measurements do not establish aesthetic quality.",
+        "user-pinned":
+          "Release this clip's user pin and measure again to apply a suggestion.",
+        "target-locked":
+          "Unlock this clip and measure again to apply a suggestion.",
       },
     },
     graphics: {

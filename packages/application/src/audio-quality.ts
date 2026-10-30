@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Composition } from "@openfilm/core";
+import { pinConflict } from "@openfilm/solver";
 import {
   checkAbort,
   hashFile,
@@ -28,7 +29,15 @@ export interface AudioQualityReport {
   stem: AudioMeasurement;
   candidate: AudioMeasurement | null;
   suggestion: AudioNormalizationSuggestion | null;
-  issues: ("silence" | "peak" | "limited" | "mix-headroom" | "manual-review")[];
+  issues: (
+    | "silence"
+    | "peak"
+    | "limited"
+    | "mix-headroom"
+    | "manual-review"
+    | "user-pinned"
+    | "target-locked"
+  )[];
   outputHashes: { original: string; candidate?: string };
   sources: { assetId: string; sha256: string }[];
   canAccept: boolean;
@@ -156,6 +165,10 @@ export class AudioQualityService {
           );
       }
       await this.assertCurrent(compositionId, baseRevision, snapshot, settings);
+      const hasHeadroom =
+        candidate !== null &&
+        candidate.truePeakDbtp !== null &&
+        candidate.truePeakDbtp <= -1;
       const report: AudioQualityReport = {
         version: 1,
         id,
@@ -175,14 +188,16 @@ export class AudioQualityService {
         },
         canAccept:
           !!suggestion &&
-          candidate?.truePeakDbtp !== null &&
-          candidate !== null &&
-          candidate.truePeakDbtp <= -1,
+          hasHeadroom &&
+          !clip.locked &&
+          !clip.userOverrides?.isUserPinned,
       };
       if (stem.integratedLufs === null) report.issues.push("silence");
       if ((original.truePeakDbtp ?? -Infinity) > -1) report.issues.push("peak");
       if (suggestion?.limited) report.issues.push("limited");
-      if (suggestion && !report.canAccept) report.issues.push("mix-headroom");
+      if (suggestion && !hasHeadroom) report.issues.push("mix-headroom");
+      if (clip.userOverrides?.isUserPinned) report.issues.push("user-pinned");
+      if (clip.locked) report.issues.push("target-locked");
       this.reports.set(id, { report, root, composition: snapshot, settings });
       while (this.reports.size > 5) {
         const first = this.reports.keys().next().value!;
@@ -205,8 +220,7 @@ export class AudioQualityService {
   ) {
     const cached = this.reports.get(id);
     if (
-      !cached?.report.canAccept ||
-      !cached.report.suggestion ||
+      !cached?.report.suggestion ||
       cached.report.compositionId !== compositionId ||
       cached.report.baseRevision !== revision ||
       cached.report.clipId !== clipId ||
@@ -215,6 +229,24 @@ export class AudioQualityService {
       throw new TimelineEditorError("Audio review cannot be accepted.", 409);
     await this.media(id, "original");
     await this.media(id, "candidate");
+    const clip = new TimelineEditor(this.app)
+      .get(compositionId)
+      .composition.tracks.flatMap((track) => track.clips)
+      .find((item) => item.id === clipId);
+    if (clip?.userOverrides?.isUserPinned)
+      pinConflict(
+        "Release the user pin and measure again before applying an audio suggestion.",
+        [
+          {
+            code: "capacity",
+            targets: [{ kind: "clip", clipId }],
+            beatIds: [],
+            message: "The audio target is user pinned.",
+          },
+        ],
+      );
+    if (!cached.report.canAccept || clip?.locked)
+      throw new TimelineEditorError("Audio review cannot be accepted.", 409);
   }
   async media(id: string, variant: "original" | "candidate"): Promise<string> {
     const cached = this.reports.get(id);

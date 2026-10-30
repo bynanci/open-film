@@ -113,6 +113,8 @@ export default {
         limited: "建議受到峰值餘量或既有單位增益上限限制。",
         "mix-headroom": "候選混音未保留 −1 dBTP 餘量，目前無法採用。",
         "manual-review": "請聆聽平衡、清晰度與敘事意圖；量測無法判定美學品質。",
+        "user-pinned": "請先解除此片段的使用者固定，再重新量測以採用建議。",
+        "target-locked": "請先解鎖此片段，再重新量測以採用建議。",
       },
     },
     graphics: {

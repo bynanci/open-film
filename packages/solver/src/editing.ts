@@ -636,6 +636,7 @@ function replace(
   assets: MediaAsset[],
   clip: Clip,
   assetId: string,
+  reconcileOverlays = true,
 ): void {
   const old = findAsset(assets, clip.assetId),
     asset = findAsset(assets, assetId);
@@ -673,7 +674,7 @@ function replace(
   clip.sourceIn = 0;
   clip.sourceOut = duration * speed;
   finite(clip.sourceOut, "Resulting source out", 0, true);
-  resize(document, clip, duration, assets);
+  resize(document, clip, duration, assets, reconcileOverlays);
 }
 function beatLength(document: EditorDocument, beatId: string): number {
   return allClips(document)
@@ -1057,15 +1058,17 @@ export function applyTimelineCommand(
     if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     return result.document;
   }
-  let next = command.type.startsWith("user-pin.")
-    ? structuredClone(document)
-    : applyTimelineCommandRaw(document, assets, command);
-  if (
+  const constrained =
     pinned &&
     ["trim", "speed", "duration", "delete", "replace", "reorder"].includes(
       command.type,
-    )
-  ) {
+    );
+  // Raw ripple is only a proposal. Reconcile saved overlays after restoring
+  // the complete anchored cut, where its actual final duration is known.
+  let next = command.type.startsWith("user-pin.")
+    ? structuredClone(document)
+    : applyTimelineCommandRaw(document, assets, command, !constrained);
+  if (constrained) {
     if (!context.timebase)
       pinConflict(
         "Constrained placement requires the authoritative project timebase clock.",
@@ -1105,6 +1108,7 @@ function applyTimelineCommandRaw(
   document: EditorDocument,
   assets: MediaAsset[],
   command: TimelineCommand,
+  reconcileOverlays = true,
 ): EditorDocument {
   const next = structuredClone(document);
   if (command.type === "user-pin.set" || command.type === "user-pin.resolve")
@@ -1596,6 +1600,7 @@ function applyTimelineCommandRaw(
         clip,
         (command.sourceOut - command.sourceIn) / (clip.transform?.speed ?? 1),
         assets,
+        reconcileOverlays,
       );
       break;
     }
@@ -1608,7 +1613,7 @@ function applyTimelineCommandRaw(
       clip.sourceOut =
         (clip.sourceIn ?? 0) + command.duration * (clip.transform?.speed ?? 1);
       finite(clip.sourceOut, "Resulting source out", clip.sourceIn ?? 0, true);
-      resize(next, clip, command.duration, assets);
+      resize(next, clip, command.duration, assets, reconcileOverlays);
       break;
     case "speed": {
       finite(command.speed, "Speed", 0, true);
@@ -1621,6 +1626,7 @@ function applyTimelineCommandRaw(
         clip,
         (bounds.sourceOut - bounds.sourceIn) / command.speed,
         assets,
+        reconcileOverlays,
       );
       break;
     }
@@ -1696,7 +1702,7 @@ function applyTimelineCommandRaw(
       track.clips = track.clips.map((item) =>
         group.includes(item) ? reordered[index++]! : item,
       );
-      updateDuration(next, assets);
+      updateDuration(next, assets, reconcileOverlays);
       break;
     }
     case "delete":
@@ -1725,8 +1731,9 @@ function applyTimelineCommandRaw(
           `Clip "${clip.id}" uses locked or required media. Remove the selection/constraint or unlock the asset before ${command.type === "delete" ? "deleting" : "replacing"} it.`,
         );
       const oldAssetId = clip.assetId;
-      if (command.type === "delete") remove(next, clip, assets);
-      else replace(next, assets, clip, command.assetId);
+      if (command.type === "delete")
+        remove(next, clip, assets, reconcileOverlays);
+      else replace(next, assets, clip, command.assetId, reconcileOverlays);
       if (
         beat?.selectedAssetIds?.includes(oldAssetId) &&
         !allClips(next).some(

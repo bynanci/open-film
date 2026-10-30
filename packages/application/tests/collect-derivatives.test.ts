@@ -998,6 +998,178 @@ it.each([false, true])(
   120000,
 );
 
+it("renders a feasible anchored trim with saved tail graphics, captions and locked audio at the final clock", async () => {
+  const f = await fixture();
+  const { TimelineEditor } = await import("../src/editor.js");
+  const { collectDecodedSignature } =
+    await import("../src/collect-derived-media.js");
+  const cut = f.app.project.timelines[0]!;
+  cut.duration = 8;
+  cut.tracks[0]!.clips = [
+    {
+      id: "first",
+      assetId: f.asset.id,
+      beatId: "beat",
+      timelineStart: 0,
+      timelineDuration: 3,
+      sourceIn: 0,
+      sourceOut: 3,
+    },
+    {
+      id: "anchor",
+      assetId: f.asset.id,
+      beatId: "beat",
+      timelineStart: 3,
+      timelineDuration: 2,
+      sourceIn: 3,
+      sourceOut: 5,
+    },
+    {
+      id: "tail",
+      assetId: f.asset.id,
+      beatId: "beat",
+      timelineStart: 5,
+      timelineDuration: 3,
+      sourceIn: 5,
+      sourceOut: 8,
+    },
+  ];
+  cut.tracks.push({
+    id: "sound",
+    type: "audio",
+    timing: "overlay",
+    clips: [
+      {
+        id: "sound",
+        assetId: f.asset.id,
+        timelineStart: 7,
+        timelineDuration: 1,
+        sourceIn: 0,
+        sourceOut: 1,
+        locked: true,
+      },
+    ],
+  });
+  cut.graphicScenes = [
+    {
+      version: 1,
+      id: "scene",
+      name: "Tail graphic",
+      start: 7,
+      duration: 1,
+      zIndex: 0,
+      nodes: [],
+    },
+  ];
+  cut.captionTracks = [
+    {
+      version: 1,
+      id: "captions",
+      name: "Captions",
+      language: "en",
+      style: { version: 1, role: "subtitle", fontSize: 12 },
+      cues: [
+        {
+          version: 1,
+          id: "end",
+          startMs: 7000,
+          endMs: 8000,
+          text: "Saved tail",
+          source: { kind: "manual" },
+          manualRevision: 0,
+        },
+      ],
+    },
+  ];
+  await f.app.save();
+  const editor = new TimelineEditor(f.app);
+  const pinned = await editor.edit("film", {
+    baseRevision: editor.get("film").revision,
+    commands: [
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "anchor" },
+        pinned: true,
+      },
+    ],
+  });
+  // Independent reference: shorten only the first source window, retaining
+  // the authored [3,5) anchor and [5,8) tail and absolute overlay clocks.
+  const reference = structuredClone(pinned.composition);
+  reference.tracks[0]!.clips[0]!.timelineDuration = 2;
+  reference.tracks[0]!.clips[0]!.sourceOut = 2;
+  const after = await editor.edit("film", {
+    baseRevision: pinned.revision,
+    commands: [{ type: "trim", clipId: "first", sourceIn: 0, sourceOut: 2 }],
+  });
+  expect(after.composition.duration).toBe(8);
+  expect(after.composition.tracks[0]!.clips[1]).toEqual(
+    pinned.composition.tracks[0]!.clips[1],
+  );
+  expect(after.composition.tracks[1]).toEqual(pinned.composition.tracks[1]);
+  expect(after.composition.graphicScenes).toEqual(
+    pinned.composition.graphicScenes,
+  );
+  expect(after.composition.captionTracks).toEqual(
+    pinned.composition.captionTracks,
+  );
+  const referencePath = join(f.root, "anchored-reference.mp4"),
+    actualPath = join(f.root, "anchored-trim.mp4");
+  const renderer = new FFmpegRenderer();
+  await renderer.render(
+    reference,
+    [f.asset],
+    referencePath,
+    f.app.project.settings,
+  );
+  await renderer.render(
+    after.composition,
+    [f.asset],
+    actualPath,
+    f.app.project.settings,
+  );
+  const expected = await collectDecodedSignature(referencePath),
+    actual = await collectDecodedSignature(actualPath);
+  expect(actual).toEqual(expected);
+  expect(actual.videoFrames).toBe(160);
+  expect(actual.audioSha256).toMatch(/^[a-f0-9]{64}$/u);
+  expect(await hashFile(f.source)).toBe(f.before.hash);
+  const disk = await readFile(join(f.app.directory, "project.json"));
+  await expect(
+    editor.edit("film", {
+      baseRevision: after.revision,
+      commands: [{ type: "trim", clipId: "tail", sourceIn: 5, sourceOut: 6 }],
+    }),
+  ).rejects.toMatchObject({ code: "timeline.pinConflict", status: 409 });
+  expect(editor.get("film")).toEqual(after);
+  expect(await readFile(join(f.app.directory, "project.json"))).toEqual(disk);
+  const evidence = process.env.OPENFILM_PIN_REVIEW_FIX_QA_OUTPUT;
+  if (evidence) {
+    await mkdir(evidence, { recursive: true });
+    for (const [source, name] of [
+      [f.source, "source.mp4"],
+      [referencePath, "reference.mp4"],
+      [actualPath, "anchored-trim.mp4"],
+    ])
+      await copyFile(source!, join(evidence, name!));
+    await writeFile(
+      join(evidence, "observations.json"),
+      JSON.stringify(
+        {
+          settings: f.app.project.settings,
+          reference: expected,
+          actual,
+          sourceSha256: await hashFile(f.source),
+          originalSourceSha256: f.before.hash,
+          composition: after.composition,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+}, 120000);
+
 it("entire-project directory collection retains pinned depth resources and scene payload exactly", async () => {
   const f = await fixture();
   const { TimelineEditor } = await import("../src/editor.js");

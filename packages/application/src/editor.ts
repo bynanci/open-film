@@ -1648,6 +1648,15 @@ export class TimelineEditor {
         throw new TimelineEditorError(
           "A reviewed primary color Apply requires a single-command transaction.",
         );
+      if (
+        parsed.commands.length !== 1 &&
+        parsed.commands.some(
+          (item) => item.type === "volume" && item.audioReviewId,
+        )
+      )
+        throw new TimelineEditorError(
+          "A reviewed audio Apply requires a single-command transaction.",
+        );
       for (const item of parsed.commands) {
         if (
           item.type === "primary-color" &&
@@ -1744,6 +1753,7 @@ export class TimelineEditor {
       try {
         const automaticCommand = (item: TimelineCommand) =>
           item.type === "regenerate-beat" ||
+          (item.type === "volume" && !!item.audioReviewId) ||
           (item.type === "primary-color" &&
             item.scope === "clip" &&
             !!item.primaryColorReviewId);
@@ -1869,7 +1879,7 @@ export class TimelineEditor {
         }
         next = applyOverridePolicy(document(before), next, directCommands, {
           timebase: resolveProjectTimebase(this.application.project.settings),
-          origin: "direct",
+          origin: directCommands.length ? "direct" : "automatic",
         });
         for (const track of next.composition.tracks)
           for (const clip of track.clips) {

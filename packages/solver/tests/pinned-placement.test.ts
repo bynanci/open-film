@@ -6,6 +6,7 @@ import {
   shorteningCommands,
   placeDirectEdit,
   type EditorDocument,
+  type TimelineCommand,
 } from "../src/index.js";
 import {
   resolveProjectTimebase,
@@ -84,6 +85,242 @@ function doc(): EditorDocument {
 const get = (d: EditorDocument, id: string) =>
   d.composition.tracks.flatMap((t) => t.clips).find((c) => c.id === id)!;
 describe("bounded pinned placement", () => {
+  it("retains the candidate's replacement source window and released metadata", () => {
+    const d = doc(),
+      sources = structuredClone(assets);
+    sources[0]!.mediaType = "video";
+    sources[0]!.duration = 4;
+    sources[3]!.mediaType = "video";
+    sources[3]!.duration = 2;
+    Object.assign(get(d, "a"), {
+      sourceIn: 1,
+      sourceOut: 4,
+      userOverrides: { version: 1, isUserPinned: false, lockedAttributes: [] },
+    });
+    const original = structuredClone(d);
+    const result = solveIncremental({
+      baseline: d,
+      assets: sources,
+      timebase: clock,
+      scope: { kind: "beat", beatId: "beat" },
+      mode: "replace-similar",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(JSON.stringify(result.conflicts));
+    expect(get(result.document, "a")).toEqual({
+      ...get(d, "a"),
+      assetId: "next",
+      sourceIn: 0,
+      sourceOut: 2,
+      timelineDuration: 2,
+    });
+    expect(get(result.document, "b")).toEqual(get(d, "b"));
+    expect(d).toEqual(original);
+  });
+  it.each(["trim", "speed", "delete", "replace"] as const)(
+    "stages the %s ripple before validating retained tail graphics",
+    (type) => {
+      const d = doc(),
+        sources = structuredClone(assets);
+      sources[0]!.mediaType = "video";
+      sources[0]!.duration = 3;
+      sources[3]!.mediaType = "video";
+      sources[3]!.duration = 2;
+      Object.assign(get(d, "a"), { sourceIn: 0, sourceOut: 3 });
+      d.composition.graphicScenes = [
+        {
+          version: 1,
+          id: "tail",
+          name: "Tail",
+          start: 7,
+          duration: 1,
+          zIndex: 0,
+          nodes: [],
+        },
+      ];
+      const command: TimelineCommand =
+        type === "trim"
+          ? { type, clipId: "a", sourceIn: 0, sourceOut: 2 }
+          : type === "speed"
+            ? { type, clipId: "a", speed: 1.5 }
+            : type === "replace"
+              ? { type, clipId: "a", assetId: "next" }
+              : { type, clipId: "a" };
+      const after = applyTimelineCommand(d, sources, command, {
+        timebase: clock,
+        origin: "direct",
+      });
+      expect(after.composition.duration).toBe(8);
+      expect(get(after, "b")).toEqual(get(d, "b"));
+      expect(after.composition.graphicScenes).toEqual(
+        d.composition.graphicScenes,
+      );
+      if (type === "delete")
+        expect(
+          after.composition.tracks[0]!.clips.some((clip) => clip.id === "a"),
+        ).toBe(false);
+      else expect(get(after, "a").timelineDuration).toBe(2);
+    },
+  );
+  it.each(["replace-similar", "shorten"] as const)(
+    "retains the mutable same-ID %s proposal around an exact anchor",
+    (mode) => {
+      const d = doc(),
+        before = structuredClone(d);
+      get(d, "a").transform = { volume: 0.6 };
+      get(d, "a").title = "Authored title";
+      const result = solveIncremental({
+        baseline: d,
+        assets,
+        timebase: clock,
+        scope: { kind: "beat", beatId: "beat" },
+        mode,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(JSON.stringify(result.conflicts));
+      const changed = get(result.document, "a");
+      expect(changed.id).toBe("a");
+      expect(changed.assetId).toBe(mode === "replace-similar" ? "next" : "a");
+      expect(changed.timelineDuration).toBeCloseTo(
+        mode === "shorten" ? 1.4 : 3,
+        9,
+      );
+      expect(changed.sourceOut).toBeCloseTo(mode === "shorten" ? 1.4 : 3, 9);
+      expect(changed.transform).toEqual({ volume: 0.6 });
+      expect(changed.title).toBe("Authored title");
+      expect(changed.timelineStart).toBe(0);
+      expect(changed.userOverrides).toBeUndefined();
+      expect(get(result.document, "b")).toEqual(get(d, "b"));
+      expect(get(result.document, "c").timelineStart).toBe(5);
+      expect(before.composition.tracks[0]!.clips[0]!.assetId).toBe("a");
+      expect(get(d, "a").timelineDuration).toBe(3);
+    },
+  );
+  it.each([
+    "clip",
+    "source",
+    "selection",
+    "required",
+    "paired-source",
+  ] as const)(
+    "retains actual %s protection when placing same-ID candidates",
+    (protection) => {
+      const d = doc(),
+        sources = structuredClone(assets);
+      if (protection === "clip") get(d, "a").locked = true;
+      if (protection === "source") sources[0]!.state.locked = true;
+      if (protection === "selection")
+        d.story.beats[0]!.selectedAssetIds = ["a"];
+      if (protection === "required")
+        d.story.beats[0]!.constraints = [
+          { type: "must-include", assetIds: ["a"] },
+        ];
+      if (protection === "paired-source") {
+        get(d, "a").layout = {
+          version: 1,
+          preset: "diptych",
+          secondary: { assetId: "next" },
+        };
+        sources[3]!.state.locked = true;
+      }
+      const original = structuredClone(get(d, "a"));
+      for (const mode of ["replace-similar", "shorten"] as const) {
+        const result = solveIncremental({
+          baseline: d,
+          assets: sources,
+          timebase: clock,
+          scope: { kind: "beat", beatId: "beat" },
+          mode,
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error(JSON.stringify(result.conflicts));
+        expect(get(result.document, "a")).toEqual(original);
+        expect(get(result.document, "b")).toEqual(get(d, "b"));
+      }
+    },
+  );
+  it.each(["graphic", "caption", "locked-audio"] as const)(
+    "validates the retained tail %s against final anchored duration",
+    (kind) => {
+      const d = doc();
+      if (kind === "graphic")
+        d.composition.graphicScenes = [
+          {
+            version: 1,
+            id: "tail",
+            name: "Tail",
+            start: 7,
+            duration: 1,
+            zIndex: 0,
+            nodes: [],
+          },
+        ];
+      if (kind === "caption")
+        d.composition.captionTracks = [
+          {
+            version: 1,
+            id: "captions",
+            name: "Captions",
+            language: "en",
+            style: { version: 1, role: "subtitle" },
+            cues: [
+              {
+                version: 1,
+                id: "tail",
+                startMs: 7000,
+                endMs: 8000,
+                text: "Tail",
+                source: { kind: "manual" },
+                manualRevision: 0,
+              },
+            ],
+          },
+        ];
+      if (kind === "locked-audio")
+        d.composition.tracks.push({
+          id: "sound",
+          type: "audio",
+          timing: "overlay",
+          clips: [
+            {
+              id: "tail",
+              assetId: "a",
+              timelineStart: 7,
+              timelineDuration: 1,
+              locked: true,
+            },
+          ],
+        });
+      const original = structuredClone(d);
+      const next = applyTimelineCommand(
+        d,
+        assets,
+        { type: "duration", clipId: "a", duration: 2 },
+        { timebase: clock, origin: "direct" },
+      );
+      expect(next.composition.duration).toBe(8);
+      expect(get(next, "a").timelineDuration).toBe(2);
+      expect(get(next, "b")).toEqual(get(d, "b"));
+      expect(next.composition.graphicScenes).toEqual(
+        d.composition.graphicScenes,
+      );
+      expect(next.composition.captionTracks).toEqual(
+        d.composition.captionTracks,
+      );
+      if (kind === "locked-audio")
+        expect(get(next, "tail")).toEqual(get(d, "tail"));
+      expect(d).toEqual(original);
+      expect(() =>
+        applyTimelineCommand(
+          d,
+          assets,
+          { type: "duration", clipId: "c", duration: 1 },
+          { timebase: clock, origin: "direct" },
+        ),
+      ).toThrow();
+      expect(d).toEqual(original);
+    },
+  );
   it("anchor_at_frames_90_150_survives_shortening", () => {
     const d = doc(),
       before = structuredClone(get(d, "b"));

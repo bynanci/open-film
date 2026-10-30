@@ -140,3 +140,76 @@ receipt remains `Pin-checkpoint/` (source261/artifacts43, receiptSHA256
 Intermediate browser/failed fixtures retain their own identities. First whole
 review and complete exact-head hosted gates remain pending with the coordinator;
 this entry does not mark the feature merge-ready or claim hosted OS evidence.
+
+## 2026-10-30 — first whole-review correction wave
+
+The completed first whole-feature review at `87bd92d` reproduced one P1 and two
+P2 findings. This coordinated wave keeps measured AudioQuality acceptance
+automatic, retains mutable same-ID replacement/shortening proposals, and stages
+legacy ripple overlay reconciliation until the complete anchored cut is known.
+The existing explicit Fit ingress remains the manual exception. Ordinary manual
+volume edits remain available under their actual clip/source locks.
+
+A real FFmpeg AudioQuality report now exposes pinned or locked ineligibility with
+a localized reason and disables the existing panel's Apply action. Pinned
+acceptance returns `timeline.pinConflict`/409. A separate explicit release and
+fresh measurement allow automatic acceptance without re-pinning. Reviewed audio
+requires a single-command transaction, so direct volume, trim, pin/release, lock,
+or other-target commands cannot change its authority in a mixed batch. Original
+source/settings/revision checks, request retry, saved-project CAS, Undo/Redo and
+reopen remain covered with real measured evidence and unchanged source hashes.
+
+Retained clip IDs preserve candidate source/range/duration and finishing edits;
+actual source/clip/required-selection protection retains its previous payload.
+Pinned anchors keep their exact owner payload and clock range. Tail graphics,
+captions and locked audio are checked against final constrained placement rather
+than a temporary shortened ripple. Genuine final overflow still rejects
+atomically. At that constrained boundary it returns `timeline.pinConflict`/409,
+replacing the obsolete early raw graphic-range error; ordinary unpinned graphic
+and caption validation remains active.
+
+An additional reproduced integration case from the audio owner found no-op
+variants materializing absent `sourceOut`. The bounded constructor correction
+retains optional source/beat key presence in both candidate and canonical
+documents. Full payload comparison stays exact, including ambient/Bezier,
+bilingual/finishing, inherited primary/Look, preset bindings and provenance.
+Film and section variants, reopening and detached ownership are exercised.
+
+Tests first reproduced the review findings and optional-key case. The complete
+original implementation with the new regression selection produces 22 failures
+and 57 passes; the variant absence case separately produces three failures and
+21 passes. One initial paired-photo fixture omitted its required layout version;
+that fixture error and the corrected RED evidence are retained. Expanded legacy
+GraphicScene/quality fixtures retain all content, ownership, source, interpolation,
+duck/fade, history and reopen assertions while expecting exact new pin metadata.
+Automatic-agent setup releases its target explicitly. Ordinary unpinned audio
+truncation setup releases the soundtrack last in its authored batch, paired with
+an exact typed pinned rejection and unchanged whole-project/disk/history control.
+
+Actual synthetic eight-second anchored trim retains the saved tail graphic,
+caption and locked audio and matches an independently constructed reference:
+160 decoded frames, identical picture SHA-256
+`382e3a3c526d866d5d680da0ebdf05c3a6a441863353f694416a6622545c5562`
+and PCM SHA-256
+`5bdac3b8c714c1ab3bae492ac198c1dfd49d2de2f71f7f7dca2090aa3217ae7e`.
+Source SHA-256 remains
+`1962b344a4a598e4f9c0a03014a40c5143233b6365834c0af41dc147c8775146`.
+The earlier 16-frame pinned finishing and combined-photo controls remain intact.
+
+Final focused selection passes all54 files /1,022 tests in209.51s, with every
+actual assertion passed and none skipped, pending or todo. This includes all
+original33 files (now555 tests), plus measured audio/panel/HTTP, saved graphic and
+caption editors, rational clock, ordinary quality/Look controls and automatic
+pipeline/adoption/direction writers. Separate exporter compatibility passes
+4files /49 tests. Actual primary-review24, preset16, Named Version18 (authentic
+SQLite v5/current v6 restoration), variant24 and Collect20 cases all execute.
+Current TypeScript/Vue, full ESLint, full Prettier,2,909 semantic locale keys and
+135 English documentation mirrors pass. The first expanded run's eight fixture
+failures and subsequent exact fixture corrections remain in the evidence.
+
+Correction-wave logs, actual JSON reports, fresh synthetic media and current byte
+hashes are retained separately under `/tmp/openfilm-pin-review-fix/`; previous
+receipts and failed stages are not relabeled. No full Vitest, browser, native
+benchmark, hosted OS, physical hardware or foreign-NLE result is claimed for this
+wave. One fresh scoped correction review and complete exact-head hosted gates
+remain coordinator-owned; this does not mark the feature merge-ready.

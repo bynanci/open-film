@@ -404,7 +404,7 @@ export class CreativeVariantService {
           trackId: oldTrack.id,
         });
 
-        // The spread preserves an absent lock as well as explicit false/true.
+        // Remap present owner keys; retain authored absence along with locks.
         const mappedBeatId = oldClip.beatId
           ? (beatIdMap.get(oldClip.beatId) ?? oldClip.beatId)
           : undefined;
@@ -428,16 +428,20 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
-              beatId: mappedBeatId,
+              ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
               assetId,
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset - deltaDur).toFixed(3),
               ),
               timelineDuration: Number(targetDur.toFixed(3)),
-              sourceOut:
-                oldClip.sourceIn !== undefined
-                  ? Number(((oldClip.sourceIn ?? 0) + targetDur).toFixed(3))
-                  : oldClip.sourceOut,
+              ...(oldClip.sourceIn !== undefined &&
+              targetDur !== oldClip.timelineDuration
+                ? {
+                    sourceOut: Number(
+                      (oldClip.sourceIn + targetDur).toFixed(3),
+                    ),
+                  }
+                : {}),
             };
           } else {
             // PROVABLY UNCHANGED NON-TARGET CLIP: Exact media asset, filters, transforms, and locks
@@ -449,7 +453,7 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
-              beatId: mappedBeatId,
+              ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset).toFixed(3),
               ),
@@ -465,13 +469,13 @@ export class CreativeVariantService {
           return {
             ...oldClip,
             id: newClipId,
-            beatId: mappedBeatId,
+            ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
             timelineStart: scaledStart,
             timelineDuration: scaledDur,
-            sourceOut:
-              oldClip.sourceIn !== undefined
-                ? Number(((oldClip.sourceIn ?? 0) + scaledDur).toFixed(3))
-                : oldClip.sourceOut,
+            ...(oldClip.sourceIn !== undefined &&
+            scaledDur !== oldClip.timelineDuration
+              ? { sourceOut: Number((oldClip.sourceIn + scaledDur).toFixed(3)) }
+              : {}),
           };
         }
       });
@@ -536,9 +540,9 @@ export class CreativeVariantService {
               ...clip,
               id: clipMappings.find((m) => m.baselineClipId === clip.id)!
                 .variantClipId,
-              beatId: clip.beatId
-                ? (beatIdMap.get(clip.beatId) ?? clip.beatId)
-                : undefined,
+              ...(clip.beatId === undefined
+                ? {}
+                : { beatId: beatIdMap.get(clip.beatId) ?? clip.beatId }),
             })),
           })),
         },
