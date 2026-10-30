@@ -5,6 +5,9 @@ Date:2026-10-30. Base:`608377ae3877935db1f8c16616360008cf146801`
 complete; independent review and full exact-head gates passed. PR70 merged
 as8de63aece6a4275ddf184f400e91f4bf42d8d189.
 
+Current CI adds four browser VMs and a mandatory website gate. The following
+records PR70's original layout; see [current gates and measured evidence](validation-ci-pages-e2e.md).
+
 ## Gate ownership
 
 | Job                    | Commands and evidence                                                                                                                                                                           |

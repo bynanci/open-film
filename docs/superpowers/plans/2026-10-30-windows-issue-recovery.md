@@ -43,3 +43,12 @@ validation updates. Add Windows CI runtime/version evidence where executable;
 keep unavailable workstation/manual observations open. Publish one cohesive issue
 recovery PR, then retarget main after #65 integration. No unrelated dependency
 upgrade or arbitrary JS/HTML/project code execution.
+
+## Verified source and final integration
+
+1798663 passes actual Windows121tests/13browser, all local4573tests/291browser
+and full hosted push gates. CI71 source873ef8e adds18 gate regressions and passes
+all4591tests/291actual browser cases, website/native/Windows/security checks.
+Merge CI71 into this branch before main so the known website failure is repaired
+in the same main update. Exact integrated/main results and remaining workstation
+gates are recorded on PR69; final checks remain mandatory.

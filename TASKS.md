@@ -11,7 +11,8 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Source-only markers, target-aware keyboard guards and operation-specific locks.
 - [x] Produce synthetic FFmpeg/browser/accessibility evidence and an exact-head gate record;
       retain first-run failures and rerun the complete sequence after compatibility corrections.
-- [ ] Native Rust/desktop gate on an equipped platform; local invocation is blocked by missing Cargo.
+- [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
+      Physical desktop/workstation verification remains below.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
@@ -52,8 +53,9 @@ these narrow regressions do not close physical workstation/installer gates.
       scan→stage→reopen→seal and fail closed on real file/POSIX errors.
 - [x] #68: quiesce benchmark page, require close acknowledgement/no open project
       before bounded fixture cleanup; preserve measurement budgets/artifacts.
-- [ ] Fresh whole-branch review, full available gates and actual Windows/FFmpeg9
-      browser evidence before merge/issue closure.
+- [x] Fresh source reviews, full available gates and actual Windows/FFmpeg9
+      evidence:121tests/13browser;4591full unit/integration and291Chromium.
+      Exact final integration/main outcomes are recorded on PR69; merge requires green gates.
 - [ ] Manual: exact candidate rerun on Windows10/popopc; broader issue7 gates.
 
 ## CI contract/media separation
@@ -82,8 +84,10 @@ Scope: [design](docs/superpowers/specs/2026-10-30-ci-pages-e2e-design.md),
       reject discovery omissions/overlaps and skipped/flaky/missing actual results.
 - [x] Bind browser receipts to the exact candidate and require every lane in the
       existing aggregate; avoid duplicate feature push plus PR Verify runs.
-- [ ] Final independent review, full exact-head gates, measured timing evidence,
-      merge and actual main Pages/Verify success.
+- [x] Independent review correction and exact source gates:4591tests/291browser;
+      measured E2E23m24s→11m18s and Verify34m39s→12m55s. PR71 merged into PR69.
+      Final integration/main Verify and Pages evidence are recorded on PR69;
+      main merge requires all final checks.
 
 ## In progress — Multi-source import and common analysis
 

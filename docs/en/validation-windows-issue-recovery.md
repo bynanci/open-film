@@ -4,10 +4,12 @@ Date:2026-10-30. Branch:`codex/windows-66-68`, based on main after merged
 D6B PR65(5160d8f) and CI PR70(8de63ae).
 Initial code base:`c0983a4f53af145a35c1ff6be2b958a2915eaad0`;
 research-integrated base:`18f8c1f02b23a3bc015695eb8d6f47791e0364b2`.
-Status: independent source review and focused Linux regressions passed. First
-actual Windows/FFmpeg9 run exposed17 failures (75passed), now under repair;
-full final gates remain pending. Subsequent runs isolate the cold owner-query
-timeout; see the evidence below. No release certification.
+Status: source fixes pass actual Windows2022/FFmpeg9 and full Linux synthetic
+unit/browser gates. Preserve the initial failures below as history. Reviewed CI
+reliability PR71 is integrated before main delivery, closing the known Pages
+build gap. Final integration/main gate outcomes are recorded on
+[PR69](https://github.com/bynanci/open-film/pull/69). No physical workstation or
+release certification.
 
 ## Reports and root causes
 
@@ -168,3 +170,42 @@ physical external drives, real NLE/Resolve, GPU/4K/audio/display and power-loss
 behavior remain separate manual gates. Issue7 stays open. Hosted Windows evidence
 must be read before calling these three fixes ready to merge; Linux mocks and
 protocol fixtures cannot substitute for that job.
+
+## Verified source closure and integration
+
+Exact Windows source:`1798663372fc0b2073c1561b589e176061160bb7`,
+based on main`8de63aece6a4275ddf184f400e91f4bf42d8d189`.
+Actual Windows run41047483185 passes11suites/121tests and all13 original browser
+workflows in1.8m, total4m09s. Its full-size benchmark records16 real measured
+samples with2000assets/500clips/10000segments/100000words and the explicitly
+recorded500-link copy banks. Original thresholds remain. No primaryFailure.
+
+That source passes326files/4573 full local tests in424.91s and all291 Chromium
+cases in22.7m. Hosted push41047483094 also passes49files/1124contracts plus
+277files/3449media, all291 Chromium(23.4m),23Rust/2archive,18officialOTIO,
+build/CLI/format/locales/lint/types. These are successful source gates, not a claim
+that a superseded PR attempt later completed.
+
+CI source`873ef8e81ad9eae4c3853a90eb70afeb32828cda` adds website verification,
+complete isolated E2E and18 validator regressions. Verify41050259206 passes
+1124contracts +3467media =4591tests,291actual Chromium results, docs/native and
+all previous gates. Windows41050259314 again passes121tests plus13browser.
+The same code passes328files/4591 full local tests in396.98s.
+PR71 merged into this branch as`82520c7dfe5f70b8d0f9caabbf333adcebcadeb8`;
+its Git tree exactly equals873ef8e. Final documentation reconciliation is the
+only later source change; require its exact-head gates before main merge.
+
+A fresh whole-branch Windows review at3cab20d found no Important/Critical issue;
+subsequent actual-CI fixes are regression-backed and self-reviewed. CI71's fresh
+review found one Important runner-context issue, corrected with failing/passing
+regression and actual scheduled green gates; see the
+[CI evidence](validation-ci-pages-e2e.md). The earlier review SHA is not relabeled
+as a review of later code.
+
+Real synthetic Collect/output parity was rerun on1798663: original and delivered
+2s MP4 SHA256 both`f8be3a6a582476b9bd29e9000df64d0fa363eff03c77fe12853c897ad3634c91`;
+all40decoded20fps frames and PCM hashes match, and source/project/catalog bytes
+remain unchanged. This is actual Linux FFmpeg7.1.5 evidence, not hardware QA.
+
+Physical Windows10/popopc, macOS, removable drives, installer/update/rollback,
+Resolve,4K/GPU/audio/display and power-loss gates remain open under issue7.

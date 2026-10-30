@@ -159,8 +159,10 @@ an obligatory PR website build. The complete browser suite moves to four isolate
 single-worker VMs parallel with media, with exact discovery/candidate-bound
 execution verification and every previous gate retained. PR synchronizations and
 main pushes retain full coverage without duplicate feature push runs. Hosted
-timings and actual main Pages success remain pending; see
-[validation](docs/validation-ci-pages-e2e.md).
+source gates pass:4591tests and291actual browsers. Observed E2E23m24s→11m18s,
+Verify34m39s→12m55s; PR71 merged into PR69 before main so the known Pages fix
+ships with Windows recovery. Final integration/main Verify and Pages outcomes
+are recorded on PR69; see [validation](docs/validation-ci-pages-e2e.md).
 
 ## Released 0.4.0 source integration
 
