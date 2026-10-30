@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
 import { hashFile, runProcess } from "@openfilm/media";
+import * as media from "@openfilm/media";
 import * as render from "@openfilm/render";
 import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 
@@ -132,6 +133,42 @@ it("prepares a source-bound raw PNG from the current saved project without chang
       url: "https://example.invalid/a.png",
     } as never),
   ).rejects.toMatchObject({ status: 400 });
+});
+
+it("rejects unsafe ambient geometry without publishing cache bytes or changing saved state, and permits retry", async () => {
+  const { app, editor, input, source } = await fixture();
+  const asset = app.catalog.getAsset("photo")!;
+  app.catalog.upsertAsset({
+    ...asset,
+    dimensions: { width: 100, height: 20000 },
+  });
+  app.project.settings = { width: 3840, height: 2160, frameRate: 30 };
+  await app.save();
+  const before = editor.get("film");
+  const saved = await readFile(join(app.directory, "project.json"));
+  const sourceHash = await hashFile(source);
+  const fence = vi
+    .spyOn(media, "runProcess")
+    .mockRejectedValue(new Error("test subprocess fence"));
+  await expect(
+    app.photoPresentation.ambient("film", "clip", input()),
+  ).rejects.toMatchObject({ code: "request.tooLarge", status: 413 });
+  expect(fence).not.toHaveBeenCalled();
+  expect(
+    await readdir(join(app.directory, "cache", "photo-presentation")),
+  ).toEqual([]);
+  expect(editor.get("film")).toEqual(before);
+  expect(await readFile(join(app.directory, "project.json"))).toEqual(saved);
+  expect(await hashFile(source)).toBe(sourceHash);
+  fence.mockRestore();
+  app.catalog.upsertAsset(asset);
+  app.project.settings = { width: 320, height: 180, frameRate: 30 };
+  await app.save();
+  expect(
+    (await app.photoPresentation.ambient("film", "clip", input()))
+      .subarray(1, 4)
+      .toString(),
+  ).toBe("PNG");
 });
 
 it("rejects late preparation after saved settings or same-ID catalog source changes", async () => {

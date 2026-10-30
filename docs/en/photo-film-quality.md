@@ -114,8 +114,17 @@ raw background. D5A leaves primary correction to its independent D5C owner.
 
 The local photo-fill PNG endpoint accepts saved project/revision identity only.
 One worker, four queued keys, 32 waiters per key, explicit byte/pixel bounds and
-abort/close fences bound preparation. Failure is visible with Retry and prevents
-successful Monitor readiness. No source file is overwritten. Locks, required
+abort/close fences bound preparation. Admission checks every clip and paired
+source before source copies or subprocesses: output edges are at most 4,096
+pixels and output area at most 8,294,400 pixels; raw and display/SAR source area
+is at most 32,000,000 pixels. The unchanged centered-cover scale intermediate
+must fit 8,192 pixels on each edge and 64 MiB at four bytes per pixel. Blur runs
+after crop within the output budget, with the existing three passes and bounded
+sigma. Unsafe recipes fail explicitly with `request.tooLarge` / HTTP 413;
+preparation does not silently choose a different crop. For an extreme strip
+photo, disable Soft photo background or choose a smaller project frame before
+retrying. A rejected request preserves source bytes and completed exports.
+Failure is visible with Retry and prevents successful Monitor readiness. No source file is overwritten. Locks, required
 selection, history, autosave, reopen and Named Versions keep their existing
 owner; explicit source replacement still clears layout/motion, with Undo
 restoring the snapshot.

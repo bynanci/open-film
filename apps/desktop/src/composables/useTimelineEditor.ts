@@ -404,6 +404,7 @@ export function useTimelineEditor(
           new ApiError(
             "Timeline changed since this gesture began. Review the current photo and try again.",
             409,
+            { code: "timeline.conflict" },
           ),
         );
         return { status: "conflict" };

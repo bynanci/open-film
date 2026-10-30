@@ -12,6 +12,10 @@ import {
   type TimelineEditInput,
 } from "@openfilm/application";
 import { ApiError, type EditorState } from "../../apps/desktop/src/api";
+import {
+  errorDetail,
+  translateError,
+} from "../../apps/desktop/src/i18n/errors";
 import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
 
 // Exercise the production command/autosave path rather than a second UI store.
@@ -21,6 +25,8 @@ const vue = createRequire(
 
 type Editor = {
   state: { value: EditorState | null };
+  message: { value: string };
+  messageDetail: { value: string };
   status: { value: string };
   hasPending: { value: boolean };
   transactionBusy: { readonly value: boolean };
@@ -137,8 +143,13 @@ async function mountEditor(
     api,
     ApiError,
     useI18n: () => ({ t: (key: string) => key }),
-    errorDetail: () => "",
-    localizeError: () => "error",
+    errorDetail,
+    localizeError: (error: unknown) =>
+      translateError(
+        error,
+        (key) => key,
+        () => true,
+      ),
     changed,
     edited,
   });
@@ -202,6 +213,10 @@ describe("P0 Inspector / Timeline command-state contract", () => {
     await vi.waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));
     flushed.resolve(savedState(1, "r2"));
     expect(await result).toEqual({ status: "conflict" });
+    expect(editor.message.value).toBe("errors.timeline.conflict");
+    expect(editor.messageDetail.value).toBe(
+      "Timeline changed since this gesture began. Review the current photo and try again.",
+    );
     expect(api.edit).toHaveBeenCalledTimes(1);
     expect(editor.state.value?.revision).toBe("r2");
     expect(

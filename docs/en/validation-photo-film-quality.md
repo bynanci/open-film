@@ -349,3 +349,39 @@ keyboard burst on blur. D5C owns primary correction; this candidate supplies its
 raw → primary → Film Look seam without implementing another color path.
 Private-photo/subject aesthetics, touch/pen hardware, calibrated displays,
 sustained 4K, native OS and real NLE finishing remain manual gates.
+
+### D5A final review correction wave
+
+The final review of `1e4d4c302e28be3866879c2a351a849fcd4c742b` identified
+one Important resource-admission defect and one Minor localized conflict-code
+defect. This correction preflights all raw/display/SAR source geometry and all
+centered-cover intermediates before source admission or a subprocess. It uses
+the existing output/source/texture budgets: output ≤4,096 per edge and
+8,294,400 pixels; sources ≤32,000,000 pixels; scale intermediates ≤8,192 per
+edge and ≤64 MiB at four bytes per pixel. Invalid, nonfinite and unsafe geometry
+returns `request.tooLarge` / 413. Blur retains three passes after crop within the
+admitted frame and the existing sigma bound. The sampling recipe is unchanged.
+The captured-revision rejection now reports `timeline.conflict`, preserving its
+original diagnostic guidance and no-new-POST/CAS behavior.
+
+Regression failures were observed before the fixes using a hard subprocess
+fence, never by allocating the adversarial 3840×768000 intermediate. Tests
+cover portrait/landscape strips, SAR/display values, overflow/nonfinite values,
+byte/edge boundaries, ordinary admission, later clips and paired cells. Actual
+application rejection leaves no preview cache publication, history or saved
+project/source change; a valid subsequent retry succeeds. Renderer rejection
+preserves a previous completed MP4 and manifest and removes temporary work.
+
+Fresh ordinary actual-media evidence is retained separately under
+`/tmp/openfilm-d5a-photo-finishing/final-fix`. The original, raw fill, six-second
+MP4 and all sampled decoded RGB hashes match the preceding control exactly;
+the control artifacts were retained. This is bounded synthetic evidence, not a
+sustained 4K or private-photo aesthetics claim. The final correction passed
+7 focused files / 97 tests, 37 related browser cases in 2.4 minutes, TypeScript
+and Vue checks, five-file scoped lint, localization and documentation mirrors.
+The browser run used an exclusive 4310/1420 lease; both listeners were confirmed
+stopped before release. Fresh Monitor measurements, both MP4s and all ten
+independently decoded Monitor/output RGB24 frame hashes match retained controls
+exactly. All 40 implementation/test source hashes were recomputed for the fresh
+receipt. Historical counts above remain evidence for their original candidate;
+coordinator-owned scoped re-review and complete exact-head CI remain pending.

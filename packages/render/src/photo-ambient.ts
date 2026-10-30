@@ -36,6 +36,28 @@ function fail(message: string, limit = false): never {
     limit ? 413 : 422,
   );
 }
+/** Check before multiplying: even untrusted SAR/display values stay finite. */
+function boundedArea(
+  size: FrameSize | undefined,
+  pixels: number,
+  edge: number,
+  integer = true,
+): boolean {
+  if (!size) return false;
+  const { width, height } = size;
+  return (
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0 &&
+    width <= edge &&
+    height <= edge &&
+    (!integer ||
+      (Number.isSafeInteger(width) && Number.isSafeInteger(height))) &&
+    width <= pixels / height
+  );
+}
+
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -106,24 +128,115 @@ export async function preparePhotoAmbientFills(
   if (!selected.length) return result;
   if (
     selected.length > 2000 ||
-    !Number.isInteger(frame.width) ||
-    !Number.isInteger(frame.height) ||
-    frame.width <= 0 ||
-    frame.height <= 0 ||
-    frame.width * frame.height > GRAPHIC_SCENE_LIMITS.pixels
+    !boundedArea(
+      frame,
+      GRAPHIC_SCENE_LIMITS.pixels,
+      GRAPHIC_SCENE_LIMITS.dimension,
+    )
   )
     fail("Ambient photo frame exceeds the pixel or clip budget.", true);
   const sourceMap = new Map(assets.map((asset) => [asset.id, asset]));
-  const dimensions = Object.fromEntries(
-    assets.flatMap((asset) => {
-      const size = assetDisplayDimensions(asset);
-      return size ? [[asset.id, size]] : [];
-    }),
-  );
-  const plans = selected.map((clip) => ({
-    clip,
-    plan: resolvePhotoPlan(clip, dimensions, frame).ambient!,
-  }));
+  const dimensions: Record<string, FrameSize> = Object.create(null);
+  for (const clip of selected) {
+    for (const id of [
+      clip.assetId,
+      ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+    ]) {
+      const asset = sourceMap.get(id);
+      if (
+        !asset ||
+        asset.mediaType !== "image" ||
+        !asset.uri.startsWith("file:")
+      )
+        fail("Ambient fill requires a local imported still image.");
+      const display = assetDisplayDimensions(asset);
+      if (
+        !boundedArea(
+          asset.dimensions,
+          GRAPHIC_SCENE_LIMITS.sourcePixels,
+          GRAPHIC_SCENE_LIMITS.sourcePixels,
+        ) ||
+        !boundedArea(
+          display,
+          GRAPHIC_SCENE_LIMITS.sourcePixels,
+          GRAPHIC_SCENE_LIMITS.sourcePixels,
+          false,
+        )
+      )
+        fail(
+          "Ambient photo source/display geometry exceeds the pixel budget.",
+          true,
+        );
+      dimensions[id] = display!;
+    }
+  }
+  // Preflight every clip before admitting any source or launching any process.
+  // Keep the established centered-cover sampling exactly; unsafe recipes fail
+  // explicitly instead of substituting a different crop/scale order.
+  const plans = selected.map((clip) => {
+    const plan = resolvePhotoPlan(clip, dimensions, frame).ambient!;
+    if (
+      !Number.isFinite(plan.sigma) ||
+      plan.sigma < 0 ||
+      plan.sigma > 0.05 * Math.min(frame.width, frame.height) ||
+      !Number.isFinite(plan.dim) ||
+      plan.dim < 0 ||
+      plan.dim > 1
+    )
+      fail("Ambient photo blur exceeds the bounded preparation budget.", true);
+    const geometry = plan.layers.map(({ cell, cover }) => {
+      if (
+        !boundedArea(
+          cell,
+          GRAPHIC_SCENE_LIMITS.pixels,
+          GRAPHIC_SCENE_LIMITS.dimension,
+        ) ||
+        !Number.isSafeInteger(cell.x) ||
+        !Number.isSafeInteger(cell.y) ||
+        cell.x < 0 ||
+        cell.y < 0 ||
+        cell.x + cell.width > frame.width ||
+        cell.y + cell.height > frame.height ||
+        ![cover.x, cover.y, cover.width, cover.height].every(Number.isFinite)
+      )
+        fail(
+          "Ambient photo cell/cover geometry exceeds the preparation budget.",
+          true,
+        );
+      const width = Math.max(cell.width, Math.round(cover.width));
+      const height = Math.max(cell.height, Math.round(cover.height));
+      // Existing texture byte cap applies to each RGBA scale intermediate;
+      // two output edges allow bounded overhang while limiting skinny strips.
+      if (
+        !boundedArea(
+          { width, height },
+          Math.min(
+            GRAPHIC_SCENE_LIMITS.texturePixels,
+            GRAPHIC_SCENE_LIMITS.textureBytes / 4,
+          ),
+          GRAPHIC_SCENE_LIMITS.dimension * 2,
+        )
+      )
+        fail(
+          "Ambient photo scaled intermediate exceeds the pixel/byte/edge budget.",
+          true,
+        );
+      const x = Math.max(
+        0,
+        Math.min(width - cell.width, Math.round(cell.x - cover.x)),
+      );
+      const y = Math.max(
+        0,
+        Math.min(height - cell.height, Math.round(cell.y - cover.y)),
+      );
+      if (![x, y].every(Number.isSafeInteger))
+        fail("Ambient photo crop exceeds the checked geometry budget.", true);
+      // Blur runs only after crop, on <= one admitted frame, with three fixed
+      // recursive passes and sigma <= 5% of the bounded shorter frame edge.
+      return { width, height, x, y };
+    });
+    return { clip, plan, geometry };
+  });
   let copiedBytes = 0;
   for (const id of new Set(
     plans.flatMap(({ plan }) => plan.layers.map((layer) => layer.assetId)),
@@ -173,7 +286,7 @@ export async function preparePhotoAmbientFills(
   }
   const rendered = new Map<string, { path: string; sha256: string }>();
   let rasterBytes = 0;
-  for (const { clip, plan } of plans) {
+  for (const { clip, plan, geometry } of plans) {
     checkAbort(options.signal);
     const key = digest({ plan, sources });
     const prior = rendered.get(key);
@@ -194,17 +307,8 @@ export async function preparePhotoAmbientFills(
         "-i",
         localPath(asset.uri),
       );
-      const { cell, cover } = layer;
-      const width = Math.max(cell.width, Math.round(cover.width));
-      const height = Math.max(cell.height, Math.round(cover.height));
-      const x = Math.max(
-        0,
-        Math.min(width - cell.width, Math.round(cell.x - cover.x)),
-      );
-      const y = Math.max(
-        0,
-        Math.min(height - cell.height, Math.round(cell.y - cover.y)),
-      );
+      const { cell } = layer;
+      const { width, height, x, y } = geometry[index]!;
       const decode = await previewVideoFilters(asset, options.signal);
       filters.push(
         `[${index}:v]${[...decode, `scale=${width}:${height}:flags=bicubic`, `crop=${cell.width}:${cell.height}:${x}:${y}:exact=1`, "setsar=1", "format=rgba"].join(",")}[source${index}]`,
