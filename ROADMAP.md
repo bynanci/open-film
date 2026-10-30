@@ -140,6 +140,12 @@ unit/integration and291 browser tests pass; final exact-head hosted gates are in
 progress. Physical workstation evidence remains separate. See
 [delivery validation](docs/validation-collect-coverage.md).
 
+CI follow-up separates fast pure contracts from heavy-by-default media/browser
+QA, with exact discovery coverage and the historical aggregate check still
+requiring both successful jobs. No media assertion or workstation gate is bypassed;
+see [CI validation](docs/validation-ci-contract-media.md). Hosted outcomes remain
+pending until measured; no speedup or release version is inferred.
+
 ## Released 0.4.0 source integration
 
 Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens

@@ -39,6 +39,19 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.
 
+## CI contract/media separation
+
+Scope: [design](docs/superpowers/specs/2026-10-30-ci-contract-media-design.md),
+[plan](docs/superpowers/plans/2026-10-30-ci-contract-media.md), and
+[validation](docs/validation-ci-contract-media.md). Independent of physical QA.
+
+- [x] Split pure core/solver/story/metadata/events and heavy-by-default test
+      discovery; reject omitted, overlapping, duplicated, escaped or empty inventories.
+- [x] Preserve all format/locales/lint/types/build/interchange/CLI/browser gates and
+      unchanged native job; keep the legacy check mandatory for both lane successes.
+- [ ] Full available evidence, independent review, exact-head hosted gates and merge.
+- [ ] Manual hardware/NLE/installer observations remain with their existing owners.
+
 ## In progress — Multi-source import and common analysis
 
 Scope: [roadmap](docs/roadmap/multi-source-analysis.md),
