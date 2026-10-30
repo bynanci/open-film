@@ -1449,7 +1449,9 @@ describe("Timeline clip render boundary", () => {
     expect(preview).toBeDefined();
     (preview.props.onClick as () => void)();
     await settle();
-    expect(overlay().props.src).toBe("title:composition:instance-0");
+    expect(overlay().props.src).toMatch(
+      /^title:composition:instance-0\?previewRequest=[^&]+-\d+$/,
+    );
     expect(
       text(
         flatten(view.root).find((item) =>
