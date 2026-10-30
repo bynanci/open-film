@@ -4,6 +4,7 @@ import { lstat, rm } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
   ApplicationError,
+  graphicSceneAssetIds,
   resolveClipSourceRange,
   frameAlignedDuration,
   projectFrameRate,
@@ -465,6 +466,24 @@ export function remapCollectProject(
   const result = structuredClone(project),
     assetMap = new Map(assets.map((a) => [a.id, a])),
     maps = new Map(receipts.map((r) => [r.assetId, r]));
+  for (const composition of result.timelines) {
+    for (const track of composition.tracks)
+      for (const clip of track.clips)
+        if (
+          clip.userOverrides?.isUserPinned &&
+          [
+            clip.assetId,
+            ...(clip.layout?.secondary ? [clip.layout.secondary.assetId] : []),
+          ].some((id) => maps.has(id))
+        )
+          fail("A user pinned source clock cannot be rewritten.");
+    for (const scene of composition.graphicScenes ?? [])
+      if (
+        scene.userOverrides?.isUserPinned &&
+        graphicSceneAssetIds([scene]).some((id) => maps.has(id))
+      )
+        fail("A user pinned scene dependency cannot be remapped.");
+  }
   for (const composition of result.timelines)
     for (const track of composition.tracks)
       for (const clip of track.clips) {

@@ -263,6 +263,15 @@ export function createHandoffPlan(
           ? "Ignored title placeholder media has no native cut; generated title timing remains metadata or an explicit bake"
           : "Native source trim/cut outside explicit precomp ranges",
       );
+      if (clip.userOverrides?.isUserPinned)
+        add(
+          clip.id,
+          "user-pin",
+          start,
+          stop,
+          "manual",
+          "Foreign NLEs do not enforce user pins; inline owner state remains OpenFilm metadata.",
+        );
       if (clip.locked)
         add(
           clip.id,
@@ -354,7 +363,16 @@ export function createHandoffPlan(
         );
     }
   }
-  for (const scene of composition.graphicScenes ?? [])
+  for (const scene of composition.graphicScenes ?? []) {
+    if (scene.userOverrides?.isUserPinned)
+      add(
+        scene.id,
+        "user-pin",
+        scene.start,
+        scene.start + scene.duration,
+        "manual",
+        "Foreign NLEs do not enforce user pins; inline scene state remains OpenFilm metadata.",
+      );
     add(
       scene.id,
       "graphicScene",
@@ -363,6 +381,7 @@ export function createHandoffPlan(
       "visual",
       "Declarative graphics, nodes and animation are metadata, not native keyframes",
     );
+  }
   for (const track of composition.captionTracks ?? [])
     for (const cue of track.cues) {
       let start = cue.startMs / 1000,

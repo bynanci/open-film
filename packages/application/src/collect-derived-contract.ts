@@ -142,6 +142,7 @@ export function validateDerivedCollectManifest(
     "source.timing-unavailable",
     "source.unsupported",
     "source.locked",
+    "source.user-pinned",
     "source.opaque-reference",
     "source.evidence-bound",
     "source.range-invalid",

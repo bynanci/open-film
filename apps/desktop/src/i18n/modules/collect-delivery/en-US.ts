@@ -50,6 +50,8 @@ export default {
       "offline-candidate": "Candidate for offline preview",
     },
     reasons: {
+      userPinned:
+        "A user pin requires the complete original source and its saved clock.",
       identityMissing:
         "Source bytes could not be verified against the saved identity.",
       timingUnavailable: "Reliable source duration is unavailable.",

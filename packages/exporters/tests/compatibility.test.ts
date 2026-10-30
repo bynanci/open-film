@@ -115,3 +115,23 @@ describe("Resolve compatibility evidence", () => {
     });
   });
 });
+
+it("retains inline pins as metadata and reports that foreign NLEs do not enforce them", () => {
+  const cut = structuredClone(composition);
+  cut.tracks[0]!.clips[0]!.userOverrides = {
+    version: 1,
+    isUserPinned: true,
+    lockedAttributes: ["timing"],
+  };
+  const json = JSON.parse(exportTimeline("json", cut, assets).content);
+  expect(json.composition).toEqual(cut);
+  expect(json.schemaVersion).toBe("1.0.0");
+  const otio = JSON.parse(exportTimeline("otio", cut, assets).content);
+  expect(otio.metadata.openfilm.composition).toEqual(cut);
+  expect(
+    resolveCompatibility.features.find((f) => f.id === "userPins"),
+  ).toMatchObject({ implementation: "metadata-only", realNleVerified: false });
+  expect(exportTimeline("otio", cut, assets).warnings?.join(" ")).toMatch(
+    /do not enforce user pins/iu,
+  );
+});
