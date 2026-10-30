@@ -128,3 +128,56 @@ Resolve import/relink/playback/color, native platform presentation and sustained
 4K performance remain manual workstation gates. Synthetic chart/browser evidence
 cannot close them. Full regressions, final review, exact-head CI and merge are
 coordinator-owned and pending at this checkpoint.
+
+## Integrated photo, title and local-preset checkpoint
+
+C merges the finishing stack through `83a7169`, with the updated focal-fence
+parent chain through `035f115`. The current parent is D8 `d45a1de`, following
+A `a4dcf50` and B `f63c8e6`. This is a focused integration checkpoint; D8's
+subsequent review corrections and a fresh complete C review remain pending.
+
+Verified raw ambient and foreground are combined first, receive primary
+correction with its clamp, then the shared Film Look adapter with its separate
+clamp exactly once. The v1/no-fill branch retains its per-source processing.
+The diptych black separator is restored outside photographic color and inside
+camera/static transforms. Titles, captions and GraphicScenes remain later
+independent overlays. Film Look v2 uses the shared typed resolver/matrix rather
+than a copied v1 recipe implementation. Existing source hashes, protections,
+review-Apply receipts, read-only waveforms and history remain with their owners.
+
+Three new actual MP4 regressions cover contain, diptych, and a diptych with
+Bézier camera motion plus static translation and an imported local Look v2.
+They first failed without ambient primary correction by more than 112 RGB units.
+After the once-only group fix, all 24 independent raw-source/raw-fill witnesses
+across shuffled/repeated frames pass the unchanged 3-unit channel bound; the
+largest error is 2.9. Moving separator samples remain black at the transformed
+position while the old position contains graded picture. Source and prepared-fill
+hashes match the actual manifest; omitted/double primary and reversed ordering
+are distinguishable by the same witnesses. A narrower procedural portrait gives
+uniform interior sample patches; no threshold or existing assertion was widened.
+
+The existing Monitor/MP4 parity case is retained, with an additional version
+using nonidentity primary correction and an actual local Look v2 snapshot.
+Both retain eight shuffled/repeated seeks, separate ambient/foreground metrics,
+edge bounds and actual wrong-fill, double-dim, double-color and wrong-curve
+negative controls. The combined case's maximum mean channel errors are 1.506
+for ambient and 3.998 for foreground, below the existing 12-unit bound.
+
+Current checks passed: 19 focused files / 203 tests; four selected Collect/NLE
+cases; the bilingual nested-finishing preset interoperability case; and a final
+15-case browser run in 54.3 seconds, including all seven primary-color journeys,
+the original photo cases and the new combined parity case. It covers the three
+real locales plus pseudo-locale, controls, explicit reviewed Apply and history.
+The focal race found during earlier attempts is documented in the photo
+validation: eight deterministic regressions failed before the isolated fix;
+its current four-file / 59-test batch passes, and A/B/D8 receive the same fix.
+An obsolete comparison-label locator and a test-only variable scope error were
+corrected without removing assertions. Initial failures remain in private logs.
+
+TypeScript/Vue, scoped lint/format, 2,852 localization keys and 133 documentation
+mirrors pass. Actual synthetic media, raw PNGs, observations, Monitor frames,
+negative controls and current source/test byte receipts are retained under
+`/tmp/openfilm-finishing-integration/C-current/`. Historical receipts retain
+their original candidate identities. Browser servers exited and both shared
+ports were confirmed closed before returning the lease. No full suite, native
+benchmark, hosted-CI result or stable-release completion is claimed here.
