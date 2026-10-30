@@ -4,6 +4,7 @@ import { chmod, lstat, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  ApplicationError,
   PRIMARY_COLOR_IDENTITY,
   resolveClipSourceRange,
   resolvePrimaryColor,
@@ -132,6 +133,15 @@ export class PrimaryColorReviewService {
         .then(() => {
           if (this.reports.get(cached.report.id) === cached)
             this.reports.delete(cached.report.id);
+        })
+        .catch(() => {
+          // Filesystem errors include the private evidence directory. Retain
+          // retirement/ownership but expose only this stable, path-free error.
+          throw new ApplicationError(
+            "review.cleanupFailed",
+            "Primary color review images could not be removed. Retry cleanup.",
+            503,
+          );
         })
         .finally(() => {
           cached.cleanup = undefined;

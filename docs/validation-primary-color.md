@@ -275,3 +275,26 @@ source/artifact hashes belong to the separate final checkpoint under
 `/tmp/openfilm-finishing-integration/C-final-fix-stack-green/`; earlier failed
 and successful observations retain their own directories. This local check does
 not replace the pending scoped review or hosted gates.
+
+## 2026-10-30 — sanitize private cleanup failures
+
+The first scoped correction review resolved the original Important batch-context
+and Minor retention findings, then identified a bounded Minor follow-up: a real
+filesystem deletion failure could expose its absolute private path through HTTP
+or background logging. The cleanup boundary now throws the stable localized
+`review.cleanupFailed` ApplicationError with status503 and a path-free diagnostic.
+The raw filesystem error is neither its message/detail nor a retained cause.
+Sticky retirement, bounded retry, ownership, original deadlines and all timer
+disposal rules remain unchanged.
+
+The existing real-service fault case now injects an EBUSY error containing the
+actual synthetic private directory, and checks the typed rejection plus path-free
+background logging. A new actual port0 HTTP regression injects EACCES for only the
+owned evidence directory; both media GET and reviewed edit return503 with the
+localized code, no project/cache path or raw EACCES text, and unchanged saved
+project bytes. Both cases failed before the correction; the full service and
+HTTP/CLI selection now passes24tests in two files (43.21s), with no skips/retries.
+TypeScript/Vue, scoped ESLint and all2,890 localization keys pass. Earlier
+174-case and MP4 measurements retain their original checkpoint identity; this
+service/error-only increment does not claim new rendering or hosted evidence.
+Complete final-source CI and scoped source verification remain required.
