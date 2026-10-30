@@ -70,8 +70,34 @@ color-managed display parity are not claimed. See the
   `SourceAccessClass`. Browser handles are opaque local references rather than
   JSON. `ExpectedManifest` freezes the requested occurrences and policy;
   `VerifiedManifest` freezes successful asset/content/context bindings plus
-  failures and exclusions. `ReviewDecision` binds typed operations to base
-  run/result IDs, target IDs, a before fingerprint and manifest/story revisions.
+  failures and exclusions. `MediaSourceAdapterV2.discover` streams candidates
+  as an `AsyncIterable`; legacy adapters remain supported through a bounded
+  wrapper. `ContentIdentity` stores the complete SHA-256 and byte length, while
+  local staging paths and leases remain private operational state.
+- `AnalysisRun` binds its exact verified manifest, input fingerprint, algorithm
+  versions and immutable binding IDs. Optional `TravelContextV1` contains
+  manually supplied clock offsets, a validated GPX track with preserved segment
+  boundaries, and explicit asset assignments. Matching never interpolates over
+  a segment gap. Optional `VisualSamplingV1` selects deterministic FFmpeg frame
+  sampling. `VisualSampleEvidenceV1` retains bounded labels, timestamps and
+  source/frame hashes only; a remote provider receives a bounded sample only
+  after explicit consent and never receives the source URI or full asset.
+- `ReviewDecision` binds typed merge/split/correction/reject/story-adoption
+  operations to exact base/target result IDs, result and operation fingerprints,
+  manifest ID, optional story revision and optional superseded decision. Preview
+  is non-mutating; stale operations are persisted as conflicts. Only an explicit
+  accepted `adopt-story` operation changes StoryGraph. Operation fingerprints
+  are revalidated when writing or sanitizing portable snapshots.
+  Desktop preview publication and Accept require the exact current form and
+  run/project context. An unresolved acceptance retains one validated private
+  local receipt before sending; retry/reopen reuses its exact request ID and
+  operation. Supersession is opt-in, and saved adoption refreshes only its owning
+  workspace while preserving custom StoryGraph asset-node IDs.
+  The search projection derives merged groups, source-range annotations and
+  corrections without rewriting source evidence. Applied decision lineage joins
+  the preview fingerprint. Accepted evidence may be adopted; rejected evidence
+  remains ineligible. A split is limited to non-overlapping ranges on the reviewed
+  source's verified content and actual video/audio duration.
 - `createProject(title: string): OpenFilmProject`; `validateProject(value:
 unknown): OpenFilmProject` throws on invalid/future schema; `migrateProject`
   supports documented versioned input without guessing or modifying originals.

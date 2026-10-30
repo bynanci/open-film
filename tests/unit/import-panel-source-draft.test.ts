@@ -1,7 +1,20 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SourceDraft, SourceSelection } from "@openfilm/core";
-import type { SourceSelectionInput } from "@openfilm/application";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  ReviewDecision,
+  ReviewDecisionOperation,
+  SourceDraft,
+  SourceSelection,
+  Story,
+} from "@openfilm/core";
+import type {
+  CatalogOccurrencePage,
+  SourceDiscoverySummary,
+  SourceSelectionInput,
+  SourceAnalysisRunRecord,
+  SourceAnalysisReviewItem,
+} from "@openfilm/application";
 import type { PickedSources } from "../../apps/desktop/src/sourcePicker.js";
+import * as sourceReviewAcceptance from "../../apps/desktop/src/source-review-acceptance.js";
 import {
   flatten,
   loadComponent,
@@ -10,8 +23,23 @@ import {
 } from "./helpers/vue-sfc-host.js";
 
 const cleanup: Array<() => void> = [];
+beforeEach(() => {
+  class HostDocument {
+    activeElement = null;
+  }
+  const storage = new Map<string, string>();
+  vi.stubGlobal("Document", HostDocument);
+  vi.stubGlobal("ShadowRoot", class {});
+  vi.stubGlobal("document", new HostDocument());
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+  });
+});
 afterEach(() => {
   for (const action of cleanup.splice(0).reverse()) action();
+  vi.unstubAllGlobals();
 });
 
 async function settle() {
@@ -51,6 +79,25 @@ function fixture(
     lostRemoveDraft?: SourceDraft;
     updateError?: Error;
     reloadError?: Error;
+    scanResult?: SourceDiscoverySummary;
+    occurrencePage?: CatalogOccurrencePage;
+    scanError?: Error;
+    browserFiles?: Array<{
+      relativePath: string;
+      file: File;
+      modifiedAt: string;
+    }>;
+    scanReadiness?: SourceDiscoverySummary;
+    stagedOccurrenceIds?: string[];
+    reviewDecisions?: ReviewDecision[];
+    analysisResults?: SourceAnalysisRunRecord["results"];
+    reviewStories?: Story[];
+    verifiedManifestMembers?: Array<{
+      bindingId: string;
+      assetId: string;
+      contentHash: string;
+      contextRevision: string;
+    }>;
   } = {},
 ) {
   let draft: SourceDraft =
@@ -146,6 +193,312 @@ function fixture(
       return { draft: structuredClone(draft) };
     },
   );
+  const scanSourceDraft = vi.fn(
+    async (request: { projectId: string; baseRevision: number }) => {
+      if (options.scanError) throw options.scanError;
+      return {
+        summary:
+          options.scanResult ??
+          ({
+            projectId: request.projectId,
+            draftRevision: request.baseRevision,
+            sourcesRequested: draft.selections.length,
+            sourcesScanned: draft.selections.length,
+            discovered: 2,
+            supported: 2,
+            possibleDuplicates: 0,
+            skipped: 0,
+            failed: 0,
+            cancelled: false,
+            failures: [],
+          } satisfies SourceDiscoverySummary),
+      };
+    },
+  );
+  const progressSummary = (projectId: string, draftRevision: number) =>
+    options.scanResult ?? {
+      projectId,
+      draftRevision,
+      sourcesRequested: draft.selections.length,
+      sourcesScanned: draft.selections.length,
+      discovered: 2,
+      supported: 2,
+      possibleDuplicates: 0,
+      skipped: 0,
+      failed: 0,
+      cancelled: false,
+      failures: [],
+    };
+  const sourceDiscoveryProgress = vi.fn(async (requestId: string) => ({
+    progress: {
+      requestId,
+      projectId: draft.projectId,
+      status: "completed" as const,
+      summary: progressSummary(draft.projectId, draft.revision),
+    },
+  }));
+  const browserScanCounts = new Map<string, number>();
+  const browserSourceScan = vi.fn(
+    async (request: {
+      projectId: string;
+      baseRevision: number;
+      requestId: string;
+      selectionId: string;
+      phase: "begin" | "page" | "finish" | "cancel";
+      candidates?: Array<{
+        relativePath: string;
+        name: string;
+        size: number;
+        modifiedAt: string;
+      }>;
+    }) => {
+      const count =
+        request.phase === "begin"
+          ? 0
+          : (browserScanCounts.get(request.requestId) ?? 0) +
+            (request.phase === "page" ? (request.candidates?.length ?? 0) : 0);
+      browserScanCounts.set(request.requestId, count);
+      return {
+        scanRevision: 1,
+        summary: {
+          projectId: request.projectId,
+          draftRevision: request.baseRevision,
+          sourcesRequested: 1,
+          sourcesScanned: request.phase === "begin" ? 0 : 1,
+          discovered: count,
+          supported: count,
+          possibleDuplicates: 0,
+          skipped: 0,
+          failed: 0,
+          cancelled: request.phase === "cancel",
+          failures: [],
+        } satisfies SourceDiscoverySummary,
+      };
+    },
+  );
+  const sourceDiscoveryReadiness = vi.fn(async () => ({
+    summary: options.scanReadiness,
+  }));
+  const browserStagedOccurrences = vi.fn(
+    async (selectionId: string, offset = 0, limit = 500) => {
+      void selectionId;
+      return {
+        page: {
+          occurrenceIds: (options.stagedOccurrenceIds ?? []).slice(
+            offset,
+            offset + limit,
+          ),
+          offset,
+          limit,
+          hasMore: offset + limit < (options.stagedOccurrenceIds ?? []).length,
+        },
+      };
+    },
+  );
+  const stageBrowserSource = vi.fn(async () => ({
+    receipt: {
+      occurrenceId: "occurrence-1",
+      contentHash: "a".repeat(64),
+      byteLength: 123,
+    },
+  }));
+  const sourceOccurrences = vi.fn(async () => ({
+    page:
+      options.occurrencePage ??
+      ({
+        items: [
+          {
+            occurrence: {
+              id: "occurrence-1",
+              logicalRootId: "root:source-1",
+              displayName: "one.jpg",
+              relativePath: "one.jpg",
+              fileKind: "image" as const,
+              byteLength: 123,
+              availability: "available" as const,
+              scanRevision: 1,
+            },
+            included: true,
+          },
+        ],
+        offset: 0,
+        limit: 20,
+        hasMore: false,
+      } satisfies CatalogOccurrencePage),
+  }));
+  const setSourceOccurrenceIncluded = vi.fn(
+    async (
+      occurrenceId: string,
+      input: { selectionId: string; included: boolean },
+    ) => ({
+      membership: {
+        selectionId: input.selectionId,
+        occurrenceId,
+        included: input.included,
+        revision: draft.revision,
+      },
+    }),
+  );
+  const createSourceBatch = vi.fn(async () => ({
+    result: {
+      batch: {
+        id: "batch-1",
+        projectId: draft.projectId,
+        draftRevision: draft.revision,
+        scopeMode: "selected-sources",
+        status: "sealed",
+        expectedManifestId: "expected-1",
+        createdAt: "2026-10-29T00:00:00.000Z",
+      },
+      expectedManifest: {
+        id: "expected-1",
+        batchId: "batch-1",
+        revision: draft.revision,
+        selectionHash: "a".repeat(64),
+        entries: [],
+        partialPolicy: "require-all",
+        createdAt: "2026-10-29T00:00:00.000Z",
+      },
+      verifiedManifest: {
+        id: "verified-1",
+        expectedManifestId: "expected-1",
+        members: options.verifiedManifestMembers ?? [],
+        failures: [],
+        excludedOccurrenceIds: [],
+        createdAt: "2026-10-29T00:00:00.000Z",
+      },
+      status: "sealed",
+      expected: 1,
+      included: 1,
+      verified: 1,
+      failed: 0,
+      excluded: 0,
+    },
+  }));
+  const sourceBatchProgress = vi.fn(async (requestId: string) => ({
+    state: {
+      requestId,
+      projectId: draft.projectId,
+      status: "completed" as const,
+      progress: {
+        batchId: "batch-1",
+        stage: "completed" as const,
+        completed: 1,
+        total: 1,
+        failed: 0,
+        cancelled: false,
+      },
+    },
+  }));
+  const analysisRun = {
+    id: "analysis-run-1",
+    projectId: draft.projectId,
+    manifestId: "verified-1",
+    scopeMode: "selected-sources" as const,
+    algorithmVersion: "common-events-duplicates-v1",
+    taxonomyVersion: "common-evidence-v1",
+    configHash: "c".repeat(64),
+    inputFingerprint: "d".repeat(64),
+    inputBindingIds: ["binding-1"],
+    status: "completed" as const,
+    createdAt: "2026-10-29T00:00:00.000Z",
+  };
+  const sourceAnalysisRecord: SourceAnalysisRunRecord = {
+    run: analysisRun,
+    results: options.analysisResults ?? [
+      {
+        id: "result-1",
+        runId: analysisRun.id,
+        kind: "event" as const,
+        reviewStatus: "pending" as const,
+        evidence: {
+          type: "event" as const,
+          assetIds: ["asset-1"],
+          labels: [],
+          confidence: 0.2,
+        },
+        bindingIds: ["binding-1"],
+      },
+    ],
+    attempts: [],
+  };
+  const sourceAnalysisProgress = vi.fn(async (requestId: string) => ({
+    state: {
+      requestId,
+      projectId: draft.projectId,
+      status: "completed" as const,
+      progress: {
+        runId: analysisRun.id,
+        stage: "completed" as const,
+        completed: 1,
+        total: 1,
+      },
+      result: sourceAnalysisRecord,
+    },
+  }));
+  const createSourceAnalysis = vi.fn(async () => ({
+    result: sourceAnalysisRecord,
+  }));
+  const visionSampleProviders = vi.fn(async () => ({ providers: [] }));
+  const grantVisionSampleConsent = vi.fn(async () => ({ providers: [] }));
+  const revokeVisionSampleConsent = vi.fn(async () => ({ providers: [] }));
+  const searchSourceAnalysisReview = vi.fn(
+    async (_runId: string, _query = "", offset = 0, limit = 50) => ({
+      result: {
+        items: sourceAnalysisRecord.results
+          .slice(offset, offset + limit)
+          .map((result): SourceAnalysisReviewItem => ({
+            ...result,
+            sourceBounds: [
+              { assetId: "asset-1", mediaType: "video", duration: 8 },
+            ],
+          })),
+        total: sourceAnalysisRecord.results.length,
+        offset,
+        limit,
+      },
+      decisions: structuredClone(options.reviewDecisions ?? []),
+    }),
+  );
+  const previewSourceAnalysisReview = vi.fn(
+    async (_runId: string, operation: ReviewDecisionOperation) => ({
+      preview: {
+        outcome: "ready" as const,
+        operation,
+        operationFingerprint: "f".repeat(64),
+        targetIds: ["result-1"],
+        runId: analysisRun.id,
+        manifestId: "verified-1",
+        beforeFingerprint: "e".repeat(64),
+        affectedAssetIds: ["asset-1"],
+      },
+    }),
+  );
+  const acceptSourceAnalysisReview = vi.fn(
+    async (
+      _runId: string,
+      _request: Parameters<
+        typeof import("../../apps/desktop/src/api.js").api.acceptSourceAnalysisReview
+      >[1],
+    ) => ({
+      decision: {
+        id: "decision-1",
+        outcome: "applied",
+        operation: { kind: "reject-results", resultIds: ["result-1"] },
+      },
+    }),
+  );
+  const sourceAnalysisRun = vi.fn(async () => ({
+    result: sourceAnalysisRecord,
+  }));
+  const project = vi.fn(async () => ({
+    project: { id: draft.projectId, stories: options.reviewStories ?? [] },
+    path: null,
+  }));
+  const retrySourceAnalysis = vi.fn(async () => ({
+    result: sourceAnalysisRecord,
+  }));
+  const cancelSourceAnalysis = vi.fn(async () => ({ ok: true as const }));
   const releaseBrowserSources = vi.fn(
     async (
       _projectId: string,
@@ -202,6 +555,28 @@ function fixture(
           addSourceSelections,
           removeSourceSelection,
           updateSourceSelection,
+          scanSourceDraft,
+          browserSourceScan,
+          sourceDiscoveryReadiness,
+          browserStagedOccurrences,
+          stageBrowserSource,
+          sourceDiscoveryProgress,
+          sourceOccurrences,
+          setSourceOccurrenceIncluded,
+          createSourceBatch,
+          sourceBatchProgress,
+          sourceAnalysisProgress,
+          createSourceAnalysis,
+          visionSampleProviders,
+          grantVisionSampleConsent,
+          revokeVisionSampleConsent,
+          searchSourceAnalysisReview,
+          previewSourceAnalysisReview,
+          acceptSourceAnalysisReview,
+          sourceAnalysisRun,
+          project,
+          retrySourceAnalysis,
+          cancelSourceAnalysis,
         },
       },
       "../sourcePicker": {
@@ -218,12 +593,16 @@ function fixture(
         clearBrowserEphemeral: vi.fn(),
         releaseBrowserSources,
         browserFilesForSelections: vi.fn(),
+        iterateBrowserSelectionFiles: async function* () {
+          for (const entry of options.browserFiles ?? []) yield entry;
+        },
         sourceAvailabilities,
         listenForNativeDrop: vi.fn(async (listener) => {
           nativeDropListener = listener;
           return options.nativeDropRegistration ?? (() => {});
         }),
       },
+      "../source-review-acceptance": sourceReviewAcceptance,
       "../i18n": { formatNumber: String },
       "./Icon.vue": { render: () => null },
     },
@@ -269,6 +648,28 @@ function fixture(
     addSourceSelections,
     removeSourceSelection,
     updateSourceSelection,
+    scanSourceDraft,
+    browserSourceScan,
+    sourceDiscoveryReadiness,
+    browserStagedOccurrences,
+    stageBrowserSource,
+    sourceDiscoveryProgress,
+    sourceOccurrences,
+    setSourceOccurrenceIncluded,
+    createSourceBatch,
+    sourceBatchProgress,
+    sourceAnalysisProgress,
+    createSourceAnalysis,
+    visionSampleProviders,
+    grantVisionSampleConsent,
+    revokeVisionSampleConsent,
+    searchSourceAnalysisReview,
+    previewSourceAnalysisReview,
+    acceptSourceAnalysisReview,
+    sourceAnalysisRun,
+    sourceAnalysisRecord,
+    project,
+    retrySourceAnalysis,
     sourceAvailabilities,
     releaseBrowserSources,
     pickNativeFiles,
@@ -283,7 +684,848 @@ function fixture(
   };
 }
 
+async function reviewFixture(options: Parameters<typeof fixture>[0] = {}) {
+  const h = fixture({
+    initialDraft: {
+      schemaVersion: 1,
+      projectId: "project-a",
+      revision: 3,
+      selections: [
+        {
+          ...input("review-media"),
+          kind: "folder",
+          id: "source-review",
+          projectId: "project-a",
+          selectionRevision: 1,
+          recursive: true,
+        },
+      ],
+    },
+    verifiedManifestMembers: [
+      {
+        bindingId: "binding-1",
+        assetId: "asset-1",
+        contentHash: "a".repeat(64),
+        contextRevision: "b".repeat(64),
+      },
+    ],
+    ...options,
+  });
+  await runReviewAnalysis(h);
+  return h;
+}
+
+async function runReviewAnalysis(h: ReturnType<typeof fixture>) {
+  await settle();
+  for (const action of [
+    "app.import.scan.action",
+    "app.import.seal.action",
+    "app.import.analysis.run",
+  ]) {
+    await (h.button(action)!.props.onClick as () => Promise<void>)();
+    await settle();
+  }
+}
+
+function selectReviewResult(h: ReturnType<typeof fixture>, id = "result-1") {
+  const checkbox = h
+    .nodes()
+    .find(
+      (node) =>
+        node.tag === "input" &&
+        node.props.type === "checkbox" &&
+        node.props.value === id,
+    );
+  expect(checkbox).toBeDefined();
+  (checkbox!.props["onUpdate:modelValue"] as (value: string[]) => void)([id]);
+}
+
+function changeReviewAction(h: ReturnType<typeof fixture>, kind: string) {
+  const select = h
+    .nodes()
+    .find(
+      (node) =>
+        node.tag === "select" &&
+        flatten(node).some((child) => child.props.value === "split"),
+    );
+  (select!.props["onUpdate:modelValue"] as (value: string) => void)(kind);
+}
+
 describe("additive source draft panel", () => {
+  it("previews multiple selected analysis results for story adoption", async () => {
+    const h = await reviewFixture({
+      reviewStories: [{ id: "story-a", title: "合成故事", beats: [] }],
+      analysisResults: ["result-1", "result-2"].map((id, index) => ({
+        id,
+        runId: "analysis-run-1",
+        kind: "event",
+        reviewStatus: "pending",
+        bindingIds: ["binding-1"],
+        evidence: {
+          type: "event",
+          assetIds: [`asset-${index + 1}`],
+          labels: [],
+        },
+      })),
+    });
+    const checkbox = h
+      .nodes()
+      .find((node) => node.tag === "input" && node.props.value === "result-1")!;
+    (checkbox.props["onUpdate:modelValue"] as (v: string[]) => void)([
+      "result-1",
+      "result-2",
+    ]);
+    changeReviewAction(h, "adopt");
+    await settle();
+    const story = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "select" &&
+          flatten(node).some((child) => child.props.value === "story-a"),
+      )!;
+    (story.props["onUpdate:modelValue"] as (v: string) => void)("story-a");
+    await settle();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.previewSourceAnalysisReview).toHaveBeenCalledWith(
+      "analysis-run-1",
+      {
+        kind: "adopt-story",
+        storyId: "story-a",
+        resultIds: ["result-1", "result-2"],
+      },
+    );
+  });
+
+  it("scans the saved draft and pages only relative discovered paths", async () => {
+    const selected: SourceSelection = {
+      ...input("film-media"),
+      kind: "folder",
+      id: "source-1",
+      projectId: "project-a",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 4,
+        selections: [selected],
+      },
+      scanResult: {
+        projectId: "project-a",
+        draftRevision: 4,
+        sourcesRequested: 1,
+        sourcesScanned: 1,
+        discovered: 3,
+        supported: 2,
+        possibleDuplicates: 1,
+        skipped: 1,
+        failed: 0,
+        cancelled: false,
+        failures: [],
+      },
+    });
+    await settle();
+
+    await (
+      h.button("app.import.scan.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+
+    expect(h.scanSourceDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-a",
+        baseRevision: 4,
+        selectionIds: ["source-1"],
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(h.sourceOccurrences).toHaveBeenCalledWith("source-1", 0, 20);
+    expect(h.nodes().some((node) => node.text.includes("one.jpg"))).toBe(true);
+    expect(
+      h
+        .nodes()
+        .some((node) =>
+          node.text.includes("app.import.scan.possibleDuplicates"),
+        ),
+    ).toBe(true);
+    expect(
+      h.nodes().some((node) => node.text.includes("/synthetic/film-media")),
+    ).toBe(false);
+  });
+
+  it("edits independent file membership and seals the reviewed native selection", async () => {
+    const selected: SourceSelection = {
+      ...input("film-media"),
+      kind: "folder",
+      id: "source-1",
+      projectId: "project-a",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 4,
+        selections: [selected],
+      },
+      scanResult: {
+        projectId: "project-a",
+        draftRevision: 4,
+        sourcesRequested: 1,
+        sourcesScanned: 1,
+        discovered: 1,
+        supported: 1,
+        possibleDuplicates: 0,
+        skipped: 0,
+        failed: 0,
+        cancelled: false,
+        failures: [],
+      },
+    });
+    await settle();
+    await (
+      h.button("app.import.scan.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    const checkbox = h
+      .nodes()
+      .filter((node) => node.tag === "input" && node.props.type === "checkbox")
+      .at(-1);
+    expect(checkbox).toBeDefined();
+    await (checkbox!.props.onChange as (event: unknown) => Promise<void>)({
+      target: { checked: false },
+    });
+    expect(h.setSourceOccurrenceIncluded).toHaveBeenCalledWith(
+      "occurrence-1",
+      expect.objectContaining({
+        projectId: "project-a",
+        baseRevision: 4,
+        selectionId: "source-1",
+        included: false,
+      }),
+    );
+
+    await (
+      h.button("app.import.seal.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.createSourceBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-a",
+        baseRevision: 4,
+        selectionIds: ["source-1"],
+        partialPolicy: "require-all",
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(
+      h
+        .nodes()
+        .some((node) => node.text.includes("app.import.seal.result.sealed")),
+    ).toBe(true);
+  });
+
+  it("discovers browser files in pages and stages only included bytes before sealing", async () => {
+    const selected: SourceSelection = {
+      ...input("Browser album"),
+      kind: "folder",
+      id: "browser-source-1",
+      projectId: "project-a",
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:ephemeral",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const file = Object.assign(new Blob(["x".repeat(123)]), {
+      name: "one.jpg",
+      lastModified: 0,
+    }) as File;
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 4,
+        selections: [selected],
+      },
+      browserFiles: [
+        {
+          relativePath: "day-one/one.jpg",
+          file,
+          modifiedAt: new Date(0).toISOString(),
+        },
+      ],
+      occurrencePage: {
+        items: [
+          {
+            occurrence: {
+              id: "browser-occurrence",
+              logicalRootId: "root:browser-source-1",
+              displayName: "one.jpg",
+              relativePath: "day-one/one.jpg",
+              fileKind: "image",
+              byteLength: 123,
+              modifiedAt: new Date(0).toISOString(),
+              availability: "available",
+              scanRevision: 1,
+            },
+            included: true,
+          },
+        ],
+        offset: 0,
+        limit: 500,
+        hasMore: false,
+      },
+    });
+    await settle();
+    await (
+      h.button("app.import.scan.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.browserSourceScan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectionId: "browser-source-1",
+        phase: "begin",
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(h.browserSourceScan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectionId: "browser-source-1",
+        phase: "page",
+        candidates: [
+          {
+            relativePath: "day-one/one.jpg",
+            name: "one.jpg",
+            size: 123,
+            modifiedAt: new Date(0).toISOString(),
+          },
+        ],
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(h.sourceOccurrences).toHaveBeenCalledWith("browser-source-1", 0, 20);
+
+    await (
+      h.button("app.import.seal.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.stageBrowserSource).toHaveBeenCalledWith(
+      {
+        selectionId: "browser-source-1",
+        occurrenceId: "browser-occurrence",
+        baseRevision: 4,
+        file,
+      },
+      expect.any(AbortSignal),
+    );
+    expect(h.createSourceBatch).toHaveBeenCalled();
+  });
+
+  it("reuses fully staged bytes after reopening when ephemeral browser files expired", async () => {
+    const selected: SourceSelection = {
+      ...input("Browser album"),
+      kind: "folder",
+      id: "browser-source-1",
+      projectId: "project-a",
+      accessClass: "ephemeral-browser-file",
+      accessRef: "browser-file:expired",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 4,
+        selections: [selected],
+      },
+      availability: "needs-reselection",
+      scanReadiness: {
+        projectId: "project-a",
+        draftRevision: 4,
+        sourcesRequested: 1,
+        sourcesScanned: 1,
+        discovered: 1,
+        supported: 1,
+        possibleDuplicates: 0,
+        skipped: 0,
+        failed: 0,
+        cancelled: false,
+        failures: [],
+      },
+      stagedOccurrenceIds: ["occurrence-1"],
+    });
+    await settle();
+    expect(h.nodes().some((node) => node.text.includes("one.jpg"))).toBe(true);
+    expect(h.button("app.import.seal.action")?.props.disabled).toBe(false);
+    await (
+      h.button("app.import.seal.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.browserStagedOccurrences).toHaveBeenCalledWith(
+      "browser-source-1",
+      0,
+      500,
+    );
+    expect(h.stageBrowserSource).not.toHaveBeenCalled();
+    expect(h.createSourceBatch).toHaveBeenCalled();
+  });
+
+  it("analyzes only the sealed manifest by default and makes whole-project scope explicit", async () => {
+    const selected: SourceSelection = {
+      ...input("film-media"),
+      kind: "folder",
+      id: "source-1",
+      projectId: "project-a",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 4,
+        selections: [selected],
+      },
+      verifiedManifestMembers: [
+        {
+          bindingId: "binding-1",
+          assetId: "asset-1",
+          contentHash: "a".repeat(64),
+          contextRevision: "b".repeat(64),
+        },
+      ],
+    });
+    await settle();
+    await (
+      h.button("app.import.scan.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    await (
+      h.button("app.import.seal.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    await (
+      h.button("app.import.analysis.run")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.createSourceAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verifiedManifestId: "verified-1",
+        scopeMode: "selected-sources",
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(h.nodes().some((node) => node.text.includes("asset-1"))).toBe(true);
+
+    const scopeLabel = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "label" &&
+          flatten(node).some((child) =>
+            child.text.includes("app.import.analysis.projectScope"),
+          ),
+      );
+    const scopeCheckbox =
+      scopeLabel &&
+      flatten(scopeLabel).find(
+        (node) => node.tag === "input" && node.props.type === "checkbox",
+      );
+    expect(scopeCheckbox).toBeDefined();
+    await (
+      scopeCheckbox!.props["onUpdate:modelValue"] as (value: boolean) => void
+    )(true);
+    await settle();
+    await (
+      h.button("app.import.analysis.runAgain")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.createSourceAnalysis).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        verifiedManifestId: "verified-1",
+        scopeMode: "project-catalog",
+        confirmProjectCatalog: true,
+      }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("requires select, preview and explicit accept for analysis review actions", async () => {
+    const selected: SourceSelection = {
+      ...input("review-media"),
+      kind: "folder",
+      id: "source-review",
+      projectId: "project-a",
+      selectionRevision: 1,
+      recursive: true,
+    };
+    const h = fixture({
+      initialDraft: {
+        schemaVersion: 1,
+        projectId: "project-a",
+        revision: 3,
+        selections: [selected],
+      },
+      verifiedManifestMembers: [
+        {
+          bindingId: "binding-1",
+          assetId: "asset-1",
+          contentHash: "a".repeat(64),
+          contextRevision: "b".repeat(64),
+        },
+      ],
+    });
+    await settle();
+    await (
+      h.button("app.import.scan.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    await (
+      h.button("app.import.seal.action")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    await (
+      h.button("app.import.analysis.run")!.props.onClick as () => Promise<void>
+    )();
+    await settle();
+    const resultCheckbox = h
+      .nodes()
+      .find(
+        (node) =>
+          node.tag === "input" &&
+          node.props.type === "checkbox" &&
+          node.props.value === "result-1",
+      );
+    expect(resultCheckbox).toBeDefined();
+    (resultCheckbox!.props["onUpdate:modelValue"] as (value: string[]) => void)(
+      ["result-1"],
+    );
+    await settle();
+    expect(h.button("app.import.analysis.review.preview")).toBeDefined();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.previewSourceAnalysisReview).toHaveBeenCalledWith(
+      "analysis-run-1",
+      { kind: "reject-results", resultIds: ["result-1"] },
+    );
+    expect(h.acceptSourceAnalysisReview).not.toHaveBeenCalled();
+    await (
+      h.button("app.import.analysis.review.accept")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.acceptSourceAnalysisReview).toHaveBeenCalledOnce();
+    expect(h.acceptSourceAnalysisReview).toHaveBeenCalledWith(
+      "analysis-run-1",
+      expect.objectContaining({
+        expectedManifestId: "verified-1",
+        expectedBeforeFingerprint: "e".repeat(64),
+        expectedOperationFingerprint: "f".repeat(64),
+      }),
+    );
+  });
+
+  it.each(["start", "end", "axis", "correction", "story"])(
+    "invalidates a review preview when the %s field changes",
+    async (field) => {
+      const h = await reviewFixture({
+        reviewStories: [
+          { id: "story-a", title: "First story", beats: [] },
+          { id: "story-b", title: "Second story", beats: [] },
+        ],
+        analysisResults: [
+          {
+            id: "result-1",
+            runId: "analysis-run-1",
+            kind: "observation",
+            reviewStatus: "pending",
+            bindingIds: ["binding-1"],
+            evidence: {
+              type: "visual-sample",
+              algorithmVersion: "representative-frames-v1",
+              sampleId: "sample-1",
+              sampleFingerprint: "a".repeat(64),
+              assetId: "asset-1",
+              sourceHash: "a".repeat(64),
+              sourceTimeRange: { start: 0, end: 0 },
+              status: "unknown",
+              reason: "provider-not-configured",
+              suggestedLabels: [],
+              manualReviewRequired: true,
+            },
+          },
+        ],
+      });
+      selectReviewResult(h);
+      changeReviewAction(
+        h,
+        field === "story"
+          ? "adopt"
+          : field === "axis" || field === "correction"
+            ? "correct"
+            : "split",
+      );
+      await settle();
+      const control = (label: string, tag: string) => {
+        const parent = h
+          .nodes()
+          .find(
+            (node) =>
+              node.tag === "label" &&
+              flatten(node).some((child) => child.text.includes(label)),
+          );
+        return flatten(parent!).filter((node) => node.tag === tag);
+      };
+      if (field === "story") {
+        (
+          control("app.import.analysis.review.story", "select")[0]!.props[
+            "onUpdate:modelValue"
+          ] as (v: string) => void
+        )("story-a");
+      } else if (field === "axis" || field === "correction") {
+        (
+          control("app.import.analysis.review.correction", "input")[0]!.props[
+            "onUpdate:modelValue"
+          ] as (v: string) => void
+        )("Reviewed note");
+      }
+      await settle();
+      await (
+        h.button("app.import.analysis.review.preview")!.props
+          .onClick as () => Promise<void>
+      )();
+      await settle();
+      expect(h.button("app.import.analysis.review.accept")).toBeDefined();
+      const changed =
+        field === "story"
+          ? control("app.import.analysis.review.story", "select")[0]!
+          : field === "axis"
+            ? control("app.import.analysis.review.axis", "select")[0]!
+            : field === "correction"
+              ? control("app.import.analysis.review.correction", "input")[0]!
+              : control("app.import.analysis.review.splitRange", "input")[
+                  field === "start" ? 0 : 1
+                ]!;
+      (changed.props["onUpdate:modelValue"] as (v: string | number) => void)(
+        field === "story"
+          ? "story-b"
+          : field === "axis"
+            ? "label"
+            : field === "correction"
+              ? "Updated note"
+              : field === "start"
+                ? 0.25
+                : 2,
+      );
+      await settle();
+      expect(h.button("app.import.analysis.review.accept")).toBeUndefined();
+    },
+  );
+
+  it("does not publish a delayed preview after its form changes", async () => {
+    const h = await reviewFixture();
+    selectReviewResult(h);
+    await settle();
+    type Response = Awaited<ReturnType<typeof h.previewSourceAnalysisReview>>;
+    let resolve!: (value: Response) => void;
+    const pending = new Promise<Response>((done) => {
+      resolve = done;
+    });
+    const response = await h.previewSourceAnalysisReview("analysis-run-1", {
+      kind: "reject-results",
+      resultIds: ["result-1"],
+    });
+    h.previewSourceAnalysisReview.mockImplementationOnce(() => pending);
+    const previewing = (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    changeReviewAction(h, "split");
+    await settle();
+    resolve(response);
+    await previewing;
+    await settle();
+    expect(h.button("app.import.analysis.review.accept")).toBeUndefined();
+  });
+
+  it("keeps the newest search results when earlier responses arrive last", async () => {
+    const h = await reviewFixture();
+    vi.useFakeTimers();
+    cleanup.push(() => vi.useRealTimers());
+    type Response = Awaited<ReturnType<typeof h.searchSourceAnalysisReview>>;
+    let resolve!: (value: Response) => void;
+    const earlier = new Promise<Response>((done) => {
+      resolve = done;
+    });
+    const result = h.sourceAnalysisRecord.results[0]!;
+    const response = (id: string): Response => ({
+      result: { items: [{ ...result, id }], total: 1, offset: 0, limit: 50 },
+      decisions: [],
+    });
+    h.searchSourceAnalysisReview
+      .mockImplementationOnce(() => earlier)
+      .mockResolvedValueOnce(response("newer-result"));
+    const search = h
+      .nodes()
+      .find((node) => node.tag === "input" && node.props.type === "search")!;
+    (search.props["onUpdate:modelValue"] as (v: string) => void)("earlier");
+    await settle();
+    await vi.advanceTimersByTimeAsync(180);
+    (search.props["onUpdate:modelValue"] as (v: string) => void)("newer");
+    await settle();
+    await vi.advanceTimersByTimeAsync(180);
+    await settle();
+    expect(h.nodes().some((node) => node.props.value === "newer-result")).toBe(
+      true,
+    );
+    resolve(response("earlier-result"));
+    await settle();
+    expect(h.nodes().some((node) => node.props.value === "newer-result")).toBe(
+      true,
+    );
+    expect(
+      h.nodes().some((node) => node.props.value === "earlier-result"),
+    ).toBe(false);
+  });
+
+  it("retries a lost acceptance acknowledgment with the exact original receipt", async () => {
+    const h = await reviewFixture();
+    selectReviewResult(h);
+    await settle();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    h.acceptSourceAnalysisReview.mockRejectedValueOnce(
+      new Error("connection lost after commit"),
+    );
+    await (
+      h.button("app.import.analysis.review.accept")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    const retry =
+      h.button("app.import.analysis.review.retryAccept") ??
+      h.button("app.import.analysis.review.accept");
+    await (retry!.props.onClick as () => Promise<void>)();
+    await settle();
+    expect(h.acceptSourceAnalysisReview.mock.calls).toHaveLength(2);
+    expect(h.acceptSourceAnalysisReview.mock.calls[1]).toEqual(
+      h.acceptSourceAnalysisReview.mock.calls[0],
+    );
+    expect(h.button("app.import.analysis.review.accept")).toBeUndefined();
+  });
+
+  it("does not automatically supersede an unrelated conflicted decision", async () => {
+    const h = await reviewFixture({
+      reviewDecisions: [
+        {
+          schemaVersion: 1,
+          id: "review:unrelated-conflict",
+          projectId: "project-a",
+          baseRunId: "analysis-run-1",
+          baseResultIds: ["other-result"],
+          targetIds: ["other-result"],
+          operation: { kind: "reject-results", resultIds: ["other-result"] },
+          operationFingerprint: "f".repeat(64),
+          beforeFingerprint: "e".repeat(64),
+          manifestId: "verified-1",
+          outcome: "conflicted",
+          createdAt: "2026-10-29T00:00:00.000Z",
+        },
+      ],
+    });
+    selectReviewResult(h);
+    await settle();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    await (
+      h.button("app.import.analysis.review.accept")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(
+      h.acceptSourceAnalysisReview.mock.calls[0]![1].supersedesDecisionId,
+    ).toBeUndefined();
+  });
+
+  it("recovers the exact unresolved acceptance after the import panel remounts", async () => {
+    const h = await reviewFixture();
+    selectReviewResult(h);
+    await settle();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    h.acceptSourceAnalysisReview.mockRejectedValueOnce(
+      new Error("response lost after applying"),
+    );
+    await (
+      h.button("app.import.analysis.review.accept")!.props
+        .onClick as () => Promise<void>
+    )();
+    const original = h.acceptSourceAnalysisReview.mock.calls[0]!;
+    h.unmount();
+    cleanup.splice(cleanup.indexOf(h.unmount), 1);
+    const recovered = fixture();
+    await settle();
+    const retry = recovered.button("app.import.analysis.review.retryAccept");
+    expect(Boolean(retry)).toBe(true);
+    await (retry!.props.onClick as () => Promise<void>)();
+    await settle();
+    expect(recovered.acceptSourceAnalysisReview.mock.calls[0]).toEqual(
+      original,
+    );
+    expect(
+      Boolean(recovered.button("app.import.analysis.review.retryAccept")),
+    ).toBe(false);
+  });
+
+  it("does not send acceptance when its durable receipt cannot be retained", async () => {
+    const h = await reviewFixture();
+    selectReviewResult(h);
+    await settle();
+    await (
+      h.button("app.import.analysis.review.preview")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    await (
+      h.button("app.import.analysis.review.accept")!.props
+        .onClick as () => Promise<void>
+    )();
+    await settle();
+    expect(h.acceptSourceAnalysisReview.mock.calls).toHaveLength(0);
+    expect(
+      h
+        .nodes()
+        .some((node) =>
+          node.text.includes("app.import.analysis.review.storageFailed"),
+        ),
+    ).toBe(true);
+  });
+
   it("adds 3 then 2 files, treats picker cancellation as no-op and never imports", async () => {
     const h = fixture();
     await settle();

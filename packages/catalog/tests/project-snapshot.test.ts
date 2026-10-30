@@ -300,6 +300,24 @@ describe("consistent project catalog snapshots", () => {
           JSON.stringify({
             projectId: "project-safe",
             apiKey: privateSemanticSentinel,
+            travelContext: {
+              version: 1,
+              algorithmVersion: "travel-v1",
+              tracks: [
+                {
+                  id: "route-selected",
+                  contentHash: "a".repeat(64),
+                  segments: [
+                    { index: 0, points: [{ latitude: 25, longitude: 121 }] },
+                  ],
+                  sourceUri: privateSemanticSentinel,
+                },
+              ],
+              clockMappings: [],
+              assignments: [
+                { trackId: "route-selected", assetIds: ["selected"] },
+              ],
+            },
           }),
         );
       live
@@ -367,6 +385,16 @@ describe("consistent project catalog snapshots", () => {
               axis: "mood",
               value: "warm",
             },
+            operationFingerprint: createHash("sha256")
+              .update(
+                JSON.stringify({
+                  kind: "set-observation",
+                  resultId: "result-selected",
+                  axis: "mood",
+                  value: "warm",
+                }),
+              )
+              .digest("hex"),
             manifestId: "verified-selected",
             storyRevision: "story-1",
             bearer: privateSemanticSentinel,
@@ -540,6 +568,16 @@ describe("consistent project catalog snapshots", () => {
           axis: "mood",
           value: "warm",
         },
+        operationFingerprint: createHash("sha256")
+          .update(
+            JSON.stringify({
+              kind: "set-observation",
+              resultId: "result-selected",
+              axis: "mood",
+              value: "warm",
+            }),
+          )
+          .digest("hex"),
         manifestId: "verified-selected",
         storyRevision: "story-1",
       });

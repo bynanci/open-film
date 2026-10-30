@@ -27,6 +27,7 @@ import {
 } from "./knowledge-store.js";
 import { migrateTranscriptSegmentIdentity } from "./transcript-segment-identity.js";
 import {
+  CatalogMultiSourceStore,
   migrateMultiSourceSchema,
   sanitizePortableMultiSourceRows,
   validateMultiSourceSchema,
@@ -662,6 +663,7 @@ export class ProjectCatalog {
   readonly intelligence: CatalogIntelligenceStore;
   readonly transcripts: CatalogTranscriptEditorStore;
   readonly knowledge: CatalogKnowledgeStore;
+  readonly multiSource: CatalogMultiSourceStore;
 
   constructor(directory: string) {
     if (
@@ -698,6 +700,7 @@ export class ProjectCatalog {
       this.intelligence = new CatalogIntelligenceStore(this.database);
       this.transcripts = new CatalogTranscriptEditorStore(this.database);
       this.knowledge = new CatalogKnowledgeStore(this.database);
+      this.multiSource = new CatalogMultiSourceStore(this.database);
     } catch (error) {
       this.database.close();
       throw error;

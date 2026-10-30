@@ -9,6 +9,7 @@ import {
   pickBrowserFallbackFolders,
   pickBrowserFolder,
   pickBrowserFiles,
+  iterateBrowserSelectionFiles,
   releaseBrowserSources,
   sourcesFromBrowserDrop,
 } from "../../apps/desktop/src/sourcePicker.js";
@@ -263,5 +264,97 @@ describe("browser source picker", () => {
       sources: [],
       rejected: [{ label: "directory", kind: "directory-unsupported" }],
     });
+  });
+
+  it("iterates ephemeral folder files using safe paths relative to the selected root", async () => {
+    const { access } = registry();
+    const image = Object.assign(new Blob(["pixels"]), {
+      name: "one.jpg",
+      lastModified: 1234,
+      webkitRelativePath: "album/day-one/one.jpg",
+    }) as File;
+    const picked = pickBrowserFallbackFolders("project-a", [image], access);
+    const result: Array<{ relativePath: string; file: File }> = [];
+    for await (const entry of iterateBrowserSelectionFiles(
+      "project-a",
+      {
+        id: "browser-folder",
+        projectId: "project-a",
+        kind: "folder",
+        displayName: "album",
+        accessClass: picked.sources[0]!.accessClass,
+        accessRef: picked.sources[0]!.accessRef,
+        recursive: true,
+        selectionRevision: 1,
+      },
+      undefined,
+      access,
+    ))
+      result.push(entry);
+    expect(result.map(({ relativePath }) => relativePath)).toEqual([
+      "day-one/one.jpg",
+    ]);
+    expect(result[0]!.file).toBe(image);
+  });
+
+  it("walks persistent directory handles progressively and honors the recursion setting", async () => {
+    const { access } = registry();
+    const leafFile = Object.assign(new Blob(["video"]), {
+      name: "clip.mp4",
+      lastModified: 2345,
+    }) as File;
+    const fileHandle: BrowserHandleLike & { getFile: () => Promise<File> } = {
+      kind: "file",
+      name: "clip.mp4",
+      getFile: async () => leafFile,
+    };
+    const nestedDirectory: BrowserHandleLike & {
+      values: () => AsyncIterable<BrowserHandleLike>;
+    } = {
+      kind: "directory",
+      name: "nested",
+      async *values() {
+        yield fileHandle;
+      },
+    };
+    const rootHandle: BrowserHandleLike & {
+      values: () => AsyncIterable<BrowserHandleLike>;
+    } = {
+      kind: "directory",
+      name: "camera",
+      queryPermission: async () => "granted",
+      async *values() {
+        yield nestedDirectory;
+      },
+    };
+    const [accessRef] = await access.rememberHandles("project-a", [rootHandle]);
+    const source = {
+      id: "persistent-folder",
+      projectId: "project-a",
+      kind: "folder" as const,
+      displayName: "camera",
+      accessClass: "persistent-browser-handle" as const,
+      accessRef: accessRef!,
+      recursive: true,
+      selectionRevision: 1,
+    };
+    const recursive: string[] = [];
+    for await (const entry of iterateBrowserSelectionFiles(
+      "project-a",
+      source,
+      undefined,
+      access,
+    ))
+      recursive.push(entry.relativePath);
+    expect(recursive).toEqual(["nested/clip.mp4"]);
+    const shallow: string[] = [];
+    for await (const entry of iterateBrowserSelectionFiles(
+      "project-a",
+      { ...source, recursive: false },
+      undefined,
+      access,
+    ))
+      shallow.push(entry.relativePath);
+    expect(shallow).toEqual([]);
   });
 });

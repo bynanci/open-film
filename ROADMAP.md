@@ -44,10 +44,13 @@ is not. See the [accepted roadmap](docs/roadmap/multi-source-analysis.md).
 
 M0 establishes catalog schema v6, a complete portability table policy, separate
 batch/run/attempt state machines and safe schema-v5 Named Version upgrades. M1–M3
-form the first releasable source-selection and common-analysis workflow. M4–M6
-add time/GPX, bounded representative-frame understanding and explicit review
-adoption. M7 records actual platform evidence; it does not treat mocks as native
-picker or external-drive verification.
+form the source-selection and common-analysis workflow. M4–M6 add versioned
+time/GPX evidence, bounded representative-frame understanding and explicit
+review/story adoption. Those product milestones are implemented in this branch.
+M7 records actual platform evidence; local synthetic/browser/media gates are run
+here, while native-shell, OS picker/permissions and external-drive workstation
+checks remain open because this environment has no Rust toolchain or
+Windows/macOS workstations.
 
 M1 is now implemented: repeated file/folder/drop choices accumulate in one
 project-owned revisioned draft; native drops reject symlinks without following
@@ -69,8 +72,33 @@ the actual schema-v5 application. Final remediation preserves typed portable
 manifest/review semantics without admitting uncontracted evidence strings, makes
 near-limit receipt pruning linear, compares SQLite structure as well as DDL, reads
 only requested persistent handles and rejects identity ambiguity before a 33rd
-same-name browser source can be duplicated. M2 streaming discovery, membership,
-staging and manifest sealing are next and are not implied by the M1 UI.
+same-name browser source can be duplicated.
+
+M2–M6 now build on that draft without changing the timeline model. Discovery is
+streaming and paged with symlink rejection and cancellation; sealing stages
+browser bytes privately, verifies full SHA-256 identity and publishes immutable
+Expected/Verified Manifests. Shared application services power Desktop, HTTP and
+CLI scoped event/duplicate analysis with durable owner-fenced attempts and retry.
+Versioned clock mappings and GPX route evidence preserve uncertainty and never
+interpolate across segment gaps. Visual sampling extracts deterministic bounded
+FFmpeg frames; remote vision sees only an explicitly consented sample and stores
+hash receipts rather than media bytes. Search, preview and typed review decisions
+are immutable and bound to result, operation, manifest and story fingerprints;
+only explicit story adoption changes StoryGraph. See the [validation record](docs/validation-multi-source-analysis.md)
+for exact gates and remaining workstation-only evidence.
+
+The M6 interaction pass fences changed-input previews and racing searches,
+retains exact acceptance receipts through lost responses/reopen, makes conflict
+supersession explicit, reuses custom graph node IDs and refreshes acknowledged
+adoption in the owning Storyboard. Independent review fixes and final local synthetic-media validation are complete;
+4,397 Vitest and 284 Chromium regressions pass. Evidence and open workstation
+gates are tracked in the same validation record.
+
+Independent review additionally closes discovery-bound browser staging, portable
+travel privacy, cancellation during long work, verified sampling bytes, final
+publication/ownership fences and review-then-adopt semantics. Reviewed corrections,
+merged groups and real source ranges remain deterministic projections over
+immutable evidence; existing Composition timing is preserved.
 
 ## Evidence reconciliation and next stable series
 

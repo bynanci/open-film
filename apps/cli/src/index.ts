@@ -2,7 +2,7 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { lstat, readFile, stat } from "node:fs/promises";
 import packageInfo from "../package.json" with { type: "json" };
 import {
   ApplicationError,
@@ -13,6 +13,8 @@ import {
   type ExportFraming,
   type FilmLook,
   type GlossaryInput,
+  type TravelContextV1,
+  type ReviewDecisionOperation,
 } from "@openfilm/core";
 import type { TranscriptMutationInput } from "@openfilm/catalog";
 import {
@@ -23,6 +25,8 @@ import {
   type ScenePlanAcceptance,
   type DirectionReviewPlan,
   type CollectRightsDeclaration,
+  type SourceSelectionInput,
+  parseGpxTrack,
 } from "@openfilm/application";
 import { startServer } from "../../server/src/server.js";
 
@@ -31,6 +35,12 @@ const usage = `OpenFilm — local media storytelling
 Usage:
   openfilm create <film.openfilm> --title "My film"
   openfilm import <folder> --project <film.openfilm> [--no-proxy]
+  openfilm import-batch add --project <film.openfilm> --manifest <sources-v1.json>
+  openfilm import-batch scan|create --project <film.openfilm> [--request-id <id>]
+  openfilm import-batch status <batch-id> --project <film.openfilm>
+  openfilm analysis-run create --project <film.openfilm> --manifest <verified-manifest-id> [--scope selected-sources|project-catalog --confirm-project-catalog] [--visual-samples] [--travel-gpx <route.gpx> --travel-assets <asset-id,...> --clock-offset-minutes <minutes> --time-zone <IANA-zone>]
+  openfilm analysis-run status|retry <run-id> --project <film.openfilm> [--request-id <id>]
+  openfilm analysis-review search|preview|accept <run-id> --project <film.openfilm> [--query <text> --operation <operation.json> --preview-file <preview.json> --request-id <id> --supersedes-decision <id>]
   openfilm list --project <film.openfilm> [--offset 0 --limit 60]
   openfilm analyze --project <film.openfilm>
   openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
@@ -125,6 +135,7 @@ function parse(args: string[]) {
     "enable",
     "disable",
     "confirm-stopped",
+    "confirm-project-catalog",
     "confirm",
     "clear-description",
     "replace-existing",
@@ -134,6 +145,7 @@ function parse(args: string[]) {
     "reviewed",
     "bake-audio",
     "no-captions",
+    "visual-samples",
 
     "confirm-crop",
     "preview",
@@ -205,6 +217,7 @@ function parse(args: string[]) {
     "rights",
     "plan-id",
     "package",
+    "manifest",
 
     "ratio",
     "framing",
@@ -212,6 +225,13 @@ function parse(args: string[]) {
     "width",
     "height",
     "crop-preview-token",
+    "travel-gpx",
+    "travel-assets",
+    "clock-offset-minutes",
+    "time-zone",
+    "operation",
+    "preview-file",
+    "supersedes-decision",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -320,6 +340,103 @@ async function commandFile(
   if (bytes.length > 1024 * 1024)
     throw new Error("Command JSON exceeds 1 MiB.");
   return JSON.parse(bytes.toString("utf8")) as TranscriptMutationInput;
+}
+
+async function reviewJsonFile(
+  path: string | undefined,
+  label: string,
+): Promise<Record<string, unknown>> {
+  if (!path) throw new Error(`Specify --${label} <review-${label}.json>.`);
+  const file = resolve(path);
+  const info = await lstat(file);
+  if (info.isSymbolicLink() || !info.isFile() || info.size > 1024 * 1024)
+    throw new Error(
+      `Review ${label} JSON must be a regular, non-symlink file under 1 MiB.`,
+    );
+  const bytes = await readFile(file);
+  if (bytes.length > 1024 * 1024)
+    throw new Error(`Review ${label} JSON exceeds 1 MiB.`);
+  const value: unknown = JSON.parse(bytes.toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`Review ${label} JSON must be an object.`);
+  return value as Record<string, unknown>;
+}
+
+async function sourceManifestFile(
+  path: string | undefined,
+): Promise<SourceSelectionInput[]> {
+  if (!path) throw new Error("Use --manifest <sources-v1.json>.");
+  const file = resolve(path);
+  const info = await lstat(file);
+  if (info.isSymbolicLink() || !info.isFile() || info.size > 4 * 1024 * 1024)
+    throw new Error(
+      "Source manifest must be a regular, non-symlink JSON file under 4 MiB.",
+    );
+  const bytes = await readFile(file);
+  if (bytes.length > 4 * 1024 * 1024)
+    throw new Error("Source manifest exceeds 4 MiB.");
+  let value: unknown;
+  try {
+    value = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw new Error("Source manifest must contain valid JSON.");
+  }
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).some(
+      (key) => !["schemaVersion", "sources"].includes(key),
+    )
+  )
+    throw new Error("Source manifest has unsupported fields.");
+  const manifest = value as { schemaVersion?: unknown; sources?: unknown };
+  if (
+    manifest.schemaVersion !== 1 ||
+    !Array.isArray(manifest.sources) ||
+    !manifest.sources.length ||
+    manifest.sources.length > 10_000
+  )
+    throw new Error(
+      "Source manifest must use schemaVersion 1 and contain 1–10,000 sources.",
+    );
+  return manifest.sources.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item))
+      throw new Error(`Source ${index + 1} is invalid.`);
+    const source = item as Record<string, unknown>;
+    if (
+      Object.keys(source).some(
+        (key) =>
+          ![
+            "kind",
+            "displayName",
+            "accessClass",
+            "accessRef",
+            "recursive",
+          ].includes(key),
+      )
+    )
+      throw new Error(`Source ${index + 1} has unsupported fields.`);
+    if (
+      (source.kind !== "file" && source.kind !== "folder") ||
+      typeof source.displayName !== "string" ||
+      source.accessClass !== "native-path" ||
+      typeof source.accessRef !== "string" ||
+      (source.recursive !== undefined && typeof source.recursive !== "boolean")
+    )
+      throw new Error(
+        `Source ${index + 1} must be a native file or folder path.`,
+      );
+    return {
+      kind: source.kind,
+      displayName: source.displayName,
+      accessClass: "native-path",
+      accessRef: source.accessRef,
+      ...(source.recursive === undefined
+        ? {}
+        : { recursive: source.recursive }),
+    } satisfies SourceSelectionInput;
+  });
 }
 async function main() {
   const { positional, options } = parse(process.argv.slice(2));
@@ -561,6 +678,340 @@ async function main() {
       print(result);
       if (result.job.status === "cancelled") process.exitCode = 130;
       else if (result.job.status === "failed") process.exitCode = 1;
+    } else if (command === "import-batch") {
+      const action = positional[1];
+      if (action === "add") {
+        const sources = await sourceManifestFile(value(options, "manifest"));
+        const draft = app.sourceDraft.get();
+        const updated = app.sourceDraft.add({
+          projectId: app.project.id,
+          baseRevision: draft.revision,
+          requestId: value(options, "request-id") ?? randomUUID(),
+          sources,
+        });
+        print({
+          projectId: updated.projectId,
+          revision: updated.revision,
+          added: sources.length,
+          selections: updated.selections.map(
+            ({ id, kind, displayName, recursive }) => ({
+              id,
+              kind,
+              displayName,
+              recursive,
+            }),
+          ),
+        });
+      } else if (action === "status") {
+        const id = positional[2];
+        if (!id) throw new Error("Specify an import batch ID.");
+        const batch = app.catalog.multiSource.getImportBatch(id);
+        if (!batch || batch.projectId !== app.project.id)
+          throw new Error("Import batch was not found in this project.");
+        print({
+          batch,
+          expectedManifest: app.catalog.multiSource.getExpectedManifest(
+            batch.expectedManifestId,
+          ),
+          verifiedManifest:
+            app.catalog.multiSource.getVerifiedManifestByExpectedId(
+              batch.expectedManifestId,
+            ),
+        });
+      } else if (
+        action === "scan" ||
+        action === "create" ||
+        action === "retry"
+      ) {
+        const draft = app.sourceDraft.get();
+        const selections = draft.selections.filter(
+          ({ accessClass }) => accessClass === "native-path",
+        );
+        if (!selections.length)
+          throw new Error(
+            "Add at least one native source with import-batch add --manifest.",
+          );
+        let previousBatchId: string | undefined;
+        if (action === "retry") {
+          previousBatchId = positional[2];
+          if (!previousBatchId)
+            throw new Error(
+              "Specify a failed, partial or cancelled batch ID to retry.",
+            );
+          const previous =
+            app.catalog.multiSource.getImportBatch(previousBatchId);
+          if (
+            !previous ||
+            previous.projectId !== app.project.id ||
+            !["failed", "partial", "cancelled"].includes(previous.status)
+          )
+            throw new Error(
+              "Only a failed, partial or cancelled batch in this project can be refreshed.",
+            );
+          if (previous.draftRevision !== draft.revision)
+            throw new ApplicationError(
+              "import.draftStale",
+              "The source draft changed; start a new import batch instead.",
+              409,
+            );
+        }
+        const requestId = value(options, "request-id") ?? randomUUID();
+        const selectionIds = selections.map(({ id }) => id);
+        const summary = await app.sourceDiscovery.scan({
+          projectId: app.project.id,
+          baseRevision: draft.revision,
+          requestId: randomUUID(),
+          selectionIds,
+          signal: controller.signal,
+          onProgress: (progress) =>
+            console.error(
+              JSON.stringify({ event: "import.discovery", ...progress }),
+            ),
+        });
+        if (action === "scan") {
+          print({ summary });
+          if (summary.cancelled) process.exitCode = 130;
+          else if (summary.failed) process.exitCode = 1;
+        } else if (summary.cancelled || summary.failed) {
+          print({ summary, sealed: false });
+          process.exitCode = summary.cancelled ? 130 : 1;
+        } else {
+          const result = await app.sourceBatches.createAndSeal({
+            projectId: app.project.id,
+            baseRevision: draft.revision,
+            requestId,
+            selectionIds,
+            partialPolicy: "require-all",
+            signal: controller.signal,
+            onProgress: (progress) =>
+              console.error(
+                JSON.stringify({ event: "import.sealing", ...progress }),
+              ),
+          });
+          print({
+            ...(previousBatchId
+              ? {
+                  refreshedFromBatchId: previousBatchId,
+                  refreshedSnapshot: true,
+                }
+              : {}),
+            result,
+          });
+          if (result.status === "cancelled") process.exitCode = 130;
+          else if (result.status !== "sealed") process.exitCode = 1;
+        }
+      } else if (action === "cancel") {
+        throw new Error(
+          "Cancel the active local command with Ctrl+C; it will persist a cancelled batch status.",
+        );
+      } else {
+        throw new Error(
+          "Choose import-batch add|scan|create|status|retry|cancel.",
+        );
+      }
+    } else if (command === "analysis-run") {
+      const action = positional[1];
+      if (action === "status") {
+        const id = positional[2];
+        if (!id) throw new Error("Specify a source analysis run ID.");
+        print(app.sourceAnalysis.getRun(id));
+      } else if (action === "create") {
+        const manifestId = value(options, "manifest");
+        if (!manifestId)
+          throw new Error("Specify --manifest <verified-manifest-id>.");
+        const scopeMode = value(options, "scope") ?? "selected-sources";
+        if (scopeMode !== "selected-sources" && scopeMode !== "project-catalog")
+          throw new Error(
+            "Choose --scope selected-sources or project-catalog.",
+          );
+        let travelContext: TravelContextV1 | undefined;
+        const travelPath = value(options, "travel-gpx");
+        const offsetInput = value(options, "clock-offset-minutes");
+        const timeZone = value(options, "time-zone");
+        if (
+          !travelPath &&
+          (offsetInput !== undefined ||
+            timeZone !== undefined ||
+            value(options, "travel-assets") !== undefined)
+        )
+          throw new Error(
+            "Clock settings and asset assignment require --travel-gpx.",
+          );
+        if (travelPath) {
+          const routePath = resolve(travelPath);
+          const routeInfo = await lstat(routePath);
+          if (
+            routeInfo.isSymbolicLink() ||
+            !routeInfo.isFile() ||
+            routeInfo.size > 5 * 1024 * 1024
+          )
+            throw new Error(
+              "GPX route must be a regular non-symlink file under 5 MiB.",
+            );
+          const routeBytes = await readFile(routePath);
+          if (routeBytes.length > 5 * 1024 * 1024)
+            throw new Error("GPX route exceeds 5 MiB.");
+          const track = parseGpxTrack(`gpx-${randomUUID()}`, routeBytes);
+          const manifest =
+            app.catalog.multiSource.getVerifiedManifest(manifestId);
+          if (!manifest) throw new Error("Verified manifest was not found.");
+          const manifestAssetIds = [
+            ...new Set(manifest.members.map(({ assetId }) => assetId)),
+          ].sort();
+          const requestedAssets = value(options, "travel-assets")
+            ?.split(",")
+            .map((id) => id.trim())
+            .filter(Boolean);
+          const assetIds = requestedAssets
+            ? [...new Set(requestedAssets)].sort()
+            : manifestAssetIds;
+          const offsetMinutes =
+            offsetInput === undefined ? 0 : Number(offsetInput);
+          if (!Number.isFinite(offsetMinutes) || Math.abs(offsetMinutes) > 1440)
+            throw new Error(
+              "Clock adjustment must be between -1440 and 1440 minutes.",
+            );
+          const offsetMilliseconds = Math.round(offsetMinutes * 60_000);
+          travelContext = {
+            version: 1,
+            algorithmVersion: "travel-v1",
+            tracks: [track],
+            clockMappings:
+              offsetMilliseconds !== 0 || timeZone
+                ? [
+                    {
+                      id: `clock-${randomUUID()}`,
+                      assetIds,
+                      offsetMilliseconds,
+                      ...(timeZone ? { timeZone } : {}),
+                      source: "manual",
+                    },
+                  ]
+                : [],
+            assignments: [{ trackId: track.id, assetIds }],
+          };
+        }
+        const result = await app.sourceAnalysis.createRun({
+          projectId: app.project.id,
+          verifiedManifestId: manifestId,
+          scopeMode,
+          ...(options["confirm-project-catalog"] === true
+            ? { confirmProjectCatalog: true }
+            : {}),
+          ...(travelContext ? { travelContext } : {}),
+          ...(options["visual-samples"] === true
+            ? {
+                visualSampling: {
+                  version: 1 as const,
+                  algorithmVersion: "representative-frames-v1" as const,
+                },
+              }
+            : {}),
+          requestId: value(options, "request-id") ?? randomUUID(),
+          signal: controller.signal,
+          onProgress: (progress) =>
+            console.error(
+              JSON.stringify({ event: "analysis.progress", ...progress }),
+            ),
+        });
+        print({ result });
+        if (result.run.status === "cancelled") process.exitCode = 130;
+        else if (result.run.status !== "completed") process.exitCode = 1;
+      } else if (action === "retry") {
+        const runId = positional[2];
+        if (!runId)
+          throw new Error("Specify a source analysis run ID to retry.");
+        const result = await app.sourceAnalysis.retryRun({
+          projectId: app.project.id,
+          runId,
+          requestId: value(options, "request-id") ?? randomUUID(),
+          signal: controller.signal,
+          onProgress: (progress) =>
+            console.error(
+              JSON.stringify({ event: "analysis.retry", ...progress }),
+            ),
+        });
+        print({ result });
+        if (result.run.status === "cancelled") process.exitCode = 130;
+        else if (result.run.status !== "completed") process.exitCode = 1;
+      } else if (action === "cancel") {
+        throw new Error(
+          "Cancel the active local analysis command with Ctrl+C; a different process's owner cannot be assumed dead.",
+        );
+      } else {
+        throw new Error("Choose analysis-run create|status|retry|cancel.");
+      }
+    } else if (command === "analysis-review") {
+      const action = positional[1];
+      const runId = positional[2];
+      if (!runId) throw new Error("Specify a source analysis run ID.");
+      if (action === "search") {
+        const result = app.sourceAnalysisReview.search({
+          runId,
+          query: value(options, "query") ?? "",
+          offset: Number(value(options, "offset") ?? 0),
+          limit: Number(value(options, "limit") ?? 50),
+        });
+        print({
+          ...result,
+          decisions: app.sourceAnalysisReview.decisions(runId),
+        });
+      } else if (action === "preview") {
+        const raw = await reviewJsonFile(
+          value(options, "operation"),
+          "operation",
+        );
+        const operation = raw.operation ?? raw;
+        print({
+          preview: app.sourceAnalysisReview.preview({
+            runId,
+            operation: operation as ReviewDecisionOperation,
+          }),
+        });
+      } else if (action === "accept") {
+        const rawOperation = await reviewJsonFile(
+          value(options, "operation"),
+          "operation",
+        );
+        const operation = rawOperation.operation ?? rawOperation;
+        const rawPreview = await reviewJsonFile(
+          value(options, "preview-file"),
+          "preview",
+        );
+        const preview = (
+          rawPreview.preview &&
+          typeof rawPreview.preview === "object" &&
+          !Array.isArray(rawPreview.preview)
+            ? rawPreview.preview
+            : rawPreview
+        ) as Record<string, unknown>;
+        if (
+          typeof preview.manifestId !== "string" ||
+          typeof preview.beforeFingerprint !== "string" ||
+          typeof preview.operationFingerprint !== "string"
+        )
+          throw new Error(
+            "Review preview file is missing its exact decision preconditions.",
+          );
+        const result = await app.sourceAnalysisReview.accept({
+          projectId: app.project.id,
+          runId,
+          operation: operation as ReviewDecisionOperation,
+          expectedManifestId: preview.manifestId,
+          expectedBeforeFingerprint: preview.beforeFingerprint,
+          expectedOperationFingerprint: preview.operationFingerprint,
+          ...(typeof preview.storyRevision === "string"
+            ? { expectedStoryRevision: preview.storyRevision }
+            : {}),
+          requestId: value(options, "request-id") ?? randomUUID(),
+          ...(value(options, "supersedes-decision")
+            ? { supersedesDecisionId: value(options, "supersedes-decision") }
+            : {}),
+        });
+        print({ decision: result });
+      } else {
+        throw new Error("Choose analysis-review search|preview|accept.");
+      }
     } else if (command === "list") {
       const offset = Number(value(options, "offset") ?? 0);
       const limit = Number(value(options, "limit") ?? 60);

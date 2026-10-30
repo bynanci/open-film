@@ -82,14 +82,34 @@ and [validation](docs/validation-multi-source-analysis.md).
       rejection beyond 32 indistinguishable same-name browser handles. Independent
       final review found no remaining Critical, Important or Minor issue; 3,904
       Vitest and 234 Playwright tests pass on the corrected code head.
-- [ ] M2: streaming discovery, membership, private durable staging, content
-      identity and Expected/Verified Manifests.
-- [ ] M3: fixed-scope common analysis, durable attempts, cancellation/retry,
-      late-result fencing and shared Desktop/HTTP/CLI entry points.
-- [ ] M4: versioned time/clock evidence and GPX track assignment.
-- [ ] M5: deterministic frame samples and sample-only visual providers.
-- [ ] M6: immutable review decisions and explicit StoryGraph adoption.
-- [ ] M7: supported OS/browser, external-drive, stress and workstation evidence.
+- [x] M2: streaming discovery, paged many-to-many membership, private staging,
+      full-content identity and immutable Expected/Verified Manifests; 10,000-item
+      cancellation/backpressure and restart/retry boundaries are covered.
+- [x] M3: manifest-scoped common event/duplicate analysis, owner-fenced durable
+      attempts, cancel/retry, stale-result fencing and shared Desktop/HTTP/CLI
+      application logic.
+- [x] M4: versioned manual device-clock evidence, bounded GPX parsing/assignment,
+      conflict preservation, and segment-safe matching with no gap interpolation.
+- [x] M5: deterministic actual-FFmpeg representative frame samples, sample-only
+      provider input, explicit remote consent, receipts, retry and source-hash
+      invalidation.
+- [x] M6: immutable typed review decisions, search, preview, operation/result/
+      manifest/story preconditions, conflict/supersession and explicit StoryGraph
+      adoption with save/reopen recovery coverage.
+- [x] M6 interaction/recovery: exact-form preview fencing, ordered search and
+      zero-result state, durable same-receipt acceptance retry/reopen, explicit
+      conflict supersession, custom graph IDs and owning-workspace refresh.
+- [x] M6 final independent review and full revalidation: 306 files / 4,397
+      Vitest tests and 284 Chromium tests passed; workstation gates remain open.
+- [x] M2–M6 review closure: discovery-bound staging, closed travel privacy,
+      non-blocking owned cancellation, verified sampling snapshots, transactional
+      publication fences, live-reader ownership, reviewed result projections,
+      real source bounds and multi-result adoption.
+- [x] M7 automated: format, i18n, lint, typecheck, Vitest, build, Chromium E2E,
+      interchange and docs locale gates. Exact evidence is in the validation log.
+- [ ] M7 workstation: native Rust/Tauri, physical Windows/macOS picker and
+      permission reopen, external-drive stress, and real Resolve import remain
+      unverified; no hardware or platform behavior is claimed from this runner.
 
 ## Seven-subsystem evidence reconciliation and next stable queue
 

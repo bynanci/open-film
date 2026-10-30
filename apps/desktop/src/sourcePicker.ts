@@ -2,11 +2,14 @@
 import type { SourceSelectionInput } from "@openfilm/application";
 import {
   estimateSourceDraftBytes,
+  SOURCE_DISCOVERY_LIMITS,
   SOURCE_DRAFT_LIMITS,
   type SourceSelection,
 } from "@openfilm/core";
 import {
   browserSourceAccess,
+  type BrowserDirectoryHandleLike,
+  type BrowserFileHandleLike,
   type BrowserSourceAccessRegistry,
   type BrowserSourceAvailability,
   type BrowserHandleLike,
@@ -23,6 +26,12 @@ export interface RejectedSource {
 export interface PickedSources {
   sources: SourceSelectionInput[];
   rejected: RejectedSource[];
+}
+
+export interface BrowserMediaFile {
+  relativePath: string;
+  file: File;
+  modifiedAt: string;
 }
 
 interface NativeDroppedPath {
@@ -312,6 +321,115 @@ export function browserFilesForSelections(
     files.push(...selected);
   }
   return files;
+}
+
+function safeBrowserRelativePath(value: string): string {
+  const normalized = value.replaceAll("\\", "/");
+  if (
+    !normalized ||
+    normalized.startsWith("/") ||
+    /^[a-z]:/iu.test(normalized) ||
+    normalized.split("/").some((part) => !part || part === "." || part === "..")
+  )
+    throw new Error("The browser source returned an unsafe relative path.");
+  return normalized;
+}
+
+function fileModifiedAt(file: File): string {
+  return Number.isFinite(file.lastModified) && file.lastModified > 0
+    ? new Date(file.lastModified).toISOString()
+    : new Date(0).toISOString();
+}
+
+/** Enumerates browser-backed sources lazily so scanning can apply page backpressure. */
+export async function* iterateBrowserSelectionFiles(
+  projectId: string,
+  source: SourceSelection,
+  signal?: AbortSignal,
+  access: BrowserSourceAccessRegistry = browserSourceAccess,
+): AsyncGenerator<BrowserMediaFile> {
+  let yielded = 0;
+  const emitFile = (file: File, path: string): BrowserMediaFile => ({
+    relativePath: safeBrowserRelativePath(path),
+    file,
+    modifiedAt: fileModifiedAt(file),
+  });
+  if (source.accessClass === "ephemeral-browser-file") {
+    let available = false;
+    for (const file of access.fileEntries(projectId, source.accessRef)) {
+      available = true;
+      signal?.throwIfAborted();
+      const raw =
+        source.kind === "folder" ? file.webkitRelativePath : file.name;
+      const parts = raw.replaceAll("\\", "/").split("/").filter(Boolean);
+      if (source.kind === "folder" && parts[0] === source.displayName)
+        parts.shift();
+      const relativePath = parts.join("/");
+      yield emitFile(file, relativePath || file.name);
+      yielded++;
+      if (yielded > SOURCE_DISCOVERY_LIMITS.maximumCandidatesPerRequest)
+        throw new Error(
+          "Browser source discovery exceeds the 100,000 item limit.",
+        );
+    }
+    if (!available)
+      throw new Error(
+        "This browser file selection needs to be selected again.",
+      );
+    return;
+  }
+  if (source.accessClass !== "persistent-browser-handle")
+    throw new Error(
+      "This source is not available through browser file access.",
+    );
+  const root = await access.persistentHandle(projectId, source.accessRef);
+  if (!root || root.kind !== (source.kind === "folder" ? "directory" : "file"))
+    throw new Error("This browser source needs to be selected again.");
+  const permission = await root.queryPermission?.({ mode: "read" });
+  const granted =
+    permission === "granted" ||
+    (await root.requestPermission?.({ mode: "read" })) === "granted";
+  if (!granted)
+    throw new Error(
+      "Read permission is required to access this browser source.",
+    );
+
+  const visit = async function* (
+    handle: BrowserHandleLike,
+    parent: string,
+  ): AsyncGenerator<BrowserMediaFile> {
+    signal?.throwIfAborted();
+    if (handle.kind === "file") {
+      const file = await (handle as BrowserFileHandleLike).getFile?.();
+      if (!file)
+        throw new Error("The browser file handle is no longer readable.");
+      const path = parent ? `${parent}/${handle.name}` : handle.name;
+      yield emitFile(file, path);
+      yielded++;
+      if (yielded > SOURCE_DISCOVERY_LIMITS.maximumCandidatesPerRequest)
+        throw new Error(
+          "Browser source discovery exceeds the 100,000 item limit.",
+        );
+      return;
+    }
+    if (handle.kind !== "directory")
+      throw new Error("The browser source handle kind is unsupported.");
+    const directory = handle as BrowserDirectoryHandleLike;
+    if (!directory.values)
+      throw new Error("This browser cannot enumerate the selected folder.");
+    for await (const child of directory.values()) {
+      signal?.throwIfAborted();
+      if (child.kind === "directory" && !source.recursive) continue;
+      const childParent =
+        child.kind === "directory"
+          ? parent
+            ? `${parent}/${child.name}`
+            : child.name
+          : parent;
+      yield* visit(child, childParent);
+    }
+  };
+  yield* visit(root, "");
 }
 
 export function sourceAvailability(

@@ -449,6 +449,8 @@ export interface Job {
   reviewOwner?: ReviewExecutionOwner;
   /** Local execution identity for transcription, waveform and scene analysis. */
   analysisOwner?: ReviewExecutionOwner;
+  /** Durable, project-local attempt state; removed from portable project packages. */
+  attempt?: import("./multi-source.js").JobAttempt;
   errors?: {
     uri: string;
     stage: string;

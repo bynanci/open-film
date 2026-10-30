@@ -5,6 +5,7 @@ import type {
   RemoteProviderConsent,
   TranscriptionProvider,
   VisionProvider,
+  VisionSampleProvider,
 } from "@openfilm/plugin-sdk";
 import { dataKindsForAsset, ProviderRegistry } from "../src/index.js";
 
@@ -38,6 +39,67 @@ const consent: RemoteProviderConsent = {
 };
 
 describe("explicit remote provider opt-in", () => {
+  it("routes only validated bounded frame samples through a distinct consent-gated provider port", async () => {
+    const registry = new ProviderRegistry();
+    const analyzeSample = vi.fn(
+      async (_input: Parameters<VisionSampleProvider["analyzeSample"]>[0]) => ({
+        labels: [{ label: "landscape", confidence: 0.92 }],
+      }),
+    );
+    const provider: VisionSampleProvider = {
+      id: "remote.frame-samples",
+      name: "Frame sample vision",
+      kind: "vision-sample",
+      execution: "remote",
+      endpoint: "https://vision.example.invalid/samples",
+      dataKinds: ["images", "metadata"],
+      analyzeSample,
+    };
+    registry.register(provider);
+    const sample = {
+      sampleId: "sample-01",
+      assetId: "asset-one",
+      sourceHash: "a".repeat(64),
+      sourceTimeRange: { start: 1, end: 1.04 },
+      width: 640,
+      height: 360,
+      mimeType: "image/jpeg" as const,
+      bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
+    };
+    await expect(
+      registry.analyzeVisionSample(provider.id, sample),
+    ).rejects.toThrow("Explicit opt-in");
+    expect(analyzeSample).not.toHaveBeenCalled();
+    registry.grantConsent({
+      providerId: provider.id,
+      dataKinds: ["images", "metadata"],
+      grantedAt: new Date().toISOString(),
+    });
+    await expect(
+      registry.analyzeVisionSample(provider.id, sample),
+    ).resolves.toEqual({ labels: [{ label: "landscape", confidence: 0.92 }] });
+    expect(analyzeSample).toHaveBeenCalledOnce();
+    const transmitted = analyzeSample.mock.calls[0]?.[0];
+    expect(Object.keys(transmitted ?? {}).sort()).toEqual([
+      "assetId",
+      "bytes",
+      "height",
+      "mimeType",
+      "sampleId",
+      "sourceHash",
+      "sourceTimeRange",
+      "width",
+    ]);
+    expect(transmitted).not.toHaveProperty("uri");
+    await expect(
+      registry.analyzeVisionSample(provider.id, {
+        ...sample,
+        bytes: new Uint8Array(512 * 1024 + 1),
+      }),
+    ).rejects.toThrow("limit");
+    expect(analyzeSample).toHaveBeenCalledOnce();
+  });
+
   it("does not expose glossary prompt hints to a remote audio provider without text disclosure and consent", async () => {
     const registry = new ProviderRegistry();
     const transcribe = vi.fn(async () => ({ text: "", segments: [] }));

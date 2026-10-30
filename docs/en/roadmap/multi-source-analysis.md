@@ -1,6 +1,6 @@
 # Multi-Source Import and Common Analysis
 
-Status: accepted implementation design
+Status: implemented M0–M6; local automated M7 gates passed, workstation M7 open
 Baseline: `main@61a46596d7a2cd17e1c993b2b6fd3f31c5ed807d`
 Date: 2026-10-25
 
@@ -156,8 +156,10 @@ before VACUUM; AC35 covers the real 10,000 selection/storage boundary,
 project-indexed IndexedDB retry/version-change behavior, requested-key reads,
 16-way permission concurrency, visible-page refresh, explicit same-name identity
 ambiguity and failed-control rollback. AC32 still belongs to M2 streaming
-discovery and is not claimed by the M1 picker boundary. M4–M6 must add each new
-portable evidence string together with its producer validator and privacy test.
+discovery and is covered by the M2 async adapter/backpressure regressions. M4/M5
+portable time, route and visual strings now pass closed producer validators and
+privacy-preserving portable-snapshot tests; review operation fingerprints are
+recomputed from the validated typed operation before export.
 
 ## Validation and release policy
 
