@@ -89,6 +89,53 @@ interaction coverage before the UI feature is marked complete. Source catalogs
 remaining unchanged do not by themselves prove original file bytes are intact;
 the render regressions separately verify generated source identities.
 
+## Photo finishing (D5A candidate)
+
+The existing photo Inspector adds **Set focus**, **Movement pace** and **Soft
+photo background**. Set focus previews a single-photo hero crop without saving;
+click/drag or use arrows (`0.01`, or `0.1` with Shift), then release to accept
+one transaction. Escape, blur, resize or a changed source/selection/project
+cancel it. Its captured revision is checked after any awaited save flush and by
+the server. Diptych retains its contain behavior and existing numeric fields.
+
+Version-1 and absent recipes keep their exact defaults. Ambient layout v2 has a
+nested v1 fill: Gaussian sigma `0..0.05` of the shorter frame edge, default
+`0.02`, and dimming `0..0.85`, default `0.45`. Motion v2 has a nested v1 Bézier
+curve: four finite `0..1` coordinates ordered on both axes, fixed endpoints and
+24 bisection steps. Unknown fields/versions fail closed; old binaries may reject
+new v2 projects. Project schema remains `1.0.0`; no SQLite migration is needed.
+
+Both Monitor and FFmpeg consume the same verified raw ambient preparation and
+source copies. The raw intermediate has no primary correction or Film Look;
+foreground/background enter one photographic color group before existing
+motion/static transforms and later titles/captions/graphics. Black diptych
+separators sit outside that color group. Original-look comparison reuses the
+raw background. D5A leaves primary correction to its independent D5C owner.
+
+The local photo-fill PNG endpoint accepts saved project/revision identity only.
+One worker, four queued keys, 32 waiters per key, explicit byte/pixel bounds and
+abort/close fences bound preparation. Admission checks every clip and paired
+source before source copies or subprocesses: output edges are at most 4,096
+pixels and output area at most 8,294,400 pixels; raw and display/SAR source area
+is at most 32,000,000 pixels. The unchanged centered-cover scale intermediate
+must fit 8,192 pixels on each edge and 64 MiB at four bytes per pixel. Blur runs
+after crop within the output budget, with the existing three passes and bounded
+sigma. Unsafe recipes fail explicitly with `request.tooLarge` / HTTP 413;
+preparation does not silently choose a different crop. For an extreme strip
+photo, disable Soft photo background or choose a smaller project frame before
+retrying. A rejected request preserves source bytes and completed exports.
+Failure is visible with Retry and prevents successful Monitor readiness. No source file is overwritten. Locks, required
+selection, history, autosave, reopen and Named Versions keep their existing
+owner; explicit source replacement still clears layout/motion, with Undo
+restoring the snapshot.
+
+JSON/OTIO preserve full recipes; OTIO effects require manual recreation.
+FCPXML/EDL reject unsupported effects, and fidelity handoff bakes via the same
+renderer. Sidecars record actual v2 use and raw-fill/source hashes. See the design
+in `docs/superpowers/specs/2026-10-30-d5a-photo-finishing-design.md` and the
+[candidate evidence](validation-photo-film-quality.md#d5a-photo-finishing-candidate)
+for bounds, measured output and remaining gates.
+
 ## Evidence ledger
 
 | ID  | Observation in reviewed source                          | Change and acceptance proof                                              |

@@ -63,7 +63,7 @@ workstation or editorial gate.
 | Sequence waveform, onset/beat/phrase evidence and envelope UX                                             | Missing                | Reuse `resolveClipSourceRange` and `resolveClipFrameRange` in `packages/core/src/sequence.ts` with current source-clock peaks                                                                                         | Real music/downbeat quality                | Trim/speed/frame-safe projection, source-hash fencing, end-to-end beat markers/snap, visible envelope and optional threshold contract |
 | Native captions, burn-in, SRT/VTT and measured title raster                                               | Implemented / evidence | `packages/core/tests/native-captions.test.ts`; `packages/render/tests/native-captions.test.ts`; `packages/core/tests/title-layout.test.ts`; `docs/validation-native-caption-track.md`                                 | Representative font licensing/rendering    | None in D0                                                                                                                            |
 | Transcript-driven ripple edit                                                                             | Missing                | Transcript revisions exist, but `clip.split` and ripple have cross-track conflicts in `packages/solver/src/editing.ts`                                                                                                | Ambiguous speech judgment                  | Reliable timings only, application-level compound operation and explicit caption/graphic/audio retime policy                          |
-| Independently styled bilingual runs and cinematic shadow/stroke/pills                                     | Missing                | Extend `packages/core/src/title-layout.ts` and its shared raster                                                                                                                                                      | Typography review                          | Versioned bounded styling and missing-font evidence                                                                                   |
+| Independently styled bilingual runs and cinematic shadow/stroke/pills                                     | Candidate / evidence   | Extend `packages/core/src/title-layout.ts` and its shared raster                                                                                                                                                      | Typography review                          | Versioned bounded styling and missing-font evidence                                                                                   |
 | HLG/PQ detection and bt709 tone mapping before Film Looks                                                 | Implemented / evidence | `packages/media/src/color.ts`; `packages/media/tests/color.test.ts`; `packages/render/tests/film-looks.test.ts`; `docs/validation-film-looks.md`                                                                      | Calibrated HDR/SDR displays                | Dolby metadata is detected; unsupported or incomplete profiles fail closed                                                            |
 | Primary correction and reviewable Auto Match                                                              | Missing                | Reuse the tone-map → Film Look order                                                                                                                                                                                  | Physical color judgment                    | Versioned temperature/exposure/contrast; measured before/after proposal, never silent source mutation                                 |
 | Catalog v6 and immutable Named Version compatibility                                                      | Implemented / evidence | `packages/catalog/tests/catalog.test.ts`; `packages/catalog/tests/project-snapshot.test.ts`; `packages/application/tests/project-versions.test.ts`; `docs/CONTRACTS.md`                                               | Filesystem permissions/recovery            | Historical v5 inspect/diff do not rewrite; asset-aware restore upgrades a private copy                                                |
@@ -137,6 +137,16 @@ from the saved Composition and must not become another edit state.
 
 ### Photo presentation
 
+D5A candidate update (2026-10-30): the existing F05 owner now has an isolated
+implementation of direct focal interaction, strict separately versioned bounded
+custom easing and raw ambient-fill Monitor/FFmpeg parity. See the
+[contract](../photo-film-quality.md#photo-finishing-d5a-candidate),
+design in `docs/superpowers/specs/2026-10-30-d5a-photo-finishing-design.md` and
+[candidate validation](../validation-photo-film-quality.md#d5a-photo-finishing-candidate).
+The audit-base matrix remains historical; this candidate still requires fresh
+whole-branch review and the complete exact-head gate before merge. Primary color
+remains D5C's independent owner.
+
 `packages/core/src/models.ts` and `presentation.ts` already own normalized focal
 and protected regions. `PhotoPresentationPreview.vue` and the renderer share the
 same evaluator; `packages/render/src/photo-filters.ts` uses per-frame floating
@@ -181,6 +191,14 @@ Bilingual titles should extend the existing measured raster with versioned
 primary/secondary runs, independent font metrics and missing-font evidence.
 Shadow, stroke and per-line pills remain declarative bounded data and must use
 the same raster for browser and FFmpeg.
+
+D5B's approved candidate now implements this contract with canonical text plus
+versioned LF-boundary metadata and a separately versioned finishing object.
+Actual run font/face/hash bindings follow render review and Collect; missing
+glyphs and stale owners fail closed. Story/Record caption preview uses the
+existing output selector and measured PNG. Focused synthetic MP4/SRT/VTT proof
+and six actual browser cases pass; independent review and exact-head integration
+remain pending. See [validation](../validation-title-finishing.md).
 
 ### Color
 

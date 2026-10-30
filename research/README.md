@@ -10,11 +10,11 @@ tracked in [ROADMAP.md](../ROADMAP.md), [TASKS.md](../TASKS.md) and the
 
 ## Research notes
 
-- [Gemini research synthesis: OpenFilm roadmap references (2026-10)](2026-10-gemini-roadmap-synthesis.md)
+- [Gemini research synthesis: OpenFilm roadmap references (2026-10)](2026-10-gemini-roadmap-synthesis.en.md) ([繁體中文](2026-10-gemini-roadmap-synthesis.md) · [日本語](2026-10-gemini-roadmap-synthesis.ja.md))
   — Compares two research reports with main's candidate-scope boundaries, Visual
   QA, PhotoDepth, OTIO/NLE and platform validation. It records the applicability
   of cited papers and technical hypotheses that still require verification.
-  The source note is in Traditional Chinese.
+  The synthesis is available in English, Traditional Chinese and Japanese.
 
 ## Adding research
 

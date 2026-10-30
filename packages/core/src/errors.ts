@@ -40,6 +40,8 @@ export const applicationErrorCodes = [
   "timeline.audioTimingConflict",
   "timeline.audioCaptionConflict",
   "timeline.captionRangeConflict",
+  "timeline.titleRunsConflict",
+  "title.busy",
   "timeline.graphicRangeConflict",
   "timeline.lookLocked",
   "render.overMaximum",

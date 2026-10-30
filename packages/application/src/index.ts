@@ -1,4 +1,13 @@
+import { NativeTextOverlayService } from "./title-overlays.js";
+export {
+  NativeTextOverlayService,
+  type NativeTextReference,
+  type NativeTextOverlayRequest,
+  type NativeTextInspection,
+} from "./title-overlays.js";
 import { MotionGenerationService } from "./motion-generation.js";
+import { PhotoPresentationService } from "./photo-presentation.js";
+export * from "./photo-presentation.js";
 export * from "./motion-generation.js";
 import { SourceDraftService } from "./source-draft.js";
 export * from "./source-draft.js";
@@ -116,9 +125,6 @@ import {
   FFmpegRenderer,
   audioSourceAssetIds,
   visualSourceAssetIds,
-  createTitleOverlay,
-  resolveTitleFont,
-  titleOverlayCacheKey,
   resolveRenderQuality,
   type RenderQuality,
   type RenderOptions,
@@ -363,6 +369,8 @@ function atomicJsonSync(path: string, value: unknown): void {
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
   readonly graphics: GraphicSceneService;
+  readonly textOverlays: NativeTextOverlayService;
+  readonly photoPresentation: PhotoPresentationService;
   readonly catalog: ProjectCatalog;
   readonly intelligence: MediaIntelligence;
   readonly transcriptEditor: TranscriptEditor;
@@ -486,7 +494,15 @@ export class OpenFilmApplication {
             },
           ),
       });
+      this.textOverlays = new NativeTextOverlayService(
+        this,
+        (id) => new TimelineEditor(this).get(id).revision,
+      );
       this.graphics = new GraphicSceneService(
+        this,
+        (id) => new TimelineEditor(this).get(id).revision,
+      );
+      this.photoPresentation = new PhotoPresentationService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
       );
@@ -1192,6 +1208,8 @@ export class OpenFilmApplication {
     }
     void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
+    this.textOverlays.close();
+    this.photoPresentation.close();
     this.catalog.close();
   }
 
@@ -1966,83 +1984,14 @@ export class OpenFilmApplication {
     return this.renderFilm(compositionId, options, false);
   }
 
-  /** A shared, locally measured title raster; no project/content mutation. */
+  /** Compatibility entry point through the shared, current-owner raster service. */
   async titleOverlay(compositionId: string, clipId: string): Promise<string> {
-    const clip = structuredClone(
-      this.composition(compositionId)
-        .tracks.flatMap((track) => track.clips)
-        .find((item) => item.id === clipId),
-    );
-    if (!clip?.title)
-      throw new ApplicationError(
-        "timeline.notFound",
-        "This clip has no title to preview.",
-        404,
-      );
-    const settings = { ...this.project.settings };
-    const fontPath = this.titleFontPath(clip.titleStyle);
-    const { font } = await resolveTitleFont(
-      clip.titleStyle,
-      fontPath ? { fontPath } : undefined,
-    );
-    const key = titleOverlayCacheKey({
-      text: clip.title,
-      style: clip.titleStyle,
-      frame: settings,
-      fontSha256: font.sha256,
-      postscriptName: font.postscriptName,
+    return this.textOverlays.image({
+      projectId: this.project.id,
+      compositionId,
+      revision: new TimelineEditor(this).get(compositionId).revision,
+      reference: { kind: "title", clipId },
     });
-    const path = await safeProjectCachePath(
-      this.directory,
-      "titles",
-      `${key}.png`,
-    );
-    try {
-      if ((await lstat(path)).isFile()) return path;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    const temporary = await safeProjectCachePath(
-      this.directory,
-      "titles",
-      `${key}-${randomUUID()}.tmp.png`,
-    );
-    try {
-      await createTitleOverlay(
-        clip.title,
-        clip.titleStyle,
-        settings,
-        temporary,
-        fontPath ? { fontPath } : undefined,
-      );
-      await rename(temporary, path);
-    } finally {
-      await rm(temporary, { force: true });
-    }
-    // A typing session must not leave an unbounded number of full-frame PNGs.
-    const directory = dirname(path);
-    const files = await readdir(directory);
-    const entries = await Promise.all(
-      files
-        .filter(
-          (name) =>
-            /^[a-f0-9]{64}\.png$/u.test(name) && name !== basename(path),
-        )
-        .map(async (name) => {
-          const target = join(directory, name);
-          try {
-            return { target, modified: (await lstat(target)).mtimeMs };
-          } catch {
-            return undefined;
-          }
-        }),
-    );
-    const stale = entries
-      .filter((entry): entry is { target: string; modified: number } => !!entry)
-      .sort((a, b) => b.modified - a.modified)
-      .slice(63);
-    await Promise.all(stale.map((entry) => rm(entry.target, { force: true })));
-    return path;
   }
 
   async exportMp4(

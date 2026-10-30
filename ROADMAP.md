@@ -137,6 +137,15 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D5B now has a separately reviewable title-finishing candidate over the existing
+measured raster: independent bilingual typography, bounded shadow/stroke/pills,
+per-run font evidence and Collect bindings, and actual Story/Record caption
+preview using the MP4 caption selection. Legacy pixels and canonical text/time
+remain compatible. Focused synthetic MP4, SRT/VTT, recovery and UI evidence is in
+[validation](docs/validation-title-finishing.md); six actual browser cases pass,
+while independent review and exact-head integration remain pending. The existing nested F05 item is
+still authoritative and no stable release is implied.
+
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
 the existing proxy generator and keeps output on originals. Independent review
@@ -176,6 +185,11 @@ source gates pass:4591tests and291actual browsers. Observed E2E23m24s→11m18s,
 Verify34m39s→12m55s; PR71 merged into PR69 before main so the known Pages fix
 ships with Windows recovery. Final integration/main Verify and Pages outcomes
 are recorded on PR69; see [validation](docs/validation-ci-pages-e2e.md).
+
+The later documentation reorganization `71858cd` introduced three links outside
+the website build root and two research-format failures. Its content and locales
+are retained; repository-source links and focused regressions restore the same
+strict website/format gates. Follow-up evidence is appended to that record.
 
 ## Released 0.4.0 source integration
 

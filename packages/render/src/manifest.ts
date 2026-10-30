@@ -13,8 +13,10 @@ import {
   type FilmLook,
   type ExportProfile,
   type AudioAutomation,
+  type TitleRunId,
 } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "@openfilm/media";
+import type { TitleFontDiagnostic } from "./titles.js";
 import type { RenderSettings } from "./index.js";
 import { resolveRenderQuality, type RenderQualityProfile } from "./quality.js";
 
@@ -25,6 +27,15 @@ export interface RenderLookEvidence {
   preset: FilmLook["preset"];
   strength: number;
   matrix: readonly number[];
+}
+export interface RenderPhotoPresentationEvidence {
+  version: 1;
+  bezierBisectionSteps: 24;
+  fills: {
+    clipId: string;
+    sha256: string;
+    sources: { assetId: string; sha256: string }[];
+  }[];
 }
 export interface RenderLookConfiguration {
   override: FilmLook | null;
@@ -59,6 +70,7 @@ export type RenderFontUsage =
   | readonly ["graphic", sceneId: string, nodeId: string];
 export interface RenderFontBinding extends RenderFontEvidence {
   usage: RenderFontUsage;
+  run?: TitleRunId;
 }
 /** Stable identities for the actual file and face, without local font paths. */
 export function canonicalRenderFonts(
@@ -84,6 +96,8 @@ export function canonicalRenderFontBindings(
       typeof binding.postscriptName !== "string" ||
       typeof binding.sha256 !== "string" ||
       !/^[a-f0-9]{64}$/u.test(binding.sha256) ||
+      (binding.run !== undefined &&
+        !["primary", "secondary"].includes(binding.run)) ||
       !Array.isArray(binding.usage) ||
       binding.usage.length !== 3 ||
       !["title", "caption", "graphic"].includes(binding.usage[0]) ||
@@ -91,9 +105,12 @@ export function canonicalRenderFontBindings(
     )
       throw new Error("Render receipt has an invalid font usage binding.");
     const { family, postscriptName, sha256 } = binding;
-    const key = JSON.stringify(binding.usage);
+    const key = JSON.stringify(
+      binding.run ? [...binding.usage, binding.run] : binding.usage,
+    );
     const value: RenderFontBinding = {
       usage: [binding.usage[0], binding.usage[1], binding.usage[2]],
+      ...(binding.run ? { run: binding.run } : {}),
       family,
       postscriptName,
       sha256,
@@ -187,9 +204,13 @@ export async function writeRenderManifest(
     format: "mp4" | "wav";
     audioPolicy?: { version: 1; sampleRate: 48000; planSha256: string };
     fontBindings?: ReadonlyArray<RenderFontBinding>;
+    fontDiagnostics?: ReadonlyArray<
+      TitleFontDiagnostic & { usage: RenderFontUsage }
+    >;
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
+    photoPresentation?: RenderPhotoPresentationEvidence;
   } = { format: "mp4" },
 ): Promise<void> {
   const json = JSON.stringify(composition);
@@ -210,7 +231,7 @@ export async function writeRenderManifest(
     version: 1,
     renderer: {
       id: "openfilm.ffmpeg",
-      presentationVersion: 1,
+      presentationVersion: outputConfig.photoPresentation ? 2 : 1,
       lookVersion: FILM_LOOK_RECIPE_VERSION,
       ffmpegVersion: ffmpegLines[0],
       ffmpegConfiguration:
@@ -218,6 +239,9 @@ export async function writeRenderManifest(
       ffmpegLibraries: ffmpegLines.filter((line) => /^lib\w+\s+\d/u.test(line)),
     },
     createdAt: new Date().toISOString(),
+    ...(outputConfig.photoPresentation
+      ? { photoPresentation: outputConfig.photoPresentation }
+      : {}),
     composition,
     project: project ?? null,
     compositionSha256: createHash("sha256").update(json).digest("hex"),
@@ -289,6 +313,7 @@ export async function writeRenderManifest(
     sources,
     fonts,
     fontBindings: canonicalRenderFontBindings(outputConfig.fontBindings ?? []),
+    fontDiagnostics: outputConfig.fontDiagnostics ?? [],
     warnings: [...new Set(warnings)],
     outputSha256: await hashFile(output, signal),
     verification: {

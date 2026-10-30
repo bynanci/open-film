@@ -18,6 +18,52 @@ export default {
       resolveCut: "Re-solve selected cut",
       selectCut: "Select a saved cut and retry.",
     },
+    titleFinishing: {
+      previewLimited:
+        "This preview exceeds the simultaneous-caption image limit. Reduce overlapping cues or review the rendered MP4.",
+      bilingual: "Two language runs",
+      bilingualHint:
+        "Keep both languages in one title. Each row has its own size, tracking and local font.",
+      primary: "Primary language",
+      secondary: "Secondary language",
+      typography: "{run} typography",
+      resetRun: "Reset {run} typography",
+      fontFamily: "Local font family",
+      fontSize: "Size (composition pixels)",
+      fontWeight: "Weight",
+      lineHeight: "Line height",
+      tracking: "Tracking (pixels)",
+      gap: "Language gap (pixels)",
+      finishing: "Title finishing",
+      finishingHint:
+        "MP4 burns in the measured title. SRT/VTT retain both texts and timing; recreate typography and effects in the NLE.",
+      shadow: "Shadow",
+      stroke: "Stroke",
+      pill: "Per-line pills",
+      color: "Color",
+      opacity: "Opacity (0–1)",
+      offsetX: "Horizontal offset (pixels)",
+      offsetY: "Vertical offset (pixels)",
+      blur: "Shadow blur (pixels)",
+      width: "Stroke width (pixels)",
+      paddingX: "Horizontal padding (pixels)",
+      paddingY: "Vertical padding (pixels)",
+      radius: "Corner radius (pixels)",
+      invalidRuns:
+        "Enter both languages and values within the supported limits before saving.",
+      invalidFinishing:
+        "Use finite values within the displayed finishing limits.",
+      previewUnavailable:
+        "Text preview unavailable. Check font coverage, text size and safe margins.",
+      fontFallback:
+        "An installed local font fallback is being used. Review the text before export.",
+      retry: "Retry text preview",
+      fontUsed: "{run}: {family}, weight {weight}",
+      runField: "{run}: {field}",
+      previewTrack: "Preview and MP4 captions",
+      firstTrack: "Automatic (first caption track)",
+      noCaptions: "No captions",
+    },
     picture: {
       toggle: "Adjust picture",
       group: "Picture transform",
@@ -453,6 +499,32 @@ export default {
       },
     },
     presentation: {
+      setFocus: "Set focus",
+      finishFocus: "Finish focus preview",
+      focusGroup: "Photo focus",
+      focusPoint: "Move photo focus",
+      focusHint:
+        "Click the photo or drag the focus. Arrows move it; Shift moves farther. Release to save, or Escape to cancel.",
+      diptychFocusHint:
+        "Two-photo comparison preserves both photos. Choose a single photo layout to adjust its focus crop.",
+      easing: "Movement pace",
+      linear: "Even pace",
+      easeInOut: "Gentle start and finish",
+      customCurve: "Custom curve",
+      curveX1: "First handle X",
+      curveY1: "First handle Y",
+      curveX2: "Second handle X",
+      curveY2: "Second handle Y",
+      applyEasing: "Apply pace",
+      ambientFill: "Soft photo background",
+      ambientBlur: "Background blur",
+      ambientDim: "Background dimming",
+      applyFill: "Apply background",
+      finishingInvalid:
+        "Keep both curve handles in order between 0 and 1, and check the background values.",
+      fillFailed:
+        "The photo background could not be updated. Wait for the edit to save, then retry.",
+      retryFill: "Retry photo background",
       heading: "Photo direction",
       description:
         "Give this memory its own framing and pace. Changes remain editable.",

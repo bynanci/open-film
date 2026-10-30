@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openfilm.dev/schemas/openfilm-project-1.2.0.schema.json",
-  "title": "OpenFilm Project 1.1.0",
+  "title": "OpenFilm Project 1.0.0",
   "description": "Durations are seconds. Assets are stored in the catalog; originals are referenced by URI. Semantic bounds and references are also checked by validateProject.",
   "type": "object",
   "properties": {
@@ -532,6 +532,12 @@
     "clip": {
       "type": "object",
       "properties": {
+        "audioTiming": {
+          "$ref": "#/$defs/audioTiming"
+        },
+        "userOverrides": {
+          "$ref": "#/$defs/clipUserOverrides"
+        },
         "id": {
           "type": "string",
           "minLength": 1,
@@ -598,12 +604,6 @@
         },
         "audioAutomation": {
           "$ref": "#/$defs/audioAutomation"
-        },
-        "userOverrides": {
-          "$ref": "#/$defs/clipUserOverrides"
-        },
-        "audioTiming": {
-          "$ref": "#/$defs/audioTiming"
         }
       },
       "required": ["id", "assetId", "timelineStart", "timelineDuration"]
@@ -1067,6 +1067,9 @@
     "graphicScene": {
       "type": "object",
       "properties": {
+        "userOverrides": {
+          "$ref": "#/$defs/sceneUserOverrides"
+        },
         "version": {
           "const": 1
         },
@@ -1097,9 +1100,6 @@
         },
         "photoDepth": {
           "$ref": "#/$defs/photoDepthRecipe"
-        },
-        "userOverrides": {
-          "$ref": "#/$defs/sceneUserOverrides"
         }
       },
       "required": [

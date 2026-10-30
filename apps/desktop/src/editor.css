@@ -1,4 +1,77 @@
 /* Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE. */
+.native-title-controls {
+  --title-control-gap: var(--of-control-gap);
+  display: grid;
+  gap: var(--title-control-gap);
+  min-width: 0;
+  margin-block: var(--of-space-3);
+  padding: 0;
+  border: 0;
+}
+.native-title-controls fieldset {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.native-title-controls summary,
+.native-title-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--title-control-gap);
+  min-height: 44px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.native-title-run {
+  display: grid;
+  min-width: 0;
+  gap: var(--of-space-2);
+  padding-block: var(--of-space-2);
+  border-top: 1px solid var(--frame-line);
+}
+.native-title-effect-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--of-space-3);
+}
+.native-title-controls input:not([type="checkbox"]),
+.native-title-controls button,
+.native-title-controls textarea {
+  min-height: 44px;
+  width: 100%;
+}
+.native-caption-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.native-caption-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.native-text-status {
+  position: absolute;
+  top: var(--of-space-2);
+  left: var(--of-space-2);
+  right: var(--of-space-2);
+  margin: 0;
+  padding: var(--of-space-2);
+  color: var(--of-text-primary);
+  background: var(--of-surface-1);
+  font-size: var(--of-font-small);
+  pointer-events: auto;
+  overflow-wrap: anywhere;
+}
+.native-font-evidence {
+  color: var(--of-text-secondary);
+  font-size: var(--of-font-small);
+  overflow-wrap: anywhere;
+}
+
 .film-workspace.editing-room {
   min-height: 100vh;
   color: var(--ink);
@@ -168,7 +241,7 @@
 }
 
 .cut-desk-record:has(.sequence-waveform) .record-monitor {
-  min-height: 6rem;
+  min-height: 12rem;
 }
 
 .cut-desk-monitor-actions {
@@ -1029,12 +1102,27 @@ button.editor-beat-heading:hover {
   transform-origin: center;
 }
 
-.editor-source-screen .photo-presentation-layers > img {
+.editor-source-screen .photo-presentation-layers > img,
+.editor-source-screen .photo-presentation-raw > img {
   position: absolute;
   max-width: none;
   max-height: none;
   object-fit: fill;
   border: 0;
+}
+
+.photo-easing-curve {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: var(--of-space-2) 0;
+  color: var(--of-accent);
+}
+
+.photo-easing-curve path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
 .editor-source-screen .photo-presentation-title,
