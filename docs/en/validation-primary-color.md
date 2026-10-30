@@ -211,3 +211,67 @@ browser receipt retains its original source identity; this checkpoint launched
 no browser server. First fresh whole-branch C review and complete exact-head
 hosted gates remain coordinator-owned. This entry does not declare merge or
 release readiness.
+
+## 2026-10-30 — reviewed Apply isolation and private evidence expiry
+
+This correction follows the first complete C review of `dc3f7ae`. Its confirmed
+batch counterexample used actual FFmpeg evidence: validation ran against the
+saved document before a sibling command changed the measured context. Reviewed
+Apply now requires a single-command editor transaction, before mutation/history
+or persistence. Ordinary manual batches, later independent source replacement,
+Undo/Redo and exact acknowledged request replay retain their existing behavior.
+The separate inspector scope-initialization policy was not changed.
+
+Ten real-service regressions first failed for target/reference replacement,
+target/reference trim and reference correction, each in both command orders.
+They now reject atomically and preserve document, persisted bytes, source hashes
+and prior Undo/Redo history. Singleton reviewed Apply/retry after report discard,
+later replacement and an ordinary manual batch remain positive controls.
+
+Private reports now own an unreferenced expiry timer. At the original deadline,
+cleanup removes both the cached report and its private directory without another
+measurement. Expired access retries cleanup; discard and disposal clear timers.
+Deletion uses bounded filesystem retries. A failed deletion is reported and
+retains bounded cleanup ownership while permanently retiring the report, even
+if the wall clock moves backward. Disposal attempts every owned cleanup, clears
+all timers and reports failures; project close reports asynchronous failures.
+Controlled-clock tests use the real service and FFmpeg, with only clock controls
+and a narrow deletion-failure injection. They first exposed the missing expiry
+cleanup and clock-rollback reactivation, then passed without changing deadlines.
+
+Focused execution passes 13 files / 119 tests across primary core/solver,
+application editor/review/history/locks, HTTP/CLI, UI and real render behavior.
+The final service plus actual combined-photo selection passes 2 files / 25 tests,
+with zero failed/pending/todo cases in the captured JSON report. Its three
+synthetic MP4 cases retain the existing contain/diptych/moving-diptych checks:
+verified raw ambient/foreground receive primary then local Film Look once,
+with ungraded transformed separators and unchanged pixel limits/source hashes.
+The service/media JSON report and synthetic artifacts are retained under
+`/tmp/openfilm-finishing-integration/C-final-fix/`; historical receipts keep
+their original identities.
+
+TypeScript/Vue, scoped ESLint, formatting, 2,889 localization keys and 133 English
+documentation mirrors pass. This correction launches no browser server; prior
+browser evidence remains attached to its original source checkpoint. Fresh
+scoped review and complete hosted gates remain coordinator-owned and pending.
+No full suite, native benchmark, hosted success or merge readiness is claimed.
+
+## 2026-10-30 — reviewed D8 CI recovery carried into C
+
+The correction stack also consumes reviewed D8 `cb9baf9`. Its real Story browser
+fixture checks read-only effective graph output, absent persisted graph and an
+unchanged project on Cancel, then requires explicit Connect to persist an edge.
+The TimelineClip host retains both real local-preset and source-color module
+bindings. Automatic merging initially duplicated the preset import/dependency
+key, which types and the host loader rejected; the redundant declarations were
+removed without changing any assertion or product code. Failed logs remain in
+the private integration record.
+
+The corrected final focused selection passes all 14 files / 174 tests, including
+all 55 existing TimelineClip host cases and the 22 real primary-review service
+cases. The captured JSON requires every assertion passed with no skipped/todo
+cases. Fresh combined contain/diptych/moving-diptych MP4 evidence and current
+source/artifact hashes belong to the separate final checkpoint under
+`/tmp/openfilm-finishing-integration/C-final-fix-stack-green/`; earlier failed
+and successful observations retain their own directories. This local check does
+not replace the pending scoped review or hosted gates.

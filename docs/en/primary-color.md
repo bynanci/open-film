@@ -58,6 +58,18 @@ inside the serialized editor. Accepted numbers survive Undo/Redo, autosave,
 Named Versions, Collect and reopen. A private proposal cannot resume after
 reopen. A fresh measurement is needed for fresh evidence.
 
+A reviewed Apply is a single-command editor transaction. Requests combining its
+private review ID with replacement, trim or other sibling commands are rejected
+before any edit is saved. Ordinary manual edit batches and later independent
+replacement remain available; exact acknowledged request retries remain safe.
+
+At the original expiry deadline, an owned timer retires the report and removes
+its private comparison directory without waiting for another measurement. Discard
+and project close cancel owned timers. Expired access also attempts cleanup. A
+filesystem deletion failure is reported, leaves the evidence permanently
+unusable, and retains bounded cleanup ownership for retry through access,
+discard or disposal; it does not extend the report deadline.
+
 ## Portable numerical contract
 
 The optional recipe extends schema `1.0.0` Composition/Clip data and needs no

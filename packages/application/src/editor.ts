@@ -1556,6 +1556,18 @@ export class TimelineEditor {
           acknowledgedRevision: receipt.revision,
         };
       }
+      if (
+        parsed.commands.length !== 1 &&
+        parsed.commands.some(
+          (item) =>
+            item.type === "primary-color" &&
+            item.scope === "clip" &&
+            item.primaryColorReviewId,
+        )
+      )
+        throw new TimelineEditorError(
+          "A reviewed primary color Apply requires a single-command transaction.",
+        );
       for (const item of parsed.commands) {
         if (
           item.type === "primary-color" &&

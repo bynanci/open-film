@@ -1,5 +1,4 @@
 import { sourceColorStyle } from "../../apps/desktop/src/source-color";
-import * as localPresets from "../../apps/desktop/src/local-presets";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -369,7 +368,6 @@ async function mountTimeline(
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
     "../source-color": { sourceColorStyle },
-    "../local-presets": localPresets,
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
