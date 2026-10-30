@@ -1405,3 +1405,7 @@ trust and workstation checkboxes remain open. See the [contract](docs/native-ins
       browser journeys to explicit Pin release; all eight affected journeys retain
       their exact target/source/history/render assertions and pass at7d562ea.
       Final correction review and full hosted gates remain open.
+
+### 2026-10-30 Windows export parity follow-up
+
+- [ ] Diagnose and repair the strict Windows PNG/MP4 export parity observations. Main Windows run 41113344781 fails the assignment-swap fixture, while Verify and three-platform Render QA pass. Preserve strict assertions and synthetic-only exact-source evidence; a green rerun alone is not a causal fix. See [validation](docs/validation-export-profiles.md#2026-10-30--current-windows-parity-failure-remains-open).

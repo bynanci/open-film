@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
   createExportProfile,
@@ -893,6 +893,53 @@ describe("professional profile exports", () => {
             "utf8",
           ),
         );
+      const qaDirectory = process.env.OPENFILM_FONT_PIXEL_QA_DIR;
+      const scope = qaDirectory
+        ? syntheticFontPixelScope(root, await realpath(root))
+        : undefined;
+      const files: Record<string, Buffer> = {};
+      const renders: Array<Record<string, unknown>> = [];
+      const actualRunProcess = mediaModule.runProcess;
+      const sourceBefore = qaDirectory
+        ? await Promise.all(
+            app.catalog.listAssets({ limit: 100 }).map(async (asset) => ({
+              id: asset.id,
+              sha256: await hashFile(fileURLToPath(asset.uri)),
+            })),
+          )
+        : undefined;
+      const collector = qaDirectory
+        ? vi
+            .spyOn(mediaModule, "runProcess")
+            .mockImplementation(async (command, args, options) => {
+              const result = await actualRunProcess(command, args, options);
+              if (
+                command === "ffmpeg" &&
+                args.includes("-filter_complex") &&
+                args.includes("libx264")
+              ) {
+                const output = scope!.output(args.at(-1)!);
+                const index = renders.length;
+                const inputs: Array<{ name: string; sha256: string }> = [];
+                for (const name of (await readdir(dirname(output))).sort()) {
+                  if (!/^[a-z0-9-]+\.png$/u.test(name)) continue;
+                  const path = join(dirname(output), name);
+                  const details = await lstat(path);
+                  if (!details.isFile() || details.isSymbolicLink()) continue;
+                  files[`render-${index}-${name}`] = await readFile(path);
+                  inputs.push({ name, sha256: await hashFile(path) });
+                }
+                files[`render-${index}.mp4`] = await readFile(output);
+                files[`render-${index}.rgb`] = await decodedRgbFrame(output, 3);
+                renders.push({
+                  args: args.map((arg) => scope!.redact(arg)),
+                  inputs,
+                  probe: await fontPixelProbe(output),
+                });
+              }
+              return result;
+            })
+        : undefined;
       try {
         const preview = await app.previewExportFrame(input);
         const reviewed = await decodedRgb(
@@ -942,14 +989,55 @@ describe("professional profile exports", () => {
         await copyFile(sans, fontA);
         await copyFile(serif, fontB);
         const delivered = await deliver();
-        expect(
-          await decodedRgb(delivered.path, format === "mp4" ? 0.25 : undefined),
-        ).toEqual(reviewed);
+        const deliveredRgb = await decodedRgb(
+          delivered.path,
+          format === "mp4" ? 0.25 : undefined,
+        );
+        if (qaDirectory) {
+          const sourceAfter = await Promise.all(
+            app.catalog.listAssets({ limit: 100 }).map(async (asset) => ({
+              id: asset.id,
+              sha256: await hashFile(fileURLToPath(asset.uri)),
+            })),
+          );
+          await retainSyntheticFontPixelEvidence(qaDirectory, {
+            evidence: {
+              fixture: "font-assignment-swap",
+              syntheticOnly: true,
+              format,
+              sourceCandidate: process.env.OPENFILM_SOURCE_CANDIDATE ?? null,
+              platform: process.platform,
+              renders,
+              sourceBefore,
+              sourceAfter,
+              fonts: originalReceipt.fonts,
+              fontBindings: originalReceipt.fontBindings,
+              comparisonPassed: reviewed.equals(deliveredRgb),
+              difference: rgbPixelDifference(
+                reviewed,
+                deliveredRgb,
+                profile.width,
+              ),
+            },
+            files: {
+              ...files,
+              "reviewed.rgb": reviewed,
+              "delivered.rgb": deliveredRgb,
+              "preview.png": await readFile(
+                await app.exportProfiles.previewPath(preview.token),
+              ),
+              [`delivered.${format}`]: await readFile(delivered.path),
+            },
+          });
+          console.info("Retained synthetic font-assignment pixel observation.");
+        }
+        expect(deliveredRgb).toEqual(reviewed);
         if (format === "png")
           await expect(
             app.exportStill({ ...request, cropPreviewToken: changed.token }),
           ).rejects.toThrow(/requestId.*different/u);
       } finally {
+        collector?.mockRestore();
         spy.mockRestore();
       }
     },
