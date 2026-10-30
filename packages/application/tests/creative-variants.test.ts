@@ -122,6 +122,7 @@ describe("Creative Variants Application Service", () => {
           clips: [
             {
               id: "clip-1",
+              beatId: "beat-1",
               assetId: "asset-1",
               timelineStart: 0,
               timelineDuration: 5,
@@ -131,6 +132,7 @@ describe("Creative Variants Application Service", () => {
             },
             {
               id: "clip-2",
+              beatId: "beat-2",
               assetId: "asset-2",
               timelineStart: 5,
               timelineDuration: 5,
@@ -140,6 +142,7 @@ describe("Creative Variants Application Service", () => {
             },
             {
               id: "clip-3",
+              beatId: "beat-3",
               assetId: "asset-3",
               timelineStart: 10,
               timelineDuration: 5,
@@ -166,6 +169,127 @@ describe("Creative Variants Application Service", () => {
     await rm(projectDir, { recursive: true, force: true }).catch(
       () => undefined,
     );
+  });
+
+  it("pinned occurrences retain exact payload and detached graph in duration variants", async () => {
+    const baseline = app.project.timelines[0]!;
+    const pinned = baseline.tracks[0]!.clips[1]!;
+    pinned.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    };
+    baseline.graphicScenes = [
+      {
+        version: 1,
+        id: "graphic",
+        name: "Graphic",
+        start: 0,
+        duration: 1,
+        zIndex: 0,
+        nodes: [],
+      },
+    ];
+    app.project.schemaVersion = "1.1.0";
+    await app.save();
+    const snapshot = structuredClone(baseline);
+    const variant = await app.creativeVariants.createVariant({
+      name: "Pinned version",
+      intent: "Shorter",
+      scope: { type: "film" },
+      modifications: { durationMultiplier: 0.8 },
+    });
+    const derived = app.project.timelines.find(
+      (c) => c.id === variant.derivedCompositionId,
+    )!;
+    const mapping = variant.provenanceMapping.clipMappings.find(
+      (m) => m.baselineClipId === pinned.id,
+    )!;
+    const copy = derived.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === mapping.variantClipId)!;
+    expect(copy.timelineStart).toBe(pinned.timelineStart);
+    expect(copy.timelineDuration).toBe(pinned.timelineDuration);
+    expect(copy.sourceIn).toBe(pinned.sourceIn);
+    expect(copy.sourceOut).toBe(pinned.sourceOut);
+    expect(copy.userOverrides).toEqual(pinned.userOverrides);
+    expect(copy.userOverrides).not.toBe(pinned.userOverrides);
+    expect(derived.graphicScenes).not.toBe(baseline.graphicScenes);
+    copy.userOverrides!.isUserPinned = false;
+    derived.graphicScenes![0]!.name = "Derived only";
+    expect(baseline).toEqual(snapshot);
+  });
+  it("section membership uses occurrence beat identity when one source repeats", async () => {
+    const baseline = app.project.timelines[0]!;
+    const first = baseline.tracks[0]!.clips[0]!,
+      second = baseline.tracks[0]!.clips[1]!;
+    second.assetId = first.assetId;
+    app.project.stories[0]!.beats[1]!.selectedAssetIds = [first.assetId];
+    await app.save();
+    const variant = await app.creativeVariants.createVariant({
+      name: "Repeated source",
+      intent: "Section",
+      scope: { type: "section", targetBeatId: "beat-2" },
+      modifications: { targetDuration: 2 },
+    });
+    const derived = app.project.timelines.find(
+      (c) => c.id === variant.derivedCompositionId,
+    )!;
+    const map = new Map(
+      variant.provenanceMapping.clipMappings.map((m) => [
+        m.baselineClipId,
+        m.variantClipId,
+      ]),
+    );
+    expect(
+      derived.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === map.get(first.id))!.timelineDuration,
+    ).toBe(first.timelineDuration);
+    expect(
+      derived.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === map.get(second.id))!.timelineDuration,
+    ).toBe(2);
+  });
+
+  it("missing or ambiguous section ownership fails without inferring repeated assets", async () => {
+    const comp = app.project.timelines[0]!;
+    for (const clip of comp.tracks[0]!.clips) delete clip.beatId;
+    comp.tracks[0]!.clips[1]!.assetId = comp.tracks[0]!.clips[0]!.assetId;
+    await app.save();
+    const before = structuredClone(app.project);
+    await expect(
+      app.creativeVariants.createVariant({
+        name: "Ambiguous",
+        intent: "Section",
+        scope: { type: "section", targetBeatId: "beat-2" },
+        modifications: { targetDuration: 2 },
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict" });
+    expect(app.project).toEqual(before);
+  });
+  it("impossible pinned replacement fails before creating any derived cut", async () => {
+    const clip = app.project.timelines[0]!.tracks[0]!.clips[1]!;
+    clip.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    };
+    app.project.schemaVersion = "1.1.0";
+    await app.save();
+    const before = structuredClone(app.project);
+    await expect(
+      app.creativeVariants.createVariant({
+        name: "Impossible",
+        intent: "Replace",
+        scope: { type: "section", targetBeatId: "beat-2" },
+        modifications: {
+          replaceAssetIds: [{ fromAssetId: "asset-2", toAssetId: "asset-4" }],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict" });
+    expect(app.project).toEqual(before);
   });
 
   it("previews variant impact and proves section isolation before creation", () => {
@@ -378,6 +502,7 @@ describe("Creative Variants Application Service", () => {
 
     // Create a pipeline run under the adopted state
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: variant.derivedStoryId,
       assetIds: ["asset-1", "asset-2"],
     });

@@ -107,6 +107,7 @@ export interface CreativeVariantDiff {
     beatsChanged: number;
     clipsTotal: number;
     clipsChanged: number;
+    pinChangedCount?: number;
   };
 }
 
@@ -333,6 +334,7 @@ export function compareCreativeVariants(
 
   const clipDiffs: CreativeVariantClipDiff[] = [];
   let clipsChanged = 0;
+  let pinChangedCount = 0;
 
   for (const baseClipId of allBaselineClipIds) {
     const clipAId = clipMapA.get(baseClipId) ?? baseClipId;
@@ -364,6 +366,11 @@ export function compareCreativeVariants(
       clipA.locked !== clipB.locked;
 
     if (changed) clipsChanged++;
+    if (
+      JSON.stringify(clipA?.userOverrides) !==
+      JSON.stringify(clipB?.userOverrides)
+    )
+      pinChangedCount++;
 
     clipDiffs.push({
       baselineClipId: clipA?.id || "",
@@ -377,6 +384,17 @@ export function compareCreativeVariants(
     });
   }
 
+  const scenesA = new Map(
+    (compA.graphicScenes ?? []).map((s) => [s.id, s.userOverrides]),
+  );
+  const scenesB = new Map(
+    (compB.graphicScenes ?? []).map((s) => [s.id, s.userOverrides]),
+  );
+  pinChangedCount += [
+    ...new Set([...scenesA.keys(), ...scenesB.keys()]),
+  ].filter(
+    (id) => JSON.stringify(scenesA.get(id)) !== JSON.stringify(scenesB.get(id)),
+  ).length;
   return {
     baselineVariantId: variantA.id,
     targetVariantId: variantB.id,
@@ -390,6 +408,7 @@ export function compareCreativeVariants(
       beatsChanged,
       clipsTotal: clipDiffs.length,
       clipsChanged,
+      pinChangedCount,
     },
   };
 }
