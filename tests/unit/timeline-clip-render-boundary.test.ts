@@ -7,6 +7,8 @@ import * as core from "@openfilm/core";
 import * as solver from "@openfilm/solver";
 import * as analysis from "@openfilm/analysis";
 import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
+import * as sequenceWaveformCache from "../../apps/desktop/src/sequenceWaveformCache";
+import * as sequenceWaveformPreparation from "../../apps/desktop/src/sequenceWaveformPreparation";
 import { waveformPath } from "../../apps/desktop/src/waveform";
 import {
   ApiError,
@@ -302,6 +304,16 @@ async function mountTimeline(
     edit: vi.fn(async () => saved),
     history: vi.fn(async () => saved),
     intelligence: vi.fn(async () => sourceData),
+    sourceWaveforms: vi.fn(async (projectId: string, assetIds: string[]) => ({
+      projectId,
+      entries: assetIds.map((assetId) => ({
+        assetId,
+        status: "not-cached" as const,
+        sourceHash:
+          saved.assets.find((asset) => asset.id === assetId)?.contentHash ??
+          "0".repeat(64),
+      })),
+    })),
     intelligenceProviders: vi.fn(async () => ({
       transcription: { available: true, providerId: "offline-fixture" },
     })),
@@ -358,6 +370,8 @@ async function mountTimeline(
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
     "../sourceMarks": sourceMarks,
+    "../sequenceWaveformCache": sequenceWaveformCache,
+    "../sequenceWaveformPreparation": sequenceWaveformPreparation,
     "../waveform": { waveformPath },
     "../api": io,
     "../photo-depth-controls": { canCreatePhotoDepth },

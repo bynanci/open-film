@@ -31,6 +31,7 @@ import { sourceUrl, titlePreviewUrl, type SourceStatus } from "../api";
 import { useRecordTransport } from "../composables/useRecordTransport";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
+import NativeCaptionPreview from "./NativeCaptionPreview.vue";
 import GraphicScenePreview from "./GraphicScenePreview.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 
@@ -45,6 +46,7 @@ const props = defineProps<{
   active: boolean;
   /** Diagnostic preview only. Never enters media ownership or saved state. */
   bypassLook?: boolean;
+  captionTrackId?: string | null;
 }>();
 type IssueCode =
   | "record.not-ready"
@@ -799,6 +801,19 @@ defineExpose({
           :playing="forward"
           :scenes="composition.graphicScenes"
         />
+        <NativeCaptionPreview
+          v-if="composition.captionTracks?.length"
+          :composition="composition"
+          :composition-id="composition.id"
+          :project-id="projectId"
+          :revision="revision"
+          :frame="transport.frame.value"
+          :frame-rate="timebaseRate(timebase)"
+          :caption-track-id="captionTrackId"
+          :frame-width="settings.width"
+          :frame-height="settings.height"
+          :active="active"
+        />
       </div>
     </div>
     <audio
@@ -851,5 +866,8 @@ defineExpose({
 }
 .record-canvas :deep(.graphic-preview-root) {
   z-index: 100000001;
+}
+.record-canvas :deep(.native-caption-layer) {
+  z-index: 100000002;
 }
 </style>

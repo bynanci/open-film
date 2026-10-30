@@ -75,6 +75,7 @@ onBeforeUnmount(pause);
 
 <template>
   <img
+    :key="src"
     crossorigin="anonymous"
     :src="src"
     :alt="clip.title"

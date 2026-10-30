@@ -6,7 +6,9 @@ import type {
   PhotoMotionTransform,
   PhotoProtectedRegion,
   MediaAsset,
+  PhotoEasing,
 } from "./models.js";
+import { evaluatePhotoEasing } from "./photo-easing.js";
 import {
   validateAudioAutomation,
   validatePhotoLayout,
@@ -26,9 +28,32 @@ export interface PhotoPlan {
   motion: {
     from: PhotoMotionTransform;
     to: PhotoMotionTransform;
-    easing: "linear" | "ease-in-out";
+    easing: PhotoEasing;
   };
   warnings: string[];
+  ambient?: PhotoAmbientPlan;
+}
+export interface PhotoAmbientLayer {
+  assetId: string;
+  cell: { x: number; y: number; width: number; height: number };
+  cover: PhotoLayer;
+}
+export interface PhotoAmbientPlan {
+  version: 1;
+  layers: PhotoAmbientLayer[];
+  sigma: number;
+  dim: number;
+}
+/** Layout separators remain black independently of photographic color lifts. */
+export function photoAmbientGaps(
+  plan: PhotoAmbientPlan | undefined,
+): PhotoAmbientLayer["cell"][] {
+  if (!plan || plan.layers.length < 2) return [];
+  const left = plan.layers[0]!.cell,
+    right = plan.layers[1]!.cell;
+  const x = left.x + left.width,
+    width = right.x - x;
+  return width > 0 ? [{ x, y: left.y, width, height: left.height }] : [];
 }
 type PresentationClip = Pick<
   Clip,
@@ -212,6 +237,7 @@ export function resolvePhotoPlan(
   const warnings: string[] = [];
   const whole = { assetId: clip.assetId, x: 0, y: 0, ...frame };
   const layers: PhotoLayer[] = [];
+  const cells: PhotoLayer[] = [];
   const regions: (PhotoProtectedRegion | undefined)[] = [];
   if (layout?.preset === "diptych") {
     const gap = layout.gap ?? 32;
@@ -221,6 +247,10 @@ export function resolvePhotoPlan(
       );
     const width = (frame.width - gap) / 2;
     const secondary = layout.secondary!;
+    cells.push(
+      { ...whole, width },
+      { ...whole, assetId: secondary.assetId, x: width + gap, width },
+    );
     layers.push(
       placePhoto(
         clip.assetId,
@@ -241,6 +271,7 @@ export function resolvePhotoPlan(
     );
     regions.push(layout.protectedRegion, secondary.protectedRegion);
   } else {
+    cells.push(whole);
     layers.push(
       placePhoto(
         clip.assetId,
@@ -374,7 +405,44 @@ export function resolvePhotoPlan(
     );
     if (outside) warnings.push("PHOTO_STATIC_TRANSFORM_PROTECTED_REGION");
   }
-  return { layers, motion, warnings };
+  const ambient: PhotoAmbientPlan | undefined =
+    layout?.version === 2
+      ? {
+          version: 1,
+          sigma: layout.fill.blurSigma * Math.min(frame.width, frame.height),
+          dim: layout.fill.dim,
+          layers: cells.map((cell) => {
+            if (
+              !Number.isInteger(frame.width) ||
+              !Number.isInteger(frame.height)
+            )
+              throw new Error(
+                "Photo ambient frame requires integer pixel dimensions",
+              );
+            const x = Math.round(cell.x),
+              y = Math.round(cell.y);
+            const width = Math.round(cell.x + cell.width) - x;
+            const height = Math.round(cell.y + cell.height) - y;
+            if (width < 1 || height < 1)
+              throw new Error(
+                "Photo ambient cells require at least one output pixel",
+              );
+            const bounds = { x, y, width, height };
+            return {
+              assetId: cell.assetId,
+              cell: bounds,
+              cover: placePhoto(
+                cell.assetId,
+                dimensions(sources[cell.assetId], `Photo ${cell.assetId}`),
+                { assetId: cell.assetId, ...bounds },
+                { preset: "hero" },
+                [],
+              ),
+            };
+          }),
+        }
+      : undefined;
+  return { layers, motion, warnings, ...(ambient ? { ambient } : {}) };
 }
 
 /** Time is local timeline seconds; source trim/speed never changes the motion clock. */
@@ -390,10 +458,7 @@ export function evaluateClipAtTime(
     throw new Error("Photo duration must be positive and finite");
   const plan = resolvePhotoPlan(clip, sources, frame);
   const progress = clamp(localTime / clip.timelineDuration, 0, 1);
-  const eased =
-    plan.motion.easing === "ease-in-out"
-      ? progress * progress * (3 - 2 * progress)
-      : progress;
+  const eased = evaluatePhotoEasing(plan.motion.easing, progress);
   const interpolate = (key: keyof PhotoMotionTransform) =>
     plan.motion.from[key] +
     (plan.motion.to[key] - plan.motion.from[key]) * eased;

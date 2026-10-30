@@ -4932,6 +4932,7 @@ onUnmounted(() => {
             ref="timelineEditor"
             :project-id="project.id"
             :composition-id="activeComposition.id"
+            :caption-track-id="outputCaptionTrackId"
             :project-settings="project.settings"
             :active="tab === 'edit'"
             :expert-mode="expertMode"
@@ -4954,6 +4955,7 @@ onUnmounted(() => {
             @import-assets="importOpen = true"
             @activity="refreshJobs"
             @recover-analysis="recoverAnalysis"
+            @caption-track="changeOutputCaptionTrack"
             @timebase-change="changeCutDeskTimebase"
           />
         </template>

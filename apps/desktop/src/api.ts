@@ -11,6 +11,8 @@ import type {
 import type { PresetApplyInput, PresetAcceptInput } from "@openfilm/core";
 import type {
   MotionRequest,
+  NativeTextOverlayRequest,
+  NativeTextInspection,
   MotionGenerationReceipt,
   AudioGenerationReceipt,
 } from "@openfilm/application";
@@ -540,6 +542,34 @@ export const titlePreviewUrl = (
   projectId?: string,
 ): string =>
   `${prefix}/compositions/${encodeURIComponent(compositionId)}/title/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ revision, ...(projectId ? { projectId } : {}) })}`;
+function nativeTextPath(
+  input: NativeTextOverlayRequest,
+  inspection = false,
+): string {
+  const ref = input.reference;
+  const target =
+    ref.kind === "title"
+      ? `title/${encodeURIComponent(ref.clipId)}`
+      : `caption/${encodeURIComponent(ref.trackId)}/${encodeURIComponent(ref.cueId)}`;
+  return `/compositions/${encodeURIComponent(input.compositionId)}/${target}${inspection ? "/inspection" : ".png"}?${new URLSearchParams({ projectId: input.projectId, revision: input.revision })}`;
+}
+export const nativeTextOverlay = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<Blob> =>
+  fetchDownloadBlob(`${prefix}${nativeTextPath(input)}`, signal);
+export const nativeTextInspection = (
+  input: NativeTextOverlayRequest,
+  signal: AbortSignal,
+): Promise<NativeTextInspection> =>
+  request<NativeTextInspection>(nativeTextPath(input, true), { signal });
+export const photoFillPreviewUrl = (
+  compositionId: string,
+  clipId: string,
+  revision: string,
+  projectId: string,
+): string =>
+  `${prefix}/compositions/${encodeURIComponent(compositionId)}/photo-fill/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ projectId, revision })}`;
 export const captionDownloadUrl = (
   id: string,
   projectId: string,
@@ -964,12 +994,22 @@ export const api = {
     ),
   intelligenceProviders: (signal?: AbortSignal) =>
     request<IntelligenceProviders>("/intelligence/providers", { signal }),
+  sourceWaveforms: (
+    projectId: string,
+    assetIds: string[],
+    signal?: AbortSignal,
+  ) =>
+    post<{
+      projectId: string;
+      entries: import("@openfilm/core").SourceWaveformEvidence[];
+    }>("/intelligence/waveforms", { projectId, assetIds }, signal),
   analyzeIntelligence: (
     assetId: string,
     body: {
       operation: "transcribe" | "waveform" | "scenes";
       language?: "auto" | "zh" | "en" | "ja";
       execution?: "auto" | "cpu" | "gpu";
+      projectId?: string;
     },
   ) =>
     post<{ job: Job }>(

@@ -40,6 +40,7 @@ import {
   graphicSceneAssetIds,
   migrateProject,
   resolveTitleStyle,
+  resolveTitleRuns,
   validateProject,
   type MediaAsset,
   type OpenFilmProject,
@@ -641,9 +642,27 @@ function collectTitleStyles(
     for (const track of composition.tracks)
       for (const clip of track.clips)
         if (clip.title)
-          styles.push(clip.titleStyle ?? { version: 1, role: "subtitle" });
-    for (const track of composition.captionTracks ?? [])
+          styles.push(
+            ...resolveTitleRuns(
+              clip.title,
+              clip.titleRuns,
+              clip.titleStyle,
+              project.settings,
+            ).map((run) => run.style),
+          );
+    for (const track of composition.captionTracks ?? []) {
       styles.push(track.style ?? { version: 1, role: "subtitle" });
+      for (const cue of track.cues)
+        if (cue.textRuns)
+          styles.push(
+            ...resolveTitleRuns(
+              cue.text,
+              cue.textRuns,
+              track.style,
+              project.settings,
+            ).map((run) => run.style),
+          );
+    }
     for (const scene of composition.graphicScenes ?? []) addNodes(scene.nodes);
   }
   const seen = new Set<string>();

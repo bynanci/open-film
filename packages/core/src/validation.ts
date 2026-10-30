@@ -12,6 +12,7 @@ import {
   type Story,
   type PhotoLayout,
   type PhotoMotion,
+  type PhotoEasing,
   type TitleStyle,
   type AudioAutomation,
   type FilmLook,
@@ -20,6 +21,7 @@ import {
   type ProjectSettings,
 } from "./models.js";
 import { resolveProjectTimebase } from "./timebase.js";
+import { validateTitleTextRuns, validateTitleFinishing } from "./title-runs.js";
 import {
   isCaptionTextValid,
   MAX_CAPTION_CUE_COUNT,
@@ -230,6 +232,7 @@ function protectedRegion(value: unknown, path: string): void {
 }
 
 function photoLayout(value: unknown, path: string): PhotoLayout {
+  const version = object(value, path).version;
   const data = presentationObject(value, path, [
     "version",
     "preset",
@@ -237,8 +240,22 @@ function photoLayout(value: unknown, path: string): PhotoLayout {
     "protectedRegion",
     "secondary",
     "gap",
+    ...(version === 2 ? ["fill"] : []),
   ]);
-  versionOne(data, path);
+  if (version !== 1 && version !== 2)
+    fail(`${path}.version`, "expected supported photo layout version 1 or 2");
+  if (version === 2) {
+    const fill = presentationObject(data.fill, `${path}.fill`, [
+      "version",
+      "kind",
+      "blurSigma",
+      "dim",
+    ]);
+    versionOne(fill, `${path}.fill`);
+    choice(fill.kind, `${path}.fill.kind`, ["ambient"]);
+    number(fill.blurSigma, `${path}.fill.blurSigma`, 0, 0.05);
+    number(fill.dim, `${path}.fill.dim`, 0, 0.85);
+  }
   const preset = choice(data.preset, `${path}.preset`, [
     "contain",
     "hero",
@@ -272,6 +289,32 @@ export function validatePhotoLayout(value: unknown): PhotoLayout {
   return copyJson(value, "layout") as PhotoLayout;
 }
 
+function photoBezier(value: unknown, path: string): void {
+  const data = presentationObject(value, path, [
+    "version",
+    "kind",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+  ]);
+  versionOne(data, path);
+  choice(data.kind, `${path}.kind`, ["cubic-bezier"]);
+  const x1 = number(data.x1, `${path}.x1`, 0, 1);
+  const y1 = number(data.y1, `${path}.y1`, 0, 1);
+  const x2 = number(data.x2, `${path}.x2`, 0, 1);
+  const y2 = number(data.y2, `${path}.y2`, 0, 1);
+  if (x1 > x2 || y1 > y2)
+    fail(path, "Bezier control points must be ordered on both axes");
+}
+
+export function validatePhotoEasing(value: unknown): PhotoEasing {
+  if (typeof value === "string")
+    return choice(value, "easing", ["linear", "ease-in-out"]) as PhotoEasing;
+  photoBezier(value, "easing");
+  return copyJson(value, "easing") as PhotoEasing;
+}
+
 function photoMotion(value: unknown, path: string): PhotoMotion {
   const data = presentationObject(value, path, [
     "version",
@@ -280,9 +323,12 @@ function photoMotion(value: unknown, path: string): PhotoMotion {
     "from",
     "to",
   ]);
-  versionOne(data, path);
+  if (data.version !== 1 && data.version !== 2)
+    fail(`${path}.version`, "expected supported photo motion version 1 or 2");
   choice(data.preset, `${path}.preset`, ["hold", "push-in", "pull-out", "pan"]);
-  choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
+  if (data.version === 1)
+    choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
+  else photoBezier(data.easing, `${path}.easing`);
   for (const endpoint of ["from", "to"]) {
     const transform = presentationObject(
       data[endpoint],
@@ -317,6 +363,7 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "fadeOut",
     "bottomSafeMargin",
     "safeArea",
+    "finishing",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -356,6 +403,9 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     choice(v, p, ["center", "bottom"]),
   );
   optional(data, "fadeOut", path, (v, p) => number(v, p, 0, 10));
+  optional(data, "finishing", path, (v) => {
+    validateTitleFinishing(v);
+  });
   optional(data, "bottomSafeMargin", path, (v, p) => number(v, p, 0, 0.3));
   optional(data, "safeArea", path, (v, p) => {
     const safe = presentationObject(v, p, ["left", "right", "top", "bottom"]);
@@ -457,6 +507,7 @@ function captionTrack(
       "startMs",
       "endMs",
       "text",
+      "textRuns",
       "source",
       "warnings",
       "manualRevision",
@@ -479,6 +530,9 @@ function captionTrack(
     if (end > maximumEnd)
       fail(`${cuePath}.endMs`, "caption cue extends beyond the composition");
     const text = string(cue.text, `${cuePath}.text`);
+    optional(cue, "textRuns", cuePath, (value) => {
+      validateTitleTextRuns(value, text);
+    });
     if (!text.trim() || !isCaptionTextValid(text))
       fail(`${cuePath}.text`, "expected non-empty safe Unicode caption text");
     textCharacters += text.length;
@@ -1127,6 +1181,9 @@ function composition(
           "source out must be greater than source in",
         );
       optional(clip, "title", clipPath, string);
+      optional(clip, "titleRuns", clipPath, (value) => {
+        validateTitleTextRuns(value, clip.title as string);
+      });
       optional(clip, "layout", clipPath, (v, p) => {
         const layout = photoLayout(v, p);
         const secondary = layout.secondary?.assetId;

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "fonts": {
+    "sourceCommit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+    "sourceTag": "Sans2.004",
+    "license": {
+      "spdx": "OFL-1.1",
+      "filename": "Noto-SIL-OFL.txt",
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/LICENSE",
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    "faces": {
+      "sansRegular": {
+        "filename": "NotoSansCJKtc-Regular.otf",
+        "family": "Noto Sans CJK TC",
+        "weight": 400,
+        "sourcePath": "Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf",
+        "sha256": "dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4"
+      },
+      "sansBold": {
+        "filename": "NotoSansCJKtc-Bold.otf",
+        "family": "Noto Sans CJK TC",
+        "weight": 700,
+        "sourcePath": "Sans/OTF/TraditionalChinese/NotoSansCJKtc-Bold.otf",
+        "sha256": "3ee160e5015106e3ec1a394301df54fa9bbbf8a251519984aec5c0abc50840c0"
+      },
+      "serifRegular": {
+        "filename": "NotoSerifCJKtc-Regular.otf",
+        "family": "Noto Serif CJK TC",
+        "weight": 400,
+        "sourcePath": "Serif/OTF/TraditionalChinese/NotoSerifCJKtc-Regular.otf",
+        "sha256": "360778af67c4591d03997312ee33d7354727637faf8a7f57f705a380c7b81fa3"
+      },
+      "serifBold": {
+        "filename": "NotoSerifCJKtc-Bold.otf",
+        "family": "Noto Serif CJK TC",
+        "weight": 700,
+        "sourcePath": "Serif/OTF/TraditionalChinese/NotoSerifCJKtc-Bold.otf",
+        "sha256": "6fc7c0854585330a09c0ae48638a48aa5b8f4bd3f30f63cdb0a3927206b14874"
+      }
+    }
+  },
+  "tools": {
+    "win32-x64": {
+      "version": "9.0.2",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "format": "zip",
+      "maxBytes": 268435456,
+      "licenseProvenance": "Inspect the actual GPL-enabled build configuration and retained upstream license texts; this is a CI tool, not distribution approval."
+    },
+    "linux-x64": {
+      "version": "6.1.1",
+      "packageVersion": "7:6.1.1-3ubuntu5",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/ffmpeg_6.1.1-3ubuntu5_amd64.deb",
+      "sha256": "1a23baace5f2688a47e28119aedae6993cd638e6279a7227dfc52d9a337a1c17",
+      "format": "deb",
+      "maxBytes": 16777216,
+      "licenseProvenance": "Ubuntu Noble universe authenticated package metadata; retain /usr/share/doc/ffmpeg/copyright and actual package/library identities."
+    },
+    "darwin-arm64": {
+      "version": "9.0.2",
+      "packageVersion": "9.0.2_1",
+      "formulaCommit": "e1b76dede00f5b34ee6488722499c7de7964daf1",
+      "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
+      "bottleTag": "arm64_sequoia",
+      "url": "https://ghcr.io/v2/homebrew/core/ffmpeg/blobs/sha256:65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "sha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "format": "homebrew-bottle",
+      "maxBytes": 134217728,
+      "licenseProvenance": "Homebrew fixed formula declares GPL-3.0-or-later; its shared dependencies remain separate recorded platform prerequisites."
+    }
+  }
+}

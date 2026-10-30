@@ -5,6 +5,8 @@ import {
   resolvePhotoPlan,
   resolveTitleStyle,
   assetDisplayDimensions,
+  validatePhotoLayout,
+  validatePhotoMotion,
   type Clip,
   type MediaAsset,
   type PhotoLayout,
@@ -13,6 +15,8 @@ import {
   type TitleStyle,
 } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
+import BilingualTextControls from "./BilingualTextControls.vue";
+import TitleFinishingControls from "./TitleFinishingControls.vue";
 
 const props = defineProps<{
   clip: Clip;
@@ -20,8 +24,10 @@ const props = defineProps<{
   assets: readonly MediaAsset[];
   frame: ProjectSettings;
   allowPhotoPresentation?: boolean;
+  focalEditing?: boolean;
+  focalDisabled?: boolean;
 }>();
-const emit = defineEmits<{ command: [command: TimelineCommand] }>();
+const emit = defineEmits<{ command: [command: TimelineCommand]; focus: [] }>();
 const { t } = useI18n();
 const photos = computed(() =>
   props.assets.filter(
@@ -50,6 +56,136 @@ const focalY = ref(0.5);
 const protectedEnabled = ref(false);
 const region = ref({ x: 0.25, y: 0.2, width: 0.5, height: 0.6 });
 const title = ref("");
+const titleLocked = computed(
+  () =>
+    !!(
+      props.clip.locked ||
+      props.asset.state.locked ||
+      savedSecondary.value?.state.locked
+    ),
+);
+function setBilingual(value: {
+  text: string;
+  runs: import("@openfilm/core").TitleTextRuns | null;
+}) {
+  if (titleLocked.value) return;
+  title.value = value.text;
+  emit("command", {
+    type: "presentation",
+    clipId: props.clip.id,
+    title: value.text,
+    titleRuns: value.runs,
+  });
+}
+const easing = ref<"linear" | "ease-in-out" | "custom">("ease-in-out");
+const curve = ref({ x1: 0.42, y1: 0, x2: 0.58, y2: 1 });
+const ambientEnabled = ref(false);
+const ambientBlur = ref(0.02);
+const ambientDim = ref(0.45);
+const finishingInvalid = ref(false);
+const curvePath = computed(() => {
+  const n = (value: number) =>
+    Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  return `M10 110 C${10 + n(curve.value.x1) * 100} ${110 - n(curve.value.y1) * 100},${10 + n(curve.value.x2) * 100} ${110 - n(curve.value.y2) * 100},110 10`;
+});
+watch(
+  () => props.clip,
+  (clip, previous) => {
+    if (
+      clip.id !== previous?.id ||
+      JSON.stringify(clip.motion) !== JSON.stringify(previous?.motion)
+    ) {
+      easing.value =
+        clip.motion?.version === 2
+          ? "custom"
+          : (clip.motion?.easing ?? "ease-in-out");
+      if (clip.motion?.version === 2)
+        curve.value = {
+          x1: clip.motion.easing.x1,
+          y1: clip.motion.easing.y1,
+          x2: clip.motion.easing.x2,
+          y2: clip.motion.easing.y2,
+        };
+    }
+    if (
+      clip.id !== previous?.id ||
+      JSON.stringify(clip.layout?.version === 2 ? clip.layout.fill : null) !==
+        JSON.stringify(
+          previous?.layout?.version === 2 ? previous.layout.fill : null,
+        )
+    ) {
+      ambientEnabled.value = clip.layout?.version === 2;
+      ambientBlur.value =
+        clip.layout?.version === 2 ? clip.layout.fill.blurSigma : 0.02;
+      ambientDim.value =
+        clip.layout?.version === 2 ? clip.layout.fill.dim : 0.45;
+    }
+    finishingInvalid.value = false;
+  },
+  { immediate: true },
+);
+function setEasing() {
+  if (
+    !props.clip.motion ||
+    props.clip.locked ||
+    props.asset.state.locked ||
+    savedSecondary.value?.state.locked
+  )
+    return;
+  try {
+    const motion = validatePhotoMotion(
+      easing.value === "custom"
+        ? {
+            ...props.clip.motion,
+            version: 2,
+            easing: { version: 1, kind: "cubic-bezier", ...curve.value },
+          }
+        : { ...props.clip.motion, version: 1, easing: easing.value },
+    );
+    finishingInvalid.value = false;
+    if (JSON.stringify(motion) !== JSON.stringify(props.clip.motion))
+      emit("command", { type: "presentation", clipId: props.clip.id, motion });
+  } catch {
+    finishingInvalid.value = true;
+  }
+}
+function setAmbient() {
+  if (
+    props.clip.locked ||
+    props.asset.state.locked ||
+    savedSecondary.value?.state.locked
+  )
+    return;
+  if (!ambientEnabled.value && props.clip.layout?.version !== 2) return;
+  try {
+    const base = props.clip.layout ?? { version: 1, preset: "contain" };
+    const plain: Record<string, unknown> = { ...base };
+    delete plain.fill;
+    const next = validatePhotoLayout(
+      ambientEnabled.value
+        ? {
+            ...plain,
+            version: 2,
+            fill: {
+              version: 1,
+              kind: "ambient",
+              blurSigma: ambientBlur.value,
+              dim: ambientDim.value,
+            },
+          }
+        : { ...plain, version: 1 },
+    );
+    finishingInvalid.value = false;
+    if (JSON.stringify(next) !== JSON.stringify(props.clip.layout))
+      emit("command", {
+        type: "presentation",
+        clipId: props.clip.id,
+        layout: next,
+      });
+  } catch {
+    finishingInvalid.value = true;
+  }
+}
 function titleStyleForDisplay(style: TitleStyle | undefined) {
   try {
     return { style: resolveTitleStyle(style, props.frame), recovery: false };
@@ -195,7 +331,9 @@ function setLayout() {
     ...(layout.value !== "diptych" || props.clip.layout?.gap === undefined
       ? {}
       : { gap: props.clip.layout.gap }),
-    version: 1,
+    ...(props.clip.layout?.version === 2
+      ? { version: 2 as const, fill: props.clip.layout.fill }
+      : { version: 1 as const }),
     preset: layout.value,
     focalPoint: { x: Number(focalX.value), y: Number(focalY.value) },
     ...(protectedEnabled.value ? { protectedRegion: { ...region.value } } : {}),
@@ -225,9 +363,10 @@ function setMotion(preset: PhotoMotion["preset"]) {
     return;
   const identity = { scale: 1, x: 0, y: 0 };
   const motion: PhotoMotion = {
-    version: 1,
+    ...(props.clip.motion?.version === 2
+      ? { version: 2 as const, easing: props.clip.motion.easing }
+      : { version: 1 as const, easing: "ease-in-out" as const }),
     preset,
-    easing: "ease-in-out",
     from:
       preset === "pull-out"
         ? { scale: 1.06, x: 0, y: 0 }
@@ -305,6 +444,14 @@ function resetTitleStyle() {
     type: "presentation",
     clipId: props.clip.id,
     titleStyle: null,
+    ...(props.clip.titleRuns
+      ? {
+          titleRuns: {
+            version: 1 as const,
+            splitAt: props.clip.titleRuns.splitAt,
+          },
+        }
+      : {}),
   });
 }
 </script>
@@ -316,6 +463,27 @@ function resetTitleStyle() {
     >
       <h3>{{ t("editor.presentation.heading") }}</h3>
       <p class="editor-note">{{ t("editor.presentation.description") }}</p>
+      <button
+        type="button"
+        class="editor-button"
+        :aria-pressed="!!focalEditing"
+        :disabled="focalDisabled || layout === 'diptych'"
+        @click="emit('focus')"
+      >
+        {{
+          t(
+            focalEditing
+              ? "editor.presentation.finishFocus"
+              : "editor.presentation.setFocus",
+          )
+        }}
+      </button>
+      <p v-if="layout === 'diptych'" class="editor-note">
+        {{ t("editor.presentation.diptychFocusHint") }}
+      </p>
+      <p v-else-if="focalEditing" class="editor-note">
+        {{ t("editor.presentation.focusHint") }}
+      </p>
       <label class="editor-field"
         >{{ t("editor.presentation.layout") }}
         <select
@@ -368,6 +536,96 @@ function resetTitleStyle() {
           </button>
         </div>
         <p class="editor-note">{{ t("editor.presentation.motionHint") }}</p>
+        <details v-if="clip.motion" class="editor-presentation-details">
+          <summary>{{ t("editor.presentation.easing") }}</summary>
+          <label class="editor-field"
+            >{{ t("editor.presentation.easing")
+            }}<select
+              v-model="easing"
+              :aria-label="t('editor.presentation.easing')"
+            >
+              <option value="linear">
+                {{ t("editor.presentation.linear") }}
+              </option>
+              <option value="ease-in-out">
+                {{ t("editor.presentation.easeInOut") }}
+              </option>
+              <option value="custom">
+                {{ t("editor.presentation.customCurve") }}
+              </option>
+            </select></label
+          >
+          <template v-if="easing === 'custom'">
+            <svg
+              class="photo-easing-curve"
+              viewBox="0 0 120 120"
+              aria-hidden="true"
+            >
+              <path :d="curvePath" />
+            </svg>
+            <div class="editor-field-pair">
+              <label
+                v-for="key in ['x1', 'y1', 'x2', 'y2'] as const"
+                :key="key"
+                class="editor-field"
+                >{{ t(`editor.presentation.curve${key.toUpperCase()}`)
+                }}<input
+                  v-model.number="curve[key]"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  :aria-label="
+                    t(`editor.presentation.curve${key.toUpperCase()}`)
+                  "
+              /></label>
+            </div>
+          </template>
+          <button type="button" class="editor-button" @click="setEasing">
+            {{ t("editor.presentation.applyEasing") }}
+          </button>
+        </details>
+        <details class="editor-presentation-details">
+          <summary>{{ t("editor.presentation.ambientFill") }}</summary>
+          <label class="editor-presentation-check"
+            ><input
+              v-model="ambientEnabled"
+              type="checkbox"
+              :aria-label="t('editor.presentation.ambientFill')"
+            />{{ t("editor.presentation.ambientFill") }}</label
+          >
+          <div v-if="ambientEnabled" class="editor-field-pair">
+            <label class="editor-field"
+              >{{ t("editor.presentation.ambientBlur")
+              }}<input
+                v-model.number="ambientBlur"
+                type="number"
+                min="0"
+                max="0.05"
+                step="0.005"
+                :aria-label="t('editor.presentation.ambientBlur')" /></label
+            ><label class="editor-field"
+              >{{ t("editor.presentation.ambientDim")
+              }}<input
+                v-model.number="ambientDim"
+                type="number"
+                min="0"
+                max="0.85"
+                step="0.05"
+                :aria-label="t('editor.presentation.ambientDim')"
+            /></label>
+          </div>
+          <button type="button" class="editor-button" @click="setAmbient">
+            {{ t("editor.presentation.applyFill") }}
+          </button>
+        </details>
+        <p
+          v-if="finishingInvalid"
+          class="editor-presentation-warnings"
+          role="status"
+        >
+          {{ t("editor.presentation.finishingInvalid") }}
+        </p>
         <details
           v-if="layout !== 'original'"
           class="editor-presentation-details"
@@ -378,6 +636,7 @@ function resetTitleStyle() {
               >{{ t("editor.presentation.focalX")
               }}<input
                 v-model.number="focalX"
+                :aria-label="t('editor.presentation.focalX')"
                 type="number"
                 min="0"
                 max="1"
@@ -388,6 +647,7 @@ function resetTitleStyle() {
               >{{ t("editor.presentation.focalY")
               }}<input
                 v-model.number="focalY"
+                :aria-label="t('editor.presentation.focalY')"
                 type="number"
                 min="0"
                 max="1"
@@ -447,7 +707,7 @@ function resetTitleStyle() {
         {{ t("editor.presentation.resetTitleStyle") }}
       </button>
     </div>
-    <label class="editor-field"
+    <label v-if="!clip.titleRuns" class="editor-field"
       >{{ t("editor.presentation.titleText")
       }}<textarea
         v-model="title"
@@ -456,8 +716,29 @@ function resetTitleStyle() {
         @change="setTitle('text')"
       />
     </label>
+    <BilingualTextControls
+      :key="clip.id"
+      :text="clip.title ?? ''"
+      :runs="clip.titleRuns"
+      :style="clip.titleStyle"
+      :frame="frame"
+      :disabled="titleLocked || titleStyleRecovery"
+      @change="setBilingual"
+    />
+    <TitleFinishingControls
+      v-if="clip.title"
+      :style="clip.titleStyle ?? { version: 1, role: 'subtitle' }"
+      :disabled="titleLocked || titleStyleRecovery"
+      @change="
+        emit('command', {
+          type: 'presentation',
+          clipId: clip.id,
+          titleStyle: $event,
+        })
+      "
+    />
     <template v-if="title">
-      <label class="editor-field">
+      <label v-if="!clip.titleRuns" class="editor-field">
         {{ t("editor.presentation.titleFontSize") }}
         <input
           v-model.number="fontSize"
@@ -471,14 +752,14 @@ function resetTitleStyle() {
         />
       </label>
       <button
-        v-if="clip.titleStyle?.fontSize !== undefined"
+        v-if="!clip.titleRuns && clip.titleStyle?.fontSize !== undefined"
         class="editor-button"
         :disabled="titleStyleRecovery"
         @click="setTitle('fontSizeDefault')"
       >
         {{ t("editor.presentation.titleFontSizeDefault") }}
       </button>
-      <label class="editor-field">
+      <label v-if="!clip.titleRuns" class="editor-field">
         {{ t("editor.presentation.titleFontWeight") }}
         <select
           v-model.number="fontWeight"

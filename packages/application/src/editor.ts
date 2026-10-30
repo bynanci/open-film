@@ -9,6 +9,8 @@ import {
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
+  validateTitleTextRunsMetadata,
+  resolveTitleRuns,
   resolveTitleStyle,
   validateAudioAutomation,
   validateFilmLook,
@@ -230,7 +232,13 @@ function command(value: unknown, index: number): TimelineCommand {
         nonempty(data.trackId, `${path}.trackId`);
         nonempty(data.cueId, `${path}.cueId`);
         const patch = record(data.patch, `${path}.patch`);
-        keys(patch, ["text", "startMs", "endMs"], `${path}.patch`);
+        keys(patch, ["text", "startMs", "endMs", "textRuns"], `${path}.patch`);
+        if (Object.hasOwn(patch, "textRuns") && patch.textRuns !== null)
+          nested(
+            patch.textRuns,
+            `${path}.patch.textRuns`,
+            validateTitleTextRunsMetadata,
+          );
         if (!Object.keys(patch).length)
           invalid(`${path}.patch`, "provide text, startMs or endMs");
         if (
@@ -275,6 +283,7 @@ function command(value: unknown, index: number): TimelineCommand {
         "title",
         "titleStyle",
         "titlePresetSnapshot",
+        "titleRuns",
       ];
       if (data.titlePresetSnapshot != null)
         validatePresetSnapshot(data.titlePresetSnapshot, "title");
@@ -285,6 +294,7 @@ function command(value: unknown, index: number): TimelineCommand {
         ["layout", validatePhotoLayout],
         ["motion", validatePhotoMotion],
         ["titleStyle", validateTitleStyle],
+        ["titleRuns", validateTitleTextRunsMetadata],
       ] as const)
         if (Object.hasOwn(data, field) && data[field] !== null)
           nested(data[field], `${path}.${field}`, validator);
@@ -1561,6 +1571,21 @@ export class TimelineEditor {
           throw new TimelineEditorError(
             "Photo diptych gap must be smaller than the composition width",
           );
+        if (
+          item.type === "presentation" &&
+          item.layout?.version === 2 &&
+          item.layout.preset === "diptych"
+        ) {
+          const width = this.application.project.settings.width;
+          const gap = item.layout.gap ?? 32;
+          if (
+            Math.round((width - gap) / 2) < 1 ||
+            width - Math.round((width + gap) / 2) < 1
+          )
+            throw new TimelineEditorError(
+              "Photo ambient cells require at least one output pixel",
+            );
+        }
         const referenced =
           item.type === "graphic.scene.upsert"
             ? graphicSceneAssetIds([item.scene])
@@ -1585,6 +1610,32 @@ export class TimelineEditor {
           next = applyTimelineCommand(next, assets, item);
       } catch (error) {
         if (error instanceof ApplicationError) throw error;
+        throw new TimelineEditorError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      // Typography inherited by a run depends on the actual Composition frame.
+      // Validate detached candidates before persistence without loading fonts.
+      try {
+        for (const track of next.composition.tracks)
+          for (const clip of track.clips)
+            if (clip.titleRuns)
+              resolveTitleRuns(
+                clip.title!,
+                clip.titleRuns,
+                clip.titleStyle,
+                this.application.project.settings,
+              );
+        for (const track of next.composition.captionTracks ?? [])
+          for (const cue of track.cues)
+            if (cue.textRuns)
+              resolveTitleRuns(
+                cue.text,
+                cue.textRuns,
+                track.style,
+                this.application.project.settings,
+              );
+      } catch (error) {
         throw new TimelineEditorError(
           error instanceof Error ? error.message : String(error),
         );

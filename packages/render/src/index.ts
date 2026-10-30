@@ -16,9 +16,27 @@ export {
   graphicFrameRanges,
 } from "./graphic-scenes.js";
 import { photoPresentationFilters } from "./photo-filters.js";
+import { preparePhotoAmbientFills } from "./photo-ambient.js";
+export {
+  preparePhotoAmbientFills,
+  type PreparedPhotoAmbientFills,
+} from "./photo-ambient.js";
+export { photoEasingExpression } from "./photo-easing.js";
 import { filmLookFilters } from "./look-filters.js";
 import { audioAutomationFilters } from "./audio-filters.js";
-import { createTitleOverlay } from "./titles.js";
+import {
+  createTitleOverlay,
+  type TitleOverlay,
+  type TitleFontDiagnostic,
+} from "./titles.js";
+export type {
+  TitleOverlay,
+  TitleOverlayInspection,
+  TitleOverlayOptions,
+  TitleRunFontResult,
+  TitleFontDiagnostic,
+  TitleFontIdentity,
+} from "./titles.js";
 import { resolveRenderQuality, type RenderQuality } from "./quality.js";
 export {
   resolveRenderQuality,
@@ -42,6 +60,7 @@ import {
   canonicalRenderFonts,
   canonicalRenderFontBindings,
   type RenderFontBinding,
+  type RenderFontUsage,
   type RenderFontEvidence,
   type RenderProjectEvidence,
   type RenderLookEvidence,
@@ -64,6 +83,7 @@ import {
   graphicSceneAssetIds,
   projectFrameRate,
   resolveClipSourceRange,
+  resolveClipAudioRange,
   resolveClipGeometry,
   resolveFilmLook,
   validateFilmLook,
@@ -479,6 +499,31 @@ export class FFmpegRenderer {
     const fonts: RenderFontEvidence[] = [];
     const fontBindings: RenderFontBinding[] = [];
     const warnings: string[] = [];
+    const fontDiagnostics: Array<
+      TitleFontDiagnostic & { usage: RenderFontUsage }
+    > = [];
+    const recordTitleFonts = (
+      title: TitleOverlay,
+      usage: RenderFontUsage,
+      bilingual: boolean,
+    ) => {
+      for (const run of title.runFonts) {
+        const font = {
+          family: run.font.family,
+          postscriptName: run.font.postscriptName,
+          sha256: run.font.sha256,
+        };
+        fonts.push(font);
+        fontBindings.push({
+          ...font,
+          usage,
+          ...(bilingual ? { run: run.id } : {}),
+        });
+        fontDiagnostics.push(
+          ...run.diagnostics.map((diagnostic) => ({ ...diagnostic, usage })),
+        );
+      }
+    };
     if (
       assets.some(
         (asset) =>
@@ -647,6 +692,19 @@ export class FFmpegRenderer {
     let retainWork = false;
     const pendingTitles: Array<() => Promise<void>> = [];
     try {
+      const photoClips = audioOnly
+        ? []
+        : composition.tracks
+            .filter((track) => track.type === "video")
+            .flatMap((track) => track.clips);
+      const ambient = await preparePhotoAmbientFills(
+        photoClips,
+        assets,
+        settings,
+        work,
+        { signal: options.signal },
+      );
+      for (const [id, asset] of ambient.assetOverrides) assetMap.set(id, asset);
       for (const track of composition.tracks) {
         if (audioOnly && track.type === "titles") continue;
         const clips = [...track.clips].sort(
@@ -674,18 +732,15 @@ export class FFmpegRenderer {
               settings,
               titleFile,
               {
-                fontPath: options.fontPathForStyle?.(clip.titleStyle),
+                textRuns: clip.titleRuns,
+                fontPathForStyle: options.fontPathForStyle,
               },
             );
-            fonts.push({
-              family: title.font.family,
-              postscriptName: title.font.postscriptName,
-              sha256: title.font.sha256,
-            });
-            fontBindings.push({
-              ...fonts.at(-1)!,
-              usage: ["title", track.id, clip.id],
-            });
+            recordTitleFonts(
+              title,
+              ["title", track.id, clip.id],
+              !!clip.titleRuns,
+            );
             warnings.push(...title.warnings);
             args.push(
               "-loop",
@@ -838,6 +893,7 @@ export class FFmpegRenderer {
                   duration: displayedDuration,
                   signal: options.signal,
                   look: resolvedLooks.get(clip),
+                  ambient: ambient.fills.get(clip.id),
                 },
               );
               args.push(...presentation.args);
@@ -872,7 +928,7 @@ export class FFmpegRenderer {
               "apad",
               `atrim=duration=${number(duration)}`,
               ...audioAutomationFilters(clip.audioAutomation, duration),
-              `adelay=${Math.round(start * 1000)}:all=1`,
+              `adelay=${resolveClipAudioRange(clip, asset).delayMilliseconds}:all=1`,
             ];
             filters.push(`[${input}:a]${audioFilters.join(",")}[${label}]`);
             audioLabels.push(label);
@@ -952,18 +1008,15 @@ export class FFmpegRenderer {
             settings,
             join(work, `${suffix}.png`),
             {
-              fontPath: options.fontPathForStyle?.(selectedCaptionTrack.style),
+              textRuns: cue.textRuns,
+              fontPathForStyle: options.fontPathForStyle,
             },
           );
-          fonts.push({
-            family: title.font.family,
-            postscriptName: title.font.postscriptName,
-            sha256: title.font.sha256,
-          });
-          fontBindings.push({
-            ...fonts.at(-1)!,
-            usage: ["caption", selectedCaptionTrack.id, cue.id],
-          });
+          recordTitleFonts(
+            title,
+            ["caption", selectedCaptionTrack.id, cue.id],
+            !!cue.textRuns,
+          );
           warnings.push(...title.warnings);
           for (const warning of cue.warnings ?? [])
             warnings.push(
@@ -1123,6 +1176,7 @@ export class FFmpegRenderer {
       )
         throw new Error("Render output reached its private byte bound.");
       await verifyRenderSources(sources);
+      await ambient.verifySources();
       const manifestPath = join(work, "manifest.json");
       await writeRenderManifest(
         manifestPath,
@@ -1139,9 +1193,36 @@ export class FFmpegRenderer {
         {
           format: audioOnly ? "wav" : "mp4",
           fontBindings,
+          fontDiagnostics,
           ...(videoOnly ? { videoOnly } : {}),
           ...(exportProfile ? { exportProfile } : {}),
           ...(options.audioRole ? { audioRole: options.audioRole } : {}),
+          ...(photoClips.some(
+            (clip) => clip.layout?.version === 2 || clip.motion?.version === 2,
+          )
+            ? {
+                photoPresentation: {
+                  version: 1 as const,
+                  bezierBisectionSteps: 24 as const,
+                  fills: [...ambient.fills].map(([clipId, fill]) => {
+                    const clip = photoClips.find((item) => item.id === clipId)!;
+                    const ids = new Set([
+                      clip.assetId,
+                      ...(clip.layout?.secondary
+                        ? [clip.layout.secondary.assetId]
+                        : []),
+                    ]);
+                    return {
+                      clipId,
+                      sha256: fill.sha256,
+                      sources: ambient.sources.filter((source) =>
+                        ids.has(source.assetId),
+                      ),
+                    };
+                  }),
+                },
+              }
+            : {}),
         },
       );
       if (snapshot?.sources)
@@ -1151,6 +1232,7 @@ export class FFmpegRenderer {
             source.sha256
           )
             throw new Error(`Source changed during render: ${source.name}`);
+      await ambient.assertSourceIdentities();
       await publishRenderPair(temporaryOutput, manifestPath, output, work, {
         assertCurrent:
           snapshot &&
