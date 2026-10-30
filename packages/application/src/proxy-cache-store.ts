@@ -12,6 +12,7 @@ import {
   opendirSync,
   readSync,
   renameSync,
+  rmSync,
   unlinkSync,
   utimesSync,
   writeFileSync,
@@ -30,8 +31,8 @@ import {
 import { acquireExportRequestLock } from "./export-request-lock.js";
 import { createReviewOwner, reviewOwnerState } from "./review-owner.js";
 
-export const proxyDigest = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+import { proxyDigest } from "./proxy-cache-identity.js";
+export { proxyDigest } from "./proxy-cache-identity.js";
 export const fileIdentity = (s: Stats): string =>
   `${s.dev}:${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`;
 const missing = (error: unknown) =>
@@ -64,7 +65,7 @@ export function readProxyJson(
         "Proxy state changed during its read.",
         409,
       );
-    const bytes = Buffer.alloc(maximum + 1);
+    const bytes = Buffer.alloc(Math.min(maximum + 1, info.size + 1));
     let length = 0;
     while (length < bytes.length) {
       const count = readSync(fd, bytes, length, bytes.length - length, null);
@@ -95,6 +96,18 @@ export interface ProxyWorkerLease {
   owner: ReviewExecutionOwner;
   assertOwned(): void;
   release(): void;
+}
+
+export interface ProxyRecordedVerification {
+  status: "verified" | "stale";
+  sourceStatus: "verified" | "missing" | "changed" | "unavailable";
+  checkedAt: string;
+}
+
+export interface ProxyReaderRecovery {
+  name: string;
+  fingerprint: string;
+  ownerState: "alive" | "dead" | "unknown";
 }
 
 export class ProxyCacheStore {
@@ -260,6 +273,88 @@ export class ProxyCacheStore {
     this.write(
       join(this.operational, `preferred-${proxyDigest(assetId)}.json`),
       { version: 1, projectId: this.projectId, assetId, artifactId },
+      true,
+    );
+  }
+
+  clearPreferred(assetId: string, artifactId: string): void {
+    if (this.preferred(assetId) === artifactId)
+      unlinkSync(
+        join(this.operational, `preferred-${proxyDigest(assetId)}.json`),
+      );
+  }
+
+  verification(
+    artifactId: string,
+    identity: string,
+  ): ProxyRecordedVerification | undefined {
+    if (!/^[a-f0-9]{64}$/u.test(artifactId))
+      throw new Error("Invalid proxy artifact identity.");
+    const data = readProxyJson(
+      join(this.operational, `verified-${artifactId}.json`),
+    );
+    if (!data) return undefined;
+    const value = data.value as Record<string, unknown>;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      Object.keys(value).some(
+        (key) =>
+          ![
+            "version",
+            "projectId",
+            "artifactId",
+            "identity",
+            "status",
+            "sourceStatus",
+            "checkedAt",
+          ].includes(key),
+      ) ||
+      value.version !== 1 ||
+      value.projectId !== this.projectId ||
+      value.artifactId !== artifactId ||
+      typeof value.identity !== "string" ||
+      value.identity.length > 512 ||
+      !["verified", "stale"].includes(String(value.status)) ||
+      !["verified", "missing", "changed", "unavailable"].includes(
+        String(value.sourceStatus),
+      ) ||
+      typeof value.checkedAt !== "string" ||
+      !Number.isFinite(Date.parse(value.checkedAt))
+    )
+      throw new ApplicationError(
+        "proxy.storageUnavailable",
+        "Unsupported proxy verification record.",
+        409,
+      );
+    if (value.identity !== identity) return undefined;
+    return {
+      status: value.status as "verified" | "stale",
+      sourceStatus:
+        value.sourceStatus as ProxyRecordedVerification["sourceStatus"],
+      checkedAt: value.checkedAt,
+    };
+  }
+
+  saveVerification(
+    artifactId: string,
+    identity: string,
+    value: Omit<ProxyRecordedVerification, "checkedAt">,
+  ): void {
+    if (!/^[a-f0-9]{64}$/u.test(artifactId))
+      throw new Error("Invalid proxy artifact identity.");
+    this.verification(artifactId, identity);
+    this.write(
+      join(this.operational, `verified-${artifactId}.json`),
+      {
+        version: 1,
+        projectId: this.projectId,
+        artifactId,
+        identity,
+        ...value,
+        checkedAt: new Date().toISOString(),
+      },
       true,
     );
   }
@@ -434,6 +529,179 @@ export class ProxyCacheStore {
       return false;
     } finally {
       directory.closeSync();
+    }
+  }
+
+  readerRecoveries(): ProxyReaderRecovery[] {
+    this.ensure();
+    const directory = opendirSync(this.readers);
+    const result: ProxyReaderRecovery[] = [];
+    let count = 0;
+    try {
+      for (
+        let entry = directory.readSync();
+        entry;
+        entry = directory.readSync()
+      ) {
+        if (++count > PROXY_CACHE_LIMITS.inventoryFiles)
+          throw new ApplicationError(
+            "proxy.storageUnavailable",
+            "Too many proxy access records.",
+            409,
+          );
+        if (!/^[a-f0-9]{64}-[a-f0-9-]{36}\.lock$/u.test(entry.name)) continue;
+        const data = readProxyJson(join(this.readers, entry.name), 4096);
+        if (data)
+          result.push({
+            name: entry.name,
+            fingerprint: proxyDigest([data.digest, data.identity]),
+            ownerState: reviewOwnerState(
+              (data.value as { owner?: unknown })?.owner,
+            ),
+          });
+      }
+      return result;
+    } finally {
+      directory.closeSync();
+    }
+  }
+
+  recoverReaders(records: readonly ProxyReaderRecovery[]): void {
+    const current = new Map(
+      this.readerRecoveries().map((record) => [record.name, record]),
+    );
+    for (const record of records) {
+      const latest = current.get(record.name);
+      if (
+        !latest ||
+        latest.fingerprint !== record.fingerprint ||
+        latest.ownerState === "alive"
+      )
+        throw new ApplicationError(
+          "proxy.stale",
+          "Preview access ownership changed during recovery.",
+          409,
+        );
+    }
+    for (const record of records) unlinkSync(join(this.readers, record.name));
+  }
+
+  cleanStoppedWork(
+    stopped: (owner: ReviewExecutionOwner) => boolean,
+    protectedPath: (path: string) => boolean,
+  ): number {
+    try {
+      if (
+        !lstatSync(this.work).isDirectory() ||
+        lstatSync(this.work).isSymbolicLink()
+      )
+        return 0;
+    } catch (error) {
+      if (missing(error)) return 0;
+      throw error;
+    }
+    this.ensure();
+    const root = opendirSync(this.work);
+    let visited = 0;
+    let removed = 0;
+    const boundedTree = (
+      path: string,
+      count: { value: number },
+      depth = 0,
+    ): boolean => {
+      if (++count.value > 64 || depth > 4) return false;
+      const info = lstatSync(path);
+      if (info.isSymbolicLink()) return false;
+      if (info.isFile()) return true;
+      if (!info.isDirectory()) return false;
+      const directory = opendirSync(path);
+      try {
+        for (
+          let child = directory.readSync();
+          child;
+          child = directory.readSync()
+        )
+          if (!boundedTree(join(path, child.name), count, depth + 1))
+            return false;
+        return true;
+      } finally {
+        directory.closeSync();
+      }
+    };
+    try {
+      for (let entry = root.readSync(); entry; entry = root.readSync()) {
+        if (++visited > PROXY_CACHE_LIMITS.inventoryFiles) break;
+        if (!/^proxy-[a-f0-9]{64}-[a-zA-Z0-9]{6}$/u.test(entry.name)) continue;
+        const path = join(this.work, entry.name);
+        const info = lstatSync(path);
+        if (!info.isDirectory() || info.isSymbolicLink()) continue;
+        const data = readProxyJson(join(path, "owner.json"), 4096);
+        const value = data?.value as
+          | {
+              version?: unknown;
+              projectId?: unknown;
+              jobId?: unknown;
+              generation?: unknown;
+              owner?: ReviewExecutionOwner;
+            }
+          | undefined;
+        const owner = value?.owner;
+        if (
+          !data ||
+          !value ||
+          typeof value !== "object" ||
+          Array.isArray(value) ||
+          Object.keys(value).some(
+            (key) =>
+              ![
+                "version",
+                "projectId",
+                "jobId",
+                "generation",
+                "owner",
+              ].includes(key),
+          ) ||
+          value.version !== 1 ||
+          value.projectId !== this.projectId ||
+          typeof value.jobId !== "string" ||
+          !/^proxy-[a-f0-9]{64}$/u.test(value.jobId) ||
+          !entry.name.startsWith(`${value.jobId}-`) ||
+          !Number.isSafeInteger(value.generation) ||
+          Number(value.generation) < 1 ||
+          !owner ||
+          typeof owner !== "object" ||
+          Array.isArray(owner) ||
+          Object.keys(owner).some(
+            (key) => !["host", "pid", "token"].includes(key),
+          ) ||
+          typeof owner.host !== "string" ||
+          !owner.host ||
+          owner.host.length > 512 ||
+          !Number.isSafeInteger(owner.pid) ||
+          owner.pid < 1 ||
+          owner.pid > 2147483647 ||
+          typeof owner.token !== "string" ||
+          !/^[a-f0-9-]{36}$/u.test(owner.token)
+        )
+          continue;
+        if (
+          !stopped(owner) ||
+          protectedPath(path) ||
+          !boundedTree(path, { value: 0 })
+        )
+          continue;
+        if (
+          readProxyJson(join(path, "owner.json"), 4096)?.digest !==
+            data.digest ||
+          fileIdentity(lstatSync(path)) !== fileIdentity(info)
+        )
+          continue;
+        rmSync(path, { recursive: true });
+        removed++;
+      }
+      return removed;
+    } finally {
+      root.closeSync();
     }
   }
 

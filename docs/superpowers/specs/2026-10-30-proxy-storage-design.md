@@ -81,7 +81,9 @@ These are implementation choices, not measured workstation performance claims.
   parameters, autosave and edit history.
 - New imports use the same managed worker and quota, while retaining synchronous
   import completion and the explicit `proxies: false` option. Concurrent import
-  candidates wait through the service FIFO. An inspected asset may be passed by
+  candidates wait through the service FIFO. A quota failure retains verified
+  original import with an explicit pending-preview warning and a resumable task;
+  it does not classify usable source bytes as a failed import. An inspected asset may be passed by
   the trusted importer before catalog publication; an interrupted unindexed
   source is never fabricated on reopen. Existing legacy proxies remain readable.
 - Durable ready-artifact sidecars survive Named Version restoration of jobs.
@@ -155,3 +157,9 @@ Browser tests cover actual API work, explicit cleanup, project-switch fencing,
 keyboard/narrow CJK layout and rebuild after a missing preview. Run the existing
 full gates; physical Windows/macOS/browser and large-drive performance remain
 candidate-bound workstation gates.
+
+Implementation details: cleanup also includes the latest saved Composition from
+other workspaces. Read registration and removal use short catalog write boundaries.
+Known-stopped work is removed only after a bounded owner/tree check and a check
+that no catalog source points into it; unknown owners require explicit recovery.
+Partial filesystem failures retain actual released-byte counts and failed IDs.

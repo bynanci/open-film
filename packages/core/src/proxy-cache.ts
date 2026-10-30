@@ -89,11 +89,41 @@ export interface ProxyCacheHealth {
     jobId?: string;
     bytes?: number;
     protected: boolean;
-    verification: "recorded" | "unchecked";
+    verification: "recorded" | "checked" | "unchecked";
   }>;
   total: number;
   offset: number;
   hasNext: boolean;
+}
+
+export interface ProxyCleanupPreview {
+  version: 1;
+  projectId: string;
+  previewId: string;
+  fingerprint: string;
+  bytes: number;
+  entries: Array<{
+    artifactId: string;
+    assetId: string;
+    name: string;
+    byteLength: number;
+  }>;
+  protectedCount: number;
+  hasMore: boolean;
+}
+
+export interface ProxyCleanupResult {
+  removedBytes: number;
+  removedArtifactIds: string[];
+  failedArtifactIds: string[];
+}
+
+export interface ProxyVerificationResult {
+  results: Array<{
+    assetId: string;
+    status: "verified" | "missing" | "stale" | "legacy" | "unavailable";
+    sourceStatus: "verified" | "missing" | "changed" | "unavailable";
+  }>;
 }
 
 function invalid(message: string): never {

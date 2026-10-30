@@ -1386,10 +1386,28 @@ export class OpenFilmApplication {
           ["video", "360-video", "audio"].includes(asset.mediaType)
         ) {
           stage = "proxy";
-          asset.proxyUri = await this.proxyCache.prepareImportedAsset(
-            asset,
-            options.signal,
-          );
+          try {
+            asset.proxyUri = await this.proxyCache.prepareImportedAsset(
+              asset,
+              options.signal,
+            );
+          } catch (error) {
+            checkAbort(options.signal);
+            if (
+              !(error instanceof ApplicationError) ||
+              error.code !== "proxy.quotaExceeded"
+            )
+              throw error;
+            // Preview capacity never discards an otherwise verified source.
+            // Its failed proxy task remains explicitly resumable after cleanup.
+            job.errors!.push({
+              uri: "",
+              stage: "proxy-pending",
+              code: error.code,
+              message:
+                "Original media imported; preview preparation is waiting for storage capacity.",
+            });
+          }
         }
         stage = "index";
         checkAbort(options.signal);

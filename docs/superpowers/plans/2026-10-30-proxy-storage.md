@@ -64,20 +64,20 @@ uses its existing synchronous `withProjectWrite` publication boundary.
 
 ### Task 2: Quota, provenance-owned cleanup and actual media proof
 
-**Files:** Extend the service/tests; create a focused cache-path/protection test
-file if necessary. Modify `createProxy` only for a bounded output-byte option.
+**Files:** Extend the service/tests; add focused `proxy-cache-identity.ts` and
+`proxy-cache-maintenance.ts` owners for reusable identity and storage operations. Modify `createProxy` only for a bounded output-byte option.
 
 **Interfaces:** `setPolicy(input)`, `previewCleanup(input)`,
 `acceptCleanup(input)`, `verify(input)` and `touch(assetId)` operate only on
 versioned managed receipts; cleanup acceptance binds exact candidates/bytes.
 
-- [ ] Add failing quota, current-Composition/locked/offline protection, unknown
+- [x] Add failing quota, current-Composition/locked/offline protection, unknown
       receipt, symlink, same-size output replacement and cleanup-race regressions.
-- [ ] Implement bounded inventory, LRU selection, protected-entry checks and
+- [x] Implement bounded inventory, LRU selection, protected-entry checks and
       no-replace output with hash/probe evidence and explicit verification.
-- [ ] Generate/decode actual synthetic video/audio proxies; assert duration,
+- [x] Generate/decode actual synthetic video/audio proxies; assert duration,
       content/source hashes and unchanged original render after cache cleanup.
-- [ ] Pass focused tests and commit the storage/provenance slice.
+- [x] Pass focused tests and commit the storage/provenance slice.
 
 ### Task 3: Shared HTTP/CLI and accessible Library controls
 

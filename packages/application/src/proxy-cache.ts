@@ -18,6 +18,7 @@ import {
   errorInfo,
   graphicSceneAssetIds,
   validateProxyCacheTask,
+  validateProject,
   type Job,
   type MediaAsset,
   type OpenFilmProject,
@@ -35,14 +36,22 @@ import {
   runProcess,
   withVerifiedSourceFile,
 } from "@openfilm/media";
-import { createReviewOwner, reviewOwnerState } from "./review-owner.js";
+import {
+  createReviewOwner,
+  ownsReviewOwner,
+  reviewOwnerState,
+} from "./review-owner.js";
 import {
   ProxyCacheStore,
   fileIdentity,
+  readProxyJson,
   proxyDigest,
   type ProxyWorkerLease,
 } from "./proxy-cache-store.js";
+import { proxyInputFingerprint } from "./proxy-cache-identity.js";
+export { proxyInputFingerprint } from "./proxy-cache-identity.js";
 import { portableCacheUri } from "./portable-cache.js";
+import { ProxyCacheMaintenance } from "./proxy-cache-maintenance.js";
 
 export interface ProxyCacheHost {
   readonly directory: string;
@@ -69,6 +78,15 @@ export interface ProxyResumeInput {
   projectId: string;
   requestId: string;
   jobIds: string[];
+}
+
+const activeProxyOwners = new Set<string>();
+function proxyOwnerState(
+  owner: ProxyCacheTask["owner"],
+): "alive" | "dead" | "unknown" {
+  return ownsReviewOwner(owner) && !activeProxyOwners.has(owner.token)
+    ? "dead"
+    : reviewOwnerState(owner);
 }
 
 function invalid(message: string): never {
@@ -106,28 +124,6 @@ function strict(value: object, allowed: string[]): void {
   )
     invalid("Unsupported proxy request field.");
 }
-export function proxyInputFingerprint(asset: MediaAsset): string {
-  return proxyDigest({
-    uri: asset.uri,
-    hash: asset.contentHash,
-    mediaType: asset.mediaType,
-    duration: asset.duration,
-    dimensions: asset.dimensions,
-    frameRate: asset.frameRate,
-    codec: asset.codec,
-    hdr: asset.hdr,
-    colorSpace: asset.colorSpace,
-    decoding: Object.fromEntries(
-      [
-        "openfilm.ffprobe",
-        "openfilm.color",
-        "openfilm.preview",
-        "openfilm.pixel",
-        "openfilm.insta360",
-      ].map((key) => [key, asset.metadata[key] ?? null]),
-    ),
-  });
-}
 
 export class ProxyCacheService {
   readonly store: ProxyCacheStore;
@@ -135,12 +131,36 @@ export class ProxyCacheService {
   private running?: Promise<ProxyRunResult>;
   private readonly controllers = new Map<string, AbortController>();
   private readonly imported = new Map<string, MediaAsset>();
+  private readonly maintenance: ProxyCacheMaintenance;
+  private diskProtection?: { identity: string; ids: Set<string> };
 
   constructor(
     private readonly host: ProxyCacheHost,
     private readonly generator: typeof createProxy = createProxy,
   ) {
     this.store = new ProxyCacheStore(host.directory, host.project.id);
+    this.maintenance = new ProxyCacheMaintenance({
+      host,
+      store: this.store,
+      exclusive: (work) => this.exclusive(work),
+      inventory: () => this.inventory(),
+      protectedAssets: () => this.protectedAssets(),
+    });
+  }
+
+  setPolicy(input: Parameters<ProxyCacheMaintenance["setPolicy"]>[0]) {
+    return this.maintenance.setPolicy(input);
+  }
+  previewCleanup(
+    input: Parameters<ProxyCacheMaintenance["previewCleanup"]>[0],
+  ) {
+    return this.maintenance.previewCleanup(input);
+  }
+  acceptCleanup(input: Parameters<ProxyCacheMaintenance["acceptCleanup"]>[0]) {
+    return this.maintenance.acceptCleanup(input);
+  }
+  verify(input: Parameters<ProxyCacheMaintenance["verify"]>[0]) {
+    return this.maintenance.verify(input);
   }
 
   private project(projectId: string): void {
@@ -379,28 +399,161 @@ export class ProxyCacheService {
   }
 
   recoverInterrupted(): void {
-    for (const job of this.host.catalog.listJobs({
+    this.host.catalog.withProjectWrite(() => {
+      for (const job of this.host.catalog.listJobs({
+        type: "proxy",
+        statuses: ["running"],
+        limit: 129,
+      })) {
+        if (job.proxyCache && proxyOwnerState(job.proxyCache.owner) === "dead")
+          this.host.catalog.saveJob({
+            ...job,
+            status: "failed",
+            stage: "interrupted",
+            updatedAt: new Date().toISOString(),
+            errors: [
+              {
+                uri: "",
+                stage: "interrupted",
+                code: "media.previewUnavailable",
+                message:
+                  "The previous proxy worker stopped. Resume explicitly to retry.",
+              },
+            ],
+          });
+      }
+      this.cleanStoppedWork();
+    });
+  }
+
+  private cleanStoppedWork(
+    confirmedTokens: ReadonlySet<string> = new Set(),
+  ): void {
+    this.store.cleanStoppedWork(
+      (owner) =>
+        proxyOwnerState(owner) === "dead" || confirmedTokens.has(owner.token),
+      (path) => {
+        for (const asset of this.host.catalog.iterateAssetSummaries()) {
+          try {
+            const rel = relative(path, localPath(asset.uri));
+            if (
+              !rel ||
+              (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`))
+            )
+              return true;
+          } catch {
+            /* A non-local source does not point into this owned work tree. */
+          }
+        }
+        return false;
+      },
+    );
+  }
+
+  private recoveryInfo() {
+    const worker = this.store.recovery();
+    const jobs = this.host.catalog.listJobs({
       type: "proxy",
       statuses: ["running"],
       limit: 129,
-    })) {
-      if (job.proxyCache && reviewOwnerState(job.proxyCache.owner) === "dead")
+    });
+    const readers = this.store.readerRecoveries();
+    if (
+      !worker &&
+      !jobs.length &&
+      !readers.some((reader) => reader.ownerState !== "alive")
+    )
+      return undefined;
+    const states = [
+      ...jobs.map((job) =>
+        job.proxyCache ? proxyOwnerState(job.proxyCache.owner) : "unknown",
+      ),
+      ...readers.map((reader) => reader.ownerState),
+      ...(worker ? [worker.ownerState] : []),
+    ];
+    const fingerprint = proxyDigest([
+      worker,
+      jobs.map((job) => [job.id, job.proxyCache, job.status]),
+      readers,
+    ]);
+    return {
+      fingerprint,
+      ownerState: states.includes("alive")
+        ? ("alive" as const)
+        : states.includes("unknown")
+          ? ("unknown" as const)
+          : ("dead" as const),
+    };
+  }
+
+  recover(input: {
+    projectId: string;
+    fingerprint: string;
+    confirmedStopped: boolean;
+  }): { recovered: number } {
+    strict(input, ["projectId", "fingerprint", "confirmedStopped"]);
+    this.project(input.projectId);
+    return this.host.catalog.withProjectWrite(() => {
+      const current = this.recoveryInfo();
+      if (
+        input.confirmedStopped !== true ||
+        !current ||
+        current.fingerprint !== input.fingerprint
+      )
+        throw new ApplicationError(
+          "proxy.stale",
+          "Confirm the exact stopped-worker receipt before recovery.",
+          409,
+        );
+      if (current.ownerState === "alive")
+        throw new ApplicationError(
+          "jobs.busy",
+          "Live preview workers or readers cannot be recovered.",
+          409,
+        );
+      const jobs = this.host.catalog.listJobs({
+        type: "proxy",
+        statuses: ["running"],
+        limit: 129,
+      });
+      const readers = this.store.readerRecoveries();
+      const worker = this.store.recovery();
+      const recoveredWorker = worker
+        ? this.store.recover(worker.fingerprint, true)
+        : undefined;
+      this.store.recoverReaders(readers);
+      for (const job of jobs) {
+        if (!job.proxyCache) continue;
         this.host.catalog.saveJob({
           ...job,
           status: "failed",
           stage: "interrupted",
-          updatedAt: new Date().toISOString(),
+          proxyCache: {
+            ...job.proxyCache,
+            generation: job.proxyCache.generation + 1,
+          },
           errors: [
             {
               uri: "",
               stage: "interrupted",
               code: "media.previewUnavailable",
               message:
-                "The previous proxy worker stopped. Resume explicitly to retry.",
+                "The stopped preview worker was explicitly recovered. Resume with a new request.",
             },
           ],
+          updatedAt: new Date().toISOString(),
         });
-    }
+      }
+      this.cleanStoppedWork(
+        new Set([
+          ...jobs.flatMap((job) =>
+            job.proxyCache ? [job.proxyCache.owner.token] : [],
+          ),
+          ...(recoveredWorker ? [recoveredWorker.token] : []),
+        ]),
+      );
+      return { recovered: jobs.length + readers.length + Number(!!worker) };
+    });
   }
 
   private exclusive<T>(
@@ -409,9 +562,11 @@ export class ProxyCacheService {
     this.host.beginProxyWork();
     const result = this.fifo.then(async () => {
       const lease = this.store.lease();
+      activeProxyOwners.add(lease.owner.token);
       try {
         return await work(lease);
       } finally {
+        activeProxyOwners.delete(lease.owner.token);
         lease.release();
       }
     });
@@ -514,30 +669,42 @@ export class ProxyCacheService {
     lease: ProxyWorkerLease,
     parent?: AbortSignal,
   ): Promise<Job["status"]> {
-    let job = this.host.catalog.getJob(jobId)!;
-    if (job.status !== "queued") return job.status;
-    const initial = validateProxyCacheTask(job.proxyCache);
-    this.project(initial.projectId);
-    const task: ProxyCacheTask = {
-      ...initial,
-      generation: initial.generation + 1,
-      owner: lease.owner,
-    };
+    const claimed = this.host.catalog.withProjectWrite(() => {
+      lease.assertOwned();
+      const previous = this.host.catalog.getJob(jobId);
+      if (!previous)
+        throw new ApplicationError(
+          "proxy.stale",
+          "The proxy queue changed before claim.",
+          409,
+        );
+      if (previous.status !== "queued") return previous;
+      const initial = validateProxyCacheTask(previous.proxyCache);
+      this.project(initial.projectId);
+      const job: Job = {
+        ...previous,
+        proxyCache: {
+          ...initial,
+          generation: initial.generation + 1,
+          owner: lease.owner,
+        },
+        status: "running",
+        stage: "verifying",
+        updatedAt: new Date().toISOString(),
+      };
+      this.host.catalog.saveJob(job);
+      return job;
+    });
+    if (claimed.status !== "running") return claimed.status;
+    const task = claimed.proxyCache!;
     const controller = new AbortController();
     this.controllers.set(jobId, controller);
     const signal = parent
       ? AbortSignal.any([parent, controller.signal])
       : controller.signal;
-    job = {
-      ...job,
-      proxyCache: task,
-      status: "running",
-      stage: "verifying",
-      updatedAt: new Date().toISOString(),
-    };
-    this.host.catalog.saveJob(job);
     let work: string | undefined;
     try {
+      checkAbort(signal);
       const asset = this.checkedAsset(
         task.assetId,
         this.imported.has(jobId)
@@ -578,6 +745,25 @@ export class ProxyCacheService {
       const artifactId = proxyDigest([jobId, task.generation, randomUUID()]);
       const extension = task.mediaType === "audio" ? "mp3" : "mp4";
       const output = join(work, `preview.${extension}`);
+      const preferred = this.store.preferred(asset.id);
+      const previous = this.host.catalog.getAsset(asset.id);
+      const keep = new Set(
+        [preferred, this.store.artifactId(previous?.proxyUri)].filter(
+          (id): id is string => !!id,
+        ),
+      );
+      const reserve = Math.min(
+        this.store.policy().quotaBytes,
+        Math.max(
+          64 * 1024,
+          Math.ceil(
+            (asset.duration! *
+              (task.mediaType === "audio" ? 192_000 : 1_200_000)) /
+              8,
+          ) + PROXY_CACHE_LIMITS.receiptBytes,
+        ),
+      );
+      await this.maintenance.makeRoom(reserve, lease, keep, signal);
       const inventory = await this.inventory();
       if (!inventory.complete)
         throw new ApplicationError(
@@ -585,10 +771,13 @@ export class ProxyCacheService {
           "Proxy inventory is incomplete; review storage before generating more files.",
           409,
         );
-      const remaining =
+      const sourceBytes = (await lstat(localPath(asset.uri))).size;
+      const remaining = Math.min(
+        maximumBytes - sourceBytes,
         this.store.policy().quotaBytes -
-        inventory.managedBytes -
-        PROXY_CACHE_LIMITS.receiptBytes;
+          inventory.managedBytes -
+          PROXY_CACHE_LIMITS.receiptBytes,
+      );
       if (remaining <= 0)
         throw new ApplicationError(
           "proxy.quotaExceeded",
@@ -707,6 +896,19 @@ export class ProxyCacheService {
         },
       };
       const readyPath = this.store.outputPath(receipt);
+      const latestInventory = await this.inventory();
+      if (
+        !latestInventory.complete ||
+        latestInventory.managedBytes +
+          receipt.output.byteLength +
+          Buffer.byteLength(JSON.stringify(receipt)) >
+          this.store.policy().quotaBytes
+      )
+        throw new ApplicationError(
+          "proxy.quotaExceeded",
+          "The managed preview quota changed before publication.",
+          409,
+        );
       this.currentTask(jobId, task, lease, signal);
       await link(output, readyPath);
       const published = lstatSync(readyPath);
@@ -798,6 +1000,40 @@ export class ProxyCacheService {
       for (const id of graphicSceneAssetIds(composition.graphicScenes ?? []))
         protectedIds.add(id);
     }
+    const projectPath = join(this.host.directory, "project.json");
+    const info = lstatSync(projectPath);
+    if (!info.isFile() || info.isSymbolicLink())
+      throw new ApplicationError(
+        "proxy.storageUnavailable",
+        "Project protection data is unavailable.",
+        409,
+      );
+    const identity = fileIdentity(info);
+    if (this.diskProtection?.identity !== identity) {
+      const saved = readProxyJson(projectPath, 32 * 1024 ** 2);
+      if (!saved)
+        throw new ApplicationError(
+          "proxy.stale",
+          "Saved project protection changed.",
+          409,
+        );
+      const project = validateProject(saved.value);
+      if (project.id !== this.host.project.id)
+        throw new ApplicationError(
+          "proxy.stale",
+          "Saved project identity changed.",
+          409,
+        );
+      const ids = new Set<string>();
+      for (const composition of project.timelines) {
+        for (const track of composition.tracks)
+          for (const clip of track.clips) ids.add(clip.assetId);
+        for (const id of graphicSceneAssetIds(composition.graphicScenes ?? []))
+          ids.add(id);
+      }
+      this.diskProtection = { identity: saved.identity, ids };
+    }
+    for (const id of this.diskProtection.ids) protectedIds.add(id);
     return protectedIds;
   }
 
@@ -858,8 +1094,13 @@ export class ProxyCacheService {
           info.isFile() &&
           !info.isSymbolicLink() &&
           info.size === receipt.output.byteLength
-        )
+        ) {
+          if (
+            this.store.verification(id, fileIdentity(info))?.status === "stale"
+          )
+            continue;
           return receipt;
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
@@ -973,48 +1214,47 @@ export class ProxyCacheService {
       let status: ProxyCacheHealth["entries"][number]["status"] =
         job?.status === "completed" ? "missing" : (job?.status ?? "missing");
       let bytes: number | undefined;
-      let verification: "recorded" | "unchecked" = "unchecked";
-      if (
-        !this.readyReceipt(asset) &&
-        asset.proxyUri &&
-        !["queued", "running"].includes(job?.status ?? "")
-      ) {
-        const artifactId = this.store.artifactId(asset.proxyUri);
-        if (!artifactId) status = "legacy";
-        else {
-          try {
-            const receipt = this.store.receipt(artifactId)?.receipt;
-            if (!receipt) status = "unavailable";
-            else if (
-              receipt.assetId !== asset.id ||
-              receipt.sourceHash !== asset.contentHash ||
-              receipt.inputFingerprint !== proxyInputFingerprint(asset)
-            )
-              status = "stale";
+      let verification: "recorded" | "checked" | "unchecked" = "unchecked";
+      if (!["queued", "running"].includes(job?.status ?? "")) {
+        try {
+          const ready = this.readyReceipt(asset);
+          if (ready) {
+            status = "ready";
+            bytes = ready.output.byteLength;
+            const identity = fileIdentity(
+              lstatSync(this.store.outputPath(ready)),
+            );
+            verification =
+              this.store.verification(ready.artifactId, identity)?.status ===
+              "verified"
+                ? "checked"
+                : "recorded";
+          } else {
+            const id =
+              this.store.preferred(asset.id) ??
+              this.store.artifactId(asset.proxyUri);
+            if (!id) status = asset.proxyUri ? "legacy" : status;
             else {
-              const info = await lstat(this.store.outputPath(receipt));
-              status =
-                info.isFile() &&
-                !info.isSymbolicLink() &&
-                info.size === receipt.output.byteLength
-                  ? "ready"
-                  : "stale";
-              bytes = info.size;
-              verification = "recorded";
+              const receipt = this.store.receipt(id)?.receipt;
+              if (!receipt) status = "unavailable";
+              else {
+                const info = lstatSync(this.store.outputPath(receipt));
+                status =
+                  receipt.inputFingerprint !== proxyInputFingerprint(asset) ||
+                  this.store.verification(id, fileIdentity(info))?.status ===
+                    "stale" ||
+                  info.size !== receipt.output.byteLength
+                    ? "stale"
+                    : "unavailable";
+              }
             }
-          } catch (error) {
-            status =
-              (error as NodeJS.ErrnoException).code === "ENOENT"
-                ? "missing"
-                : "unavailable";
           }
+        } catch (error) {
+          status =
+            (error as NodeJS.ErrnoException).code === "ENOENT"
+              ? "missing"
+              : "unavailable";
         }
-      }
-      const ready = this.readyReceipt(asset);
-      if (ready && !["queued", "running"].includes(job?.status ?? "")) {
-        status = "ready";
-        bytes = ready.output.byteLength;
-        verification = "recorded";
       }
       entries.push({
         assetId: asset.id,
@@ -1042,7 +1282,7 @@ export class ProxyCacheService {
       inventoryComplete: inventory.complete,
       running: !!this.running || this.controllers.size > 0,
       queued,
-      recovery: this.store.recovery(),
+      recovery: this.recoveryInfo(),
       entries,
       total,
       offset,
