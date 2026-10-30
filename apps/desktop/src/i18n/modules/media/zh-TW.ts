@@ -195,6 +195,7 @@ export default {
         crossfade: "交叉淡化",
         titles: "標題與疊加畫面",
         look: "影片風格",
+        primaryColor: "基礎色彩",
         photoLayout: "照片版面與保護區域",
         photoMotion: "照片運鏡",
         titleStyle: "字卡字體與版面",

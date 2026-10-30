@@ -206,6 +206,8 @@ export default {
         "A glossary term changed or conflicts with another entry. Reload the glossary and try again.",
     },
     review: {
+      cleanupFailed:
+        "Comparison images could not be removed. Retry cleanup, or close and reopen this project.",
       providerUnavailable:
         "A language review provider is unavailable or needs text consent. Glossary suggestions are still available.",
       suggestionStale:

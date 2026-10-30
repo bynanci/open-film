@@ -367,6 +367,63 @@ test("Edit creates a manual Traditional Chinese cue and reopens its saved text",
   );
 });
 
+test("caption font draft survives an earlier cue save acknowledgement", async ({
+  page,
+  request,
+}) => {
+  const fixture = await seed("Caption draft acknowledgement");
+  await initialLocale(page);
+  await page.goto("/");
+  await openFilm(page, fixture.path);
+  await navigate(page, "edit");
+  await page.getByTestId("caption-source-track").selectOption("dialogue");
+  await page.getByTestId("caption-import-track").click();
+  await expect(page.getByTestId("caption-cue")).toHaveCount(2);
+  await page.getByTestId("caption-inspector-tab").click();
+  let release!: () => void;
+  let captured!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const saved = new Promise<void>((resolve) => {
+    captured = resolve;
+  });
+  const editPath = `/api/compositions/${fixture.composition.id}/edit`;
+  await page.route(
+    `**${editPath}`,
+    async (route) => {
+      const response = await route.fetch();
+      captured();
+      await held;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  const text = page.getByTestId("caption-text");
+  await text.fill("Saved cue before typography");
+  await text.press("Tab");
+  await saved;
+  const size = page.getByTestId("caption-font-size");
+  await size.fill("34");
+  release();
+  await expect(page.getByTestId("editor-save-state")).toContainText(
+    uiText("en-US", "editor.save.saved"),
+  );
+  await expect(size).toHaveValue("34");
+  await size.press("Tab");
+  await expect
+    .poll(
+      async () =>
+        (
+          await get<{ composition: Composition }>(
+            request,
+            `/compositions/${fixture.composition.id}/editor`,
+          )
+        ).composition.captionTracks?.[0]?.style.fontSize,
+    )
+    .toBe(34);
+});
+
 test("Edit imports segment-timed captions, edits the native track, and reopens the saved cue", async ({
   page,
   request,

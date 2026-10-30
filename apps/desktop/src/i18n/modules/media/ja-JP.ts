@@ -207,6 +207,7 @@ export default {
         crossfade: "クロスフェード",
         titles: "タイトルとオーバーレイ",
         look: "映像のルック",
+        primaryColor: "プライマリーカラー",
         photoLayout: "写真のレイアウトと保護領域",
         photoMotion: "写真のモーション",
         titleStyle: "タイトルの書体とレイアウト",

@@ -275,3 +275,57 @@ source/artifact hashes belong to the separate final checkpoint under
 `/tmp/openfilm-finishing-integration/C-final-fix-stack-green/`; earlier failed
 and successful observations retain their own directories. This local check does
 not replace the pending scoped review or hosted gates.
+
+## 2026-10-30 — sanitize private cleanup failures
+
+The first scoped correction review resolved the original Important batch-context
+and Minor retention findings, then identified a bounded Minor follow-up: a real
+filesystem deletion failure could expose its absolute private path through HTTP
+or background logging. The cleanup boundary now throws the stable localized
+`review.cleanupFailed` ApplicationError with status503 and a path-free diagnostic.
+The raw filesystem error is neither its message/detail nor a retained cause.
+Sticky retirement, bounded retry, ownership, original deadlines and all timer
+disposal rules remain unchanged.
+
+The existing real-service fault case now injects an EBUSY error containing the
+actual synthetic private directory, and checks the typed rejection plus path-free
+background logging. A new actual port0 HTTP regression injects EACCES for only the
+owned evidence directory; both media GET and reviewed edit return503 with the
+localized code, no project/cache path or raw EACCES text, and unchanged saved
+project bytes. Both cases failed before the correction; the full service and
+HTTP/CLI selection now passes24tests in two files (43.21s), with no skips/retries.
+TypeScript/Vue, scoped ESLint and all2,890 localization keys pass. Earlier
+174-case and MP4 measurements retain their original checkpoint identity; this
+service/error-only increment does not claim new rendering or hosted evidence.
+Complete final-source CI and scoped source verification remain required.
+
+## 2026-10-30 — full-CI UI recovery
+
+The isolated recovery starts at `ae5778b`. Replaying the nine recorded browser
+cases first produced eight failures and one pass. Compare still used two old
+English locator strings; its current controls describe the preview before Film
+Look. Four global visual cases and three global workflow cases exposed a missing
+primary-color compatibility label in all three production locale compositions.
+Their existing layout, translation and export assertions remain in place.
+
+The original caption workflow passed locally, while its hosted failure omitted
+the edited font size. A deterministic actual-browser regression held an earlier
+cue save acknowledgement, typed 34 into the focused font-size field, then
+released that response. The input reset to 32 before blur. A local numeric draft
+now survives unrelated track-object replacement and still commits through the
+existing change event. The regression first failed, then passed after the fix.
+
+Explicit compatibility labels were added to the three media locale modules. A
+new regression iterates the actual exported compatibility feature IDs against
+each composed production locale; it first failed on the absent primary-color
+label. Compare uses the existing semantic locale keys for its two locators,
+retaining its pointer, keyboard, Escape, resource ownership and no-save checks.
+
+The final focused run passes all ten Chromium cases: the original nine plus the
+caption acknowledgement regression. Five scoped unit files pass all 73 tests,
+including the complete 55-case TimelineClip host file. TypeScript/Vue, scoped
+ESLint and formatting, 2,890 localization keys and documentation mirror checks
+pass. Original RED logs, context, traces and synthetic screenshots are retained
+in `.superpowers/sdd/2026-10-30-d5c-ui-ci-recovery/` in the recovery worktree.
+Both owned browser servers exited and ports 4310/1420 were confirmed closed and
+bindable. Fresh coordinator review and complete hosted CI remain separate gates.
