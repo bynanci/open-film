@@ -385,3 +385,26 @@ independently decoded Monitor/output RGB24 frame hashes match retained controls
 exactly. All 40 implementation/test source hashes were recomputed for the fresh
 receipt. Historical counts above remain evidence for their original candidate;
 coordinator-owned scoped re-review and complete exact-head CI remain pending.
+
+### D3 → D5A integration checkpoint
+
+The approved D3 waveform head `06cd982` was merged into reviewed D5A `f1d90ea`
+with merge `628ecfcb188c161d5e453d136772fb11b7ff9a95`. No manual source
+resolution was needed. Current focused checks passed: 12 files / 198 tests,
+including the real SequenceWaveform TimelineClip host's 55 tests; five related
+files / 71 tests; actual renderer four files / 40 tests; and two selected
+PhotoDepth 180-frame / ambient fidelity-handoff cases. TypeScript/Vue, changed
+source lint/format, 2,714 localization keys and 127 documentation mirrors passed.
+
+The initial related browser run passed 36 of 37 cases. The existing slow
+GraphicScene playback case observed five requests while its exact assertion
+expected three. Its production/test files are unchanged by this merge; the
+retained trace shows aborted native-playback requests. Without edits, its
+isolated retry passed and the complete Record Monitor file then passed 6/6.
+Every selected case has passed across these attempts; this is not a single
+successful 37-case run. No assertion, timeout or threshold was changed.
+
+Fresh synthetic source/media/Monitor artifacts and actual current implementation
+SHA-256 receipt are in `/tmp/openfilm-finishing-integration/A-628ecfc/`.
+Earlier candidate receipts remain historical. Full exact-head hosted gates and
+final integration review are coordinator-owned and are not established here.
