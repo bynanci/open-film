@@ -865,3 +865,32 @@ describe("Record transport cancellation and ownership", () => {
     expect(transport.playing.value).toBe(false);
   });
 });
+
+it("uses continuous canonical audio samples as the normal-play clock and preserves frame holds", () => {
+  const clock = fakeClock(),
+    sample = shallowRef<number | undefined>(0),
+    transport = useRecordTransport({
+      composition: () => composition,
+      timebase: () => timebase,
+      active: () => true,
+      ownerKey: () => "pcm",
+      continuousSample: () => sample.value,
+      ...clock,
+    });
+  cleanup.push(() => transport.dispose());
+  transport.play();
+  clock.tick(10000);
+  expect(transport.frame.value).toBe(0);
+  sample.value = 48048;
+  expect(transport.frame.value).toBe(30);
+  transport.buffering.value = true;
+  sample.value = 96096;
+  expect(transport.frame.value).toBe(30);
+  transport.buffering.value = false;
+  expect(transport.frame.value).toBe(60);
+  sample.value = 100100;
+  expect(transport.frame.value).toBe(62);
+  transport.pause();
+  sample.value = 120000;
+  expect(transport.frame.value).toBe(62);
+});

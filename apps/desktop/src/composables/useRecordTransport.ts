@@ -43,6 +43,8 @@ export interface RecordTransportOptions {
   active: MaybeRefOrGetter<boolean>;
   /** The monitor constructs this key from project/composition/revision/rate. */
   ownerKey: MaybeRefOrGetter<string>;
+  /** Canonical policy PCM owns normal 1x elapsed time; undefined keeps the legacy clock. */
+  continuousSample?: MaybeRefOrGetter<number | undefined>;
   now?: () => number;
   requestFrame?: (callback: (time: number) => void) => number;
   cancelFrame?: (id: number) => void;
@@ -163,6 +165,12 @@ export function useRecordTransport(
       return;
     }
     if (!playing.value || buffering.value) return;
+    if (
+      options.continuousSample &&
+      toValue(options.continuousSample) !== undefined &&
+      shuttleRate.value === 1
+    )
+      return;
     const endpoint = shuttleRate.value > 0 ? bounds.value.final : 0;
     if (frame.value === endpoint) {
       // A boundary stop supersedes a start interrupted by hold release.
@@ -223,6 +231,36 @@ export function useRecordTransport(
     );
   }
   const stopWatchers = [
+    watch(
+      () =>
+        [
+          options.continuousSample
+            ? toValue(options.continuousSample)
+            : undefined,
+          buffering.value,
+          playing.value,
+          shuttleRate.value,
+        ] as const,
+      ([sample]) => {
+        if (
+          sample === undefined ||
+          !Number.isSafeInteger(sample) ||
+          sample < 0 ||
+          !eligible() ||
+          !playing.value ||
+          shuttleRate.value !== 1 ||
+          buffering.value
+        )
+          return;
+        frame.value = Math.min(
+          bounds.value.final,
+          sequenceFrameAt(sample / 48000, bounds.value.timebase, "floor"),
+        );
+        if (sample >= Math.round(toValue(options.composition).duration * 48000))
+          stop();
+      },
+      { flush: "sync" },
+    ),
     watch(
       () => toValue(options.ownerKey),
       () => {

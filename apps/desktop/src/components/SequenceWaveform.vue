@@ -4,6 +4,9 @@ import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   formatSequenceTimecode,
+  buildAudioMixPlan,
+  resolveAudioInterval,
+  type AudioMixPlan,
   projectClipWaveform,
   resolveClipAudioRange,
   sequenceFrameAt,
@@ -34,6 +37,7 @@ const props = defineProps<{
   sourceStatuses?: Record<string, SourceStatus>;
   active: boolean;
   disabled: boolean;
+  audioMixPlan?: AudioMixPlan;
 }>();
 const emit = defineEmits<{ seek: [frame: number]; activity: [] }>();
 const { t } = useI18n();
@@ -127,6 +131,22 @@ function hasAudio(asset: MediaAsset) {
     probe.streams.some((stream) => stream.codec_type === "audio")
   );
 }
+const mixPlan = computed(() => {
+  if (props.audioMixPlan) return props.audioMixPlan;
+  if (!props.composition.tracks.some((t) => t.clips.some((c) => c.audioTiming)))
+    return undefined;
+  try {
+    return buildAudioMixPlan(props.composition, props.assets, {
+      timebase: props.timebase,
+      coverage: [],
+    });
+  } catch {
+    return undefined;
+  }
+});
+const projectionPolicyKey = computed(() =>
+  JSON.stringify([props.revision, mixPlan.value]),
+);
 const visibleTracks = computed(() => {
   const start = sequenceTimeAt(viewport.value.start, props.timebase);
   const end = sequenceTimeAt(viewport.value.end, props.timebase);
@@ -136,7 +156,15 @@ const visibleTracks = computed(() => {
       const asset = assetsById.value.get(clip.assetId);
       if (!asset || !hasAudio(asset)) return [];
       try {
-        const audio = resolveClipAudioRange(clip, asset);
+        const interval = clip.audioTiming
+          ? resolveAudioInterval(clip, asset, props.composition.duration)
+          : undefined;
+        const audio = interval
+          ? {
+              audioStart: interval.startSample / 48000,
+              audioEnd: interval.endSample / 48000,
+            }
+          : resolveClipAudioRange(clip, asset);
         return audio.audioStart < end && audio.audioEnd > start
           ? [{ clip, asset, audio }]
           : [];
@@ -232,6 +260,7 @@ watch(
 const columns = 600;
 const tracks = computed(() => {
   void cacheVersion.value;
+  void projectionPolicyKey.value;
   const sourceIds = new Set(pageSourceIds.value);
   const view = viewport.value;
   const start = sequenceTimeAt(view.start, props.timebase);
@@ -246,7 +275,18 @@ const tracks = computed(() => {
           sourceStatus && sourceStatus !== "available"
             ? "unavailable"
             : (entry?.status ?? "failed");
-        let path = "";
+        let path = "",
+          maskPath = "",
+          excluded = false,
+          suppressed = false;
+        const startEdge =
+            audio.audioStart >= start && audio.audioStart <= start + duration
+              ? ((audio.audioStart - start) / duration) * columns
+              : undefined,
+          endEdge =
+            audio.audioEnd >= start && audio.audioEnd <= start + duration
+              ? ((audio.audioEnd - start) / duration) * columns
+              : undefined;
         if (status === "ready" && entry?.status === "ready") {
           try {
             const projection = projectClipWaveform({
@@ -258,11 +298,21 @@ const tracks = computed(() => {
               viewStartFrame: view.start,
               viewEndFrame: view.end,
               columns,
+              mixPlan: mixPlan.value,
             });
             path = projection.peaks
               .map((peak, column) =>
                 projection.covered[column] && peak > 0
                   ? `M${column + 0.5},${50 - peak * 43}v${peak * 86}`
+                  : "",
+              )
+              .join("");
+            excluded = projection.excluded?.some(Boolean) ?? false;
+            suppressed = projection.suppressed?.some(Boolean) ?? false;
+            maskPath = projection.peaks
+              .map((_peak, column) =>
+                projection.excluded?.[column] || projection.suppressed?.[column]
+                  ? `M${column + 0.5},8v84`
                   : "",
               )
               .join("");
@@ -282,6 +332,12 @@ const tracks = computed(() => {
           clip,
           asset,
           path,
+          maskPath,
+          excluded,
+          suppressed,
+          startEdge,
+          endEdge,
+          independent: !!clip.audioTiming,
           status,
           x,
           width: Math.max(0, end - x),
@@ -518,7 +574,35 @@ onBeforeUnmount(() => {
                 :data-clip-id="item.clip.id"
                 :data-asset-id="item.asset.id"
                 :data-muted="item.muted"
+                :data-excluded="item.excluded || undefined"
+                :data-suppressed="item.suppressed || undefined"
                 :class="{ 'sequence-waveform-muted': item.muted }"
+              />
+              <path
+                v-if="item.maskPath"
+                :d="item.maskPath"
+                class="sequence-waveform-contribution-mask"
+                :data-audio-mask="item.suppressed ? 'suppressed' : 'excluded'"
+              />
+              <line
+                v-if="item.independent && item.startEdge !== undefined"
+                :x1="item.startEdge"
+                :x2="item.startEdge"
+                y1="0"
+                y2="100"
+                class="sequence-waveform-sound-edge"
+                :data-clip-id="item.clip.id"
+                data-sound-edge="start"
+              />
+              <line
+                v-if="item.independent && item.endEdge !== undefined"
+                :x1="item.endEdge"
+                :x2="item.endEdge"
+                y1="0"
+                y2="100"
+                class="sequence-waveform-sound-edge"
+                :data-clip-id="item.clip.id"
+                data-sound-edge="end"
               />
             </template>
           </svg>
@@ -529,6 +613,25 @@ onBeforeUnmount(() => {
             aria-hidden="true"
           />
         </div>
+        <span
+          v-for="item in track.clips.filter(
+            (c) => c.muted || c.excluded || c.suppressed || c.independent,
+          )"
+          :key="item.clip.id"
+          class="sequence-waveform-contribution-label"
+          >{{ item.clip.id }} ·
+          {{
+            t(
+              item.suppressed
+                ? "cutDesk.waveform.suppressed"
+                : item.excluded
+                  ? "cutDesk.waveform.excluded"
+                  : item.muted
+                    ? "cutDesk.waveform.muted"
+                    : "cutDesk.waveform.independent",
+            )
+          }}</span
+        >
       </div>
     </div>
     <p v-else class="sequence-waveform-hint">
@@ -734,6 +837,21 @@ onBeforeUnmount(() => {
 }
 .sequence-waveform-graph path.sequence-waveform-muted {
   opacity: 0.45;
+}
+.sequence-waveform-contribution-label {
+  grid-column: 2;
+  color: var(--editor-muted);
+  overflow-wrap: anywhere;
+}
+.sequence-waveform-graph path.sequence-waveform-contribution-mask {
+  stroke: var(--editor-muted);
+  opacity: 0.25;
+}
+.sequence-waveform-sound-edge {
+  stroke: var(--of-text-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
 }
 .sequence-waveform-absent {
   fill: none;

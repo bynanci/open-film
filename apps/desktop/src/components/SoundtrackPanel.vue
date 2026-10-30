@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   evaluateAudioGain,
+  hasAudioStream,
+  resolveAudioInterval,
   type AudioAutomation,
   type Clip,
   type Composition,
@@ -40,16 +42,46 @@ const audioClips = computed(() =>
 );
 const selectedAudio = computed(() =>
   props.selectedClip &&
-  audioClips.value.some((clip) => clip.id === props.selectedClip!.id)
+  hasAudioStream(
+    props.assets.find((asset) => asset.id === props.selectedClip?.assetId) ??
+      ({ mediaType: "image", metadata: {} } as MediaAsset),
+  )
     ? props.selectedClip
     : undefined,
+);
+const selectedOverlay = computed(() =>
+  audioClips.value.some((clip) => clip.id === selectedAudio.value?.id),
+);
+const selectedDuration = computed(() => {
+  if (!selectedAudio.value) return 0;
+  const asset = props.assets.find((a) => a.id === selectedAudio.value!.assetId);
+  try {
+    return asset
+      ? resolveAudioInterval(
+          selectedAudio.value,
+          asset,
+          props.composition.duration,
+        ).automationDurationSeconds
+      : selectedAudio.value.timelineDuration;
+  } catch {
+    return selectedAudio.value.timelineDuration;
+  }
+});
+const selectedRole = computed<AudioAutomation["role"]>(
+  () =>
+    selectedAudio.value?.audioAutomation?.role ??
+    (props.composition.tracks.find((track) =>
+      track.clips.some((clip) => clip.id === selectedAudio.value?.id),
+    )?.type === "music"
+      ? "music"
+      : "dialogue"),
 );
 const selectedAsset = computed(() =>
   props.assets.find((asset) => asset.id === selectedAudio.value?.assetId),
 );
 const sourceIdentity = computed(
   () =>
-    `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${props.sourceVersion ?? 0}`,
+    `${selectedAsset.value?.id}:${selectedAsset.value?.uri}:${selectedAsset.value?.contentHash}:${props.sourceVersion ?? 0}`,
 );
 const assetId = ref("");
 const role = ref<AudioAutomation["role"]>("music");
@@ -120,13 +152,13 @@ watch(
       fields.value = {
         ...fields.value,
         duckStart: duck?.start ?? 0,
-        duckEnd: duck?.end ?? Math.min(1, clip.timelineDuration),
+        duckEnd: duck?.end ?? Math.min(1, selectedDuration.value),
         duckGain: duck?.gain ?? 0.3,
         duckAttack: duck?.attack ?? 0.2,
         duckRelease: duck?.release ?? 0.2,
       };
     }
-    if (changedClip && player.value) player.value.pause();
+    if ((changedClip || clip.audioTiming) && player.value) player.value.pause();
   },
   { immediate: true },
 );
@@ -158,7 +190,10 @@ function add() {
     volume: role.value === "music" ? 0.6 : 1,
   });
 }
-function configure(duck?: "add" | "remove") {
+function configure(
+  duck?: "add" | "remove",
+  roleOverride?: AudioAutomation["role"],
+) {
   const clip = selectedAudio.value;
   if (!clip) return;
   emit("command", {
@@ -167,7 +202,7 @@ function configure(duck?: "add" | "remove") {
     automation: {
       ...clip.audioAutomation,
       version: 1,
-      role: clip.audioAutomation?.role ?? "music",
+      role: roleOverride ?? selectedRole.value,
       fadeIn: Number(fields.value.fadeIn),
       fadeOut: Number(fields.value.fadeOut),
       ...(duck === "add"
@@ -287,6 +322,34 @@ function startPlayback() {
       >
       <div class="editor-field-pair">
         <label class="editor-field"
+          >{{ t("editor.sound.role")
+          }}<select
+            data-testid="selected-audio-role"
+            :value="selectedRole"
+            :aria-label="t('editor.sound.role')"
+            @change="
+              configure(
+                undefined,
+                ($event.target as HTMLSelectElement)
+                  .value as AudioAutomation['role'],
+              )
+            "
+          >
+            <option
+              v-for="value in [
+                'music',
+                'narration',
+                'ambience',
+                'dialogue',
+              ] as const"
+              :key="value"
+              :value="value"
+            >
+              {{ t(`editor.sound.roles.${value}`) }}
+            </option>
+          </select></label
+        >
+        <label v-if="selectedOverlay" class="editor-field"
           >{{ t("editor.sound.start")
           }}<input
             v-model.number="start"
@@ -354,7 +417,7 @@ function startPlayback() {
     </div>
     <template v-if="selectedAudio">
       <audio
-        v-if="selectedAsset"
+        v-if="selectedAsset && !selectedAudio.audioTiming"
         :key="`${selectedAudio.id}:${sourceIdentity}`"
         ref="player"
         crossorigin="anonymous"
@@ -380,7 +443,15 @@ function startPlayback() {
           )
         }}
       </p>
-      <p class="editor-note">{{ t("editor.sound.previewHint") }}</p>
+      <p class="editor-note">
+        {{
+          t(
+            selectedAudio.audioTiming
+              ? "editor.soundTiming.recordAudition"
+              : "editor.sound.previewHint",
+          )
+        }}
+      </p>
       <fieldset
         class="editor-fields"
         :disabled="busy || selectedAudio.locked || selectedAsset?.state.locked"
@@ -416,7 +487,7 @@ function startPlayback() {
               v-model.number="fields.fadeIn"
               type="number"
               min="0"
-              :max="selectedAudio.timelineDuration"
+              :max="selectedDuration"
               step="0.1"
               @change="configure()"
           /></label>
@@ -426,7 +497,7 @@ function startPlayback() {
               v-model.number="fields.fadeOut"
               type="number"
               min="0"
-              :max="selectedAudio.timelineDuration"
+              :max="selectedDuration"
               step="0.1"
               @change="configure()"
           /></label>
@@ -441,7 +512,7 @@ function startPlayback() {
                 v-model.number="fields.duckStart"
                 type="number"
                 min="0"
-                :max="selectedAudio.timelineDuration"
+                :max="selectedDuration"
                 step="0.1"
             /></label>
             <label class="editor-field"
@@ -450,7 +521,7 @@ function startPlayback() {
                 v-model.number="fields.duckEnd"
                 type="number"
                 min="0"
-                :max="selectedAudio.timelineDuration"
+                :max="selectedDuration"
                 step="0.1"
             /></label>
             <label class="editor-field"

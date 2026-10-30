@@ -110,6 +110,16 @@ export class TimelineEditorError extends Error {
 }
 
 const editorQueues = new WeakMap<OpenFilmApplication, Promise<void>>();
+const audioHandleOwners = new WeakSet<OpenFilmApplication>();
+export interface AudioHandleFacts {
+  version: 1;
+  clipId: string;
+  assetId: string;
+  revision: string;
+  sourceHash: string;
+  sampleRate: 48000;
+  lengthSamples: number;
+}
 const HISTORY_LIMIT = 100;
 const REQUEST_LIMIT = 200;
 const COMMAND_LIMIT = 100;
@@ -1525,6 +1535,74 @@ export class TimelineEditor {
         revision: after.revision,
       });
     return after;
+  }
+
+  async audioHandles(
+    compositionId: string,
+    clipId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+  ): Promise<AudioHandleFacts> {
+    nonempty(compositionId, "compositionId");
+    nonempty(clipId, "clipId");
+    nonempty(baseRevision, "baseRevision");
+    if (audioHandleOwners.has(this.application))
+      throw new ApplicationError(
+        "jobs.busy",
+        "Audio source facts are already being checked; retry shortly.",
+        409,
+      );
+    audioHandleOwners.add(this.application);
+    try {
+      const before = this.current(compositionId, baseRevision),
+        clip = before.composition.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.id === clipId),
+        asset = clip && before.assets.find((a) => a.id === clip.assetId),
+        settings = JSON.stringify(this.application.project.settings),
+        projectId = this.application.project.id,
+        generation = this.application.projectGeneration;
+      if (!clip || !asset)
+        throw new TimelineEditorError(
+          "Sound source occurrence was not found.",
+          404,
+        );
+      const facts = await inspectCanonicalAudio(asset, signal);
+      this.current(compositionId, baseRevision);
+      assertCanonicalAudioCurrent([facts]);
+      const disk = JSON.parse(
+        readFileSync(join(this.application.directory, "project.json"), "utf8"),
+      ) as {
+        id: string;
+        settings: unknown;
+        timelines: TimelineEditorState["composition"][];
+      };
+      if (
+        this.application.project.id !== projectId ||
+        this.application.projectGeneration !== generation ||
+        JSON.stringify(this.application.project.settings) !== settings ||
+        disk.id !== projectId ||
+        JSON.stringify(disk.settings) !== settings ||
+        JSON.stringify(disk.timelines.find((c) => c.id === compositionId)) !==
+          JSON.stringify(before.composition)
+      )
+        throw new TimelineEditorError(
+          "Sound handle facts are stale; inspect the saved cut again.",
+          409,
+        );
+      signal?.throwIfAborted();
+      return {
+        version: 1,
+        clipId,
+        assetId: asset.id,
+        revision: baseRevision,
+        sourceHash: facts.sha256,
+        sampleRate: 48000,
+        lengthSamples: facts.lengthSamples,
+      };
+    } finally {
+      audioHandleOwners.delete(this.application);
+    }
   }
 
   async edit(

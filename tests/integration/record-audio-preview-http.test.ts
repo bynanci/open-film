@@ -91,6 +91,19 @@ it("serves only bounded opaque PCM ranges under existing host, origin and sessio
     outgoing.end(JSON.stringify({ baseRevision: state.revision }));
   });
   expect(badHostStatus).toBe(403);
+  const handles = await fetch(
+    `${base}/api/compositions/c/clips/a/audio-handles?${new URLSearchParams({ baseRevision: state.revision })}`,
+  );
+  expect(handles.status).toBe(200);
+  expect(await handles.json()).toEqual({
+    version: 1,
+    clipId: "a",
+    assetId: asset.id,
+    revision: state.revision,
+    sourceHash: asset.contentHash,
+    sampleRate: 48000,
+    lengthSamples: 96000,
+  });
   const response = await post({ baseRevision: state.revision });
   expect(response.status).toBe(200);
   const descriptor = await response.json();

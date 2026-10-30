@@ -80,6 +80,7 @@ import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
 import SoundtrackPanel from "./SoundtrackPanel.vue";
+import AudioTimingInspector from "./AudioTimingInspector.vue";
 import VisualQaPanel from "./VisualQaPanel.vue";
 import AudioGenerationPanel from "./AudioGenerationPanel.vue";
 import MotionGenerationPanel from "./MotionGenerationPanel.vue";
@@ -305,6 +306,10 @@ async function commitSource(
     return { status: "failed" as const };
   directionPreview.value = null;
   return compositionCommitTransaction(input, [], signal, options);
+}
+async function commitSoundTiming(input: TimelineCommand): Promise<boolean> {
+  const result = await commitSource(input);
+  return result.status === "accepted";
 }
 function templateCommand(
   input: TimelineCommand,
@@ -4516,6 +4521,27 @@ onBeforeUnmount(() => {
             <p v-if="selectedClip.locked" class="editor-note">
               {{ t("editor.clip.protected") }}
             </p>
+            <AudioTimingInspector
+              v-if="
+                selectedAsset.mediaType === 'audio' ||
+                selectedAsset.mediaType === 'video'
+              "
+              :project-id="projectId"
+              :composition-id="compositionId"
+              :revision="state.revision"
+              :composition-duration="state.composition.duration"
+              :clip="selectedClip"
+              :asset="selectedAsset"
+              :busy="
+                historyBusy ||
+                directionBlocked ||
+                graphicAgentBusy ||
+                graphicAgentPending
+              "
+              :active="active"
+              :source-version="sourceVersion"
+              :commit="commitSoundTiming"
+            />
             <FilmLookInspector
               :composition="state.composition"
               :clip="selectedClip"

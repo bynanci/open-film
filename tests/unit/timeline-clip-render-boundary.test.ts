@@ -1,3 +1,4 @@
+import * as recordAudioPlayback from "../../apps/desktop/src/recordAudioPlayback";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -370,6 +371,7 @@ async function mountTimeline(
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
     "../sourceMarks": sourceMarks,
+    "../recordAudioPlayback": recordAudioPlayback,
     "../sequenceWaveformCache": sequenceWaveformCache,
     "../sequenceWaveformPreparation": sequenceWaveformPreparation,
     "../waveform": { waveformPath },

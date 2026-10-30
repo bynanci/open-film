@@ -404,3 +404,67 @@ describe("derived Record waveform view", () => {
     },
   );
 });
+
+it("keeps raw J/L peaks outside picture edges and labels excluded/suppressed contribution masks", async () => {
+  const saved = composition(),
+    first = saved.tracks[0]!.clips[0]!,
+    secondary = saved.tracks[0]!.clips[1]!;
+  first.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 12000,
+    sourceInSample: 0,
+    sourceOutSample: 48000,
+  };
+  secondary.timelineStart = 0.5;
+  secondary.timelineDuration = 1;
+  secondary.sourceIn = 0;
+  secondary.sourceOut = 1;
+  const timebase = {
+      version: 1 as const,
+      rateNumerator: 10,
+      rateDenominator: 1,
+      dropFrame: false,
+    },
+    audioMixPlan = core.buildAudioMixPlan(saved, [asset], {
+      timebase,
+      coverage: [
+        {
+          version: 1,
+          bindingId: "b",
+          compositionId: "cut",
+          primaryClipId: first.id,
+          secondaryClipId: secondary.id,
+          startSample: 36000,
+          endSample: 48000,
+          policy: {
+            version: 1,
+            mode: "replace-primary",
+            role: "ambience",
+            gain: 0.5,
+          },
+        },
+      ],
+    });
+  const host = mount({ composition: saved, audioMixPlan });
+  await host.finish();
+  const raw = host.paths().find((p) => p.props["data-clip-id"] === first.id)!;
+  expect(raw.props["data-suppressed"]).toBe(true);
+  expect(String(raw.props.d)).toContain("17.75");
+  expect(
+    host
+      .all()
+      .some(
+        (n) =>
+          n.props["data-sound-edge"] === "start" &&
+          n.props["data-clip-id"] === first.id &&
+          Number(n.props.x1) === 37.5,
+      ),
+  ).toBe(true);
+  expect(
+    host.all().some((n) => n.props["data-audio-mask"] === "suppressed"),
+  ).toBe(true);
+  expect(
+    host.all().some((n) => n.props["data-audio-mask"] === "excluded"),
+  ).toBe(true);
+});

@@ -4531,6 +4531,43 @@ export async function startServer(options: ServerOptions = {}) {
             return;
           }
         }
+        const audioHandles =
+          /^\/api\/compositions\/([^/]+)\/clips\/([^/]+)\/audio-handles$/.exec(
+            route,
+          );
+        if (method === "GET" && audioHandles) {
+          if (
+            [...url.searchParams.keys()].some(
+              (key) => key !== "baseRevision",
+            ) ||
+            url.searchParams.getAll("baseRevision").length !== 1
+          )
+            throw new HttpError(
+              400,
+              "Supply only the saved audio-handle revision.",
+            );
+          const controller = new AbortController(),
+            disconnected = () => {
+              if (!response.writableEnded) controller.abort();
+            };
+          response.once("close", disconnected);
+          try {
+            const facts = await trackedMediaRead((projectSignal) =>
+              editorFor(application).audioHandles(
+                decodeURIComponent(audioHandles[1]!),
+                decodeURIComponent(audioHandles[2]!),
+                url.searchParams.get("baseRevision")!,
+                AbortSignal.any([projectSignal, controller.signal]),
+              ),
+            );
+            if (app !== application)
+              throw new HttpError(409, "Sound handle project changed.");
+            json(response, 200, facts);
+          } finally {
+            response.off("close", disconnected);
+          }
+          return;
+        }
         const recordAudioPrepare =
           /^\/api\/compositions\/([^/]+)\/record-audio-preview$/.exec(route);
         if (method === "POST" && recordAudioPrepare) {

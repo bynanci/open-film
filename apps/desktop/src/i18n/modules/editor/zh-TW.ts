@@ -2,6 +2,44 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    soundTiming: {
+      title: "聲音時序",
+      linked: "與畫面連動",
+      independent: "獨立聲音",
+      currentRange: "聲音範圍：",
+      milliseconds: "毫秒",
+      sampleRemainder: "起點／終點額外樣本（每毫秒 48 樣本）",
+      verifiedSource: "已驗證來源聲音：",
+      startOffset: "調整聲音起點（毫秒）",
+      endOffset: "調整聲音終點（毫秒）",
+      apply: "套用聲音時序",
+      saving: "正在儲存聲音時序…",
+      reset: "重設聲音時序",
+      resetHint: "重設後聲音將回到與畫面連動的範圍：",
+      splitHint: "v1 不支援分割或取代獨立聲音。請先明確重設聲音時序。",
+      clockHint:
+        "負的起點調整建立 J 剪接；正的終點調整建立 L 剪接。移動聲音起點也會移動淡化、包絡與閃避的時鐘。",
+      locked: "請先解除片段與來源鎖定，再調整聲音時序。",
+      missingStream: "沒有已驗證的音軌。請檢查或重新連結來源。",
+      checking: "正在驗證解碼後的來源聲音餘量…",
+      sourceUnavailable: "無法驗證來源聲音餘量。請檢查或重新連結來源後重試。",
+      invalidRange:
+        "請輸入 −60000 至 60000 的整數毫秒，且須在來源與影片範圍內。既有淡化及閃避區段也必須容納。",
+      saveFailed: "聲音時序尚未儲存。請檢查來源、鎖定與效果後重試。",
+      recordAudition: "請使用 Record 試聽已儲存的獨立聲音混音。",
+      idle: "按播放以準備已儲存的混音。",
+      preparing: "正在準備已儲存的混音…",
+      ready: "已儲存的混音已就緒。",
+      playing: "正在播放已儲存的混音。",
+      buffering: "PCM 載入中，畫面與聲音暫停在原處…",
+      previewFailed: "聲音預覽無法使用或已過期。請重試播放，或匯出 WAV／MP4。",
+      resumeRequired: "音訊需要播放手勢。請再次按播放。",
+      invalidPcm: "準備的聲音 PCM 格式無效。請重新準備。",
+      unsupported: "無法使用 WebAudio。請匯出 WAV 或 MP4 試聽此混音。",
+      silentShuttle:
+        "獨立聲音的穿梭播放為靜音。一般 1× 播放會使用已儲存的混音。",
+      cancel: "取消聲音準備",
+    },
     pins: {
       affected: "受影響的釘選編輯：{owners}。",
       pinned: "已釘選編輯",

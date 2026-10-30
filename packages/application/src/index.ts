@@ -2410,6 +2410,7 @@ export class OpenFilmApplication {
 export {
   TimelineEditor,
   TimelineEditorError,
+  type AudioHandleFacts,
   type TimelineEditorState,
   type TimelineEditInput,
   type DirectionReviewPlan,

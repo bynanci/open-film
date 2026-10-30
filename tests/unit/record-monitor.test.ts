@@ -1,3 +1,5 @@
+import * as playbackModule from "../../apps/desktop/src/recordAudioPlayback";
+import type { RecordAudioPreviewDescriptor } from "@openfilm/application";
 import { existsSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 import * as core from "@openfilm/core";
@@ -107,6 +109,20 @@ async function mount(
     frame: number,
     signal?: AbortSignal,
   ) => Promise<Blob> = async () => new Blob(["frame"]),
+  audioRuntime?: {
+    context: AudioContext;
+    prepare?: (
+      compositionId: string,
+      revision: string,
+      signal?: AbortSignal,
+    ) => Promise<RecordAudioPreviewDescriptor>;
+    read?: (
+      id: string,
+      start: number,
+      count: number,
+      signal?: AbortSignal,
+    ) => Promise<Uint8Array>;
+  },
 ) {
   // Missing adapter is an assertion failure in RED, rather than a loader error.
   expect(existsSync(path), "Composition RecordMonitor is implemented").toBe(
@@ -127,12 +143,49 @@ async function mount(
     Object.assign(new EventTarget(), { hidden: false }),
   );
   vi.spyOn(performance, "now").mockImplementation(() => now);
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
   vi.stubGlobal("URL", {
     createObjectURL: () => "/graphic.png",
     revokeObjectURL: () => {},
   });
+  if (audioRuntime)
+    vi.stubGlobal("AudioContext", function () {
+      return audioRuntime.context;
+    });
+  vi.stubGlobal(
+    "Image",
+    class {
+      src = "";
+      async decode() {}
+    },
+  );
   const api = {
+    api: {
+      prepareRecordAudioPreview:
+        audioRuntime?.prepare ??
+        (async (_compositionId: string, revision: string) => ({
+          version: 1,
+          id: "12345678-1234-1234-1234-123456789abc",
+          revision,
+          sourceKeyDigest: "a".repeat(64),
+          sampleRate: 48000,
+          channels: 2,
+          format: "pcm_s24le",
+          lengthSamples: Math.round(saved.duration * 48000),
+        })),
+      recordAudioPcm:
+        audioRuntime?.read ??
+        (async (_id: string, _start: number, count: number) =>
+          new Uint8Array(count * 6)),
+    },
+    nativeTextOverlay: async () => new Blob(["caption"], { type: "image/png" }),
+    nativeTextInspection: async () => ({
+      status: "measured",
+      runFonts: [],
+      warnings: [],
+    }),
     sourceUrl: (key: string, version: string | number) =>
       `/source/${key}?v=${encodeURIComponent(version)}`,
     titlePreviewUrl: (_cut: string, clipId: string) => `/title/${clipId}.png`,
@@ -165,7 +218,18 @@ async function mount(
       "./GraphicSceneLayerOverlay.vue": {},
     },
   );
+  const captions = loadComponent(
+    "apps/desktop/src/components/NativeCaptionPreview.vue",
+    {
+      "@openfilm/core": core,
+      "../api": api,
+      "vue-i18n": { useI18n: () => ({ t: String }) },
+    },
+  );
   const component = loadComponent(path, {
+    "../recordAudioPlayback": playbackModule,
+    "vue-i18n": { useI18n: () => ({ t: String }) },
+    "./NativeCaptionPreview.vue": captions,
     "@openfilm/core": core,
     "../api": api,
     "../composables/useRecordTransport": { useRecordTransport },
@@ -251,6 +315,12 @@ async function mount(
     callbacks,
     history,
     transport: () => transport,
+    pcmTick: async (seconds: number) => {
+      if (audioRuntime)
+        Object.assign(audioRuntime.context, { currentTime: seconds });
+      await vi.advanceTimersByTimeAsync(25);
+      for (let i = 0; i < 10; i++) await settle();
+    },
     graphics: async () => {
       await vi.advanceTimersByTimeAsync(0);
       await settle();
@@ -1225,4 +1295,181 @@ it("retains queued explicit source resync when same-target readiness arrives dur
   await m.seek(1);
   expect(writes).toBe(2);
   expect(m.frames.filter((frame) => frame === 1)).toHaveLength(1);
+});
+
+class PolicyAudioContext {
+  currentTime = 0;
+  state = "running";
+  destination = {};
+  nodes: {
+    buffer: unknown;
+    when: number;
+    connected: boolean;
+    stopped: boolean;
+  }[] = [];
+  createBuffer(channels: number, length: number, sampleRate: number) {
+    const data = Array.from(
+      { length: channels },
+      () => new Float32Array(length),
+    );
+    return {
+      length,
+      sampleRate,
+      getChannelData: (index: number) => data[index]!,
+    };
+  }
+  createBufferSource() {
+    const node = {
+      buffer: null as unknown,
+      when: -1,
+      connected: false,
+      stopped: false,
+      onended: null as unknown,
+      connect() {
+        this.connected = true;
+      },
+      disconnect() {
+        this.connected = false;
+      },
+      start(when: number) {
+        this.when = when;
+      },
+      stop() {
+        this.stopped = true;
+      },
+    };
+    this.nodes.push(node);
+    return node;
+  }
+  async resume() {
+    this.state = "running";
+  }
+  async close() {
+    this.state = "closed";
+  }
+}
+it("policy PCM is the only sound owner and drives actual native captions through an underrun hold", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[0]!.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 817,
+    sourceInSample: 48000,
+    sourceOutSample: 144000,
+  };
+  saved.captionTracks = [
+    {
+      version: 1,
+      id: "captions",
+      name: "Captions",
+      style: { version: 1, role: "subtitle" },
+      cues: [
+        {
+          version: 1,
+          id: "cue",
+          startMs: 1000,
+          endMs: 2500,
+          text: "語\nSpeech",
+          textRuns: {
+            version: 1,
+            splitAt: 1,
+            primary: { fontSize: 20 },
+            secondary: { fontSize: 12 },
+          },
+          source: { kind: "manual" },
+          manualRevision: 0,
+        },
+      ],
+    },
+  ];
+  const context = new PolicyAudioContext();
+  let release!: (value: Uint8Array) => void;
+  const blocked = new Promise<Uint8Array>((resolve) => {
+    release = resolve;
+  });
+  const monitor = await mount(saved, undefined, undefined, {
+    context: context as unknown as AudioContext,
+    read: async (_id, start, count) =>
+      start === 96000 ? blocked : new Uint8Array(count * 6),
+  });
+  await monitor.ready("a");
+  await monitor.ready("b");
+  expect(monitor.audio()).toHaveLength(0);
+  monitor.transport().play();
+  await monitor.pcmTick(0);
+  await monitor.pcmTick(1.25);
+  expect(monitor.transport().frame).toBe(10);
+  expect(monitor.nodes().some((n) => n.props["data-cue-id"] === "cue")).toBe(
+    true,
+  );
+  await monitor.tick(100000);
+  expect(monitor.transport().frame).toBe(10);
+  await monitor.pcmTick(3);
+  expect(monitor.transport().frame).toBe(20);
+  await monitor.pcmTick(20);
+  expect(monitor.transport().frame).toBe(20);
+  expect(monitor.nodes().some((n) => n.props["data-cue-id"] === "cue")).toBe(
+    true,
+  );
+  release(new Uint8Array(96000 * 6));
+  await monitor.pcmTick(20);
+  await monitor.pcmTick(20.75);
+  expect(monitor.transport().frame).toBe(25);
+  expect(monitor.nodes().some((n) => n.props["data-cue-id"] === "cue")).toBe(
+    false,
+  );
+  monitor.transport().pause();
+  expect(context.nodes.every((n) => n.stopped || !n.connected)).toBe(true);
+  expect(monitor.audio()).toHaveLength(0);
+});
+it("drops interrupted PCM preparation after a revision change and reports unsupported WebAudio without legacy audio", async () => {
+  const saved = cut();
+  saved.tracks[0]!.clips[0]!.audioTiming = {
+    version: 1,
+    sampleRate: 48000,
+    timelineStartSample: 0,
+    sourceInSample: 48000,
+    sourceOutSample: 96000,
+  };
+  const context = new PolicyAudioContext();
+  let complete!: (value: RecordAudioPreviewDescriptor) => void,
+    signal: AbortSignal | undefined;
+  const pending = new Promise<RecordAudioPreviewDescriptor>((resolve) => {
+    complete = resolve;
+  });
+  const monitor = await mount(saved, undefined, undefined, {
+    context: context as unknown as AudioContext,
+    prepare: async (_id, _revision, value) => {
+      signal = value;
+      return pending;
+    },
+  });
+  await monitor.ready("a");
+  monitor.transport().play();
+  await settle();
+  monitor.props.revision = "r2";
+  await settle();
+  expect(signal?.aborted).toBe(true);
+  complete({
+    version: 1,
+    id: "12345678-1234-1234-1234-123456789abc",
+    revision: "r1",
+    sourceKeyDigest: "a".repeat(64),
+    sampleRate: 48000,
+    channels: 2,
+    format: "pcm_s24le",
+    lengthSamples: 288000,
+  });
+  await settle();
+  expect(context.nodes).toHaveLength(0);
+  expect(monitor.audio()).toHaveLength(0);
+  vi.stubGlobal("AudioContext", undefined);
+  monitor.transport().play();
+  await settle();
+  expect(
+    monitor
+      .nodes()
+      .some((n) => n.props["data-record-audio-state"] === "failed"),
+  ).toBe(true);
+  expect(monitor.audio()).toHaveLength(0);
 });

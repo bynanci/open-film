@@ -1,4 +1,5 @@
 import type {
+  AudioHandleFacts,
   RecordAudioPreviewDescriptor,
   MotionRequest,
   NativeTextOverlayRequest,
@@ -752,6 +753,16 @@ async function uploadFiles(
   }
 }
 export const api = {
+  audioHandles: (
+    compositionId: string,
+    clipId: string,
+    baseRevision: string,
+    signal?: AbortSignal,
+  ) =>
+    request<AudioHandleFacts>(
+      `/compositions/${encodeURIComponent(compositionId)}/clips/${encodeURIComponent(clipId)}/audio-handles?${new URLSearchParams({ baseRevision })}`,
+      { signal },
+    ),
   prepareRecordAudioPreview: (
     compositionId: string,
     baseRevision: string,
