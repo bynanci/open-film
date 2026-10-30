@@ -76,6 +76,7 @@ export class RenderQaMetricError extends Error {
   constructor(
     public readonly metricId: string,
     public readonly reason: "invalid" | "threshold",
+    public readonly measurement?: Omit<RenderQaMeasurement, "passed">,
   ) {
     super(`Render QA ${metricId}: ${reason} measurement`);
     this.name = "RenderQaMetricError";
@@ -120,7 +121,14 @@ export function assertRenderQaMetric(
       passed = actual > rule.lower && actual < rule.upper;
     else invalid(id);
   }
-  if (!passed) throw new RenderQaMetricError(id, "threshold");
+  if (!passed)
+    throw new RenderQaMetricError(id, "threshold", {
+      id,
+      unit: rule.unit,
+      rule: { ...rule },
+      actual,
+      ...(expected === undefined ? {} : { expected }),
+    });
   return {
     id,
     unit: rule.unit,
@@ -173,7 +181,14 @@ export function assertRenderQaIdentity(
     b = expected;
     unit = "sha256";
   }
-  if (a !== b) throw new RenderQaMetricError(id, "threshold");
+  if (a !== b)
+    throw new RenderQaMetricError(id, "threshold", {
+      id,
+      unit,
+      rule: { kind: "exact" },
+      actual: a,
+      expected: b,
+    });
   return {
     id,
     unit,
