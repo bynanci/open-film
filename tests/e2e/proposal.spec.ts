@@ -365,6 +365,28 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   )!;
   expect(importantPhoto).toBeDefined();
   expect(importantVideo).toBeDefined();
+  await clipButton(page, importantPhoto.id).click();
+  await page
+    .getByRole("button", {
+      name: "Set photo duration to 2 seconds",
+      exact: true,
+    })
+    .click();
+  await saved(page);
+  // This workflow exercises the legacy source lock and regeneration. Release
+  // the new absolute-placement pin explicitly before keeping the source lock.
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByTestId("clip-user-pin").click();
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await saved(page);
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
+  await saved(page);
   await clipButton(page, importantVideo.id).click();
   await field(page, "Source in", "0.25");
   await field(page, "Source out", "2.25");
@@ -376,15 +398,45 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     .getByLabel("Clip transition", { exact: true })
     .selectOption("crossfade");
   await field(page, "Crossfade duration", "0.2");
-  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
-  await clipButton(page, importantPhoto.id).click();
-  await page
-    .getByRole("button", {
-      name: "Set photo duration to 2 seconds",
-      exact: true,
-    })
-    .click();
+  // This workflow exercises the legacy source lock and regeneration. Release
+  // the new absolute-placement pin explicitly before keeping the source lock.
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // A required source cannot release its protection indirectly. Explicitly
+  // remove that source lock, release only the manual pin, then restore it.
+  await expect(page.getByTestId("clip-user-pin")).toBeDisabled();
+  expect(
+    (
+      await request.patch(`${base}/api/assets/${pixelVideo.id}`, {
+        data: { state: { locked: false } },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await saved(page);
+  await clipButton(page, importantVideo.id).click();
+  await expect(page.getByTestId("clip-user-pin")).toBeEnabled();
+  await page.getByTestId("clip-user-pin").click();
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await saved(page);
+  expect(
+    (
+      await request.patch(`${base}/api/assets/${pixelVideo.id}`, {
+        data: { state: { locked: true } },
+      })
+    ).ok(),
+  ).toBe(true);
+  await page.reload();
+  await navigate(page, "edit");
+  await saved(page);
+  await clipButton(page, importantVideo.id).click();
   await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
   current = await state(request);
@@ -451,6 +503,21 @@ test("turns generated device media into a protected, edited and fitted Proposal 
     clips(current.composition).filter((clip) => clip.beatId === beat.id)[0]!.id,
   ).toBe(optional.id);
 
+  // Reordering is a manual placement edit. Release its pin before this
+  // fixture intentionally exercises ripple duration and automatic Fit.
+  await clipButton(page, optional.id).click();
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByTestId("clip-user-pin").click();
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await saved(page);
+  current = await state(request);
+
   const stretchPhoto = clips(current.composition).find(
     (clip) =>
       !clip.locked &&
@@ -477,6 +544,16 @@ test("turns generated device media into a protected, edited and fitted Proposal 
   expect(current.composition.duration).toBeGreaterThan(
     current.story.targetDuration!,
   );
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByTestId("clip-user-pin").click();
+  await expect(page.getByTestId("clip-user-pin")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await saved(page);
   await openAdvancedTools(page);
   await page
     .getByRole("button", { name: "Fit to target", exact: true })
