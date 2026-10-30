@@ -816,7 +816,9 @@ it("drives controlled photo local time and non-asset titles/GraphicScenes from R
     );
     const title = m
       .nodes()
-      .find((node) => node.props.src === "/title/title.png");
+      .find(
+        (node) => String(node.props.src).split("?")[0] === "/title/title.png",
+      );
     if (titleOpacity === undefined) expect(title).toBeUndefined();
     else
       expect((title!.props.style as { opacity: number }).opacity).toBe(
@@ -1113,7 +1115,12 @@ it("fades embedded titles by continuing sequence-local time through a short trim
     [22, 0.8],
   ] as const) {
     await m.seek(frame);
-    const title = m.nodes().find((node) => node.props.src === "/title/a.png")!;
+    const title = m
+      .nodes()
+      .find((node) => String(node.props.src).split("?")[0] === "/title/a.png")!;
+    expect(title.props.src).toMatch(
+      /^\/title\/a\.png\?previewRequest=[^&]+-\d+$/,
+    );
     expect((title.props.style as { opacity: number }).opacity).toBeCloseTo(
       opacity,
     );
