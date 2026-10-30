@@ -460,3 +460,50 @@ the coordinator owns the new full-suite and hosted-CI gates.
   target workstations.
 - Import stills/audio and the rendered MP4 into the intended downstream NLE and
   record actual compatibility behavior.
+
+## Windows font pixel investigation — 2026-10-30
+
+Actual Windows run `41088032647`, job `124174260835`, failed the existing strict
+three-font MP4 pixel comparison at source `cb9baf9`; the preview/still comparison
+and actual font hashes passed. The earlier passing preset source and this source
+have no renderer or font-pipeline changes between them. The failed run did not
+retain its output media, so the cause remains unresolved. Linux success does not
+establish a Windows fix.
+
+The test now also requires the literal decoded frame 3 at 12 fps to equal the
+reviewed RGB buffer. A separate lossless synthetic control places white at frame
+3 and black at adjacent frames, verifying both literal selection and input seek.
+All existing full-buffer and font-receipt comparisons remain strict.
+
+The Windows workflow explicitly enables `OPENFILM_FONT_PIXEL_QA_DIR` for this
+single generated fixture. On assertion failure, its existing artifact upload
+retains the synthetic preview, still, MP4, render intermediates and raster inputs;
+original RGB buffers and exact difference metrics; frame timestamps, packet
+hashes and color metadata; font-use bindings; source hashes before and after;
+and render arguments with the fixture location replaced by a placeholder. The
+collector does not copy projects, source media, system font files or other tests.
+It changes no renderer settings, equality allowances, retries or test skips.
+
+Local verification on Linux / FFmpeg 7.1.5 passed **2 focused files / 65 tests**
+in 55.68 seconds, plus root TypeScript, focused lint, formatting and diff checks.
+The new diagnostic checks and literal-frame control were observed failing before
+their implementations. A temporary one-byte mutation then failed the original
+strict comparison and retained a complete synthetic bundle: one seeked RGB
+channel differed, the still and literal frame matched, all three render records
+and font bindings were present, and source hashes were unchanged. That mutation
+was removed. The full project suite and workstation checks were not run here.
+
+The next gate is actual Windows CI with the pinned FFmpeg 9.0.2 and licensed
+font fixtures. A failure bundle can distinguish frame selection, raster inputs
+and encoded video changes. A passing rerun alone does not identify or fix the
+original mismatch; renderer changes require a causal reproduction and regression
+review.
+
+Follow-up Windows run `41094704344` at `57cb327` failed in the diagnostic
+collector's output-path guard before reaching the pixel assertions and produced
+no font-pixel bundle. The collector now checks render outputs against the
+fixture's `realpath` root and redacts both original and canonical spellings.
+Focused path tests reproduce a Windows temporary short-name/long-name mismatch,
+cover case and slash variants, and preserve rejection of sibling, parent,
+relative and cross-drive outputs. The original decoded-pixel mismatch remains
+unresolved pending another actual pinned Windows run.

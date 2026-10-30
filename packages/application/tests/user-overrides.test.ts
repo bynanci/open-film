@@ -666,6 +666,11 @@ it("protects complete current photo/title/color/local-preset and scene payloads 
         { type: "primary-color", scope: "clip", clipId: "a", correction: null },
       ],
     }),
-  ).rejects.toThrow(/locked/iu);
+  ).rejects.toMatchObject({
+    code: "timeline.primaryColorLocked",
+    status: 409,
+    params: { count: 1 },
+  });
+  expect(editor.get("cut")).toEqual(current);
   expect(await readFile(file)).toEqual(disk);
 });

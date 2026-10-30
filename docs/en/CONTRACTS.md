@@ -837,3 +837,14 @@ identities while retaining original source identities/hashes and immutable
 snapshots. Schema1.1 explicitly defines these supported portable shapes; default
 projects remain1.0 and first-pin promotion never downgrades a newer validated
 header. See [User Pin validation](validation-user-pins.md).
+
+Public `TimelineEditor.edit` always represents direct user editing. Reviewed
+GraphicScene adoption and MotionGeneration import/prepared retry/restore enter
+the same parser, serialized queue, revision checks, protection policy and history
+writer through a package-internal Symbol capability. That capability is absent
+from application exports and all client/provider DTOs. Request fingerprints bind
+the effective producer origin; replaying a request ID across automatic and
+direct authority conflicts even when the command payload is identical.
+Automatic adoption preserves absent and explicitly released pin metadata.
+Pinned targets require explicit release and a fresh review; ordinary Look and
+primary-color commands retain their existing typed clip/source-lock errors.

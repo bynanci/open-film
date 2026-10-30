@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { appendFileSync, existsSync, readdirSync } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -10,6 +10,7 @@ import {
   lstat,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -40,6 +41,11 @@ import {
   expectPrivateStorage,
   testCjkFont,
 } from "../helpers/platform-storage.js";
+import {
+  syntheticFontPixelScope,
+  retainSyntheticFontPixelFailure,
+  rgbPixelDifference,
+} from "../helpers/font-pixel-diagnostics.js";
 import {
   createReviewOwner,
   reviewOwnerState,
@@ -284,6 +290,58 @@ async function decodedRgb(path: string, time?: number): Promise<Buffer> {
       "-",
     ])
   ).stdout;
+}
+
+async function decodedRgbFrame(
+  path: string,
+  frameIndex: number,
+): Promise<Buffer> {
+  if (!Number.isSafeInteger(frameIndex) || frameIndex < 0)
+    throw new Error(
+      "A literal decoded frame needs a nonnegative integer index.",
+    );
+  return (
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-vf",
+      `select=eq(n\\,${frameIndex})`,
+      "-fps_mode",
+      "passthrough",
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "-",
+    ])
+  ).stdout;
+}
+
+async function fontPixelProbe(path: string) {
+  return JSON.parse(
+    (
+      await runProcess("ffprobe", [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-show_packets",
+        "-show_streams",
+        "-show_data_hash",
+        "sha256",
+        "-show_entries",
+        "frame=best_effort_timestamp_time,pkt_dts_time,duration_time,pict_type,key_frame:packet=pts_time,dts_time,duration_time,flags,data_hash:stream=index,codec_type,time_base,r_frame_rate,avg_frame_rate,start_time,duration,nb_frames,pix_fmt,color_range,color_space,color_transfer,color_primaries",
+        "-of",
+        "json",
+        path,
+      ])
+    ).stdout.toString("utf8"),
+  );
 }
 
 async function audioRms(
@@ -933,8 +991,110 @@ describe("professional profile exports", () => {
     },
   );
 
+  it("decodes literal frame 3 at 12 fps and distinguishes adjacent encoded frames", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-literal-frame-"));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const path = join(root, "synthetic-frame-control.mp4");
+    await runProcess("ffmpeg", [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=16x16:r=12:d=1,drawbox=c=white:t=fill:enable='eq(n,3)'",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "0",
+      "-pix_fmt",
+      "yuv420p",
+      "-threads",
+      "1",
+      "-y",
+      path,
+    ]);
+    // Independent control: exactly one white frame at n=3, black elsewhere.
+    const white = Buffer.alloc(16 * 16 * 3, 255);
+    const black = Buffer.alloc(16 * 16 * 3, 0);
+    expect(await decodedRgbFrame(path, 3)).toEqual(white);
+    expect(await decodedRgb(path, 0.25)).toEqual(white);
+    expect(await decodedRgbFrame(path, 2)).toEqual(black);
+    expect(await decodedRgbFrame(path, 4)).toEqual(black);
+    await expect(decodedRgbFrame(path, -1)).rejects.toThrow();
+  });
+
   it("binds title, caption and GraphicScene font faces without depending on an environment override", async () => {
-    const { app, composition } = await fixture(1);
+    const { app, composition, root, imagePath, narrationPath, musicPath } =
+      await fixture(1);
+    // This opt-in collector is owned by this synthetic fixture only. It never
+    // copies a project, user source, system font, or an unselected test output.
+    const qaDirectory = process.env.OPENFILM_FONT_PIXEL_QA_DIR;
+    const diagnosticScope = qaDirectory
+      ? syntheticFontPixelScope(root, await realpath(root))
+      : undefined;
+    const diagnosticFiles: Record<string, Buffer> = {};
+    const renders: Array<Record<string, unknown>> = [];
+    const sourceFiles = [
+      { name: "synthetic-photo", path: imagePath },
+      { name: "synthetic-narration", path: narrationPath },
+      { name: "synthetic-music", path: musicPath },
+    ];
+    const sourceHashes = () =>
+      Promise.all(
+        sourceFiles.map(async ({ name, path }) => ({
+          name,
+          sha256: await hashFile(path),
+          bytes: (await lstat(path)).size,
+        })),
+      );
+    const originalSources = qaDirectory ? await sourceHashes() : undefined;
+    const digest = (bytes: Buffer) =>
+      createHash("sha256").update(bytes).digest("hex");
+    const actualRunProcess = mediaModule.runProcess;
+    const collector = qaDirectory
+      ? vi
+          .spyOn(mediaModule, "runProcess")
+          .mockImplementation(async (command, args, options) => {
+            const result = await actualRunProcess(command, args, options);
+            if (
+              command === "ffmpeg" &&
+              args.includes("-filter_complex") &&
+              args.includes("libx264")
+            ) {
+              const index = renders.length;
+              // All captured files must belong to the freshly generated fixture.
+              const output = diagnosticScope!.output(args.at(-1)!);
+              const work = dirname(output);
+              const inputs: Array<{
+                name: string;
+                sha256: string;
+                bytes: number;
+              }> = [];
+              for (const name of (await readdir(work)).sort()) {
+                if (!/^[a-z0-9-]+\.(?:png|mp4)$/u.test(name)) continue;
+                const details = await lstat(join(work, name));
+                if (!details.isFile() || details.isSymbolicLink()) continue;
+                const bytes = await readFile(join(work, name));
+                diagnosticFiles[`render-${index}-${name}`] = bytes;
+                inputs.push({
+                  name,
+                  sha256: digest(bytes),
+                  bytes: bytes.length,
+                });
+              }
+              const literal = await decodedRgbFrame(output, 3);
+              diagnosticFiles[`render-${index}-literal-frame-3.rgb`] = literal;
+              renders.push({
+                args: args.map((arg) => diagnosticScope!.redact(arg)),
+                videoOnly: args.includes("-an"),
+                inputs,
+                literalFrame3Sha256: digest(literal),
+                probe: await fontPixelProbe(output),
+              });
+            }
+            return result;
+          })
+      : undefined;
     vi.stubEnv("OPENFILM_TITLE_FONT", undefined);
     try {
       composition.tracks[0]!.clips[0]!.title = "A";
@@ -1031,17 +1191,99 @@ describe("professional profile exports", () => {
         confirmCrop: true,
         cropPreviewToken: preview.token,
       });
-      expect(await decodedRgb(still.path)).toEqual(reviewed);
-      expect(await decodedRgb(mp4.path, 0.25)).toEqual(reviewed);
-      for (const path of [still.path, mp4.path]) {
-        const delivered = JSON.parse(
-          await readFile(`${path}.manifest.json`, "utf8"),
-        );
-        expect(renderModule.canonicalRenderFonts(delivered.fonts)).toEqual(
-          receipt.fonts,
-        );
+      const stillRgb = await decodedRgb(still.path);
+      const mp4FastSeekRgb = await decodedRgb(mp4.path, 0.25);
+      const mp4LiteralRgb = await decodedRgbFrame(mp4.path, 3);
+      try {
+        expect(stillRgb).toEqual(reviewed);
+        expect(mp4FastSeekRgb).toEqual(reviewed);
+        expect(mp4LiteralRgb).toEqual(reviewed);
+        for (const path of [still.path, mp4.path]) {
+          const delivered = JSON.parse(
+            await readFile(`${path}.manifest.json`, "utf8"),
+          );
+          expect(renderModule.canonicalRenderFonts(delivered.fonts)).toEqual(
+            receipt.fonts,
+          );
+        }
+      } catch (error) {
+        if (qaDirectory) {
+          try {
+            const previewPath = await app.exportProfiles.previewPath(
+              preview.token,
+            );
+            const receipts = await Promise.all(
+              [still.path, mp4.path].map(async (path) => {
+                const delivered = JSON.parse(
+                  await readFile(`${path}.manifest.json`, "utf8"),
+                );
+                return {
+                  fonts: delivered.fonts,
+                  fontBindings: delivered.fontBindings,
+                };
+              }),
+            );
+            Object.assign(diagnosticFiles, {
+              "preview.png": await readFile(previewPath),
+              "still.png": await readFile(still.path),
+              "delivery.mp4": await readFile(mp4.path),
+              "reviewed.rgb": reviewed,
+              "still.rgb": stillRgb,
+              "delivery-fast-seek.rgb": mp4FastSeekRgb,
+              "delivery-literal-frame-3.rgb": mp4LiteralRgb,
+            });
+            await retainSyntheticFontPixelFailure(qaDirectory, {
+              evidence: {
+                syntheticOnly: true,
+                sourceCandidate: process.env.OPENFILM_SOURCE_CANDIDATE ?? null,
+                platform: process.platform,
+                node: process.version,
+                frame: {
+                  width: 90,
+                  height: 160,
+                  frameRate: 12,
+                  index: 3,
+                  seekSeconds: 0.25,
+                },
+                originalSources,
+                sourcesAfter: await sourceHashes(),
+                preview: {
+                  fonts: receipt.fonts,
+                  fontBindings: receipt.fontBindings,
+                },
+                delivered: receipts,
+                comparisons: {
+                  still: rgbPixelDifference(reviewed, stillRgb, 90),
+                  fastSeek: rgbPixelDifference(reviewed, mp4FastSeekRgb, 90),
+                  literalFrame3: rgbPixelDifference(
+                    reviewed,
+                    mp4LiteralRgb,
+                    90,
+                  ),
+                  seekVersusLiteral: rgbPixelDifference(
+                    mp4LiteralRgb,
+                    mp4FastSeekRgb,
+                    90,
+                  ),
+                },
+                renders,
+                deliveryProbe: await fontPixelProbe(mp4.path),
+              },
+              files: diagnosticFiles,
+            });
+            console.info(
+              "Retained synthetic font pixel failure diagnostics in the configured QA directory.",
+            );
+          } catch {
+            console.error(
+              "Could not retain synthetic font pixel failure diagnostics.",
+            );
+          }
+        }
+        throw error;
       }
     } finally {
+      collector?.mockRestore();
       vi.unstubAllEnvs();
     }
   });

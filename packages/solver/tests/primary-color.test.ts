@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, it } from "vitest";
-import { applyTimelineCommand, type EditorDocument } from "../src/editing.js";
-import { PRIMARY_COLOR_IDENTITY, type MediaAsset } from "@openfilm/core";
+import {
+  applyTimelineCommand,
+  type EditorDocument,
+  type TimelineCommand,
+} from "../src/editing.js";
+import {
+  PRIMARY_COLOR_IDENTITY,
+  resolveProjectTimebase,
+  type MediaAsset,
+} from "@openfilm/core";
 const correction = { ...PRIMARY_COLOR_IDENTITY, exposureEv: 0.5 };
 function fixture() {
   const assets: MediaAsset[] = ["a", "pair"].map((id) => ({
@@ -42,6 +50,54 @@ function fixture() {
   };
   return { assets, doc };
 }
+it.each(
+  (["clip", "primary", "secondary"] as const).flatMap((locked) =>
+    (["film", "beat", "clip"] as const).map((scope) => ({ locked, scope })),
+  ),
+)(
+  "retains the direct $scope primary lock contract for a $locked lock",
+  ({ locked, scope }) => {
+    const { assets, doc } = fixture();
+    const clip = doc.composition.tracks[0]!.clips[0]!;
+    if (locked === "clip") clip.locked = true;
+    else if (locked === "primary") assets[0]!.state.locked = true;
+    else {
+      clip.layout = {
+        version: 1,
+        preset: "diptych",
+        secondary: { assetId: "pair" },
+      };
+      assets[1]!.state.locked = true;
+    }
+    const original = structuredClone(doc);
+    const sources = structuredClone(assets);
+    const command: TimelineCommand =
+      scope === "film"
+        ? { type: "primary-color", scope, correction }
+        : scope === "beat"
+          ? { type: "primary-color", scope, beatId: "b", correction }
+          : { type: "primary-color", scope, clipId: "c", correction };
+    expect(() =>
+      applyTimelineCommand(doc, assets, command, {
+        origin: "direct",
+        timebase: resolveProjectTimebase({
+          frameRate: 30,
+          width: 1920,
+          height: 1080,
+        }),
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "timeline.primaryColorLocked",
+        status: 409,
+        params: { count: 1 },
+      }),
+    );
+    expect(doc).toEqual(original);
+    expect(assets).toEqual(sources);
+  },
+);
+
 it("sets all scopes, preserves selection pins and clears overrides", () => {
   const { assets, doc } = fixture();
   const film = applyTimelineCommand(doc, assets, {

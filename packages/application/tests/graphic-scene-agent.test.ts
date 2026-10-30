@@ -1,4 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -196,6 +203,9 @@ describe("reviewable GraphicScene agent edits", () => {
     expect(replay.acknowledgedRevision).toBe(accepted.revision);
     expect(save).toHaveBeenCalledTimes(1);
     expect(accepted.canUndo).toBe(true);
+    expect(accepted.composition.graphicScenes![0]).not.toHaveProperty(
+      "userOverrides",
+    );
     expect(accepted.composition.graphicScenes![0]!.nodes).toMatchObject([
       { id: "selected", x: 28 },
       { id: "private-unselected", x: 90 },
@@ -215,6 +225,188 @@ describe("reviewable GraphicScene agent edits", () => {
       new TimelineEditor(reopened).get("composition").composition.graphicScenes,
     ).toEqual(accepted.composition.graphicScenes);
   });
+
+  it.each(["automatic-first", "direct-first"] as const)(
+    "binds request replay to its producer authority (%s)",
+    async (order) => {
+      const { app, editor, directory } = await fixture();
+      const before = editor.get("composition");
+      const proposal = await editor.previewGraphicSceneAgent(
+        "composition",
+        request(editor),
+      );
+      const scene = structuredClone(before.composition.graphicScenes![0]!);
+      scene.nodes[0]!.x = 28;
+      const acceptance = {
+        planId: proposal.id,
+        baseRevision: proposal.baseRevision,
+        actionIds: proposal.actions.map((action) => action.id),
+        requestId: `shared-producer-${order}`,
+      };
+      const edit = {
+        baseRevision: before.revision,
+        requestId: acceptance.requestId,
+        commands: [{ type: "graphic.scene.upsert" as const, scene }],
+      };
+      const automatic = () =>
+        editor.acceptGraphicSceneAgent("composition", acceptance);
+      const direct = () => editor.edit("composition", edit);
+      const first = order === "automatic-first" ? automatic : direct;
+      const second = order === "automatic-first" ? direct : automatic;
+      const accepted = await first();
+      const project = structuredClone(app.project);
+      const bytes = await readFile(join(directory, "project.json"));
+      await expect(second()).rejects.toMatchObject({ status: 409 });
+      expect(editor.get("composition")).toEqual(accepted);
+      expect(app.project).toEqual(project);
+      expect(await readFile(join(directory, "project.json"))).toEqual(bytes);
+      const replay = await first();
+      expect(replay.revision).toBe(accepted.revision);
+      expect(replay.acknowledgedRevision).toBe(accepted.revision);
+      expect(
+        accepted.composition.graphicScenes![0]!.userOverrides?.isUserPinned,
+      ).toBe(order === "direct-first" ? true : undefined);
+      const undone = await editor.undo("composition", accepted.revision);
+      expect(undone.composition).toEqual(before.composition);
+      expect(undone.canUndo).toBe(false);
+    },
+  );
+
+  it("rejects a pinned scene before publication and preserves an explicit release on acceptance", async () => {
+    const { app, editor, directory } = await fixture();
+    const before = editor.get("composition");
+    const scene = structuredClone(before.composition.graphicScenes![0]!);
+    scene.nodes[0]!.x = 20;
+    const pinned = await editor.edit("composition", {
+      baseRevision: before.revision,
+      commands: [{ type: "graphic.scene.upsert", scene }],
+    });
+    expect(
+      pinned.composition.graphicScenes![0]!.userOverrides?.isUserPinned,
+    ).toBe(true);
+    const proposal = await editor.previewGraphicSceneAgent(
+      "composition",
+      request(editor),
+    );
+    const previousProject = app.project;
+    const bytes = await readFile(join(directory, "project.json"));
+    const save = vi.spyOn(app, "save");
+    await expect(
+      editor.acceptGraphicSceneAgent("composition", {
+        planId: proposal.id,
+        baseRevision: proposal.baseRevision,
+        actionIds: proposal.actions.map((action) => action.id),
+        requestId: "pinned-agent-edit",
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict", status: 409 });
+    expect(save).not.toHaveBeenCalled();
+    expect(app.project).toBe(previousProject);
+    expect(editor.get("composition")).toEqual(pinned);
+    expect(await readFile(join(directory, "project.json"))).toEqual(bytes);
+    const released = await editor.edit("composition", {
+      baseRevision: pinned.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "graphic-scene", sceneId: scene.id },
+          pinned: false,
+        },
+      ],
+    });
+    const fresh = await editor.previewGraphicSceneAgent(
+      "composition",
+      request(editor),
+    );
+    const accepted = await editor.acceptGraphicSceneAgent("composition", {
+      planId: fresh.id,
+      baseRevision: fresh.baseRevision,
+      actionIds: fresh.actions.map((action) => action.id),
+      requestId: "released-agent-edit",
+    });
+    expect(accepted.composition.graphicScenes![0]!.userOverrides).toEqual({
+      version: 1,
+      isUserPinned: false,
+      lockedAttributes: [],
+    });
+    expect(accepted.composition.graphicScenes![0]!.nodes[0]!.x).toBe(36);
+    const undone = await editor.undo("composition", accepted.revision);
+    expect(undone.composition).toEqual(released.composition);
+    const repinned = await editor.undo("composition", undone.revision);
+    expect(repinned.composition).toEqual(pinned.composition);
+    const original = await editor.undo("composition", repinned.revision);
+    expect(original.composition).toEqual(before.composition);
+  });
+
+  it.each(["writer", "CAS"] as const)(
+    "keeps automatic acceptance and retry history atomic on a real %s failure",
+    async (failure) => {
+      const { app, editor, directory } = await fixture();
+      const before = editor.get("composition");
+      const proposal = await editor.previewGraphicSceneAgent(
+        "composition",
+        request(editor),
+      );
+      const acceptance = {
+        planId: proposal.id,
+        baseRevision: proposal.baseRevision,
+        actionIds: proposal.actions.map((action) => action.id),
+        requestId: `failed-automatic-${failure}`,
+      };
+      const path = join(directory, "project.json");
+      const backup = `${path}.backup`;
+      const previousProject = app.project;
+      if (failure === "writer") {
+        await rename(path, backup);
+        await symlink(backup, path);
+      } else {
+        const other = await OpenFilmApplication.open(directory);
+        applications.add(other);
+        other.project.title = "A concurrent writer's title";
+        await other.save();
+      }
+      const bytes = await readFile(path);
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const accepted = editor.acceptGraphicSceneAgent(
+            "composition",
+            acceptance,
+          );
+          if (failure === "writer")
+            await expect(accepted).rejects.toThrow(
+              "Project file must be regular",
+            );
+          else
+            await expect(accepted).rejects.toMatchObject({
+              code: "story.planConflict",
+              status: 409,
+            });
+          expect(app.project).toBe(previousProject);
+          expect(editor.get("composition")).toEqual(before);
+          expect(await readFile(path)).toEqual(bytes);
+          await expect(
+            editor.undo("composition", before.revision),
+          ).rejects.toThrow("Nothing to undo");
+        }
+      } finally {
+        if (failure === "writer") {
+          await unlink(path);
+          await rename(backup, path);
+        }
+      }
+      if (failure === "writer") {
+        const accepted = await editor.acceptGraphicSceneAgent(
+          "composition",
+          acceptance,
+        );
+        expect(accepted.composition.graphicScenes![0]).not.toHaveProperty(
+          "userOverrides",
+        );
+        expect(
+          (await editor.undo("composition", accepted.revision)).composition,
+        ).toEqual(before.composition);
+      }
+    },
+  );
 
   it("uses ProviderRegistry consent and sends only the selected layer snapshot", async () => {
     const { app, editor } = await fixture();

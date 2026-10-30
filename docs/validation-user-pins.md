@@ -213,3 +213,42 @@ receipts and failed stages are not relabeled. No full Vitest, browser, native
 benchmark, hosted OS, physical hardware or foreign-NLE result is claimed for this
 wave. One fresh scoped correction review and complete exact-head hosted gates
 remain coordinator-owned; this does not mark the feature merge-ready.
+
+## Automatic producer authority correction (2026-10-30)
+
+The later full audio integration reproduced MotionGeneration import failures:
+its expected automatic document differed from the direct-edit writer's newly
+added pins. GraphicScene agent acceptance entered the same incorrect ingress.
+Both producers now use a package-internal Symbol capability into the existing
+parser, serialized queue, current-revision checks, complete protection policy,
+atomic save and single history writer. The public edit API remains direct.
+There is no client/provider origin field or additional timeline store.
+
+Motion import, prepared retry and restore preserve absent or explicitly released
+pin metadata. GraphicScene acceptance rejects pinned scenes with
+`timeline.pinConflict`/409 before publication. Request fingerprints include the
+producer authority, so identical payloads cannot reuse a request ID between
+automatic and direct editing in either order. HTTP origin injection rejects400.
+Real writer/CAS failures preserve the complete editor/project/disk state and
+create no history; retry and Undo/Redo/reopen coverage retain all original source,
+rendered-frame, duration, rollback and cleanup assertions.
+
+The same integration exposed an existing typed color-lock error being shadowed
+by the new generic direct-edit precheck. Look and primary-color commands retain
+their authoritative clip, primary-source, paired-source and inherited-scope
+validators with typed409/count errors. Tests first reproduce13 failures among84
+lock cases, then pass all84. The separate producer regression starts with19
+failures among51 tests; Motion44 and GraphicScene12 tests subsequently pass.
+The final20-file selection passes296 tests with none skipped or pending. Its
+preceding run's295 passes and one obsolete `/locked/` substring failure remain
+recorded; that assertion now requires the exact primary-color409 code/count plus
+unchanged whole editor/disk state. A compiler failure in two incomplete test
+ProjectSettings fixtures is retained; supplying explicit frame dimensions fixes
+it without changing runtime code. TypeScript/Vue, full ESLint, full Prettier,
+2,909 semantic locale keys and135 English documentation mirrors pass.
+
+This checkpoint does not close the separately observed hosted browser
+operation-specific source-lock regression, full exact-head CI, scoped review or
+workstation gates. Its logs and byte-bound correction package are retained under
+the ignored User Pin integration evidence directory; no full-suite, hosted or
+physical-hardware pass is claimed for this correction checkpoint.
