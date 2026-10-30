@@ -1,18 +1,12 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  link,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { OpenFilmApplication } from "@openfilm/application";
+import { cleanupProjectFixture } from "./project-fixture-cleanup.js";
 import type { Clip, MediaAsset } from "@openfilm/core";
 import {
   createThumbnail,
@@ -763,7 +757,10 @@ test("measures bounded synthetic Library, Story, Timeline, Precision and Transcr
         JSON.stringify(artifact, null, 2),
       );
     }
-    await request.post(`${api}/project/close`, { data: {} });
-    await rm(root, { recursive: true, force: true });
+    const cleanup = await cleanupProjectFixture({ page, request, api, root });
+    await testInfo.attach("interaction-project-cleanup", {
+      body: Buffer.from(JSON.stringify(cleanup)),
+      contentType: "application/json",
+    });
   }
 });

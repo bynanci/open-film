@@ -34,12 +34,56 @@ import * as renderModule from "@openfilm/render";
 import { RenderPublicationRecoveryError } from "@openfilm/render";
 import * as titleModule from "../../packages/render/src/titles.js";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
+import * as mediaModule from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
 const cleanup: Array<() => Promise<unknown> | void> = [];
 const exec = promisify(execFile);
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const action of cleanup.splice(0).reverse()) await action();
+});
+it("produces crop preview and delivery-rate MP4 when the retired global vsync flag is rejected", async () => {
+  const f = await fixture(1);
+  const actual = mediaModule.runProcess;
+  const process = vi
+    .spyOn(mediaModule, "runProcess")
+    .mockImplementation(async (command, args, options) => {
+      if (command === "ffmpeg" && args.includes("-vsync"))
+        throw new Error(
+          "FFmpeg9 protocol fixture: Unrecognized option 'vsync'.",
+        );
+      return actual(command, args, options);
+    });
+  const profile = createExportProfile({
+    ratio: "9:16",
+    format: "mp4",
+    framing: "crop",
+    width: 90,
+    height: 160,
+    frameRate: 24,
+  });
+  const preview = await f.app.previewExportFrame({
+    compositionId: f.composition.id,
+    profile,
+    time: 0.5,
+  });
+  expect(
+    (await lstat(await f.app.exportProfiles.previewPath(preview.token))).size,
+  ).toBeGreaterThan(32);
+  const delivered = await f.app.exportMp4(f.composition.id, {
+    exportProfile: profile,
+    confirmCrop: true,
+    cropPreviewToken: preview.token,
+  });
+  const measured = await probe(delivered.path);
+  expect(
+    measured.streams.find((stream) => stream.codec_type === "video")
+      ?.nb_read_frames,
+  ).toBe("24");
+  expect(
+    process.mock.calls.filter(([command]) => command === "ffmpeg").length,
+  ).toBeGreaterThan(0);
 });
 
 async function fixture(duration = 12) {

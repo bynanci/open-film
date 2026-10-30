@@ -139,6 +139,13 @@ originals. Default v1 remains compatible. Final branch gates/review are in progr
 physical workstation evidence remains separate. See
 [delivery validation](docs/validation-collect-coverage.md).
 
+Windows workflow recovery for issues66–68 follows in a separate PR stacked on
+D6B: FFmpeg9 frame extraction, explicit Windows directory-sync capability for
+scan/stage persistence, and acknowledged benchmark fixture shutdown. A pinned
+Windows/FFmpeg9/font gate supplies narrow OS evidence; physical workstation and
+installer obligations remain open. See
+[issue validation](docs/validation-windows-issue-recovery.md).
+
 ## Released 0.4.0 source integration
 
 Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens

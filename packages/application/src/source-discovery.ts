@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { syncPrivateDirectory } from "./directory-sync.js";
 import {
   lstat,
   mkdir,
@@ -911,12 +912,7 @@ export class SourceDiscoveryService {
       await target.close();
     }
     await rename(temporaryPath, this.receiptPath);
-    const directoryHandle = await open(directory, "r");
-    try {
-      await directoryHandle.sync();
-    } finally {
-      await directoryHandle.close();
-    }
+    await syncPrivateDirectory(directory);
   }
 
   private async removeScanReceipt(selectionId: string): Promise<void> {
@@ -935,11 +931,6 @@ export class SourceDiscoveryService {
       await target.close();
     }
     await rename(temporaryPath, this.receiptPath);
-    const directoryHandle = await open(directory, "r");
-    try {
-      await directoryHandle.sync();
-    } finally {
-      await directoryHandle.close();
-    }
+    await syncPrivateDirectory(directory);
   }
 }

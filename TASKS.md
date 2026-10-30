@@ -39,6 +39,23 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.
 
+## Windows workflow recovery — issues66–68
+
+Scope: [issue plan](docs/superpowers/plans/2026-10-30-windows-issue-recovery.md)
+and [validation](docs/validation-windows-issue-recovery.md). Stacked on PR65;
+these narrow regressions do not close physical workstation/installer gates.
+
+- [x] #66: replace retired FFmpeg frame-sync option; real PNG/crop/MP4 and
+      delivery-rate regression with independent decode.
+- [x] #67: preserve file durability and make directory-sync capability explicit
+      across browser scan receipts, source staging and stage index; verify
+      scan→stage→reopen→seal and fail closed on real file/POSIX errors.
+- [x] #68: quiesce benchmark page, require close acknowledgement/no open project
+      before bounded fixture cleanup; preserve measurement budgets/artifacts.
+- [ ] Fresh whole-branch review, full available gates and actual Windows/FFmpeg9
+      browser evidence before merge/issue closure.
+- [ ] Manual: exact candidate rerun on Windows10/popopc; broader issue7 gates.
+
 ## In progress — Multi-source import and common analysis
 
 Scope: [roadmap](docs/roadmap/multi-source-analysis.md),

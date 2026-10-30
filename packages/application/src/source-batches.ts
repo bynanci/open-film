@@ -1,5 +1,6 @@
 // Modified by OpenFilm contributors on 2026-10-29. See LICENSE and NOTICE.
 import { createHash, randomUUID } from "node:crypto";
+import { syncPrivateDirectory } from "./directory-sync.js";
 import type { Stats } from "node:fs";
 import {
   constants as fsConstants,
@@ -843,12 +844,7 @@ export class SourceBatchService {
       }
       await unlink(temporaryPath);
       temporaryPath = undefined;
-      const stageDirectory = await open(this.stageRoot, "r");
-      try {
-        await stageDirectory.sync();
-      } finally {
-        await stageDirectory.close();
-      }
+      await syncPrivateDirectory(this.stageRoot);
       const records = await this.loadBrowserStageRecords();
       assertDiscoveryCurrent();
       records.set(stageKey, {
@@ -1157,12 +1153,7 @@ export class SourceBatchService {
       }
       await unlink(temporaryPath);
       temporaryPath = undefined;
-      const directory = await open(this.stageRoot, "r");
-      try {
-        await directory.sync();
-      } finally {
-        await directory.close();
-      }
+      await syncPrivateDirectory(this.stageRoot);
       return { path: destination, hash: contentHash, byteLength };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
@@ -1374,12 +1365,7 @@ export class SourceBatchService {
       await handle.close();
     }
     await rename(temporary, this.browserStageIndexPath);
-    const directory = await open(parent, "r");
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncPrivateDirectory(parent);
     this.browserStageRecords = records;
   }
 
