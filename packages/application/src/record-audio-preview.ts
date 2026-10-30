@@ -530,15 +530,18 @@ export class RecordAudioPreviewService {
       published = undefined;
       return structuredClone(descriptor);
     } finally {
-      if (published) {
-        await rm(published, { force: true });
-        await rm(`${published}.manifest.json`, { force: true });
-      }
-      if (work) await rm(work, { recursive: true, force: true });
       try {
-        release?.();
+        if (published) {
+          await rm(published, { force: true });
+          await rm(`${published}.manifest.json`, { force: true });
+        }
+        if (work) await rm(work, { recursive: true, force: true });
       } finally {
-        this.active = false;
+        try {
+          release?.();
+        } finally {
+          this.active = false;
+        }
       }
     }
   }

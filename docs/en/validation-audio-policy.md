@@ -159,3 +159,14 @@ complete five-file solver/application/core/Pin gate passed70/70. A separate
 three-file actual render/canonical-source/private-PCM gate passed30/30 in106.84s
 before this pure translation correction; the final combined full candidate gate
 is still required. No timing tolerance or existing assertion was relaxed.
+
+## Preparation cleanup and retry — 2026-10-30
+
+A controlled filesystem `EBUSY` during private work-cache cleanup exposed a
+stuck preparation owner: the next attempt returned `jobs.busy` without reaching
+the renderer. Preparation now releases its existing filesystem request lock and
+active owner in nested `finally` blocks even when cleanup throws. The original
+cleanup failure remains an error; no ready preview or partial project save is
+reported. The regression reaches a second renderer attempt after the failure.
+The complete five-file private PCM/HTTP/scheduler/Record/transport gate passes
+102/102; HTTP tests bind port0. No lock bypass, retry loop or test skip is added.

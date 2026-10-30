@@ -8,7 +8,7 @@ import {
   readdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   OpenFilmApplication,
@@ -28,10 +28,20 @@ const readGate = vi.hoisted(() => ({
   release: undefined as Promise<void> | undefined,
   unblock: undefined as (() => void) | undefined,
 }));
+const cleanupFailure = vi.hoisted(() => ({ path: "", remaining: 0 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    rm: async (...args: Parameters<typeof actual.rm>) => {
+      if (String(args[0]) === cleanupFailure.path && cleanupFailure.remaining) {
+        cleanupFailure.remaining--;
+        throw Object.assign(new Error("Synthetic work cache is busy."), {
+          code: "EBUSY",
+        });
+      }
+      return actual.rm(...args);
+    },
     open: async (...args: Parameters<typeof actual.open>) => {
       const file = await actual.open(...args);
       if (String(args[0]) !== readGate.path) return file;
@@ -52,6 +62,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 const clean: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => {
+  cleanupFailure.path = "";
+  cleanupFailure.remaining = 0;
   readGate.unblock?.();
   readGate.path = "";
   readGate.entered = undefined;
@@ -292,6 +304,29 @@ it("allows one active project preparation, cancels pending work, and enforces on
     service.prepare("c", new TimelineEditor(app).get("c").revision),
   ).rejects.toThrow(/3600|hour/i);
   service.dispose();
+});
+it("releases the preparation owner and filesystem lock after work cleanup fails", async () => {
+  const { app, revision } = await fixture();
+  let attempts = 0;
+  const service = new RecordAudioPreviewService(
+    app,
+    async (_composition, path) => {
+      attempts++;
+      if (attempts === 1) {
+        cleanupFailure.path = dirname(path);
+        cleanupFailure.remaining = 1;
+      }
+      throw new Error(`Synthetic render attempt ${attempts} failed.`);
+    },
+  );
+  clean.push(() => service.dispose());
+  await expect(service.prepare("c", revision)).rejects.toMatchObject({
+    code: "EBUSY",
+  });
+  await expect(service.prepare("c", revision)).rejects.toThrow(
+    "Synthetic render attempt 2 failed.",
+  );
+  expect(attempts).toBe(2);
 });
 it("rejects truncated or unsupported WAV chunks and the 1 GiB file cap", async () => {
   const { root } = await fixture(),
