@@ -171,3 +171,32 @@ judgment, editable effects in third-party NLEs and rights authenticity have not
 been established by these Linux synthetic tests. Existing editable-handoff
 metadata disclosures and baked output remain the compatibility contract.
 No push, PR or merge is performed by this implementation worker.
+
+## D3 → D5A → D5B → D8 integration checkpoint
+
+D8 `8033742` consumes clean title/photo stack `3d06ad3` through merge
+`d0202d3`. Additive command/exporter fields retain title runs and preset origin;
+application services retain their separate preview lifecycles. The actual title
+owner validates nested finishing; D8 adds no copied title field whitelist or
+font/metric policy. The shared helper and policy remain byte-identical to
+`11595f33` and `3683b1c`. Roadmap conflict resolution retains each owner's
+candidate status and evidence, without claiming complete integration gates.
+
+Twenty current focused files / 136 tests and all three local-preset browser
+journeys passed, including actual matrix/strength/shuffled-seek media, immutable
+Named Version restore and directory/ZIP Collect relocation after removal of the
+registry and synthetic original media. A new actual-media interoperability case
+also passed: nested shadow/stroke/pill title preset on a bilingual photo with
+ambient layout v2, Bézier motion v2 and local Film Look v2. It rejects an unknown
+nested finishing version, preserves runs/layout/motion through Apply/Undo/Redo,
+reopens after registry removal, retains both run-font bindings and provenance,
+and decodes to exactly the same pixels as the direct title-owner recipe.
+Initial errors in the new test's motion and API argument fixtures were corrected;
+these were test construction failures, not product regressions or feature RED.
+
+Final TypeScript/Vue, scoped lint/format, 2,816 localization keys and 131
+English documentation mirrors passed. Fresh synthetic media and actual current
+source/test SHA-256 receipt are under
+`/tmp/openfilm-finishing-integration/D8-current/`; its isolated TMPDIR keeps old
+candidate evidence intact. No complete suite or hosted-CI success is claimed.
+Fresh whole-branch review and exact-head hosted gates remain coordinator-owned.
