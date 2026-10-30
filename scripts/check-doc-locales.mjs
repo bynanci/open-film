@@ -114,6 +114,7 @@ for (const locale of ["", "en/", "ja/"]) {
 
 const ignoredDocDirectories = new Set([
   ".vitepress",
+  "node_modules",
   "en",
   "ja",
   "superpowers",

@@ -4,6 +4,7 @@ import { readFileSync, readlinkSync } from "node:fs";
 import { hostname, platform } from "node:os";
 import { win32 } from "node:path";
 import type { ReviewExecutionOwner } from "@openfilm/core";
+import { windowsPowerShellEnvironment } from "./windows-powershell.js";
 
 // A hostname alone is not enough to probe a PID from a portable project. Bind
 // owners to a verified local boot/PID scope before checking liveness.
@@ -34,6 +35,7 @@ function processScope(): { host: string; verifiable: boolean } {
               "ConvertTo-Json -InputObject @{machine=$machine;boot=$boot} -Compress",
           ],
           {
+            env: windowsPowerShellEnvironment(systemRoot),
             encoding: "utf8",
             stdio: ["ignore", "pipe", "ignore"],
             windowsHide: true,
@@ -87,8 +89,11 @@ function processScope(): { host: string; verifiable: boolean } {
   }
 }
 
-const scope = processScope();
-const localTokens = new Set<string>();
+let scope = processScope();
+// A cold Windows CIM/PowerShell query may hit its deadline at module startup.
+// One later query can establish proof; failed or foreign evidence never does.
+let scopeRetryAvailable = !scope.verifiable && platform() === "win32";
+const localTokens = new Map<string, string>();
 
 function validOwner(value: unknown): value is ReviewExecutionOwner {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -107,7 +112,7 @@ function validOwner(value: unknown): value is ReviewExecutionOwner {
 /** Each initial reservation or retry gets a distinct, durable execution token. */
 export function createReviewOwner(): ReviewExecutionOwner {
   const token = randomUUID();
-  localTokens.add(token);
+  localTokens.set(token, scope.host);
   return { host: scope.host, pid: process.pid, token };
 }
 
@@ -115,14 +120,22 @@ export function createReviewOwner(): ReviewExecutionOwner {
 export function ownsReviewOwner(value: unknown): value is ReviewExecutionOwner {
   return (
     validOwner(value) &&
-    value.host === scope.host &&
     value.pid === process.pid &&
-    localTokens.has(value.token)
+    localTokens.get(value.token) === value.host
   );
 }
 
 export function reviewOwnerState(value: unknown): "alive" | "dead" | "unknown" {
-  if (!validOwner(value) || value.host !== scope.host) return "unknown";
+  // Keep reservations actually created here alive even if later OS evidence
+  // upgrades the scope. Bind each token to its original host, not the new one.
+  if (ownsReviewOwner(value)) return "alive";
+  if (!validOwner(value)) return "unknown";
+  if (scopeRetryAvailable) {
+    scopeRetryAvailable = false;
+    const verified = processScope();
+    if (verified.verifiable) scope = verified;
+  }
+  if (value.host !== scope.host) return "unknown";
   if (value.pid === process.pid) return "alive";
   if (!scope.verifiable) return "unknown";
   try {

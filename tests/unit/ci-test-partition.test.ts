@@ -78,7 +78,9 @@ it("keeps all previous CI commands and requires both new lanes", () => {
     / {2}typescript-and-media:\n([\s\S]*?)(?=\n {2}native-shell:)/u,
   )?.[1];
   expect(aggregate).toBeDefined();
-  expect(aggregate).toContain("needs: [fast-contract-check, heavy-media-qa]");
+  expect(aggregate).toContain(
+    "needs: [fast-contract-check, heavy-media-qa, browser-e2e, docs-site]",
+  );
   expect(aggregate).toContain("if: always()");
   expect(aggregate).toContain("node scripts/ci/check-required-lanes.mjs");
   expect(aggregate).toContain(
@@ -98,12 +100,42 @@ it.each(["success", "failure", "cancelled", "skipped", ""])(
           process.execPath,
           ["scripts/ci/check-required-lanes.mjs"],
           {
-            env: { ...process.env, FAST_RESULT: fast, MEDIA_RESULT: heavy },
+            env: {
+              ...process.env,
+              FAST_RESULT: fast,
+              MEDIA_RESULT: heavy,
+              BROWSER_RESULT: "success",
+              DOCS_RESULT: "success",
+            },
             stdio: "pipe",
           },
         );
       if (fast === "success" && heavy === "success") expect(run).not.toThrow();
       else expect(run).toThrow();
+    }
+  },
+);
+it.each(["BROWSER_RESULT", "DOCS_RESULT"])(
+  "cannot pass with a failed/cancelled/skipped/missing %s",
+  (key) => {
+    for (const status of ["failure", "cancelled", "skipped", ""]) {
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          ["scripts/ci/check-required-lanes.mjs"],
+          {
+            env: {
+              ...process.env,
+              FAST_RESULT: "success",
+              MEDIA_RESULT: "success",
+              BROWSER_RESULT: "success",
+              DOCS_RESULT: "success",
+              [key]: status,
+            },
+            stdio: "pipe",
+          },
+        ),
+      ).toThrow();
     }
   },
 );

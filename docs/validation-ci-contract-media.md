@@ -2,7 +2,11 @@
 
 Date:2026-10-30. Base:`608377ae3877935db1f8c16616360008cf146801`
 (D6B PR65); branch:`codex/ci-contract-media-gates`. Source implementation is
-complete; independent review and full exact-head gates are pending.
+complete; independent review and full exact-head gates passed. PR70 merged
+as8de63aece6a4275ddf184f400e91f4bf42d8d189.
+
+Current CI adds four browser VMs and a mandatory website gate. The following
+records PR70's original layout; see [current gates and measured evidence](validation-ci-pages-e2e.md).
 
 ## Gate ownership
 
@@ -34,14 +38,19 @@ bypass, continue-on-error, assertion retry, new test skip or tolerance change.
 - Initial partition/gate suite14/14 passed; final16/16 pass with additional nonempty omission/replacement cases. Gate process tests exercise
   all25 success/failure/cancelled/skipped/missing prerequisite combinations.
 - Actual discovery initially322 root files =49 pure contracts +273 heavy, with
-  exactly disjoint coverage; a new test file belongs to heavy automatically.
+  exactly disjoint coverage; new test files outside the explicit contract allowlist belong to heavy
+  automatically; new files within its five package patterns join contracts.
 - Pure contract lane **49files/1124tests passed in5.64s**. This is local test
   duration, not a measured hosted-pipeline speedup.
 - TypeScript/Vue, lint, build, format,2656i18n keys and10README/122doc mirrors
   pass. A deliberate denied `ffmpeg`/`ffprobe` command lookup also retains all
-  1124 contract passes. Final discovery/regression counts, complete
-  media/browser/native hosted evidence and exact final SHA are recorded after
-  source freeze. No unrun gate is counted as passed.
+  1124 contract passes. Final exact-sourcea4e25bceaf166cab9b5488e9e10345ba9b0ad002 passes hosted
+  push41034554682 and PR41035099143:49files/1124contracts +273files/3427media,
+  291Chromium(30.0m in PR),23Rust +2archive tests,18interchange,CLI smoke and
+  all remaining gates. JavaScript/Rust security checks passed. Fast CI takes
+  1m45s/1m46s, heavy45m35s/46m26s; no overall speedup is claimed.
+  Retargeted base5160d8f has the identical Git tree as originalbase608377a.
+  Final native tests are hosted Linux evidence; local Cargo remains unavailable.
 
 No dependency, lockfile, project/catalog schema, runtime version, media source,
 UI, editing command or licensing change. Stable release remainsv0.4.0. Linux

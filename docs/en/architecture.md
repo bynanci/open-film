@@ -700,4 +700,4 @@ span verified managed media streaming; cleanup and read registration share the
 catalog write boundary. Cleanup requires provenance, an available original and
 unchanged policy/protection/file identities. Actual output always uses original
 media. See [validation](validation-proxy-storage.md) and the
-[design](superpowers/specs/2026-10-30-proxy-storage-design.md).
+[design](https://github.com/bynanci/open-film/blob/main/docs/superpowers/specs/2026-10-30-proxy-storage-design.md).

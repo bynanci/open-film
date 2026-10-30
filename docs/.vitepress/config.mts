@@ -241,7 +241,10 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
         .split(sep)
         .join("/");
       if (entry.isDirectory()) {
-        if ([".vitepress", "en", "ja", "superpowers"].includes(relativePath))
+        if (
+          entry.name === "node_modules" ||
+          [".vitepress", "en", "ja", "superpowers"].includes(relativePath)
+        )
           continue;
         collect(absolutePath);
         continue;

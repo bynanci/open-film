@@ -136,15 +136,33 @@ accepted offline delivery over the existing Collect owner. Bounded piecewise
 source clocks, closed manifest v2, directory/ZIP relocation and decoded MP4/PCM
 comparison protect every selected film; protected/unsupported clocks retain
 originals. Default v1 remains compatible. Independent review fixes,4535 local
-unit/integration and291 browser tests pass; final exact-head hosted gates are in
-progress. Physical workstation evidence remains separate. See
+unit/integration and291 browser tests pass. Exact-head PR/push gates pass;
+PR65 merged as5160d8f. Physical workstation evidence remains separate. See
 [delivery validation](docs/validation-collect-coverage.md).
+
+Windows workflow recovery for issues66–68 follows in PR69 on main after
+D6B/CI integration: FFmpeg9 frame extraction, explicit Windows directory-sync capability for
+scan/stage persistence, and acknowledged benchmark fixture shutdown. A pinned
+Windows/FFmpeg9/font gate supplies narrow OS evidence; physical workstation and
+installer obligations remain open. See
+[issue validation](docs/validation-windows-issue-recovery.md).
 
 CI follow-up separates fast pure contracts from heavy-by-default media/browser
 QA, with exact discovery coverage and the historical aggregate check still
 requiring both successful jobs. No media assertion or workstation gate is bypassed;
-see [CI validation](docs/validation-ci-contract-media.md). Hosted outcomes remain
-pending until measured; no speedup or release version is inferred.
+see [CI validation](docs/validation-ci-contract-media.md). PR70 merged as8de63ae
+after full gates: fast1m45s; heavy45m35s/46m26s. This is separate feedback,
+not a claimed overall speedup or release version.
+
+CI reliability follow-up now fixes the actual main Pages dead links and adds
+an obligatory PR website build. The complete browser suite moves to four isolated
+single-worker VMs parallel with media, with exact discovery/candidate-bound
+execution verification and every previous gate retained. PR synchronizations and
+main pushes retain full coverage without duplicate feature push runs. Hosted
+source gates pass:4591tests and291actual browsers. Observed E2E23m24s→11m18s,
+Verify34m39s→12m55s; PR71 merged into PR69 before main so the known Pages fix
+ships with Windows recovery. Final integration/main Verify and Pages outcomes
+are recorded on PR69; see [validation](docs/validation-ci-pages-e2e.md).
 
 ## Released 0.4.0 source integration
 

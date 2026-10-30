@@ -3,6 +3,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rm,
   utimes,
   writeFile,
@@ -12,7 +13,9 @@ import { tmpdir } from "node:os";
 import { generateSampleMedia } from "../../fixtures/sample-media/generate.mjs";
 
 export async function createDesktopFixture(extraPhotos = 6) {
-  const root = await mkdtemp(join(tmpdir(), "openfilm-desktop-"));
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "openfilm-desktop-")),
+  );
   const media = join(root, "memories");
   await mkdir(media);
   const originals = await generateSampleMedia(media);

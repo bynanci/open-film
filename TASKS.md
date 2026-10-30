@@ -11,7 +11,8 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Source-only markers, target-aware keyboard guards and operation-specific locks.
 - [x] Produce synthetic FFmpeg/browser/accessibility evidence and an exact-head gate record;
       retain first-run failures and rerun the complete sequence after compatibility corrections.
-- [ ] Native Rust/desktop gate on an equipped platform; local invocation is blocked by missing Cargo.
+- [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
+      Physical desktop/workstation verification remains below.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
@@ -39,6 +40,24 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.
 
+## Windows workflow recovery — issues66–68
+
+Scope: [issue plan](docs/superpowers/plans/2026-10-30-windows-issue-recovery.md)
+and [validation](docs/validation-windows-issue-recovery.md). Based on merged main;
+these narrow regressions do not close physical workstation/installer gates.
+
+- [x] #66: replace retired FFmpeg frame-sync option; real PNG/crop/MP4 and
+      delivery-rate regression with independent decode.
+- [x] #67: preserve file durability and make directory-sync capability explicit
+      across browser scan receipts, source staging and stage index; verify
+      scan→stage→reopen→seal and fail closed on real file/POSIX errors.
+- [x] #68: quiesce benchmark page, require close acknowledgement/no open project
+      before bounded fixture cleanup; preserve measurement budgets/artifacts.
+- [x] Fresh source reviews, full available gates and actual Windows/FFmpeg9
+      evidence:121tests/13browser;4591full unit/integration and291Chromium.
+      Exact final integration/main outcomes are recorded on PR69; merge requires green gates.
+- [ ] Manual: exact candidate rerun on Windows10/popopc; broader issue7 gates.
+
 ## CI contract/media separation
 
 Scope: [design](docs/superpowers/specs/2026-10-30-ci-contract-media-design.md),
@@ -49,8 +68,26 @@ Scope: [design](docs/superpowers/specs/2026-10-30-ci-contract-media-design.md),
       discovery; reject omitted, overlapping, duplicated, escaped or empty inventories.
 - [x] Preserve all format/locales/lint/types/build/interchange/CLI/browser gates and
       unchanged native job; keep the legacy check mandatory for both lane successes.
-- [ ] Full available evidence, independent review, exact-head hosted gates and merge.
+- [x] Full evidence/review/hosted gates; PR70 merged as8de63ae after1124contract
+      +3427media tests,291browser,23Rust,2archive,18interchange and security checks.
 - [ ] Manual hardware/NLE/installer observations remain with their existing owners.
+
+## CI delivery reliability and E2E duration
+
+Scope: [design](docs/superpowers/specs/2026-10-30-ci-pages-e2e-design.md),
+[plan](docs/superpowers/plans/2026-10-30-ci-pages-e2e.md) and
+[validation](docs/validation-ci-pages-e2e.md).
+
+- [x] Reproduce main Pages dead links; fix both architecture links and require
+      the actual VitePress build on every PR/main candidate.
+- [x] Run complete E2E on four isolated single-worker VMs alongside media QA;
+      reject discovery omissions/overlaps and skipped/flaky/missing actual results.
+- [x] Bind browser receipts to the exact candidate and require every lane in the
+      existing aggregate; avoid duplicate feature push plus PR Verify runs.
+- [x] Independent review correction and exact source gates:4591tests/291browser;
+      measured E2E23m24s→11m18s and Verify34m39s→12m55s. PR71 merged into PR69.
+      Final integration/main Verify and Pages evidence are recorded on PR69;
+      main merge requires all final checks.
 
 ## In progress — Multi-source import and common analysis
 
@@ -169,7 +206,7 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
-- [ ] D6B: add Collect Media trimmed-original and explicitly offline proxy modes
+- [x] D6B: add Collect Media trimmed-original and explicitly offline proxy modes
       with derivative provenance, handles, relocation/reopen, decoded
       picture/audio/time parity against the original project baseline and
       explicit quality disclosure.
@@ -188,8 +225,9 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
         regression-backed fixes. Keep warning-detail presentation as follow-up.
   - [x] Complete local full gates: 4535 unit/integration,291 Chromium, official
         OTIO18, built CLI smoke, types/lint/build/format/i18n/docs.
-  - [ ] Complete exact-head hosted gates before
-        marking D6B delivery ready to merge. Physical workstation gates stay open.
+  - [x] Complete exact-head hosted gates and merge PR65: head608377a,
+        merge5160d8f; both PR/push checks pass including4535tests,291browser,
+        23Rust and2archive tests. Physical workstation gates stay open.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.
