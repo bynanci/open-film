@@ -185,14 +185,43 @@ export class PresetApplicationService {
     };
   }
   private reviewStory(
-    _input: PresetApplyInput,
-    _snapshot: PresetSnapshot<"story">,
+    input: PresetApplyInput,
+    snapshot: PresetSnapshot<"story">,
   ): PresetApplyReview {
-    throw new ApplicationError(
-      "presets.unsupported",
-      "Authored story preset review is not available yet.",
-      422,
+    if (input.target.kind !== "story")
+      throw new ApplicationError(
+        "presets.invalid",
+        "Choose an authored story target.",
+      );
+    if (input.baseRevision !== this.app.versions.currentRevision())
+      throw new ApplicationError(
+        "presets.stale",
+        "Story sources or project changed; review again.",
+        409,
+      );
+    const { plan, compositionPreview } = this.app.storyPlan.previewPresetPlan(
+      input.target.storyId,
+      snapshot,
+      input.target.bindings,
+      input.target.options,
     );
+    const reviewSha256 = hashPresetData(
+      canonicalModel({ request: input, plan }),
+    );
+    const locale = this.app.project.projectContentLocale ?? "en-US";
+    return {
+      version: 1,
+      request: input,
+      snapshot,
+      reviewSha256,
+      commands: [],
+      plan,
+      compositionPreview,
+      warnings: snapshot.recipe.beats.some((b) => !b.text[locale])
+        ? ["presets.localeFallback"]
+        : [],
+      conflicts: [],
+    };
   }
   async accept(
     value: PresetAcceptInput,
@@ -201,12 +230,40 @@ export class PresetApplicationService {
     const input = validatePresetAcceptance(value);
     const prior = this.accepted(input, editor);
     if (prior) return prior;
-    if (input.request.target.kind === "story")
-      throw new ApplicationError(
-        "presets.unsupported",
-        "Authored story preset adoption is not available yet.",
-        422,
-      );
+    if (input.request.target.kind === "story") {
+      const review = this.review(input.request, editor);
+      if (
+        !review.plan ||
+        review.reviewSha256 !== input.reviewSha256 ||
+        review.conflicts.length
+      )
+        throw new ApplicationError(
+          "presets.stale",
+          "The exact authored preset review changed.",
+          409,
+        );
+      const target = input.request.target;
+      this.registry.withSelection(input.request.selection, () => {
+        const receipt = this.receipt(
+          input,
+          review,
+          { storyId: target.storyId, compositionId: "pending" },
+          "0".repeat(64),
+        );
+        this.app.storyPlan.acceptPresetPlan(
+          target.storyId,
+          review.plan!,
+          receipt,
+        );
+      });
+      const accepted = this.accepted(input, editor);
+      if (!accepted)
+        throw new ApplicationError(
+          "operation.failed",
+          "Preset acceptance did not publish its receipt.",
+        );
+      return { ...accepted, alreadyAccepted: false };
+    }
     return editor.acceptPresetApplication(
       input.request.target.compositionId,
       input,

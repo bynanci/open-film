@@ -757,6 +757,20 @@ export class TimelineEditor {
         `Timeline story not found: ${composition.storyId}`,
         404,
       );
+    const assets = this.documentAssets({ composition, story });
+    const revision = revisionFor({ composition, story }, assets);
+    const history = this.histories.get(compositionId);
+    return structuredClone({
+      composition,
+      story,
+      assets,
+      revision,
+      canUndo: history?.revision === revision && history.undo.length > 0,
+      canRedo: history?.revision === revision && history.redo.length > 0,
+    });
+  }
+
+  private documentAssets({ composition, story }: EditorDocument): MediaAsset[] {
     const ids = new Set([
       ...graphicSceneAssetIds(composition.graphicScenes ?? []),
       ...composition.tracks
@@ -790,16 +804,11 @@ export class TimelineEditor {
         );
       return asset;
     });
-    const revision = revisionFor({ composition, story }, assets);
-    const history = this.histories.get(compositionId);
-    return structuredClone({
-      composition,
-      story,
-      assets,
-      revision,
-      canUndo: history?.revision === revision && history.undo.length > 0,
-      canRedo: history?.revision === revision && history.redo.length > 0,
-    });
+    return assets;
+  }
+
+  revisionForDocument(document: EditorDocument): string {
+    return revisionFor(document, this.documentAssets(document));
   }
 
   async previewGraphicSceneAgent(

@@ -606,6 +606,8 @@ export function validatePresetSnapshot<K extends PresetKind>(
 }
 export function compositionPresetSnapshots(c: Composition): PresetSnapshot[] {
   const result: PresetSnapshot[] = [];
+  if (c.storyPresetSnapshot)
+    result.push(validatePresetSnapshot(c.storyPresetSnapshot, "story"));
   const look = (l: typeof c.defaultLook) => {
     if (l?.version === 2)
       result.push(validatePresetSnapshot(l.snapshot, "film-look"));
@@ -780,4 +782,71 @@ export function validatePresetReceipts(
       presetInvalid("receipt.acceptedAt", "expected ISO timestamp");
   }
   return structuredClone(value) as PresetApplicationReceipt[];
+}
+export function validatePresetStoryPlanContext(
+  value: unknown,
+): PresetStoryPlanContext {
+  assertPresetJsonData(value);
+  const r = presetRecord(value, "presetContext", [
+    "version",
+    "snapshot",
+    "bindings",
+    "baseProjectRevision",
+    "sourceGuardSha256",
+  ]);
+  if (r.version !== 1)
+    presetInvalid("presetContext.version", "unsupported preset context");
+  const snapshot = validatePresetSnapshot(r.snapshot, "story");
+  presetHash(r.baseProjectRevision, "presetContext.baseProjectRevision");
+  presetHash(r.sourceGuardSha256, "presetContext.sourceGuardSha256");
+  if (
+    !Array.isArray(r.bindings) ||
+    r.bindings.length !== snapshot.recipe.beats.length
+  )
+    presetInvalid("presetContext.bindings", "incomplete preset bindings");
+  const seen = new Set<string>();
+  for (const value of r.bindings) {
+    const b = presetRecord(value, "binding", ["recipeBeatKey", "beatId"]);
+    presetId(b.recipeBeatKey, "binding.recipeBeatKey");
+    presetText(b.beatId, "binding.beatId");
+    if (seen.has(String(b.beatId)))
+      presetInvalid("binding", "duplicate source beat");
+    seen.add(String(b.beatId));
+  }
+  return structuredClone(value) as PresetStoryPlanContext;
+}
+export function validatePresetPlanSource(value: unknown): PresetPlanSource {
+  assertPresetJsonData(value);
+  const r = presetRecord(value, "presetPlanSource", [
+    "version",
+    "storyId",
+    "planId",
+    "sourceGuardSha256",
+    "bindings",
+  ]);
+  if (r.version !== 1)
+    presetInvalid(
+      "presetPlanSource.version",
+      "unsupported plan-source version",
+    );
+  presetText(r.storyId, "presetPlanSource.storyId");
+  presetText(r.planId, "presetPlanSource.planId");
+  presetHash(r.sourceGuardSha256, "presetPlanSource.sourceGuardSha256");
+  if (
+    !Array.isArray(r.bindings) ||
+    !r.bindings.length ||
+    r.bindings.length > 12
+  )
+    presetInvalid("presetPlanSource.bindings", "invalid plan-source mapping");
+  for (const v of r.bindings) {
+    const b = presetRecord(v, "binding", [
+      "recipeBeatKey",
+      "sourceBeatId",
+      "beatId",
+    ]);
+    presetId(b.recipeBeatKey, "binding.recipeBeatKey");
+    presetText(b.sourceBeatId, "binding.sourceBeatId");
+    presetText(b.beatId, "binding.beatId");
+  }
+  return structuredClone(value) as PresetPlanSource;
 }

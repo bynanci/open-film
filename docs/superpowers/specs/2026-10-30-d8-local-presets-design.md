@@ -275,6 +275,8 @@ snapshot: PresetSnapshot<"film-look"> }`. `preset: "local"` is an explicit
   origin beside `titleStyle: TitleStyle`. TitleStyle itself remains untouched.
 - `Story.presetSnapshot?: PresetSnapshot<"story">` and the preset-plan mapping
   carry the resolved authored recipe, locale tables, and source beat bindings.
+- `Composition.storyPresetSnapshot?` carries the same authored Story snapshot
+  into timeline-only JSON/OTIO exports; both occurrences count toward the budget.
 - `Story.presetPlanSource?` records version 1, source story/plan identity,
   source-guard hash and each recipe key's source/new beat mapping.
 - `OpenFilmProject.presetApplicationReceipts?` stores the bounded retry receipts

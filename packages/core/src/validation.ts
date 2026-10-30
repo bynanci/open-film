@@ -34,6 +34,7 @@ import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
 import { validateStoryGraph } from "./story-graph.js";
 import {
   validatePresetSnapshot,
+  validatePresetPlanSource,
   validatePresetReceipts,
   projectPresetSnapshots,
   assertPresetJsonData,
@@ -897,6 +898,9 @@ function story(
   optional(data, "presetSnapshot", path, (value) =>
     validatePresetSnapshot(value, "story"),
   );
+  optional(data, "presetPlanSource", path, (value) =>
+    validatePresetPlanSource(value),
+  );
   string(data.id, `${path}.id`);
   string(data.title, `${path}.title`);
   optional(data, "template", path, string);
@@ -1014,6 +1018,9 @@ function composition(
   const data = object(value, path);
   string(data.id, `${path}.id`);
   string(data.storyId, `${path}.storyId`);
+  optional(data, "storyPresetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
   const duration = number(data.duration, `${path}.duration`, 0);
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);

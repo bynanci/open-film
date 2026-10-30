@@ -86,6 +86,22 @@ export class StoryGraphService {
    * creates and stores the initial StoryGraph from existing beats and assets
    * so an existing project never opens to an empty canvas.
    */
+  previewGraph(storyId: string): StoryGraph {
+    const story = this.app.project.stories.find((s) => s.id === storyId);
+    if (!story)
+      throw new ApplicationError(
+        "request.notFound",
+        "The authored story was not found.",
+        404,
+      );
+    return story.graph?.nodes.length
+      ? structuredClone(story.graph)
+      : createInitialStoryGraph(
+          story,
+          this.app.catalog.listAssets({ limit: 2000 }),
+        );
+  }
+
   getGraph(storyId: string): StoryGraph {
     const story = this.app.project.stories.find((s) => s.id === storyId);
     if (!story) {

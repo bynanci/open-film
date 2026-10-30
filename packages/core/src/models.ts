@@ -382,6 +382,8 @@ export interface Track {
 export interface Composition {
   id: string;
   storyId: string;
+  /** Self-contained StoryPlan preset provenance travels with timeline exports. */
+  storyPresetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
   duration: number;
   tracks: Track[];
   defaultLook?: FilmLook;

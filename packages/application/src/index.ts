@@ -509,8 +509,8 @@ export class OpenFilmApplication {
       this.transcriptEditor = new TranscriptEditor(this);
       this.captions = new CaptionService(this);
       this.storyGraph = new StoryGraphService(this, this.directory);
-      this.storyPlan = new StoryPlanService(this, (next) =>
-        this.publishProject(next),
+      this.storyPlan = new StoryPlanService(this, (next, assertCurrent) =>
+        this.publishProject(next, assertCurrent),
       );
       this.pipeline = new PipelineService(this);
       this.creativeVariants = new CreativeVariantService(this, (next) =>

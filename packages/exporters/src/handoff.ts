@@ -110,6 +110,7 @@ export function createHandoffPlan(
   keys(composition, [
     "id",
     "storyId",
+    "storyPresetSnapshot",
     "duration",
     "tracks",
     "defaultLook",
