@@ -36,7 +36,7 @@ async function source(gap: number, audioOffset = 0, containerOffset = 0) {
     "-f",
     "lavfi",
     "-i",
-    "color=c=black:s=96x64:r=25:d=2",
+    "color=c=black:s=96x64:r=25:d=2.5",
     "-f",
     "lavfi",
     "-i",

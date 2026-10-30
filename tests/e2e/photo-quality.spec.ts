@@ -1105,6 +1105,7 @@ test("photo direction, CJK titles and overlay sound survive history and reopen",
     )
     .toBe(1);
   await page
+    .locator("form")
     .getByLabel("Audio role", { exact: true })
     .selectOption("narration");
   await page.getByRole("button", { name: "Add to film", exact: true }).click();

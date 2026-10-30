@@ -116,8 +116,17 @@ export async function inspectCanonicalAudio(
   const ends = [
     ...decoded.stdout.toString("utf8").matchAll(/^out_time_us=(\d+)$/gm),
   ];
-  const microseconds = Number(ends.at(-1)?.[1]),
-    lengthSamples = Math.round((microseconds * 48000) / 1000000);
+  const microseconds = Number(ends.at(-1)?.[1]);
+  let lengthSamples = Math.round((microseconds * 48000) / 1000000);
+  const declaredSamples = Number.isFinite(Number(stream.duration))
+    ? Math.round(Number(stream.duration) * 48000)
+    : undefined;
+  if (
+    declaredSamples !== undefined &&
+    Math.abs(declaredSamples - lengthSamples) <= 1
+  ) {
+    lengthSamples = declaredSamples;
+  }
   if (
     !Number.isSafeInteger(lengthSamples) ||
     lengthSamples <= 0 ||
