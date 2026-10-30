@@ -138,6 +138,8 @@ export interface Story {
   beats: StoryBeat[];
   /** Optional Story Graph perspective content. */
   graph?: import("./story-graph.js").StoryGraph;
+  presetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
+  presetPlanSource?: import("./presets.js").PresetPlanSource;
 }
 
 export interface ClipTransform {
@@ -333,12 +335,19 @@ export const FILM_LOOK_PRESET_IDS = [
   "natural",
   "sport",
 ] as const;
-export interface FilmLook {
+export interface BuiltinFilmLook {
   version: 1;
   preset: (typeof FILM_LOOK_PRESET_IDS)[number];
   /** Recipe-strength interpolation on decoded, encoded-SDR RGB, not linear-light color management. */
   strength: number;
 }
+export interface LocalFilmLook {
+  version: 2;
+  preset: "local";
+  strength: number;
+  snapshot: import("./presets.js").PresetSnapshot<"film-look">;
+}
+export type FilmLook = BuiltinFilmLook | LocalFilmLook;
 
 export interface Clip {
   id: string;
@@ -353,6 +362,7 @@ export interface Clip {
   layout?: PhotoLayout;
   motion?: PhotoMotion;
   titleStyle?: TitleStyle;
+  titlePresetSnapshot?: import("./presets.js").PresetSnapshot<"title">;
   audioAutomation?: AudioAutomation;
   /** Absent inherits the scene/film look; explicit `none` preserves original color. */
   look?: FilmLook;
@@ -402,6 +412,7 @@ export interface OpenFilmProject {
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
   sceneDirectionReceipts?: SceneDirectionReceipt[];
+  presetApplicationReceipts?: import("./presets.js").PresetApplicationReceipt[];
 }
 
 export interface Event {
