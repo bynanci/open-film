@@ -96,7 +96,10 @@ function typography(value: unknown, path: string): void {
     (typeof data.fontFamily !== "string" ||
       !data.fontFamily.trim() ||
       data.fontFamily.length > 256 ||
-      /[\u0000-\u001f\u007f]/u.test(data.fontFamily))
+      [...data.fontFamily].some((character) => {
+        const code = character.codePointAt(0)!;
+        return code < 32 || code === 127;
+      }))
   )
     throw new Error(
       `${path}.fontFamily: expected a bounded local font family without controls.`,

@@ -79,6 +79,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      titleRunsConflict:
+        "Update the language boundary with this text edit, or explicitly remove its independent run styling.",
       lookLocked:
         "Changing this look would affect {count} protected clips. Unlock those clips or sources first, or adjust an unlocked clip.",
       notFound:
@@ -92,6 +94,7 @@ export default {
       captionRangeConflict:
         "Shortening the edit would exclude saved captions. Adjust or delete the affected captions first, then retry.",
     },
+    title: { busy: "Wait for the current text preview to finish, then retry." },
     graphics: {
       invalid:
         "Check the graphic scene fields, timing and supported primitives.",

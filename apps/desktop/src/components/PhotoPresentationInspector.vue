@@ -13,6 +13,8 @@ import {
   type TitleStyle,
 } from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
+import BilingualTextControls from "./BilingualTextControls.vue";
+import TitleFinishingControls from "./TitleFinishingControls.vue";
 
 const props = defineProps<{
   clip: Clip;
@@ -50,6 +52,27 @@ const focalY = ref(0.5);
 const protectedEnabled = ref(false);
 const region = ref({ x: 0.25, y: 0.2, width: 0.5, height: 0.6 });
 const title = ref("");
+const titleLocked = computed(
+  () =>
+    !!(
+      props.clip.locked ||
+      props.asset.state.locked ||
+      savedSecondary.value?.state.locked
+    ),
+);
+function setBilingual(value: {
+  text: string;
+  runs: import("@openfilm/core").TitleTextRuns | null;
+}) {
+  if (titleLocked.value) return;
+  title.value = value.text;
+  emit("command", {
+    type: "presentation",
+    clipId: props.clip.id,
+    title: value.text,
+    titleRuns: value.runs,
+  });
+}
 function titleStyleForDisplay(style: TitleStyle | undefined) {
   try {
     return { style: resolveTitleStyle(style, props.frame), recovery: false };
@@ -305,6 +328,14 @@ function resetTitleStyle() {
     type: "presentation",
     clipId: props.clip.id,
     titleStyle: null,
+    ...(props.clip.titleRuns
+      ? {
+          titleRuns: {
+            version: 1 as const,
+            splitAt: props.clip.titleRuns.splitAt,
+          },
+        }
+      : {}),
   });
 }
 </script>
@@ -447,7 +478,7 @@ function resetTitleStyle() {
         {{ t("editor.presentation.resetTitleStyle") }}
       </button>
     </div>
-    <label class="editor-field"
+    <label v-if="!clip.titleRuns" class="editor-field"
       >{{ t("editor.presentation.titleText")
       }}<textarea
         v-model="title"
@@ -456,8 +487,29 @@ function resetTitleStyle() {
         @change="setTitle('text')"
       />
     </label>
+    <BilingualTextControls
+      :key="clip.id"
+      :text="clip.title ?? ''"
+      :runs="clip.titleRuns"
+      :style="clip.titleStyle"
+      :frame="frame"
+      :disabled="titleLocked || titleStyleRecovery"
+      @change="setBilingual"
+    />
+    <TitleFinishingControls
+      v-if="clip.title"
+      :style="clip.titleStyle ?? { version: 1, role: 'subtitle' }"
+      :disabled="titleLocked || titleStyleRecovery"
+      @change="
+        emit('command', {
+          type: 'presentation',
+          clipId: clip.id,
+          titleStyle: $event,
+        })
+      "
+    />
     <template v-if="title">
-      <label class="editor-field">
+      <label v-if="!clip.titleRuns" class="editor-field">
         {{ t("editor.presentation.titleFontSize") }}
         <input
           v-model.number="fontSize"
@@ -471,14 +523,14 @@ function resetTitleStyle() {
         />
       </label>
       <button
-        v-if="clip.titleStyle?.fontSize !== undefined"
+        v-if="!clip.titleRuns && clip.titleStyle?.fontSize !== undefined"
         class="editor-button"
         :disabled="titleStyleRecovery"
         @click="setTitle('fontSizeDefault')"
       >
         {{ t("editor.presentation.titleFontSizeDefault") }}
       </button>
-      <label class="editor-field">
+      <label v-if="!clip.titleRuns" class="editor-field">
         {{ t("editor.presentation.titleFontWeight") }}
         <select
           v-model.number="fontWeight"

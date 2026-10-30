@@ -2,6 +2,51 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    titleFinishing: {
+      previewLimited:
+        "同時字幕のプレビュー画像上限を超えています。重なる字幕を減らすか、書き出した MP4 を確認してください。",
+      bilingual: "二言語のテキスト",
+      bilingualHint:
+        "二つの言語を一つのタイトルに保持し、それぞれのサイズ・字間・ローカルフォントを調整します。",
+      primary: "第1言語",
+      secondary: "第2言語",
+      typography: "{run}の文字設定",
+      resetRun: "{run}の文字設定をリセット",
+      fontFamily: "ローカルフォント名",
+      fontSize: "サイズ（映像ピクセル）",
+      fontWeight: "ウェイト",
+      lineHeight: "行の高さ",
+      tracking: "字間（ピクセル）",
+      gap: "言語間の余白（ピクセル）",
+      finishing: "タイトルの仕上げ",
+      finishingHint:
+        "MP4 は計測済みタイトルを焼き込みます。SRT/VTT は両言語のテキストと時間を保持し、書体や効果は編集ソフトで再現します。",
+      shadow: "影",
+      stroke: "縁取り",
+      pill: "行ごとの角丸背景",
+      color: "色",
+      opacity: "不透明度（0–1）",
+      offsetX: "水平方向のずれ（ピクセル）",
+      offsetY: "垂直方向のずれ（ピクセル）",
+      blur: "影のぼかし（ピクセル）",
+      width: "縁取り幅（ピクセル）",
+      paddingX: "水平余白（ピクセル）",
+      paddingY: "垂直余白（ピクセル）",
+      radius: "角の半径（ピクセル）",
+      invalidRuns:
+        "両言語のテキストと対応範囲内の数値を入力してから保存してください。",
+      invalidFinishing: "表示された仕上げ範囲内の有限値を使用してください。",
+      previewUnavailable:
+        "テキストをプレビューできません。フォントの文字対応、サイズ、安全余白を確認してください。",
+      fontFallback:
+        "インストール済みの代替フォントを使用中です。書き出し前に文字を確認してください。",
+      retry: "テキストプレビューを再試行",
+      fontUsed: "{run}：{family}、ウェイト {weight}",
+      runField: "{run}：{field}",
+      previewTrack: "プレビューと MP4 の字幕",
+      firstTrack: "自動（最初の字幕トラック）",
+      noCaptions: "字幕なし",
+    },
     picture: {
       toggle: "画面を調整",
       group: "画面の変形",

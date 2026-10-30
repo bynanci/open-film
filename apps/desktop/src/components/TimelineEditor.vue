@@ -24,6 +24,7 @@ import {
   timebaseKey,
   type Clip,
   type CaptionTrack,
+  type TitleTextRuns,
   type FrameSize,
   type Job,
   type MediaAsset,
@@ -65,6 +66,10 @@ import GraphicSceneTemplateStudio from "./GraphicSceneTemplateStudio.vue";
 import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
+import NativeCaptionPreview from "./NativeCaptionPreview.vue";
+import NativeTextFontStatus from "./NativeTextFontStatus.vue";
+import BilingualTextControls from "./BilingualTextControls.vue";
+import TitleFinishingControls from "./TitleFinishingControls.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
 import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
@@ -117,6 +122,7 @@ const props = defineProps<{
   recoveringAnalysisJobs?: Record<string, boolean>;
   projectSettings: ProjectSettings;
   projectContentLocale?: ProjectContentLocale;
+  captionTrackId?: string | null;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -127,6 +133,7 @@ const emit = defineEmits<{
   activity: [];
   recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
   timebaseChange: [timebase: ProjectTimebaseV1];
+  captionTrack: [trackId: string | null | undefined];
 }>();
 const {
   state,
@@ -1330,6 +1337,7 @@ function addCaptionCue() {
 }
 function updateCaptionCue(patch: {
   text?: string;
+  textRuns?: TitleTextRuns | null;
   startMs?: number;
   endMs?: number;
 }) {
@@ -3054,6 +3062,7 @@ onBeforeUnmount(() => {
                 :source-version="sourceVersion"
                 :active="!cutDeskBlocked"
                 :bypass-look="lookCompareActive"
+                :caption-track-id="captionTrackId"
                 v-bind="recordBindings"
               />
               <div
@@ -3229,7 +3238,25 @@ onBeforeUnmount(() => {
                   :active="active && editMode === 'story'"
                   :look="playbackLook"
                   ><template #default="slot"
-                    ><GraphicScenePreview
+                    ><NativeCaptionPreview
+                      v-if="state.composition.captionTracks?.length"
+                      :composition="state.composition"
+                      :composition-id="compositionId"
+                      :project-id="projectId"
+                      :revision="state.revision"
+                      :frame="
+                        sequenceFrameAt(
+                          Math.max(0, playbackClip.timelineStart + slot.time),
+                          projectTimebase,
+                        )
+                      "
+                      :frame-rate="projectSettings.frameRate"
+                      :caption-track-id="captionTrackId"
+                      :frame-width="projectSettings.width"
+                      :frame-height="projectSettings.height"
+                      :active="
+                        active && status === 'saved'
+                      " /><GraphicScenePreview
                       v-if="state.composition.graphicScenes?.length"
                       :composition-id="compositionId"
                       :project-id="projectId"
@@ -3283,6 +3310,32 @@ onBeforeUnmount(() => {
                     :source-time="sourceTime"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
+                  />
+                  <NativeCaptionPreview
+                    v-if="
+                      state.composition.captionTracks?.length && playbackClip
+                    "
+                    :composition="state.composition"
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :frame="
+                      sequenceFrameAt(
+                        Math.max(
+                          0,
+                          playbackClip.timelineStart +
+                            (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                              (playbackClip.transform?.speed ?? 1),
+                        ),
+                        projectTimebase,
+                      )
+                    "
+                    :frame-rate="projectSettings.frameRate"
+                    :caption-track-id="captionTrackId"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :active="active && status === 'saved'"
+                    :clip="playbackClip"
                   />
                   <GraphicScenePreview
                     v-if="
@@ -3383,6 +3436,37 @@ onBeforeUnmount(() => {
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />
+                  <NativeCaptionPreview
+                    v-if="
+                      state.composition.captionTracks?.length && playbackClip
+                    "
+                    :composition="state.composition"
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :frame="
+                      sequenceFrameAt(
+                        Math.max(
+                          0,
+                          playbackClip.timelineStart +
+                            (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                              (playbackClip.transform?.speed ?? 1),
+                        ),
+                        projectTimebase,
+                      )
+                    "
+                    :frame-rate="projectSettings.frameRate"
+                    :caption-track-id="captionTrackId"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :active="active && status === 'saved'"
+                    :player="
+                      playbackAsset.mediaType === 'video'
+                        ? sourcePlayer
+                        : undefined
+                    "
+                    :clip="playbackClip"
+                  />
                   <GraphicScenePreview
                     v-if="
                       state.composition.graphicScenes?.length && playbackClip
@@ -3417,11 +3501,33 @@ onBeforeUnmount(() => {
                 </div>
               </template>
               <div
-                v-else-if="state.composition.graphicScenes?.length"
+                v-else-if="
+                  state.composition.graphicScenes?.length ||
+                  state.composition.captionTracks?.length
+                "
                 class="editor-composition-frame"
                 :style="previewFrameStyle"
               >
+                <NativeCaptionPreview
+                  v-if="state.composition.captionTracks?.length"
+                  :composition="state.composition"
+                  :composition-id="compositionId"
+                  :project-id="projectId"
+                  :revision="state.revision"
+                  :frame="
+                    sequenceFrameAt(
+                      Math.max(0, graphicPreviewTime ?? 0),
+                      projectTimebase,
+                    )
+                  "
+                  :frame-rate="projectSettings.frameRate"
+                  :caption-track-id="captionTrackId"
+                  :frame-width="projectSettings.width"
+                  :frame-height="projectSettings.height"
+                  :active="active && status === 'saved'"
+                />
                 <GraphicScenePreview
+                  v-if="state.composition.graphicScenes?.length"
                   :composition-id="compositionId"
                   :project-id="projectId"
                   :revision="state.revision"
@@ -4327,6 +4433,14 @@ onBeforeUnmount(() => {
                   :allow-photo-presentation="photoPresentationAllowed"
                   @command="command"
                 />
+                <NativeTextFontStatus
+                  v-if="selectedClip.title"
+                  :project-id="projectId"
+                  :composition-id="compositionId"
+                  :revision="state.revision"
+                  :reference="{ kind: 'title', clipId: selectedClip.id }"
+                  :active="active && status === 'saved'"
+                />
               </fieldset>
             </fieldset>
             <MotionGenerationPanel
@@ -4489,6 +4603,45 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <label v-if="captionTracks.length" class="editor-field">
+              {{ t("editor.titleFinishing.previewTrack") }}
+              <select
+                :value="
+                  captionTrackId === undefined
+                    ? '__default__'
+                    : captionTrackId === null
+                      ? '__none__'
+                      : captionTrackId
+                "
+                :disabled="historyBusy"
+                data-testid="monitor-caption-track"
+                @change="
+                  emit(
+                    'captionTrack',
+                    ($event.target as HTMLSelectElement).value === '__default__'
+                      ? undefined
+                      : ($event.target as HTMLSelectElement).value ===
+                          '__none__'
+                        ? null
+                        : ($event.target as HTMLSelectElement).value,
+                  )
+                "
+              >
+                <option value="__default__">
+                  {{ t("editor.titleFinishing.firstTrack") }}
+                </option>
+                <option value="__none__">
+                  {{ t("editor.titleFinishing.noCaptions") }}
+                </option>
+                <option
+                  v-for="track in captionTracks"
+                  :key="track.id"
+                  :value="track.id"
+                >
+                  {{ track.name }}
+                </option>
+              </select>
+            </label>
+            <label v-if="captionTracks.length" class="editor-field">
               {{ t("editor.captions.track") }}
               <select
                 :value="selectedCaptionTrackId"
@@ -4513,7 +4666,7 @@ onBeforeUnmount(() => {
             </label>
             <template v-if="selectedCaptionTrack">
               <div v-if="selectedCaptionCue" class="editor-fields">
-                <label class="editor-field">
+                <label v-if="!selectedCaptionCue.textRuns" class="editor-field">
                   {{ t("editor.captions.text") }}
                   <textarea
                     :value="selectedCaptionCue.text"
@@ -4529,6 +4682,31 @@ onBeforeUnmount(() => {
                     "
                   />
                 </label>
+                <BilingualTextControls
+                  :key="selectedCaptionCue.id"
+                  :text="selectedCaptionCue.text"
+                  :runs="selectedCaptionCue.textRuns"
+                  :style="selectedCaptionTrack.style"
+                  :frame="projectSettings"
+                  :disabled="historyBusy"
+                  @change="
+                    updateCaptionCue({
+                      text: $event.text,
+                      textRuns: $event.runs,
+                    })
+                  "
+                />
+                <NativeTextFontStatus
+                  :project-id="projectId"
+                  :composition-id="compositionId"
+                  :revision="state.revision"
+                  :reference="{
+                    kind: 'caption',
+                    trackId: selectedCaptionTrack.id,
+                    cueId: selectedCaptionCue.id,
+                  }"
+                  :active="active && status === 'saved'"
+                />
                 <div class="editor-field-pair">
                   <label class="editor-field">
                     {{ t("editor.captions.startMs") }}
@@ -4644,6 +4822,17 @@ onBeforeUnmount(() => {
                   </label>
                 </fieldset>
               </fieldset>
+              <TitleFinishingControls
+                :style="selectedCaptionTrack.style"
+                :disabled="historyBusy"
+                @change="
+                  command({
+                    type: 'caption.track.style',
+                    trackId: selectedCaptionTrack.id,
+                    style: $event,
+                  })
+                "
+              />
               <p v-if="!selectedCaptionCue" class="editor-note">
                 {{ t("editor.captions.chooseCue") }}
               </p>

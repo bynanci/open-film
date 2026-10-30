@@ -2,6 +2,52 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    titleFinishing: {
+      previewLimited:
+        "This preview exceeds the simultaneous-caption image limit. Reduce overlapping cues or review the rendered MP4.",
+      bilingual: "Two language runs",
+      bilingualHint:
+        "Keep both languages in one title. Each row has its own size, tracking and local font.",
+      primary: "Primary language",
+      secondary: "Secondary language",
+      typography: "{run} typography",
+      resetRun: "Reset {run} typography",
+      fontFamily: "Local font family",
+      fontSize: "Size (composition pixels)",
+      fontWeight: "Weight",
+      lineHeight: "Line height",
+      tracking: "Tracking (pixels)",
+      gap: "Language gap (pixels)",
+      finishing: "Title finishing",
+      finishingHint:
+        "MP4 burns in the measured title. SRT/VTT retain both texts and timing; recreate typography and effects in the NLE.",
+      shadow: "Shadow",
+      stroke: "Stroke",
+      pill: "Per-line pills",
+      color: "Color",
+      opacity: "Opacity (0–1)",
+      offsetX: "Horizontal offset (pixels)",
+      offsetY: "Vertical offset (pixels)",
+      blur: "Shadow blur (pixels)",
+      width: "Stroke width (pixels)",
+      paddingX: "Horizontal padding (pixels)",
+      paddingY: "Vertical padding (pixels)",
+      radius: "Corner radius (pixels)",
+      invalidRuns:
+        "Enter both languages and values within the supported limits before saving.",
+      invalidFinishing:
+        "Use finite values within the displayed finishing limits.",
+      previewUnavailable:
+        "Text preview unavailable. Check font coverage, text size and safe margins.",
+      fontFallback:
+        "An installed local font fallback is being used. Review the text before export.",
+      retry: "Retry text preview",
+      fontUsed: "{run}: {family}, weight {weight}",
+      runField: "{run}: {field}",
+      previewTrack: "Preview and MP4 captions",
+      firstTrack: "Automatic (first caption track)",
+      noCaptions: "No captions",
+    },
     picture: {
       toggle: "Adjust picture",
       group: "Picture transform",
