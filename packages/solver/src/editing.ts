@@ -1,3 +1,9 @@
+import {
+  applyOverridePolicy,
+  directOverrideTargets,
+  pinConflict,
+  type TimelineEditContext,
+} from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
@@ -12,6 +18,7 @@ import {
   validateGraphicSceneTemplates,
   graphicSceneAssetIds,
   type GraphicScene,
+  type OverrideTarget,
   type GraphicSceneTemplateRecord,
   filmLookMatrix,
   resolveFilmLook,
@@ -34,6 +41,19 @@ import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
+  | { type: "user-pin.set"; target: OverrideTarget; pinned: boolean }
+  | {
+      type: "user-pin.resolve";
+      targets: OverrideTarget[];
+      scope: { kind: "composition" } | { kind: "beat"; beatId: string };
+      mode:
+        | "regenerate"
+        | "shorten"
+        | "more-video"
+        | "more-photos"
+        | "replace-similar"
+        | "remove-repetition";
+    }
   | {
       type: "graphic.scene.upsert";
       scene: GraphicScene;
@@ -830,13 +850,70 @@ function applyCaptionCommand(
   return commitCaptionTracks(next, tracks);
 }
 
-/** Applies one edit to a detached snapshot; undo history can retain either input. */
+/** Server-owned mutation context. Legacy solver callers are automatic. */
 export function applyTimelineCommand(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  command: TimelineCommand,
+  context: TimelineEditContext = {},
+): EditorDocument {
+  const origin = context.origin ?? "automatic";
+  const writes = directOverrideTargets([command]);
+  if (
+    (origin === "direct" && writes.length) ||
+    command.type.startsWith("user-pin.")
+  ) {
+    if (!context.timebase)
+      pinConflict(
+        "User pin edits require an authoritative project timebase clock.",
+      );
+  }
+  if (origin === "direct")
+    for (const target of writes) {
+      if (target.kind === "clip") {
+        if (command.type === "audio.add") continue;
+        const { clip } = findClip(document, target.clipId);
+        if (
+          clip.locked ||
+          assets.find((a) => a.id === clip.assetId)?.state.locked ||
+          (clip.layout?.secondary &&
+            assets.find((a) => a.id === clip.layout?.secondary?.assetId)?.state
+              .locked)
+        )
+          fail("The target or source is locked.");
+      } else {
+        const scene = document.composition.graphicScenes?.find(
+          (s) => s.id === target.sceneId,
+        );
+        if (
+          scene &&
+          command.type.startsWith("user-pin.") &&
+          (hasLockedGraphicNode(scene) ||
+            graphicSceneAssetIds([scene]).some(
+              (id) => assets.find((a) => a.id === id)?.state.locked,
+            ))
+        )
+          fail("The scene or source is locked.");
+      }
+    }
+  const next = command.type.startsWith("user-pin.")
+    ? structuredClone(document)
+    : applyTimelineCommandRaw(document, assets, command);
+  return applyOverridePolicy(document, next, [command], {
+    origin,
+    timebase: context.timebase!,
+  });
+}
+
+/** Applies one edit to a detached snapshot; undo history can retain either input. */
+function applyTimelineCommandRaw(
   document: EditorDocument,
   assets: MediaAsset[],
   command: TimelineCommand,
 ): EditorDocument {
   const next = structuredClone(document);
+  if (command.type === "user-pin.set" || command.type === "user-pin.resolve")
+    return next;
   if (
     command.type === "graphic.scene.upsert" ||
     command.type === "graphic.scene.remove"

@@ -593,3 +593,5 @@ export type {
   GraphicSceneAgentOperation,
   PreparedGraphicSceneAgentProposal,
 } from "./graphic-scene-agent.js";
+
+export * from "./user-overrides.js";

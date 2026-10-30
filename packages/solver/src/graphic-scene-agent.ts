@@ -501,6 +501,10 @@ export function applyGraphicSceneAgentActions(
   compositionDuration: number,
   validateCandidate?: CandidateValidator,
 ): GraphicScene {
+  if (scene.userOverrides?.isUserPinned)
+    throw new Error(
+      "The scene is user pinned. Release its user pin before applying suggestions.",
+    );
   if (
     !Array.isArray(actionIds) ||
     !actionIds.length ||
