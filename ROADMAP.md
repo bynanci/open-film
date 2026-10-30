@@ -124,6 +124,13 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D7A render QA now has shared immutable font/tool provenance, preserved metric
+units and strict bounds, and actual decoded positive/negative controls. Local
+synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
+workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
+pin admission and exact-head review remain pending; this does not close native
+installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
 the existing proxy generator and keeps output on originals. Independent review

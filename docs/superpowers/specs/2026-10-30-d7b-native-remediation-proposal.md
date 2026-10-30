@@ -1,7 +1,8 @@
 # D7B native remediation proposal
 
-Status: read-only audit and proposed alternatives, awaiting parent decision before
-product/dependency/CI changes. Base `e1255b1a8a83260149211d909cca8c1a50948c6b`;
+Status: parent selected Alternative A as the next separate implementation direction.
+An independent implementation plan and provenance audit must precede vendoring;
+no D7B product/dependency/CI change is part of this D7A branch. Base `e1255b1a8a83260149211d909cca8c1a50948c6b`;
 application version0.4.0. This proposal is separate from D7A and does not close the
 M7E, GLib, installer, signing or workstation checkboxes.
 
@@ -37,8 +38,8 @@ dependency notice; do not hide it as collateral to this remediation.
 
 ## Alternative A — Compatible audited upstream backport
 
-Recommended bounded code-remediation candidate, subject to a design decision that
-a maintained source backport is acceptable. Preserve the actual crate version
+Selected bounded code-remediation direction for a separate worktree. Its independent
+implementation plan, provenance audit and source-aware evidence must precede closure. Preserve the actual crate version
 0.18.5; do not manufacture an official0.18.6 release or claim a clean version scan.
 
 Use the complete registry crate whose archive matches the lock checksum above,

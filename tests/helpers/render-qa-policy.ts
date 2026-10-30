@@ -93,6 +93,21 @@ export function assertRenderQaMetric(
 ): RenderQaMeasurement {
   const policy: Rule = renderQaPolicy[id];
   if (!policy || !Number.isFinite(actual)) invalid(id);
+  const nonnegative =
+    [
+      "rgb-channel-units",
+      "linear-peak-amplitude",
+      "output-pixels",
+      "output-pixels-per-frame",
+    ].includes(policy.unit) ||
+    id === "photoFilm.durationError" ||
+    id === "photo.fadeInRmsRatio" ||
+    id === "photo.fadeOutRmsRatio";
+  if (
+    (nonnegative && actual < 0) ||
+    (policy.unit === "rgb-channel-units" && actual > 255)
+  )
+    invalid(id);
   if (context && Object.keys(context).some((key) => key !== "frameRate"))
     invalid(id);
   let rule: Rule | Bound = policy;

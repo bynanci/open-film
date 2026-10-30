@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   admitBrewFormula,
@@ -9,8 +12,38 @@ import {
   verifyPinnedBytes,
 } from "../../scripts/ci/render-qa-tools.js";
 import pins from "../../fixtures/render-qa/toolchain.json";
+import { setupRenderQa } from "../../scripts/ci/setup-render-qa.js";
 
 afterEach(() => vi.unstubAllGlobals());
+it("rejects a mismatched setup host or architecture before filesystem/acquisition effects", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openfilm-qa-host-"));
+  const fetch = vi.fn(() => {
+    throw new Error("Unexpected acquisition");
+  });
+  vi.stubGlobal("fetch", fetch);
+  try {
+    await expect(
+      setupRenderQa({
+        root,
+        mode: "fonts-only",
+        platform: process.platform === "win32" ? "linux" : "win32",
+        architecture: process.arch,
+      }),
+    ).rejects.toThrow(/host|architecture/u);
+    await expect(
+      setupRenderQa({
+        root,
+        mode: "fonts-only",
+        platform: process.platform,
+        architecture: "unreviewed",
+      }),
+    ).rejects.toThrow(/host|architecture/u);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await readdir(root)).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 const bytes = Buffer.from("generated, non-executable download fixture");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 it("admits only bounded bytes matching an independently supplied digest", () => {

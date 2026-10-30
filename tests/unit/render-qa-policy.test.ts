@@ -100,6 +100,14 @@ it("rejects missing/nonfinite measurements and missing/invalid rate context", ()
       }),
     ).toThrow();
 });
+it.each([
+  ["photoDepth.rgbMae", -1],
+  ["cutDesk.channelError", 256],
+  ["cutDesk.primaryAmplitudeError", -0.001],
+  ["photo.firstFrameCenterError", -0.001],
+] as const)("rejects an impossible %s observable", (id, value) => {
+  expect(() => assertRenderQaMetric(id, value)).toThrow(/invalid/u);
+});
 it("checks identities without coercion and only compares decoded bytes", () => {
   const hash = "a".repeat(64);
   expect(assertRenderQaIdentity("sourceHash", hash, hash).passed).toBe(true);

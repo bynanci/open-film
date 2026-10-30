@@ -1,7 +1,7 @@
 # D7A reproducible render QA design
 
-Status: proposed design for independent review; no implementation or OS result is
-claimed. Base: `e1255b1a8a83260149211d909cca8c1a50948c6b`. This implements the
+Status: coordinator-approved design, now implemented with focused local evidence.
+Hosted pin admission and independent final review remain pending. Base: `e1255b1a8a83260149211d909cca8c1a50948c6b`. This implements the
 existing D7A/F13 owner in `TASKS.md`, not a new roadmap queue or a version promise.
 Stable application metadata remains 0.4.0 and project schema remains 1.0.0.
 
@@ -35,8 +35,8 @@ render algorithms, widen any threshold or certify aesthetics/listening/hardware.
    preserving output. Encoded SHA-256 is evidence identity, never the cross-OS
    acceptance criterion.
 
-The first choice is the author's proposal, pending parent review. No approval of
-product implementation is inferred from committing this design and plan.
+The coordinator selected the first choice for implementation under the existing
+D7A goal. This approval does not establish hosted or physical workstation results.
 
 ## Observed supply-chain facts, 2026-10-30
 

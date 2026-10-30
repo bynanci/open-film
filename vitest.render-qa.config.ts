@@ -6,5 +6,7 @@ export default defineConfig({
     ...root.test,
     include: ["tests/render-qa/**/*.spec.ts"],
     maxWorkers: 1,
+    allowOnly: false,
+    passWithNoTests: false,
   },
 });

@@ -523,8 +523,15 @@ not retroactively rename completed project capabilities.
         bounded custom-easing contract with legacy reopen and output parity.
   - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
         with legacy reopen, missing-font evidence and output parity.
-  - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
-        tolerance policy and add deliberate failures plus focused OS evidence.
+  - [ ] D7A: complete reproducible cross-platform render QA.
+    - [x] Share licensed immutable font/tool provenance, explicit test-font root,
+          exact metric units/comparators and real decoded failure controls;
+          bounded local receipt of 117 samples and 10 controls. [Evidence](docs/validation-render-qa.md).
+    - [x] Add three-OS current-candidate/run/attempt report validation while
+          preserving full Verify/browser/native and Windows recovery selection.
+    - [ ] Demonstrate actual Ubuntu/Windows/macOS ARM64 pinned-tool admission,
+          complete exact-head automated gates and fresh independent final review.
+          Local FFmpeg7.1.5 and synthetic schema fixtures do not close this gate.
 
 The candidate for each milestone requires its complete exact-head automated gate
 before merge. Synthetic media proves bounded behavior only; it does not certify
