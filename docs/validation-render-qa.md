@@ -265,3 +265,22 @@ pass42cases/2files, root TypeScript, changed ESLint/format/diff checks pass.
 ANSI Windows stack/private-text controls verify only fixed fields escape. Fresh
 scoped review and a new actual matrix remain required. This correction improves
 diagnosability; it does not fix the unidentified Windows finishing failure.
+
+### 2026-10-30 — bounded diagnostic review corrections
+
+Fresh scoped review ofc4fdb0a found two diagnostic usability issues: actual
+media-process failures use `ffmpeg exited N`, and one valid error larger than64KiB
+erased all safe failure facts despite a4MiB raw-report cap. Both controls first
+failed. The diagnostic extractor now recognizes the actual process prefix and
+reads bounded prefix/suffix windows of large messages, marking truncation while
+retaining safe file/index/category/coordinates and subsequent failures. No raw
+message is published. A known length-assertion category records exact missing
+sample counts. Current46pure tests/2files, rootTypeScript, changed ESLint and
+format/diff pass. The original successful-report validator and nonzero outcome
+remain unchanged. No actual-media pass is inferred from this reporting fix.
+
+Actual new matrix41098660221 identifies Windows easing sample-count and
+three combined-photo cases, plus macOS raw-ambient exactRGB, easing count and
+two HDR renders. AllthreeOS core117/10/17steps andLinux separate19cases pass.
+The newly retained failed summaries identify the concrete subcases; the full
+Windows/macOS finishing/aggregate gates remain failed pending causal repairs.
