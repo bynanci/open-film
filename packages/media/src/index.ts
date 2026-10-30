@@ -3,25 +3,9 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { Dir, Dirent } from "node:fs";
-import {
-  constants as fsConstants,
-  createReadStream,
-  createWriteStream,
-} from "node:fs";
+import { createReadStream } from "node:fs";
 import { createRequire } from "node:module";
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  open,
-  opendir,
-  realpath,
-  rm,
-  stat,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { lstat, mkdir, opendir, realpath, stat } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -33,11 +17,7 @@ import {
   sep,
 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  ApplicationError,
-  assetDisplayDimensions,
-  type MediaAsset,
-} from "@openfilm/core";
+import { assetDisplayDimensions, type MediaAsset } from "@openfilm/core";
 import type {
   MediaCandidate as SourceCandidate,
   MediaMetadata,
@@ -49,6 +29,8 @@ import type {
 import { resolveTimestamp } from "@openfilm/metadata";
 import { probeColor, previewIssue, hdrToneMapFilter } from "./color.js";
 import { localMediaInputOptions } from "./input-policy.js";
+import { withVerifiedSourceFile } from "./verified-source.js";
+export { withVerifiedSourceFile } from "./verified-source.js";
 export {
   LOCAL_MEDIA_DEMUXERS,
   localMediaInputOptions,
@@ -791,81 +773,23 @@ export async function extractRepresentativeFrames(
     throw new Error(
       "Representative frame time is outside the source duration.",
     );
-  const path = localPath(asset.uri);
-  const selected = await lstat(path);
-  if (selected.isSymbolicLink() || !selected.isFile())
-    throw new Error(
-      "Representative frame source must be a regular local file.",
-    );
-  const handle = await open(
-    path,
-    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-  );
-  let temporary: string | undefined;
-  try {
-    signal?.throwIfAborted();
-    const info = await handle.stat();
-    if (!info.isFile() || !Number.isSafeInteger(info.size))
-      throw new Error(
-        "Representative frame source must be a regular local file.",
-      );
-    temporary = await mkdtemp(join(tmpdir(), "openfilm-verified-sample-"));
-    const extension = extname(path).toLowerCase();
-    const snapshot = join(
-      temporary,
-      `source${/^\.[a-z0-9]{1,12}$/u.test(extension) ? extension : ".media"}`,
-    );
-    const hash = createHash("sha256");
-    let copied = 0;
-    const meter = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        copied += chunk.byteLength;
-        if (copied > info.size)
-          return callback(
-            new ApplicationError(
-              "source.changed",
-              "Representative source changed during verification.",
-              409,
-            ),
-          );
-        hash.update(chunk);
-        callback(null, chunk);
-      },
-    });
-    await pipeline(
-      handle.createReadStream({ autoClose: false }),
-      meter,
-      createWriteStream(snapshot, { flags: "wx", mode: 0o600 }),
-      { signal },
-    );
-    const sourceHash = hash.digest("hex");
-    if (
-      copied !== info.size ||
-      (asset.contentHash !== undefined && sourceHash !== asset.contentHash)
-    )
-      throw new ApplicationError(
-        "source.changed",
-        "Representative source bytes do not match the verified manifest.",
-        409,
-      );
-    signal?.throwIfAborted();
-    const verifiedAsset = { ...asset, uri: pathToFileURL(snapshot).href };
-    const frames: RepresentativeFrameBytes[] = [];
-    for (const time of sourceTimes) {
+  return withVerifiedSourceFile(
+    localPath(asset.uri),
+    asset.contentHash,
+    async (snapshot) => {
+      const verifiedAsset = { ...asset, uri: pathToFileURL(snapshot).href };
+      const frames: RepresentativeFrameBytes[] = [];
+      for (const time of sourceTimes) {
+        signal?.throwIfAborted();
+        frames.push(
+          await sampleVerifiedFrame(verifiedAsset, snapshot, time, signal),
+        );
+      }
       signal?.throwIfAborted();
-      frames.push(
-        await sampleVerifiedFrame(verifiedAsset, snapshot, time, signal),
-      );
-    }
-    signal?.throwIfAborted();
-    return frames;
-  } finally {
-    try {
-      await handle.close();
-    } finally {
-      if (temporary) await rm(temporary, { recursive: true, force: true });
-    }
-  }
+      return frames;
+    },
+    { signal },
+  );
 }
 
 async function sampleVerifiedFrame(
@@ -931,7 +855,13 @@ export async function createProxy(
   asset: MediaAsset,
   output: string,
   signal?: AbortSignal,
+  options: { maximumBytes?: number } = {},
 ): Promise<void> {
+  if (
+    options.maximumBytes !== undefined &&
+    (!Number.isSafeInteger(options.maximumBytes) || options.maximumBytes < 1)
+  )
+    throw new Error("Proxy byte bound must be a positive safe integer.");
   await ensureDerivedOutput(asset, output);
   if (asset.mediaType === "audio") {
     const issue = previewIssue(asset);
@@ -959,6 +889,9 @@ export async function createProxy(
         "-ar",
         "48000",
         "-y",
+        ...(options.maximumBytes === undefined
+          ? []
+          : ["-fs", String(options.maximumBytes)]),
         output,
       ],
       { signal, timeoutMs: 600000 },
@@ -1004,6 +937,9 @@ export async function createProxy(
       "-movflags",
       "+faststart",
       "-y",
+      ...(options.maximumBytes === undefined
+        ? []
+        : ["-fs", String(options.maximumBytes)]),
       output,
     ],
     { signal, timeoutMs: 600000 },

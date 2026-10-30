@@ -10,7 +10,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { validateMediaAsset, type Job, type MediaAsset } from "@openfilm/core";
+import {
+  validateMediaAsset,
+  validateProxyCacheTask,
+  type Job,
+  type MediaAsset,
+} from "@openfilm/core";
 import {
   CATALOG_SCHEMA_VERSION,
   CatalogIntelligenceStore,
@@ -60,6 +65,16 @@ export interface AssetListOptions {
   search?: string;
   ids?: string[];
   state?: { favorite?: boolean; rejected?: boolean; locked?: boolean };
+}
+
+export interface JobListOptions {
+  type?: string;
+  assetId?: string;
+  statuses?: Job["status"][];
+  limit?: number;
+  offset?: number;
+  oldestFirst?: boolean;
+  proxyRequestId?: string;
 }
 
 export interface CatalogRelinkChange {
@@ -1335,6 +1350,11 @@ export class ProjectCatalog {
       )
     )
       throw new Error("Invalid job status");
+    if (job.proxyCache !== undefined) {
+      const task = validateProxyCacheTask(job.proxyCache);
+      if (job.type !== "proxy" || job.assetId !== task.assetId)
+        throw new Error("Proxy task does not match its owning job.");
+    }
     this.database
       .prepare(
         "INSERT INTO jobs(id,created_at,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
@@ -1346,10 +1366,75 @@ export class ProjectCatalog {
       );
   }
 
-  listJobs(): Job[] {
+  getJob(jobId: string): Job | undefined {
+    id(jobId);
+    const row = this.database
+      .prepare("SELECT data FROM jobs WHERE id=?")
+      .get(jobId);
+    return row ? (JSON.parse(String(row.data)) as Job) : undefined;
+  }
+
+  listJobs(options: JobListOptions = {}): Job[] {
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+    if (options.type !== undefined) {
+      id(options.type);
+      where.push("json_extract(data,'$.type')=?");
+      params.push(options.type);
+    }
+    if (options.assetId !== undefined) {
+      id(options.assetId);
+      where.push("json_extract(data,'$.assetId')=?");
+      params.push(options.assetId);
+    }
+    if (options.proxyRequestId !== undefined) {
+      id(options.proxyRequestId);
+      where.push("json_extract(data,'$.proxyCache.requestId')=?");
+      params.push(options.proxyRequestId);
+    }
+    if (options.statuses !== undefined) {
+      if (
+        !Array.isArray(options.statuses) ||
+        !options.statuses.length ||
+        options.statuses.length > 5 ||
+        options.statuses.some(
+          (status) =>
+            !["queued", "running", "completed", "failed", "cancelled"].includes(
+              status,
+            ),
+        )
+      )
+        throw new Error("Invalid job status filter.");
+      where.push(
+        `json_extract(data,'$.status') IN (${options.statuses.map(() => "?").join(",")})`,
+      );
+      params.push(...options.statuses);
+    }
+    if (
+      options.limit !== undefined &&
+      (!Number.isSafeInteger(options.limit) ||
+        options.limit < 1 ||
+        options.limit > 10_000)
+    )
+      throw new Error("Job page size is outside its supported bounds.");
+    if (
+      options.offset !== undefined &&
+      (!Number.isSafeInteger(options.offset) ||
+        options.offset < 0 ||
+        options.offset > 1_000_000)
+    )
+      throw new Error("Invalid job page offset.");
+    const order = options.oldestFirst ? "ASC" : "DESC";
     return this.database
-      .prepare("SELECT data FROM jobs ORDER BY created_at DESC,id")
-      .all()
+      .prepare(
+        `SELECT data FROM jobs${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at ${order},id ${order}${options.limit !== undefined ? " LIMIT ? OFFSET ?" : ""}`,
+      )
+      .all(
+        ...params,
+        ...(options.limit !== undefined
+          ? [options.limit, options.offset ?? 0]
+          : []),
+      )
       .map((row) => JSON.parse(String(row.data)) as Job);
   }
 
