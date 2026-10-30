@@ -538,3 +538,9 @@ evidence SHA256 `a34b121024594e15a1bbe81f486f623f3d0b099b4a024ebbb0246fe01b6f520
 No controlled fault is committed or enabled in CI. Fresh scoped review and new
 exact-head Windows evidence remain required; this is evidence collection, not a
 claim that the historical mismatch is repaired.
+
+### 2026-10-30 — current Windows parity failure remains open
+
+Post-merge main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532` passed Verify, three-platform Render QA and Pages, but Windows run `41113344781` failed the strict PNG equality in the two-font assignment-swap test (129 other cases passed). Pin candidate `c260deaa502ccb2a0f76e64bdb334f381ea45803` also failed Windows run `41113964221`; its media and render QA gates passed separately. The earlier three-font collector does not capture this different fixture, so neither observation establishes a repaired or common cause.
+
+The same opt-in, synthetic-only capture now covers the assignment-swap fixture too: original encoded intermediates, raster inputs and hashes, literal frame 3, reviewed/delivered RGB, redacted arguments, fonts, and source identities before/after. Full original equality and swapped-font refusal assertions remain unchanged. No product rendering, tolerance, frame selection, retry or skip behavior changes. Two local selected assignment-swap cases passed with six real renders, zero RGB differences and unchanged sources; the other 60 cases were not selected. TypeScript/Vue and scoped lint passed. A fresh pinned Windows observation is required for causal diagnosis.

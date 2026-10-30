@@ -827,3 +827,5 @@ The D5C integration also repairs the observed title-image request ABA during
 Undo/Redo. Display generations request independent images while the existing
 project/revision fences and shared raster cache remain authoritative. Scoped
 review and exact raster/browser regressions pass; new-head full gates remain open.
+
+Windows post-merge export parity remains an open stabilization gate. The assignment-swap fixture now retains synthetic render and decoder evidence under the existing opt-in collector; no output equality has been relaxed. The cause and repair require actual pinned Windows validation. See [validation](docs/validation-export-profiles.md#2026-10-30--current-windows-parity-failure-remains-open).

@@ -1378,3 +1378,7 @@ validation records retain their original branch identities and historical runs.
       preserve exact raster assertions and stale-revision guards. Fresh scoped review,
       103 focused cases and two actual browser journeys pass; final hosted gates
       remain required before merge.
+
+### 2026-10-30 Windows export parity follow-up
+
+- [ ] Diagnose and repair the strict Windows PNG/MP4 export parity observations. Main Windows run 41113344781 fails the assignment-swap fixture, while Verify and three-platform Render QA pass. Preserve strict assertions and synthetic-only exact-source evidence; a green rerun alone is not a causal fix. See [validation](docs/validation-export-profiles.md#2026-10-30--current-windows-parity-failure-remains-open).
