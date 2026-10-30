@@ -228,3 +228,14 @@ bottle/font hash or metric limit changed. A focused command regression failed
 1/22 before the fix; the tool/aggregate/finishing suites then passed61tests in
 three files. Scoped ESLint and formatting pass. Linux-only source tests do not
 validate Homebrew execution: the next exact-head hosted macOS run must pass.
+
+## 2026-10-30 — macOS observation fixtures on Windows
+
+The first real Windows matrix job124164958041 failed one of123 acquisition
+controls before rendering: the macOS observation helper used the host-native
+path join on its explicitly macOS `/opt/homebrew` input, producing backslashes
+inside the Windows-run fixture. The helper now joins this macOS-only executable
+path with POSIX semantics. The existing exact otool argument assertions remain
+unchanged, as do Linux staging and actual Windows tool paths. Both local tool
+suites pass23tests; scoped ESLint and formatting pass. These Linux results do
+not replace a fresh Windows matrix run or claim real macOS linkage execution.

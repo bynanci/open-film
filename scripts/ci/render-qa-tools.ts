@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import pins from "../../fixtures/render-qa/toolchain.json";
 
 export const qaSha256 = (bytes: Uint8Array | string) =>
@@ -269,7 +269,9 @@ export async function observeMacQaDependencies(
     );
   }
   for (const name of ["ffmpeg", "ffprobe"]) {
-    const path = join(bin, name);
+    // This evidence describes a macOS executable even when its fault-control
+    // fixture is evaluated on a Windows host.
+    const path = posix.join(bin, name);
     const observed = await observation("otool", ["-L", path]);
     const [header, ...libraries] = observed.stdout.split(/\r?\n/u);
     if (
