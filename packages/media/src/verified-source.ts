@@ -54,7 +54,9 @@ export async function withVerifiedSourceFile<T>(
     const parent = await lstat(root);
     if (!parent.isDirectory() || parent.isSymbolicLink())
       throw new Error("Verified source storage must be a regular directory.");
-    temporary = await mkdtemp(join(root, "openfilm-verified-source-"));
+    // Work roots already carry project/job identity. Keep this private random
+    // child compact enough for Windows paths; ownership and byte guards remain.
+    temporary = await mkdtemp(join(root, "src-"));
     const extension = extname(path).toLowerCase();
     const snapshot = join(
       temporary,

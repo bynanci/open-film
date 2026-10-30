@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import {
   mkdtemp,
+  mkdir,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -47,6 +49,30 @@ it("streams a hash-verified private snapshot and removes it after the callback",
   expect(result).toBe("consumed verified bytes");
   await expect(readFile(snapshot)).rejects.toMatchObject({ code: "ENOENT" });
   expect(await readdir(f.root)).toEqual(["source.mp4"]);
+});
+
+it("keeps verified snapshot paths within a Windows budget for a valid225-character private parent", async () => {
+  const f = await fixture();
+  const root = await realpath(f.root);
+  const parent = join(root, "w".repeat(225 - root.length - 1));
+  expect(parent).toHaveLength(225);
+  await mkdir(parent);
+  await withVerifiedSourceFile(
+    f.source,
+    f.hash,
+    async (snapshot, hash) => {
+      expect(snapshot.length).toBeLessThan(260);
+      expect(await readFile(snapshot)).toEqual(f.bytes);
+      expect(hash).toBe(f.hash);
+    },
+    { temporaryRoot: parent, maximumBytes: f.bytes.length },
+  );
+  expect(await readdir(parent)).toEqual([]);
+  expect(
+    createHash("sha256")
+      .update(await readFile(f.source))
+      .digest("hex"),
+  ).toBe(f.hash);
 });
 
 it("does not disclose mismatched bytes or exceed the declared source bound", async () => {

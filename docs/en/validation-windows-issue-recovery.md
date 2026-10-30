@@ -133,11 +133,28 @@ Canonicalize only the newly created, owned synthetic temporary roots. Production
 source/link/alias guards are unchanged. A real controlled aliased-parent fixture
 fails before this change, then imports two canonical synthetic sources, rejects
 an alias input, keeps exactly two assets and verifies all original bytes unchanged.
+NTFS permits about1024 hardlinks per file; the old2000-link fixture stops at
+index1023. Use SHA-verified identical source banks of at most500 links, retaining
+all2000assets/500clips/10000segments/100000words. Six real-file tests preserve
+all paths and bytes, enforce link caps and reject invalid sizes. Seed catalog
+rows in one public synchronous transaction outside all measured samples. Artifact
+records identify the bank topology; future timing comparisons require matching
+fixtures, and no historical speedup is claimed.
+
 A failed synthetic seed releases its own catalog without another save; normal
 handoff still saves/closes before the server opens. Teardown retains primary and
 secondary errors together. Three new failure-context cases RED→GREEN; original
 four close/retention assertions, metrics, budgets and one-run policy remain.
-Windows source import and benchmark results must be rerun after these changes.
+Run41045709080 at3ab1296 passes **13/13 actual Windows browser journeys**
+(including the unchanged measurement budgets and confirmed fixture cleanup),
+but116/117 focused regressions pass. Source verification fails with
+`ENAMETOOLONG`: the full job ID plus nested temporary prefix exceeds the Windows
+path budget for an otherwise valid private parent. Compact only the random
+verified-snapshot child prefix to `src-`; no byte/hash/ownership/source/alias guard
+changes. A real225-character parent regression fails before the fix and then
+verifies snapshot path<260, exact source hash/bytes and cleanup. Temporary
+process-owner/source-generator diagnostics are removed after the cause is proven;
+original assertions remain. Final Windows and full combined gates are refreshed.
 
 ## Version/research and remaining gates
 
