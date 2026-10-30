@@ -79,7 +79,10 @@ export const FILM_LOOK_PRESETS: readonly {
 export function filmLookMatrix(value?: FilmLook | null): number[] {
   if (value == null) return [...identity];
   const look = validateFilmLook(value);
-  const recipe = FILM_LOOK_PRESETS.find((preset) => preset.id === look.preset)!;
+  const recipe =
+    look.version === 2
+      ? look.snapshot.recipe
+      : FILM_LOOK_PRESETS.find((preset) => preset.id === look.preset)!;
   if (look.strength === 0 || look.preset === "none") return [...identity];
   return recipe.matrix.map(
     (channel, index) =>
@@ -90,7 +93,9 @@ export function filmLookMatrix(value?: FilmLook | null): number[] {
 export function isFilmLookActive(value?: FilmLook | null): boolean {
   if (value == null) return false;
   const look = validateFilmLook(value);
-  return look.preset !== "none" && look.strength > 0;
+  return look.version === 2
+    ? filmLookMatrix(look).some((value, index) => value !== identity[index])
+    : look.preset !== "none" && look.strength > 0;
 }
 
 export interface ResolvedFilmLook {

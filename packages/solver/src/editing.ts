@@ -2,6 +2,9 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  canonicalPresetJson,
+  type PresetSnapshot,
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
@@ -50,6 +53,7 @@ export type TimelineCommand =
       motion?: PhotoMotion | null;
       title?: string | null;
       titleStyle?: TitleStyle | null;
+      titlePresetSnapshot?: PresetSnapshot<"title"> | null;
     }
   | {
       type: "audio.add";
@@ -1074,7 +1078,13 @@ export function applyTimelineCommand(
         fail(
           "The paired photo is locked. Unlock it before changing presentation.",
         );
-      const fields = ["layout", "motion", "title", "titleStyle"] as const;
+      const fields = [
+        "layout",
+        "motion",
+        "title",
+        "titleStyle",
+        "titlePresetSnapshot",
+      ] as const;
       if (!fields.some((key) => Object.hasOwn(command, key)))
         fail("Provide a presentation field to change.");
       if (
@@ -1138,6 +1148,23 @@ export function applyTimelineCommand(
               `Title must be text of at most ${MAX_TITLE_LENGTH} characters.`,
             );
           clip.title = command.title;
+        }
+      }
+      if (command.titlePresetSnapshot !== undefined) {
+        if (command.titlePresetSnapshot === null)
+          delete clip.titlePresetSnapshot;
+        else {
+          const snapshot = validatePresetSnapshot(
+            command.titlePresetSnapshot,
+            "title",
+          );
+          if (
+            !command.titleStyle ||
+            canonicalPresetJson(snapshot.recipe) !==
+              canonicalPresetJson(command.titleStyle)
+          )
+            fail("Preset title style does not match its recipe snapshot.");
+          clip.titlePresetSnapshot = snapshot;
         }
       }
       if (command.titleStyle !== undefined) {

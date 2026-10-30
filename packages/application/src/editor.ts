@@ -13,6 +13,10 @@ import {
   validateAudioAutomation,
   validateFilmLook,
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  type PresetAcceptInput,
+  type PresetApplicationReceipt,
+  type PresetSelection,
   MAX_SCENE_DIRECTION_RECEIPTS,
   isCaptionTextValid,
   validateGraphicScenes,
@@ -41,6 +45,7 @@ import {
   type TimelineCommand,
 } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { validatePresetAcceptance, type PresetAcceptance } from "./presets.js";
 import type {
   DirectionAcceptanceInput,
   DirectionReviewPlan,
@@ -264,7 +269,15 @@ function command(value: unknown, index: number): TimelineCommand {
   ];
   switch (type) {
     case "presentation": {
-      const presentationFields = ["layout", "motion", "title", "titleStyle"];
+      const presentationFields = [
+        "layout",
+        "motion",
+        "title",
+        "titleStyle",
+        "titlePresetSnapshot",
+      ];
+      if (data.titlePresetSnapshot != null)
+        validatePresetSnapshot(data.titlePresetSnapshot, "title");
       fields.push(...presentationFields);
       if (!presentationFields.some((field) => Object.hasOwn(data, field)))
         invalid(path, "provide a presentation field to change");
@@ -1417,6 +1430,57 @@ export class TimelineEditor {
     return after;
   }
 
+  async acceptPresetApplication(
+    compositionId: string,
+    value: PresetAcceptInput,
+  ): Promise<PresetAcceptance> {
+    const input = validatePresetAcceptance(value);
+    return this.serialize(async () => {
+      const prior = this.application.presets.accepted(input, this);
+      if (prior) return prior;
+      const review = this.application.presets.review(input.request, this);
+      if (
+        input.request.target.kind === "story" ||
+        input.request.target.compositionId !== compositionId ||
+        review.reviewSha256 !== input.reviewSha256 ||
+        !review.document ||
+        review.conflicts.length
+      )
+        throw new ApplicationError(
+          "presets.stale",
+          "The exact preset review changed before acceptance.",
+          409,
+        );
+      const before = this.current(compositionId, input.request.baseRevision);
+      const history = this.history(compositionId, before.revision);
+      const receipt = this.application.presets.receipt(
+        input,
+        review,
+        { storyId: before.story.id, compositionId },
+        revisionFor(review.document, before.assets),
+      );
+      const state = await this.persist(
+        compositionId,
+        before,
+        review.document,
+        {
+          undo: [...history.undo, document(before)].slice(-HISTORY_LIMIT),
+          redo: [],
+        },
+        undefined,
+        receipt,
+        input.request.selection,
+      );
+      return {
+        version: 1,
+        receipt,
+        state,
+        alreadyAccepted: false,
+        result: receipt.result,
+      };
+    });
+  }
+
   async edit(
     compositionId: string,
     input: TimelineEditInput,
@@ -1602,6 +1666,8 @@ export class TimelineEditor {
     next: EditorDocument,
     history: Pick<History, "undo" | "redo">,
     directionReceipt?: SceneDirectionReceipt,
+    presetReceipt?: PresetApplicationReceipt,
+    presetSelection?: PresetSelection,
   ): Promise<TimelineEditorState> {
     if (
       next.composition.id !== compositionId ||
@@ -1616,6 +1682,14 @@ export class TimelineEditor {
     try {
       candidate = validateProject({
         ...previousProject,
+        ...(presetReceipt
+          ? {
+              presetApplicationReceipts: this.application.presets.appendReceipt(
+                previousProject,
+                presetReceipt,
+              ),
+            }
+          : {}),
         ...(directionReceipt
           ? {
               sceneDirectionReceipts: [
@@ -1638,7 +1712,9 @@ export class TimelineEditor {
     }
     this.application.project = candidate;
     try {
-      await this.application.save();
+      if (presetReceipt && presetSelection)
+        this.application.presets.commit(candidate, presetSelection);
+      else await this.application.save();
     } catch (error) {
       // A failure after manifest publication retains the application's old
       // save baseline. Its CAS guard requires reopening; the durable direction

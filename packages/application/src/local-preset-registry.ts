@@ -313,6 +313,20 @@ export class LocalPresetRegistry {
       409,
     );
   }
+  /** Hold the global selection fence through a synchronous saved-project commit. */
+  withSelection<T>(
+    selection: {
+      canonicalId: string;
+      packageSha256: string;
+      registryRevision: string;
+    },
+    commit: () => T,
+  ): T {
+    return this.storage.withLock(() => {
+      this.snapshot(selection);
+      return commit();
+    });
+  }
   reviewRecovery(): PresetRecoveryReview {
     this.storage.ensure();
     const primary = this.storage.read();

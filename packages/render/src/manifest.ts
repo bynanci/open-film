@@ -1,3 +1,4 @@
+import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
@@ -25,6 +26,7 @@ export interface RenderLookEvidence {
   preset: FilmLook["preset"];
   strength: number;
   matrix: readonly number[];
+  presetSnapshotSha256?: string;
 }
 export interface RenderLookConfiguration {
   override: FilmLook | null;
@@ -222,6 +224,7 @@ export async function writeRenderManifest(
     compositionSha256: createHash("sha256").update(json).digest("hex"),
     settings,
     looks: {
+      registryScope: "builtins",
       registryVersion: FILM_LOOK_RECIPE_VERSION,
       matrixSpace: FILM_LOOK_MATRIX_DOMAIN,
       recipeOrigin: FILM_LOOK_RECIPE_ORIGIN,
@@ -247,6 +250,7 @@ export async function writeRenderManifest(
       },
       ...looks,
     },
+    presetSnapshots: renderPresetSnapshots(composition, looks.override),
     exportProfile: outputConfig.exportProfile ?? null,
     output: {
       format: outputConfig.format,

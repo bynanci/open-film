@@ -216,6 +216,7 @@ export function createHandoffPlan(
         "layout",
         "motion",
         "titleStyle",
+        "titlePresetSnapshot",
         "audioAutomation",
         "look",
         "locked",
