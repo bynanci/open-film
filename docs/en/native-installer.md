@@ -166,3 +166,104 @@ exact manifest bytes verified by Ed25519. Installer admission similarly checks
 the independently reviewed digest against the same bytes it parses and uses for
 the file inventory. Replacing the manifest between reads cannot substitute an
 unsigned inventory.
+
+## Explicit support files and emitted attribution
+
+Tools may declare up to 32 `supportFiles` (Node/FFmpeg/FFprobe only). Each has
+`id`, `source`, `destination`, `sha256`, `version`, `license`, `licenseFile`,
+`licenseSha256`, and `executable`. `destination` is relative to the owning
+executable's `bin/` directory; for example `lib/codec.so.1` stages as
+`bin/lib/codec.so.1`. Parent traversal and absolute paths are rejected. Each file
+has one `tool:<tool>:<id>` component and a full hash-pinned notice. Shared
+sidecars need one explicit owner; duplicate destinations, aliases, links,
+case collisions, missing notices, and wrong architectures fail staging. Full
+historical first-party grants are retained under `licenses/historical/` to
+avoid a cross-platform `LICENSES`/`licenses` case collision.
+
+`inspect-linkage.py` reads ELF, PE, or Mach-O imports using literal argument
+arrays for `readelf`, `dumpbin`, or `otool`; it does not load the inspected code,
+copy host libraries, or add a loader search path. Its bounded policy contains
+`schemaVersion: 1`, `platform`, `architecture`, `entrypoints`, a `files` map of
+relative binary paths to exact hashes, and `systemImports`. `baseline` names the
+OS, build, architecture and ABI. System imports use exact names and explicit
+`reason` and `symbolVersions` lists. ELF versions must fit the reviewed list;
+bundled libraries must supply required versions. ELF sidecars need an actual
+origin-relative runpath. Developer paths, unresolved recursive imports, and
+ambiguous destinations are rejected. Universal Mach-O inputs and unmodeled
+loader layouts require separate review and are currently refused.
+
+```sh
+python3 scripts/native/inspect-linkage.py --root /path/to/staged-runtime \
+  --policy /path/to/reviewed-linkage-policy.json --output /path/to/new-linkage.json
+```
+
+Supply staging `linkage: {policy: {source, sha256}, evidence: {source, sha256}}`.
+The policy and executed evidence must cover every native tool/addon/sidecar.
+For a reviewed runtime, `baseline.reviewed` must be `true` and
+`baseline.reviewReceipt: {origin, sha256}` must name the same independently
+reviewed receipt pinned by `distributionReview`. Local inspection or fixture
+success cannot establish that review. Raw observations and tool identities stay
+in the hash-covered linkage receipts; clean target preflight is still required.
+
+`pnpm build` also emits `dist/build-contributions.json`, raw esbuild metafiles,
+and Vite emitted-module records under `dist/attribution/`. Records identify
+actual contributing modules, frozen package/source identities and output hashes,
+including the esbuild and Vite/Vue runtime helpers that enter emitted chunks.
+Esbuild helper presence is recorded with a null byte count; other byte hints use
+esbuild output counts or Vite rendered lengths and are not a post-minification
+license percentage. Raw esbuild delivery roles are retained independently, so a
+shipped artifact cannot be edited into an unshipped CLI classification. The verifier
+rebuilds the inventory from the raw maps; editing away a contributor, changing
+source/package/lock bytes, or changing an output blocks attribution. Optional
+lock entries and build-only packages are not automatically reported as shipped.
+
+Staging accepts `attribution: {buildContributions: {source, sha256},
+licenseReceipts: {source, sha256}}`; without an explicit contribution pin it
+uses this checkout's generated contribution record when present. Each license
+receipt names the exact `packageId` and `sourceIdentity`, `reviewed: true`, a
+supported `licenseConcluded`, full `texts: [{source, sha256, origin}]`, and
+`obligations`. Obligations contain `kind`, a full hash-pinned evidence `file`,
+and, for source/configuration/relinking duties, the exact covered
+`artifactSha256` list. The implementation requires applicable Apache NOTICE or
+reviewed absence evidence, Node bundled notices, all three pinned Koffi MIT
+notices, OFL reserved-name review, GPL/LGPL source/source-offer and relinking
+evidence, MPL source disclosure and FFmpeg build configuration. A field such as
+`NOASSERTION` never approves a license. Full text provenance remains explicit;
+no copyright holders are invented. Missing source or notice evidence remains a
+blocked review item even when a development binary runs.
+
+`receipts/attribution.json` and the artifact-bound `sbom.spdx.json` are hashed by
+RuntimeManifest v1. `runtimeReviewStatus` covers the JS/runtime/tool/npm/license
+portion; overall `reviewStatus` stays blocked without actual native evidence.
+The SPDX relationships distinguish emitted code, copied package files, compiled
+Rust inputs, host build/proc-macro inputs and external OS dependencies.
+
+The final native shell embeds the manifest digest, so its final hash cannot
+appear inside a receipt hashed by that same manifest. After the real locked
+release build with an explicit `--target` and `--message-format=json`, retain
+its raw metadata, JSON compiler messages, exit status and Rust version.
+`cargo-attribution.ts` consumes those local input paths, verifies source checksums
+and artifact bytes, and classifies target code, host build/proc-macro inputs,
+uncompiled packages and generated outputs. Proc-macro expansion requires an
+explicit artifact-bound generated-code review before it can remain build-only. It normalizes workspace paths while
+retaining a digest of the exact resolved Cargo identity. Generated code and Rust
+sysroot/static runtime inputs need explicit source/contribution review; neither
+the whole Cargo lock nor successful compilation supplies that review.
+
+```sh
+pnpm exec tsx scripts/native/cargo-attribution.ts local-cargo-inputs.json new-cargo-evidence.json
+pnpm exec tsx scripts/native/attribute-distribution.ts local-distribution-inputs.json /path/to/new-native-evidence
+```
+
+The second command requires independently pinned build/Cargo/license inputs,
+`repository`, `runtimeRoot`, and `runtimeManifestSha256`. Optional
+`nativeLinkage`, `nativeRuntimeInputs`, and `targetDirectory` supply actual
+shell linkage, reviewed Rust sysroot/static-runtime source inventories and the
+explicit Cargo target directory. Native runtime inventories bind an identity,
+full provenance evidence and the covered final shell hash; they still need
+complete license receipts. The command writes separate native attribution,
+Cargo contribution and SPDX receipts **outside** the runtime. It preserves the
+embedded manifest and exits nonzero for blocked evidence. A later candidate
+receipt must bind both the manifest and these external native receipts to final
+installer/trust/security evidence. This work does not supply that candidate,
+review the GLib remediation, or close any installer/workstation gate.

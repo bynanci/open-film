@@ -792,3 +792,14 @@ import/relink/playback, representative fonts/licensing, protected subjects,
 physical color, listening and sustained 4K performance. Future remote generation
 must pass explicit provider consent, API/download safety and terms/cost/retention
 review; local editing continues without a provider.
+
+### 2026-10-30 M7E packaging evidence increment
+
+Explicit tool support-file ownership, recursive ELF/PE/Mach-O import policies and
+actual emitted JavaScript contribution inventories now extend the existing
+runtime tooling. Full notice/source-obligation records and SPDX bind the runtime
+payloads; final Rust/shell attribution stays outside the embedded manifest's hash
+graph and awaits candidate binding. This is a bounded engineering increment,
+not completion of M7E's audited per-platform inputs or installer gate. GLib,
+complete native runtime/security builds, Windows/macOS trust/installation and
+physical workstation checks remain open. See [validation](docs/validation-native-installer.md#2026-10-30-runtime-closure-and-emitted-attribution).

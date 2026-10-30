@@ -1350,3 +1350,16 @@ The six PR heads are combined with ancestry preserved in the 0.4.0 release
 candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
+
+### 2026-10-30 M7E runtime closure/attribution increment
+
+The existing M7E audit and installer checkboxes remain open. Bounded staging now
+supports owned, hash-pinned loader-relative support files, full notices and
+architecture checks; explicit target-tool import receipts reject missing or
+unreviewed OS/ABI closure. Emitted esbuild/Vite contributions, copied npm source
+identities, full license/source obligations and artifact-bound SPDX are recorded.
+Final compiled Rust/shell attribution is a separate post-build receipt because
+the shell embeds the runtime-manifest digest. Missing native/source/security,
+all-target inputs, trust, installer and physical workstation evidence still
+blocks distribution. See the [updated contract](docs/native-installer.md#explicit-support-files-and-emitted-attribution)
+and [dated validation](docs/validation-native-installer.md#2026-10-30-runtime-closure-and-emitted-attribution).
