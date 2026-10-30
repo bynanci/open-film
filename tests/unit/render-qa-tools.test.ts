@@ -9,13 +9,52 @@ import {
   admitBrewFormula,
   observeMacQaDependencies,
   admitToolVersion,
+  admitRequiredQaFilters,
   downloadPinnedBytes,
   verifyPinnedBytes,
 } from "../../scripts/ci/render-qa-tools.js";
-import pins from "../../fixtures/render-qa/toolchain.json";
 import { setupRenderQa } from "../../scripts/ci/setup-render-qa.js";
+import { ffmpegExpressionValues } from "../helpers/ffmpeg-expression-log.js";
 
 afterEach(() => vi.unstubAllGlobals());
+it("reads complete expression samples from bare and evaluator-prefixed FFmpeg logs only", () => {
+  expect(
+    ffmpegExpressionValues(
+      [
+        "Input duration 1.000000",
+        "0.000000",
+        "[Eval @ 0x1234abcd] 0.250000",
+        "[Eval @ 000001C67AB7F080] 0.500000",
+        "[Eval @ 0x1234abcd] 1.000000",
+        "[Eval @ 0x1234abcd] 1.000000",
+        "[other @ 0x1234abcd] 0.750000",
+        "[Eval @ invalid] 0.750000",
+        "[Eval @ 0x1234abcd] 0.750000 trailing log text",
+      ].join("\r\n"),
+    ),
+  ).toEqual([0, 0.25, 0.5, 1, 1]);
+});
+
+it("requires actual HDR filter rows across FFmpeg flag formats and rejects name lookalikes", () => {
+  for (const filters of [
+    " .SC zscale V->V Resize\n .S. tonemap V->V Tone map",
+    " .S zscale V->V Resize\n .S tonemap V->V Tone map",
+  ])
+    expect(admitRequiredQaFilters(filters).map((row) => row.name)).toEqual([
+      "zscale",
+      "tonemap",
+    ]);
+  for (const filters of [
+    " .S tonemap V->V Tone map",
+    " .S zscale V->V Resize",
+    " .S zscale_other V->V Resize\n .S tonemap V->V Tone map",
+    " .S other V->V mentions zscale and tonemap",
+    " .S zscale A->A Wrong type\n .S tonemap V->V Tone map",
+  ])
+    expect(() => admitRequiredQaFilters(filters)).toThrow(
+      /required.*filters/iu,
+    );
+});
 it("rejects a mismatched setup host or architecture before filesystem/acquisition effects", async () => {
   const root = await mkdtemp(join(tmpdir(), "openfilm-qa-host-"));
   const fetch = vi.fn(() => {
@@ -131,7 +170,7 @@ function formula() {
   return {
     formulae: [
       {
-        name: "ffmpeg",
+        name: "ffmpeg-full",
         tap: "homebrew/core",
         versions: { stable: "9.0.2" },
         revision: 1,
@@ -139,7 +178,10 @@ function formula() {
         bottle: {
           stable: {
             files: {
-              arm64_sequoia: { sha256: pins.tools["darwin-arm64"].sha256 },
+              arm64_sequoia: {
+                sha256:
+                  "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+              },
             },
           },
         },
@@ -151,6 +193,9 @@ function formula() {
 it("admits the exact Homebrew formula/bottle and installed identity", () => {
   expect(() => admitBrewFormula(formula(), true)).not.toThrow();
   for (const change of [
+    (data: ReturnType<typeof formula>) => {
+      data.formulae[0]!.name = "ffmpeg";
+    },
     (data: ReturnType<typeof formula>) => {
       data.formulae[0]!.revision = 2;
     },
@@ -178,7 +223,7 @@ it("admits the exact Homebrew formula/bottle and installed identity", () => {
 it("installs the admitted Homebrew formula rather than treating its cache path as a formula", () => {
   const setup = readFileSync("scripts/ci/setup-render-qa.ts", "utf8");
   expect(setup).toContain(
-    'await run("brew", ["install", "--force-bottle", "ffmpeg"]);',
+    'await run("brew", ["install", "--force-bottle", pin.formula]);',
   );
   expect(setup).not.toContain(
     'await run("brew", ["install", "--force-bottle", cache]);',
@@ -218,13 +263,15 @@ function macObservationFixture() {
       calls.push([command, args]);
       if (command === "otool")
         return `${args[1]}:\n\t/opt/homebrew/lib/libfixture.dylib (compatibility version 1.0.0, current version 1.2.3)`;
-      if (args[2] === "ffmpeg") return JSON.stringify(metadata);
+      if (args[2] === "ffmpeg-full") return JSON.stringify(metadata);
       return JSON.stringify({
         formulae: [
           {
             name: "libvpx",
             tap: "homebrew/core",
             installed: [{ version: "1.15.2" }],
+            dependencies: [] as string[],
+            license: "BSD-3-Clause",
           },
         ],
         casks: [],
@@ -240,13 +287,13 @@ it("retains bounded local Homebrew JSON and actual otool observations with path-
     fixture.run,
   );
   expect(fixture.calls).toEqual([
-    ["brew", ["info", "--json=v2", "ffmpeg"]],
+    ["brew", ["info", "--json=v2", "ffmpeg-full"]],
     ["brew", ["info", "--json=v2", "libvpx"]],
     ["otool", ["-L", "/opt/homebrew/opt/ffmpeg/bin/ffmpeg"]],
     ["otool", ["-L", "/opt/homebrew/opt/ffmpeg/bin/ffprobe"]],
   ]);
   expect(result.local.metadata.map((item) => item.name)).toEqual([
-    "ffmpeg",
+    "ffmpeg-full",
     "libvpx",
   ]);
   for (const item of [...result.local.metadata, ...result.local.libraries])
@@ -264,6 +311,50 @@ it("retains bounded local Homebrew JSON and actual otool observations with path-
     ),
   ).toBe(true);
 });
+it("retains the complete observed Homebrew dependency graph and its license declarations", async () => {
+  const fixture = macObservationFixture();
+  const result = await observeMacQaDependencies(
+    fixture.metadata,
+    "/opt/homebrew/opt/ffmpeg-full/bin",
+    async (command, args) => {
+      if (command === "brew" && args[2] === "libvpx") {
+        const data = JSON.parse(await fixture.run(command, args));
+        data.formulae[0].dependencies = ["libfixture"];
+        return JSON.stringify(data);
+      }
+      if (command === "brew" && args[2] === "libfixture")
+        return JSON.stringify({
+          formulae: [
+            {
+              name: "libfixture",
+              tap: "homebrew/core",
+              installed: [{ version: "1.0.0" }],
+              dependencies: [],
+              license: "MIT",
+            },
+          ],
+          casks: [],
+        });
+      return fixture.run(command, args);
+    },
+  );
+  expect(result.local.metadata.map((entry) => entry.name)).toEqual([
+    "ffmpeg-full",
+    "libvpx",
+    "libfixture",
+  ]);
+  expect(
+    result.summary.some((entry) =>
+      /^brew-license:libfixture:sha256=[a-f0-9]{64}$/u.test(entry),
+    ),
+  ).toBe(true);
+  expect(JSON.parse(result.local.metadata[2]!.stdout).formulae[0].license).toBe(
+    "MIT",
+  );
+  expect(JSON.parse(result.local.metadata[1]!.stdout).formulae[0].license).toBe(
+    "BSD-3-Clause",
+  );
+});
 it.each([
   "missing dependencies",
   "empty dependencies",
@@ -273,6 +364,8 @@ it.each([
   "oversized dependency inventory",
   "missing installed metadata",
   "wrong dependency",
+  "missing dependency license",
+  "missing nested dependency inventory",
   "oversized JSON",
   "empty libraries",
   "malformed libraries",
@@ -298,7 +391,7 @@ it.each([
     if (
       mutation === "changed dependency inventory" &&
       command === "brew" &&
-      args[2] === "ffmpeg"
+      args[2] === "ffmpeg-full"
     ) {
       const changed = structuredClone(fixture.metadata);
       Object.assign(changed.formulae[0]!, { dependencies: ["other"] });
@@ -311,6 +404,16 @@ it.each([
     if (command === "otool" && mutation === "malformed libraries")
       return `${args[1]}:\nnot a library record`;
     if (command === "brew" && args[2] === "libvpx") {
+      if (
+        mutation === "missing dependency license" ||
+        mutation === "missing nested dependency inventory"
+      ) {
+        const data = JSON.parse(await fixture.run(command, args));
+        delete data.formulae[0][
+          mutation === "missing dependency license" ? "license" : "dependencies"
+        ];
+        return JSON.stringify(data);
+      }
       if (mutation === "missing installed metadata")
         return JSON.stringify({
           formulae: [{ name: "libvpx", tap: "homebrew/core", installed: [] }],
