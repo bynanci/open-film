@@ -636,7 +636,17 @@ test("retains a real conflicting draft through reload and reapplies it explicitl
     {
       data: {
         baseRevision: initial.revision,
-        commands: [{ type: "volume", clipId: "ending-motion", volume: 0.2 }],
+        // This fixture tests revision recovery, then explicitly allows ripple.
+        // Keeping the remote volume while pinning its absolute range would
+        // correctly prevent the later duration change from moving it.
+        commands: [
+          { type: "volume", clipId: "ending-motion", volume: 0.2 },
+          {
+            type: "user-pin.set",
+            target: { kind: "clip", clipId: "ending-motion" },
+            pinned: false,
+          },
+        ],
       },
     },
   );
