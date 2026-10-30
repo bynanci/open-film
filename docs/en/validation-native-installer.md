@@ -372,3 +372,143 @@ terminal-ACK edges; their causal controls remain in the passing suite. A consume
 template parse test caught a closing-tag edit error, which was corrected without
 removing the inventory assertion. No full test or browser suite was rerun in this
 isolated follow-up; integration and fresh full native CI remain separate gates.
+
+## 2026-10-30 runtime closure and emitted attribution
+
+Source checkpoint: `codex/v1-native-runtime-closure`, based on actual
+`origin/main` `d5a286ed9250872e8eb9b1c3e40adb926f913d34`. This is the bounded
+Tasks 5–6 engineering increment. Parent whole-branch review and repository-wide
+CI remain separate from these local results. The earlier GLib/security execution
+was not resumed; no vulnerability, crash, debugger, or control reproduction was
+run here. The original remediation worktree was left untouched.
+
+Environment: Linux x64, kernel `6.18.55`, Node `24.19.0`, local pnpm `11.19.0`
+with the unchanged frozen lock, GNU readelf/binutils `2.44`. Rust's isolated
+`1.99.0` toolchain was used only for the original standalone collector smoke
+fixture described below. GTK3 and WebKit2GTK 4.1 are absent according to actual
+`pkg-config` observations; this is not a completed native application build.
+
+| Check                                            | Observed result                                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Focused Vitest command below                     | **114/114 passed**, 8 files; includes the 52 genuine owned port-0 native-runtime integration checks                                        |
+| `python3 scripts/native/test-inspect-linkage.py` | **9 passed**; ELF/PE/Mach-O fixtures, recursive absence/ABI/path/architecture faults, Mach-O dylib identity and unmodeled loader rejection |
+| `python3 scripts/native/test-extract-runtime.py` | **2 passed**                                                                                                                               |
+| `pnpm lint` / `pnpm typecheck`                   | Passed                                                                                                                                     |
+| `pnpm format:check`                              | Passed                                                                                                                                     |
+| `pnpm build`                                     | Passed; existing large-chunk notice remains visible                                                                                        |
+| `pnpm test:ci-partition`                         | Passed: 359 files classified, 52 contract / 307 media                                                                                      |
+| `pnpm test:docs-i18n`                            | Passed: 10 README locale sets / 129 English reference mirrors                                                                              |
+
+```sh
+pnpm exec vitest run tests/unit/native-attribution.test.ts tests/unit/native-cargo-attribution.test.ts tests/unit/native-distribution-receipt.test.ts tests/unit/native-linkage-receipt.test.ts tests/unit/native-support-files.test.ts tests/unit/runtime-manifest.test.ts tests/unit/build-launcher.test.ts tests/integration/native-runtime.test.ts
+```
+
+The regressions were observed failing before their implementations. Controls
+cover missing/hash-invalid sidecars, traversal, final/parent links, hardlinks,
+case/ownership/destination collisions, full-notice absence, architecture
+mismatch, unknown/recursive/system imports, symbol-version mismatch, unreviewed
+or replaced OS baseline, edited raw contribution mappings, stale source/package/
+lock/output hashes, and an attempt to relabel shipped JS as CLI-only. The build
+launcher test retains its actual no-pnpm Node invocation and exclusive-rename
+checks, using copied private source and the real attribution helper.
+
+The actual service output exposed esbuild-injected `__esm`/`__export` code that
+its module metafile omits. Its frozen MIT package is now explicitly attributed
+when helpers occur; helper presence has a null byte count. Actual Vite output
+also includes the frozen Vue export helper. The final regular build recorded
+**8 artifacts / 31 contributing package identities**, including **12 third-party
+identities**, rather than all frozen lock entries. The contribution file SHA-256
+was `88b3feb286c8408071e7c6c1d7bcd21b8e6511f283cc21e0c830fd495aa2f8e1`.
+Full license/NOTICE/source-obligation approval for those actual distribution
+inputs remains open. `NOASSERTION` is never used as license approval.
+
+Actual tool observations were retained locally in
+`/tmp/openfilm-runtime-closure-evidence/` for review:
+
+- GNU readelf inspected an original, harmless static C fixture. Its binary hash
+  was `a9bf037f2498acb0bb24a4598e6152a50e5bac207941a70227ccaf8f1d85a051`;
+  the executed technical receipt hash was
+  `4342d6b3e348cb88dfea1d0a028b709efbd9492f6f997f6dba906e8f06317505`.
+  The policy explicitly says `reviewed: false`; `distributionApproved` is false.
+  This demonstrates actual inspector execution, not an audited runtime input.
+- Actual Node `24.19.0` hash
+  `bc17c508ffeed0ec622934f9b7fa72f8e78da65350e63c3eceb56fa688aa5e12`
+  imported `libdl.so.2`, `libstdc++.so.6`, `libm.so.6`, `libgcc_s.so.1`,
+  `libpthread.so.0`, `libc.so.6`, and `ld-linux-x86-64.so.2`.
+  The inspector correctly rejected it without an explicit reviewed system
+  baseline. No host libraries were copied or automatically approved.
+- `rustc 1.99.0 (b940084d7 2026-09-28)` built only the original standalone
+  `openfilm-attribution-smoke` fixture with locked release JSON output and an
+  explicit `x86_64-unknown-linux-gnu` target. The collector recorded one target
+  artifact, shell hash
+  `957c606648be1a20050164cc0851ecff9807776925e579e3b22401fd2ee03824`,
+  canonical workspace identity and the actual compiler/invocation evidence.
+  The final collector receipt hash was
+  `243e3eb78937cf4a61f274254f70d545eea4260e17308a3fb11378410c375ef3`.
+  This fixture is not the OpenFilm app and is never distribution-approved.
+
+The parent approved the artifact-DAG clarification in the copied design/plan:
+RuntimeManifest hashes JS/runtime/tool/npm/license receipts; the final shell
+embeds that manifest digest. Final Rust/shell attribution therefore lives in a
+separate post-build receipt outside the runtime. Tests verify that the runtime
+manifest remains unchanged and reject writing the external receipt inside it.
+Task 7 must later bind both receipts and final installer/trust/security bytes;
+there is no self-hash or fixed-point claim.
+
+Both existing M7E checkboxes remain open. Missing audited per-platform Node/
+FFmpeg/font/addon inputs and complete notices/source offers, target import/ABI
+preflight, full application native build/security evidence (including the GLib
+blocker), compiled/generated/sysroot source review, candidate binding, signing/
+notarization, installer replace/rollback/uninstall and physical Windows/macOS
+workstation checks remain required. Automatic updates remain off and the default
+`bundle.active=false` configuration is unchanged. No installer, PR, merge or
+release was produced by this implementation task.
+
+## 2026-10-30 independent runtime review corrections
+
+The first independent whole-feature review examined exact source
+`350a48f0bf58f044b0e3a9a706486680151d8960` against
+`d5a286ed9250872e8eb9b1c3e40adb926f913d34` and requested three P2 corrections.
+The previous evidence above is retained at its actual checkpoint.
+
+Ten controls reproduced the reviewed defects on an otherwise complete synthetic
+receipt: five native reviewed/verified-baseline failures, three unaccounted
+static/ambiguous link directives, and two real external directory aliases into
+the runtime. The complete positive fixture itself remained reviewable, so an
+unrelated missing prerequisite could not mask these controls. Additional RED
+checks reproduced missing Cargo target/host role observations and incomplete
+policy/tool/binary receipt fields.
+
+The corrected native review requires an executed verified target binary
+observation, policy/tool identities and an independently reviewed OS baseline
+reference. Exact target static link directives now require one final-shell/source
+inventory binding and complete license ownership; the resulting package and SPDX
+retain the directive and artifact relationship. Host-only libraries remain
+build-only. Source, owner, name, shell, missing/unreviewed license and duplicate
+coverage counterexamples all remain blocked. Canonical output resolution refuses
+existing parent aliases into the runtime before even creating output parents;
+Windows drive/case/UNC and POSIX sibling controls retain their correct bounds.
+
+Frozen corrected source passed the full focused command above: **141/141 tests
+in eight files**, zero failed/pending tests. The three directly changed test
+files also passed **61/61** before the frozen run. Python linkage **9/9** and
+extraction **2/2**, TypeScript/Vue, full ESLint and the normal build passed.
+The normal build still records **8 artifacts / 31 package identities / 12
+third-party identities**, contribution SHA-256
+`88b3feb286c8408071e7c6c1d7bcd21b8e6511f283cc21e0c830fd495aa2f8e1`.
+The existing bundle-size notice is retained. Formatting, documentation mirrors
+and CI-partition results are recorded with the clean handoff; full hosted/repo
+CI and a fresh scoped correction review remain parent-owned.
+
+All receipts remain `distributionApproved: false`; runtime review cannot approve
+the compiled shell or its OS baseline. No new native code, crash/debugger
+reproduction, full Tauri build, signing, installer, workstation observation or
+release occurred. The actual Node/import and standalone Rust smoke observations
+above keep their original hashes and limits. Both M7E checkboxes and all
+source-security, target-input, trust and physical gates remain open.
+
+### 2026-10-30 clean-checkout fixture correction and merged foundations
+
+Hosted Verify run `41110757757` at `ec8e43fc6fed30f8ccbf0802cfbb2f68ac6929d5` failed three media tests because the fixtures required a pre-existing repository `dist/`. The other 3715 media tests passed. The correction supplies owned temporary repositories, real generated contribution inputs and explicit staging entries; it retains the attribution, permission and hash assertions. A fresh detached checkout at `1d54764bb88fd3ae18065431b1964f469340aa55` passed all 59 affected tests with no `dist/` before or after execution. The identical test correction was independently reviewed at `b0d3f43050c8f94b7ed3392653bb0312f4a18f35`.
+
+The integration checkpoint `9aec7aecbea3633cefda1c5a86ff510897460bb8` includes merged main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532`; 83 native attribution/support/Cargo/distribution/linkage/build-launcher cases, type checking, the actual desktop/server/CLI build and documentation locale checks passed locally. These results do not establish native source admission, installer trust or workstation verification. The published successor requires fresh hosted gates.

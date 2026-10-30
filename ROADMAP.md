@@ -854,6 +854,22 @@ physical color, listening and sustained 4K performance. Future remote generation
 must pass explicit provider consent, API/download safety and terms/cost/retention
 review; local editing continues without a provider.
 
+### 2026-10-30 M7E packaging evidence increment
+
+Explicit tool support-file ownership, recursive ELF/PE/Mach-O import policies and
+actual emitted JavaScript contribution inventories now extend the existing
+runtime tooling. Full notice/source-obligation records and SPDX bind the runtime
+payloads; final Rust/shell attribution stays outside the embedded manifest's hash
+graph and awaits candidate binding. This is a bounded engineering increment,
+not completion of M7E's audited per-platform inputs or installer gate. GLib,
+complete native runtime/security builds, Windows/macOS trust/installation and
+physical workstation checks remain open. See [validation](docs/validation-native-installer.md#2026-10-30-runtime-closure-and-emitted-attribution).
+
+2026-10-30 independent runtime review corrections add separate native-shell
+verified/reviewed-baseline admission, exact static Cargo link-input attribution
+and canonical external-output containment. These are engineering corrections to
+the existing M7E increment; audited target inputs, security, final candidates,
+trust and workstation checkboxes remain open. See the [contract](docs/native-installer.md#native-post-build-review-corrections--2026-10-30).
 The D5C integration also repairs the observed title-image request ABA during
 Undo/Redo. Display generations request independent images while the existing
 project/revision fences and shared raster cache remain authoritative. Scoped

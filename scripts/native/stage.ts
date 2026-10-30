@@ -25,6 +25,24 @@ import {
   type RuntimeFile,
   type RuntimeManifest,
 } from "../../apps/server/src/runtime-manifest.js";
+import {
+  readPinnedJson,
+  verifyLinkageInputs,
+  type LinkageInputs,
+  type PinnedReceipt,
+  type LinkageEvidence,
+} from "./linkage.js";
+import {
+  identifyPackage,
+  type BuildContributions,
+  type PackageIdentity,
+} from "../build-attribution.mjs";
+import {
+  createDistributionAttribution,
+  runtimeComponentIdentity,
+  type LicenseReceipt,
+} from "./attribution.js";
+import { assertBinaryArchitecture, assertRegularInput } from "./input-files.js";
 import { getExclusiveDirectoryRenamer } from "../../packages/application/src/exclusive-directory-rename.js";
 
 // Full upstream notices reviewed from the integrity-pinned Koffi3.3.3 tarball.
@@ -44,19 +62,31 @@ const koffiNotices = [
     "a553508f516031c91f3af1148d44970cb81bbae6c4f091be6835d39cc252238c",
   ],
 ] as const;
-interface InputFile {
+export interface ToolSupportFile extends Omit<InputFile, "supportFiles"> {
+  id: string;
+  /** Relative to the owning tool's bin/ directory. No parent traversal. */
+  destination: string;
+  executable: boolean;
+}
+export interface InputFile {
   source: string;
   sha256: string;
   version: string;
   license: string;
   licenseFile: string;
   licenseSha256: string;
+  supportFiles?: ToolSupportFile[];
 }
 export interface RuntimeInputs {
   distributionReview?: {
     source: string;
     sha256: string;
     systemRequirements: string[];
+  };
+  linkage?: LinkageInputs;
+  attribution?: {
+    buildContributions: PinnedReceipt;
+    licenseReceipts?: PinnedReceipt;
   };
   dependencyLicenses?: Record<string, { source: string; sha256: string }>;
   appVersion: string;
@@ -95,8 +125,18 @@ export async function stageRuntime(
     throw error;
   });
   const files: RuntimeFile[] = [];
+  const destinations = new Map<string, string>();
+  const nativePaths = new Set<string>();
   let stagedBytes = 0;
   const components: RuntimeComponent[] = [];
+  const runtimePackages: Record<string, PackageIdentity> = {};
+  let hasFrozenLock = false;
+  try {
+    await lstat(join(repository, "pnpm-lock.yaml"));
+    hasFrozenLock = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const add = async (
     source: string,
     path: string,
@@ -104,6 +144,19 @@ export async function stageRuntime(
     executable = false,
     expected?: string,
   ) => {
+    runtimePath(stage, path);
+    for (
+      let cursor = path;
+      cursor;
+      cursor = cursor.includes("/")
+        ? cursor.slice(0, cursor.lastIndexOf("/"))
+        : ""
+    ) {
+      const prior = destinations.get(cursor.toLowerCase());
+      if (prior && (prior !== cursor || cursor === path))
+        throw new Error("Conflicting runtime destination");
+      destinations.set(cursor.toLowerCase(), cursor);
+    }
     const info = await lstat(source);
     if (!info.isFile() || info.isSymbolicLink())
       throw new Error("Runtime inputs must be regular files");
@@ -113,6 +166,8 @@ export async function stageRuntime(
       stagedBytes + info.size > 4 * 1024 ** 3
     )
       throw new Error("Runtime input exceeds resource limits");
+    if (await assertBinaryArchitecture(source, inputs.architecture))
+      nativePaths.add(path);
     stagedBytes += info.size;
     const sha256 = await runtimeHash(source);
     if (expected && sha256 !== expected)
@@ -142,6 +197,8 @@ export async function stageRuntime(
           ? "fonts/default.ttf"
           : `bin/${id}${inputs.platform === "win32" ? ".exe" : ""}`;
       const licenseFile = `licenses/${id}.txt`;
+      if (id !== "font")
+        await assertBinaryArchitecture(input.source, inputs.architecture, true);
       await add(input.source, path, id, id !== "font", input.sha256);
       await add(input.licenseFile, licenseFile, id, false, input.licenseSha256);
       components.push({
@@ -151,6 +208,54 @@ export async function stageRuntime(
         licenseFile,
       });
       entries[id] = path;
+      if (
+        (input.supportFiles?.length ?? 0) > 32 ||
+        (id === "font" && input.supportFiles?.length)
+      )
+        throw new Error("Too many support files or unsupported font sidecars");
+      for (const support of input.supportFiles ?? []) {
+        if (
+          !/^[a-z0-9][a-z0-9._-]{0,39}$/u.test(support.id) ||
+          !/^[a-f0-9]{64}$/u.test(support.sha256) ||
+          !/^[a-f0-9]{64}$/u.test(support.licenseSha256) ||
+          typeof support.executable !== "boolean"
+        )
+          throw new Error("Invalid pinned tool support file");
+        runtimePath("/support", support.destination);
+        const owner = `tool:${id}:${support.id}`;
+        if (components.some((component) => component.id === owner))
+          throw new Error("Duplicate support owner");
+        await assertRegularInput(support.source);
+        await assertRegularInput(support.licenseFile);
+        if ((await lstat(support.licenseFile)).size === 0)
+          throw new Error("Missing full support license notice");
+        await assertBinaryArchitecture(
+          support.source,
+          inputs.architecture,
+          support.executable,
+        );
+        const notice = `licenses/tool-${id}-${support.id}.txt`;
+        await add(
+          support.source,
+          `bin/${support.destination}`,
+          owner,
+          support.executable,
+          support.sha256,
+        );
+        await add(
+          support.licenseFile,
+          notice,
+          owner,
+          false,
+          support.licenseSha256,
+        );
+        components.push({
+          id: owner,
+          version: support.version,
+          license: support.license,
+          licenseFile: notice,
+        });
+      }
     }
     components.push({
       id: "openfilm",
@@ -160,6 +265,21 @@ export async function stageRuntime(
     });
     await add(join(repository, "LICENSE"), "licenses/openfilm.txt", "openfilm");
     await add(join(repository, "NOTICE"), "NOTICE", "openfilm");
+    const copyGrants = async (folder: string, path: string): Promise<void> => {
+      for (const entry of await readdir(folder, { withFileTypes: true })) {
+        const source = join(folder, entry.name),
+          destination = `${path}/${entry.name}`;
+        if (entry.isSymbolicLink())
+          throw new Error("Link in historical grant inventory");
+        if (entry.isDirectory()) await copyGrants(source, destination);
+        else await add(source, destination, "openfilm");
+      }
+    };
+    try {
+      await copyGrants(join(repository, "LICENSES"), "licenses/historical");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     entries.service = "service/index.mjs";
     entries.launcher = "launcher.mjs";
     await add(
@@ -201,6 +321,11 @@ export async function stageRuntime(
         return;
       }
       copied.set(id, root);
+      if (hasFrozenLock)
+        runtimePackages[id] = await identifyPackage(
+          repository,
+          join(root, "package.json"),
+        );
       const data = JSON.parse(
         await readFile(join(root, "package.json"), "utf8"),
       ) as {
@@ -317,6 +442,34 @@ export async function stageRuntime(
     await copyPackage(require, "koffi");
     files.sort((a, b) => a.path.localeCompare(b.path, "en"));
     components.sort((a, b) => a.id.localeCompare(b.id, "en"));
+    if (inputs.distributionReview && !inputs.linkage)
+      throw new Error(
+        "Executed target linkage evidence required for distribution review",
+      );
+    let linkage: LinkageEvidence | undefined;
+    if (inputs.linkage) {
+      linkage = await verifyLinkageInputs(
+        inputs.linkage,
+        files,
+        nativePaths,
+        inputs,
+        inputs.distributionReview?.sha256,
+      );
+      await add(
+        inputs.linkage.policy.source,
+        "receipts/linkage-policy.json",
+        "openfilm",
+        false,
+        inputs.linkage.policy.sha256,
+      );
+      await add(
+        inputs.linkage.evidence.source,
+        "receipts/linkage-evidence.json",
+        "openfilm",
+        false,
+        inputs.linkage.evidence.sha256,
+      );
+    }
     if (inputs.distributionReview) {
       if (!/^[a-f0-9]{64}$/u.test(inputs.distributionReview.sha256))
         throw new Error("Pinned distribution review receipt is required");
@@ -355,14 +508,102 @@ export async function stageRuntime(
             receipt: null,
           },
     });
-    await writeFile(
-      join(stage, "runtime-manifest.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      { flag: "wx", mode: 0o644 },
+    let build: BuildContributions | undefined;
+    const contributionInput = inputs.attribution?.buildContributions;
+    if (contributionInput)
+      build = await readPinnedJson<BuildContributions>(contributionInput);
+    else {
+      const source = join(repository, "dist/build-contributions.json");
+      try {
+        build = await readPinnedJson<BuildContributions>({
+          source,
+          sha256: await runtimeHash(source),
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    const licenses = inputs.attribution?.licenseReceipts
+      ? await readPinnedJson<LicenseReceipt[]>(
+          inputs.attribution.licenseReceipts,
+        )
+      : [];
+    const firstParty = [
+      runtimeComponentIdentity(manifest, "openfilm"),
+      ...(build?.packages ?? []).filter((p) => p.source.kind === "workspace"),
+    ];
+    for (const p of firstParty)
+      if (!licenses.some((r) => r.packageId === p.id))
+        licenses.push({
+          packageId: p.id,
+          sourceIdentity: p.sourceIdentity,
+          reviewed: true,
+          licenseConcluded: "Apache-2.0",
+          texts: [
+            {
+              source: join(repository, "LICENSE"),
+              sha256: await runtimeHash(join(repository, "LICENSE")),
+              origin: "repository:LICENSE",
+            },
+          ],
+          obligations: [
+            {
+              kind: "notice",
+              file: {
+                source: join(repository, "NOTICE"),
+                sha256: await runtimeHash(join(repository, "NOTICE")),
+                origin: "repository:NOTICE",
+              },
+            },
+          ],
+        });
+    const attribution = await createDistributionAttribution(
+      build,
+      undefined,
+      manifest,
+      licenses,
+      { repository, runtimePackages, linkage },
     );
+    if (
+      inputs.distributionReview &&
+      attribution.runtimeReviewStatus !== "ready-for-independent-review"
+    )
+      throw new Error(
+        `Distribution attribution is blocked: ${attribution.blockers.join("; ")}`,
+      );
+    for (const notice of attribution.notices)
+      await add(
+        notice.source,
+        notice.destination,
+        "openfilm",
+        false,
+        notice.sha256,
+      );
+    const writeReceipt = async (path: string, data: unknown) => {
+      const target = runtimePath(stage, path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, `${JSON.stringify(data, null, 2)}\n`, {
+        flag: "wx",
+        mode: 0o644,
+      });
+      files.push({
+        path,
+        sha256: await runtimeHash(target),
+        size: (await lstat(target)).size,
+        executable: false,
+        component: "openfilm",
+      });
+    };
+    if (build) await writeReceipt("receipts/build-contributions.json", build);
+    const { spdx, notices, ...report } = attribution;
+    await writeReceipt("receipts/attribution.json", {
+      scope: "runtime",
+      ...report,
+      notices: notices.map(({ source: _source, ...notice }) => notice),
+    });
     await writeFile(
       join(stage, "sbom.spdx.json"),
-      `${JSON.stringify({ spdxVersion: "SPDX-2.3", dataLicense: "CC0-1.0", SPDXID: "SPDXRef-DOCUMENT", name: "OpenFilm-runtime", documentNamespace: `https://openfilm.org/runtime/${await runtimeHash(join(stage, "runtime-manifest.json"))}`, creationInfo: { creators: ["Tool: OpenFilm runtime stage"], created: "1970-01-01T00:00:00Z" }, packages: components.map((component, index) => ({ SPDXID: `SPDXRef-Package-${index}`, name: component.id, versionInfo: component.version, downloadLocation: "NOASSERTION", filesAnalyzed: false, licenseConcluded: "NOASSERTION", licenseDeclared: component.license, copyrightText: "NOASSERTION" })), files: files.map((file, index) => ({ SPDXID: `SPDXRef-File-${index}`, fileName: file.path, checksums: [{ algorithm: "SHA256", checksumValue: file.sha256 }], licenseConcluded: "NOASSERTION", copyrightText: "NOASSERTION" })) }, null, 2)}\n`,
+      `${JSON.stringify(spdx, null, 2)}\n`,
       { flag: "wx", mode: 0o644 },
     );
     const sbomPath = join(stage, "sbom.spdx.json");
