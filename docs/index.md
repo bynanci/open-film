@@ -24,16 +24,34 @@ features:
     details: 以可攜的專案資料與互通格式，保留工作流程的彈性。
 ---
 
-## 快速導覽
+## 開始使用
 
-從[製作流程](/product-workflow)開始，了解如何建立專案、匯入素材、整理故事、剪輯並輸出。需要處理素材搬移時，請參閱[媒體搬移與重新連結](/media-portability)；輸出前可查看[輸出品質](/export-quality)與[輸出設定檔](/export-profiles)。
+從[製作流程](/product-workflow)了解如何建立專案、匯入素材、整理故事、剪輯與輸出。再依照需求查看[媒體搬移與重新連結](/media-portability)、[相機來源支援](/source-support)及[專案格式](/project-format)。
 
-## 工作流程
+## 文件分類
 
-```text
-建立專案 → 匯入素材 → 整理故事 → 剪輯預覽 → 輸出影片
-```
+### 使用流程與剪輯指南
 
-## 文件語言
+[故事模板](/creative-story-templates)、[精準剪輯](/precision-editing)、[標記與吸附](/markers-and-snapping)、[字幕](/en/composition-captions)、[音訊品質](/audio-quality)、[序列波形](/en/sequence-waveforms)和[視覺品質檢查](/en/validation-visual-qa)說明功能行為、適用條件與限制。
 
-文件使用已提交在 Git 的繁中、英文與日文 Markdown 版本，瀏覽時不會即時翻譯。五份主要指南，以及創意故事模板、精準剪輯、來源標記與吸附、MP4 壓縮品質和音訊品質頁面，已有三語保存版本；其他技術參考仍待補上翻譯。
+### 匯出與素材可攜
+
+[輸出品質](/export-quality)、[Collect Media 套件](/collect-media)、[OpenTimelineIO/NLE 相容性](/en/nle-compatibility)及[Resolve 工作站 QA](/en/resolve-workstation-qa)涵蓋輸出格式、媒體搬移與外部剪輯軟體的驗證邊界。
+
+### 架構、格式與整合契約
+
+閱讀[架構](/en/architecture)、[專案格式](/project-format)、[整合契約](/en/CONTRACTS)、[編輯契約](/en/EDITING_CONTRACTS)及[國際化](/i18n)。程式介面和技術契約目前以英文為主。
+
+### Roadmap、決策與研究
+
+[目前 roadmap](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)、[v1.0.0 就緒狀態](/en/roadmap/v1-readiness)、[工作項目清單](https://github.com/bynanci/open-film/blob/main/TASKS.md)、[架構決策紀錄](/en/adr/001-monorepo)與[研究索引](https://github.com/bynanci/open-film/tree/main/research)用來查閱方向、決策與尚待驗證的假設。研究和歷史計畫不代表已接受的功能承諾。
+
+### 發行與驗證紀錄
+
+左側目錄將發行說明、架構決策、安全文件、參考流程與驗證紀錄分開列出。驗證頁保留當時的 commit、平台、工具版本、命令、結果及未通過的人工 gate；[目前狀態以 roadmap 和 task 清單為準](https://github.com/bynanci/open-film/blob/main/ROADMAP.md)。
+
+## 文件語言與貢獻
+
+網站提供繁體中文、英文與日文。主要使用指南有三語保存版本；架構契約、roadmap、release 與驗證證據目前多以英文維護。翻譯以 Git 中的 Markdown 為準，不使用瀏覽器即時翻譯。新增或修改翻譯時，請保留命令、路徑、識別碼、量測值及證據連結，並遵循[文件語言政策](/i18n)。
+
+歡迎透過 [GitHub](https://github.com/bynanci/open-film) 提交文件修正；貢獻流程與回報方式列在[貢獻指南](https://github.com/bynanci/open-film/blob/main/CONTRIBUTING.md)。

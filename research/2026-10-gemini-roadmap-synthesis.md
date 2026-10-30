@@ -1,8 +1,13 @@
 # Gemini 分享研究彙整：OpenFilm roadmap 參考
 
+[English](2026-10-gemini-roadmap-synthesis.en.md) | [繁體中文](2026-10-gemini-roadmap-synthesis.md) | [日本語](2026-10-gemini-roadmap-synthesis.ja.md)
+
 - 整理日期：2026-10-30
-- 對照版本：main，9c392b7cc8d46f4768d76f30bef30d0397cca8f8（當時與 origin/main 相同）
+- 原始交叉比對基準：main，9c392b7cc8d46f4768d76f30bef30d0397cca8f8（當時與 origin/main 相同）
+- 後續狀態核對：main，1005d381cc2000e0f991fc3e1779ebb2a61cd7ab
 - 目的：保留外部研究可供日後 roadmap 討論，並避免把已完成能力重複列為缺口。
+
+原始交叉比對是當時的研究快照，不代表後續 main 的完整功能狀態。本文在 2026-10-30 再核對最新 main 的變動；現在狀態以 [ROADMAP.md](../ROADMAP.md)、[TASKS.md](../TASKS.md) 和各項驗證紀錄為準。
 
 ## 摘要
 
@@ -30,6 +35,12 @@
 | 本機模型與向量資料庫       | Provider/Embedding 介面提供擴充邊界，但程式庫中沒有 FTS5、sqlite-vec 或 LanceDB 的現行選型證據。現有重複/時間/位置分析也不能等同於通用向量檢索。                                                                                                                                                                                                                                                | ONNX Runtime、Depth Anything、WhisperX、sqlite-vec、LanceDB 等只列為 Gemini 的候選方案。任何 prototype 都應比較授權、Windows/macOS CPU/DirectML/GPU 支援、套件體積、記憶體、延遲、品質、離線/隱私預設及無模型 fallback，再決定是否改變架構。                                             |
 | OTIO 與 NLE round-trip     | OpenFilm 目前產生 OTIO；官方 OpenTimelineIO parser 已驗證 read/write/read、時間範圍、媒體來源及自訂 metadata。進階效果多為 metadata-only，且 [相容性文件](../docs/nle-compatibility.md) 明確記錄實際 Resolve 匯入/播放未驗證、一般 NLE round-trip 不會還原 OpenFilm 專案。                                                                                                                      | 精確描述差異：parser 序列化往返已測；NLE 匯入、重連、播放、效果翻譯和 NLE 輸出再匯入仍是不同 gate。若要建 full round-trip，先定義支援格式與每一類 effect 的保真驗收，不把 CRDT/RGA 當成完成互通的捷徑。                                                                                  |
 | Windows/macOS 交付與 CI    | Linux synthetic 渲染和自動回歸已存在；固定工具鏈/字型與窄範圍 OS render matrix 尚未完成。Windows/macOS 原生 shell、硬體、外接碟、安裝/更新等 gate 仍在 [七子系統核對](../docs/roadmap/seven-subsystem-reconciliation.md) 和 [ROADMAP](../ROADMAP.md)。                                                                                                                                          | Gemini 提議的跨平台 CI 與實機驗證和現有未完成工作重合。新增驗證時保存精確 commit、OS/硬體/工具版本、命令、退出碼、輸出摘要與去識別化 logs；不要用 Linux 合成證據替代 Windows 工作站結果。                                                                                                |
+
+## 最新 main 相對於原始快照的進展
+
+目前 main 已合併 D3A1 Sequence waveforms、D6B derived Collect delivery，以及 Windows issues 66–68 的實際 CI 修復與 browser gate。對應證據見 [波形驗證](../docs/validation-sequence-waveforms.md)、[Collect 驗證](../docs/validation-collect-coverage.md)及 [Windows recovery 驗證](../docs/validation-windows-issue-recovery.md)。Windows CI 增加了可重現的 OS 證據，但不代表實體 Windows 10 工作站、macOS、外接磁碟、原生安裝/更新/回復或 Resolve/NLE gate 已關閉。
+
+因此，本研究表格保留原始對照基準以供研究追溯；後續排程請使用最新 roadmap/task 和候選版本的驗證結果，不要將原始快照當成當前缺口清單。
 
 ## 外部論文核對
 
