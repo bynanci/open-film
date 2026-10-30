@@ -141,8 +141,9 @@ D7A render QA now has shared immutable font/tool provenance, preserved metric
 units and strict bounds, and actual decoded positive/negative controls. Local
 synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
 workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
-pin admission and exact-head review remain pending; this does not close native
-installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+pin admission, whole/scoped reviews and full exact-head automated gates passed
+in PR78 (headfff6270, merge6cdaa4f), including19finishingcases on each OS. This
+does not close native installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
 
 D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
 contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
@@ -150,18 +151,18 @@ originals, timing and the schema/catalog owners remain stable. Local statistical
 Auto Match presents actual before/after samples and needs explicit reviewed clip
 Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
 video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
-accessibility. Calibrated displays, real NLE behavior and final integrating gates
-remain separate. See [the guide](docs/primary-color.md) and
+accessibility. PR77 head1dbef72 merged as32fd485 after complete Verify and Windows gates.
+Calibrated displays, real NLE behavior and native release gates remain separate. See [the guide](docs/primary-color.md) and
 [validation](docs/validation-primary-color.md).
 
-D8 now has an unreleased local single-JSON preset candidate on its independent
-branch. Bounded closed recipes, declared license/provenance review, atomic local
+D8 local single-JSON presets merged in PR76 (head285f9f6, merged36e365);
+the latest published stable release remains0.4.0. Bounded closed recipes, declared license/provenance review, atomic local
 registry operations and embedded immutable look/title/Story snapshots feed
 existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
 155 tests and three Chromium journeys pass; actual strength/seek tests and
 Collect directory/ZIP relocation retain exact decoded pixels after registry and
-fixture-original deletion. Fresh review and parent-coordinated full/hosted
-integration gates remain open. See [guide](docs/local-presets.md) and
+fixture-original deletion. Fresh whole/scoped reviews and complete exact-head Verify/Windows gates pass;
+physical workstation and formal release conditions remain separate. See [guide](docs/local-presets.md) and
 [validation](docs/validation-local-presets.md). Executable plugin discovery and
 loading remain deferred.
 
