@@ -191,3 +191,16 @@ passes three files / 37 tests. No new browser or hosted result is inferred from
 this documentation merge. Earlier receipts retain their source identities;
 checkpoint logs/hashes are under
 `/tmp/openfilm-finishing-integration/B-latest-base/`.
+
+## 2026-10-30 — verified PR75 merge
+
+Exact head `9351b7655c33480d48117ff81dc4acfeb5718161` passed complete
+Verify41082105730 and Windows41082105745:1183contract +3636media
+=4819tests,312browser cases (78/89/69/76), native, docs/build,
+OTIO/interchange and built CLI. The fresh whole-feature and scoped lifecycle
+fix reviews passed. PR75 merged as
+`d5a286ed9250872e8eb9b1c3e40adb926f913d34`; the merge tree preserves the
+reviewed candidate content. Actual merged-main Verify41084911055,
+Windows41084911048 and Pages41084911207 all pass. Earlier local receipts
+retain their original source identity; automated hosted output does not certify
+physical typography/display, NLE,4K or hardware QA. Stable stays0.4.0.
