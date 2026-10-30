@@ -1,11 +1,24 @@
 # Research
 
-這個目錄保存外部研究、產品假設與 OpenFilm 現況的交叉比對，供未來 roadmap 討論使用。研究筆記不代表功能狀態或已接受的工作；實作與缺口以 [ROADMAP.md](../ROADMAP.md)、[TASKS.md](../TASKS.md) 和 [七子系統現況核對](../docs/roadmap/seven-subsystem-reconciliation.md) 為準。
+[English](README.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
-## 研究筆記
+This directory records external research, product hypotheses and comparisons with
+OpenFilm's current implementation for future roadmap discussions. Research notes
+are not accepted work or feature-status claims. Implementation and gaps are
+tracked in [ROADMAP.md](../ROADMAP.md), [TASKS.md](../TASKS.md) and the
+[seven-subsystem reconciliation](../docs/roadmap/seven-subsystem-reconciliation.md).
 
-- [Gemini 分享研究彙整：OpenFilm roadmap 參考（2026-10）](2026-10-gemini-roadmap-synthesis.md) — 整理兩份 OpenFilm 研究報告，對照 main 的候選規模、Visual QA、PhotoDepth、OTIO/NLE 與跨平台驗證現況；標出外部論文的適用範圍和仍待查證的技術假設。
+## Research notes
 
-## 後續整理方式
+- [Gemini research synthesis: OpenFilm roadmap references (2026-10)](2026-10-gemini-roadmap-synthesis.md)
+  — Compares two research reports with main's candidate-scope boundaries, Visual
+  QA, PhotoDepth, OTIO/NLE and platform validation. It records the applicability
+  of cited papers and technical hypotheses that still require verification.
+  The source note is in Traditional Chinese.
 
-新增研究時，記錄原始連結與查閱日期，分開標示「repo 已驗證」、「部分驗證」、「研究假設」和「來源尚未核實」，並先連到既有 roadmap/task。只有形成明確範圍、驗收條件及負責模組後，才把研究方向轉成新的工作項目。
+## Adding research
+
+Record original links and access dates. Distinguish repository-verified findings,
+partial verification, research hypotheses and unverified sources, then link the
+existing roadmap/task owner. Promote a research direction to a task only after
+its scope, acceptance conditions and responsible module are defined.
