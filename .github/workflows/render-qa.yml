@@ -1,0 +1,99 @@
+name: Render QA
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: render-qa-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  render-qa:
+    name: Render QA (${{ matrix.id }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            runner: ubuntu-24.04
+          - id: win32-x64
+            runner: windows-2022
+          - id: darwin-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      OPENFILM_SOURCE_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - name: Exercise schema and acquisition failure controls
+        run: pnpm exec vitest run tests/unit/render-qa-fonts.test.ts tests/unit/render-qa-tools.test.ts tests/unit/render-qa-archive.test.ts tests/unit/render-qa-bin.test.ts tests/unit/render-qa-policy.test.ts tests/unit/render-qa-evidence.test.ts tests/unit/ci-render-qa.test.ts --maxWorkers=1
+      - name: Admit fixed platform tools and licensed font bytes
+        run: pnpm exec tsx scripts/ci/setup-render-qa.ts hosted-tools "$RUNNER_TEMP/openfilm-render-qa"
+      - name: Run actual output and deliberate decoded failures
+        env:
+          OPENFILM_RENDER_QA_OUTPUT: ${{ runner.temp }}/openfilm-render-qa-evidence
+        run: pnpm test:render-qa
+      - name: Run the explicit finishing selection with strict JSON accounting
+        run: pnpm exec tsx scripts/ci/run-render-qa-finishing.ts "$RUNNER_TEMP/openfilm-render-qa-finishing"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: finishing-qa-${{ matrix.id }}-${{ env.OPENFILM_SOURCE_CANDIDATE }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openfilm-render-qa-finishing/*.summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-qa-${{ matrix.id }}-${{ env.OPENFILM_SOURCE_CANDIDATE }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openfilm-render-qa-evidence/*.json
+          if-no-files-found: error
+          retention-days: 7
+  render-qa-complete:
+    if: always()
+    needs: [render-qa]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      OPENFILM_SOURCE_CANDIDATE: ${{ github.event.pull_request.head.sha || github.sha }}
+      MATRIX_RESULT: ${{ needs.render-qa.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: render-qa-*-${{ env.OPENFILM_SOURCE_CANDIDATE }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/render-qa-reports
+          merge-multiple: true
+      - run: pnpm exec tsx scripts/ci/check-render-qa-results.ts "${{ runner.temp }}/render-qa-reports"

@@ -6,6 +6,11 @@ import {
   createId,
   validateProject,
   validateStoryPlan,
+  assertPresetJsonData,
+  canonicalPresetJson,
+  validatePresetStoryPlanContext,
+  type PresetApplicationReceipt,
+  type PresetSnapshot,
   type Composition,
   type MediaAsset,
   type OpenFilmProject,
@@ -16,9 +21,57 @@ import {
   type StoryPlanOptions,
 } from "@openfilm/core";
 import { previewIssue } from "@openfilm/media";
-import { compose } from "@openfilm/solver";
-import { generateStoryPlanFromGraph } from "@openfilm/story";
+import { compose, CompositionConstraintError } from "@openfilm/solver";
+import {
+  generateStoryPlanFromGraph,
+  compilePresetStoryPlan,
+  storyFromPresetPlan,
+  assertPresetPlanComposition,
+} from "@openfilm/story";
 import type { OpenFilmApplication } from "./index.js";
+import {
+  assertPresetSnapshotIntegrity,
+  hashPresetData,
+} from "./preset-integrity.js";
+import { TimelineEditor } from "./editor.js";
+
+function composePresetPlan(
+  plan: StoryPlan,
+  story: Story,
+  assets: MediaAsset[],
+): Composition {
+  try {
+    const composition = compose(story, assets, {
+      allowEchoAssetIds: plan.scenes.flatMap((s) =>
+        s.assets.filter((a) => a.isEcho).map((a) => a.assetId),
+      ),
+    });
+    assertPresetPlanComposition(plan, story, composition);
+    return composition;
+  } catch (error) {
+    if (error instanceof CompositionConstraintError)
+      throw new ApplicationError("presets.conflict", error.message, 409);
+    throw error;
+  }
+}
+
+const presetModelHash = (value: unknown) =>
+  hashPresetData(canonicalPresetJson(JSON.parse(JSON.stringify(value))));
+function sourceFacts(assets: MediaAsset[]): string {
+  return presetModelHash(
+    assets
+      .map((a) => ({
+        id: a.id,
+        contentHash: a.contentHash ?? null,
+        uri: a.uri,
+        state: a.state,
+        duration: a.duration ?? null,
+        dimensions: a.dimensions ?? null,
+        mediaType: a.mediaType,
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : 1)),
+  );
+}
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -60,7 +113,10 @@ function filterUsableAssets(assets: MediaAsset[]): MediaAsset[] {
 export class StoryPlanService {
   constructor(
     private readonly app: OpenFilmApplication,
-    private readonly publishProject: (next: OpenFilmProject) => void,
+    private readonly publishProject: (
+      next: OpenFilmProject,
+      assertCurrent?: () => void,
+    ) => void,
   ) {}
 
   /**
@@ -72,6 +128,7 @@ export class StoryPlanService {
   previewPlan(
     storyId: string,
     options: StoryPlanOptions = {},
+    readOnlyGraph = false,
   ): { plan: StoryPlan; compositionPreview: Composition } {
     const story = this.app.project.stories.find((s) => s.id === storyId);
     if (!story) {
@@ -82,7 +139,9 @@ export class StoryPlanService {
       );
     }
 
-    const graph = this.app.storyGraph.getGraph(storyId);
+    const graph = readOnlyGraph
+      ? this.app.storyGraph.previewGraph(storyId)
+      : this.app.storyGraph.getGraph(storyId);
     const allAssets = this.app.catalog.listAssets({ limit: 2000 });
     const usableAssets = filterUsableAssets(allAssets);
 
@@ -140,6 +199,138 @@ export class StoryPlanService {
     };
   }
 
+  previewPresetPlan(
+    storyId: string,
+    snapshot: PresetSnapshot<"story">,
+    bindings: { recipeBeatKey: string; beatId: string }[],
+    options: Pick<
+      StoryPlanOptions,
+      "targetDuration" | "maxDuration" | "transition"
+    > = {},
+  ): { plan: StoryPlan; compositionPreview: Composition } {
+    assertPresetSnapshotIntegrity(snapshot);
+    if (this.app.catalog.countAssets() > 2000)
+      throw new ApplicationError(
+        "story.scopeTooLarge",
+        "A preset plan supports at most 2000 catalog sources.",
+      );
+    const revision = this.app.versions.currentRevision(),
+      source = this.app.project.stories.find((s) => s.id === storyId);
+    if (!source)
+      throw new ApplicationError(
+        "request.notFound",
+        "The authored source story was not found.",
+        404,
+      );
+    const normalized = {
+      targetDuration:
+        options.targetDuration ?? snapshot.recipe.defaults.targetDuration,
+      maxDuration: options.maxDuration ?? snapshot.recipe.defaults.maxDuration,
+      transition: options.transition ?? ("cut" as const),
+    };
+    const base = this.previewPlan(storyId, normalized, true).plan;
+    const compiled = compilePresetStoryPlan(
+      base,
+      source,
+      snapshot,
+      bindings,
+      this.app.project.projectContentLocale ?? "en-US",
+    );
+    // Existing trusted StoryPlan builders include optional undefined properties;
+    // normalize their output, never imported unknown values, to transport JSON.
+    const plan = JSON.parse(JSON.stringify(compiled)) as StoryPlan;
+    const assets = this.app.catalog.listAssets({ limit: 2000 }),
+      referenced = new Set(
+        plan.scenes.flatMap((s) => s.assets.map((a) => a.assetId)),
+      );
+    if (
+      assets.some(
+        (a) => a.state.locked && (!referenced.has(a.id) || a.state.rejected),
+      )
+    )
+      throw new ApplicationError(
+        "presets.conflict",
+        "Every locked source must remain assigned and eligible in the authored plan.",
+        409,
+      );
+    const { id: _id, createdAt: _at, ...stable } = plan;
+    const guard = presetModelHash({
+      plan: stable,
+      bindings,
+      snapshotSha256: snapshot.snapshotSha256,
+      revision,
+      sources: sourceFacts(assets),
+      source,
+    });
+    plan.id = `preset-plan-${guard.slice(0, 32)}`;
+    plan.createdAt = this.app.project.updatedAt;
+    plan.sourceSignature = guard;
+    plan.presetContext = {
+      version: 1,
+      snapshot: structuredClone(snapshot),
+      bindings: structuredClone(bindings),
+      baseProjectRevision: revision,
+      sourceGuardSha256: guard,
+    };
+    const previewStory = storyFromPresetPlan(
+      plan,
+      source,
+      snapshot,
+      `preview-story-${plan.id}`,
+      plan.scenes.map((s, i) => `preview-beat-${i}-${s.sceneId}`),
+    );
+    const composition = composePresetPlan(
+      plan,
+      previewStory,
+      filterUsableAssets(assets),
+    );
+    composition.id = `preview-comp-${plan.id}`;
+    composition.storyId = previewStory.id;
+    return { plan: validateStoryPlan(plan), compositionPreview: composition };
+  }
+
+  acceptPresetPlan(
+    storyId: string,
+    plan: StoryPlan,
+    receipt: PresetApplicationReceipt,
+  ): {
+    story: Story;
+    composition: Composition;
+    acceptanceMapping: StoryPlanAcceptanceMapping;
+  } {
+    assertPresetJsonData(plan, { depth: 16, tokens: 100000, text: 4194304 });
+    const context = validatePresetStoryPlanContext(plan.presetContext);
+    if (context.baseProjectRevision !== this.app.versions.currentRevision())
+      throw new ApplicationError(
+        "presets.stale",
+        "Story sources or project changed since preset review.",
+        409,
+      );
+    const expected = this.previewPresetPlan(
+      storyId,
+      context.snapshot,
+      context.bindings,
+      {
+        targetDuration: plan.targetDuration,
+        maxDuration: plan.maxDuration,
+        transition: plan.transition,
+      },
+    );
+    if (
+      presetModelHash(expected.plan) !== presetModelHash(plan) ||
+      receipt.snapshotSha256 !== context.snapshot.snapshotSha256 ||
+      receipt.packageSha256 !== context.snapshot.packageSha256 ||
+      receipt.canonicalId !== context.snapshot.canonicalId ||
+      receipt.kind !== "story"
+    )
+      throw new ApplicationError(
+        "presets.stale",
+        "The exact authored preset plan changed before acceptance.",
+        409,
+      );
+    return this.acceptPlanInternal(storyId, expected.plan, receipt);
+  }
+
   /**
    * Explicitly adopts a reviewed StoryPlan into a new rough cut (新試剪).
    * STRICT GUARANTEES:
@@ -151,6 +342,23 @@ export class StoryPlanService {
   acceptPlan(
     storyId: string,
     planInput: StoryPlan,
+  ): {
+    story: Story;
+    composition: Composition;
+    acceptanceMapping: StoryPlanAcceptanceMapping;
+  } {
+    if (planInput.presetContext)
+      throw new ApplicationError(
+        "presets.invalid",
+        "Use the reviewed preset acceptance owner for a preset plan.",
+      );
+    return this.acceptPlanInternal(storyId, planInput);
+  }
+
+  private acceptPlanInternal(
+    storyId: string,
+    planInput: StoryPlan,
+    presetReceipt?: PresetApplicationReceipt,
   ): {
     story: Story;
     composition: Composition;
@@ -189,7 +397,9 @@ export class StoryPlanService {
     }
 
     // 2. Stale Plan Protection: verify input revision
-    const currentGraph = this.app.storyGraph.getGraph(baseStory.id);
+    const currentGraph = presetReceipt
+      ? this.app.storyGraph.previewGraph(baseStory.id)
+      : this.app.storyGraph.getGraph(baseStory.id);
     const currentRevision = digest({
       storyId: baseStory.id,
       beats: baseStory.beats,
@@ -206,6 +416,9 @@ export class StoryPlanService {
 
     const allAssets = this.app.catalog.listAssets({ limit: 2000 });
     const usableAssets = filterUsableAssets(allAssets);
+    const sourceFingerprint = presetReceipt
+      ? sourceFacts(allAssets)
+      : undefined;
 
     // 3. Idempotency Check: if already accepted with identical signature, return existing cut
     const receiptKey = digest({
@@ -260,22 +473,43 @@ export class StoryPlanService {
       };
     });
 
-    const newStory: Story = {
+    let newStory: Story = {
       id: newStoryId,
       title: `${baseStory.title} (Story Plan Cut)`,
       targetDuration: plan.targetDuration,
       maxDuration: plan.maxDuration,
       beats: newBeats,
     };
+    if (presetReceipt && plan.presetContext) {
+      const context = plan.presetContext;
+      newStory = storyFromPresetPlan(
+        plan,
+        baseStory,
+        context.snapshot,
+        newStoryId,
+        plan.scenes.map((s) => sceneToBeatId[s.sceneId]!),
+      );
+      newStory.presetPlanSource = {
+        version: 1,
+        storyId: baseStory.id,
+        planId: plan.id,
+        sourceGuardSha256: context.sourceGuardSha256,
+        bindings: context.bindings.map((b, i) => ({
+          recipeBeatKey: b.recipeBeatKey,
+          sourceBeatId: b.beatId,
+          beatId: newStory.beats[i]!.id,
+        })),
+      };
+    }
 
     // Explicit echo assets
     const echoAssetIds = plan.scenes.flatMap((s) =>
       s.assets.filter((a) => a.isEcho).map((a) => a.assetId),
     );
 
-    const newComposition = compose(newStory, usableAssets, {
-      allowEchoAssetIds: echoAssetIds,
-    });
+    const newComposition = presetReceipt
+      ? composePresetPlan(plan, newStory, usableAssets)
+      : compose(newStory, usableAssets, { allowEchoAssetIds: echoAssetIds });
     newComposition.id = cutCompId;
     newComposition.storyId = newStoryId;
 
@@ -299,13 +533,46 @@ export class StoryPlanService {
 
     // Transactionally append newStory and newComposition to project
     const previousProject = this.app.project;
+    if (presetReceipt) {
+      presetReceipt = {
+        ...presetReceipt,
+        result: { storyId: newStory.id, compositionId: newComposition.id },
+        acceptedRevision: new TimelineEditor(this.app).revisionForDocument({
+          story: newStory,
+          composition: newComposition,
+        }),
+      };
+    }
     const nextProject = validateProject({
       ...previousProject,
+      ...(presetReceipt
+        ? {
+            presetApplicationReceipts: this.app.presets.appendReceipt(
+              previousProject,
+              presetReceipt,
+            ),
+          }
+        : {}),
       stories: [...previousProject.stories, newStory],
       timelines: [...previousProject.timelines, newComposition],
     });
 
-    this.publishProject(nextProject);
+    this.publishProject(
+      nextProject,
+      presetReceipt
+        ? () => {
+            if (
+              sourceFacts(this.app.catalog.listAssets({ limit: 2000 })) !==
+              sourceFingerprint
+            )
+              throw new ApplicationError(
+                "presets.stale",
+                "Story sources changed before publication.",
+                409,
+              );
+          }
+        : undefined,
+    );
 
     return {
       story: newStory,

@@ -54,7 +54,7 @@ color-managed display parity are not claimed. See the
 - `Composition`: `id,storyId,duration,tracks: Track[]`.
 - `Track`: `id`, `type: video|audio|music|titles|overlay`, `clips: Clip[]`.
 - `Clip`: `id,assetId,beatId?,sourceIn?,sourceOut?,timelineStart,timelineDuration,`
-  `transform?: {scale?,rotation?,x?,y?,speed?,volume?}`, `title?: string`,
+  `transform?: {scale?,rotation?,x?,y?,speed?,volume?}`, `title?: string`, `titleRuns?: TitleTextRuns`,
   `transition?: {type:'crossfade',duration:number}`.
 - `Event`: `id,startAt?,endAt?,assetIds,labels,confidence?,location?`.
 - `SimilarityGroup`: `id,kind:'exact'|'perceptual',assetIds,confidence`.
@@ -728,3 +728,37 @@ Phase M9A–M11B product acceptance verifies the complete creative workflow acro
   revalidation and ten-minute expiry. Partial I/O reports actual removed bytes.
 - Quota applies to managed preview artifacts; legacy and temporary usage are
   disclosed separately. No original-source deletion or export from proxies.
+
+## D5C primary color
+
+Optional version-1 `Composition.defaultPrimaryColor`, `beatPrimaryColors` and
+`Clip.primaryColor` use clip → beat → film → identity resolution. Core owns the
+bounded encoded-SDR affine coefficients, rounded to 12 decimals. Decode/HDR tone
+map and raw photographic preparation precede primary; its clamp precedes the
+separate shared Film Look. Alpha, source identity and timing are preserved.
+
+Typed `primary-color` commands use the existing editor revision/history/save
+boundary. Effective inherited changes to locked sources/clips are rejected as a
+batch. Local statistical Auto Match produces measured before/after proposals;
+explicit clip Apply validates its exact recipe and full source/artifact hashes
+inside editor serialization. Proposals expire on reopen; accepted authored values
+persist. Unknown recipe versions fail. There is no catalog migration, provider,
+source overwrite or second timeline. See [primary color](primary-color.md) and
+[validation](validation-primary-color.md).
+
+## Bilingual native text finishing
+
+Optional `Clip.titleRuns` and `CaptionCue.textRuns` are closed version-1
+LF-boundary/typography metadata over the existing canonical text. Optional
+`TitleStyle.finishing` is a separate closed version-1 shadow/stroke/pill object.
+Unknown versions/fields reject; missing fields preserve legacy pixels and the
+project/catalog schema. Existing `presentation` and `caption.cue.update` commands
+require updated/null runs with a bilingual text change; atomic history, locks,
+source timing and caption provenance retain their existing owners.
+
+`OpenFilmApplication.textOverlays.image/inspect` requires project, Composition,
+revision and a title/caption reference. Existing title PNG plus caption PNG and
+path-free inspection routes use bounded work and stale-owner fencing. MP4 and
+Monitor share the measured local raster; render receipts bind actual primary/
+secondary fonts. SRT/VTT retain both literal texts/times and exclude finishing.
+See [title finishing](title-finishing.md) for exact bounds and interchange limits.

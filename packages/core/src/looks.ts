@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { Clip, Composition, FilmLook } from "./models.js";
+import type { BuiltinFilmLook, Clip, Composition, FilmLook } from "./models.js";
 import { validateFilmLook } from "./validation.js";
 
 export const FILM_LOOK_RECIPE_VERSION = 1 as const;
@@ -20,7 +20,7 @@ const identity = Object.freeze([
  * opaque source media. These recipes do not simulate a camera's response.
  */
 export const FILM_LOOK_PRESETS: readonly {
-  id: FilmLook["preset"];
+  id: BuiltinFilmLook["preset"];
   matrix: readonly number[];
 }[] = Object.freeze(
   (
@@ -69,7 +69,7 @@ export const FILM_LOOK_PRESETS: readonly {
           1.30044528, -0.04, 0, 0, 0, 0, 1, 0,
         ],
       },
-    ] satisfies { id: FilmLook["preset"]; matrix: readonly number[] }[]
+    ] satisfies { id: BuiltinFilmLook["preset"]; matrix: readonly number[] }[]
   ).map((entry) =>
     Object.freeze({ ...entry, matrix: Object.freeze(entry.matrix) }),
   ),
@@ -79,7 +79,10 @@ export const FILM_LOOK_PRESETS: readonly {
 export function filmLookMatrix(value?: FilmLook | null): number[] {
   if (value == null) return [...identity];
   const look = validateFilmLook(value);
-  const recipe = FILM_LOOK_PRESETS.find((preset) => preset.id === look.preset)!;
+  const recipe =
+    look.version === 2
+      ? look.snapshot.recipe
+      : FILM_LOOK_PRESETS.find((preset) => preset.id === look.preset)!;
   if (look.strength === 0 || look.preset === "none") return [...identity];
   return recipe.matrix.map(
     (channel, index) =>
@@ -90,7 +93,9 @@ export function filmLookMatrix(value?: FilmLook | null): number[] {
 export function isFilmLookActive(value?: FilmLook | null): boolean {
   if (value == null) return false;
   const look = validateFilmLook(value);
-  return look.preset !== "none" && look.strength > 0;
+  return look.version === 2
+    ? filmLookMatrix(look).some((value, index) => value !== identity[index])
+    : look.preset !== "none" && look.strength > 0;
 }
 
 export interface ResolvedFilmLook {

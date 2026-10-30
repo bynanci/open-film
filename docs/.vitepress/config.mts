@@ -60,6 +60,7 @@ const editing = keepExisting([
   guide("精準剪輯", "precision-editing"),
   guide("標記與吸附", "markers-and-snapping"),
   guide("Film Looks", "en/film-looks"),
+  guide("本機資料預設", "en/local-presets"),
   guide("PhotoDepth", "en/photo-depth"),
   guide("原生文字控制", "en/native-text-controls"),
   guide("音訊品質", "audio-quality"),
@@ -108,6 +109,7 @@ const validation = keepExisting([
   guide("匯出設定驗證", "en/validation-export-profiles"),
   guide("PhotoDepth 驗證", "en/validation-photo-depth"),
   guide("Film Looks 驗證", "en/validation-film-looks"),
+  guide("本機預設驗證", "en/validation-local-presets"),
   guide("音訊品質驗證", "en/validation-audio-quality"),
   guide("媒體復原驗證", "en/validation-media-analysis-recovery"),
   guide("NLE 交接驗證", "en/validation-nle-handoff"),
@@ -140,6 +142,7 @@ const englishAdditionalDocs = keepExisting([
     "en/validation-story-graph-pipeline-acceptance",
   ),
   guide("Creative story templates", "en/creative-story-templates"),
+  guide("Local data-only presets", "en/local-presets"),
   guide("Precision editing", "en/precision-editing"),
   guide("Source markers and snapping", "en/markers-and-snapping"),
   guide("Audio quality", "en/audio-quality"),
@@ -175,6 +178,9 @@ const listedDocumentation = new Set(
     ...validation,
     ...englishGettingStarted,
     ...japaneseGettingStarted,
+    ...englishAdditionalDocs,
+    ...japaneseEditing,
+    ...japaneseExportDocs,
     ...englishReference,
   ].map(({ link }) => link.slice(1).replace(/^(?:en|ja)\//, "")),
 );
@@ -195,9 +201,14 @@ const localizedSlugs = new Set([
 ]);
 const sectionNames: Record<string, Record<string, string>> = {
   root: {
-    "zh-TW": "其他技術文件",
-    "en-US": "Other technical documents",
-    "ja-JP": "その他の技術資料",
+    "zh-TW": "產品指南與技術參考",
+    "en-US": "Product guides and technical references",
+    "ja-JP": "製品ガイドと技術資料",
+  },
+  contracts: {
+    "zh-TW": "契約、格式與 schema",
+    "en-US": "Contracts, formats and schemas",
+    "ja-JP": "契約、形式、スキーマ",
   },
   adr: {
     "zh-TW": "架構決策紀錄",
@@ -230,6 +241,18 @@ const sectionNames: Record<string, Record<string, string>> = {
     "ja-JP": "検証記録",
   },
 };
+const validationFileNames = new Set([
+  "validation.md",
+  "resolve-qa-record.md",
+  "resolve-workstation-qa.md",
+  "workstation-qa.md",
+]);
+const contractFileNames = new Set([
+  "contracts.md",
+  "editing_contracts.md",
+  "source_adapter_contracts.md",
+  "relink_contracts.md",
+]);
 const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
   const grouped = new Map<string, ReturnType<typeof guide>[]>();
   const collect = (directory: string) => {
@@ -259,9 +282,23 @@ const englishFallbackGroups = (locale: "zh-TW" | "en-US" | "ja-JP") => {
       }
       const slug = relativePath.replace(/\.md$/, "");
       if (listedDocumentation.has(slug)) continue;
-      const section = relativePath.includes("/")
+      const directorySection = relativePath.includes("/")
         ? relativePath.split("/")[0]
         : "root";
+      const filename = relativePath.split("/").at(-1)?.toLowerCase() ?? "";
+      let section = directorySection;
+      if (section === "root") {
+        if (
+          filename.startsWith("validation-") ||
+          validationFileNames.has(filename)
+        ) {
+          section = "validation";
+        } else if (filename.startsWith("security-")) {
+          section = "security";
+        } else if (contractFileNames.has(filename)) {
+          section = "contracts";
+        }
+      }
       const items = grouped.get(section) ?? [];
       const source = readFileSync(absolutePath, "utf8");
       const title = source.match(/^#\s+(.+?)\s*$/m)?.[1] ?? slug;

@@ -15,6 +15,8 @@ import {
 import {
   resolveClipGeometry,
   resolveFilmLook,
+  resolvePrimaryColor,
+  PRIMARY_COLOR_IDENTITY,
   resolvePreviewClipGeometry,
   evaluateAudioGain,
   resolveCompositionFrame,
@@ -24,12 +26,14 @@ import {
   timebaseKey,
   type Clip,
   type CaptionTrack,
+  type TitleTextRuns,
   type FrameSize,
   type Job,
   type MediaAsset,
   type ProjectSettings,
   type ProjectTimebaseV1,
   type ProjectContentLocale,
+  type PhotoFocalPoint,
   type StoryBeat,
 } from "@openfilm/core";
 import {
@@ -48,13 +52,17 @@ import {
   type EditorState,
   type SourceStatus,
 } from "../api";
-import { useTimelineEditor } from "../composables/useTimelineEditor";
+import {
+  useTimelineEditor,
+  type CommitTransactionOptions,
+} from "../composables/useTimelineEditor";
 import { api } from "../api";
 import Icon from "./Icon.vue";
 import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
+import SequenceWaveform from "./SequenceWaveform.vue";
 import EditDecisionRibbon from "./EditDecisionRibbon.vue";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
@@ -65,7 +73,14 @@ import GraphicSceneTemplateStudio from "./GraphicSceneTemplateStudio.vue";
 import GraphicScenePreview from "./GraphicScenePreview.vue";
 import PhotoPresentationPreview from "./PhotoPresentationPreview.vue";
 import NativeTitlePreview from "./NativeTitlePreview.vue";
+import NativeCaptionPreview from "./NativeCaptionPreview.vue";
+import NativeTextFontStatus from "./NativeTextFontStatus.vue";
+import BilingualTextControls from "./BilingualTextControls.vue";
+import TitleFinishingControls from "./TitleFinishingControls.vue";
 import PhotoPresentationInspector from "./PhotoPresentationInspector.vue";
+import PrimaryColorInspector from "./PrimaryColorInspector.vue";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookInspector from "./FilmLookInspector.vue";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import SceneDirectionReview from "./SceneDirectionReview.vue";
@@ -117,6 +132,7 @@ const props = defineProps<{
   recoveringAnalysisJobs?: Record<string, boolean>;
   projectSettings: ProjectSettings;
   projectContentLocale?: ProjectContentLocale;
+  captionTrackId?: string | null;
 }>();
 const emit = defineEmits<{
   change: [state: EditorState];
@@ -127,6 +143,7 @@ const emit = defineEmits<{
   activity: [];
   recoverAnalysis: [job: Job, input: import("../api").AnalysisRecoveryInput];
   timebaseChange: [timebase: ProjectTimebaseV1];
+  captionTrack: [trackId: string | null | undefined];
 }>();
 const {
   state,
@@ -164,6 +181,20 @@ const clipTransformOverlay = ref<InstanceType<
 const pictureAdjusting = ref(false);
 const pictureGestureActive = ref(false);
 const pictureTransactionPending = ref(false);
+const focalEditing = ref(false);
+const focalGestureActive = ref(false);
+const focalTransactionPending = ref(false);
+const focalDraft = shallowRef<Clip | null>(null);
+let focalContext: {
+  key: string;
+  projectId: string;
+  compositionId: string;
+  clipId: string;
+  revision: string;
+  epoch: number;
+} | null = null;
+let focalAbort: AbortController | undefined;
+let focalEpoch = 0;
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
@@ -201,6 +232,8 @@ const historyBusy = computed(
     compositionTransactionBusy.value ||
     pictureGestureActive.value ||
     pictureTransactionPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
     graphicAgentPending.value,
@@ -231,9 +264,12 @@ function command(
     generationImportBusy.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
-    graphicAgentPending.value
+    graphicAgentPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value
   )
     return false;
+  if (focalEditing.value) cancelFocal();
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
 }
@@ -260,7 +296,11 @@ async function changeUserPin(
   );
   if (result.status === "accepted") reportNotice("editor.pins.saved");
 }
-async function commitSource(input: TimelineCommand, signal?: AbortSignal) {
+async function commitSource(
+  input: TimelineCommand,
+  signal?: AbortSignal,
+  options?: CommitTransactionOptions,
+) {
   if (
     generationImportBusy.value ||
     directionBlocked.value ||
@@ -269,7 +309,7 @@ async function commitSource(input: TimelineCommand, signal?: AbortSignal) {
   )
     return { status: "failed" as const };
   directionPreview.value = null;
-  return compositionCommitTransaction(input, [], signal);
+  return compositionCommitTransaction(input, [], signal, options);
 }
 function templateCommand(
   input: TimelineCommand,
@@ -284,6 +324,8 @@ const hasPending = computed(
     compositionHasPending.value ||
     pictureGestureActive.value ||
     pictureTransactionPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
     directionPending.value ||
@@ -295,6 +337,8 @@ async function history(direction: "undo" | "redo") {
   return compositionHistory(direction);
 }
 async function flushInputs() {
+  if (focalTransactionPending.value) return false;
+  cancelFocal();
   clipTransformOverlay.value?.cancel();
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
@@ -349,6 +393,32 @@ const lastRecordFrame = computed(() =>
   ),
 );
 const recordFrame = computed(() => recordMonitor.value?.frame ?? 0);
+// The editor may publish optimistic drafts while saving. Waveform geometry
+// follows only the last acknowledged document and never becomes an edit owner.
+const savedRecordState = shallowRef<EditorState | null>(null);
+const savedRecordLastFrame = computed(() =>
+  Math.max(
+    0,
+    sequenceFrameAt(
+      savedRecordState.value?.composition.duration ?? 0,
+      projectTimebase.value,
+      "floor",
+    ) - 1,
+  ),
+);
+watch(
+  [state, status, compositionHasPending],
+  ([snapshot, saveStatus, pending]) => {
+    if (
+      snapshot &&
+      snapshot.composition.id === props.compositionId &&
+      saveStatus === "saved" &&
+      !pending
+    )
+      savedRecordState.value = snapshot;
+  },
+  { immediate: true, flush: "post" },
+);
 const recordSplitPending = ref(false);
 const recordIssue = ref("");
 let recordDisposed = false;
@@ -895,6 +965,13 @@ const photoPresentationActive = computed(
       (playbackClip.value?.title && playbackClip.value.titleStyle?.fadeOut)
     ),
 );
+const primaryColorFilterId = `primary-color-${useId().replaceAll(":", "")}`;
+const playbackPrimaryColor = computed(() =>
+  state.value && playbackClip.value && lookEligible.value
+    ? resolvePrimaryColor(state.value.composition, playbackClip.value)
+        .correction
+    : PRIMARY_COLOR_IDENTITY,
+);
 const filmLookFilterId = `film-look-${useId().replaceAll(":", "")}`;
 const playbackLook = computed(() =>
   state.value && playbackClip.value && lookEligible.value
@@ -902,10 +979,17 @@ const playbackLook = computed(() =>
     : { version: 1 as const, preset: "none" as const, strength: 1 },
 );
 const playbackLookActive = computed(
-  () => playbackLook.value.preset !== "none" && playbackLook.value.strength > 0,
+  () =>
+    !!sourceColorStyle(playbackPrimaryColor.value, playbackLook.value, {
+      primary: primaryColorFilterId,
+      look: filmLookFilterId,
+    }).filter,
 );
 const playbackLookStyle = computed(() =>
-  playbackLookActive.value ? { filter: `url(#${filmLookFilterId})` } : {},
+  sourceColorStyle(playbackPrimaryColor.value, playbackLook.value, {
+    primary: primaryColorFilterId,
+    look: filmLookFilterId,
+  }),
 );
 const lookEligible = computed(
   () =>
@@ -1356,6 +1440,7 @@ function addCaptionCue() {
 }
 function updateCaptionCue(patch: {
   text?: string;
+  textRuns?: TitleTextRuns | null;
   startMs?: number;
   endMs?: number;
 }) {
@@ -1978,6 +2063,7 @@ function toggleMonitorGuides() {
   showSafeFrame.value = next;
 }
 function togglePlayback() {
+  if (focalEditing.value) cancelFocal();
   if (playbackSourceInfo.value?.previewSupported === false) return;
   if (photoPresentationActive.value) {
     photoPlayer.value?.toggle();
@@ -2222,8 +2308,172 @@ const playbackClip = computed(() => {
           time >= clip.timelineStart &&
           time < clip.timelineStart + clip.timelineDuration,
       );
-  return directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value;
+  return (
+    focalDraft.value ??
+    directionPreview.value ??
+    fitPreviewAfter.value ??
+    selectedClip.value
+  );
 });
+const focalSessionKey = computed(() =>
+  JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    state.value?.revision,
+    selectedClip.value?.id,
+    selectedAsset.value,
+    props.sourceVersion,
+    props.projectSettings,
+  ]),
+);
+const focalCapable = computed(
+  () =>
+    !props.expertMode &&
+    props.active &&
+    editMode.value === "story" &&
+    graphicPreviewTime.value === undefined &&
+    photoPresentationAllowed.value &&
+    selectedAsset.value?.mediaType === "image" &&
+    selectedClip.value?.layout?.preset !== "diptych" &&
+    !selectedClip.value?.locked &&
+    !clipSourceLocked.value &&
+    !selectedAsset.value?.state.rejected &&
+    !sourceUnavailable.value &&
+    !sourceError.value &&
+    selectedSourceInfo.value?.previewSupported !== false,
+);
+const focalBlocked = computed(
+  () =>
+    !focalCapable.value ||
+    compositionHistoryBusy.value ||
+    compositionTransactionBusy.value ||
+    pictureGestureActive.value ||
+    pictureTransactionPending.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value ||
+    status.value !== "saved" ||
+    !!precisionEditor.value?.hasPending,
+);
+function cancelFocal() {
+  const wasEditing = focalEditing.value;
+  focalEditing.value = false;
+  focalDraft.value = null;
+  focalContext = null;
+  focalGestureActive.value = false;
+  focalTransactionPending.value = false;
+  focalEpoch++;
+  focalAbort?.abort();
+  focalAbort = undefined;
+  if (wasEditing) photoPlayer.value?.cancelFocus();
+}
+function toggleFocal() {
+  if (focalEditing.value) {
+    cancelFocal();
+    return;
+  }
+  const clip = selectedClip.value;
+  if (!clip || !state.value || focalBlocked.value) return;
+  sourcePlayer.value?.pause();
+  photoPlayer.value?.pause();
+  playing.value = false;
+  clipTransformOverlay.value?.cancel();
+  pictureAdjusting.value = false;
+  directionPreview.value = null;
+  fitPreview.value = null;
+  const detached: Clip = JSON.parse(JSON.stringify(clip));
+  detached.layout = detached.layout
+    ? {
+        ...detached.layout,
+        preset: "hero",
+        focalPoint: detached.layout.focalPoint ?? { x: 0.5, y: 0.5 },
+      }
+    : { version: 1, preset: "hero", focalPoint: { x: 0.5, y: 0.5 } };
+  focalContext = {
+    key: focalSessionKey.value,
+    projectId: props.projectId,
+    compositionId: props.compositionId,
+    clipId: clip.id,
+    revision: state.value.revision,
+    epoch: ++focalEpoch,
+  };
+  focalDraft.value = detached;
+  focalEditing.value = true;
+}
+function previewFocal(point: PhotoFocalPoint) {
+  if (
+    !focalContext ||
+    focalContext.key !== focalSessionKey.value ||
+    !focalDraft.value?.layout ||
+    focalBlocked.value
+  )
+    return;
+  focalDraft.value = {
+    ...focalDraft.value,
+    layout: { ...focalDraft.value.layout, focalPoint: { ...point } },
+  };
+}
+async function commitFocal(point: PhotoFocalPoint) {
+  const context = focalContext;
+  if (
+    !context ||
+    context.key !== focalSessionKey.value ||
+    !focalDraft.value?.layout ||
+    focalBlocked.value
+  ) {
+    cancelFocal();
+    return;
+  }
+  const layout = JSON.parse(
+    JSON.stringify({ ...focalDraft.value.layout, focalPoint: point }),
+  );
+  if (JSON.stringify(layout) === JSON.stringify(selectedClip.value?.layout)) {
+    cancelFocal();
+    return;
+  }
+  focalTransactionPending.value = true;
+  const controller = new AbortController();
+  focalAbort = controller;
+  try {
+    await commitSource(
+      { type: "presentation", clipId: context.clipId, layout },
+      controller.signal,
+      { expectedBaseRevision: context.revision },
+    );
+  } finally {
+    if (context.epoch === focalEpoch) cancelFocal();
+  }
+}
+watch(
+  () =>
+    JSON.stringify([
+      props.projectId,
+      props.compositionId,
+      selectedClip.value?.id,
+      selectedAsset.value,
+      props.sourceVersion,
+      props.projectSettings,
+      props.active,
+      props.expertMode,
+      editMode.value,
+      selectedClip.value?.locked,
+      clipSourceLocked.value,
+    ]),
+  () => {
+    if (focalEditing.value) cancelFocal();
+  },
+);
+watch(
+  () => state.value?.revision,
+  () => {
+    if (focalEditing.value && !focalTransactionPending.value) cancelFocal();
+  },
+);
+watch(focalBlocked, (blocked) => {
+  if (blocked && focalEditing.value && !focalTransactionPending.value)
+    cancelFocal();
+});
+onBeforeUnmount(cancelFocal);
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -3085,6 +3335,7 @@ onBeforeUnmount(() => {
                 :source-version="sourceVersion"
                 :active="!cutDeskBlocked"
                 :bypass-look="lookCompareActive"
+                :caption-track-id="captionTrackId"
                 v-bind="recordBindings"
               />
               <div
@@ -3180,6 +3431,22 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </div>
+              <SequenceWaveform
+                v-if="savedRecordState"
+                :project-id="projectId"
+                :composition="savedRecordState.composition"
+                :assets="savedRecordState.assets"
+                :revision="savedRecordState.revision"
+                :timebase="projectTimebase"
+                :frame="recordFrame"
+                :max-frame="savedRecordLastFrame"
+                :source-statuses="sourceStatuses"
+                :source-version="sourceVersion"
+                :active="recordActive"
+                :disabled="cutDeskBlocked"
+                v-bind="cutDeskControls.seek"
+                @activity="emit('activity')"
+              />
               <p
                 v-if="
                   recordIssue &&
@@ -3195,6 +3462,10 @@ onBeforeUnmount(() => {
           </div>
           <div v-else-if="!expertMode" class="editor-player-region">
             <div ref="sourceScreenElement" class="editor-source-screen">
+              <PrimaryColorFilter
+                :id="primaryColorFilterId"
+                :correction="playbackPrimaryColor"
+              />
               <FilmLookFilter :id="filmLookFilterId" :look="playbackLook" />
               <template v-if="playbackAsset">
                 <div v-if="playbackUnavailable" class="editor-missing-source">
@@ -3258,9 +3529,35 @@ onBeforeUnmount(() => {
                   :project-id="projectId"
                   :source-version="sourceVersion"
                   :active="active && editMode === 'story'"
+                  :primary-color="playbackPrimaryColor"
                   :look="playbackLook"
+                  :focal-editing="focalEditing"
+                  :focal-disabled="focalBlocked || focalTransactionPending"
+                  :focal-session-key="focalSessionKey"
+                  @focal-preview="previewFocal"
+                  @focal-commit="commitFocal"
+                  @focal-activity="focalGestureActive = $event"
+                  @focal-cancelled="cancelFocal"
                   ><template #default="slot"
-                    ><GraphicScenePreview
+                    ><NativeCaptionPreview
+                      v-if="state.composition.captionTracks?.length"
+                      :composition="state.composition"
+                      :composition-id="compositionId"
+                      :project-id="projectId"
+                      :revision="state.revision"
+                      :frame="
+                        sequenceFrameAt(
+                          Math.max(0, playbackClip.timelineStart + slot.time),
+                          projectTimebase,
+                        )
+                      "
+                      :frame-rate="projectSettings.frameRate"
+                      :caption-track-id="captionTrackId"
+                      :frame-width="projectSettings.width"
+                      :frame-height="projectSettings.height"
+                      :active="
+                        active && status === 'saved'
+                      " /><GraphicScenePreview
                       v-if="state.composition.graphicScenes?.length"
                       :composition-id="compositionId"
                       :project-id="projectId"
@@ -3314,6 +3611,32 @@ onBeforeUnmount(() => {
                     :source-time="sourceTime"
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
+                  />
+                  <NativeCaptionPreview
+                    v-if="
+                      state.composition.captionTracks?.length && playbackClip
+                    "
+                    :composition="state.composition"
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :frame="
+                      sequenceFrameAt(
+                        Math.max(
+                          0,
+                          playbackClip.timelineStart +
+                            (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                              (playbackClip.transform?.speed ?? 1),
+                        ),
+                        projectTimebase,
+                      )
+                    "
+                    :frame-rate="projectSettings.frameRate"
+                    :caption-track-id="captionTrackId"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :active="active && status === 'saved'"
+                    :clip="playbackClip"
                   />
                   <GraphicScenePreview
                     v-if="
@@ -3414,6 +3737,37 @@ onBeforeUnmount(() => {
                     @load="titlePreviewFailed = false"
                     @error="titlePreviewFailed = true"
                   />
+                  <NativeCaptionPreview
+                    v-if="
+                      state.composition.captionTracks?.length && playbackClip
+                    "
+                    :composition="state.composition"
+                    :composition-id="compositionId"
+                    :project-id="projectId"
+                    :revision="state.revision"
+                    :frame="
+                      sequenceFrameAt(
+                        Math.max(
+                          0,
+                          playbackClip.timelineStart +
+                            (sourceTime - (playbackClip.sourceIn ?? 0)) /
+                              (playbackClip.transform?.speed ?? 1),
+                        ),
+                        projectTimebase,
+                      )
+                    "
+                    :frame-rate="projectSettings.frameRate"
+                    :caption-track-id="captionTrackId"
+                    :frame-width="projectSettings.width"
+                    :frame-height="projectSettings.height"
+                    :active="active && status === 'saved'"
+                    :player="
+                      playbackAsset.mediaType === 'video'
+                        ? sourcePlayer
+                        : undefined
+                    "
+                    :clip="playbackClip"
+                  />
                   <GraphicScenePreview
                     v-if="
                       state.composition.graphicScenes?.length && playbackClip
@@ -3448,11 +3802,33 @@ onBeforeUnmount(() => {
                 </div>
               </template>
               <div
-                v-else-if="state.composition.graphicScenes?.length"
+                v-else-if="
+                  state.composition.graphicScenes?.length ||
+                  state.composition.captionTracks?.length
+                "
                 class="editor-composition-frame"
                 :style="previewFrameStyle"
               >
+                <NativeCaptionPreview
+                  v-if="state.composition.captionTracks?.length"
+                  :composition="state.composition"
+                  :composition-id="compositionId"
+                  :project-id="projectId"
+                  :revision="state.revision"
+                  :frame="
+                    sequenceFrameAt(
+                      Math.max(0, graphicPreviewTime ?? 0),
+                      projectTimebase,
+                    )
+                  "
+                  :frame-rate="projectSettings.frameRate"
+                  :caption-track-id="captionTrackId"
+                  :frame-width="projectSettings.width"
+                  :frame-height="projectSettings.height"
+                  :active="active && status === 'saved'"
+                />
                 <GraphicScenePreview
+                  v-if="state.composition.graphicScenes?.length"
                   :composition-id="compositionId"
                   :project-id="projectId"
                   :revision="state.revision"
@@ -4164,6 +4540,17 @@ onBeforeUnmount(() => {
             <p v-if="selectedClip.locked" class="editor-note">
               {{ t("editor.clip.protected") }}
             </p>
+            <PrimaryColorInspector
+              :composition="state.composition"
+              :clip="selectedClip"
+              :assets="state.assets"
+              :project-id="projectId"
+              :revision="state.revision"
+              :clip-eligible="lookEligible"
+              :clip-protected="!!selectedClip.locked || clipSourceLocked"
+              :disabled="historyBusy || directionBlocked"
+              @command="command"
+            />
             <FilmLookInspector
               :composition="state.composition"
               :clip="selectedClip"
@@ -4408,7 +4795,18 @@ onBeforeUnmount(() => {
                   :assets="state.assets"
                   :frame="projectSettings"
                   :allow-photo-presentation="photoPresentationAllowed"
+                  :focal-editing="focalEditing"
+                  :focal-disabled="focalBlocked"
                   @command="command"
+                  @focus="toggleFocal"
+                />
+                <NativeTextFontStatus
+                  v-if="selectedClip.title"
+                  :project-id="projectId"
+                  :composition-id="compositionId"
+                  :revision="state.revision"
+                  :reference="{ kind: 'title', clipId: selectedClip.id }"
+                  :active="active && status === 'saved'"
                 />
               </fieldset>
             </fieldset>
@@ -4572,6 +4970,45 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <label v-if="captionTracks.length" class="editor-field">
+              {{ t("editor.titleFinishing.previewTrack") }}
+              <select
+                :value="
+                  captionTrackId === undefined
+                    ? '__default__'
+                    : captionTrackId === null
+                      ? '__none__'
+                      : captionTrackId
+                "
+                :disabled="historyBusy"
+                data-testid="monitor-caption-track"
+                @change="
+                  emit(
+                    'captionTrack',
+                    ($event.target as HTMLSelectElement).value === '__default__'
+                      ? undefined
+                      : ($event.target as HTMLSelectElement).value ===
+                          '__none__'
+                        ? null
+                        : ($event.target as HTMLSelectElement).value,
+                  )
+                "
+              >
+                <option value="__default__">
+                  {{ t("editor.titleFinishing.firstTrack") }}
+                </option>
+                <option value="__none__">
+                  {{ t("editor.titleFinishing.noCaptions") }}
+                </option>
+                <option
+                  v-for="track in captionTracks"
+                  :key="track.id"
+                  :value="track.id"
+                >
+                  {{ track.name }}
+                </option>
+              </select>
+            </label>
+            <label v-if="captionTracks.length" class="editor-field">
               {{ t("editor.captions.track") }}
               <select
                 :value="selectedCaptionTrackId"
@@ -4596,7 +5033,7 @@ onBeforeUnmount(() => {
             </label>
             <template v-if="selectedCaptionTrack">
               <div v-if="selectedCaptionCue" class="editor-fields">
-                <label class="editor-field">
+                <label v-if="!selectedCaptionCue.textRuns" class="editor-field">
                   {{ t("editor.captions.text") }}
                   <textarea
                     :value="selectedCaptionCue.text"
@@ -4612,6 +5049,31 @@ onBeforeUnmount(() => {
                     "
                   />
                 </label>
+                <BilingualTextControls
+                  :key="selectedCaptionCue.id"
+                  :text="selectedCaptionCue.text"
+                  :runs="selectedCaptionCue.textRuns"
+                  :style="selectedCaptionTrack.style"
+                  :frame="projectSettings"
+                  :disabled="historyBusy"
+                  @change="
+                    updateCaptionCue({
+                      text: $event.text,
+                      textRuns: $event.runs,
+                    })
+                  "
+                />
+                <NativeTextFontStatus
+                  :project-id="projectId"
+                  :composition-id="compositionId"
+                  :revision="state.revision"
+                  :reference="{
+                    kind: 'caption',
+                    trackId: selectedCaptionTrack.id,
+                    cueId: selectedCaptionCue.id,
+                  }"
+                  :active="active && status === 'saved'"
+                />
                 <div class="editor-field-pair">
                   <label class="editor-field">
                     {{ t("editor.captions.startMs") }}
@@ -4727,6 +5189,17 @@ onBeforeUnmount(() => {
                   </label>
                 </fieldset>
               </fieldset>
+              <TitleFinishingControls
+                :style="selectedCaptionTrack.style"
+                :disabled="historyBusy"
+                @change="
+                  command({
+                    type: 'caption.track.style',
+                    trackId: selectedCaptionTrack.id,
+                    style: $event,
+                  })
+                "
+              />
               <p v-if="!selectedCaptionCue" class="editor-note">
                 {{ t("editor.captions.chooseCue") }}
               </p>

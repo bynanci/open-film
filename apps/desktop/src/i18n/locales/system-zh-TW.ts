@@ -9,6 +9,19 @@ export default {
     technicalDetails: "技術詳情",
   },
   errors: {
+    presets: {
+      invalid: "預設組包含不支援或無效的資料，請檢視指出的欄位。",
+      unsupported: "不支援此預設組版本，請保留原始套件並使用相容版本。",
+      conflict:
+        "預設組與已安裝版本或受保護的故事內容衝突，請檢視目標與選取內容。",
+      stale: "配方、專案或來源已變更，請重新檢視目前目標。",
+      storageBusy:
+        "其他程序或無法驗證的程序持有預設組儲存鎖，請待其完成後重試。",
+      storageUnavailable:
+        "無法驗證本機預設組儲存區，已儲存影片仍可使用，請檢視備份還原。",
+      recoveryUnavailable:
+        "目前無法安全還原預設組備份，請檢查或封存既有還原副本。",
+    },
     request: {
       invalid: "請檢查輸入的內容後再試一次。",
       tooLarge: "選取的內容太大。請減少檔案數量或選擇較小的檔案。",
@@ -66,6 +79,10 @@ export default {
     timeline: {
       pinConflict:
         "此調整無法保留釘選編輯。請明確解除使用者釘選，或調整相鄰片段。",
+      primaryColorLocked:
+        "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
+      titleRunsConflict:
+        "編輯文字時請一併更新語言分界，或明確移除獨立文字行樣式。",
       lookLocked:
         "這項風格變更會影響 {count} 個受保護片段。請先解鎖片段或來源，或只調整未鎖定的片段。",
       notFound: "已找不到這份剪輯。請開啟影片的最新版本。",
@@ -78,6 +95,7 @@ export default {
       captionRangeConflict:
         "縮短影片會排除已儲存的字幕。請先調整或刪除受影響的字幕，再重試。",
     },
+    title: { busy: "請等待目前文字預覽完成後再試一次。" },
     graphics: {
       invalid: "請檢查圖像場景的欄位、時間與支援的圖層類型。",
       resourceLimit: "圖像場景超出資源限制。請降低尺寸、時長或圖層數量。",

@@ -165,3 +165,14 @@ camera/HDR/4K sources and actual Resolve import remain the existing
 [workstation QA gates](workstation-qa.md). Generated fixtures do not close them.
 
 _New document by OpenFilm contributors, 2026-10-18. Apache-2.0; see LICENSE and NOTICE._
+
+## Current bilingual finishing
+
+D5B extends this same measured raster and existing typed history with separately
+versioned bilingual typography and bounded shadow/stroke/per-line pills. Both
+literal languages remain in the original text. Native Caption Track supplies its
+existing burn-in; Story/Record now preview captions using the same selected
+output language and PNG owner. Per-run actual font evidence, safe paint bounds,
+recovery and SRT/VTT/NLE limits are documented in [title finishing](title-finishing.md)
+and its [validation record](validation-title-finishing.md). This does not close
+physical display or editable NLE finishing gates.

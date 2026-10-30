@@ -19,6 +19,7 @@ export * from "./graphic-templates.js";
 export * from "./story-graph-layout.js";
 export * from "./story-graph-connections.js";
 export * from "./story-planner.js";
+export * from "./preset-story-plan.js";
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value));
 const date = (asset: MediaAsset): number =>

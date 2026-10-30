@@ -261,3 +261,209 @@ private-film aesthetics, human audio listening or actual Resolve QA.
   projection/playback hardware. No user image or attachment is a public fixture.
 - Windows native operation, hardware/camera sources and real Resolve finishing
   remain separate workstation gates.
+
+## D5A photo finishing candidate
+
+On 2026-10-30, the approved D5A implementation was validated from base
+`e1255b1a8a83260149211d909cca8c1a50948c6b`. Product commits are `feabe3b`
+(portable variants/math), `9faeb5c` (verified raw ambient/render), `a502e8d`
+(preview/transaction fencing) and `c225259` (focal UI/compatibility fixes).
+This is candidate evidence; fresh whole-branch review and the complete
+exact-head gate remain coordinator-owned before merge. The existing D5A task
+remains open for those gates.
+
+| Focused check                                                                           | Result                                                           |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Core/solver/application/HTTP/UI/export regression batch                                 | 16 files / 294 tests passed                                      |
+| Actual renderer/easing/ambient/photo quality/capability                                 | 4 files / 31 tests passed                                        |
+| Existing real PhotoDepth fallback/legacy plus new v2 fidelity handoff                   | 2 selected real-media cases passed                               |
+| New photo finishing plus existing photo quality/Film Looks/Record Monitor browser files | 37 tests passed in 2.5 minutes                                   |
+| TypeScript and Vue type checking                                                        | Passed                                                           |
+| UI localization                                                                         | 2,678 semantic keys match in en-US/zh-TW/ja-JP                   |
+| Scoped lint                                                                             | 38 changed TypeScript/Vue files, zero warnings                   |
+| Documentation locales                                                                   | 10 README locale families / 124 English reference mirrors passed |
+
+No full Vitest, native/benchmark or uncoordinated browser run was performed.
+The browser run used the coordinator's exclusive 4310/1420 slot, exited 0 at
+session 90055, and both listeners were confirmed stopped before release.
+Local tools were Node 24.19.0, pnpm 11.19.0, FFmpeg 7.1.5 and Chromium
+151.0.7922.173. FFmpeg 6.1 and other OS/native behavior still require their
+exact-head CI gates.
+
+The renderer produced a real 6.000-second, 320×180, 30 fps / 180-frame H.264
+MP4. Frame times were `0`, `90/30` and `179/30`; the last sample is not the
+excluded six-second duration endpoint. Actual Monitor screenshots were taken
+from the existing component at 320×180 CSS pixels and an integer viewport
+position, with no resampling. Independently measured visible regions returned:
+
+| Measurement                                    | Observed             | Declared limit |
+| ---------------------------------------------- | -------------------- | -------------- |
+| Ambient mean absolute RGB error                | 1.6618–1.7273 levels | ≤12            |
+| Sharp foreground mean absolute RGB error       | 2.4146–3.3723 levels | ≤12            |
+| Monitor/decoded foreground landmark difference | 0 pixels             | ≤1.5 px        |
+
+Both Monitor pixels and decoded MP4 pixels repeated exactly at repeated indexes
+in seek order `0,90,179,35,140,179,0,90`. Deliberately removing fill, applying dim
+twice, applying color twice, or holding the wrong curve position triggered the
+corresponding region/channel/landmark failure. A separate actual FFmpeg
+perspective test compared six curves × 257 samples, including endpoint-flat
+and exponent-form handles, with the shared fixed-24-step evaluator; maximum
+printed error was below `5.1e-7`, FFmpeg's six-decimal print resolution.
+
+The generated source SHA-256 before and after all operations was
+`9ee5b23528b9506138678700a32dad194ef01bd27f61193ca3a27b152a1affb0`.
+It matches the renderer source receipts. The raw ambient PNG hash was
+`cf4f2d025679b349a6add7d51680a46a0bffddcea335a9400545f3ab08868e4f`.
+The ambient/custom-motion MP4 without a Look was
+`ca95dc013ecd7ee9920fc649892391f0da127dc9438c273c319bb0cc83708a38`;
+the Monitor parity fixture with its one Retro Look was
+`a14f9ffe1a8cc632e803957932ce73e8e287dd6327342a94700d001b0d10743e`.
+
+Generated originals, both MP4s/sidecars, raw fill, Monitor/decoded PNGs,
+deliberate-failure PNGs, `render-evidence.json`, `monitor-parity.json` and the
+implementation source-hash receipt remain under
+`/tmp/openfilm-d5a-photo-finishing`. Existing PhotoDepth evidence remains under
+`/tmp/openfilm-d5a-photo-depth`. No media binary was committed or uploaded.
+
+Regressions also cover strict old/new recipes; source hashes/alpha/gap bounds;
+source/clip/paired protection; exact retry, one Undo step, Redo, autosave,
+reopen and Named Versions; delayed-flush revision rejection before POST;
+same-key cancellation/retry, queue limits and project closure; and PNG HTTP
+admission with no arbitrary path/URL/filter input. JSON/OTIO preserve full v2
+metadata, FCPXML/EDL reject it, and actual fidelity handoff bakes a 32-frame
+reference without changing source or saved project bytes.
+
+Independent failure cases found during this work were corrected with focused
+regressions: a cancelled worker must not poison a same-key retry; affine color
+lift must not tint the black diptych separator; applying an already disabled
+fill must leave absent legacy layout absent; idle Escape must exit the focus
+tool; and legacy images must retain their direct parent for Record readiness.
+The last issue interrupted an earlier browser run after 34 passes; product
+markup was corrected and the same existing assertions passed unchanged in the
+final 37-case run.
+
+Builder rulings keep deduplicated waiters bounded at 32, place layout separators
+outside the photographic color group but inside camera/static transforms, keep
+the exact v1 image DOM while grouping only ambient v2, and cancel an unfinished
+keyboard burst on blur. D5C owns primary correction; this candidate supplies its
+raw → primary → Film Look seam without implementing another color path.
+Private-photo/subject aesthetics, touch/pen hardware, calibrated displays,
+sustained 4K, native OS and real NLE finishing remain manual gates.
+
+### D5A final review correction wave
+
+The final review of `1e4d4c302e28be3866879c2a351a849fcd4c742b` identified
+one Important resource-admission defect and one Minor localized conflict-code
+defect. This correction preflights all raw/display/SAR source geometry and all
+centered-cover intermediates before source admission or a subprocess. It uses
+the existing output/source/texture budgets: output ≤4,096 per edge and
+8,294,400 pixels; sources ≤32,000,000 pixels; scale intermediates ≤8,192 per
+edge and ≤64 MiB at four bytes per pixel. Invalid, nonfinite and unsafe geometry
+returns `request.tooLarge` / 413. Blur retains three passes after crop within the
+admitted frame and the existing sigma bound. The sampling recipe is unchanged.
+The captured-revision rejection now reports `timeline.conflict`, preserving its
+original diagnostic guidance and no-new-POST/CAS behavior.
+
+Regression failures were observed before the fixes using a hard subprocess
+fence, never by allocating the adversarial 3840×768000 intermediate. Tests
+cover portrait/landscape strips, SAR/display values, overflow/nonfinite values,
+byte/edge boundaries, ordinary admission, later clips and paired cells. Actual
+application rejection leaves no preview cache publication, history or saved
+project/source change; a valid subsequent retry succeeds. Renderer rejection
+preserves a previous completed MP4 and manifest and removes temporary work.
+
+Fresh ordinary actual-media evidence is retained separately under
+`/tmp/openfilm-d5a-photo-finishing/final-fix`. The original, raw fill, six-second
+MP4 and all sampled decoded RGB hashes match the preceding control exactly;
+the control artifacts were retained. This is bounded synthetic evidence, not a
+sustained 4K or private-photo aesthetics claim. The final correction passed
+7 focused files / 97 tests, 37 related browser cases in 2.4 minutes, TypeScript
+and Vue checks, five-file scoped lint, localization and documentation mirrors.
+The browser run used an exclusive 4310/1420 lease; both listeners were confirmed
+stopped before release. Fresh Monitor measurements, both MP4s and all ten
+independently decoded Monitor/output RGB24 frame hashes match retained controls
+exactly. All 40 implementation/test source hashes were recomputed for the fresh
+receipt. Historical counts above remain evidence for their original candidate;
+coordinator-owned scoped re-review and complete exact-head CI remain pending.
+
+### D3 → D5A integration checkpoint
+
+The approved D3 waveform head `06cd982` was merged into reviewed D5A `f1d90ea`
+with merge `628ecfcb188c161d5e453d136772fb11b7ff9a95`. No manual source
+resolution was needed. Current focused checks passed: 12 files / 198 tests,
+including the real SequenceWaveform TimelineClip host's 55 tests; five related
+files / 71 tests; actual renderer four files / 40 tests; and two selected
+PhotoDepth 180-frame / ambient fidelity-handoff cases. TypeScript/Vue, changed
+source lint/format, 2,714 localization keys and 127 documentation mirrors passed.
+
+The initial related browser run passed 36 of 37 cases. The existing slow
+GraphicScene playback case observed five requests while its exact assertion
+expected three. Its production/test files are unchanged by this merge; the
+retained trace shows aborted native-playback requests. Without edits, its
+isolated retry passed and the complete Record Monitor file then passed 6/6.
+Every selected case has passed across these attempts; this is not a single
+successful 37-case run. No assertion, timeout or threshold was changed.
+
+Fresh synthetic source/media/Monitor artifacts and actual current implementation
+SHA-256 receipt are in `/tmp/openfilm-finishing-integration/A-628ecfc/`.
+Earlier candidate receipts remain historical. Full exact-head hosted gates and
+final integration review are coordinator-owned and are not established here.
+
+### Synchronous focal commit fence after integration
+
+The subsequent integrated browser run exposed a resize event-order race: pointer
+release could precede delivery of the resize/ResizeObserver cancellation. The
+isolated focal fix captures window dimensions, the actual overlay rectangle and
+source-session identity, then compares them synchronously before pointer or
+keyboard acceptance. Frozen source mapping and the existing post-await revision
+barrier are retained. Eight deterministic regressions first failed; the four-file
+focused backport batch passes 59 tests, including all 16 overlay cases. Removing
+the source-session guard makes its regression fail; the guard was restored.
+The source/test-only fix was backported from `4b7a497` to this branch. Complete
+hosted gates remain coordinator-owned; earlier stage receipts retain their
+original source identities.
+
+### Focal admission geometry quality increment
+
+The preceding scoped fence review passed and separately documented unchanged
+start-time behavior in a pure component probe: an already resized surface could
+admit a gesture using geometry that its observer had not refreshed. The
+coordinator chose to close that unshipped boundary defensively. The probe does
+not establish natural browser event-order reachability.
+
+New pointer-pick, handle-drag and first-key admission require the supplied
+geometry rectangle to match the measured overlay rectangle. Stale admission
+produces no activity, draft preview, commit or saved change; current bounds can
+be retried after refresh. The existing frozen mapping and synchronous post-start
+window/rectangle/source-session acceptance fences remain intact. The cost is an
+ignored interaction while initial bounds are stale.
+
+Twelve deterministic stale-start regressions failed first: three admission modes
+across changed left/top/width/height. The current four-file focused batch passes
+74 tests, including all 31 overlay cases and the previous 16 checks. Three
+fractional-geometry unit cases verify correct pick/drag/keyboard mapping. All
+eight photo browser cases pass in 28.3 seconds, including the added ordinary
+320.5 × 180.25 pixel viewport at fractional coordinates, one pointer and one
+keyboard transaction, preserved source hash and the existing actual MP4/parity
+negative controls. TypeScript/Vue, scoped lint/format and documentation mirrors
+pass. Shared browser ports were confirmed closed before lease release.
+
+Fresh source/test hashes, logs and synthetic Monitor/media evidence are retained
+under `/tmp/openfilm-finishing-integration/A-focal-start/`. Earlier controls keep
+their original receipt identities. A fresh scoped review of this increment and
+full exact-head hosted gates remain coordinator-owned before publication.
+
+### 2026-10-30 — repaired documentation base integration
+
+The reviewed focal/photo implementation now includes repaired base `fab0a4c`
+through merge `21d34f7`. All contribution/governance locales and research are
+preserved, including the corrected three Source links and research formatting.
+`git diff c37b203 HEAD -- apps packages` is empty for this merge.
+
+Current checks: `pnpm typecheck`, `pnpm test:i18n`, `pnpm test:docs-i18n`,
+`pnpm format:check`, scoped ESLint and `pnpm exec vitest run
+ tests/unit/docs-site-validation.test.ts tests/unit/photo-focal-overlay.test.ts`
+passed (two files / 35 tests). The earlier browser/media receipts remain tied to
+their original implementation identities; this documentation merge makes no new
+browser, physical-device or hosted-CI claim. Fresh checkpoint hashes and logs
+are retained in `/tmp/openfilm-finishing-integration/A-latest-base/`.

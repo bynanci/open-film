@@ -16,14 +16,17 @@ import {
   type Story,
   type PhotoLayout,
   type PhotoMotion,
+  type PhotoEasing,
   type TitleStyle,
   type AudioAutomation,
   type FilmLook,
+  type PrimaryColorCorrection,
   type CaptionCueSource,
   type CaptionTrack,
   type ProjectSettings,
 } from "./models.js";
 import { resolveProjectTimebase } from "./timebase.js";
+import { validateTitleTextRuns, validateTitleFinishing } from "./title-runs.js";
 import {
   isCaptionTextValid,
   MAX_CAPTION_CUE_COUNT,
@@ -36,6 +39,13 @@ import {
 } from "./graphic-scenes.js";
 import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
 import { validateStoryGraph } from "./story-graph.js";
+import {
+  validatePresetSnapshot,
+  validatePresetPlanSource,
+  validatePresetReceipts,
+  projectPresetSnapshots,
+  assertPresetJsonData,
+} from "./presets.js";
 
 export interface ValidationIssue {
   path: string;
@@ -168,6 +178,24 @@ function presentationObject(
 }
 
 function filmLook(value: unknown, path: string): FilmLook {
+  assertPresetJsonData(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    Object.getOwnPropertyDescriptor(value, "version")?.value === 2
+  ) {
+    const data = presentationObject(value, path, [
+      "version",
+      "preset",
+      "strength",
+      "snapshot",
+    ]);
+    if (data.preset !== "local")
+      fail(`${path}.preset`, "expected local preset discriminator");
+    number(data.strength, `${path}.strength`, 0, 1);
+    validatePresetSnapshot(data.snapshot, "film-look");
+    return data as unknown as FilmLook;
+  }
   const data = presentationObject(value, path, [
     "version",
     "preset",
@@ -185,6 +213,27 @@ function filmLook(value: unknown, path: string): FilmLook {
 export function validateFilmLook(value: unknown): FilmLook {
   filmLook(value, "look");
   return copyJson(value, "look") as FilmLook;
+}
+
+function primaryColor(value: unknown, path: string): PrimaryColorCorrection {
+  const data = presentationObject(value, path, [
+    "version",
+    "temperature",
+    "exposureEv",
+    "contrast",
+  ]);
+  if (data.version !== 1)
+    fail(`${path}.version`, "expected supported primary color version 1");
+  number(data.temperature, `${path}.temperature`, -1, 1);
+  number(data.exposureEv, `${path}.exposureEv`, -2, 2);
+  number(data.contrast, `${path}.contrast`, 0.5, 1.5);
+  return data as unknown as PrimaryColorCorrection;
+}
+export function validatePrimaryColorCorrection(
+  value: unknown,
+): PrimaryColorCorrection {
+  primaryColor(value, "primaryColor");
+  return copyJson(value, "primaryColor") as PrimaryColorCorrection;
 }
 
 function versionOne(value: ObjectValue, path: string): void {
@@ -209,6 +258,7 @@ function protectedRegion(value: unknown, path: string): void {
 }
 
 function photoLayout(value: unknown, path: string): PhotoLayout {
+  const version = object(value, path).version;
   const data = presentationObject(value, path, [
     "version",
     "preset",
@@ -216,8 +266,22 @@ function photoLayout(value: unknown, path: string): PhotoLayout {
     "protectedRegion",
     "secondary",
     "gap",
+    ...(version === 2 ? ["fill"] : []),
   ]);
-  versionOne(data, path);
+  if (version !== 1 && version !== 2)
+    fail(`${path}.version`, "expected supported photo layout version 1 or 2");
+  if (version === 2) {
+    const fill = presentationObject(data.fill, `${path}.fill`, [
+      "version",
+      "kind",
+      "blurSigma",
+      "dim",
+    ]);
+    versionOne(fill, `${path}.fill`);
+    choice(fill.kind, `${path}.fill.kind`, ["ambient"]);
+    number(fill.blurSigma, `${path}.fill.blurSigma`, 0, 0.05);
+    number(fill.dim, `${path}.fill.dim`, 0, 0.85);
+  }
   const preset = choice(data.preset, `${path}.preset`, [
     "contain",
     "hero",
@@ -251,6 +315,32 @@ export function validatePhotoLayout(value: unknown): PhotoLayout {
   return copyJson(value, "layout") as PhotoLayout;
 }
 
+function photoBezier(value: unknown, path: string): void {
+  const data = presentationObject(value, path, [
+    "version",
+    "kind",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+  ]);
+  versionOne(data, path);
+  choice(data.kind, `${path}.kind`, ["cubic-bezier"]);
+  const x1 = number(data.x1, `${path}.x1`, 0, 1);
+  const y1 = number(data.y1, `${path}.y1`, 0, 1);
+  const x2 = number(data.x2, `${path}.x2`, 0, 1);
+  const y2 = number(data.y2, `${path}.y2`, 0, 1);
+  if (x1 > x2 || y1 > y2)
+    fail(path, "Bezier control points must be ordered on both axes");
+}
+
+export function validatePhotoEasing(value: unknown): PhotoEasing {
+  if (typeof value === "string")
+    return choice(value, "easing", ["linear", "ease-in-out"]) as PhotoEasing;
+  photoBezier(value, "easing");
+  return copyJson(value, "easing") as PhotoEasing;
+}
+
 function photoMotion(value: unknown, path: string): PhotoMotion {
   const data = presentationObject(value, path, [
     "version",
@@ -259,9 +349,12 @@ function photoMotion(value: unknown, path: string): PhotoMotion {
     "from",
     "to",
   ]);
-  versionOne(data, path);
+  if (data.version !== 1 && data.version !== 2)
+    fail(`${path}.version`, "expected supported photo motion version 1 or 2");
   choice(data.preset, `${path}.preset`, ["hold", "push-in", "pull-out", "pan"]);
-  choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
+  if (data.version === 1)
+    choice(data.easing, `${path}.easing`, ["linear", "ease-in-out"]);
+  else photoBezier(data.easing, `${path}.easing`);
   for (const endpoint of ["from", "to"]) {
     const transform = presentationObject(
       data[endpoint],
@@ -296,6 +389,7 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     "fadeOut",
     "bottomSafeMargin",
     "safeArea",
+    "finishing",
   ]);
   versionOne(data, path);
   choice(data.role, `${path}.role`, [
@@ -335,6 +429,9 @@ function titleStyle(value: unknown, path: string): TitleStyle {
     choice(v, p, ["center", "bottom"]),
   );
   optional(data, "fadeOut", path, (v, p) => number(v, p, 0, 10));
+  optional(data, "finishing", path, (v) => {
+    validateTitleFinishing(v);
+  });
   optional(data, "bottomSafeMargin", path, (v, p) => number(v, p, 0, 0.3));
   optional(data, "safeArea", path, (v, p) => {
     const safe = presentationObject(v, p, ["left", "right", "top", "bottom"]);
@@ -436,6 +533,7 @@ function captionTrack(
       "startMs",
       "endMs",
       "text",
+      "textRuns",
       "source",
       "warnings",
       "manualRevision",
@@ -458,6 +556,9 @@ function captionTrack(
     if (end > maximumEnd)
       fail(`${cuePath}.endMs`, "caption cue extends beyond the composition");
     const text = string(cue.text, `${cuePath}.text`);
+    optional(cue, "textRuns", cuePath, (value) => {
+      validateTitleTextRuns(value, text);
+    });
     if (!text.trim() || !isCaptionTextValid(text))
       fail(`${cuePath}.text`, "expected non-empty safe Unicode caption text");
     textCharacters += text.length;
@@ -874,6 +975,12 @@ function story(
   knownAssets?: ReadonlySet<string>,
 ): Story {
   const data = object(value, path);
+  optional(data, "presetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
+  optional(data, "presetPlanSource", path, (value) =>
+    validatePresetPlanSource(value),
+  );
   string(data.id, `${path}.id`);
   string(data.title, `${path}.title`);
   optional(data, "template", path, string);
@@ -991,6 +1098,9 @@ function composition(
   const data = object(value, path);
   string(data.id, `${path}.id`);
   string(data.storyId, `${path}.storyId`);
+  optional(data, "storyPresetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
   const duration = number(data.duration, `${path}.duration`, 0);
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);
@@ -1009,6 +1119,23 @@ function composition(
       scenes,
       knownAssets ? [...knownAssets] : undefined,
     );
+  });
+  optional(data, "defaultPrimaryColor", path, primaryColor);
+  optional(data, "beatPrimaryColors", path, (value, entryPath) => {
+    const entries = array(value, entryPath);
+    if (entries.length > 1000)
+      fail(entryPath, "expected at most 1000 scene primary color overrides");
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      const p = `${entryPath}[${index}]`;
+      const item = presentationObject(entry, p, ["beatId", "correction"]);
+      receiptIdentifier(item.beatId, `${p}.beatId`);
+      const id = item.beatId as string;
+      if (seen.has(id) || (beatIds && !beatIds.has(id)))
+        fail(`${p}.beatId`, "duplicate or unknown scene primary color beat");
+      seen.add(id);
+      primaryColor(item.correction, `${p}.correction`);
+    });
   });
   optional(data, "defaultLook", path, filmLook);
   optional(data, "beatLooks", path, (value, beatPath) => {
@@ -1109,6 +1236,9 @@ function composition(
           "source out must be greater than source in",
         );
       optional(clip, "title", clipPath, string);
+      optional(clip, "titleRuns", clipPath, (value) => {
+        validateTitleTextRuns(value, clip.title as string);
+      });
       optional(clip, "layout", clipPath, (v, p) => {
         const layout = photoLayout(v, p);
         const secondary = layout.secondary?.assetId;
@@ -1117,10 +1247,14 @@ function composition(
       });
       optional(clip, "motion", clipPath, photoMotion);
       optional(clip, "titleStyle", clipPath, titleStyle);
+      optional(clip, "titlePresetSnapshot", clipPath, (value) =>
+        validatePresetSnapshot(value, "title"),
+      );
       optional(clip, "audioAutomation", clipPath, (v, p) =>
         audioAutomation(v, p, length),
       );
       optional(clip, "look", clipPath, filmLook);
+      optional(clip, "primaryColor", clipPath, primaryColor);
       if (
         clip.look !== undefined &&
         (track.type === "audio" ||
@@ -1279,6 +1413,9 @@ export function validateProject(
     });
   });
   optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
+  optional(data, "presetApplicationReceipts", path, (value) =>
+    validatePresetReceipts(value, String(data.id)),
+  );
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
@@ -1299,6 +1436,7 @@ export function validateProject(
     );
     composition(entry, timelinePath, knownAssets, beatIds);
   });
+  projectPresetSnapshots(data as unknown as OpenFilmProject);
   return copyJson(value, path) as OpenFilmProject;
 }
 

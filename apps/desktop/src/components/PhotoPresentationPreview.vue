@@ -2,21 +2,28 @@
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { computed, onBeforeUnmount, ref, watch, useId } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, useId } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   evaluateClipAtTime,
   evaluateTitleOpacity,
   assetDisplayDimensions,
   resolveClipGeometry,
+  photoAmbientGaps,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type MediaAsset,
   type ProjectSettings,
   type FrameSize,
+  type PhotoFocalPoint,
 } from "@openfilm/core";
-import { sourceUrl, titlePreviewUrl } from "../api";
+import { sourceUrl, titlePreviewUrl, photoFillPreviewUrl } from "../api";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookFilter from "./FilmLookFilter.vue";
+import PhotoFocalOverlay from "./PhotoFocalOverlay.vue";
+import { resolvePhotoFocalGeometry } from "../photoFocalInteraction";
 import { formatDuration } from "../i18n";
 
 const props = withDefaults(
@@ -32,25 +39,37 @@ const props = withDefaults(
     active: boolean;
     sourceVersion?: number;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
     externalTime?: number;
     externalPlaying?: boolean;
+    focalEditing?: boolean;
+    focalDisabled?: boolean;
+    focalSessionKey?: string;
   }>(),
   {
     sourceVersion: undefined,
     look: undefined,
+    primaryColor: undefined,
     externalTime: undefined,
     externalPlaying: undefined,
+    focalSessionKey: undefined,
   },
 );
 const emit = defineEmits<{
   readiness: [status: { ready: boolean; failed: boolean; assetId?: string }];
+  focalPreview: [point: PhotoFocalPoint];
+  focalCommit: [point: PhotoFocalPoint];
+  focalActivity: [active: boolean];
+  focalCancelled: [];
 }>();
 const { t } = useI18n();
 const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
+const primaryFilterId = `photo-primary-${useId().replaceAll(":", "")}`;
 const lookStyle = computed(() =>
-  props.look && props.look.preset !== "none" && props.look.strength > 0
-    ? { filter: `url(#${lookFilterId})` }
-    : {},
+  sourceColorStyle(props.primaryColor, props.look, {
+    primary: primaryFilterId,
+    look: lookFilterId,
+  }),
 );
 const ownedTime = ref(0);
 const controlled = computed(
@@ -84,6 +103,34 @@ const failedSources = ref(new Set<string>());
 const loadedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
+const fillRetry = ref(0);
+const loadedFill = ref("");
+const failedFill = ref("");
+const frameElement = ref<HTMLElement | null>(null);
+const focalOverlay = ref<InstanceType<typeof PhotoFocalOverlay> | null>(null);
+const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 });
+let observer: ResizeObserver | undefined;
+function refreshBounds() {
+  const rect = frameElement.value?.getBoundingClientRect?.();
+  if (rect)
+    frameRect.value = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+}
+const focalGeometry = computed(() =>
+  props.focalEditing && plan.value?.layers[0] && frameRect.value.width > 0
+    ? resolvePhotoFocalGeometry(
+        plan.value.layers[0],
+        plan.value.transform,
+        props.clip.transform,
+        props.frame,
+        frameRect.value,
+      )
+    : null,
+);
 let animation = 0;
 let started = 0;
 let initialTime = 0;
@@ -116,12 +163,48 @@ const renderLayers = computed(() =>
     const identity = `${layer.assetId}:${asset?.uri}:${props.sourceVersion ?? 0}`;
     return {
       ...layer,
-      key: `${props.clip.id}:${index}:${identity}`,
+      key: `${props.clip.id}:${index}:${identity}${plan.value?.ambient ? ":ambient" : ""}`,
       src: sourceUrl(layer.assetId, identity),
       name: asset?.name ?? "",
     };
   }),
 );
+const ambient = computed(() =>
+  plan.value?.ambient
+    ? {
+        key: JSON.stringify([
+          props.projectId,
+          props.compositionId,
+          props.clip.id,
+          props.revision,
+          props.sourceVersion,
+          plan.value.ambient,
+          renderLayers.value.map((layer) => layer.key),
+          fillRetry.value,
+        ]),
+        src: photoFillPreviewUrl(
+          props.compositionId,
+          props.clip.id,
+          props.revision,
+          props.projectId,
+        ),
+      }
+    : null,
+);
+const ambientFailed = computed(
+  () => !!ambient.value && failedFill.value === ambient.value.key,
+);
+const ambientGaps = computed(() => photoAmbientGaps(plan.value?.ambient));
+function fillLoaded(key: string) {
+  if (ambient.value?.key !== key) return;
+  loadedFill.value = key;
+  failedFill.value = "";
+}
+function fillFailed(key: string) {
+  if (ambient.value?.key !== key) return;
+  failedFill.value = key;
+  loadedFill.value = "";
+}
 const sourceFailed = computed(() =>
   renderLayers.value.some((layer) => failedSources.value.has(layer.key)),
 );
@@ -141,8 +224,9 @@ const readiness = computed(() => ({
   ready:
     !!plan.value &&
     renderLayers.value.length > 0 &&
+    (!ambient.value || loadedFill.value === ambient.value.key) &&
     renderLayers.value.every((layer) => loadedSources.value.has(layer.key)),
-  failed: !plan.value || sourceFailed.value,
+  failed: !plan.value || sourceFailed.value || ambientFailed.value,
   assetId: renderLayers.value.find((layer) =>
     failedSources.value.has(layer.key),
   )?.assetId,
@@ -218,6 +302,11 @@ function tick(now: number) {
   else animation = requestAnimationFrame(tick);
 }
 function toggle() {
+  if (props.focalEditing) {
+    focalOverlay.value?.cancel();
+    emit("focalCancelled");
+    return;
+  }
   if (controlled.value) return;
   if (playing.value) return pause();
   if (time.value >= props.clip.timelineDuration) ownedTime.value = 0;
@@ -227,6 +316,10 @@ function toggle() {
   animation = requestAnimationFrame(tick);
 }
 function seekTo(requested: number) {
+  if (props.focalEditing) {
+    focalOverlay.value?.cancel();
+    emit("focalCancelled");
+  }
   if (controlled.value || !Number.isFinite(requested)) return;
   pause();
   ownedTime.value = Math.max(
@@ -256,11 +349,41 @@ watch(
     ownedTime.value = Math.min(ownedTime.value, duration);
   },
 );
-onBeforeUnmount(pause);
+onMounted(() => {
+  refreshBounds();
+  if (typeof ResizeObserver !== "undefined" && frameElement.value) {
+    observer = new ResizeObserver(refreshBounds);
+    observer.observe(frameElement.value);
+  }
+  if (typeof window !== "undefined")
+    window.addEventListener("scroll", refreshBounds, true);
+});
+onBeforeUnmount(() => {
+  pause();
+  observer?.disconnect();
+  if (typeof window !== "undefined")
+    window.removeEventListener("scroll", refreshBounds, true);
+});
+watch(
+  () => [
+    props.viewport.width,
+    props.viewport.height,
+    props.frame.width,
+    props.frame.height,
+    props.focalEditing,
+  ],
+  refreshBounds,
+  { flush: "post" },
+);
 watch(controlled, (value) => {
   if (value) pause();
 });
-defineExpose({ toggle, pause, seekTo });
+defineExpose({
+  toggle,
+  pause,
+  seekTo,
+  cancelFocus: () => focalOverlay.value?.cancel(),
+});
 </script>
 
 <template>
@@ -268,33 +391,95 @@ defineExpose({ toggle, pause, seekTo });
     class="photo-presentation-preview"
     :class="{ 'photo-presentation-controlled': controlled }"
   >
+    <PrimaryColorFilter
+      v-if="primaryColor"
+      :id="primaryFilterId"
+      :correction="primaryColor"
+    />
     <FilmLookFilter v-if="look" :id="lookFilterId" :look="look" />
     <div
+      ref="frameElement"
       class="photo-presentation-frame"
       :style="frameStyle"
       :aria-label="t('editor.presentation.preview')"
     >
       <div class="photo-presentation-static" :style="staticStyle">
         <div class="photo-presentation-layers" :style="transformStyle">
-          <img
-            v-for="layer in renderLayers"
-            :key="layer.key"
-            crossorigin="anonymous"
-            :src="layer.src"
-            :alt="layer.name"
-            draggable="false"
+          <div v-if="ambient" class="photo-presentation-raw" :style="lookStyle">
+            <img
+              v-for="fill in ambient ? [ambient] : []"
+              :key="fill.key"
+              class="photo-presentation-ambient"
+              crossorigin="anonymous"
+              :src="fill.src"
+              alt=""
+              aria-hidden="true"
+              draggable="false"
+              @load="fillLoaded(fill.key)"
+              @error="fillFailed(fill.key)"
+            />
+            <img
+              v-for="layer in renderLayers"
+              :key="layer.key"
+              crossorigin="anonymous"
+              :src="layer.src"
+              :alt="layer.name"
+              draggable="false"
+              :style="{
+                left: `${(layer.x / frame.width) * 100}%`,
+                top: `${(layer.y / frame.height) * 100}%`,
+                width: `${(layer.width / frame.width) * 100}%`,
+                height: `${(layer.height / frame.height) * 100}%`,
+              }"
+              @load="layerLoaded(layer.key)"
+              @error="layerFailed(layer.key)"
+            />
+          </div>
+          <template v-else>
+            <img
+              v-for="layer in renderLayers"
+              :key="layer.key"
+              crossorigin="anonymous"
+              :src="layer.src"
+              :alt="layer.name"
+              draggable="false"
+              :style="{
+                ...lookStyle,
+                left: `${(layer.x / frame.width) * 100}%`,
+                top: `${(layer.y / frame.height) * 100}%`,
+                width: `${(layer.width / frame.width) * 100}%`,
+                height: `${(layer.height / frame.height) * 100}%`,
+              }"
+              @load="layerLoaded(layer.key)"
+              @error="layerFailed(layer.key)"
+            />
+          </template>
+          <div
+            v-for="(gap, index) in ambientGaps"
+            :key="index"
+            class="photo-presentation-gap"
+            aria-hidden="true"
             :style="{
-              ...lookStyle,
-              left: `${(layer.x / frame.width) * 100}%`,
-              top: `${(layer.y / frame.height) * 100}%`,
-              width: `${(layer.width / frame.width) * 100}%`,
-              height: `${(layer.height / frame.height) * 100}%`,
+              left: `${(gap.x / frame.width) * 100}%`,
+              top: `${(gap.y / frame.height) * 100}%`,
+              width: `${(gap.width / frame.width) * 100}%`,
+              height: `${(gap.height / frame.height) * 100}%`,
             }"
-            @load="layerLoaded(layer.key)"
-            @error="layerFailed(layer.key)"
           />
         </div>
       </div>
+      <PhotoFocalOverlay
+        v-if="focalGeometry"
+        ref="focalOverlay"
+        :point="clip.layout?.focalPoint ?? { x: 0.5, y: 0.5 }"
+        :geometry="focalGeometry"
+        :disabled="!!focalDisabled"
+        :session-key="focalSessionKey ?? ''"
+        @preview="emit('focalPreview', $event)"
+        @commit="emit('focalCommit', $event)"
+        @activity="emit('focalActivity', $event)"
+        @cancelled="emit('focalCancelled')"
+      />
       <img
         v-if="clip.title"
         :key="`${titleUrl}:${titleRetry}`"
@@ -310,12 +495,26 @@ defineExpose({ toggle, pause, seekTo });
       <slot :time="time" :playing="playing" />
     </div>
     <p
-      v-if="!plan || sourceFailed"
+      v-if="!plan || sourceFailed || ambientFailed"
       class="editor-presentation-warnings"
       role="status"
     >
-      {{ t("editor.presentation.sourceWarning") }}
+      {{
+        t(
+          ambientFailed
+            ? "editor.presentation.fillFailed"
+            : "editor.presentation.sourceWarning",
+        )
+      }}
     </p>
+    <button
+      v-if="ambientFailed"
+      type="button"
+      class="editor-button"
+      @click="fillRetry++"
+    >
+      {{ t("editor.presentation.retryFill") }}
+    </button>
     <p v-if="titleFailed" class="editor-presentation-warnings" role="status">
       {{ t("editor.presentation.titleFailed") }}
       <button
@@ -352,11 +551,33 @@ defineExpose({ toggle, pause, seekTo });
 </template>
 
 <style scoped>
+.photo-presentation-raw {
+  position: absolute;
+  inset: 0;
+}
+.photo-presentation-raw > img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+.photo-presentation-ambient {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.photo-presentation-gap {
+  position: absolute;
+  background: #000;
+  pointer-events: none;
+}
 .photo-presentation-controlled {
   padding: 0;
   gap: 0;
 }
-.photo-presentation-controlled .photo-presentation-layers > img {
+.photo-presentation-controlled .photo-presentation-layers > img,
+.photo-presentation-controlled .photo-presentation-raw > img {
   position: absolute;
   max-width: none;
   max-height: none;

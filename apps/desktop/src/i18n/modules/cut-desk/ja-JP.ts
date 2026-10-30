@@ -14,6 +14,55 @@ export default {
     dropFrame: "ドロップフレーム（DF）",
     nonDropFrame: "ノンドロップフレーム（NDF）",
     timebaseSaving: "シーケンスのタイムベースを保存中…",
+    waveform: {
+      title: "シーケンスのソース波形",
+      rawPeaks:
+        "ゲイン、フェード、ダッキング、ミックスを適用する前のソースピークです。",
+      viewport: "波形の表示範囲",
+      windowRange: "{start}–{end}",
+      previous: "前の範囲",
+      next: "次の範囲",
+      fit: "シーケンス全体",
+      window: "30 秒の範囲",
+      seek: "レコード波形の再生位置",
+      outsideWindow: "レコードの再生位置は表示範囲外です。",
+      noAudio: "この範囲に確認済みのソース音声はありません。",
+      video: "映像",
+      audio: "音声",
+      music: "音楽",
+      sources: "表示中の波形ソース",
+      sourceRange: "ソース {start}–{end} / {total}",
+      previousSources: "前のソース",
+      nextSources: "次のソース",
+      prepare: "表示中の未準備波形を準備",
+      stop: "準備キューを停止",
+      refresh: "表示中のソースを更新／再試行",
+      preparing: "{name} を準備中 · 残り {count}",
+      protected: "保護中 · 読み取り専用",
+      stopped:
+        "キューを停止しました。実行中の解析は続き、アクティビティで確認できます。",
+      completed: "表示中のソース波形の準備が完了しました。",
+      status: {
+        ready: "ソースピークを保存済み",
+        loading: "ソースの情報を読み込み中…",
+        "not-cached": "波形は未準備",
+        unavailable: "ソースを利用できません",
+        "source-changed": "ソースが変更されました · ピークを非表示",
+        failed: "波形の読み込み失敗 · 再試行",
+      },
+      errors: {
+        "analysis-busy":
+          "別の解析を実行中です。完了後に準備を再試行してください。",
+        "job-missing":
+          "波形ジョブを確認できません。ソース情報を更新して準備を再試行してください。",
+        "job-failed":
+          "波形解析が失敗または停止しました。ソースが利用可能になったら準備を再試行してください。",
+        "request-failed":
+          "準備を続行できません。ソース情報を更新して再試行してください。",
+        "no-evidence":
+          "現在のソース波形を取得できません。ソース情報を更新して準備を再試行してください。",
+      },
+    },
     ribbon: {
       label: "編集決定リボン",
       sequence: "シーケンス",
@@ -38,13 +87,13 @@ export default {
     },
     compare: {
       group: "フィルムルック比較",
-      hold: "長押しで元の映像を表示",
-      holdShort: "元映像（長押し）",
-      latch: "元の映像表示を固定",
-      latchShort: "元映像を固定",
+      hold: "押してフィルムルック適用前を表示",
+      holdShort: "ルック適用前（押す）",
+      latch: "フィルムルック適用前の表示を維持",
+      latchShort: "ルック適用前（固定）",
       inactive: "フィルムルックを適用中",
-      held: "長押し中は元の映像を表示",
-      latched: "元の映像表示を固定中",
+      held: "押している間ルック適用前を表示中",
+      latched: "ルック適用前の表示を維持中",
       hint: "比較はこのプレビューだけに適用され、保存済み映像や出力は変更しません。",
     },
     shortcuts:

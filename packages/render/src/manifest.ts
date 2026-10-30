@@ -1,8 +1,11 @@
+import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
 import { stat, writeFile } from "node:fs/promises";
 import {
+  resolvePrimaryColor,
+  primaryColorCoefficients,
   FILM_LOOK_PRESETS,
   FILM_LOOK_RECIPE_VERSION,
   FILM_LOOK_MATRIX_DOMAIN,
@@ -13,8 +16,10 @@ import {
   type FilmLook,
   type ExportProfile,
   type AudioAutomation,
+  type TitleRunId,
 } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "@openfilm/media";
+import type { TitleFontDiagnostic } from "./titles.js";
 import type { RenderSettings } from "./index.js";
 import { resolveRenderQuality, type RenderQualityProfile } from "./quality.js";
 
@@ -25,6 +30,16 @@ export interface RenderLookEvidence {
   preset: FilmLook["preset"];
   strength: number;
   matrix: readonly number[];
+  presetSnapshotSha256?: string;
+}
+export interface RenderPhotoPresentationEvidence {
+  version: 1;
+  bezierBisectionSteps: 24;
+  fills: {
+    clipId: string;
+    sha256: string;
+    sources: { assetId: string; sha256: string }[];
+  }[];
 }
 export interface RenderLookConfiguration {
   override: FilmLook | null;
@@ -59,6 +74,7 @@ export type RenderFontUsage =
   | readonly ["graphic", sceneId: string, nodeId: string];
 export interface RenderFontBinding extends RenderFontEvidence {
   usage: RenderFontUsage;
+  run?: TitleRunId;
 }
 /** Stable identities for the actual file and face, without local font paths. */
 export function canonicalRenderFonts(
@@ -84,6 +100,8 @@ export function canonicalRenderFontBindings(
       typeof binding.postscriptName !== "string" ||
       typeof binding.sha256 !== "string" ||
       !/^[a-f0-9]{64}$/u.test(binding.sha256) ||
+      (binding.run !== undefined &&
+        !["primary", "secondary"].includes(binding.run)) ||
       !Array.isArray(binding.usage) ||
       binding.usage.length !== 3 ||
       !["title", "caption", "graphic"].includes(binding.usage[0]) ||
@@ -91,9 +109,12 @@ export function canonicalRenderFontBindings(
     )
       throw new Error("Render receipt has an invalid font usage binding.");
     const { family, postscriptName, sha256 } = binding;
-    const key = JSON.stringify(binding.usage);
+    const key = JSON.stringify(
+      binding.run ? [...binding.usage, binding.run] : binding.usage,
+    );
     const value: RenderFontBinding = {
       usage: [binding.usage[0], binding.usage[1], binding.usage[2]],
+      ...(binding.run ? { run: binding.run } : {}),
       family,
       postscriptName,
       sha256,
@@ -186,9 +207,13 @@ export async function writeRenderManifest(
   outputConfig: {
     format: "mp4" | "wav";
     fontBindings?: ReadonlyArray<RenderFontBinding>;
+    fontDiagnostics?: ReadonlyArray<
+      TitleFontDiagnostic & { usage: RenderFontUsage }
+    >;
     videoOnly?: boolean;
     exportProfile?: ExportProfile;
     audioRole?: AudioAutomation["role"];
+    photoPresentation?: RenderPhotoPresentationEvidence;
   } = { format: "mp4" },
 ): Promise<void> {
   const json = JSON.stringify(composition);
@@ -209,7 +234,7 @@ export async function writeRenderManifest(
     version: 1,
     renderer: {
       id: "openfilm.ffmpeg",
-      presentationVersion: 1,
+      presentationVersion: outputConfig.photoPresentation ? 2 : 1,
       lookVersion: FILM_LOOK_RECIPE_VERSION,
       ffmpegVersion: ffmpegLines[0],
       ffmpegConfiguration:
@@ -217,11 +242,34 @@ export async function writeRenderManifest(
       ffmpegLibraries: ffmpegLines.filter((line) => /^lib\w+\s+\d/u.test(line)),
     },
     createdAt: new Date().toISOString(),
+    ...(outputConfig.photoPresentation
+      ? { photoPresentation: outputConfig.photoPresentation }
+      : {}),
     composition,
     project: project ?? null,
     compositionSha256: createHash("sha256").update(json).digest("hex"),
     settings,
+    primaryColor: {
+      version: 1,
+      domain: "encoded-sdr-rgb",
+      formula: "encoded-sdr-affine-v1",
+      precision: 12,
+      clamp: "primary-then-look",
+      clips: looks.clips.map(({ clipId, assetIds }) => {
+        const clip = composition.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === clipId)!;
+        const effective = resolvePrimaryColor(composition, clip);
+        return {
+          clipId,
+          assetIds,
+          ...effective,
+          coefficients: primaryColorCoefficients(effective.correction),
+        };
+      }),
+    },
     looks: {
+      registryScope: "builtins",
       registryVersion: FILM_LOOK_RECIPE_VERSION,
       matrixSpace: FILM_LOOK_MATRIX_DOMAIN,
       recipeOrigin: FILM_LOOK_RECIPE_ORIGIN,
@@ -247,6 +295,7 @@ export async function writeRenderManifest(
       },
       ...looks,
     },
+    presetSnapshots: renderPresetSnapshots(composition, looks.override),
     exportProfile: outputConfig.exportProfile ?? null,
     output: {
       format: outputConfig.format,
@@ -285,6 +334,7 @@ export async function writeRenderManifest(
     sources,
     fonts,
     fontBindings: canonicalRenderFontBindings(outputConfig.fontBindings ?? []),
+    fontDiagnostics: outputConfig.fontDiagnostics ?? [],
     warnings: [...new Set(warnings)],
     outputSha256: await hashFile(output, signal),
     verification: {

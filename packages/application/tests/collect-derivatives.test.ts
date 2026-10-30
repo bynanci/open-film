@@ -13,7 +13,7 @@ const stops: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   for (const stop of stops.splice(0).reverse()) await stop();
 });
-async function fixture() {
+async function fixture(primary = false) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-collect-derived-"));
   stops.push(() => rm(root, { recursive: true, force: true }));
   const source = join(root, "synthetic-long-gop.mp4");
@@ -109,6 +109,13 @@ async function fixture() {
       ],
     },
   ];
+  if (primary)
+    app.project.timelines[0]!.defaultPrimaryColor = {
+      version: 1,
+      temperature: 0.2,
+      exposureEv: 0.3,
+      contrast: 1.1,
+    };
   await app.save();
   const base = {
     scope: "current-film" as const,
@@ -151,7 +158,7 @@ async function fixture() {
 }
 
 it("publishes actual lossless disjoint source windows with original-baseline decoded parity and immutable originals", async () => {
-  const f = await fixture(),
+  const f = await fixture(true),
     destination = join(f.root, "delivery.zip");
   const result = await f.app.collectMedia.create({
     ...f.input,
@@ -204,6 +211,12 @@ it("publishes actual lossless disjoint source windows with original-baseline dec
     [0.25, 1.25],
     [1.75, 3.75],
   ]);
+  expect(packed.timelines[0].defaultPrimaryColor).toEqual({
+    version: 1,
+    temperature: 0.2,
+    exposureEv: 0.3,
+    contrast: 1.1,
+  });
   expect(packed.timelines[0].duration).toBe(2);
   const verified = await f.app.collectMedia.verify(relocated);
   expect(verified.verified).toBe(true);
@@ -248,7 +261,7 @@ it("requires explicit version-bound delivery acceptance before writing a package
 });
 
 it("labels offline delivery and every reopened export as lower-quality review media", async () => {
-  const f = await fixture(),
+  const f = await fixture(true),
     delivery = { ...f.delivery, mode: "offline-proxies" as const };
   const review = await f.app.collectMedia.coverage({
     ...f.base,
@@ -272,6 +285,15 @@ it("labels offline delivery and every reopened export as lower-quality review me
     sourceDuration: 8,
     derivedDuration: 8,
     windows: [{ sourceStart: 0, sourceEnd: 8, derivedStart: 0, derivedEnd: 8 }],
+  });
+  const offlineProject = JSON.parse(
+    await readFile(join(destination, "project.json"), "utf8"),
+  );
+  expect(offlineProject.timelines[0].defaultPrimaryColor).toEqual({
+    version: 1,
+    temperature: 0.2,
+    exposureEv: 0.3,
+    contrast: 1.1,
   });
   expect(manifest.parity[0].matched).toBe(false);
   expect(manifest.parity[0].derived.videoFrames).toBe(40);
