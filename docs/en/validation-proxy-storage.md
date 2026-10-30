@@ -1,0 +1,84 @@
+# D6A managed preview storage validation
+
+Date: 2026-10-30. Candidate branch: `codex/d6a-proxy-storage`.
+Integration base: `b8befab33144da8c0f2b1a1c10e0c6de602eae6b` (merged PR #63).
+This is an unreleased candidate; full-gate and GitHub results are recorded below
+when actually completed. Project schema 1.0.0 and Catalog v6 are unchanged.
+
+## Implemented boundary
+
+The existing `createProxy` generator is now managed by one application service.
+It owns a bounded queue (128 active tasks), one worker, a configurable 5 GiB
+managed quota (1 MiB–1 TiB), private receipts, health/verification and reviewed
+cleanup. Desktop Library, HTTP and CLI call this service. Export continues to
+read originals. Rebuilding a preview preserves the entire canonical MediaAsset,
+locks, Composition, history and Named Version identity.
+
+Ready-artifact provenance survives Named Version restore independently of the
+operational jobs table. Derivation identity binds full source hash and decoder
+metadata; a queued publication additionally fences the source locator. Thus a
+relocated, identical original remains usable without allowing an in-flight task
+to publish against a changed source. Managed source streaming checks receipt and
+output hash, keeps a reader lease, and falls back to a compatible original after
+corruption. HDR/HEVC still requires a valid compatible preview.
+
+Background preparation returns a bounded HTTP worker ticket and keeps durable
+per-source jobs. Transport-level failures are visible in status. Cancellation
+bypasses the HTTP mutation queue; cross-process cancellation remains pending
+until the actual owner settles. Project switching/close waits for owned work;
+ordinary editing remains available. No process is killed using a supplied PID.
+
+## Regression evidence
+
+- Six focused suites: **58/58 passed** (contracts, application, HTTP, CLI,
+  component and acknowledged-refresh handling).
+- Four real Chromium tests passed: actual preparation/corruption/rebuild/cleanup;
+  English, Traditional Chinese and Japanese at **375/720/1280 px**; native
+  keyboard details/checkbox controls; scoped WCAG 2/2.1 AA axe checks.
+- Full TypeScript/Vue typecheck and ESLint passed; i18n **2614 keys** match.
+- Each new feature first reproduced a missing behavior or invariant violation.
+  The normalized cache-path regression fails on the old legacy fallback and
+  passes after canonical namespace classification.
+
+Application regressions generate two-second 320×180/12 fps synthetic H.264/AAC
+MP4 and MP3 audio previews with FFmpeg, decode them, check duration/dimensions,
+full original/output SHA-256 and representative picture/audio. A real original
+Composition render has identical decoded frames, audio and timing before and
+after managed-preview removal. Sources remain unchanged. The CLI subprocess
+reopens its durable queue and cleans only an explicitly reviewed unchanged list;
+it leaves `project.json` byte-identical.
+
+Other checks cover stale sources, unknown/live owners, late worker claims,
+resume after cancellation, quota failure with usable original import, unchanged
+locked assets and Named Version restore, project/source relocation, same-size
+corruption, cross-workspace readers/Composition protection, symlinks, unsafe or
+unknown receipts, original references inside work trees and partial I/O released
+byte counts. Cleanup acceptance revalidates exact receipt/file/source identity,
+policy and current protection; CLI reviews expire after ten minutes.
+
+## Full-gate results
+
+Pending final review and full available local/GitHub gates. No full-gate,
+workstation, performance or native installer result is implied by focused tests.
+
+## Manual gates and limits
+
+- Physical Windows/macOS close/cancel/reopen, trackpad, high-DPI and sustained
+  large-drive/4K performance are unverified. This Linux environment cannot
+  operate the user's `popo-pc` Windows workstation.
+- FFmpeg generation uses one bounded source snapshot on disk. Temporary disk
+  space and source hashing are intentional integrity costs, not a zero-I/O claim.
+- Health polling reports recorded/verified state without hashing every source.
+  Explicit verification may perform full reads. Legacy/unmanaged files are
+  disclosed separately and never silently deleted.
+- Unknown workers require explicit confirmation that previous workers/readers
+  stopped. Alive owners remain protected. An unknown receipt never authorizes
+  streaming, deletion or publication.
+- No native installer, signing, automatic update, Resolve or hardware QA is
+  certified here. Issue #7 remains open. No stable release is published.
+
+## Next scope
+
+D6B remains separate: inspect Collect Media owners, then design trimmed-original
+packages with handles and explicitly offline preview packages. Do not claim a
+proxy is a master or silently change original Composition/source ranges.

@@ -89,13 +89,13 @@ styles; create `ProxyStoragePanel.vue`, HTTP/CLI regressions, component tests an
 resume/verify/cleanup routes and CLI `proxy` subcommands call the same service.
 The panel emits acknowledged proxy changes to refresh the owning workspace.
 
-- [ ] Add failing HTTP cancellation/foreign-project, CLI reopen and component
+- [x] Add failing HTTP cancellation/foreign-project, CLI reopen and component
       stale-response/keyboard regressions.
-- [ ] Implement registered background work and queue-independent cancellation;
+- [x] Implement registered background work and queue-independent cancellation;
       integrate the existing project close/job lifetime.
-- [ ] Add progressive Library controls, three locales, announced status, explicit
+- [x] Add progressive Library controls, three locales, announced status, explicit
       cleanup preview/accept, CJK wrapping and coarse-pointer targets.
-- [ ] Pass real API/browser regressions, then commit the shared workflow.
+- [x] Pass real API/browser regressions, then commit the shared workflow.
 
 ### Task 4: Review, full gates and roadmap handoff
 

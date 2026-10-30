@@ -45,6 +45,11 @@ Usage:
   openfilm analyze --project <film.openfilm>
   openfilm transcribe <asset-id> --project <film.openfilm> [--language auto|zh|en|ja] [--execution auto|cpu|gpu] [--model <local-model-folder>]
   openfilm waveform <asset-id> --project <film.openfilm>
+  openfilm proxy status|enqueue|run|cancel|resume|verify --project <film.openfilm> [--assets <id,...> --jobs <id,...> --request-id <id>]
+  openfilm proxy policy --project <film.openfilm> --base-revision <number> --quota-bytes <number>
+  openfilm proxy cleanup-preview --project <film.openfilm> [--assets <id,...>]
+  openfilm proxy cleanup-accept --project <film.openfilm> --preview-file <review.json> --confirm
+  openfilm proxy recover --project <film.openfilm> --fingerprint <sha256> --confirm-stopped
   openfilm scenes <asset-id> --project <film.openfilm>
   openfilm intelligence jobs --project <film.openfilm>
   openfilm intelligence recovery <job-id> --project <film.openfilm>
@@ -232,6 +237,9 @@ function parse(args: string[]) {
     "operation",
     "preview-file",
     "supersedes-decision",
+    "jobs",
+    "quota-bytes",
+    "fingerprint",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -510,6 +518,7 @@ async function main() {
     throw new Error("Use --project <film.openfilm> to select a project.");
   // Deriving exports must not save the source project or recover other jobs.
   const app =
+    command === "proxy" ||
     command === "captions" ||
     command === "handoff" ||
     command === "export" ||
@@ -525,7 +534,95 @@ async function main() {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   try {
-    if (command === "collect") {
+    if (command === "proxy") {
+      const projectId = app.project.id;
+      const action = positional[1];
+      const assetIds = value(options, "assets")?.split(",");
+      const jobIds = value(options, "jobs")?.split(",");
+      const requestId = value(options, "request-id") ?? randomUUID();
+      if (action === "status")
+        print({
+          health: await app.proxyCache.health({
+            projectId,
+            offset: positive(options, "offset"),
+            limit: positive(options, "limit"),
+          }),
+        });
+      else if (action === "enqueue")
+        print({
+          jobs: app.proxyCache.enqueue({
+            projectId,
+            requestId,
+            assetIds: assetIds ?? [],
+          }),
+        });
+      else if (action === "run")
+        print(
+          await app.proxyCache.runPending({
+            projectId,
+            signal: controller.signal,
+          }),
+        );
+      else if (action === "cancel")
+        print({ jobs: app.proxyCache.cancel({ projectId, jobIds }) });
+      else if (action === "resume")
+        print({
+          jobs: app.proxyCache.resume({
+            projectId,
+            requestId,
+            jobIds: jobIds ?? [],
+          }),
+        });
+      else if (action === "verify")
+        print(
+          await app.proxyCache.verify({
+            projectId,
+            assetIds: assetIds ?? [],
+            signal: controller.signal,
+          }),
+        );
+      else if (action === "policy")
+        print({
+          policy: await app.proxyCache.setPolicy({
+            projectId,
+            baseRevision: Number(value(options, "base-revision")),
+            quotaBytes: Number(value(options, "quota-bytes")),
+          }),
+        });
+      else if (action === "cleanup-preview")
+        print(
+          await app.proxyCache.previewCleanup({
+            projectId,
+            assetIds,
+            signal: controller.signal,
+          }),
+        );
+      else if (action === "cleanup-accept")
+        print(
+          await app.proxyCache.acceptSavedCleanup({
+            projectId,
+            preview: (await reviewJsonFile(
+              value(options, "preview-file"),
+              "preview-file",
+            )) as unknown as import("@openfilm/core").ProxyCleanupPreview,
+            confirmed: options.confirm === true,
+            signal: controller.signal,
+          }),
+        );
+      else if (action === "recover")
+        print({
+          recovered: app.proxyCache.recover({
+            projectId,
+            fingerprint: value(options, "fingerprint") ?? "",
+            confirmedStopped: options["confirm-stopped"] === true,
+          }),
+        });
+      else
+        throw new ApplicationError(
+          "request.invalid",
+          "Choose proxy status, enqueue, run, cancel, resume, verify, policy, cleanup-preview, cleanup-accept or recover.",
+        );
+    } else if (command === "collect") {
       const action = positional[1];
       if (action === "verify") {
         const packagePath = value(options, "package");

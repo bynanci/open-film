@@ -692,3 +692,25 @@ Phase M9A–M11B product acceptance verifies the complete creative workflow acro
 5. **Fault Injection Resilience**: Cancellation halts runs immediately; retry retains identical input snapshots; source data tampering triggers cache miss fallbacks; version restoration marks superseded runs as outdated.
 6. **Zero-Render A/B Review & Safe Reversion**: Variant comparison inspects existing models and artifacts with `renderCalls === 0`; adoption creates automatic checkpoints; baseline restoration rolls back cleanly to Baseline A.
 7. **Privacy Isolation**: Collect Media strictly isolates the assets of the active film from other variants or private catalog items.
+
+## D6A private preview cache
+
+- `Job.proxyCache` is a closed version-1 operational contract, excluded wherever
+  existing portable/snapshot projections exclude jobs. Private receipts, policy,
+  work, owner/read leases and preferences stay in cache and are not film data.
+- A preview rebuild cannot mutate canonical source records, locks, Composition,
+  Undo/Redo or autosave. Initial import may attach its existing proxy reference.
+- Requests bind project/request/body; at most 128 tasks are queued/running and
+  one owned worker runs. Running cancellation remains pending until its owner
+  stops. Unknown/live execution ownership is never silently reclaimed.
+- Receipts bind source hash, decoder recipe/metadata and output hash/size/path.
+  Publication additionally binds the source locator, task owner and generation.
+  Unknown versions or unsafe paths cannot authorize output, read or cleanup.
+- Managed streaming holds a reader lease and verifies bytes; invalid managed
+  pointers cannot fall through as legacy cache aliases. Compatible originals
+  remain usable; HDR/HEVC retains its compatible-preview requirement.
+- Review cleanup before explicit accept. Changed protection, policy, source,
+  receipt or output invalidates acceptance. CLI saved reviews require exact
+  revalidation and ten-minute expiry. Partial I/O reports actual removed bytes.
+- Quota applies to managed preview artifacts; legacy and temporary usage are
+  disclosed separately. No original-source deletion or export from proxies.

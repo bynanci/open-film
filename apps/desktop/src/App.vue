@@ -32,6 +32,7 @@ import WorkflowProgress from "./components/WorkflowProgress.vue";
 import ImportPanel from "./components/ImportPanel.vue";
 import ExportWorkspace from "./components/ExportWorkspace.vue";
 import CollectMediaPanel from "./components/CollectMediaPanel.vue";
+import ProxyStoragePanel from "./components/ProxyStoragePanel.vue";
 import ProjectVersionsPanel from "./components/ProjectVersionsPanel.vue";
 import ScenePlanner from "./components/ScenePlanner.vue";
 import StoryScriptReview from "./components/StoryScriptReview.vue";
@@ -330,10 +331,13 @@ watch(
 );
 const activeJobs = computed(() =>
   jobs.value.filter(
-    (job) => job.status === "running" || job.status === "queued",
+    (job) =>
+      job.status === "running" ||
+      (job.status === "queued" && job.type !== "proxy"),
   ),
 );
 function jobBlocksProjectSwitch(job: Job, recovery?: AnalysisJobRecoveryState) {
+  if (job.type === "proxy" && job.status === "queued") return false;
   if (job.status !== "running" && job.status !== "queued") return false;
   // Only the three owned analysis operations have a runtime controller
   // capability. Missing or mismatched evidence retains the existing barrier.
@@ -2276,7 +2280,18 @@ function exportProfileBusy(active: boolean) {
   if (active && !busy.value) busy.value = "exportingTimeline";
   else if (!active && busy.value === "exportingTimeline") busy.value = "";
 }
+async function proxyStorageChanged(projectId: string) {
+  if (project.value?.id !== projectId) return;
+  sourceVersion.value++;
+  try {
+    await refreshJobs(false);
+  } catch (cause) {
+    if (project.value?.id === projectId) error.value = cause;
+  }
+}
 function jobTitle(job: Job): string {
+  if (job.type === "proxy")
+    return `${t("proxyStorage.jobTitle")} · ${t(`proxyStorage.status.${job.status === "completed" ? "ready" : job.proxyCache?.cancelRequestedAt && job.status === "running" ? "cancelling" : job.status}`)}`;
   if (job.type === "analysis-run")
     return t(`app.import.analysis.status.${job.status}`);
   if (job.type === "scene-script-review")
@@ -3390,6 +3405,16 @@ onUnmounted(() => {
                 </button>
               </div>
             </section>
+            <ProxyStoragePanel
+              :key="project.id"
+              :project-id="project.id"
+              :dependency-version="`${total}:${jobs
+                .filter((job) => ['proxy', 'import'].includes(job.type))
+                .map((job) => `${job.id}:${job.status}`)
+                .join(',')}`"
+              :disabled="!!busy || relinkBusy"
+              @changed="proxyStorageChanged"
+            />
             <div class="library-toolbar">
               <p class="library-summary">
                 {{

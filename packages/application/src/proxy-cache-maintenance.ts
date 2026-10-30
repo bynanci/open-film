@@ -16,7 +16,11 @@ import {
 } from "@openfilm/core";
 import { checkAbort, hashFile, localPath } from "@openfilm/media";
 import type { ProxyCacheHost } from "./proxy-cache.js";
-import { proxyDigest, proxyInputFingerprint } from "./proxy-cache-identity.js";
+import {
+  proxyDerivationFingerprint,
+  proxyDigest,
+  proxyInputFingerprint,
+} from "./proxy-cache-identity.js";
 import {
   fileIdentity,
   type ProxyCacheStore,
@@ -203,7 +207,7 @@ export class ProxyCacheMaintenance {
     if (
       !asset ||
       receipt.sourceHash !== asset.contentHash ||
-      receipt.inputFingerprint !== proxyInputFingerprint(asset)
+      receipt.derivationFingerprint !== proxyDerivationFingerprint(asset)
     )
       return undefined;
     let sourceIdentity: string;
@@ -286,6 +290,7 @@ export class ProxyCacheMaintenance {
         version: 1,
         projectId: input.projectId,
         previewId: randomUUID(),
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
         fingerprint: proxyDigest([context, proofs]),
         bytes: proofs.reduce((sum, proof) => sum + proof.bytes, 0),
         entries: proofs.map(({ receipt, bytes }) => ({
@@ -327,7 +332,7 @@ export class ProxyCacheMaintenance {
       current.identity !== proof.receiptIdentity ||
       current.digest !== proof.receiptDigest ||
       !asset ||
-      proxyInputFingerprint(asset) !== receipt.inputFingerprint ||
+      proxyDerivationFingerprint(asset) !== receipt.derivationFingerprint ||
       fileIdentity(lstatSync(localPath(asset.uri))) !== proof.sourceIdentity
     )
       stale();
@@ -344,6 +349,68 @@ export class ProxyCacheMaintenance {
       )
         throw error;
     }
+  }
+
+  /** Reopening a CLI process never grants authority to delete a new selection. */
+  async acceptSavedCleanup(input: {
+    projectId: string;
+    preview: ProxyCleanupPreview;
+    confirmed: boolean;
+    signal?: AbortSignal;
+  }): Promise<ProxyCleanupResult> {
+    this.request(
+      input,
+      ["projectId", "preview", "confirmed", "signal"],
+      input.projectId,
+    );
+    const saved = input.preview;
+    if (
+      !input.confirmed ||
+      !saved ||
+      typeof saved !== "object" ||
+      saved.version !== 1 ||
+      saved.projectId !== input.projectId ||
+      typeof saved.fingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(saved.fingerprint) ||
+      typeof saved.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(saved.expiresAt)) ||
+      Date.parse(saved.expiresAt) <= Date.now() ||
+      !Array.isArray(saved.entries) ||
+      saved.entries.length > 20 ||
+      saved.entries.some(
+        (entry) =>
+          !entry ||
+          typeof entry.assetId !== "string" ||
+          typeof entry.artifactId !== "string" ||
+          typeof entry.name !== "string" ||
+          !Number.isSafeInteger(entry.byteLength),
+      )
+    )
+      stale();
+    const assetIds = [...new Set(saved.entries.map((entry) => entry.assetId))];
+    // An empty review authorizes no deletion, even if new entries now exist.
+    if (!assetIds.length) {
+      if (saved.bytes !== 0) stale();
+      return { removedBytes: 0, removedArtifactIds: [], failedArtifactIds: [] };
+    }
+    const fresh = await this.previewCleanup({
+      projectId: input.projectId,
+      assetIds,
+      signal: input.signal,
+    });
+    if (
+      fresh.fingerprint !== saved.fingerprint ||
+      fresh.bytes !== saved.bytes ||
+      proxyDigest(fresh.entries) !== proxyDigest(saved.entries)
+    )
+      stale();
+    return this.acceptCleanup({
+      projectId: input.projectId,
+      previewId: fresh.previewId,
+      fingerprint: fresh.fingerprint,
+      confirmed: true,
+      signal: input.signal,
+    });
   }
 
   private remove(proof: CleanupProof, lease: ProxyWorkerLease): number {
@@ -514,7 +581,7 @@ export class ProxyCacheMaintenance {
         let status: "verified" | "stale" =
           sourceStatus === "changed" ||
           receipt.assetId !== assetId ||
-          receipt.inputFingerprint !== proxyInputFingerprint(asset)
+          receipt.derivationFingerprint !== proxyDerivationFingerprint(asset)
             ? "stale"
             : "verified";
         let identity: string;

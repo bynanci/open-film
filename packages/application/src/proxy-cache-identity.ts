@@ -5,9 +5,8 @@ import type { MediaAsset } from "@openfilm/core";
 export const proxyDigest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-export function proxyInputFingerprint(asset: MediaAsset): string {
+export function proxyDerivationFingerprint(asset: MediaAsset): string {
   return proxyDigest({
-    uri: asset.uri,
     hash: asset.contentHash,
     mediaType: asset.mediaType,
     duration: asset.duration,
@@ -26,4 +25,8 @@ export function proxyInputFingerprint(asset: MediaAsset): string {
       ].map((key) => [key, asset.metadata[key] ?? null]),
     ),
   });
+}
+
+export function proxyInputFingerprint(asset: MediaAsset): string {
+  return proxyDigest([asset.uri, proxyDerivationFingerprint(asset)]);
 }

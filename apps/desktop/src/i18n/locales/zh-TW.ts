@@ -1,3 +1,4 @@
+import proxyStorage from "../modules/proxy-storage/zh-TW";
 import nleHandoff from "../modules/nle-handoff/zh-TW";
 import cutDesk from "../modules/cut-desk/zh-TW";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
@@ -14,6 +15,7 @@ import system from "./system-zh-TW";
 import motion from "../modules/motion/zh-TW";
 
 export default {
+  ...proxyStorage,
   ...cutDesk,
   ...motion,
 

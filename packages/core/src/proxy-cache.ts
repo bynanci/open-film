@@ -42,6 +42,8 @@ export interface ProxyCacheTask {
   owner: ReviewExecutionOwner;
   output?: ProxyCacheOutput;
   retryOf?: string;
+  /** A remote cancellation remains pending until its execution owner settles. */
+  cancelRequestedAt?: string;
 }
 
 /** Private artifact provenance survives replacement of the catalog jobs table. */
@@ -54,7 +56,7 @@ export interface ProxyCacheReceipt {
   assetId: string;
   mediaType: "video" | "audio";
   sourceHash: string;
-  inputFingerprint: string;
+  derivationFingerprint: string;
   recipe: "ffmpeg-preview-v2";
   createdAt: string;
   output: ProxyCacheOutput;
@@ -63,6 +65,7 @@ export interface ProxyCacheReceipt {
 export type ProxyCacheEntryStatus =
   | "queued"
   | "running"
+  | "cancelling"
   | "ready"
   | "missing"
   | "stale"
@@ -100,6 +103,7 @@ export interface ProxyCleanupPreview {
   version: 1;
   projectId: string;
   previewId: string;
+  expiresAt: string;
   fingerprint: string;
   bytes: number;
   entries: Array<{
@@ -204,13 +208,15 @@ function output(value: unknown, mediaType: "video" | "audio"): void {
 
 function source(
   data: Record<string, unknown>,
+  fingerprint:
+    "inputFingerprint" | "derivationFingerprint" = "inputFingerprint",
 ): asserts data is Record<string, unknown> & { mediaType: "video" | "audio" } {
   if (data.version !== 1) invalid("Unsupported proxy cache version.");
   for (const field of ["projectId", "assetId"]) text(data[field]);
   if (data.mediaType !== "video" && data.mediaType !== "audio")
     invalid("This source does not support managed preview generation.");
   hash(data.sourceHash);
-  hash(data.inputFingerprint);
+  hash(data[fingerprint]);
   if (data.recipe !== "ffmpeg-preview-v2") invalid("Unsupported proxy recipe.");
   integer(data.generation, 1, Number.MAX_SAFE_INTEGER);
 }
@@ -242,6 +248,7 @@ export function validateProxyCacheTask(value: unknown): ProxyCacheTask {
     "owner",
     "output",
     "retryOf",
+    "cancelRequestedAt",
   ]);
   source(data);
   text(data.requestId);
@@ -252,6 +259,14 @@ export function validateProxyCacheTask(value: unknown): ProxyCacheTask {
   integer(owner.pid, 1, 2147483647);
   if (data.output !== undefined) output(data.output, data.mediaType);
   if (data.retryOf !== undefined) text(data.retryOf);
+  if (data.cancelRequestedAt !== undefined) {
+    text(data.cancelRequestedAt, 32);
+    if (
+      !Number.isFinite(Date.parse(data.cancelRequestedAt)) ||
+      new Date(data.cancelRequestedAt).toISOString() !== data.cancelRequestedAt
+    )
+      invalid("Proxy cancellation time must be an exact UTC timestamp.");
+  }
   return structuredClone(data) as unknown as ProxyCacheTask;
 }
 
@@ -265,12 +280,12 @@ export function validateProxyCacheReceipt(value: unknown): ProxyCacheReceipt {
     "assetId",
     "mediaType",
     "sourceHash",
-    "inputFingerprint",
+    "derivationFingerprint",
     "recipe",
     "createdAt",
     "output",
   ]);
-  source(data);
+  source(data, "derivationFingerprint");
   hash(data.artifactId);
   text(data.jobId);
   text(data.createdAt, 32);

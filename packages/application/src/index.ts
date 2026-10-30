@@ -258,6 +258,8 @@ export type {
   ScenePlanAcceptance,
 } from "./scene-plan.js";
 export type OpenFilmRuntimeOptions = KnowledgeOptions & {
+  /** Trusted host-only media boundary; project/HTTP data cannot supply code. */
+  proxyGenerator?: typeof import("@openfilm/media").createProxy;
   audioGenerationProvider?: AudioGenerationProvider;
   motionGenerationProvider?: MotionGenerationProvider;
   motionGenerationTimeoutMs?: number;
@@ -403,19 +405,22 @@ export class OpenFilmApplication {
     this.catalog = new ProjectCatalog(directory);
     try {
       const proxyProject = () => this.project;
-      this.proxyCache = new ProxyCacheService({
-        directory,
-        catalog: this.catalog,
-        get project() {
-          return proxyProject();
+      this.proxyCache = new ProxyCacheService(
+        {
+          directory,
+          catalog: this.catalog,
+          get project() {
+            return proxyProject();
+          },
+          beginProxyWork: () => {
+            this.activeJobs++;
+          },
+          endProxyWork: () => {
+            this.activeJobs--;
+          },
         },
-        beginProxyWork: () => {
-          this.activeJobs++;
-        },
-        endProxyWork: () => {
-          this.activeJobs--;
-        },
-      });
+        runtime.proxyGenerator,
+      );
       this.sourceDraft = new SourceDraftService(directory, project.id);
       this.sourceDiscovery = new SourceDiscoveryService(
         this.sourceDraft,

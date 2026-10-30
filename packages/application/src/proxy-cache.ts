@@ -48,7 +48,10 @@ import {
   proxyDigest,
   type ProxyWorkerLease,
 } from "./proxy-cache-store.js";
-import { proxyInputFingerprint } from "./proxy-cache-identity.js";
+import {
+  proxyDerivationFingerprint,
+  proxyInputFingerprint,
+} from "./proxy-cache-identity.js";
 export { proxyInputFingerprint } from "./proxy-cache-identity.js";
 import { portableCacheUri } from "./portable-cache.js";
 import { ProxyCacheMaintenance } from "./proxy-cache-maintenance.js";
@@ -133,6 +136,7 @@ export class ProxyCacheService {
   private readonly imported = new Map<string, MediaAsset>();
   private readonly maintenance: ProxyCacheMaintenance;
   private diskProtection?: { identity: string; ids: Set<string> };
+  private readonly streamed = new Map<string, string>();
 
   constructor(
     private readonly host: ProxyCacheHost,
@@ -159,8 +163,17 @@ export class ProxyCacheService {
   acceptCleanup(input: Parameters<ProxyCacheMaintenance["acceptCleanup"]>[0]) {
     return this.maintenance.acceptCleanup(input);
   }
+  acceptSavedCleanup(
+    input: Parameters<ProxyCacheMaintenance["acceptSavedCleanup"]>[0],
+  ) {
+    return this.maintenance.acceptSavedCleanup(input);
+  }
   verify(input: Parameters<ProxyCacheMaintenance["verify"]>[0]) {
     return this.maintenance.verify(input);
+  }
+
+  get isRunning(): boolean {
+    return !!this.running || this.controllers.size > 0;
   }
 
   private project(projectId: string): void {
@@ -344,12 +357,6 @@ export class ProxyCacheService {
             "Proxy task was not found in this project.",
             404,
           );
-        if (job.status === "running" && !this.controllers.has(job.id))
-          throw new ApplicationError(
-            "jobs.busy",
-            "This process does not own cancellation of that worker.",
-            409,
-          );
       }
       return jobs.map((value) => {
         const job = value!;
@@ -357,8 +364,15 @@ export class ProxyCacheService {
         this.controllers.get(job.id)?.abort();
         const cancelled = {
           ...job,
-          status: "cancelled" as const,
-          stage: "cancelled",
+          status:
+            job.status === "running"
+              ? ("running" as const)
+              : ("cancelled" as const),
+          stage: job.status === "running" ? "cancelling" : "cancelled",
+          proxyCache: {
+            ...job.proxyCache!,
+            cancelRequestedAt: new Date().toISOString(),
+          },
           updatedAt: new Date().toISOString(),
         };
         this.host.catalog.saveJob(cancelled);
@@ -654,6 +668,7 @@ export class ProxyCacheService {
       current.status !== "running" ||
       current.proxyCache.generation !== task.generation ||
       current.proxyCache.owner.token !== task.owner.token ||
+      current.proxyCache.cancelRequestedAt !== undefined ||
       current.proxyCache.inputFingerprint !== task.inputFingerprint
     )
       throw new ApplicationError(
@@ -702,6 +717,22 @@ export class ProxyCacheService {
     const signal = parent
       ? AbortSignal.any([parent, controller.signal])
       : controller.signal;
+    const monitor = setInterval(() => {
+      try {
+        const latest = this.host.catalog.getJob(jobId);
+        if (
+          !latest?.proxyCache ||
+          latest.status !== "running" ||
+          latest.proxyCache.generation !== task.generation ||
+          latest.proxyCache.owner.token !== task.owner.token ||
+          latest.proxyCache.cancelRequestedAt
+        )
+          controller.abort();
+      } catch {
+        controller.abort();
+      }
+    }, 100);
+    monitor.unref?.();
     let work: string | undefined;
     try {
       checkAbort(signal);
@@ -884,7 +915,7 @@ export class ProxyCacheService {
         assetId: task.assetId,
         mediaType: task.mediaType,
         sourceHash: task.sourceHash,
-        inputFingerprint: task.inputFingerprint,
+        derivationFingerprint: proxyDerivationFingerprint(asset),
         recipe: task.recipe,
         createdAt: new Date().toISOString(),
         output: {
@@ -948,7 +979,7 @@ export class ProxyCacheService {
           ...current,
           status: "completed",
           stage: "ready",
-          progress: 100,
+          progress: 1,
           updatedAt: new Date().toISOString(),
           proxyCache: { ...task, output: receipt.output },
         });
@@ -957,7 +988,9 @@ export class ProxyCacheService {
     } catch (error) {
       const current = this.host.catalog.getJob(jobId);
       const status =
-        signal.aborted || current?.status === "cancelled"
+        signal.aborted ||
+        current?.status === "cancelled" ||
+        current?.proxyCache?.cancelRequestedAt
           ? "cancelled"
           : "failed";
       if (
@@ -985,7 +1018,9 @@ export class ProxyCacheService {
         });
       return status;
     } finally {
-      this.controllers.delete(jobId);
+      clearInterval(monitor);
+      if (this.controllers.get(jobId) === controller)
+        this.controllers.delete(jobId);
       if (work) await rm(work, { recursive: true, force: true });
     }
   }
@@ -1055,7 +1090,7 @@ export class ProxyCacheService {
           !receipt ||
           receipt.assetId !== asset.id ||
           receipt.sourceHash !== asset.contentHash ||
-          receipt.inputFingerprint !== proxyInputFingerprint(asset)
+          receipt.derivationFingerprint !== proxyDerivationFingerprint(asset)
         )
           return false;
         const info = await lstat(path);
@@ -1085,7 +1120,7 @@ export class ProxyCacheService {
         !receipt ||
         receipt.assetId !== asset.id ||
         receipt.sourceHash !== asset.contentHash ||
-        receipt.inputFingerprint !== proxyInputFingerprint(asset)
+        receipt.derivationFingerprint !== proxyDerivationFingerprint(asset)
       )
         continue;
       try {
@@ -1106,6 +1141,97 @@ export class ProxyCacheService {
       }
     }
     return undefined;
+  }
+
+  /** Register the read under the same SQLite boundary used by cache removal. */
+  async acquirePreview(
+    asset: MediaAsset,
+    signal?: AbortSignal,
+  ): Promise<{ uri: string; release: () => void } | undefined> {
+    const read = this.host.catalog.withProjectWrite(() => {
+      checkAbort(signal);
+      const current = this.host.catalog.getAsset(asset.id);
+      if (
+        !current ||
+        proxyInputFingerprint(current) !== proxyInputFingerprint(asset)
+      )
+        throw new ApplicationError(
+          "proxy.stale",
+          "The preview source changed.",
+          409,
+        );
+      const receipt = this.readyReceipt(current);
+      if (!receipt) return undefined;
+      const release = this.store.reader(receipt.artifactId);
+      try {
+        const data = this.store.receipt(receipt.artifactId)!;
+        return {
+          receipt,
+          release,
+          identity: fileIdentity(lstatSync(this.store.outputPath(receipt))),
+          digest: data.digest,
+        };
+      } catch (error) {
+        release();
+        throw error;
+      }
+    });
+    if (!read) return undefined;
+    try {
+      const path = this.store.outputPath(read.receipt);
+      const key = proxyDigest([read.identity, read.digest]);
+      if (this.streamed.get(read.receipt.artifactId) !== key) {
+        const hash = await hashFile(path, signal);
+        checkAbort(signal);
+        if (
+          fileIdentity(lstatSync(path)) !== read.identity ||
+          this.store.receipt(read.receipt.artifactId)?.digest !== read.digest
+        )
+          throw new ApplicationError(
+            "proxy.stale",
+            "Preview bytes changed during verification.",
+            409,
+          );
+        if (hash !== read.receipt.output.hash) {
+          this.store.saveVerification(read.receipt.artifactId, read.identity, {
+            status: "stale",
+            sourceStatus: "unavailable",
+          });
+          throw new ApplicationError(
+            "media.previewUnavailable",
+            "Preview checksum failed; rebuild its managed cache.",
+            409,
+          );
+        }
+        if (this.streamed.size >= PROXY_CACHE_LIMITS.inventoryFiles)
+          this.streamed.clear();
+        this.streamed.set(read.receipt.artifactId, key);
+      }
+      const current = this.host.catalog.getAsset(asset.id);
+      if (
+        !current ||
+        proxyInputFingerprint(current) !== proxyInputFingerprint(asset)
+      )
+        throw new ApplicationError(
+          "proxy.stale",
+          "The preview source changed.",
+          409,
+        );
+      try {
+        this.store.touch(read.receipt.artifactId);
+      } catch (error) {
+        if (
+          !["EACCES", "EPERM", "EROFS"].includes(
+            String((error as NodeJS.ErrnoException).code),
+          )
+        )
+          throw error;
+      }
+      return { uri: read.receipt.output.uri, release: read.release };
+    } catch (error) {
+      read.release();
+      throw error;
+    }
   }
 
   async inventory(): Promise<{
@@ -1213,6 +1339,8 @@ export class ProxyCacheService {
       });
       let status: ProxyCacheHealth["entries"][number]["status"] =
         job?.status === "completed" ? "missing" : (job?.status ?? "missing");
+      if (job?.status === "running" && job.proxyCache?.cancelRequestedAt)
+        status = "cancelling";
       let bytes: number | undefined;
       let verification: "recorded" | "checked" | "unchecked" = "unchecked";
       if (!["queued", "running"].includes(job?.status ?? "")) {
@@ -1240,7 +1368,8 @@ export class ProxyCacheService {
               else {
                 const info = lstatSync(this.store.outputPath(receipt));
                 status =
-                  receipt.inputFingerprint !== proxyInputFingerprint(asset) ||
+                  receipt.derivationFingerprint !==
+                    proxyDerivationFingerprint(asset) ||
                   this.store.verification(id, fileIdentity(info))?.status ===
                     "stale" ||
                   info.size !== receipt.output.byteLength
@@ -1280,7 +1409,13 @@ export class ProxyCacheService {
       unmanagedBytes: inventory.unmanagedBytes,
       temporaryBytes: inventory.temporaryBytes,
       inventoryComplete: inventory.complete,
-      running: !!this.running || this.controllers.size > 0,
+      running:
+        this.isRunning ||
+        this.host.catalog.listJobs({
+          type: "proxy",
+          statuses: ["running"],
+          limit: 1,
+        }).length > 0,
       queued,
       recovery: this.recoveryInfo(),
       entries,

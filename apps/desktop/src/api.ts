@@ -45,6 +45,11 @@ import type {
   VisualSamplingV1,
   ReviewDecisionOperation,
   ReviewDecision,
+  ProxyCacheHealth,
+  ProxyCachePolicy,
+  ProxyCleanupPreview,
+  ProxyCleanupResult,
+  ProxyVerificationResult,
 } from "@openfilm/core";
 
 export interface VisionSampleProviderInfo {
@@ -714,6 +719,72 @@ async function uploadFiles(
   }
 }
 export const api = {
+  proxyCache: (projectId: string, offset = 0, signal?: AbortSignal) =>
+    request<{
+      health: ProxyCacheHealth;
+      worker?: {
+        id: string;
+        status: "running" | "completed" | "failed" | "cancelled";
+        error?: OpenFilmError;
+      };
+    }>(
+      `/proxy-cache?${new URLSearchParams({ projectId, offset: String(offset), limit: "100" })}`,
+      { signal },
+    ),
+  proxyQueue: (
+    body: { projectId: string; requestId: string; assetIds: string[] },
+    signal?: AbortSignal,
+  ) => post<{ jobs: Job[] }>("/proxy-cache/queue", body, signal),
+  proxyRun: (projectId: string, signal?: AbortSignal) =>
+    post("/proxy-cache/run", { projectId }, signal),
+  proxyCancel: (projectId: string, signal?: AbortSignal) =>
+    post<{ jobs: Job[] }>("/proxy-cache/cancel", { projectId }, signal),
+  proxyResume: (
+    body: { projectId: string; requestId: string; jobIds: string[] },
+    signal?: AbortSignal,
+  ) => post<{ jobs: Job[] }>("/proxy-cache/resume", body, signal),
+  proxyPolicy: (
+    body: { projectId: string; baseRevision: number; quotaBytes: number },
+    signal?: AbortSignal,
+  ) =>
+    request<{ policy: ProxyCachePolicy }>("/proxy-cache/policy", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      signal,
+    }),
+  proxyVerify: (
+    body: { projectId: string; assetIds: string[] },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: ProxyVerificationResult }>(
+      "/proxy-cache/verify",
+      body,
+      signal,
+    ),
+  proxyCleanupPreview: (projectId: string, signal?: AbortSignal) =>
+    post<{ result: ProxyCleanupPreview }>(
+      "/proxy-cache/cleanup/preview",
+      { projectId },
+      signal,
+    ),
+  proxyCleanupAccept: (
+    body: {
+      projectId: string;
+      previewId: string;
+      fingerprint: string;
+      confirmed: boolean;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<{ result: ProxyCleanupResult }>(
+      "/proxy-cache/cleanup/accept",
+      body,
+      signal,
+    ),
+  proxyRecover: (
+    body: { projectId: string; fingerprint: string; confirmedStopped: boolean },
+    signal?: AbortSignal,
+  ) => post("/proxy-cache/recover", body, signal),
   projectVersionRevision: (signal?: AbortSignal) =>
     request<{ projectId: string; revision: string }>("/versions/revision", {
       signal,

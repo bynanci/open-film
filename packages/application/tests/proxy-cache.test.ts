@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -91,10 +92,79 @@ async function fixture() {
       app.close();
       app = await OpenFilmApplication.open(directory);
     },
+    relocate: async (destination: string) => {
+      const directory = app.directory;
+      app.close();
+      await rename(directory, destination);
+      app = await OpenFilmApplication.open(destination);
+    },
   };
 }
 
 describe("managed proxy queue", () => {
+  it("accepts a durable cancellation request from another application instance", async () => {
+    const f = await fixture();
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const service = new ProxyCacheService(
+      {
+        directory: f.app.directory,
+        project: f.app.project,
+        catalog: f.app.catalog,
+        beginProxyWork() {},
+        endProxyWork() {},
+      },
+      async (_asset, _output, signal) => {
+        started();
+        await new Promise<void>((resolve) =>
+          signal?.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    const [job] = service.enqueue(f.input);
+    const run = service.runPending({ projectId: f.app.project.id });
+    try {
+      await ready;
+      const peer = await OpenFilmApplication.open(f.app.directory);
+      try {
+        const [requested] = peer.proxyCache.cancel({
+          projectId: peer.project.id,
+          jobIds: [job!.id],
+        });
+        expect(requested?.status).toBe("running");
+        expect(requested?.proxyCache?.cancelRequestedAt).toEqual(
+          expect.any(String),
+        );
+      } finally {
+        peer.close();
+      }
+      expect((await run).cancelled).toBe(1);
+      expect(f.app.catalog.getJob(job!.id)?.status).toBe("cancelled");
+    } finally {
+      service.cancel({ projectId: f.app.project.id, jobIds: [job!.id] });
+      await run;
+    }
+  });
+  it("retains a verified managed preview after project and managed-source relocation", async () => {
+    const f = await fixture();
+    const owned = join(f.app.directory, "sources/synthetic.mp4");
+    await mkdir(join(f.app.directory, "sources"));
+    await copyFile(f.source, owned);
+    expect((await f.app.importManagedSources([owned])).imported).toBe(1);
+    const asset = f.app.catalog.getAssetByUri(pathToFileURL(owned).href)!;
+    const receipt = f.app.proxyCache.readyReceipt(asset)!;
+    await f.relocate(join(f.root, "relocated.openfilm"));
+    const moved = f.app.catalog.getAsset(asset.id)!;
+    expect(moved.uri).not.toBe(asset.uri);
+    expect(f.app.proxyCache.readyReceipt(moved)?.artifactId).toBe(
+      receipt.artifactId,
+    );
+    expect(await hashFile(join(f.app.directory, receipt.output.uri))).toBe(
+      receipt.output.hash,
+    );
+  });
   it("enqueues idempotently, rejects changed requests and keeps creative state intact", async () => {
     const f = await fixture();
     const before = structuredClone(f.app.project);
@@ -867,6 +937,34 @@ describe("managed proxy storage policy and cleanup", () => {
     await expect(readFile(f.path)).rejects.toMatchObject({ code: "ENOENT" });
     expect(f.app.catalog.getAsset("synthetic-video")).toEqual(before);
     expect(await hashFile(f.source)).toBe(f.sourceHash);
+  });
+
+  it("revalidates a saved cleanup review after reopening without accepting a changed selection", async () => {
+    const f = await prepared();
+    f.app.catalog.updateAsset("synthetic-video", { state: { locked: false } });
+    const preview = await f.app.proxyCache.previewCleanup({
+      projectId: f.app.project.id,
+    });
+    const reader = await OpenFilmApplication.openForExport(f.app.directory);
+    try {
+      await expect(
+        reader.proxyCache.acceptSavedCleanup({
+          projectId: reader.project.id,
+          preview: { ...preview, bytes: preview.bytes + 1 },
+          confirmed: true,
+        }),
+      ).rejects.toMatchObject({ code: "proxy.stale" });
+      expect(await hashFile(f.path)).toBe(f.receipt.output.hash);
+      const result = await reader.proxyCache.acceptSavedCleanup({
+        projectId: reader.project.id,
+        preview,
+        confirmed: true,
+      });
+      expect(result.removedArtifactIds).toEqual([f.receipt.artifactId]);
+      await expect(readFile(f.path)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      reader.close();
+    }
   });
 
   it.each(["locks", "bytes", "policy"])(
