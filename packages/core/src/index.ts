@@ -7,6 +7,7 @@ export * from "./export-profile.js";
 export * from "./geometry.js";
 export * from "./presentation.js";
 export * from "./title-layout.js";
+export * from "./title-runs.js";
 export * from "./validation.js";
 export * from "./migration.js";
 export * from "./errors.js";
