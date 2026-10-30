@@ -5,12 +5,15 @@ import { join, resolve } from "node:path";
 import type { Font, FontCollection, GlyphRun } from "fontkit";
 import {
   TITLE_LAYOUT_VERSION,
-  layoutTitleText,
+  layoutTitleRuns,
+  resolveTitleRuns,
   resolveTitleStyle,
   type TitleLayout,
   type TitleTextMetrics,
   type FrameSize,
   type TitleStyle,
+  type TitleRunId,
+  type TitleTextRuns,
 } from "@openfilm/core";
 
 export interface TitleFontIdentity {
@@ -25,6 +28,31 @@ export interface TitleOverlay {
   layout: TitleLayout;
   font: TitleFontIdentity;
   warnings: string[];
+  runFonts: TitleRunFontResult[];
+}
+
+export interface TitleFontDiagnostic {
+  code: "family-fallback" | "weight-fallback";
+  run: TitleRunId;
+  requestedFamily: string;
+  requestedWeight: number;
+  actualFamily: string;
+  actualWeight: number;
+  postscriptName: string;
+  sha256: string;
+}
+export interface TitleRunFontResult {
+  id: TitleRunId;
+  font: TitleFontIdentity;
+  requestedFamily: string;
+  requestedWeight: number;
+  actualWeight: number;
+  diagnostics: TitleFontDiagnostic[];
+}
+export interface TitleOverlayOptions {
+  fontPath?: string;
+  textRuns?: TitleTextRuns;
+  fontPathForStyle?: (style: TitleStyle | undefined) => string | undefined;
 }
 
 export type TitleOverlayInspection =
@@ -33,15 +61,18 @@ export type TitleOverlayInspection =
       layout: TitleLayout;
       font: TitleFontIdentity;
       warnings: string[];
+      runFonts: TitleRunFontResult[];
     }
   | {
       status: "failed";
       kind: "font.load-failed" | "title.overflow";
       detail: "unavailable" | "missing-glyph" | "overflow";
       message: string;
+      run?: TitleRunId;
     };
 
 interface LoadedFont {
+  actualWeight: number;
   font: Font;
   identity: TitleFontIdentity;
   warnings: string[];
@@ -184,6 +215,7 @@ async function loadFont(
     );
   return {
     font,
+    actualWeight: selected.variationAxes.wght ? wantedWeight : actualWeight,
     identity: {
       family: font.familyName,
       postscriptName: font.postscriptName,
@@ -217,7 +249,29 @@ export function titleOverlayCacheKey(input: {
   frame: FrameSize;
   fontSha256: string;
   postscriptName: string;
+  textRuns?: TitleTextRuns;
+  runFonts?: { id: TitleRunId; fontSha256: string; postscriptName: string }[];
 }): string {
+  const runs = resolveTitleRuns(
+    input.text,
+    input.textRuns,
+    input.style,
+    input.frame,
+  );
+  if (
+    input.textRuns &&
+    (!input.runFonts ||
+      input.runFonts.length !== 2 ||
+      input.runFonts.some(
+        (font, index) =>
+          font.id !== (["primary", "secondary"] as const)[index] ||
+          !/^[a-f0-9]{64}$/u.test(font.fontSha256) ||
+          !font.postscriptName,
+      ))
+  )
+    throw new Error(
+      "Bilingual title cache requires both actual run font identities.",
+    );
   return digest(
     JSON.stringify({
       version: TITLE_LAYOUT_VERSION,
@@ -227,66 +281,148 @@ export function titleOverlayCacheKey(input: {
       height: input.frame.height,
       font: input.fontSha256,
       face: input.postscriptName,
+      ...(input.textRuns
+        ? {
+            rasterVersion: 2,
+            splitAt: input.textRuns.splitAt,
+            runs: runs.map((run) => ({ id: run.id, style: run.style })),
+            gap:
+              input.textRuns.gap ??
+              resolveTitleStyle(input.style, input.frame).fontSize * 0.35,
+            runFonts: input.runFonts,
+          }
+        : {}),
     }),
   );
 }
 
-/** Measure a title with its real local face without creating a raster artifact. */
-export async function inspectTitleOverlay(
+/** One immutable set of loaded outlines owns inspection, metrics and pixels. */
+async function prepareTitleOverlay(
   text: string,
   style: TitleStyle | undefined,
   frame: FrameSize,
-  options: { fontPath?: string } = {},
-): Promise<TitleOverlayInspection> {
-  let loaded: LoadedFont;
+  options: TitleOverlayOptions,
+): Promise<{
+  inspection: TitleOverlayInspection;
+  loaded: Map<TitleRunId, LoadedFont>;
+}> {
+  const loaded = new Map<TitleRunId, LoadedFont>();
+  const fail = (
+    failure: Extract<TitleOverlayInspection, { status: "failed" }>,
+  ) => ({ inspection: failure, loaded });
+  let runs: ReturnType<typeof resolveTitleRuns>;
   try {
-    loaded = await loadFont(resolveTitleStyle(style, frame), options);
+    runs = resolveTitleRuns(text, options.textRuns, style, frame);
   } catch (error) {
-    return {
-      status: "failed",
-      kind: "font.load-failed",
-      detail: "unavailable",
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
-  for (const character of text) {
-    const codePoint = character.codePointAt(0)!;
-    if (
-      /\s/u.test(character) ||
-      codePoint === 0x200c ||
-      codePoint === 0x200d ||
-      (codePoint >= 0xfe00 && codePoint <= 0xfe0f)
-    )
-      continue;
-    if (!loaded.font.hasGlyphForCodePoint(codePoint))
-      return {
-        status: "failed",
-        kind: "font.load-failed",
-        detail: "missing-glyph",
-        message: `Title font "${loaded.font.fullName}" has no glyph for U+${codePoint.toString(16).toUpperCase()}. Choose a CJK font covering this text or edit the unsupported character.`,
-      };
-  }
-  try {
-    const layout = layoutTitleText(
-      text,
-      style,
-      frame,
-      (value, size, tracking) => measure(loaded.font, value, size, tracking),
-    );
-    return {
-      status: "measured",
-      layout,
-      font: loaded.identity,
-      warnings: loaded.warnings,
-    };
-  } catch (error) {
-    return {
+    return fail({
       status: "failed",
       kind: "title.overflow",
       detail: "overflow",
       message: error instanceof Error ? error.message : String(error),
-    };
+    });
   }
+  const runFonts: TitleRunFontResult[] = [];
+  for (const run of runs) {
+    const identity = options.textRuns ? { run: run.id } : {};
+    let face: LoadedFont;
+    try {
+      face = await loadFont(run.style, {
+        fontPath: options.fontPathForStyle?.(run.style) ?? options.fontPath,
+      });
+    } catch (error) {
+      return fail({
+        status: "failed",
+        kind: "font.load-failed",
+        detail: "unavailable",
+        ...identity,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    loaded.set(run.id, face);
+    for (const character of run.text) {
+      const cp = character.codePointAt(0)!;
+      if (
+        /\s/u.test(character) ||
+        cp === 0x200c ||
+        cp === 0x200d ||
+        (cp >= 0xfe00 && cp <= 0xfe0f)
+      )
+        continue;
+      if (!face.font.hasGlyphForCodePoint(cp))
+        return fail({
+          status: "failed",
+          kind: "font.load-failed",
+          detail: "missing-glyph",
+          ...identity,
+          message: `Title ${run.id} font "${face.font.fullName}" has no glyph for U+${cp.toString(16).toUpperCase()}. Choose a local font covering this text.`,
+        });
+    }
+    const common = {
+      run: run.id,
+      requestedFamily: run.style.fontFamily,
+      requestedWeight: run.style.fontWeight,
+      actualFamily: face.identity.family,
+      actualWeight: face.actualWeight,
+      postscriptName: face.identity.postscriptName,
+      sha256: face.identity.sha256,
+    };
+    const diagnostics: TitleFontDiagnostic[] = [];
+    if (face.warnings.some((value) => value.includes("using local")))
+      diagnostics.push({ ...common, code: "family-fallback" });
+    if (face.warnings.some((value) => value.includes("using weight")))
+      diagnostics.push({ ...common, code: "weight-fallback" });
+    runFonts.push({
+      id: run.id,
+      font: face.identity,
+      requestedFamily: run.style.fontFamily,
+      requestedWeight: run.style.fontWeight,
+      actualWeight: face.actualWeight,
+      diagnostics,
+    });
+  }
+  try {
+    const layout = layoutTitleRuns(
+      text,
+      options.textRuns,
+      style,
+      frame,
+      (id, value, size, tracking) =>
+        measure(loaded.get(id)!.font, value, size, tracking),
+    );
+    return {
+      inspection: {
+        status: "measured",
+        layout,
+        font: runFonts[0]!.font,
+        runFonts,
+        warnings: runs.flatMap((run) =>
+          loaded
+            .get(run.id)!
+            .warnings.map((warning) =>
+              options.textRuns ? `${run.id}: ${warning}` : warning,
+            ),
+        ),
+      },
+      loaded,
+    };
+  } catch (error) {
+    return fail({
+      status: "failed",
+      kind: "title.overflow",
+      detail: "overflow",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/** Measure with actual local faces without creating a raster artifact. */
+export async function inspectTitleOverlay(
+  text: string,
+  style: TitleStyle | undefined,
+  frame: FrameSize,
+  options: TitleOverlayOptions = {},
+): Promise<TitleOverlayInspection> {
+  return (await prepareTitleOverlay(text, style, frame, options)).inspection;
 }
 
 interface PositionedRun {
@@ -339,7 +475,10 @@ function measure(
 
 const numeric = (value: number): string => String(Number(value.toFixed(6)));
 
-function paths(font: Font, layout: TitleLayout): string {
+function paths(
+  font: Font,
+  layout: Pick<TitleLayout, "style" | "lines">,
+): string {
   const scale = layout.style.fontSize / font.unitsPerEm;
   const elements: string[] = [];
   for (const line of layout.lines) {
@@ -384,20 +523,47 @@ export async function createTitleOverlay(
   style: TitleStyle | undefined,
   frame: FrameSize,
   outputPath: string,
-  options: { fontPath?: string } = {},
+  options: TitleOverlayOptions = {},
 ): Promise<TitleOverlay> {
   validateTitleOutputDimensions(frame);
-  const inspection = await inspectTitleOverlay(text, style, frame, options);
+  const { inspection, loaded } = await prepareTitleOverlay(
+    text,
+    style,
+    frame,
+    options,
+  );
   if (inspection.status === "failed") throw new Error(inspection.message);
   const resolved = resolveTitleStyle(style, frame);
-  const loaded = await loadFont(resolved, options);
   const layout = inspection.layout;
   const bounds = layout.bounds;
   const scrim =
-    resolved.background === "scrim"
+    resolved.background === "scrim" && !resolved.finishing?.pill
       ? `<rect x="${numeric(bounds.x)}" y="${numeric(bounds.y)}" width="${numeric(bounds.width)}" height="${numeric(bounds.height)}" rx="${numeric(resolved.fontSize * 0.15)}" fill="#000" fill-opacity="0.65"/>`
       : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}">${scrim}<g fill="#fff">${paths(loaded.font, layout)}</g></svg>`;
+  const runPaths = layout.runLayouts
+    ? layout.runLayouts.runs
+        .map((run) => paths(loaded.get(run.id)!.font, run))
+        .join("")
+    : paths(loaded.get("primary")!.font, layout);
+  const effect = resolved.finishing;
+  const pill = effect?.pill;
+  const pills = pill
+    ? layout.lines
+        .filter((line) => line.text.trim())
+        .map((line) => {
+          const width = line.width + pill.paddingX * 2,
+            height = line.ascent + line.descent + pill.paddingY * 2;
+          return `<rect x="${numeric(line.x - pill.paddingX)}" y="${numeric(line.baseline - line.ascent - pill.paddingY)}" width="${numeric(width)}" height="${numeric(height)}" rx="${numeric(Math.min(pill.radius, width / 2, height / 2))}" fill="${pill.color}" fill-opacity="${numeric(pill.opacity)}"/>`;
+        })
+        .join("")
+    : "";
+  const stroke = effect?.stroke;
+  const glyphs = `<g fill="#fff"${stroke ? ` stroke="${stroke.color}" stroke-width="${numeric(stroke.width)}" stroke-linejoin="round" paint-order="stroke"` : ""}>${runPaths}</g>`;
+  const shadow = effect?.shadow;
+  const shadowSvg = shadow
+    ? `<defs><filter id="title-shadow" filterUnits="userSpaceOnUse" x="${numeric(bounds.x)}" y="${numeric(bounds.y)}" width="${numeric(bounds.width)}" height="${numeric(bounds.height)}"><feGaussianBlur in="SourceAlpha" stdDeviation="${numeric(shadow.blur)}" result="blur"/><feOffset in="blur" dx="${numeric(shadow.offsetX)}" dy="${numeric(shadow.offsetY)}" result="offset"/><feFlood flood-color="${shadow.color}" flood-opacity="${numeric(shadow.opacity)}" result="color"/><feComposite in="color" in2="offset" operator="in"/></filter></defs><g filter="url(#title-shadow)">${glyphs}</g>`
+    : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${frame.width}" height="${frame.height}" viewBox="0 0 ${frame.width} ${frame.height}">${scrim}${pills}${shadowSvg}${glyphs}</svg>`;
   // No font discovery, external image or network lookup can occur: SVG has
   // only local numerical paths and a rectangle, never user-supplied markup.
   const { Resvg } = nativeRequire(
@@ -410,5 +576,6 @@ export async function createTitleOverlay(
     layout,
     font: inspection.font,
     warnings: inspection.warnings,
+    runFonts: inspection.runFonts,
   };
 }
