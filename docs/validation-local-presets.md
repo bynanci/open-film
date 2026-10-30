@@ -296,3 +296,15 @@ added. All seven story-workflow browser cases pass in19.7s, including CJK/layout
 and keyboard flows. Scoped ESLint, formatting and diff whitespace checks pass.
 This is focused repair evidence; complete new-head CI is still required and the
 initial failed run remains part of the record.
+
+## 2026-10-30 — real clip-host test dependency update
+
+The same initial PR76 heavy-media job failed55 Timeline render-boundary cases
+with `Unexpected import: ../local-presets`. The custom Vue host explicitly
+supplies real first-party helper modules; its dependency map had not admitted
+the new Look-label helper. A local rerun reproduced all55 failures. The host now
+imports and supplies the actual `local-presets` module; no production component,
+network behavior, clipping logic, test assertion or module fallback changed.
+The unchanged55 cases all pass in20.20s; scoped ESLint and formatting pass.
+The earlier seven browser repair cases remain independently recorded above.
+Complete new-head hosted gates are required; no suite is skipped or retried.
