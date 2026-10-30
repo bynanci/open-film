@@ -267,3 +267,27 @@ embedded manifest and exits nonzero for blocked evidence. A later candidate
 receipt must bind both the manifest and these external native receipts to final
 installer/trust/security evidence. This work does not supply that candidate,
 review the GLib remediation, or close any installer/workstation gate.
+
+### Native post-build review corrections — 2026-10-30
+
+Native-shell linkage readiness separately requires an executed, verified target
+receipt, policy/tool digests, a successful matching binary observation, and a
+reviewed OS/build/architecture/ABI baseline with its independent review reference.
+A reviewed runtime does not implicitly review the shell. Fixture or failed
+observations remain blocked; `distributionApproved` remains false.
+
+Cargo link directives retain their observed target/host role from the actual
+build-script output directory. Target static libraries and ambiguous unqualified
+link names require exactly one `static-native` input whose `linkedLibraries`
+array names the exact `{packageId, name}` directives. That input's source
+inventory and final-shell artifact hashes must match, and its existing license
+receipt must independently supply complete reviewed texts/obligations. The
+attributed package and SPDX source information retain these exact directive
+claims. Host-only generator libraries stay separate from shipped target code;
+unknown, missing, mismatched or duplicate coverage blocks the native review.
+
+Post-build output paths resolve their existing ancestors before any directory
+or receipt write. Canonical descendants and directory aliases into the runtime
+are refused, using the host's drive/case/separator rules. This preserves the
+existing runtime inventory rather than placing external post-build evidence
+inside it. The external receipt remains outside the manifest hash graph.

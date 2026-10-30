@@ -3,12 +3,13 @@
 import { constants } from "node:fs";
 import {
   copyFile,
+  lstat,
   mkdir,
   readFile,
   realpath,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   runtimeHash,
@@ -43,13 +44,60 @@ export interface DistributionAttributionInputs {
   nativeRuntimeInputs?: PinnedReceipt;
   targetDirectory?: string;
 }
+/** Both separator and volume rules must belong to the actual target host. */
+export function insideRuntime(
+  runtimeRoot: string,
+  output: string,
+  platform: "win32" | "posix" = process.platform === "win32"
+    ? "win32"
+    : "posix",
+): boolean {
+  const paths = platform === "win32" ? win32 : posix;
+  const relative = paths.relative(runtimeRoot, output);
+  return (
+    relative === "" ||
+    (!paths.isAbsolute(relative) &&
+      relative !== ".." &&
+      !relative.startsWith(`..${paths.sep}`))
+  );
+}
+/** Resolve the nearest existing ancestor even when the output does not exist. */
+async function canonicalOutput(output: string): Promise<string> {
+  let parent = resolve(output);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      const details = await lstat(parent);
+      const canonical = await realpath(parent);
+      if (!details.isDirectory() && !details.isSymbolicLink())
+        throw new Error("Attribution output parent must be a directory");
+      return resolve(canonical, ...suffix);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      // A dangling alias cannot be treated as a missing ordinary directory.
+      try {
+        if ((await lstat(parent)).isSymbolicLink())
+          throw new Error("Attribution output alias cannot be resolved", {
+            cause: error,
+          });
+      } catch (detailsError) {
+        if ((detailsError as NodeJS.ErrnoException).code !== "ENOENT")
+          throw detailsError;
+      }
+      const next = dirname(parent);
+      if (next === parent) throw error;
+      suffix.unshift(basename(parent));
+      parent = next;
+    }
+  }
+}
 export async function attributeDistribution(
   inputs: DistributionAttributionInputs,
   output: string,
 ): Promise<AttributionEvidence> {
   const runtimeRoot = await realpath(inputs.runtimeRoot);
-  output = resolve(output);
-  if (output === runtimeRoot || output.startsWith(`${runtimeRoot}/`))
+  output = await canonicalOutput(output);
+  if (insideRuntime(runtimeRoot, output))
     throw new Error("Post-build attribution must be outside the runtime");
   const manifest = await verifyRuntimeBundle(inputs.runtimeRoot, {
     manifestSha256: inputs.runtimeManifestSha256,
@@ -113,7 +161,9 @@ export async function attributeDistribution(
       targetDirectory: inputs.targetDirectory,
     },
   );
-  output = resolve(output);
+  output = await canonicalOutput(output);
+  if (insideRuntime(runtimeRoot, output))
+    throw new Error("Post-build attribution must be outside the runtime");
   await mkdir(dirname(output), { recursive: true });
   await mkdir(output);
   for (const notice of result.notices) {

@@ -255,8 +255,15 @@ export async function collectCargoEvidence(options: {
             : "build";
       compilations.push({ packageId, role, artifacts });
     } else {
+      let role: "target" | "build" | undefined;
       if (message.out_dir) {
-        relativePath(targetDirectory, await realpath(message.out_dir));
+        const output = relativePath(
+          targetDirectory,
+          await realpath(message.out_dir),
+        );
+        role = output.startsWith(`${options.target}/release/`)
+          ? "target"
+          : "build";
         for (const file of await tree(message.out_dir))
           generatedOutputs.push({
             packageId,
@@ -264,8 +271,12 @@ export async function collectCargoEvidence(options: {
             sha256: file.sha256,
           });
       }
+      if (message.linked_libs?.length && !role)
+        throw new Error(
+          "Link directives require an observed build output directory",
+        );
       for (const name of message.linked_libs ?? [])
-        linkedLibraries.push({ packageId, name });
+        linkedLibraries.push({ packageId, name, role });
     }
   }
   const shell = await artifact(options.shell),

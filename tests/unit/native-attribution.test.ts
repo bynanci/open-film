@@ -15,7 +15,9 @@ import {
   runtimeComponentIdentity,
   type CargoEvidence,
   type LicenseReceipt,
+  type NativeRuntimeInput,
 } from "../../scripts/native/attribution.js";
+import type { LinkageEvidence } from "../../scripts/native/linkage.js";
 import {
   runtimeHash,
   type RuntimeManifest,
@@ -513,3 +515,398 @@ it("refuses to reclassify a shipped esbuild artifact as an unshipped CLI output"
   c.artifacts[0]!.delivery = "cli";
   await expect(verifyBuildContributions(c, f.root)).rejects.toThrow("raw");
 });
+
+// Complete synthetic evidence isolates each readiness control from unrelated
+// blockers. These receipts do not execute native code or approve distribution.
+async function completeNativeFixture() {
+  const f = await fixture();
+  const outputs = [];
+  for (const delivery of ["service", "launcher", "frontend"] as const) {
+    const path = `dist/${delivery}.mjs`;
+    await writeFile(
+      join(f.root, path),
+      await readFile(join(f.root, "dist/server/index.mjs")),
+    );
+    outputs.push({ ...f.outputs[0]!, path, delivery });
+  }
+  await writeFile(join(f.root, "build.modules.json"), JSON.stringify(outputs));
+  const build = await createBuildContributions({
+    repository: f.root,
+    outputs,
+    evidence: ["build.modules.json"],
+  });
+  const m = manifest();
+  m.entries.service = "dist/service.mjs";
+  m.entries.launcher = "dist/launcher.mjs";
+  for (const path of [m.entries.service, m.entries.launcher])
+    m.files.push({
+      path,
+      sha256: await runtimeHash(join(f.root, path)),
+      size: 1,
+      executable: true,
+      component: "tool:ffmpeg:codec",
+    });
+  const c = cargo();
+  c.observationMode = "executed";
+  c.compilations = [
+    {
+      packageId: c.shell.packageId,
+      role: "target",
+      artifacts: [{ path: c.shell.path, sha256: c.shell.sha256 }],
+    },
+  ];
+  await mkdir(join(f.root, c.shell.path, ".."), { recursive: true });
+  await writeFile(
+    join(f.root, c.shell.path),
+    "Synthetic shell bytes; never executed.",
+  );
+  c.shell.sha256 = await runtimeHash(join(f.root, c.shell.path));
+  c.compilations[0]!.artifacts[0]!.sha256 = c.shell.sha256;
+  await writeFile(
+    join(f.root, "cargo-evidence.json"),
+    "Synthetic raw build fixture only.",
+  );
+  c.evidenceFiles = [
+    {
+      path: "cargo-evidence.json",
+      sha256: await runtimeHash(join(f.root, "cargo-evidence.json")),
+    },
+  ];
+  const source = join(f.root, "native-review.txt");
+  await writeFile(
+    source,
+    "Synthetic full license and source inventory; no distribution approval.",
+  );
+  const text = {
+    source,
+    sha256: await runtimeHash(source),
+    origin: "fixture:reviewed-source",
+  };
+  const sysroot: NativeRuntimeInput = {
+    family: "rust-sysroot",
+    identity: {
+      id: "sysroot",
+      name: "sysroot",
+      version: "1.99.0",
+      sourceIdentity: hash("sysroot"),
+      license: "MIT",
+      source: {
+        kind: "runtime",
+        locator: "fixture:sysroot",
+        checksum: text.sha256,
+      },
+    },
+    artifactSha256: [c.shell.sha256],
+    inventory: text,
+  };
+  const receipts: LicenseReceipt[] = [
+    ...build.packages,
+    runtimeComponentIdentity(m, "tool:ffmpeg:codec"),
+    c.packages[0]!,
+    sysroot.identity,
+  ].map((p) => ({
+    packageId: p.id,
+    sourceIdentity: p.sourceIdentity,
+    reviewed: true,
+    licenseConcluded: p.license,
+    texts: [text],
+    obligations: p.license.includes("Apache")
+      ? [{ kind: "notice-not-present", file: text }]
+      : [],
+  }));
+  const linkage: LinkageEvidence = {
+    schemaVersion: 1,
+    verified: true,
+    distributionApproved: false,
+    observationMode: "executed",
+    platform: "linux",
+    architecture: "x64",
+    policySha256: hash("reviewed-policy"),
+    policyFileSha256: hash("policy-file"),
+    baseline: {
+      os: "fixture",
+      build: "fixture",
+      architecture: "x64",
+      abi: "fixture",
+      reviewed: true,
+      reviewReceipt: {
+        origin: "fixture:independent-review",
+        sha256: hash("review"),
+      },
+    },
+    binaries: [],
+    tool: {
+      name: "fixture-readelf",
+      sha256: hash("tool"),
+      executions: [{ binary: c.shell.path, exitCode: 0 }],
+    },
+  };
+  const nativeLinkage = {
+    ...linkage,
+    binaries: [
+      {
+        path: c.shell.path,
+        sha256: c.shell.sha256,
+        architecture: "x64",
+        resolved: [],
+      },
+    ],
+  };
+  const options = {
+    repository: f.root,
+    linkage,
+    nativeLinkage,
+    nativeRuntimeInputs: [sysroot],
+  };
+  return { ...f, build, m, c, receipts, options, text };
+}
+it("has an otherwise complete independent-review fixture without granting distribution", async () => {
+  const f = await completeNativeFixture();
+  const e = await createDistributionAttribution(
+    f.build,
+    f.c,
+    f.m,
+    f.receipts,
+    f.options,
+  );
+  expect(e.blockers).toEqual([]);
+  expect(e.reviewStatus).toBe("ready-for-independent-review");
+  expect(e.distributionApproved).toBe(false);
+});
+it.each([
+  "unreviewed",
+  "unverified",
+  "missing-review",
+  "wrong-review-hash",
+  "wrong-baseline-arch",
+  "wrong-policy-hash",
+  "failed-tool",
+  "wrong-binary-arch",
+])(
+  "blocks otherwise complete native linkage with %s evidence",
+  async (fault) => {
+    const f = await completeNativeFixture();
+    const linkage = structuredClone(f.options.nativeLinkage);
+    if (fault === "unreviewed") linkage.baseline.reviewed = false;
+    if (fault === "unverified") linkage.verified = false;
+    if (fault === "missing-review") delete linkage.baseline.reviewReceipt;
+    if (fault === "wrong-review-hash")
+      linkage.baseline.reviewReceipt!.sha256 = "not-a-digest";
+    if (fault === "wrong-baseline-arch")
+      linkage.baseline.architecture = "arm64";
+    if (fault === "wrong-policy-hash")
+      linkage.policyFileSha256 = "missing-policy-digest";
+    if (fault === "failed-tool") linkage.tool.executions[0]!.exitCode = 1;
+    if (fault === "wrong-binary-arch")
+      linkage.binaries[0]!.architecture = "arm64";
+    const e = await createDistributionAttribution(
+      f.build,
+      f.c,
+      f.m,
+      f.receipts,
+      { ...f.options, nativeLinkage: linkage },
+    );
+    expect(e.reviewStatus).toBe("blocked");
+    expect(e.blockers.some((b) => b.startsWith("native-shell-"))).toBe(true);
+    expect(e.runtimeReviewStatus).toBe("ready-for-independent-review");
+    expect(e.distributionApproved).toBe(false);
+  },
+);
+it.each([
+  "static=external_codec",
+  "static:+bundle=external_codec",
+  "external_codec",
+])("blocks an unaccounted target link directive %s", async (name) => {
+  const f = await completeNativeFixture();
+  f.c.linkedLibraries = [{ packageId: "compiled", name }];
+  const e = await createDistributionAttribution(
+    f.build,
+    f.c,
+    f.m,
+    f.receipts,
+    f.options,
+  );
+  expect(e.reviewStatus).toBe("blocked");
+  expect(
+    e.blockers.some(
+      (b) =>
+        b.startsWith("native-static-link-") ||
+        b.startsWith("native-link-kind-"),
+    ),
+  ).toBe(true);
+  expect(e.distributionApproved).toBe(false);
+});
+async function staticInput(
+  f: Awaited<ReturnType<typeof completeNativeFixture>>,
+): Promise<NativeRuntimeInput> {
+  const linkedLibraries = [
+    { packageId: "compiled", name: "static=external_codec" },
+  ];
+  const source = join(f.root, "static-codec-inventory.json");
+  await writeFile(
+    source,
+    JSON.stringify({
+      fixtureOnly: true,
+      linkedLibraries,
+      shellSha256: f.c.shell.sha256,
+      source: "fixture:original-codec-sources",
+    }),
+  );
+  const sha256 = await runtimeHash(source);
+  return {
+    family: "static-native",
+    identity: {
+      id: "external-codec",
+      name: "external-codec",
+      version: "1.0.0",
+      sourceIdentity: hash("reviewed-external-codec"),
+      license: "MIT",
+      source: {
+        kind: "runtime",
+        locator: "fixture:original-codec-sources",
+        checksum: sha256,
+      },
+    },
+    artifactSha256: [f.c.shell.sha256],
+    inventory: { source, sha256, origin: "fixture:static-source-review" },
+    linkedLibraries,
+  };
+}
+it("accounts for an explicitly reviewed target static library in final-shell and license/SPDX evidence", async () => {
+  const f = await completeNativeFixture(),
+    input = await staticInput(f);
+  f.c.linkedLibraries = [...input.linkedLibraries!];
+  const receipts = [
+    ...f.receipts,
+    {
+      packageId: input.identity.id,
+      sourceIdentity: input.identity.sourceIdentity,
+      reviewed: true,
+      licenseConcluded: "MIT",
+      texts: [f.text],
+      obligations: [],
+    },
+  ];
+  const e = await createDistributionAttribution(f.build, f.c, f.m, receipts, {
+    ...f.options,
+    nativeRuntimeInputs: [...f.options.nativeRuntimeInputs, input],
+  });
+  expect(e.blockers).toEqual([]);
+  const p = e.packages.find((p) => p.id === input.identity.id)!;
+  expect(p.artifactSha256).toEqual([f.c.shell.sha256]);
+  expect(p.nativeLinkDirectives).toEqual(input.linkedLibraries);
+  expect(p.licenseConcluded).toBe("MIT");
+  const spdx = e.spdx.packages.find((p) => p.name === input.identity.name)!;
+  expect(JSON.parse(spdx.sourceInfo).nativeLinkDirectives).toEqual(
+    input.linkedLibraries,
+  );
+  const shell = e.spdx.files.find((file) => file.fileName === f.c.shell.path)!;
+  expect(e.spdx.relationships).toContainEqual({
+    spdxElementId: shell.SPDXID,
+    relationshipType: "GENERATED_FROM",
+    relatedSpdxElement: spdx.SPDXID,
+  });
+  expect(e.distributionApproved).toBe(false);
+});
+it.each([
+  "owner",
+  "name",
+  "shell",
+  "inventory",
+  "unreviewed-license",
+  "missing-license",
+  "duplicate-owner",
+])(
+  "blocks a %s static-input review without changing runtime readiness",
+  async (fault) => {
+    const f = await completeNativeFixture(),
+      input = await staticInput(f);
+    f.c.linkedLibraries = [
+      { packageId: "compiled", name: "static=external_codec" },
+    ];
+    const receipt = {
+      packageId: input.identity.id,
+      sourceIdentity: input.identity.sourceIdentity,
+      reviewed: true,
+      licenseConcluded: "MIT",
+      texts: [f.text],
+      obligations: [],
+    };
+    if (fault === "owner") input.linkedLibraries![0]!.packageId = "build-tool";
+    if (fault === "name")
+      input.linkedLibraries![0]!.name = "static=other_codec";
+    if (fault === "shell") input.artifactSha256 = [hash("different-shell")];
+    if (fault === "inventory")
+      await writeFile(input.inventory.source, "Changed review bytes");
+    if (fault === "unreviewed-license") receipt.reviewed = false;
+    const duplicate: NativeRuntimeInput = {
+      ...input,
+      identity: { ...input.identity, id: "second-static-owner" },
+    };
+    const e = await createDistributionAttribution(
+      f.build,
+      f.c,
+      f.m,
+      fault === "missing-license" ? f.receipts : [...f.receipts, receipt],
+      {
+        ...f.options,
+        nativeRuntimeInputs: [
+          ...f.options.nativeRuntimeInputs,
+          input,
+          ...(fault === "duplicate-owner" ? [duplicate] : []),
+        ],
+      },
+    );
+    expect(e.reviewStatus).toBe("blocked");
+    expect(e.distributionApproved).toBe(false);
+    expect(e.runtimeReviewStatus).toBe("ready-for-independent-review");
+  },
+);
+it("keeps a host-only build script's static libraries separate from shipped target attribution", async () => {
+  const f = await completeNativeFixture();
+  f.c.compilations.push({
+    packageId: "build-tool",
+    role: "build",
+    artifacts: [],
+  });
+  f.c.linkedLibraries = [
+    {
+      packageId: "build-tool",
+      name: "static=host_generator_codec",
+      role: "build",
+    },
+  ];
+  const e = await createDistributionAttribution(
+    f.build,
+    f.c,
+    f.m,
+    f.receipts,
+    f.options,
+  );
+  expect(e.blockers).toEqual([]);
+  expect(e.packages.find((p) => p.id === "build-tool")?.uses).toEqual([
+    "build-only",
+  ]);
+  expect(e.spdx.packages.some((p) => p.name === "host_generator_codec")).toBe(
+    false,
+  );
+});
+it.each(["build", "target"] as const)(
+  "refuses a %s label without the corresponding observed compiler role",
+  async (role) => {
+    const f = await completeNativeFixture();
+    if (role === "target") f.c.compilations[0]!.role = "build";
+    f.c.linkedLibraries = [
+      { packageId: "compiled", name: "static=external_codec", role },
+    ];
+    const e = await createDistributionAttribution(
+      f.build,
+      f.c,
+      f.m,
+      f.receipts,
+      f.options,
+    );
+    expect(e.reviewStatus).toBe("blocked");
+    expect(e.blockers).toContain("native-link-owner-role-mismatch:compiled");
+  },
+);

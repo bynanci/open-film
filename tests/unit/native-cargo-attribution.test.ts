@@ -181,3 +181,36 @@ it("keeps exact Cargo identity hashed while removing host paths from portable re
   expect(p.resolvedIdentitySha256).toMatch(/^[a-f0-9]{64}$/u);
   expect(JSON.stringify(e)).not.toContain(f.root);
 });
+it("binds Cargo link directives to observed target or host output directories", async () => {
+  const f = await fixture();
+  const messages = [];
+  for (const [packageId, role] of [
+    ["compiled", "target"],
+    ["build-tool", "build"],
+  ] as const) {
+    const out = join(
+      f.targetDirectory,
+      ...(role === "target" ? [f.target] : []),
+      "release/build",
+      packageId,
+      "out",
+    );
+    await mkdir(out, { recursive: true });
+    messages.push({
+      reason: "build-script-executed",
+      package_id: packageId,
+      out_dir: out,
+      linked_libs: ["static=external_codec"],
+    });
+  }
+  const previous = await readFile(f.messages, "utf8");
+  await writeFile(
+    f.messages,
+    messages.map((v) => JSON.stringify(v)).join("\n") + "\n" + previous,
+  );
+  const e = await collectCargoEvidence(f);
+  expect(e.linkedLibraries).toEqual([
+    { packageId: "compiled", name: "static=external_codec", role: "target" },
+    { packageId: "build-tool", name: "static=external_codec", role: "build" },
+  ]);
+});

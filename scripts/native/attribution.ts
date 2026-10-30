@@ -46,6 +46,8 @@ export interface NativeRuntimeInput {
   identity: PackageIdentity;
   artifactSha256: string[];
   inventory: EvidenceFile;
+  /** Exact target Cargo link directives covered by this static input review. */
+  linkedLibraries?: { packageId: string; name: string }[];
 }
 export interface CargoEvidence {
   schemaVersion: 1;
@@ -62,7 +64,12 @@ export interface CargoEvidence {
   shell: { path: string; sha256: string; packageId: string };
   generatedOutputs: { packageId: string; path: string; sha256: string }[];
   evidenceFiles?: { path: string; sha256: string }[];
-  linkedLibraries?: { packageId: string; name: string }[];
+  linkedLibraries?: {
+    packageId: string;
+    name: string;
+    /** Absent legacy roles are conservatively inferred from target ownership. */
+    role?: "target" | "build";
+  }[];
   compiler?: { rustcVersion: string; invocationSha256: string };
 }
 export interface AttributedPackage extends PackageIdentity {
@@ -70,6 +77,7 @@ export interface AttributedPackage extends PackageIdentity {
   licenseConcluded: string;
   licenseFiles: string[];
   artifactSha256: string[];
+  nativeLinkDirectives?: { packageId: string; name: string }[];
 }
 export interface AttributionEvidence {
   schemaVersion: 1;
@@ -393,6 +401,9 @@ export async function createDistributionAttribution(
         add(owner, "generated-target-input", [cargo.shell.sha256]);
     }
     let sysrootCovered = false;
+    const staticInputs = new Map<string, NativeRuntimeInput[]>();
+    const linkKey = (value: { packageId: string; name: string }) =>
+      canonicalJson([value.packageId, value.name]);
     for (const input of options.nativeRuntimeInputs ?? []) {
       if (
         !input.artifactSha256.includes(cargo.shell.sha256) ||
@@ -408,6 +419,13 @@ export async function createDistributionAttribution(
       }
       add(input.identity, "compiled-target", [cargo.shell.sha256]);
       if (input.family === "rust-sysroot") sysrootCovered = true;
+      else if (input.family === "static-native") {
+        for (const key of new Set((input.linkedLibraries ?? []).map(linkKey))) {
+          const owners = staticInputs.get(key) ?? [];
+          owners.push(input);
+          staticInputs.set(key, owners);
+        }
+      }
       const destination = `licenses/attribution/${digest(input.identity.id)}/${input.inventory.sha256}.txt`;
       notices.push({
         source: input.inventory.source,
@@ -420,6 +438,53 @@ export async function createDistributionAttribution(
     }
     if (!sysrootCovered)
       blockers.push("native-rust-sysroot-contribution-review-required");
+    const targetIds = new Set(
+      cargo.compilations
+        .filter((c) => c.role === "target")
+        .map((c) => c.packageId),
+    );
+    const hostIds = new Set(
+      cargo.compilations
+        .filter((c) => c.role !== "target")
+        .map((c) => c.packageId),
+    );
+    for (const directive of cargo.linkedLibraries ?? []) {
+      if (!compiledIds.has(directive.packageId)) {
+        blockers.push(`native-link-owner-missing:${directive.packageId}`);
+        continue;
+      }
+      // Host-only build/proc-macro inputs do not contribute to the shipped shell.
+      if (
+        (directive.role === "build" && !hostIds.has(directive.packageId)) ||
+        (directive.role === "target" && !targetIds.has(directive.packageId))
+      ) {
+        blockers.push(`native-link-owner-role-mismatch:${directive.packageId}`);
+        continue;
+      }
+      if (directive.role === "build" || !targetIds.has(directive.packageId))
+        continue;
+      const kind = directive.name.match(/^([a-z-]+)(?::[^=]+)?=/u)?.[1];
+      if (["dylib", "raw-dylib", "framework"].includes(kind ?? "")) continue;
+      // An unqualified -l can select an archive. It needs the same explicit
+      // artifact-bound review rather than an assumption of dynamic linkage.
+      const matches = staticInputs.get(linkKey(directive)) ?? [];
+      if (matches.length !== 1) {
+        blockers.push(
+          `native-static-link-contribution-review-required:${directive.packageId}:${directive.name}`,
+        );
+        continue;
+      }
+      const attributed = packages.get(matches[0]!.identity.id)!;
+      const covered = { packageId: directive.packageId, name: directive.name };
+      if (
+        !attributed.nativeLinkDirectives?.some(
+          (entry) =>
+            entry.packageId === covered.packageId &&
+            entry.name === covered.name,
+        )
+      )
+        (attributed.nativeLinkDirectives ??= []).push(covered);
+    }
     const shellAttribution = artifacts.find(
       (artifact) => artifact.delivery === "native-shell",
     )!;
@@ -433,14 +498,36 @@ export async function createDistributionAttribution(
       .sort();
     if (
       !options.nativeLinkage ||
+      options.nativeLinkage.schemaVersion !== 1 ||
+      options.nativeLinkage.verified !== true ||
+      options.nativeLinkage.distributionApproved !== false ||
       options.nativeLinkage.observationMode !== "executed" ||
       options.nativeLinkage.platform !== manifest.platform ||
       options.nativeLinkage.architecture !== manifest.architecture ||
+      !isHash(options.nativeLinkage.policySha256 ?? "") ||
+      !isHash(options.nativeLinkage.policyFileSha256 ?? "") ||
+      !isHash(options.nativeLinkage.tool?.sha256 ?? "") ||
       !options.nativeLinkage.binaries.some(
-        (binary) => binary.sha256 === cargo.shell.sha256,
+        (binary) =>
+          binary.sha256 === cargo.shell.sha256 &&
+          binary.architecture === manifest.architecture &&
+          options.nativeLinkage!.tool?.executions.some(
+            (execution) =>
+              execution.binary === binary.path && execution.exitCode === 0,
+          ),
       )
     )
       blockers.push("native-shell-linkage-evidence-missing");
+    if (
+      options.nativeLinkage?.baseline.reviewed !== true ||
+      options.nativeLinkage.baseline.architecture !== manifest.architecture ||
+      !options.nativeLinkage.baseline.os ||
+      !options.nativeLinkage.baseline.build ||
+      !options.nativeLinkage.baseline.abi ||
+      !options.nativeLinkage.baseline.reviewReceipt?.origin ||
+      !isHash(options.nativeLinkage.baseline.reviewReceipt?.sha256 ?? "")
+    )
+      blockers.push("native-shell-reviewed-os-baseline-missing");
   } else blockers.push("native-build-evidence-missing");
   const shipped = (p: AttributedPackage) =>
     p.uses.some((x) =>
@@ -650,6 +737,9 @@ export async function createDistributionAttribution(
         identity: p.sourceIdentity,
         source: p.source,
         uses: p.uses,
+        ...(p.nativeLinkDirectives
+          ? { nativeLinkDirectives: p.nativeLinkDirectives }
+          : {}),
       }),
     });
     spdx.relationships.push({

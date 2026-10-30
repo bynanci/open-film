@@ -463,3 +463,46 @@ notarization, installer replace/rollback/uninstall and physical Windows/macOS
 workstation checks remain required. Automatic updates remain off and the default
 `bundle.active=false` configuration is unchanged. No installer, PR, merge or
 release was produced by this implementation task.
+
+## 2026-10-30 independent runtime review corrections
+
+The first independent whole-feature review examined exact source
+`350a48f0bf58f044b0e3a9a706486680151d8960` against
+`d5a286ed9250872e8eb9b1c3e40adb926f913d34` and requested three P2 corrections.
+The previous evidence above is retained at its actual checkpoint.
+
+Ten controls reproduced the reviewed defects on an otherwise complete synthetic
+receipt: five native reviewed/verified-baseline failures, three unaccounted
+static/ambiguous link directives, and two real external directory aliases into
+the runtime. The complete positive fixture itself remained reviewable, so an
+unrelated missing prerequisite could not mask these controls. Additional RED
+checks reproduced missing Cargo target/host role observations and incomplete
+policy/tool/binary receipt fields.
+
+The corrected native review requires an executed verified target binary
+observation, policy/tool identities and an independently reviewed OS baseline
+reference. Exact target static link directives now require one final-shell/source
+inventory binding and complete license ownership; the resulting package and SPDX
+retain the directive and artifact relationship. Host-only libraries remain
+build-only. Source, owner, name, shell, missing/unreviewed license and duplicate
+coverage counterexamples all remain blocked. Canonical output resolution refuses
+existing parent aliases into the runtime before even creating output parents;
+Windows drive/case/UNC and POSIX sibling controls retain their correct bounds.
+
+Frozen corrected source passed the full focused command above: **141/141 tests
+in eight files**, zero failed/pending tests. The three directly changed test
+files also passed **61/61** before the frozen run. Python linkage **9/9** and
+extraction **2/2**, TypeScript/Vue, full ESLint and the normal build passed.
+The normal build still records **8 artifacts / 31 package identities / 12
+third-party identities**, contribution SHA-256
+`88b3feb286c8408071e7c6c1d7bcd21b8e6511f283cc21e0c830fd495aa2f8e1`.
+The existing bundle-size notice is retained. Formatting, documentation mirrors
+and CI-partition results are recorded with the clean handoff; full hosted/repo
+CI and a fresh scoped correction review remain parent-owned.
+
+All receipts remain `distributionApproved: false`; runtime review cannot approve
+the compiled shell or its OS baseline. No new native code, crash/debugger
+reproduction, full Tauri build, signing, installer, workstation observation or
+release occurred. The actual Node/import and standalone Rust smoke observations
+above keep their original hashes and limits. Both M7E checkboxes and all
+source-security, target-input, trust and physical gates remain open.

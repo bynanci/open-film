@@ -1,19 +1,25 @@
 import { afterEach, expect, it } from "vitest";
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { build } from "esbuild";
-import { attributeDistribution } from "../../scripts/native/attribute-distribution.js";
+import {
+  attributeDistribution,
+  insideRuntime,
+} from "../../scripts/native/attribute-distribution.js";
 import { recordEsbuildContributions } from "../../scripts/build-attribution.mjs";
 import {
   runtimeHash,
+  verifyRuntimeBundle,
   type RuntimeManifest,
 } from "../../apps/server/src/runtime-manifest.js";
 import type { CargoEvidence } from "../../scripts/native/attribution.js";
@@ -232,4 +238,62 @@ it("refuses to write post-build receipts inside the already hashed runtime", asy
   await expect(
     readFile(join(f.runtime, "external/attribution.json")),
   ).rejects.toMatchObject({ code: "ENOENT" });
+});
+it.each(["direct", "nested"])(
+  "refuses an external %s parent alias into the runtime before writing any receipts",
+  async (kind) => {
+    const f = await fixture();
+    const alias = join(f.root, "runtime-alias");
+    await symlink(f.runtime, alias, "junction");
+    const output =
+      kind === "direct"
+        ? join(alias, "external")
+        : join(alias, "new-parent", "external");
+    await expect(attributeDistribution(f.inputs, output)).rejects.toThrow(
+      "outside the runtime",
+    );
+    await expect(
+      verifyRuntimeBundle(f.runtime, {
+        manifestSha256: f.inputs.runtimeManifestSha256,
+      }),
+    ).resolves.toMatchObject({ schemaVersion: 1 });
+    await expect(
+      readFile(join(output, "attribution.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      lstat(join(f.runtime, kind === "direct" ? "external" : "new-parent")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
+it("checks Windows drive/case/UNC boundaries and POSIX sibling names with the correct path rules", () => {
+  for (const output of [
+    "C:\\Runtime",
+    "c:\\RUNTIME\\evidence",
+    "C:/Runtime/new/evidence",
+  ])
+    expect(insideRuntime("C:\\Runtime", output, "win32")).toBe(true);
+  for (const output of [
+    "C:\\Runtime-other\\evidence",
+    "D:\\Runtime\\evidence",
+    "C:\\external",
+  ])
+    expect(insideRuntime("C:\\Runtime", output, "win32")).toBe(false);
+  expect(
+    insideRuntime(
+      "\\\\server\\share\\Runtime",
+      "\\\\SERVER\\SHARE\\runtime\\evidence",
+      "win32",
+    ),
+  ).toBe(true);
+  expect(
+    insideRuntime(
+      "\\\\server\\share\\Runtime",
+      "\\\\server\\other\\Runtime\\evidence",
+      "win32",
+    ),
+  ).toBe(false);
+  expect(insideRuntime("/runtime", "/runtime/child", "posix")).toBe(true);
+  expect(insideRuntime("/runtime", "/runtime-other/child", "posix")).toBe(
+    false,
+  );
 });

@@ -1363,3 +1363,9 @@ the shell embeds the runtime-manifest digest. Missing native/source/security,
 all-target inputs, trust, installer and physical workstation evidence still
 blocks distribution. See the [updated contract](docs/native-installer.md#explicit-support-files-and-emitted-attribution)
 and [dated validation](docs/validation-native-installer.md#2026-10-30-runtime-closure-and-emitted-attribution).
+
+2026-10-30 independent runtime review corrections add separate native-shell
+verified/reviewed-baseline admission, exact static Cargo link-input attribution
+and canonical external-output containment. These are engineering corrections to
+the existing M7E increment; audited target inputs, security, final candidates,
+trust and workstation checkboxes remain open. See the [contract](docs/native-installer.md#native-post-build-review-corrections--2026-10-30).
