@@ -452,3 +452,18 @@ Fresh source/test hashes, logs and synthetic Monitor/media evidence are retained
 under `/tmp/openfilm-finishing-integration/A-focal-start/`. Earlier controls keep
 their original receipt identities. A fresh scoped review of this increment and
 full exact-head hosted gates remain coordinator-owned before publication.
+
+### 2026-10-30 — repaired documentation base integration
+
+The reviewed focal/photo implementation now includes repaired base `fab0a4c`
+through merge `21d34f7`. All contribution/governance locales and research are
+preserved, including the corrected three Source links and research formatting.
+`git diff c37b203 HEAD -- apps packages` is empty for this merge.
+
+Current checks: `pnpm typecheck`, `pnpm test:i18n`, `pnpm test:docs-i18n`,
+`pnpm format:check`, scoped ESLint and `pnpm exec vitest run
+ tests/unit/docs-site-validation.test.ts tests/unit/photo-focal-overlay.test.ts`
+passed (two files / 35 tests). The earlier browser/media receipts remain tied to
+their original implementation identities; this documentation merge makes no new
+browser, physical-device or hosted-CI claim. Fresh checkpoint hashes and logs
+are retained in `/tmp/openfilm-finishing-integration/A-latest-base/`.

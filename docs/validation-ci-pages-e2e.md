@@ -114,3 +114,27 @@ Old failed runs remain historical evidence. A current successful main Verify and
 actual Pages deployment are required for closure. Linux synthetic CI and narrow
 Windows2022/FFmpeg9 tests do not certify physical Windows10/popopc, macOS,
 native installer, Resolve, hardware audio/display or4K workstation QA.
+
+## 2026-10-30 follow-up — contribution guide links
+
+The later main documentation/locales reorganization
+`71858cd1b69f87a1ac351c90261b74547fecd326` retained the verified application
+source but introduced three i18n-page links to contribution guides outside the
+VitePress source root. Actual Pages run
+[41075539580](https://github.com/bynanci/open-film/actions/runs/41075539580)
+failed on all three links. The unchanged strict dead-link checker exposed this
+boundary; disabling it would conceal broken navigation.
+
+The three pages now link to their existing English, Traditional Chinese and
+Japanese repository guides. The new locale and research content is retained.
+Three focused regression cases first failed, then all four documentation-gate
+cases passed. The real VitePress build passed in9.13s. The first complete format
+check separately found the two newly translated research tables; Prettier now
+normalizes those tables without changing their claims or research baseline.
+Subsequent complete format, UI/documentation locales, lint and TypeScript/Vue
+checks pass. No application/renderer/dependency/workflow behavior was changed.
+
+Full exact-candidate hosted gates and the following main Pages deployment remain
+required before closing this follow-up. Their exact base/head/run results are
+recorded in the integrating pull request, preserving the original failed run.
+This evidence does not change the stable version or any workstation gate.

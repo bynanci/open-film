@@ -89,6 +89,9 @@ Scope: [design](docs/superpowers/specs/2026-10-30-ci-pages-e2e-design.md),
 
 - [x] Reproduce main Pages dead links; fix both architecture links and require
       the actual VitePress build on every PR/main candidate.
+      Follow-up on documentation reorganization `71858cd`: retain the new
+      locales/research, repair all three contribution-guide links and normalize
+      two translated research tables; evidence is appended to the same record.
 - [x] Run complete E2E on four isolated single-worker VMs alongside media QA;
       reject discovery omissions/overlaps and skipped/flaky/missing actual results.
 - [x] Bind browser receipts to the exact candidate and require every lane in the
