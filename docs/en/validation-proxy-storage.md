@@ -2,8 +2,8 @@
 
 Date: 2026-10-30. Candidate branch: `codex/d6a-proxy-storage`.
 Integration base: `b8befab33144da8c0f2b1a1c10e0c6de602eae6b` (merged PR #63).
-This is an unreleased candidate; full-gate and GitHub results are recorded below
-when actually completed. Project schema 1.0.0 and Catalog v6 are unchanged.
+This is unreleased implementation work. Exact candidate SHA, final Chromium
+and GitHub gate results are maintained in [PR #64](https://github.com/bynanci/open-film/pull/64). Project schema 1.0.0 and Catalog v6 are unchanged.
 
 ## Implemented boundary
 
@@ -96,8 +96,18 @@ failed/aborted broad runs are retained and are not claimed as passing evidence.
 
 ## Full-gate results
 
-Pending final review and full available local/GitHub gates. No full-gate,
-workstation, performance or native installer result is implied by focused tests.
+The post-fix sequential full Vitest run passed **314 files / 4464 tests** in
+386.72s. The following available local gates also pass: format, i18n (**2614**
+keys), documentation mirrors (**120**), ESLint, TypeScript/Vue typecheck, build,
+built CLI smoke and official OpenTimelineIO0.18.1 interchange (**18** harness
+tests, source hashes/bounds and relocation). Build retains the existing main
+chunk size advisory. Native prerequisites are absent locally; both exact-code
+GitHub `native-shell` checks pass, including Cargo and runtime archive tests.
+
+Full Chromium (**288 tests**) and exact-head hosted results are reported in
+[PR #64](https://github.com/bynanci/open-film/pull/64), which remains draft until
+those gates succeed. The PR's exact SHA/checks are authoritative after any
+documentation-only checkpoint. No hardware or installer result is inferred.
 
 ## Manual gates and limits
 

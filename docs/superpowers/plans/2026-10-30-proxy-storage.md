@@ -17,6 +17,10 @@ Vitest and Playwright; no new dependency.
 
 **Spec:** `docs/superpowers/specs/2026-10-30-proxy-storage-design.md`
 
+Execution checkboxes record checkpoints at authoring time; the final exact-head
+validation and integration status is maintained in PR #64 and
+`docs/validation-proxy-storage.md`.
+
 ## Global Constraints
 
 - Preserve project schema, catalog v6, Composition, locks and Undo/Redo.
@@ -102,9 +106,9 @@ The panel emits acknowledged proxy changes to refresh the owning workspace.
 **Files:** Update TASKS, ROADMAP, architecture/contracts, validation and required
 English reference mirrors. Add evidence to the private execution ledger.
 
-- [ ] Complete one independent final code review and one regression-backed fix pass.
+- [x] Complete one independent final code review and one regression-backed fix pass.
 - [ ] Run format, i18n/docs, lint, typecheck, unit/application, build, CLI smoke,
       interchange and all Chromium regressions; retain native/workstation limits.
-- [ ] Create the D6A PR with exact base/head and evidence, preserving PR #63.
-- [ ] Reconcile remaining D6B scope against the actual Collect planner before
+- [x] Create the D6A PR with exact base/head and evidence, preserving PR #63.
+- [x] Reconcile remaining D6B scope against the actual Collect planner before
       beginning its separate threat/compatibility design and implementation plan.

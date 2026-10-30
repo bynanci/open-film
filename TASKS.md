@@ -30,11 +30,12 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
         or implicit/double mix in this slice.
-  - [ ] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
+  - [x] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.
-        Candidate implemented in `codex/d6a-proxy-storage`; shared workflow and
-        62 regressions plus four browser tests pass. Final review/full gates
-        remain open; see [validation](docs/validation-proxy-storage.md).
+        Implemented in PR #64; independent review corrections, 4464 full local
+        tests and 10 focused browser workflows pass. All 288 Chromium and hosted
+        checks remain merge gates; exact status is recorded in the PR and
+        [validation](docs/validation-proxy-storage.md).
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.
 
