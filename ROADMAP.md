@@ -141,8 +141,9 @@ D7A render QA now has shared immutable font/tool provenance, preserved metric
 units and strict bounds, and actual decoded positive/negative controls. Local
 synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
 workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
-pin admission and exact-head review remain pending; this does not close native
-installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+pin admission, whole/scoped reviews and full exact-head automated gates passed
+in PR78 (headfff6270, merge6cdaa4f), including19finishingcases on each OS. This
+does not close native installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
 
 D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
 contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
@@ -150,18 +151,18 @@ originals, timing and the schema/catalog owners remain stable. Local statistical
 Auto Match presents actual before/after samples and needs explicit reviewed clip
 Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
 video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
-accessibility. Calibrated displays, real NLE behavior and final integrating gates
-remain separate. See [the guide](docs/primary-color.md) and
+accessibility. PR77 head1dbef72 merged as32fd485 after complete Verify and Windows gates.
+Calibrated displays, real NLE behavior and native release gates remain separate. See [the guide](docs/primary-color.md) and
 [validation](docs/validation-primary-color.md).
 
-D8 now has an unreleased local single-JSON preset candidate on its independent
-branch. Bounded closed recipes, declared license/provenance review, atomic local
+D8 local single-JSON presets merged in PR76 (head285f9f6, merged36e365);
+the latest published stable release remains0.4.0. Bounded closed recipes, declared license/provenance review, atomic local
 registry operations and embedded immutable look/title/Story snapshots feed
 existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
 155 tests and three Chromium journeys pass; actual strength/seek tests and
 Collect directory/ZIP relocation retain exact decoded pixels after registry and
-fixture-original deletion. Fresh review and parent-coordinated full/hosted
-integration gates remain open. See [guide](docs/local-presets.md) and
+fixture-original deletion. Fresh whole/scoped reviews and complete exact-head Verify/Windows gates pass;
+physical workstation and formal release conditions remain separate. See [guide](docs/local-presets.md) and
 [validation](docs/validation-local-presets.md). Executable plugin discovery and
 loading remain deferred.
 
@@ -328,6 +329,36 @@ explicit media status and image/intent/timing hierarchy. Runtime shot-level
 integration remains a separate follow-up requiring a reviewed scene/shot ID
 adapter and revision-fenced sidecar storage. No improvised StoryPlan fields or
 unimplemented shot-level behavior are claimed.
+
+User Pin now has a candidate inline schema1.1 implementation across the shared
+solver/editor, pipeline, history, Named Versions, variants and Collect. The
+finishing integration protects current photo/title/primary/local-Look payloads
+and effective inherited primary/Look matrices. Reviewed automatic suggestions
+require explicit release where they change a pin; ordinary direct named-owner
+edits remain available. Re-solve retains authored beat boundaries and existing
+mutable gaps, so a bounded conflict is not a global infeasibility proof. Focused
+local evidence is recorded in [validation](docs/validation-user-pins.md). The first
+whole review is complete; its measured-audio, same-ID candidate and intermediate
+overlay findings have a coordinated correction wave, including a reproduced
+optional-field variant constructor fix. Scoped correction review and full
+exact-head hosted gates remain pending.
+
+Actual audio integration also exposed automatic MotionGeneration and
+GraphicScene adoption using the direct-edit ingress. The follow-up candidate
+routes those producers through a package-internal capability into the same
+validated, serialized, revision-checked writer. Request IDs retain their producer
+authority, automatic adoption preserves absent or explicitly released pin state,
+and existing typed Look/primary source-lock conflicts remain authoritative.
+The correction has its own focused evidence and requires scoped review and
+complete exact-head gates before merge.
+
+The same hosted checkpoint also exposed the new pin precheck blocking existing
+primary clip-local editing on Library-locked sources. The correction retains
+full source protection for explicit pin changes and the unchanged automatic
+allocator, while ordinary edits use their existing operation-specific owners.
+Clip and overlay locks, split, presentation, identity replacement and typed
+Look/primary protections remain active. Focused application and actual HTTP
+evidence cover the permitted edits, blocked operations and atomic history.
 
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
@@ -843,3 +874,8 @@ The D5C integration also repairs the observed title-image request ABA during
 Undo/Redo. Display generations request independent images while the existing
 project/revision fences and shared raster cache remain authoritative. Scoped
 review and exact raster/browser regressions pass; new-head full gates remain open.
+
+The Pin integration now covers real Motion/GraphicScene automatic writers and
+existing source-lock workflows. Measured Auto Match emits a detached validated
+command; explicit Pin release governs subsequent automatic edits. Final eight
+browser journeys pass, with complete hosted verification still required.

@@ -308,3 +308,19 @@ network behavior, clipping logic, test assertion or module fallback changed.
 The unchanged55 cases all pass in20.20s; scoped ESLint and formatting pass.
 The earlier seven browser repair cases remain independently recorded above.
 Complete new-head hosted gates are required; no suite is skipped or retried.
+
+## Verified feature integration — 2026-10-30
+
+PR76 head285f9f6 merged asd36e365; PR77 head1dbef72 merged as32fd485;
+PR78 headfff6270 merged as6cdaa4f. Complete required exact-head checks passed:
+D8 Verify41101731351/Windows41101730365; D5C Verify41107934835/Windows41107934842;
+D7A Verify41108548204/Windows41108548389/RenderQA41108548084/security41108548133.
+Allfour browser shards passed on each corresponding candidate. D7A threeactual
+OS targets and aggregate passed117measurements/10decodedcontrols/17outputs plus
+19finishingcases perOS. Actual merge trees were checked against their reviewed
+head trees before each merge; local user work was preserved.
+
+Post-merge main6cdaa4f gates are separate and running. No formal stable release,
+installer/source-admission, physical workstation, hardware/Resolve/4K or listening
+verification is implied. Historical failure/diagnostic records above remain
+intact; the old Windows font observation is not called a causal fix.

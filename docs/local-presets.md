@@ -162,3 +162,13 @@ Existing local Host/Origin, native session and mutation-queue protections apply.
 
 See [validation](validation-local-presets.md) for executed security, browser,
 render and relocation evidence and remaining integration gates.
+
+## User pins
+
+Reviewed preset acceptance is an automatic operation. A Film Look or title
+preset that changes a pinned clip, or changes its inherited effective Look,
+requires explicitly releasing that user pin first. Review and acceptance retain
+existing source/clip locks, saved-revision checks and immutable preset provenance.
+Exact accepted-request retries return the saved acknowledgement and current cut;
+they do not overwrite a later manual pin. Ordinary direct inspector edits to a
+named clip remain available under the existing locks.

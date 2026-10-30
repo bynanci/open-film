@@ -267,6 +267,13 @@ it.each(
       baseRevision: editor.get("cut").revision,
       commands: [
         { type: "presentation", clipId: "clip", title: "Prior manual title" },
+        // Exercise the later catalog CAS fence with an eligible automatic target;
+        // explicit release shares the prior authored transaction/history step.
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "clip" },
+          pinned: false,
+        },
       ],
     });
     const originalAsset = app.catalog.getAsset("photo")!;
@@ -334,4 +341,89 @@ it.each(
   );
   expect(app.project).toEqual(before);
   expect(readFileSync(join(directory, "project.json"))).toEqual(disk);
+});
+
+it("treats reviewed local preset acceptance as automatic and preserves pins until release", async () => {
+  const { app, editor, request, directory, source } =
+    await presetApplicationFixture();
+  const pinned = await editor.edit("cut", {
+    baseRevision: editor.get("cut").revision,
+    commands: [
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "clip" },
+        pinned: true,
+      },
+    ],
+  });
+  const disk = readFileSync(join(directory, "project.json")),
+    bytes = readFileSync(source);
+  for (const input of [
+    request(),
+    request("title"),
+    {
+      ...request(),
+      target: {
+        kind: "film-look" as const,
+        compositionId: "cut",
+        scope: "clip" as const,
+        clipId: "clip",
+      },
+    },
+  ])
+    expect(() => app.presets.review(input, editor)).toThrow(/pin/iu);
+  expect(editor.get("cut")).toEqual(pinned);
+  expect(readFileSync(join(directory, "project.json"))).toEqual(disk);
+  expect(app.project.presetApplicationReceipts).toBeUndefined();
+  const released = await editor.edit("cut", {
+    baseRevision: pinned.revision,
+    commands: [
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "clip" },
+        pinned: false,
+      },
+    ],
+  });
+  const input = request(),
+    review = app.presets.review(input, editor);
+  const acceptance = {
+    request: input,
+    reviewSha256: review.reviewSha256,
+    requestId: "f1000000-0000-4000-8000-000000000001",
+  };
+  const accepted = await app.presets.accept(acceptance, editor);
+  expect(accepted.state!.composition.defaultLook).toEqual({
+    version: 2,
+    preset: "local",
+    strength: 0.8,
+    snapshot: review.snapshot,
+  });
+  expect(
+    accepted.state!.composition.tracks[0]!.clips[0]!.userOverrides,
+  ).toEqual(released.composition.tracks[0]!.clips[0]!.userOverrides);
+  const manual = await editor.edit("cut", {
+    baseRevision: accepted.state!.revision,
+    commands: [
+      {
+        type: "look",
+        scope: "clip",
+        clipId: "clip",
+        look: accepted.state!.composition.defaultLook!,
+      },
+    ],
+  });
+  expect(
+    manual.composition.tracks[0]!.clips[0]!.userOverrides?.isUserPinned,
+  ).toBe(true);
+  const retried = await app.presets.accept(acceptance, editor);
+  expect(retried.alreadyAccepted).toBe(true);
+  expect(retried.state).toEqual(editor.get("cut"));
+  expect(readFileSync(source)).toEqual(bytes);
+  expect((await editor.undo("cut", manual.revision)).composition).toEqual(
+    accepted.state!.composition,
+  );
+  expect(
+    (await editor.undo("cut", editor.get("cut").revision)).composition,
+  ).toEqual(released.composition);
 });

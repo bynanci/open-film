@@ -145,3 +145,13 @@ suggestion and `primaryColorReviewId`.
 
 See [validation](validation-primary-color.md),
 [Film Looks](film-looks.md) and [NLE compatibility](nle-compatibility.md).
+
+## User pins
+
+A direct clip correction pins the complete clip against automatic changes.
+Whole-film or scene primary changes cannot alter an untouched pinned clip's
+effective correction; an explicit neutral clip override still stops inheritance.
+You can directly adjust that pinned clip under existing source and clip locks.
+Statistical Auto Match cannot Apply to a pinned target. Explicitly release its
+user pin and measure again before accepting automatic correction. Measurement
+never releases the pin or changes the cut.

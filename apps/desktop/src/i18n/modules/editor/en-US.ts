@@ -2,6 +2,22 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      affected: "Affected pinned edits: {owners}.",
+      pinned: "Pinned edit",
+      pin: "Pin edit",
+      unpin: "Release user pin",
+      hint: "Automatic changes preserve the complete pinned edit. Source and clip locks are separate.",
+      releaseResolve: "Unlock & Re-solve",
+      releaseHint:
+        "Release only this user pin and re-solve this cut in one saved action. Failure keeps the pin. Source locks still apply.",
+      saved: "User pin change saved.",
+
+      target: "Cut",
+      newCut: "New rough cut",
+      resolveCut: "Re-solve selected cut",
+      selectCut: "Select a saved cut and retry.",
+    },
     titleFinishing: {
       previewLimited:
         "This preview exceeds the simultaneous-caption image limit. Reduce overlapping cues or review the rendered MP4.",
@@ -108,6 +124,10 @@ export default {
           "The candidate lacks −1 dBTP headroom; acceptance is unavailable.",
         "manual-review":
           "Listen for balance, clarity and intent. Measurements do not establish aesthetic quality.",
+        "user-pinned":
+          "Release this clip's user pin and measure again to apply a suggestion.",
+        "target-locked":
+          "Unlock this clip and measure again to apply a suggestion.",
       },
     },
     graphics: {

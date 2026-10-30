@@ -169,6 +169,7 @@ const {
   props.compositionId,
   (value) => emit("change", value),
   () => emit("edited"),
+  () => resolveProjectTimebase(props.projectSettings),
 );
 const transcriptEditor = ref<InstanceType<typeof TranscriptEditor> | null>(
   null,
@@ -271,6 +272,29 @@ function command(
   if (focalEditing.value) cancelFocal();
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
+}
+async function changeUserPin(
+  target: import("@openfilm/core").OverrideTarget,
+  pinned: boolean,
+  resolve = false,
+) {
+  if (
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value
+  )
+    return;
+  const result = await compositionCommitTransaction(
+    resolve
+      ? {
+          type: "user-pin.resolve",
+          targets: [target],
+          scope: { kind: "composition" },
+          mode: "regenerate",
+        }
+      : { type: "user-pin.set", target, pinned },
+  );
+  if (result.status === "accepted") reportNotice("editor.pins.saved");
 }
 async function commitSource(
   input: TimelineCommand,
@@ -1293,6 +1317,7 @@ const fitPlan = computed(() => {
       state.value.assets,
       target.value,
       skippedClipIds.value,
+      { timebase: projectTimebase.value, origin: "automatic" },
     );
   } catch {
     return null;
@@ -1311,6 +1336,7 @@ function applyFit(
         target.value,
         preview,
         skippedClipIds.value,
+        { timebase: projectTimebase.value, origin: "automatic" },
       ),
     );
   } catch (error) {
@@ -2267,10 +2293,14 @@ const fitPreviewAfter = computed(() => {
       target.value,
       fitPreview.value,
       skippedClipIds.value,
+      { timebase: projectTimebase.value, origin: "automatic" },
     );
     const next = commands.reduce<EditorDocument>(
       (current, item) =>
-        applyTimelineCommand(current, state.value!.assets, item),
+        applyTimelineCommand(current, state.value!.assets, item, {
+          origin: "automatic",
+          timebase: resolveProjectTimebase(props.projectSettings),
+        }),
       state.value,
     );
     return next.composition.tracks
@@ -2486,6 +2516,7 @@ function previewFit(suggestion: ShorteningSuggestionPreview) {
       target.value,
       suggestion,
       skippedClipIds.value,
+      { timebase: projectTimebase.value, origin: "automatic" },
     );
     const clip = allClips.value.find((item) => item.id === suggestion.clipId);
     if (clip) chooseClip(clip);
@@ -4386,6 +4417,7 @@ onBeforeUnmount(() => {
               status === 'failed'
             "
             @command="command"
+            @pin="changeUserPin"
             @selection="selectGraphicLayer"
             @preview-time="previewGraphicAtTime"
             @import-assets="emit('importAssets')"
@@ -4443,6 +4475,57 @@ onBeforeUnmount(() => {
                       : "editor.clip.lock",
                   )
                 }}
+              </button>
+            </div>
+            <div
+              class="editor-presets editor-user-pins"
+              :title="t('editor.pins.hint')"
+            >
+              <button
+                type="button"
+                class="editor-button"
+                data-testid="clip-user-pin"
+                :disabled="
+                  historyBusy ||
+                  !!selectedClip.locked ||
+                  !!selectedAsset.state.locked
+                "
+                :aria-pressed="!!selectedClip.userOverrides?.isUserPinned"
+                @click="
+                  changeUserPin(
+                    { kind: 'clip', clipId: selectedClip.id },
+                    !selectedClip.userOverrides?.isUserPinned,
+                  )
+                "
+              >
+                <Icon name="pin" :size="14" />{{
+                  t(
+                    selectedClip.userOverrides?.isUserPinned
+                      ? "editor.pins.unpin"
+                      : "editor.pins.pin",
+                  )
+                }}
+              </button>
+              <button
+                v-if="selectedClip.userOverrides?.isUserPinned"
+                type="button"
+                class="editor-button"
+                data-testid="clip-user-pin-resolve"
+                :disabled="
+                  historyBusy ||
+                  !!selectedClip.locked ||
+                  !!selectedAsset.state.locked
+                "
+                :title="t('editor.pins.releaseHint')"
+                @click="
+                  changeUserPin(
+                    { kind: 'clip', clipId: selectedClip.id },
+                    false,
+                    true,
+                  )
+                "
+              >
+                {{ t("editor.pins.releaseResolve") }}
               </button>
             </div>
             <div

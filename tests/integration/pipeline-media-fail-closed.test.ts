@@ -81,12 +81,10 @@ async function fixture() {
   const app = {
     directory,
     project,
-    catalog: { getAsset: vi.fn() },
+    catalog: { getAsset: vi.fn(), iterateAssetSummaries: () => [] },
     motionGeneration: { list: () => [] },
-    compose: vi.fn(() => composition),
-    save: vi.fn(async () => {
-      project.timelines = [composition];
-    }),
+    prepareComposition: vi.fn(() => structuredClone(composition)),
+    save: vi.fn(async () => {}),
     render: vi.fn(async () => writeVideo("cache/preview.mp4")),
     visualQa: { run: vi.fn(async () => qaReport) },
     exportMp4: vi.fn(async () => ({
@@ -99,6 +97,7 @@ async function fixture() {
   };
   const pipeline = new PipelineService(app as unknown as OpenFilmApplication);
   const run = await pipeline.createRun("guided-story-to-video", {
+    compositionTarget: { version: 1, mode: "new-cut" },
     storyId: "story",
     narration: { type: "none" },
   });
@@ -155,7 +154,10 @@ describe("Pipeline media failures never become success artifacts", () => {
     const result = await pipeline.startRun(run.id);
     expect(result.status).toBe("succeeded");
     expect(app.exportMp4).toHaveBeenCalledTimes(1);
-    expect(app.exportMp4).toHaveBeenCalledWith("cut", {
+    const adoptedId = app.project.timelines[0]!.id;
+    expect(adoptedId).toMatch(/^pipeline:/);
+    expect(result.stepAttempts[4]?.outputs?.compositionId).toBe(adoptedId);
+    expect(app.exportMp4).toHaveBeenCalledWith(adoptedId, {
       signal: expect.any(AbortSignal),
     });
     const artifact = result.artifacts.find((a) => a.kind === "export-file");

@@ -7,6 +7,7 @@ const paths: Record<string, string> = {
   film: "M4 3h16v18H4ZM4 8h16M4 16h16M8 3v18M16 3v18",
   heart:
     "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z",
+  pin: "M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6Zm3 12v6",
   lock: "M6 10h12v11H6ZM8 10V7a4 4 0 0 1 8 0v3",
   reject: "M5 5l14 14M19 5 5 19",
   play: "m8 4 13 8-13 8Z",

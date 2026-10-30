@@ -1,3 +1,7 @@
+import {
+  validateUserOverrideState,
+  type UserOverrideState,
+} from "./user-overrides.js";
 import { ApplicationError } from "./errors.js";
 
 export const GRAPHIC_SCENE_LIMITS = Object.freeze({
@@ -123,6 +127,7 @@ export interface GraphicGroupNode extends GraphicNodeBase {
 export type GraphicNode =
   GraphicImageNode | GraphicTextNode | GraphicShapeNode | GraphicGroupNode;
 export interface GraphicScene {
+  userOverrides?: UserOverrideState;
   version: 1;
   id: string;
   name: string;
@@ -561,7 +566,10 @@ export function validateGraphicScenes(
       "zIndex",
       "nodes",
       "photoDepth",
+      "userOverrides",
     ]);
+    if (Object.hasOwn(scene, "userOverrides"))
+      validateUserOverrideState(scene.userOverrides, "graphic-scene");
     if (scene.version !== 1)
       bad(`${path}.version`, "unsupported graphic scene version");
     const id = identifier(scene.id, `${path}.id`);

@@ -9,6 +9,7 @@ import {
   initialLocale,
   navigate,
   openAdvancedTools,
+  uiText,
 } from "./ui-helpers.js";
 import { createDesktopFixture } from "./helpers.js";
 const api = process.env.OPENFILM_E2E_API ?? "http://127.0.0.1:4310/api";
@@ -595,6 +596,20 @@ test("authors all primitives, seeks exact shared frames and preserves history an
     .toBe(-79);
   await expect(page.getByTestId("editor-save-state")).toContainText("Saved");
   const agent = page.getByTestId("graphic-agent-review");
+  expect(
+    (await state()).composition.graphicScenes[0].userOverrides.isUserPinned,
+  ).toBe(true);
+  await panel
+    .getByRole("button", {
+      name: uiText("en-US", "editor.pins.unpin"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(
+      async () => (await state()).composition.graphicScenes[0].userOverrides,
+    )
+    .toEqual({ version: 1, isUserPinned: false, lockedAttributes: [] });
   await agent.getByTestId("graphic-agent-instruction").fill("move right 12");
   await agent.getByTestId("graphic-agent-preview").click();
   await expect(agent.getByTestId("graphic-agent-plan")).toBeVisible();

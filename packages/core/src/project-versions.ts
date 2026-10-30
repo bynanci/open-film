@@ -57,6 +57,7 @@ export interface ProjectVersionDiffEntry {
 }
 
 export interface ProjectVersionDiff {
+  pinChangedCount?: number;
   beforeVersionId: string;
   afterVersionId: string;
   entries: ProjectVersionDiffEntry[];
@@ -477,7 +478,36 @@ export function diffProjectVersions(
       (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
     );
   });
+  const pins = (project: OpenFilmProject) =>
+    new Map(
+      project.timelines.flatMap((c) => [
+        ...c.tracks.flatMap((t) =>
+          t.clips.map(
+            (clip) =>
+              [
+                JSON.stringify([c.id, "clip", clip.id]),
+                clip.userOverrides,
+              ] as const,
+          ),
+        ),
+        ...(c.graphicScenes ?? []).map(
+          (scene) =>
+            [
+              JSON.stringify([c.id, "graphic-scene", scene.id]),
+              scene.userOverrides,
+            ] as const,
+        ),
+      ]),
+    );
+  const beforePins = pins(before.project),
+    afterPins = pins(after.project);
+  const pinChangedCount = [
+    ...new Set([...beforePins.keys(), ...afterPins.keys()]),
+  ].filter(
+    (key) => canonical(beforePins.get(key)) !== canonical(afterPins.get(key)),
+  ).length;
   return {
+    pinChangedCount,
     beforeVersionId: before.versionId,
     afterVersionId: after.versionId,
     entries,

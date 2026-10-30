@@ -86,3 +86,19 @@ export function resolveWorkbenchStageStatus(
   if (statuses.includes("pending")) return "pending";
   return "idle";
 }
+
+/** Capture the user's explicit adoption choice; never infer a cut from its story. */
+export function pipelineCompositionTarget(
+  mode: "new-cut" | "resolve",
+  selected?: { compositionId: string; revision: string },
+): import("@openfilm/core").PipelineCompositionTarget {
+  if (mode === "new-cut") return { version: 1, mode };
+  if (!selected?.compositionId || !selected.revision)
+    throw new Error("Select a saved cut before re-solving.");
+  return {
+    version: 1,
+    mode,
+    compositionId: selected.compositionId,
+    baseRevision: selected.revision,
+  };
+}

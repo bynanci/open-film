@@ -44,6 +44,7 @@ export default {
       "offline-candidate": "離線預覽候選",
     },
     reasons: {
+      userPinned: "使用者釘選需要保留完整原始來源與已儲存的來源時鐘。",
       identityMissing: "無法確認來源位元組與已儲存的素材身分相符。",
       timingUnavailable: "缺少可靠的來源長度。",
       unsupported: "此類素材在目前設計中保留完整原檔。",

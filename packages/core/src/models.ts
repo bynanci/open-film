@@ -1,3 +1,4 @@
+import type { UserOverrideState } from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 /** All timeline and source durations use seconds. Source files remain immutable. */
@@ -390,6 +391,7 @@ export interface PrimaryColorCorrection {
 }
 
 export interface Clip {
+  userOverrides?: UserOverrideState;
   id: string;
   assetId: string;
   beatId?: string;
@@ -444,7 +446,7 @@ export interface Composition {
 export const PROJECT_SCHEMA_VERSION = "1.0.0" as const;
 
 export interface OpenFilmProject {
-  schemaVersion: typeof PROJECT_SCHEMA_VERSION;
+  schemaVersion: typeof PROJECT_SCHEMA_VERSION | "1.1.0";
   id: string;
   title: string;
   createdAt: string;

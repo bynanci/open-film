@@ -307,7 +307,12 @@ export function prepareSceneDirection(
       fail(
         `A source asset for clip "${clipId}" is missing. Relink it before directing.`,
       );
-    if (clip.locked || primary.state?.locked || secondary?.state?.locked) {
+    if (
+      clip.userOverrides?.isUserPinned ||
+      clip.locked ||
+      primary.state?.locked ||
+      secondary?.state?.locked
+    ) {
       proposal.notes.push({ code: "locked", clipId });
       continue;
     }

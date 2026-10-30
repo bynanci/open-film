@@ -1,3 +1,10 @@
+import { placeDirectEdit, solveIncremental } from "./pinned-placement.js";
+import {
+  applyOverridePolicy,
+  directOverrideTargets,
+  pinConflict,
+  type TimelineEditContext,
+} from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
@@ -21,6 +28,7 @@ import {
   validateGraphicSceneTemplates,
   graphicSceneAssetIds,
   type GraphicScene,
+  type OverrideTarget,
   type GraphicSceneTemplateRecord,
   filmLookMatrix,
   resolveFilmLook,
@@ -43,6 +51,19 @@ import { preserveUserBeatText, scoreAsset } from "@openfilm/story";
 import { compose } from "./index.js";
 
 export type TimelineCommand =
+  | { type: "user-pin.set"; target: OverrideTarget; pinned: boolean }
+  | {
+      type: "user-pin.resolve";
+      targets: OverrideTarget[];
+      scope: { kind: "composition" } | { kind: "beat"; beatId: string };
+      mode:
+        | "regenerate"
+        | "shorten"
+        | "more-video"
+        | "more-photos"
+        | "replace-similar"
+        | "remove-repetition";
+    }
   | {
       type: "primary-color";
       scope: "film";
@@ -388,6 +409,7 @@ function protectedClip(
   clip: Clip,
 ): boolean {
   return (
+    !!clip.userOverrides?.isUserPinned ||
     !!clip.locked ||
     !!findAsset(assets, clip.assetId).state.locked ||
     !!(
@@ -614,6 +636,7 @@ function replace(
   assets: MediaAsset[],
   clip: Clip,
   assetId: string,
+  reconcileOverlays = true,
 ): void {
   const old = findAsset(assets, clip.assetId),
     asset = findAsset(assets, assetId);
@@ -651,7 +674,7 @@ function replace(
   clip.sourceIn = 0;
   clip.sourceOut = duration * speed;
   finite(clip.sourceOut, "Resulting source out", 0, true);
-  resize(document, clip, duration, assets);
+  resize(document, clip, duration, assets, reconcileOverlays);
 }
 function beatLength(document: EditorDocument, beatId: string): number {
   return allClips(document)
@@ -967,13 +990,130 @@ function applyCaptionCommand(
   return commitCaptionTracks(next, tracks);
 }
 
-/** Applies one edit to a detached snapshot; undo history can retain either input. */
+/** Server-owned mutation context. Legacy solver callers are automatic. */
 export function applyTimelineCommand(
   document: EditorDocument,
   assets: MediaAsset[],
   command: TimelineCommand,
+  context: TimelineEditContext = {},
+): EditorDocument {
+  const origin = context.origin ?? "automatic";
+  const writes = directOverrideTargets([command]);
+  if (
+    (origin === "direct" && writes.length) ||
+    command.type.startsWith("user-pin.")
+  ) {
+    if (!context.timebase)
+      pinConflict(
+        "User pin edits require an authoritative project timebase clock.",
+      );
+  }
+  // Explicit pin changes protect the complete owner and all source identities.
+  // Ordinary edits retain their operation-specific locks in the raw command
+  // owner: a library lock still permits primary clip-local trim and transforms.
+  if (origin === "direct" && command.type.startsWith("user-pin."))
+    for (const target of writes) {
+      if (target.kind === "clip") {
+        const { clip } = findClip(document, target.clipId);
+        if (
+          clip.locked ||
+          assets.find((a) => a.id === clip.assetId)?.state.locked ||
+          (clip.layout?.secondary &&
+            assets.find((a) => a.id === clip.layout?.secondary?.assetId)?.state
+              .locked)
+        )
+          fail("The target or source is locked.");
+      } else {
+        const scene = document.composition.graphicScenes?.find(
+          (s) => s.id === target.sceneId,
+        );
+        if (
+          scene &&
+          (hasLockedGraphicNode(scene) ||
+            graphicSceneAssetIds([scene]).some(
+              (id) => assets.find((a) => a.id === id)?.state.locked,
+            ))
+        )
+          fail("The scene or source is locked.");
+      }
+    }
+  const pinned =
+    document.composition.tracks.some((t) =>
+      t.clips.some((c) => c.userOverrides?.isUserPinned),
+    ) ||
+    document.composition.graphicScenes?.some(
+      (s) => s.userOverrides?.isUserPinned,
+    );
+  if (command.type === "regenerate-beat" && pinned) {
+    if (!context.timebase)
+      pinConflict(
+        "Incremental solve requires the authoritative project timebase clock.",
+      );
+    const result = solveIncremental({
+      baseline: document,
+      assets,
+      timebase: context.timebase,
+      scope: { kind: "beat", beatId: command.beatId },
+      mode: command.mode,
+    });
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
+    return result.document;
+  }
+  const constrained =
+    pinned &&
+    ["trim", "speed", "duration", "delete", "replace", "reorder"].includes(
+      command.type,
+    );
+  // Raw ripple is only a proposal. Reconcile saved overlays after restoring
+  // the complete anchored cut, where its actual final duration is known.
+  let next = command.type.startsWith("user-pin.")
+    ? structuredClone(document)
+    : applyTimelineCommandRaw(document, assets, command, !constrained);
+  if (constrained) {
+    if (!context.timebase)
+      pinConflict(
+        "Constrained placement requires the authoritative project timebase clock.",
+      );
+    const result = placeDirectEdit(
+      document,
+      next,
+      assets,
+      context.timebase,
+      writes,
+    );
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
+    next = result.document;
+  }
+  next = applyOverridePolicy(document, next, [command], {
+    origin,
+    timebase: context.timebase!,
+  });
+  if (command.type === "user-pin.resolve") {
+    if (origin !== "direct")
+      pinConflict("Only explicit direct edits may release user pins.");
+    const result = solveIncremental({
+      baseline: next,
+      assets,
+      timebase: context.timebase!,
+      scope: command.scope,
+      mode: command.mode,
+    });
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
+    return result.document;
+  }
+  return next;
+}
+
+/** Applies one edit to a detached snapshot; undo history can retain either input. */
+function applyTimelineCommandRaw(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  command: TimelineCommand,
+  reconcileOverlays = true,
 ): EditorDocument {
   const next = structuredClone(document);
+  if (command.type === "user-pin.set" || command.type === "user-pin.resolve")
+    return next;
   if (
     command.type === "graphic.scene.upsert" ||
     command.type === "graphic.scene.remove"
@@ -1461,6 +1601,7 @@ export function applyTimelineCommand(
         clip,
         (command.sourceOut - command.sourceIn) / (clip.transform?.speed ?? 1),
         assets,
+        reconcileOverlays,
       );
       break;
     }
@@ -1473,7 +1614,7 @@ export function applyTimelineCommand(
       clip.sourceOut =
         (clip.sourceIn ?? 0) + command.duration * (clip.transform?.speed ?? 1);
       finite(clip.sourceOut, "Resulting source out", clip.sourceIn ?? 0, true);
-      resize(next, clip, command.duration, assets);
+      resize(next, clip, command.duration, assets, reconcileOverlays);
       break;
     case "speed": {
       finite(command.speed, "Speed", 0, true);
@@ -1486,6 +1627,7 @@ export function applyTimelineCommand(
         clip,
         (bounds.sourceOut - bounds.sourceIn) / command.speed,
         assets,
+        reconcileOverlays,
       );
       break;
     }
@@ -1561,7 +1703,7 @@ export function applyTimelineCommand(
       track.clips = track.clips.map((item) =>
         group.includes(item) ? reordered[index++]! : item,
       );
-      updateDuration(next, assets);
+      updateDuration(next, assets, reconcileOverlays);
       break;
     }
     case "delete":
@@ -1590,8 +1732,9 @@ export function applyTimelineCommand(
           `Clip "${clip.id}" uses locked or required media. Remove the selection/constraint or unlock the asset before ${command.type === "delete" ? "deleting" : "replacing"} it.`,
         );
       const oldAssetId = clip.assetId;
-      if (command.type === "delete") remove(next, clip, assets);
-      else replace(next, assets, clip, command.assetId);
+      if (command.type === "delete")
+        remove(next, clip, assets, reconcileOverlays);
+      else replace(next, assets, clip, command.assetId, reconcileOverlays);
       if (
         beat?.selectedAssetIds?.includes(oldAssetId) &&
         !allClips(next).some(
@@ -1631,9 +1774,17 @@ export function suggestShortening(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  context: TimelineEditContext = {},
 ): ShorteningSuggestion[] {
   finite(targetDuration, "Target duration", 0, true);
-  return shorteningPlan(document, assets, targetDuration);
+  return shorteningPlan(
+    document,
+    assets,
+    targetDuration,
+    undefined,
+    [],
+    context,
+  );
 }
 
 function shorteningState(
@@ -1641,6 +1792,7 @@ function shorteningState(
   assets: MediaAsset[],
   targetDuration: number,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): string {
   return JSON.stringify({
     composition: document.composition,
@@ -1649,6 +1801,7 @@ function shorteningState(
     assets,
     targetDuration,
     excludedClipIds,
+    ...(context.timebase ? { timebase: context.timebase } : {}),
   });
 }
 
@@ -1656,6 +1809,7 @@ function applyShorteningCommands(
   document: EditorDocument,
   assets: MediaAsset[],
   commands: TimelineCommand[],
+  context: TimelineEditContext = {},
 ): EditorDocument {
   let current = document;
   for (const command of commands) {
@@ -1670,7 +1824,10 @@ function applyShorteningCommands(
     const clip = findClip(current, command.clipId).clip;
     if (protectedClip(current, assets, clip))
       fail("This shortening suggestion would change locked or required media.");
-    const next = applyTimelineCommand(current, assets, command);
+    const next = applyTimelineCommand(current, assets, command, {
+      ...context,
+      origin: "automatic",
+    });
     if (
       command.type !== "delete" &&
       findClip(next, clip.id).clip.timelineDuration >
@@ -1691,6 +1848,7 @@ export function prepareShorteningPlan(
   assets: MediaAsset[],
   targetDuration: number,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): PreparedShorteningPlan {
   finite(targetDuration, "Target duration", 0, true);
   const excluded = [...new Set(excludedClipIds)].sort();
@@ -1700,8 +1858,15 @@ export function prepareShorteningPlan(
     targetDuration,
     undefined,
     excluded,
+    context,
   );
-  const baseState = shorteningState(document, assets, targetDuration, excluded);
+  const baseState = shorteningState(
+    document,
+    assets,
+    targetDuration,
+    excluded,
+    context,
+  );
   const beforeDuration = document.composition.duration;
   const prepare = (
     commands: TimelineCommand[],
@@ -1719,7 +1884,7 @@ export function prepareShorteningPlan(
   const suggestions = steps.flatMap((step) => {
     let next: EditorDocument;
     try {
-      next = applyShorteningCommands(document, assets, [step.command]);
+      next = applyShorteningCommands(document, assets, [step.command], context);
     } catch (error) {
       if (error instanceof TimelineEditingError) return [];
       throw error;
@@ -1761,11 +1926,12 @@ export function shorteningCommands(
   targetDuration: number,
   preview: PreparedShorteningPlan | ShorteningSuggestionPreview,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): TimelineCommand[] {
   const excluded = [...new Set(excludedClipIds)].sort();
   if (
     preview.baseState !==
-      shorteningState(document, assets, targetDuration, excluded) ||
+      shorteningState(document, assets, targetDuration, excluded, context) ||
     JSON.stringify(preview.excludedClipIds) !== JSON.stringify(excluded) ||
     preview.commandFingerprint !== JSON.stringify(preview.commands) ||
     preview.commands.some(
@@ -1775,7 +1941,12 @@ export function shorteningCommands(
     fail(
       "This shortening suggestion is stale. Review the suggestions for the current cut and try again.",
     );
-  const next = applyShorteningCommands(document, assets, preview.commands);
+  const next = applyShorteningCommands(
+    document,
+    assets,
+    preview.commands,
+    context,
+  );
   if (
     Math.abs(
       document.composition.duration -
@@ -1795,6 +1966,7 @@ function shorteningPlan(
   targetDuration: number,
   onlyBeat?: string,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): ShorteningSuggestion[] {
   let current = document;
   const suggestions: ShorteningSuggestion[] = [];
@@ -1816,9 +1988,17 @@ function shorteningPlan(
   function offer(command: TimelineCommand, reason: string): boolean {
     let next: EditorDocument;
     try {
-      next = applyTimelineCommand(current, assets, command);
+      next = applyTimelineCommand(current, assets, command, {
+        ...context,
+        origin: "automatic",
+      });
     } catch (error) {
-      if (error instanceof TimelineEditingError) return false;
+      if (
+        error instanceof TimelineEditingError ||
+        (error instanceof ApplicationError &&
+          error.code === "timeline.pinConflict")
+      )
+        return false;
       throw error;
     }
     const secondsSaved =
@@ -1913,6 +2093,16 @@ function shorteningPlan(
     suggestions[suggestions.length - 1]!.reason +=
       ` The ${targetDuration.toFixed(2)}s target remains infeasible: protected clips, beat minima, or overlapping tracks leave ${current.composition.duration.toFixed(2)}s.`;
   return suggestions;
+}
+
+/** Internal detached candidate planner; pinned-placement restores authoritative anchors. */
+export function proposeIncrementalBeat(
+  document: EditorDocument,
+  assets: MediaAsset[],
+  beatId: string,
+  mode: Extract<TimelineCommand, { type: "regenerate-beat" }>["mode"],
+): EditorDocument {
+  return regenerate(document, assets, beatId, mode);
 }
 
 function regenerate(

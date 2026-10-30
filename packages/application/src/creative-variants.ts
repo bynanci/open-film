@@ -1,3 +1,4 @@
+import { placeDirectEdit } from "@openfilm/solver";
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
 
 import { randomUUID } from "node:crypto";
@@ -5,6 +6,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   ApplicationError,
+  resolveProjectTimebase,
   createId,
   validateCreateVariantInput,
   validateCreativeVariant,
@@ -150,12 +152,19 @@ export class CreativeVariantService {
       }
 
       // Check if target section has locked clips
+      if (
+        !baselineComp.tracks.some((track) =>
+          track.clips.some((clip) => clip.beatId === targetBeat.id),
+        )
+      )
+        throw new ApplicationError(
+          "timeline.pinConflict",
+          "The section has no saved clip occurrence ownership. Rebuild its cut before deriving a section variant.",
+          409,
+        );
       for (const track of baselineComp.tracks) {
         for (const clip of track.clips) {
-          if (
-            targetBeat.selectedAssetIds?.includes(clip.assetId) &&
-            clip.locked
-          ) {
+          if (clip.beatId === targetBeat.id && clip.locked) {
             lockedNotice = `Target section '${targetBeat.title}' has locked clips. Modifications require explicit unlock.`;
           }
         }
@@ -175,7 +184,7 @@ export class CreativeVariantService {
       // Mark preserved clips
       for (const track of baselineComp.tracks) {
         for (const clip of track.clips) {
-          if (!targetBeat.selectedAssetIds?.includes(clip.assetId)) {
+          if (clip.beatId !== targetBeat.id) {
             preservedSections.push({
               sectionId: clip.id,
               type: "clip",
@@ -252,12 +261,19 @@ export class CreativeVariantService {
           404,
         );
       }
+      if (
+        !baselineComp.tracks.some((track) =>
+          track.clips.some((clip) => clip.beatId === targetBeat.id),
+        )
+      )
+        throw new ApplicationError(
+          "timeline.pinConflict",
+          "The section has no saved clip occurrence ownership. Rebuild its cut before deriving a section variant.",
+          409,
+        );
       for (const track of baselineComp.tracks) {
         for (const clip of track.clips) {
-          if (
-            targetBeat.selectedAssetIds?.includes(clip.assetId) &&
-            clip.locked
-          ) {
+          if (clip.beatId === targetBeat.id && clip.locked) {
             throw new ApplicationError(
               "timeline.conflict",
               `Cannot modify locked section '${targetBeat.title}'. Unlock clips before creating variant.`,
@@ -354,12 +370,12 @@ export class CreativeVariantService {
       }
     });
 
-    const derivedStory: Story = {
+    const derivedStory: Story = structuredClone({
       ...baselineStory,
       id: derivedStoryId,
       title: `${baselineStory.title} (方案 ${input.name})`,
       beats: newBeats,
-    };
+    });
 
     // 2. Derive Composition Tracks & Clips
     const targetBeatId =
@@ -371,6 +387,12 @@ export class CreativeVariantService {
     const beatIdMap = new Map(
       beatMappings.map((m) => [m.baselineBeatId, m.variantBeatId]),
     );
+    if (derivedStory.presetPlanSource)
+      derivedStory.presetPlanSource.bindings =
+        derivedStory.presetPlanSource.bindings.map((binding) => ({
+          ...binding,
+          beatId: beatIdMap.get(binding.beatId) ?? binding.beatId,
+        }));
 
     let cursorOffset = 0;
     const newTracks: Track[] = baselineComp.tracks.map((oldTrack) => {
@@ -382,16 +404,13 @@ export class CreativeVariantService {
           trackId: oldTrack.id,
         });
 
-        // LOCK PRESERVATION: Cloned clip strictly preserves lock!
-        const isLocked = oldClip.locked === true;
+        // Remap present owner keys; retain authored absence along with locks.
         const mappedBeatId = oldClip.beatId
           ? (beatIdMap.get(oldClip.beatId) ?? oldClip.beatId)
           : undefined;
 
         if (input.scope.type === "section" && targetBeat) {
-          const isTargetClip = targetBeat.selectedAssetIds?.includes(
-            oldClip.assetId,
-          );
+          const isTargetClip = oldClip.beatId === targetBeat.id;
           if (isTargetClip) {
             let assetId = oldClip.assetId;
             if (input.modifications?.replaceAssetIds) {
@@ -409,17 +428,20 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
-              beatId: mappedBeatId,
+              ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
               assetId,
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset - deltaDur).toFixed(3),
               ),
               timelineDuration: Number(targetDur.toFixed(3)),
-              sourceOut:
-                oldClip.sourceIn !== undefined
-                  ? Number(((oldClip.sourceIn ?? 0) + targetDur).toFixed(3))
-                  : oldClip.sourceOut,
-              locked: isLocked,
+              ...(oldClip.sourceIn !== undefined &&
+              targetDur !== oldClip.timelineDuration
+                ? {
+                    sourceOut: Number(
+                      (oldClip.sourceIn + targetDur).toFixed(3),
+                    ),
+                  }
+                : {}),
             };
           } else {
             // PROVABLY UNCHANGED NON-TARGET CLIP: Exact media asset, filters, transforms, and locks
@@ -431,11 +453,10 @@ export class CreativeVariantService {
             return {
               ...oldClip,
               id: newClipId,
-              beatId: mappedBeatId,
+              ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset).toFixed(3),
               ),
-              locked: isLocked,
             };
           }
         } else {
@@ -448,14 +469,13 @@ export class CreativeVariantService {
           return {
             ...oldClip,
             id: newClipId,
-            beatId: mappedBeatId,
+            ...(oldClip.beatId === undefined ? {} : { beatId: mappedBeatId }),
             timelineStart: scaledStart,
             timelineDuration: scaledDur,
-            sourceOut:
-              oldClip.sourceIn !== undefined
-                ? Number(((oldClip.sourceIn ?? 0) + scaledDur).toFixed(3))
-                : oldClip.sourceOut,
-            locked: isLocked,
+            ...(oldClip.sourceIn !== undefined &&
+            scaledDur !== oldClip.timelineDuration
+              ? { sourceOut: Number((oldClip.sourceIn + scaledDur).toFixed(3)) }
+              : {}),
           };
         }
       });
@@ -473,7 +493,7 @@ export class CreativeVariantService {
       0,
     );
 
-    const derivedComp: Composition = {
+    let derivedComp: Composition = structuredClone({
       ...baselineComp,
       id: derivedCompId,
       storyId: derivedStoryId,
@@ -483,7 +503,87 @@ export class CreativeVariantService {
         ...bl,
         beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
       })),
-    };
+      ...(baselineComp.beatPrimaryColors === undefined
+        ? {}
+        : {
+            beatPrimaryColors: baselineComp.beatPrimaryColors.map((entry) => ({
+              ...entry,
+              beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+            })),
+          }),
+    });
+
+    const canonical: import("@openfilm/solver").EditorDocument =
+      structuredClone({
+        story: derivedStory,
+        composition: {
+          ...baselineComp,
+          id: derivedCompId,
+          storyId: derivedStoryId,
+          beatLooks: baselineComp.beatLooks?.map((bl) => ({
+            ...bl,
+            beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
+          })),
+          ...(baselineComp.beatPrimaryColors === undefined
+            ? {}
+            : {
+                beatPrimaryColors: baselineComp.beatPrimaryColors.map(
+                  (entry) => ({
+                    ...entry,
+                    beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+                  }),
+                ),
+              }),
+          tracks: baselineComp.tracks.map((track) => ({
+            ...track,
+            clips: track.clips.map((clip) => ({
+              ...clip,
+              id: clipMappings.find((m) => m.baselineClipId === clip.id)!
+                .variantClipId,
+              ...(clip.beatId === undefined
+                ? {}
+                : { beatId: beatIdMap.get(clip.beatId) ?? clip.beatId }),
+            })),
+          })),
+        },
+      });
+    const targetIds = baselineComp.tracks.flatMap((track) =>
+      track.clips
+        .filter(
+          (clip) =>
+            (input.scope.type === "film" || clip.beatId === targetBeatId) &&
+            !clip.userOverrides?.isUserPinned &&
+            !clip.locked &&
+            !this.app.catalog.getAsset(clip.assetId)?.state.locked,
+        )
+        .map((clip) => ({
+          kind: "clip" as const,
+          clipId: clipMappings.find((m) => m.baselineClipId === clip.id)!
+            .variantClipId,
+        })),
+    );
+    const hasPins =
+      baselineComp.tracks.some((t) =>
+        t.clips.some((c) => c.userOverrides?.isUserPinned),
+      ) ||
+      baselineComp.graphicScenes?.some((s) => s.userOverrides?.isUserPinned);
+    if (hasPins) {
+      const solved = placeDirectEdit(
+        canonical,
+        { story: derivedStory, composition: derivedComp },
+        this.app.catalog.listAssets(),
+        resolveProjectTimebase(this.app.project.settings),
+        targetIds,
+      );
+      if (!solved.ok)
+        throw new ApplicationError(
+          "timeline.pinConflict",
+          solved.conflicts[0]?.message ??
+            "The variant conflicts with user pins.",
+          409,
+        );
+      derivedComp = structuredClone(solved.document.composition);
+    }
 
     const variantRecord: CreativeVariant = {
       schemaVersion: "1.0.0",

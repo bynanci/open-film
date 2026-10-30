@@ -462,6 +462,9 @@ function resetTitleStyle() {
       v-if="asset.mediaType === 'image' && allowPhotoPresentation !== false"
     >
       <h3>{{ t("editor.presentation.heading") }}</h3>
+      <p v-if="clip.userOverrides?.isUserPinned" class="editor-note">
+        {{ t("editor.pins.hint") }}
+      </p>
       <p class="editor-note">{{ t("editor.presentation.description") }}</p>
       <button
         type="button"

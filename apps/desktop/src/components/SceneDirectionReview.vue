@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   assetDisplayDimensions,
+  resolveProjectTimebase,
   resolvePhotoPlan,
   type Clip,
   type ProjectSettings,
@@ -92,7 +93,10 @@ const selectedActions = computed(
 function simulate(actions: DirectionReviewPlan["actions"]) {
   let next: EditorDocument = JSON.parse(JSON.stringify(props.state));
   for (const action of actions)
-    next = applyTimelineCommand(next, props.state.assets, action.command);
+    next = applyTimelineCommand(next, props.state.assets, action.command, {
+      origin: "automatic",
+      timebase: resolveProjectTimebase(props.frame),
+    });
   const sources = Object.fromEntries(
     props.state.assets.flatMap((asset) => {
       const dimensions = assetDisplayDimensions(asset);

@@ -43,6 +43,7 @@ export default {
       transition: "トランジション",
       transform: "位置と形状",
       look: "ルック",
+      "user-pin": "ユーザー固定（外部では強制されません）",
       graphicScene: "グラフィック／アニメーション",
       caption: "字幕",
     },

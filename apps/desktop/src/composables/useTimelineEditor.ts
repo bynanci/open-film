@@ -7,7 +7,7 @@ import {
   toRaw,
 } from "vue";
 import { applyTimelineCommand, type TimelineCommand } from "@openfilm/solver";
-import type { MediaAsset } from "@openfilm/core";
+import type { MediaAsset, ProjectTimebaseV1 } from "@openfilm/core";
 import { api, ApiError, type EditorState } from "../api";
 import { useI18n } from "vue-i18n";
 import { errorDetail, localizeError } from "../i18n";
@@ -37,6 +37,7 @@ export function useTimelineEditor(
   compositionId: string,
   changed: (state: EditorState) => void,
   edited: () => void,
+  projectTimebase?: () => ProjectTimebaseV1,
 ) {
   const { t } = useI18n();
   const state = shallowRef<EditorState | null>(null);
@@ -45,13 +46,62 @@ export function useTimelineEditor(
   );
   const issue = shallowRef<unknown>(null);
   const notice = ref("");
-  const message = computed(() =>
-    notice.value
+  function conflictOwnerNames(): string[] {
+    const error = issue.value as {
+      code?: unknown;
+      params?: { pinTargets?: unknown };
+    } | null;
+    const encoded = error?.params?.pinTargets;
+    if (
+      error?.code !== "timeline.pinConflict" ||
+      typeof encoded !== "string" ||
+      encoded.length > 16384 ||
+      !state.value
+    )
+      return [];
+    try {
+      const entries: unknown = JSON.parse(encoded);
+      if (!Array.isArray(entries)) return [];
+      const names: string[] = [];
+      for (const entry of entries.slice(0, 20)) {
+        if (!entry || typeof entry !== "object") continue;
+        if (entry.kind === "clip" && typeof entry.clipId === "string") {
+          const clip = state.value.composition.tracks
+            .flatMap((t) => t.clips)
+            .find((c) => c.id === entry.clipId);
+          if (clip?.userOverrides?.isUserPinned)
+            names.push(
+              clip.title ??
+                state.value.assets.find((a) => a.id === clip.assetId)?.name ??
+                t("editor.media"),
+            );
+        }
+        if (
+          entry.kind === "graphic-scene" &&
+          typeof entry.sceneId === "string"
+        ) {
+          const scene = state.value.composition.graphicScenes?.find(
+            (s) => s.id === entry.sceneId,
+          );
+          if (scene?.userOverrides?.isUserPinned) names.push(scene.name);
+        }
+      }
+      return [...new Set(names)];
+    } catch {
+      return [];
+    }
+  }
+  const message = computed(() => {
+    const base = notice.value
       ? t(notice.value)
       : issue.value
         ? localizeError(issue.value)
-        : "",
-  );
+        : "";
+    const owners = conflictOwnerNames();
+    return owners.length
+      ? `${base} ${t("editor.pins.affected", { owners: owners.join(", ") })}`
+      : base;
+  });
   const messageDetail = computed(() =>
     issue.value ? errorDetail(issue.value) : "",
   );
@@ -119,8 +169,73 @@ export function useTimelineEditor(
     retainDraft();
   }
   function applyTo(next: EditorState, commands: TimelineCommand[]) {
-    for (const command of commands)
-      next = { ...next, ...applyTimelineCommand(next, next.assets, command) };
+    const saved = next;
+    next = structuredClone(toRaw(next));
+    const ids = new Set<string>(),
+      scenes = new Set<string>();
+    for (const command of commands) {
+      if ("clipId" in command && command.type !== "lock")
+        ids.add(command.clipId);
+      if (command.type === "graphic.scene.upsert") scenes.add(command.scene.id);
+      if (command.type === "graphic.scene.remove") scenes.add(command.sceneId);
+      if (
+        command.type === "user-pin.set" ||
+        command.type === "user-pin.resolve"
+      )
+        for (const target of command.type === "user-pin.set"
+          ? [command.target]
+          : command.targets) {
+          if (target.kind === "clip") ids.add(target.clipId);
+          else scenes.add(target.sceneId);
+        }
+    }
+    for (const track of next.composition.tracks)
+      for (const clip of track.clips)
+        if (ids.has(clip.id)) delete clip.userOverrides;
+    for (const scene of next.composition.graphicScenes ?? [])
+      if (scenes.has(scene.id)) delete scene.userOverrides;
+    for (const command of commands) {
+      // Server acknowledgement owns pin state and combined solve results.
+      if (
+        command.type === "user-pin.set" ||
+        command.type === "user-pin.resolve"
+      )
+        continue;
+      const compiled = structuredClone(command);
+      if (compiled.type === "graphic.scene.upsert")
+        delete compiled.scene.userOverrides;
+      next = {
+        ...next,
+        ...applyTimelineCommand(next, next.assets, compiled, {
+          origin: "history",
+          timebase: projectTimebase?.(),
+        }),
+      };
+      for (const track of next.composition.tracks)
+        for (const clip of track.clips)
+          if (
+            ids.has(clip.id) ||
+            !saved.composition.tracks.some((t) =>
+              t.clips.some((c) => c.id === clip.id),
+            )
+          )
+            delete clip.userOverrides;
+    }
+    for (const track of next.composition.tracks)
+      for (const clip of track.clips) {
+        const original = saved.composition.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.id === clip.id);
+        if (original?.userOverrides)
+          clip.userOverrides = structuredClone(original.userOverrides);
+      }
+    for (const scene of next.composition.graphicScenes ?? []) {
+      const original = saved.composition.graphicScenes?.find(
+        (s) => s.id === scene.id,
+      );
+      if (original?.userOverrides)
+        scene.userOverrides = structuredClone(original.userOverrides);
+    }
     return next;
   }
   function assertComposition(next: EditorState) {

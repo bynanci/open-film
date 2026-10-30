@@ -222,6 +222,7 @@ export default {
         titleStyle: "Title typography and layout",
         audioAutomation: "Audio fades, gain envelopes and ducking",
         overlayTiming: "Non-ripple soundtrack editing",
+        userPins: "User pin intent (metadata only)",
         clipLocks: "Clip locks and story beats",
         overlappingClips: "Overlapping clips on one track",
       },

@@ -185,6 +185,17 @@ test("moves a real edited project and its media, restores sources and imports th
   await page.goto("/");
   await navigate(page, "edit");
   await saved(page);
+  await page.locator("#clip-traveling-photo").click();
+  await page
+    .getByRole("button", {
+      name: "Set photo duration to 5 seconds",
+      exact: true,
+    })
+    .click();
+  await saved(page);
+  expect(
+    (await composition(request)).tracks[0]!.clips[0]!.timelineDuration,
+  ).toBe(5);
   await page.locator("#clip-traveling-motion").click();
   await field(page, "Source in", "0.25");
   await field(page, "Source out", "2.75");
@@ -193,15 +204,15 @@ test("moves a real edited project and its media, restores sources and imports th
   await page
     .getByLabel("Clip transition", { exact: true })
     .selectOption("crossfade");
-  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
-  await page.locator("#clip-traveling-photo").click();
-  await page
-    .getByRole("button", {
-      name: "Set photo duration to 5 seconds",
-      exact: true,
-    })
-    .click();
+  // Keep the source edits and source lock, while explicitly permitting the
+  // later photo-duration ripple to move this clip's absolute placement.
+  const pin = page.getByTestId("clip-user-pin");
+  await expect(pin).toHaveAttribute("aria-pressed", "true");
+  await pin.click();
+  await expect(pin).toHaveAttribute("aria-pressed", "false");
+  await saved(page);
+  await page.getByRole("button", { name: "Lock clip", exact: true }).click();
   await saved(page);
   let edited = await composition(request);
   const beforeAssets = await assets(request);

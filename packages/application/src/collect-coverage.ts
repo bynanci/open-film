@@ -117,7 +117,8 @@ export function planCollectCoverage(
     evidence = flags(input.evidenceBoundAssetIds);
   const uses = new Map<string, CollectSourceUse[]>(),
     invalidRanges = new Set<string>(),
-    lockedAssets = new Set<string>();
+    lockedAssets = new Set<string>(),
+    pinnedAssets = new Set<string>();
   const compositionIds = new Set<string>();
   let count = 0;
   for (const composition of input.compositions) {
@@ -140,6 +141,9 @@ export function planCollectCoverage(
       if (!assets.has(assetId)) invalid();
       opaque.add(assetId);
     }
+    for (const scene of composition.graphicScenes ?? [])
+      if (scene.userOverrides?.isUserPinned)
+        for (const id of graphicSceneAssetIds([scene])) pinnedAssets.add(id);
     const trackIds = new Set<string>(),
       clipIds = new Set<string>();
     for (const track of composition.tracks) {
@@ -151,6 +155,11 @@ export function planCollectCoverage(
         id(clip.id);
         if (clipIds.has(clip.id)) invalid();
         clipIds.add(clip.id);
+        if (clip.userOverrides?.isUserPinned) {
+          pinnedAssets.add(clip.assetId);
+          if (clip.layout?.secondary)
+            pinnedAssets.add(clip.layout.secondary.assetId);
+        }
         if (clip.title) continue;
         const asset = assets.get(clip.assetId);
         if (!asset) invalid();
@@ -187,6 +196,7 @@ export function planCollectCoverage(
     .sort((a, b) => compare(a.id, b.id))
     .map((asset) => {
       const reasons = new Set<CollectCoverageReason>();
+      if (pinnedAssets.has(asset.id)) reasons.add("source.user-pinned");
       const sourceHash =
         typeof asset.contentHash === "string" &&
         /^[a-f0-9]{64}$/u.test(asset.contentHash)

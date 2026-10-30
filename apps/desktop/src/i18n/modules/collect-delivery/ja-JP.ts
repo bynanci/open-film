@@ -47,6 +47,8 @@ export default {
       "offline-candidate": "オフラインプレビュー候補",
     },
     reasons: {
+      userPinned:
+        "ユーザー固定のため、元の素材全体と保存済みの時間情報を保持します。",
       identityMissing: "ソースのバイト列と保存済みの識別情報を確認できません。",
       timingUnavailable: "信頼できるソースの長さがありません。",
       unsupported: "この素材は現在の設計では元ファイル全体を保持します。",

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ApplicationError,
+  resolveProjectTimebase,
   resolveFilmLook,
   type Clip,
   type FilmLook,
@@ -104,6 +105,59 @@ const apply = (
 ) => applyTimelineCommand(document, assets, command);
 
 describe("non-destructive film look commands", () => {
+  it.each(
+    (["clip", "primary", "secondary"] as const).flatMap((locked) =>
+      (["film", "beat", "clip"] as const).map((scope) => ({ locked, scope })),
+    ),
+  )(
+    "retains the direct $scope look lock contract for a $locked lock",
+    ({ locked, scope }) => {
+      const { document, assets } = fixture();
+      const photo = clip(document);
+      if (locked === "clip") photo.locked = true;
+      else if (locked === "primary") assets[0]!.state.locked = true;
+      else {
+        photo.layout = {
+          version: 1,
+          preset: "diptych",
+          secondary: { assetId: "pair" },
+        };
+        assets[1]!.state.locked = true;
+      }
+      const original = structuredClone(document);
+      const sources = structuredClone(assets);
+      const command: TimelineCommand =
+        scope === "film"
+          ? { type: "look", scope, look: look("retro") }
+          : scope === "beat"
+            ? { type: "look", scope, beatId: "first", look: look("retro") }
+            : {
+                type: "look",
+                scope,
+                clipId: "photo-clip",
+                look: look("retro"),
+              };
+      expect(() =>
+        applyTimelineCommand(document, assets, command, {
+          origin: "direct",
+          timebase: resolveProjectTimebase({
+            frameRate: 30,
+            width: 1920,
+            height: 1080,
+          }),
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "timeline.lookLocked",
+          status: 409,
+          params: { count: 1 },
+        }),
+      );
+      expect(document).toEqual(original);
+      expect(assets).toEqual(sources);
+    },
+  );
+
   it("sets, overrides and clears film, scene and clip looks without touching time or sources", () => {
     const { document, assets } = fixture();
     const original = structuredClone(document);

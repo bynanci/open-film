@@ -2,6 +2,22 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      affected: "対象の固定編集：{owners}。",
+      pinned: "編集を固定済み",
+      pin: "編集を固定",
+      unpin: "ユーザー固定を解除",
+      hint: "自動調整では固定した編集全体を保持します。素材とクリップのロックは別の保護です。",
+      releaseResolve: "固定解除して再構成",
+      releaseHint:
+        "このユーザー固定を解除してカットを一度に保存します。失敗時は固定を維持します。素材のロックは有効です。",
+      saved: "固定の変更を保存しました。",
+
+      target: "カット",
+      newCut: "新しいラフカット",
+      resolveCut: "選択したカットを再構成",
+      selectCut: "保存済みのカットを選択して再試行してください。",
+    },
     titleFinishing: {
       previewLimited:
         "同時字幕のプレビュー画像上限を超えています。重なる字幕を減らすか、書き出した MP4 を確認してください。",
@@ -103,6 +119,10 @@ export default {
         "mix-headroom": "候補に −1 dBTP の余裕がなく、適用できません。",
         "manual-review":
           "バランス、明瞭さ、意図を試聴してください。測定値は美的品質を保証しません。",
+        "user-pinned":
+          "このクリップのユーザーピンを解除し、再測定してから提案を適用してください。",
+        "target-locked":
+          "このクリップのロックを解除し、再測定してから提案を適用してください。",
       },
     },
     graphics: {

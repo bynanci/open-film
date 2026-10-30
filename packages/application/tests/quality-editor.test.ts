@@ -2,7 +2,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MediaAsset, AudioAutomation, PhotoMotion } from "@openfilm/core";
+import {
+  PRIMARY_COLOR_IDENTITY,
+  type MediaAsset,
+  type AudioAutomation,
+  type PhotoMotion,
+} from "@openfilm/core";
 import type { TimelineCommand } from "@openfilm/solver";
 import {
   OpenFilmApplication,
@@ -104,6 +109,232 @@ const pullOut: PhotoMotion = {
 };
 
 describe("durable quality editing", () => {
+  it.each([
+    { type: "duration", clipId: "photo", duration: 12 },
+    { type: "transform", clipId: "photo", rotation: 7, x: 0.25 },
+    {
+      type: "transition",
+      clipId: "photo",
+      transition: "crossfade",
+      duration: 0.5,
+    },
+    { type: "trim", clipId: "photo", sourceIn: 1, sourceOut: 12 },
+    { type: "speed", clipId: "photo", speed: 2 },
+    { type: "volume", clipId: "photo", volume: 0.5 },
+  ] satisfies TimelineCommand[])(
+    "retains primary source-locked clip-local $type and one history entry",
+    async (command) => {
+      const { app, editor } = await fixture();
+      const source = app.catalog.getAsset("portrait")!;
+      if (["trim", "speed", "volume"].includes(command.type)) {
+        source.mediaType = "video";
+        source.duration = 40;
+      }
+      source.state.locked = true;
+      app.catalog.upsertAsset(source);
+      await app.save();
+      const before = editor.get("film");
+      const sources = app.catalog.listAssets({ limit: 20 });
+      const input = {
+        baseRevision: before.revision,
+        requestId: `source-locked-${command.type}`,
+        commands: [command],
+      };
+      const after = await editor.edit("film", input);
+      expect(after.revision).not.toBe(before.revision);
+      expect(after.composition.tracks[0]!.clips[0]!.assetId).toBe("portrait");
+      expect(
+        after.composition.tracks[0]!.clips[0]!.userOverrides,
+      ).toMatchObject({
+        version: 1,
+        isUserPinned: true,
+      });
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      expect(
+        JSON.parse(await readFile(join(app.directory, "project.json"), "utf8"))
+          .timelines[0],
+      ).toEqual(after.composition);
+      expect((await editor.edit("film", input)).acknowledgedRevision).toBe(
+        after.revision,
+      );
+      const undone = await editor.undo("film", after.revision);
+      expect(undone.composition).toEqual(before.composition);
+      expect(undone.canUndo).toBe(false);
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition).toEqual(after.composition);
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+        after.composition,
+      );
+    },
+  );
+
+  it("keeps clip and overlay source locks authoritative for direct edits and explicit pin changes", async () => {
+    const { app, editor } = await fixture();
+    await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [addMusic],
+    });
+    const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+    photo.locked = true;
+    const source = app.catalog.getAsset("music")!;
+    source.state.locked = true;
+    app.catalog.upsertAsset(source);
+    await app.save();
+    const before = editor.get("film");
+    const disk = await readFile(join(app.directory, "project.json"));
+    const project = structuredClone(app.project);
+    const sources = app.catalog.listAssets({ limit: 20 });
+    for (const command of [
+      { type: "duration", clipId: "photo", duration: 12 },
+      { type: "transform", clipId: "photo", rotation: 7 },
+      { type: "transition", clipId: "photo", transition: "crossfade" },
+      { type: "trim", clipId: "soundtrack", sourceIn: 2, sourceOut: 20 },
+      { type: "speed", clipId: "soundtrack", speed: 2 },
+      { type: "volume", clipId: "soundtrack", volume: 0.25 },
+      { type: "audio.move", clipId: "soundtrack", timelineStart: 0 },
+      { type: "audio.configure", clipId: "soundtrack", automation },
+      { type: "delete", clipId: "soundtrack" },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "photo" },
+        pinned: false,
+      },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "soundtrack" },
+        pinned: false,
+      },
+    ] satisfies TimelineCommand[]) {
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [command],
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(editor.get("film")).toEqual(before);
+      expect(app.project).toEqual(project);
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      expect(await readFile(join(app.directory, "project.json"))).toEqual(disk);
+    }
+  });
+
+  it.each(
+    (["look", "primary-color"] as const).flatMap((type) =>
+      (["clip", "primary", "secondary"] as const).map((locked) => ({
+        type,
+        locked,
+      })),
+    ),
+  )(
+    "keeps typed $type errors and saved history for a $locked lock",
+    async ({ type, locked }) => {
+      const { app, editor } = await fixture();
+      const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+      if (locked === "clip") photo.locked = true;
+      else {
+        const sourceId = locked === "primary" ? "portrait" : "second-photo";
+        if (locked === "secondary")
+          photo.layout = {
+            version: 1,
+            preset: "diptych",
+            secondary: { assetId: sourceId },
+          };
+        const source = app.catalog.getAsset(sourceId)!;
+        source.state.locked = true;
+        app.catalog.upsertAsset(source);
+      }
+      await app.save();
+      const protectedState = editor.get("film");
+      const before = await editor.edit("film", {
+        baseRevision: protectedState.revision,
+        commands: [
+          {
+            type: "beat",
+            beatId: "beat",
+            patch: { intent: "Keep authored history" },
+          },
+        ],
+      });
+      expect(before.canUndo).toBe(true);
+      const previousProject = app.project;
+      const project = structuredClone(app.project);
+      const sources = app.catalog.listAssets({ limit: 20 });
+      const disk = await readFile(join(app.directory, "project.json"));
+      for (const scope of ["film", "beat", "clip"] as const) {
+        const target =
+          scope === "beat"
+            ? { beatId: "beat" }
+            : scope === "clip"
+              ? { clipId: "photo" }
+              : {};
+        const command =
+          type === "look"
+            ? {
+                type,
+                scope,
+                ...target,
+                look: { version: 1, preset: "retro", strength: 0.8 },
+              }
+            : {
+                type,
+                scope,
+                ...target,
+                correction: { ...PRIMARY_COLOR_IDENTITY, exposureEv: 0.5 },
+              };
+        await expect(
+          editor.edit("film", {
+            baseRevision: before.revision,
+            commands: [command as TimelineCommand],
+          }),
+        ).rejects.toMatchObject({
+          code:
+            type === "look"
+              ? "timeline.lookLocked"
+              : "timeline.primaryColorLocked",
+          status: 409,
+          params: { count: 1 },
+        });
+        expect(app.project).toBe(previousProject);
+        expect(app.project).toEqual(project);
+        expect(editor.get("film")).toEqual(before);
+        expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+        expect(await readFile(join(app.directory, "project.json"))).toEqual(
+          disk,
+        );
+      }
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [
+            {
+              type: "user-pin.set",
+              target: { kind: "clip", clipId: "photo" },
+              pinned: false,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(editor.get("film")).toEqual(before);
+      expect(app.project).toBe(previousProject);
+      expect(await readFile(join(app.directory, "project.json"))).toEqual(disk);
+      const undone = await editor.undo("film", before.revision);
+      expect(undone.composition).toEqual(protectedState.composition);
+      expect(undone.story).toEqual(protectedState.story);
+      expect(undone.canUndo).toBe(false);
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition).toEqual(before.composition);
+      expect(redone.story).toEqual(before.story);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+        before.composition,
+      );
+    },
+  );
+
   it("saves original-layout photo pull-out without rewriting layout, text, timing or soundtrack and restores it through history and reopen", async () => {
     const { app, editor } = await fixture();
     const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
@@ -130,6 +361,11 @@ describe("durable quality editing", () => {
     };
     const expected = structuredClone(before.composition);
     expected.tracks[0]!.clips[0]!.motion = pullOut;
+    expected.tracks[0]!.clips[0]!.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["motionPreset", "timing"],
+    };
     const saved = await editor.edit("film", input);
     expect(saved.composition).toEqual(expected);
     expect(saved.composition.tracks[0]!.clips[0]).not.toHaveProperty("layout");
@@ -288,6 +524,11 @@ describe("durable quality editing", () => {
     const expectedComposition = structuredClone(before.composition);
     expectedComposition.tracks[0]!.clips[0]!.title = expected.title;
     expectedComposition.tracks[0]!.clips[0]!.titleStyle = expected.titleStyle;
+    expectedComposition.tracks[0]!.clips[0]!.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    };
     expect(saved.composition).toEqual(expectedComposition);
     const retry = await editor.edit("film", structuredClone(input));
     expect(retry.revision).toBe(saved.revision);
@@ -848,6 +1089,52 @@ describe("durable quality editing", () => {
     );
   });
 
+  it("rejects shortening a pinned soundtrack without changing the complete project, disk or history before explicit release", async () => {
+    const { app, editor } = await fixture();
+    const pinned = await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [
+        addMusic,
+        { type: "audio.configure", clipId: "soundtrack", automation },
+      ],
+    });
+    const project = structuredClone(app.project),
+      file = join(app.directory, "project.json"),
+      disk = await readFile(file);
+    await expect(
+      editor.edit("film", {
+        baseRevision: pinned.revision,
+        commands: [{ type: "duration", clipId: "photo", duration: 8 }],
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict", status: 409 });
+    expect(app.project).toEqual(project);
+    expect(editor.get("film")).toEqual(pinned);
+    expect(await readFile(file)).toEqual(disk);
+    const released = await editor.edit("film", {
+      baseRevision: pinned.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "soundtrack" },
+          pinned: false,
+        },
+      ],
+    });
+    const shortened = await editor.edit("film", {
+      baseRevision: released.revision,
+      commands: [{ type: "duration", clipId: "photo", duration: 8 }],
+    });
+    expect(shortened.composition.duration).toBe(8);
+    expect(shortened.composition.tracks[1]!.clips[0]!.userOverrides).toEqual({
+      version: 1,
+      isUserPinned: false,
+      lockedAttributes: [],
+    });
+    expect((await editor.undo("film", shortened.revision)).composition).toEqual(
+      released.composition,
+    );
+  });
+
   it("saves and reopens a visually shortened film with bounded audio envelopes", async () => {
     const { app, editor } = await fixture();
     let state = await editor.edit("film", {
@@ -871,6 +1158,11 @@ describe("durable quality editing", () => {
               { start: 19, end: 20, gain: 0.4, attack: 0, release: 0 },
             ],
           },
+        },
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "soundtrack" },
+          pinned: false,
         },
       ],
     });

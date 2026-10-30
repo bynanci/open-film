@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { OpenFilmApplication } from "../src/index.js";
+import { OpenFilmApplication, createPresetSnapshot } from "../src/index.js";
+import { validatePresetPackage } from "@openfilm/core";
+import { presetPackage } from "../../../tests/fixtures/local-presets/package.js";
 import { isRunOutdated } from "@openfilm/core";
 import type { MediaAsset, Story, Composition } from "@openfilm/core";
 
@@ -122,6 +124,7 @@ describe("Creative Variants Application Service", () => {
           clips: [
             {
               id: "clip-1",
+              beatId: "beat-1",
               assetId: "asset-1",
               timelineStart: 0,
               timelineDuration: 5,
@@ -131,6 +134,7 @@ describe("Creative Variants Application Service", () => {
             },
             {
               id: "clip-2",
+              beatId: "beat-2",
               assetId: "asset-2",
               timelineStart: 5,
               timelineDuration: 5,
@@ -140,6 +144,7 @@ describe("Creative Variants Application Service", () => {
             },
             {
               id: "clip-3",
+              beatId: "beat-3",
               assetId: "asset-3",
               timelineStart: 10,
               timelineDuration: 5,
@@ -166,6 +171,410 @@ describe("Creative Variants Application Service", () => {
     await rm(projectDir, { recursive: true, force: true }).catch(
       () => undefined,
     );
+  });
+
+  it.each([
+    ["film", undefined],
+    ["film", false],
+    ["selected-section", undefined],
+    ["selected-section", false],
+    ["other-section", undefined],
+    ["other-section", false],
+  ] as const)(
+    "preserves %s no-op pinned payload with locked=%s through reopening and isolation",
+    async (scope, locked) => {
+      const baseline = app.project.timelines[0]!,
+        pinned = baseline.tracks[0]!.clips[1]!;
+      if (locked === undefined) delete pinned.locked;
+      else pinned.locked = locked;
+      pinned.userOverrides = {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["timing"],
+      };
+      app.project.schemaVersion = "1.1.0";
+      await app.save();
+      const before = structuredClone(pinned);
+      const variant = await app.creativeVariants.createVariant({
+        name: "No-op pinned clone",
+        intent: "Preserve saved choices",
+        modifications: {},
+        scope:
+          scope === "film"
+            ? { type: "film" }
+            : {
+                type: "section",
+                targetBeatId:
+                  scope === "selected-section" ? "beat-2" : "beat-1",
+              },
+      });
+      await app.save();
+      app.close();
+      app = await OpenFilmApplication.open(projectDir);
+      const derived = app.project.timelines.find(
+        (composition) => composition.id === variant.derivedCompositionId,
+      )!;
+      const mapping = variant.provenanceMapping.clipMappings.find(
+        (mapping) => mapping.baselineClipId === before.id,
+      )!;
+      const beatMapping = variant.provenanceMapping.beatMappings.find(
+        (mapping) => mapping.baselineBeatId === before.beatId,
+      )!;
+      const copy = derived.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === mapping.variantClipId)!;
+      expect(copy).toEqual({
+        ...before,
+        id: mapping.variantClipId,
+        beatId: beatMapping.variantBeatId,
+      });
+      expect(Object.hasOwn(copy, "locked")).toBe(locked !== undefined);
+      const reopenedBaseline = app.project.timelines.find(
+        (composition) => composition.id === baseline.id,
+      )!.tracks[0]!.clips[1]!;
+      expect(reopenedBaseline).toEqual(before);
+      copy.userOverrides!.lockedAttributes.push("motionPreset");
+      expect(reopenedBaseline).toEqual(before);
+    },
+  );
+
+  it.each(["present", "absent"] as const)(
+    "maps inherited primary and local Look scope without changing pinned finishing or %s source bounds",
+    async (bounds) => {
+      const baseline = app.project.timelines[0]!;
+      const pinned = baseline.tracks[0]!.clips[1]!;
+      const pkg = validatePresetPackage(presetPackage());
+      const entry = pkg.entries.find((entry) => entry.kind === "film-look")!;
+      const look = {
+        version: 2 as const,
+        preset: "local" as const,
+        strength: 0.8,
+        snapshot: createPresetSnapshot<"film-look">(pkg, entry),
+      };
+      const storyEntry = pkg.entries.find((entry) => entry.kind === "story")!;
+      const storySnapshot = createPresetSnapshot<"story">(pkg, storyEntry);
+      baseline.storyPresetSnapshot = storySnapshot;
+      const baselineStory = app.project.stories[0]!;
+      baselineStory.presetSnapshot = storySnapshot;
+      baselineStory.presetPlanSource = {
+        version: 1,
+        storyId: "source-story",
+        planId: "source-plan",
+        sourceGuardSha256: "e".repeat(64),
+        bindings: [
+          {
+            recipeBeatKey: "middle",
+            sourceBeatId: "source-beat",
+            beatId: pinned.beatId!,
+          },
+        ],
+      };
+      baseline.beatLooks = [{ beatId: pinned.beatId!, look }];
+      baseline.beatPrimaryColors = [
+        {
+          beatId: pinned.beatId!,
+          correction: {
+            version: 1,
+            temperature: 0.2,
+            exposureEv: 0.4,
+            contrast: 0.9,
+          },
+        },
+      ];
+      pinned.layout = {
+        version: 2,
+        preset: "contain",
+        fill: { version: 1, kind: "ambient", blurSigma: 0.03, dim: 0.4 },
+      };
+      pinned.motion = {
+        version: 2,
+        preset: "pan",
+        easing: {
+          version: 1,
+          kind: "cubic-bezier",
+          x1: 0.2,
+          y1: 0.1,
+          x2: 0.8,
+          y2: 0.9,
+        },
+        from: { scale: 1, x: 0, y: 0 },
+        to: { scale: 1, x: 1, y: 0 },
+      };
+      pinned.title = "記憶\nMemories";
+      pinned.titleRuns = { version: 1, splitAt: 2, secondary: { tracking: 1 } };
+      pinned.titleStyle = {
+        version: 1,
+        role: "film-title",
+        finishing: { version: 1, stroke: { color: "#000000", width: 1 } },
+      };
+      pinned.userOverrides = {
+        version: 1,
+        isUserPinned: true,
+        lockedAttributes: ["motionPreset", "timing"],
+      };
+      if (bounds === "absent") {
+        delete pinned.sourceIn;
+        delete pinned.sourceOut;
+      }
+      app.project.schemaVersion = "1.1.0";
+      await app.save();
+      const original = structuredClone(pinned);
+      const variant = await app.creativeVariants.createVariant({
+        name: "Finishing clone",
+        intent: "Preserve inherited correction",
+        scope: { type: "film" },
+        modifications: {},
+      });
+      const mapping = variant.provenanceMapping.beatMappings.find(
+        (m) => m.baselineBeatId === original.beatId,
+      )!;
+      const derived = app.project.timelines.find(
+        (c) => c.id === variant.derivedCompositionId,
+      )!;
+      const derivedStory = app.project.stories.find(
+        (story) => story.id === derived.storyId,
+      )!;
+      expect(derivedStory.presetPlanSource).toEqual({
+        ...baselineStory.presetPlanSource,
+        bindings: [
+          {
+            ...baselineStory.presetPlanSource!.bindings[0]!,
+            beatId: mapping.variantBeatId,
+          },
+        ],
+      });
+      expect(derivedStory.presetSnapshot).toEqual(storySnapshot);
+      expect(derived.storyPresetSnapshot).toEqual(storySnapshot);
+      expect(derived.beatPrimaryColors).toEqual([
+        { ...baseline.beatPrimaryColors[0]!, beatId: mapping.variantBeatId },
+      ]);
+      expect(derived.beatLooks).toEqual([
+        { beatId: mapping.variantBeatId, look },
+      ]);
+      const clonedId = variant.provenanceMapping.clipMappings.find(
+        (m) => m.baselineClipId === original.id,
+      )!.variantClipId;
+      expect(
+        derived.tracks.flatMap((t) => t.clips).find((c) => c.id === clonedId),
+      ).toEqual({ ...original, id: clonedId, beatId: mapping.variantBeatId });
+      const copy = derived.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === clonedId)!;
+      expect(Object.hasOwn(copy, "sourceIn")).toBe(bounds === "present");
+      expect(Object.hasOwn(copy, "sourceOut")).toBe(bounds === "present");
+      app.close();
+      app = await OpenFilmApplication.open(projectDir);
+      expect(app.project.timelines.find((c) => c.id === derived.id)).toEqual(
+        derived,
+      );
+      expect(
+        app.project.timelines.find((c) => c.id === baseline.id)!.tracks[0]!
+          .clips[1],
+      ).toEqual(original);
+    },
+  );
+
+  it.each(["film", "selected-section", "other-section"] as const)(
+    "preserves optional source and beat key presence in %s no-op variants",
+    async (scope) => {
+      const baseline = app.project.timelines[0]!,
+        pin = {
+          version: 1 as const,
+          isUserPinned: true,
+          lockedAttributes: ["timing" as const],
+        };
+      const pinned = baseline.tracks[0]!.clips[1]!;
+      delete pinned.sourceOut;
+      pinned.userOverrides = structuredClone(pin);
+      baseline.tracks.push({
+        id: "overlay",
+        type: "video",
+        timing: "overlay",
+        clips: [
+          {
+            id: "unassigned",
+            assetId: "asset-1",
+            timelineStart: 0,
+            timelineDuration: 1,
+            userOverrides: structuredClone(pin),
+          },
+        ],
+      });
+      app.project.schemaVersion = "1.1.0";
+      await app.save();
+      const original = structuredClone(baseline);
+      const variant = await app.creativeVariants.createVariant({
+        name: "Presence clone",
+        intent: "Keep exact optional fields",
+        modifications: {},
+        scope:
+          scope === "film"
+            ? { type: "film" }
+            : {
+                type: "section",
+                targetBeatId:
+                  scope === "selected-section" ? "beat-2" : "beat-1",
+              },
+      });
+      const derived = app.project.timelines.find(
+        (cut) => cut.id === variant.derivedCompositionId,
+      )!;
+      for (const source of [
+        original.tracks[0]!.clips[1]!,
+        original.tracks[1]!.clips[0]!,
+      ]) {
+        const id = variant.provenanceMapping.clipMappings.find(
+          (mapping) => mapping.baselineClipId === source.id,
+        )!.variantClipId;
+        const beatId =
+          source.beatId &&
+          variant.provenanceMapping.beatMappings.find(
+            (mapping) => mapping.baselineBeatId === source.beatId,
+          )!.variantBeatId;
+        const copy = derived.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === id)!;
+        expect(copy).toStrictEqual({
+          ...source,
+          id,
+          ...(source.beatId === undefined ? {} : { beatId }),
+        });
+        for (const key of [
+          "sourceIn",
+          "sourceOut",
+          "beatId",
+          "locked",
+        ] as const)
+          expect(Object.hasOwn(copy, key)).toBe(Object.hasOwn(source, key));
+      }
+      expect(baseline).toStrictEqual(original);
+      app.close();
+      app = await OpenFilmApplication.open(projectDir);
+      expect(
+        app.project.timelines.find((cut) => cut.id === derived.id),
+      ).toStrictEqual(derived);
+    },
+  );
+
+  it("pinned occurrences retain exact payload and detached graph in duration variants", async () => {
+    const baseline = app.project.timelines[0]!;
+    const pinned = baseline.tracks[0]!.clips[1]!;
+    pinned.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    };
+    baseline.graphicScenes = [
+      {
+        version: 1,
+        id: "graphic",
+        name: "Graphic",
+        start: 0,
+        duration: 1,
+        zIndex: 0,
+        nodes: [],
+      },
+    ];
+    app.project.schemaVersion = "1.1.0";
+    await app.save();
+    const snapshot = structuredClone(baseline);
+    const variant = await app.creativeVariants.createVariant({
+      name: "Pinned version",
+      intent: "Shorter",
+      scope: { type: "film" },
+      modifications: { durationMultiplier: 0.8 },
+    });
+    const derived = app.project.timelines.find(
+      (c) => c.id === variant.derivedCompositionId,
+    )!;
+    const mapping = variant.provenanceMapping.clipMappings.find(
+      (m) => m.baselineClipId === pinned.id,
+    )!;
+    const copy = derived.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === mapping.variantClipId)!;
+    expect(copy.timelineStart).toBe(pinned.timelineStart);
+    expect(copy.timelineDuration).toBe(pinned.timelineDuration);
+    expect(copy.sourceIn).toBe(pinned.sourceIn);
+    expect(copy.sourceOut).toBe(pinned.sourceOut);
+    expect(copy.userOverrides).toEqual(pinned.userOverrides);
+    expect(copy.userOverrides).not.toBe(pinned.userOverrides);
+    expect(derived.graphicScenes).not.toBe(baseline.graphicScenes);
+    copy.userOverrides!.isUserPinned = false;
+    derived.graphicScenes![0]!.name = "Derived only";
+    expect(baseline).toEqual(snapshot);
+  });
+  it("section membership uses occurrence beat identity when one source repeats", async () => {
+    const baseline = app.project.timelines[0]!;
+    const first = baseline.tracks[0]!.clips[0]!,
+      second = baseline.tracks[0]!.clips[1]!;
+    second.assetId = first.assetId;
+    app.project.stories[0]!.beats[1]!.selectedAssetIds = [first.assetId];
+    await app.save();
+    const variant = await app.creativeVariants.createVariant({
+      name: "Repeated source",
+      intent: "Section",
+      scope: { type: "section", targetBeatId: "beat-2" },
+      modifications: { targetDuration: 2 },
+    });
+    const derived = app.project.timelines.find(
+      (c) => c.id === variant.derivedCompositionId,
+    )!;
+    const map = new Map(
+      variant.provenanceMapping.clipMappings.map((m) => [
+        m.baselineClipId,
+        m.variantClipId,
+      ]),
+    );
+    expect(
+      derived.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === map.get(first.id))!.timelineDuration,
+    ).toBe(first.timelineDuration);
+    expect(
+      derived.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === map.get(second.id))!.timelineDuration,
+    ).toBe(2);
+  });
+
+  it("missing or ambiguous section ownership fails without inferring repeated assets", async () => {
+    const comp = app.project.timelines[0]!;
+    for (const clip of comp.tracks[0]!.clips) delete clip.beatId;
+    comp.tracks[0]!.clips[1]!.assetId = comp.tracks[0]!.clips[0]!.assetId;
+    await app.save();
+    const before = structuredClone(app.project);
+    await expect(
+      app.creativeVariants.createVariant({
+        name: "Ambiguous",
+        intent: "Section",
+        scope: { type: "section", targetBeatId: "beat-2" },
+        modifications: { targetDuration: 2 },
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict" });
+    expect(app.project).toEqual(before);
+  });
+  it("impossible pinned replacement fails before creating any derived cut", async () => {
+    const clip = app.project.timelines[0]!.tracks[0]!.clips[1]!;
+    clip.userOverrides = {
+      version: 1,
+      isUserPinned: true,
+      lockedAttributes: ["timing"],
+    };
+    app.project.schemaVersion = "1.1.0";
+    await app.save();
+    const before = structuredClone(app.project);
+    await expect(
+      app.creativeVariants.createVariant({
+        name: "Impossible",
+        intent: "Replace",
+        scope: { type: "section", targetBeatId: "beat-2" },
+        modifications: {
+          replaceAssetIds: [{ fromAssetId: "asset-2", toAssetId: "asset-4" }],
+        },
+      }),
+    ).rejects.toMatchObject({ code: "timeline.pinConflict" });
+    expect(app.project).toEqual(before);
   });
 
   it("previews variant impact and proves section isolation before creation", () => {
@@ -378,6 +787,7 @@ describe("Creative Variants Application Service", () => {
 
     // Create a pipeline run under the adopted state
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: variant.derivedStoryId,
       assetIds: ["asset-1", "asset-2"],
     });

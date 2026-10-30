@@ -2,6 +2,22 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      affected: "受影響的釘選編輯：{owners}。",
+      pinned: "已釘選編輯",
+      pin: "釘選編輯",
+      unpin: "解除使用者釘選",
+      hint: "自動調整會保留完整的釘選編輯。來源與片段鎖定為獨立保護。",
+      releaseResolve: "解除釘選並重新求解",
+      releaseHint:
+        "在一次儲存操作中解除此使用者釘選並重新求解剪輯。失敗時保留釘選，來源鎖定仍有效。",
+      saved: "已儲存釘選變更。",
+
+      target: "剪輯版本",
+      newCut: "新增粗剪",
+      resolveCut: "重新求解所選剪輯",
+      selectCut: "請選擇已儲存的剪輯後重試。",
+    },
     titleFinishing: {
       previewLimited:
         "同時顯示的字幕已超出預覽影像限制。請減少重疊字幕，或檢查實際算繪的 MP4。",
@@ -97,6 +113,8 @@ export default {
         limited: "建議受到峰值餘量或既有單位增益上限限制。",
         "mix-headroom": "候選混音未保留 −1 dBTP 餘量，目前無法採用。",
         "manual-review": "請聆聽平衡、清晰度與敘事意圖；量測無法判定美學品質。",
+        "user-pinned": "請先解除此片段的使用者固定，再重新量測以採用建議。",
+        "target-locked": "請先解鎖此片段，再重新量測以採用建議。",
       },
     },
     graphics: {

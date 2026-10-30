@@ -23,6 +23,7 @@ export type NleFeatureId =
   | "audioAutomation"
   | "overlayTiming"
   | "clipLocks"
+  | "userPins"
   | "overlappingClips";
 
 export interface NleFeatureCompatibility {
@@ -65,6 +66,7 @@ const metadataFeatures: NleFeatureId[] = [
   "audioAutomation",
   "overlayTiming",
   "clipLocks",
+  "userPins",
 ];
 const realNle: NleVerificationEvidence[] = [];
 

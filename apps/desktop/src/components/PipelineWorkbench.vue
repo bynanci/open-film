@@ -13,6 +13,7 @@ import {
   type WorkbenchStageKey,
   type WorkbenchStageStatus,
 } from "../pipeline-workbench-model";
+import { pipelineCompositionTarget } from "../pipeline-workbench-model";
 import type {
   PipelineRecipe,
   PipelineRun,
@@ -61,6 +62,21 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const compositionTargetMode = ref<"new-cut" | "resolve">("new-cut");
+async function selectedCompositionTarget() {
+  const compositionId = props.activeCompositionId;
+  if (compositionTargetMode.value === "new-cut")
+    return pipelineCompositionTarget("new-cut");
+  if (!compositionId) throw new Error(t("editor.pins.selectCut"));
+  const state = await api.editor(compositionId);
+  if (props.activeCompositionId !== compositionId)
+    throw new Error(t("editor.pins.selectCut"));
+  return pipelineCompositionTarget("resolve", {
+    compositionId,
+    revision: state.revision,
+  });
+}
 
 const mode = ref<WorkbenchMode>(props.initialMode);
 const workbenchPanel = ref<HTMLElement | null>(null);
@@ -320,6 +336,7 @@ async function handleStartProduction() {
     }
 
     const created = await api.pipelineCreateRun(selectedRecipeId.value, {
+      compositionTarget: await selectedCompositionTarget(),
       storyId: props.storyId ?? props.activeStory?.id,
       assetIds: (props.assets ?? []).map((a) => a.id),
       narration: narrationOption,
@@ -366,6 +383,7 @@ async function handleAnalyzeImpact() {
 
     const res = await api.pipelineAnalyzeImpact(selectedRecipeId.value, {
       baseRunId: currentRun.value?.id,
+      compositionTarget: await selectedCompositionTarget(),
       storyId: props.storyId ?? props.activeStory?.id,
       assetIds: (props.assets ?? []).map((a) => a.id),
       narration: narrationOption,
@@ -408,6 +426,7 @@ async function handleStartIncrementalRun() {
       {
         baseRunId: currentRun.value?.id,
         impactReport: impactReport.value ?? undefined,
+        compositionTarget: await selectedCompositionTarget(),
         storyId: props.storyId ?? props.activeStory?.id,
         assetIds: (props.assets ?? []).map((a) => a.id),
         narration: narrationOption,
@@ -1375,6 +1394,23 @@ onUnmounted(() => {
                 <span class="q-label">{{
                   t("app.pipeline.workbench.card.usedWhat")
                 }}</span>
+                <label class="radio-label">
+                  {{ t("editor.pins.target") }}
+                  <select
+                    v-model="compositionTargetMode"
+                    class="workbench-select"
+                  >
+                    <option value="new-cut">
+                      {{ t("editor.pins.newCut") }}
+                    </option>
+                    <option
+                      value="resolve"
+                      :disabled="!props.activeCompositionId"
+                    >
+                      {{ t("editor.pins.resolveCut") }}
+                    </option>
+                  </select>
+                </label>
                 <div class="narration-selector-group">
                   <label class="radio-label">
                     <input

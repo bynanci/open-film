@@ -97,6 +97,7 @@ it("aborts and discards late measured evidence after revision changes", async ()
   const component = loadComponent(
     "apps/desktop/src/components/PrimaryColorReviewPanel.vue",
     {
+      "@openfilm/core": core,
       "vue-i18n": i18n,
       "../api": {
         api: {
@@ -148,6 +149,7 @@ it("retains the review panel when optimistic Apply replaces the same clip and Co
   const panel = loadComponent(
     "apps/desktop/src/components/PrimaryColorReviewPanel.vue",
     {
+      "@openfilm/core": core,
       "vue-i18n": i18n,
       "../api": {
         api: { discardPrimaryColorReview: async () => ({ ok: true }) },
@@ -216,6 +218,85 @@ it("retains the review panel when optimistic Apply replaces the same clip and Co
         (n) => n.props["data-testid"] === "primary-measure",
       ),
     ).toBe(true);
+  } finally {
+    mounted.unmount();
+  }
+});
+
+it("emits an owned cloneable measured correction from the reactive review", async () => {
+  const correction = {
+    version: 1,
+    temperature: 0,
+    exposureEv: 0.3,
+    contrast: 1,
+  };
+  const stats = { p50Y: 0.4, clippedFraction: 0 };
+  const commands: unknown[] = [];
+  const component = loadComponent(
+    "apps/desktop/src/components/PrimaryColorReviewPanel.vue",
+    {
+      "@openfilm/core": core,
+      "vue-i18n": i18n,
+      "../api": {
+        api: {
+          primaryColorReview: async () => ({
+            id: "measured-review",
+            projectId: "p",
+            baseRevision: "r",
+            canApply: true,
+            suggestedCorrection: correction,
+            currentCorrection: { ...core.PRIMARY_COLOR_IDENTITY },
+            before: stats,
+            after: stats,
+            reference: stats,
+            warnings: [],
+            samples: ["reference", "before", "after"].map((variant) => ({
+              variant,
+              index: 0,
+            })),
+          }),
+          discardPrimaryColorReview: async () => ({ ok: true }),
+        },
+        primaryColorReviewMediaUrl: (_id: string, variant: string) =>
+          `/sample/${variant}`,
+      },
+    },
+  );
+  const mounted = mountComponent(component, {
+    projectId: "p",
+    compositionId: "f",
+    revision: "r",
+    clipId: "target",
+    references: [{ id: "reference", name: "Reference" }],
+    disabled: false,
+    onApply: (command: unknown) => commands.push(command),
+  });
+  try {
+    const find = (id: string) =>
+      flatten(mounted.root).find((node) => node.props["data-testid"] === id)!;
+    await (find("primary-measure").props.onClick as () => Promise<void>)();
+    await vue.nextTick();
+    for (const image of flatten(mounted.root).filter(
+      (node) => node.tag === "img",
+    ))
+      (image.props.onLoad as () => void)();
+    const checkbox = flatten(mounted.root).find(
+      (node) => node.props.type === "checkbox",
+    )!;
+    (checkbox.props["onUpdate:modelValue"] as (value: boolean) => void)(true);
+    await vue.nextTick();
+    expect(find("primary-match-apply").props.disabled).toBe(false);
+    (find("primary-match-apply").props.onClick as () => void)();
+    const expected = {
+      type: "primary-color",
+      scope: "clip",
+      clipId: "target",
+      correction: { ...correction },
+      primaryColorReviewId: "measured-review",
+    };
+    expect(structuredClone(commands[0])).toEqual(expected);
+    correction.exposureEv = 1;
+    expect(commands[0]).toEqual(expected);
   } finally {
     mounted.unmount();
   }

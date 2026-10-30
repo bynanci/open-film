@@ -57,6 +57,7 @@ const reasons: Record<CollectCoverageReason, string> = {
   "source.timing-unavailable": "timingUnavailable",
   "source.unsupported": "unsupported",
   "source.locked": "locked",
+  "source.user-pinned": "userPinned",
   "source.opaque-reference": "opaqueReference",
   "source.evidence-bound": "evidenceBound",
   "source.range-invalid": "rangeInvalid",

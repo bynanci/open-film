@@ -37,7 +37,8 @@ const name = computed(
     :aria-label="
       t(clip.locked ? 'editor.clip.selectLocked' : 'editor.clip.select', {
         name,
-      })
+      }) +
+      (clip.userOverrides?.isUserPinned ? ` · ${t('editor.pins.pinned')}` : '')
     "
     :aria-pressed="selected"
     :draggable="!clip.locked"
@@ -68,8 +69,19 @@ const name = computed(
         )
       }}</span
     >
-    <span v-if="clip.locked" class="editor-clip-badge"
-      ><Icon name="lock" :size="11" />{{ t("editor.clip.locked") }}</span
+    <span
+      v-if="clip.userOverrides?.isUserPinned || clip.locked"
+      class="editor-clip-badge"
+    >
+      <span
+        v-if="clip.userOverrides?.isUserPinned"
+        data-testid="user-pin-marker"
+        :title="t('editor.pins.hint')"
+        ><Icon name="pin" :size="11" />{{ t("editor.pins.pinned") }}</span
+      >
+      <span v-if="clip.locked"
+        ><Icon name="lock" :size="11" />{{ t("editor.clip.locked") }}</span
+      ></span
     ><span class="editor-clip-meta"
       ><strong>{{ name }}</strong
       ><small

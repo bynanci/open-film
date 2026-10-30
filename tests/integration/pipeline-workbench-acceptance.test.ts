@@ -122,6 +122,7 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
   it("Journey 1: handles missing narration audio, supplements with voice import, and completes production", async () => {
     // 1. Missing audio: User selects voice import with an asset not yet in catalog or attempts creation
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_wb_1",
       narration: { type: "voice-import", assetId: "missing_voice" },
     });
@@ -160,6 +161,7 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
 
     // 3. New run with supplemented voice
     const validRun = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_wb_1",
       narration: { type: "voice-import", assetId: "voice_supp_1" },
     });
@@ -193,6 +195,7 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
 
   it("Journey 2: pauses at review proposal, preserves story origins, and adopts with legal receipt", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_wb_1",
       narration: { type: "none" },
     });
@@ -218,6 +221,7 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
   it("Journey 3: recovers from step failure via retryRun without mutating original snapshot", async () => {
     // Deliberately trigger failure with tone mock
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_wb_1",
       narration: {
         type: "configured-tts",
@@ -239,6 +243,7 @@ describe("Phase M10B: Pipeline Workbench Real Services Acceptance", () => {
 
   it("Journey 4: detects external draft changes, marks run as outdated, and prevents masquerading as latest", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_wb_1",
       narration: { type: "none" },
     });
