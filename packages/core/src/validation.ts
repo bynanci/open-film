@@ -16,6 +16,7 @@ import {
   type TitleStyle,
   type AudioAutomation,
   type FilmLook,
+  type PrimaryColorCorrection,
   type CaptionCueSource,
   type CaptionTrack,
   type ProjectSettings,
@@ -34,6 +35,13 @@ import {
 } from "./graphic-scenes.js";
 import { validateGraphicSceneTemplates } from "./graphic-scene-templates.js";
 import { validateStoryGraph } from "./story-graph.js";
+import {
+  validatePresetSnapshot,
+  validatePresetPlanSource,
+  validatePresetReceipts,
+  projectPresetSnapshots,
+  assertPresetJsonData,
+} from "./presets.js";
 
 export interface ValidationIssue {
   path: string;
@@ -166,6 +174,24 @@ function presentationObject(
 }
 
 function filmLook(value: unknown, path: string): FilmLook {
+  assertPresetJsonData(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    Object.getOwnPropertyDescriptor(value, "version")?.value === 2
+  ) {
+    const data = presentationObject(value, path, [
+      "version",
+      "preset",
+      "strength",
+      "snapshot",
+    ]);
+    if (data.preset !== "local")
+      fail(`${path}.preset`, "expected local preset discriminator");
+    number(data.strength, `${path}.strength`, 0, 1);
+    validatePresetSnapshot(data.snapshot, "film-look");
+    return data as unknown as FilmLook;
+  }
   const data = presentationObject(value, path, [
     "version",
     "preset",
@@ -183,6 +209,27 @@ function filmLook(value: unknown, path: string): FilmLook {
 export function validateFilmLook(value: unknown): FilmLook {
   filmLook(value, "look");
   return copyJson(value, "look") as FilmLook;
+}
+
+function primaryColor(value: unknown, path: string): PrimaryColorCorrection {
+  const data = presentationObject(value, path, [
+    "version",
+    "temperature",
+    "exposureEv",
+    "contrast",
+  ]);
+  if (data.version !== 1)
+    fail(`${path}.version`, "expected supported primary color version 1");
+  number(data.temperature, `${path}.temperature`, -1, 1);
+  number(data.exposureEv, `${path}.exposureEv`, -2, 2);
+  number(data.contrast, `${path}.contrast`, 0.5, 1.5);
+  return data as unknown as PrimaryColorCorrection;
+}
+export function validatePrimaryColorCorrection(
+  value: unknown,
+): PrimaryColorCorrection {
+  primaryColor(value, "primaryColor");
+  return copyJson(value, "primaryColor") as PrimaryColorCorrection;
 }
 
 function versionOne(value: ObjectValue, path: string): void {
@@ -924,6 +971,12 @@ function story(
   knownAssets?: ReadonlySet<string>,
 ): Story {
   const data = object(value, path);
+  optional(data, "presetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
+  optional(data, "presetPlanSource", path, (value) =>
+    validatePresetPlanSource(value),
+  );
   string(data.id, `${path}.id`);
   string(data.title, `${path}.title`);
   optional(data, "template", path, string);
@@ -1041,6 +1094,9 @@ function composition(
   const data = object(value, path);
   string(data.id, `${path}.id`);
   string(data.storyId, `${path}.storyId`);
+  optional(data, "storyPresetSnapshot", path, (value) =>
+    validatePresetSnapshot(value, "story"),
+  );
   const duration = number(data.duration, `${path}.duration`, 0);
   const tracks = array(data.tracks, `${path}.tracks`);
   ids(tracks, `${path}.tracks`);
@@ -1059,6 +1115,23 @@ function composition(
       scenes,
       knownAssets ? [...knownAssets] : undefined,
     );
+  });
+  optional(data, "defaultPrimaryColor", path, primaryColor);
+  optional(data, "beatPrimaryColors", path, (value, entryPath) => {
+    const entries = array(value, entryPath);
+    if (entries.length > 1000)
+      fail(entryPath, "expected at most 1000 scene primary color overrides");
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      const p = `${entryPath}[${index}]`;
+      const item = presentationObject(entry, p, ["beatId", "correction"]);
+      receiptIdentifier(item.beatId, `${p}.beatId`);
+      const id = item.beatId as string;
+      if (seen.has(id) || (beatIds && !beatIds.has(id)))
+        fail(`${p}.beatId`, "duplicate or unknown scene primary color beat");
+      seen.add(id);
+      primaryColor(item.correction, `${p}.correction`);
+    });
   });
   optional(data, "defaultLook", path, filmLook);
   optional(data, "beatLooks", path, (value, beatPath) => {
@@ -1158,10 +1231,14 @@ function composition(
       });
       optional(clip, "motion", clipPath, photoMotion);
       optional(clip, "titleStyle", clipPath, titleStyle);
+      optional(clip, "titlePresetSnapshot", clipPath, (value) =>
+        validatePresetSnapshot(value, "title"),
+      );
       optional(clip, "audioAutomation", clipPath, (v, p) =>
         audioAutomation(v, p, length),
       );
       optional(clip, "look", clipPath, filmLook);
+      optional(clip, "primaryColor", clipPath, primaryColor);
       if (
         clip.look !== undefined &&
         (track.type === "audio" ||
@@ -1289,6 +1366,9 @@ export function validateProject(
     });
   });
   optional(data, "sceneDirectionReceipts", path, sceneDirectionReceipts);
+  optional(data, "presetApplicationReceipts", path, (value) =>
+    validatePresetReceipts(value, String(data.id)),
+  );
   const stories = array(data.stories, `${path}.stories`);
   const storyIds = ids(stories, `${path}.stories`);
   const storiesById = new Map<string, Story>();
@@ -1309,6 +1389,7 @@ export function validateProject(
     );
     composition(entry, timelinePath, knownAssets, beatIds);
   });
+  projectPresetSnapshots(data as unknown as OpenFilmProject);
   return copyJson(value, path) as OpenFilmProject;
 }
 

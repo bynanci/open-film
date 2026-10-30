@@ -31,9 +31,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
   - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
-        Implementation, independent review correction, 77 focused regressions
-        and 17 related browser cases are complete. Exact-candidate gates are
-        required before merging [PR72](https://github.com/bynanci/open-film/pull/72). See the
+        Implementation and independent review corrections are complete.
+        [PR72](https://github.com/bynanci/open-film/pull/72) merged as1005d38
+        after4668 unit/integration tests,298 browser cases and exact-head gates;
+        its merged-main Verify/Windows/Pages gates also pass. See the
         [guide](docs/sequence-waveforms.md) and
         [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
   - [ ] D3B1: after an edit/audio compatibility design, add the versioned
@@ -215,9 +216,11 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
-- [ ] D5C: after an independent color/compatibility design, add versioned primary
-      correction before Film Looks. Auto Match remains reviewable measured
-      evidence, never a source mutation.
+- [x] D5C: deliver versioned film/scene/clip primary correction before Film Looks,
+      with shared bounded coefficients, locks/history and measured statistical
+      Auto Match requiring explicit reviewed clip Apply. See the
+      [contract](docs/primary-color.md) and [validation](docs/validation-primary-color.md);
+      calibrated display/real NLE and final integration gates remain explicit.
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
@@ -251,6 +254,20 @@ The published stable remains v0.4.0; release follows verified exit conditions.
   signing/notarization, clean-machine install, update, rollback and uninstall.
 - [ ] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
+  - [x] Independently inspected threat/compatibility design and parent-approved
+        single-JSON schema, bounds, immutable snapshots and authored StoryPlan
+        interfaces. Preserve TitleStyle and Film Look owner contracts.
+  - [x] Closed bounded packages, explicit license/provenance acceptance, atomic
+        install/remove/recovery, exact review/registry CAS, protected StoryPlan
+        adoption and durable retry receipts through shared CLI/API/Desktop.
+  - [x] Embedded look/title/story recipes survive Undo/reopen/Named Version,
+        JSON/OTIO and existing Collect directory/ZIP relocation after deleting
+        the registry and fixture originals. Node/app/render verify actual hashes.
+  - [x] Focused155 tests, three real Chromium journeys, synthetic strength/seek
+        negative controls and exact relocated decoded hashes. See
+        [validation](docs/validation-local-presets.md).
+  - [ ] Fresh independent review, parent-coordinated full integration/hosted
+        gates and independent PR/merge; physical workstation gates stay open.
 
 Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
 D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
@@ -534,24 +551,30 @@ not retroactively rename completed project capabilities.
 - [ ] **M6 / F05 + F06 + F10 + F13 — Photo/audio/output review.** Add decoded
       audio diagnostics and repeatable output evidence; keep hardware, real media,
       4K and NLE finishing as separately recorded manual gates.
-  - [ ] D5A: add focal interaction, ambient fill and a separately versioned
-        bounded custom-easing contract with legacy reopen and output parity.
-        Candidate implementation now uses strict v2 recipes, one revision-pinned
-        focal transaction, verified raw ambient preparation and shared bounded
-        easing. Focused synthetic Monitor/MP4/hash/seek evidence is recorded in
-        [the validation](docs/validation-photo-film-quality.md#d5a-photo-finishing-candidate);
-        fresh whole-branch review and the complete exact-head gate remain open.
-  - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
-        with legacy reopen, missing-font evidence and output parity.
-        Product candidate now implements canonical bilingual runs, measured
-        shadow/stroke/per-line pills, per-run font receipts/Collect bindings and
-        Story/Record caption raster parity through existing owners. Focused
-        contracts, recovery, PNG/HTTP and actual pinned-font MP4/SRT/VTT checks
-        and six actual browser cases pass; independent review and exact-head
-        gates remain.
-        [D5B validation](docs/validation-title-finishing.md).
-  - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
-        tolerance policy and add deliberate failures plus focused OS evidence.
+  - [x] D5A: deliver focal interaction, strict v2 ambient/custom-easing recipes,
+        one revision-bound focal transaction and shared bounded preparation.
+        [PR74](https://github.com/bynanci/open-film/pull/74) merged asf9eaa5d
+        after independent whole/scoped reviews,4758 unit/integration tests,
+        306 browser cases and exact-head hosted gates. Synthetic seek/MP4/hash
+        evidence and physical-display limits remain in
+        [validation](docs/validation-photo-film-quality.md).
+  - [x] D5B: deliver canonical independent bilingual runs, measured
+        shadow/stroke/pills, per-run font/Collect receipts and shared
+        Story/Record native-caption raster parity.
+        [PR75](https://github.com/bynanci/open-film/pull/75) merged asd5a286e
+        after independent whole/scoped reviews,4819 unit/integration tests,
+        312 browser cases and exact-head hosted gates. Actual MP4/SRT/VTT,
+        recovery and physical-workstation limits are in
+        [validation](docs/validation-title-finishing.md).
+  - [ ] D7A: complete reproducible cross-platform render QA.
+    - [x] Share licensed immutable font/tool provenance, explicit test-font root,
+          exact metric units/comparators and real decoded failure controls;
+          bounded local receipt of 117 samples and 10 controls. [Evidence](docs/validation-render-qa.md).
+    - [x] Add three-OS current-candidate/run/attempt report validation while
+          preserving full Verify/browser/native and Windows recovery selection.
+    - [ ] Demonstrate actual Ubuntu/Windows/macOS ARM64 pinned-tool admission,
+          complete exact-head automated gates and fresh independent final review.
+          Local FFmpeg7.1.5 and synthetic schema fixtures do not close this gate.
 
 The candidate for each milestone requires its complete exact-head automated gate
 before merge. Synthetic media proves bounded behavior only; it does not certify
@@ -1369,3 +1392,8 @@ verified/reviewed-baseline admission, exact static Cargo link-input attribution
 and canonical external-output containment. These are engineering corrections to
 the existing M7E increment; audited target inputs, security, final candidates,
 trust and workstation checkboxes remain open. See the [contract](docs/native-installer.md#native-post-build-review-corrections--2026-10-30).
+
+- [x] Repair the observed D5C native-title Undo/Redo image-request ABA failure;
+      preserve exact raster assertions and stale-revision guards. Fresh scoped review,
+      103 focused cases and two actual browser journeys pass; final hosted gates
+      remain required before merge.

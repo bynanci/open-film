@@ -460,3 +460,81 @@ the coordinator owns the new full-suite and hosted-CI gates.
   target workstations.
 - Import stills/audio and the rendered MP4 into the intended downstream NLE and
   record actual compatibility behavior.
+
+## Windows font pixel investigation — 2026-10-30
+
+Actual Windows run `41088032647`, job `124174260835`, failed the existing strict
+three-font MP4 pixel comparison at source `cb9baf9`; the preview/still comparison
+and actual font hashes passed. The earlier passing preset source and this source
+have no renderer or font-pipeline changes between them. The failed run did not
+retain its output media, so the cause remains unresolved. Linux success does not
+establish a Windows fix.
+
+The test now also requires the literal decoded frame 3 at 12 fps to equal the
+reviewed RGB buffer. A separate lossless synthetic control places white at frame
+3 and black at adjacent frames, verifying both literal selection and input seek.
+All existing full-buffer and font-receipt comparisons remain strict.
+
+The Windows workflow explicitly enables `OPENFILM_FONT_PIXEL_QA_DIR` for this
+single generated fixture. On assertion failure, its existing artifact upload
+retains the synthetic preview, still, MP4, render intermediates and raster inputs;
+original RGB buffers and exact difference metrics; frame timestamps, packet
+hashes and color metadata; font-use bindings; source hashes before and after;
+and render arguments with the fixture location replaced by a placeholder. The
+collector does not copy projects, source media, system font files or other tests.
+It changes no renderer settings, equality allowances, retries or test skips.
+
+Local verification on Linux / FFmpeg 7.1.5 passed **2 focused files / 65 tests**
+in 55.68 seconds, plus root TypeScript, focused lint, formatting and diff checks.
+The new diagnostic checks and literal-frame control were observed failing before
+their implementations. A temporary one-byte mutation then failed the original
+strict comparison and retained a complete synthetic bundle: one seeked RGB
+channel differed, the still and literal frame matched, all three render records
+and font bindings were present, and source hashes were unchanged. That mutation
+was removed. The full project suite and workstation checks were not run here.
+
+The next gate is actual Windows CI with the pinned FFmpeg 9.0.2 and licensed
+font fixtures. A failure bundle can distinguish frame selection, raster inputs
+and encoded video changes. A passing rerun alone does not identify or fix the
+original mismatch; renderer changes require a causal reproduction and regression
+review.
+
+Follow-up Windows run `41094704344` at `57cb327` failed in the diagnostic
+collector's output-path guard before reaching the pixel assertions and produced
+no font-pixel bundle. The collector now checks render outputs against the
+fixture's `realpath` root and redacts both original and canonical spellings.
+Focused path tests reproduce a Windows temporary short-name/long-name mismatch,
+cover case and slash variants, and preserve rejection of sibling, parent,
+relative and cross-drive outputs. The original decoded-pixel mismatch remains
+unresolved pending another actual pinned Windows run.
+
+### 2026-10-30 — retain passing and failing synthetic pixel observations
+
+Reviewed path correction250b4d6 is integrated ase1ea5e8. Its actual complete
+Verify41097047012 and Windows41097047088 pass, including all original exact
+font-preview/still/MP4 comparisons. This green observation does not establish a
+causal fix for the earlier intermittent pixel mismatch. Passing runs previously
+left no pixel bundle, preventing a later failure from being compared to a known
+passing encoded/PTS/raster reference.
+
+The same opt-in synthetic-only collector now retains each outcome explicitly
+with `comparisonPassed`. Complete RGB/font assertions and original failures are
+preserved; a capture failure after passing comparisons fails the QA-enabled
+test, while an original comparison failure retains priority. No renderer, codec,
+tolerance, frame selection or application code changes. Private paths remain
+redacted under the previously reviewed canonical fixture boundary.
+
+Current checks:8unit cases and2selected actual media cases pass (60othercases
+deselected, not a full current-file run), rootTypeScript, changed ESLint/format
+and whitespace checks pass. An earlier full2file70case run passed before the
+control-flow-only lint correction; its actual source identity is not relabeled.
+The actual passing bundle contains3render records and zero changed channels
+across still, fast-seek, literal frame3 and seek-versus-literal comparisons;
+source hashes are unchanged. A controlled one-byte mutation of only the
+synthetic reviewed expectation exits1, retains `comparisonPassed:false`,
+records exactly1changed channel in all three delivery comparisons and unchanged
+sources. Original test bytes were restored and SHA-256-verified. Negative
+evidence SHA256 `a34b121024594e15a1bbe81f486f623f3d0b099b4a024ebbb0246fe01b6f5208`.
+No controlled fault is committed or enabled in CI. Fresh scoped review and new
+exact-head Windows evidence remain required; this is evidence collection, not a
+claim that the historical mismatch is repaired.

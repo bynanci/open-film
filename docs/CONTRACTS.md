@@ -729,6 +729,23 @@ Phase M9A–M11B product acceptance verifies the complete creative workflow acro
 - Quota applies to managed preview artifacts; legacy and temporary usage are
   disclosed separately. No original-source deletion or export from proxies.
 
+## D5C primary color
+
+Optional version-1 `Composition.defaultPrimaryColor`, `beatPrimaryColors` and
+`Clip.primaryColor` use clip → beat → film → identity resolution. Core owns the
+bounded encoded-SDR affine coefficients, rounded to 12 decimals. Decode/HDR tone
+map and raw photographic preparation precede primary; its clamp precedes the
+separate shared Film Look. Alpha, source identity and timing are preserved.
+
+Typed `primary-color` commands use the existing editor revision/history/save
+boundary. Effective inherited changes to locked sources/clips are rejected as a
+batch. Local statistical Auto Match produces measured before/after proposals;
+explicit clip Apply validates its exact recipe and full source/artifact hashes
+inside editor serialization. Proposals expire on reopen; accepted authored values
+persist. Unknown recipe versions fail. There is no catalog migration, provider,
+source overwrite or second timeline. See [primary color](primary-color.md) and
+[validation](validation-primary-color.md).
+
 ## Bilingual native text finishing
 
 Optional `Clip.titleRuns` and `CaptionCue.textRuns` are closed version-1

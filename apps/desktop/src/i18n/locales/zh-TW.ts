@@ -1,3 +1,5 @@
+import primaryColor from "../modules/primary-color/zh-TW";
+import presets from "../modules/presets/zh-TW";
 import collectDelivery from "../modules/collect-delivery/zh-TW";
 import proxyStorage from "../modules/proxy-storage/zh-TW";
 import nleHandoff from "../modules/nle-handoff/zh-TW";
@@ -16,6 +18,8 @@ import system from "./system-zh-TW";
 import motion from "../modules/motion/zh-TW";
 
 export default {
+  ...primaryColor,
+  ...presets,
   ...collectDelivery,
   ...proxyStorage,
   ...cutDesk,

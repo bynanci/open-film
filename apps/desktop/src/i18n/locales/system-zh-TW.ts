@@ -9,6 +9,19 @@ export default {
     technicalDetails: "技術詳情",
   },
   errors: {
+    presets: {
+      invalid: "預設組包含不支援或無效的資料，請檢視指出的欄位。",
+      unsupported: "不支援此預設組版本，請保留原始套件並使用相容版本。",
+      conflict:
+        "預設組與已安裝版本或受保護的故事內容衝突，請檢視目標與選取內容。",
+      stale: "配方、專案或來源已變更，請重新檢視目前目標。",
+      storageBusy:
+        "其他程序或無法驗證的程序持有預設組儲存鎖，請待其完成後重試。",
+      storageUnavailable:
+        "無法驗證本機預設組儲存區，已儲存影片仍可使用，請檢視備份還原。",
+      recoveryUnavailable:
+        "目前無法安全還原預設組備份，請檢查或封存既有還原副本。",
+    },
     request: {
       invalid: "請檢查輸入的內容後再試一次。",
       tooLarge: "選取的內容太大。請減少檔案數量或選擇較小的檔案。",
@@ -64,6 +77,8 @@ export default {
       invalid: "無法儲存故事。請檢查選取的回憶與長度限制。",
     },
     timeline: {
+      primaryColorLocked:
+        "這項基本色彩變更會影響 {count} 個受保護片段。請先解鎖片段或來源。",
       titleRunsConflict:
         "編輯文字時請一併更新語言分界，或明確移除獨立文字行樣式。",
       lookLocked:
@@ -152,6 +167,7 @@ export default {
       entryConflict: "詞彙已變更或與另一項詞彙衝突，請重新載入詞彙表後再試。",
     },
     review: {
+      cleanupFailed: "無法清除比較影格。請重試清理，或關閉後重新開啟專案。",
       providerUnavailable:
         "語言審閱供應者無法使用或尚需文字傳送同意，仍可使用詞彙建議。",
       suggestionStale:

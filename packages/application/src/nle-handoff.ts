@@ -12,6 +12,7 @@ import { lstat, mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import {
   ApplicationError,
+  PRIMARY_COLOR_IDENTITY,
   graphicSceneAssetIds,
   captionFrameRange,
   frameAlignedDuration,
@@ -724,6 +725,7 @@ export class NleHandoffService {
                 timelineDuration: duration,
                 // The reference already contains the effective film/beat look.
                 look: { version: 1, preset: "none", strength: 1 },
+                primaryColor: { ...PRIMARY_COLOR_IDENTITY },
                 sourceIn: 0,
                 sourceOut: duration,
               },

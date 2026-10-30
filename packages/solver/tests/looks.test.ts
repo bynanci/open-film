@@ -13,7 +13,10 @@ import {
   type TimelineCommand,
 } from "../src/index.js";
 
-const look = (preset: FilmLook["preset"], strength = 1): FilmLook => ({
+const look = (
+  preset: Exclude<FilmLook["preset"], "local">,
+  strength = 1,
+): FilmLook => ({
   version: 1,
   preset,
   strength,

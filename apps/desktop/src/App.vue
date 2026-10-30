@@ -26,6 +26,7 @@ import { beatTimelineDuration, durationStatus } from "./duration";
 import { hasGraphicSceneAgentReceipt } from "./graphic-scene-agent-receipt";
 import AppLauncher from "./components/AppLauncher.vue";
 import AppSettings from "./components/AppSettings.vue";
+import type { PresetAcceptance } from "@openfilm/application";
 import WorkspaceModeSwitch from "./components/WorkspaceModeSwitch.vue";
 import WorkspaceCommands from "./components/WorkspaceCommands.vue";
 import WorkflowProgress from "./components/WorkflowProgress.vue";
@@ -937,6 +938,25 @@ async function refreshProject(
   projectPath.value = result.path;
   connected.value = true;
   return true;
+}
+async function presetApplied(result: PresetAcceptance) {
+  const projectId = result.receipt.projectId,
+    generation = projectGeneration.value;
+  const owned = () =>
+    project.value?.id === projectId && projectGeneration.value === generation;
+  if (!owned()) return;
+  projectMutationVersion++;
+  try {
+    if (!(await refreshProject(owned, projectId)) || !owned()) return;
+    activeCompositionId.value = result.result.compositionId;
+    await timelineEditor.value?.reload();
+    if (owned() && result.receipt.kind === "story") {
+      settingsOpen.value = false;
+      setWorkspace("edit");
+    }
+  } catch (cause) {
+    if (owned()) error.value = cause;
+  }
 }
 async function sourceReviewApplied(projectId: string) {
   if (project.value?.id !== projectId) return;
@@ -4963,6 +4983,9 @@ onUnmounted(() => {
       :busy="!!busy || relinkBusy"
       :native="native"
       :default-root="defaultRoot"
+      :project="project ?? undefined"
+      :active-composition-id="activeCompositionId"
+      @preset-applied="presetApplied"
       @close="settingsOpen = false"
       @content-locale="changeFilmLocale"
     />

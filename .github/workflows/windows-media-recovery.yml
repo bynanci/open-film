@@ -8,6 +8,8 @@ on:
       - "tests/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "scripts/ci/**"
+      - "fixtures/render-qa/**"
   push:
     branches: [main]
   workflow_dispatch:
@@ -39,40 +41,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Stage hash-pinned FFmpeg9 and licensed CJK test fonts
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Stage shared hash-pinned tools and licensed test fonts
         run: |
-          $openfilmToolRoot = Join-Path $env:RUNNER_TEMP "openfilm-tools"
-          New-Item -ItemType Directory -Force $openfilmToolRoot | Out-Null
-          $openfilmArchive = Join-Path $openfilmToolRoot "ffmpeg-9.0.2.zip"
-          Invoke-WebRequest "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip" -OutFile $openfilmArchive
-          if ((Get-FileHash $openfilmArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba") { throw "FFmpeg archive integrity mismatch" }
-          Expand-Archive $openfilmArchive (Join-Path $openfilmToolRoot "ffmpeg")
-          $openfilmExecutables = @(Get-ChildItem (Join-Path $openfilmToolRoot "ffmpeg") -Recurse -Filter ffmpeg.exe)
-          if ($openfilmExecutables.Count -ne 1) { throw "Expected one pinned FFmpeg executable" }
-          $openfilmExecutables[0].Directory.FullName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
-          $openfilmFonts = @(
-            @{ family="Sans"; weight="Regular"; sha="dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4" },
-            @{ family="Sans"; weight="Bold"; sha="3ee160e5015106e3ec1a394301df54fa9bbbf8a251519984aec5c0abc50840c0" },
-            @{ family="Serif"; weight="Regular"; sha="360778af67c4591d03997312ee33d7354727637faf8a7f57f705a380c7b81fa3" },
-            @{ family="Serif"; weight="Bold"; sha="6fc7c0854585330a09c0ae48638a48aa5b8f4bd3f30f63cdb0a3927206b14874" }
-          )
-          foreach ($openfilmFont in $openfilmFonts) {
-            $openfilmFontName = "Noto$($openfilmFont.family)CJKtc-$($openfilmFont.weight).otf"
-            $openfilmFontPath = Join-Path $env:WINDIR "Fonts\$openfilmFontName"
-            Invoke-WebRequest "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/$($openfilmFont.family)/OTF/TraditionalChinese/$openfilmFontName" -OutFile $openfilmFontPath
-            if ((Get-FileHash $openfilmFontPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $openfilmFont.sha) { throw "Noto font integrity mismatch" }
-          }
-          $env:OPENFILM_TITLE_FONT = Join-Path $env:WINDIR "Fonts\NotoSansCJKtc-Regular.otf"
-          "OPENFILM_TITLE_FONT=$env:OPENFILM_TITLE_FONT" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $openfilmLicense = Join-Path $openfilmToolRoot "Noto-SIL-OFL.txt"
-          Invoke-WebRequest "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/LICENSE" -OutFile $openfilmLicense
-          if ((Get-FileHash $openfilmLicense -Algorithm SHA256).Hash.ToLowerInvariant() -ne "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2") { throw "Font license integrity mismatch" }
+          pnpm exec tsx scripts/ci/setup-render-qa.ts hosted-tools (Join-Path $env:RUNNER_TEMP "openfilm-tools")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $openfilmGitPerl = "C:\Program Files\Git\usr\bin"
           if (Test-Path (Join-Path $openfilmGitPerl "perl.exe")) { $openfilmGitPerl | Out-File $env:GITHUB_PATH -Append -Encoding utf8 }
-      - name: Install existing workspace and official parser
+      - name: Install official parser and browser
         run: |
-          pnpm install --frozen-lockfile
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install opentimelineio==0.18.1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm exec playwright install chromium
@@ -88,7 +66,7 @@ jobs:
           ffprobe -version | Out-File (Join-Path $openfilmEvidence "ffprobe.txt") -Encoding utf8
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not ((Get-Content (Join-Path $openfilmEvidence "ffmpeg.txt") -Raw).StartsWith("ffmpeg version 9.0.2"))) { throw "Expected the pinned FFmpeg9 runtime" }
-          Copy-Item (Join-Path $env:RUNNER_TEMP "openfilm-tools\Noto-SIL-OFL.txt") $openfilmEvidence
+          Copy-Item (Join-Path $env:OPENFILM_TEST_FONT_ROOT "Noto-SIL-OFL.txt") $openfilmEvidence
           # Compare independently queried boot identity without publishing a machine ID.
           $openfilmBootHashes = @(1..3 | ForEach-Object {
             $openfilmBoot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('O')
@@ -96,8 +74,10 @@ jobs:
           })
           @{ identicalBootQueries=(@($openfilmBootHashes | Select-Object -Unique).Count -eq 1); bootHashes=$openfilmBootHashes } | ConvertTo-Json | Out-File (Join-Path $openfilmEvidence "owner-scope.json") -Encoding utf8
       - name: Verify source persistence and frame-rate regressions
+        env:
+          OPENFILM_FONT_PIXEL_QA_DIR: ${{ runner.temp }}/openfilm-windows-evidence/font-pixels
         run: |
-          pnpm exec vitest run packages/media/tests/verified-source.test.ts tests/unit/benchmark-media.test.ts tests/integration/desktop-fixture-paths.test.ts packages/application/tests/review-owner-platform.test.ts packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")
+          pnpm exec vitest run packages/media/tests/verified-source.test.ts tests/unit/benchmark-media.test.ts tests/unit/font-pixel-diagnostics.test.ts tests/integration/desktop-fixture-paths.test.ts packages/application/tests/review-owner-platform.test.ts packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise the reported browser workflows on actual Windows and FFmpeg9
         # Independent journeys still provide evidence after a unit failure;

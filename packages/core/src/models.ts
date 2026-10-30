@@ -138,6 +138,8 @@ export interface Story {
   beats: StoryBeat[];
   /** Optional Story Graph perspective content. */
   graph?: import("./story-graph.js").StoryGraph;
+  presetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
+  presetPlanSource?: import("./presets.js").PresetPlanSource;
 }
 
 export interface ClipTransform {
@@ -365,11 +367,26 @@ export const FILM_LOOK_PRESET_IDS = [
   "natural",
   "sport",
 ] as const;
-export interface FilmLook {
+export interface BuiltinFilmLook {
   version: 1;
   preset: (typeof FILM_LOOK_PRESET_IDS)[number];
   /** Recipe-strength interpolation on decoded, encoded-SDR RGB, not linear-light color management. */
   strength: number;
+}
+export interface LocalFilmLook {
+  version: 2;
+  preset: "local";
+  strength: number;
+  snapshot: import("./presets.js").PresetSnapshot<"film-look">;
+}
+export type FilmLook = BuiltinFilmLook | LocalFilmLook;
+
+/** Bounded primary correction in encoded SDR RGB; not calibrated scene-linear exposure. */
+export interface PrimaryColorCorrection {
+  version: 1;
+  temperature: number;
+  exposureEv: number;
+  contrast: number;
 }
 
 export interface Clip {
@@ -386,9 +403,11 @@ export interface Clip {
   layout?: PhotoLayout;
   motion?: PhotoMotion;
   titleStyle?: TitleStyle;
+  titlePresetSnapshot?: import("./presets.js").PresetSnapshot<"title">;
   audioAutomation?: AudioAutomation;
   /** Absent inherits the scene/film look; explicit `none` preserves original color. */
   look?: FilmLook;
+  primaryColor?: PrimaryColorCorrection;
   /** Protect source selection and edits; ripple timeline positioning remains allowed. */
   locked?: boolean;
   transition?: { type: "crossfade"; duration: number };
@@ -405,9 +424,13 @@ export interface Track {
 export interface Composition {
   id: string;
   storyId: string;
+  /** Self-contained StoryPlan preset provenance travels with timeline exports. */
+  storyPresetSnapshot?: import("./presets.js").PresetSnapshot<"story">;
   duration: number;
   tracks: Track[];
   defaultLook?: FilmLook;
+  defaultPrimaryColor?: PrimaryColorCorrection;
+  beatPrimaryColors?: { beatId: string; correction: PrimaryColorCorrection }[];
   /** Stable scene IDs keep localized or user-authored titles out of lookup state. */
   beatLooks?: { beatId: string; look: FilmLook }[];
   /** Composition-time captions are optional so legacy schema-1 projects stay valid. */
@@ -435,6 +458,7 @@ export interface OpenFilmProject {
   filmSettings?: FilmSettings;
   sceneScriptReviewReceipts?: SceneScriptReviewReceipt[];
   sceneDirectionReceipts?: SceneDirectionReceipt[];
+  presetApplicationReceipts?: import("./presets.js").PresetApplicationReceipt[];
 }
 
 export interface Event {

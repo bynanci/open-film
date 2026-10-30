@@ -137,14 +137,44 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
-D5B now has a separately reviewable title-finishing candidate over the existing
-measured raster: independent bilingual typography, bounded shadow/stroke/pills,
-per-run font evidence and Collect bindings, and actual Story/Record caption
-preview using the MP4 caption selection. Legacy pixels and canonical text/time
-remain compatible. Focused synthetic MP4, SRT/VTT, recovery and UI evidence is in
-[validation](docs/validation-title-finishing.md); six actual browser cases pass,
-while independent review and exact-head integration remain pending. The existing nested F05 item is
-still authoritative and no stable release is implied.
+D7A render QA now has shared immutable font/tool provenance, preserved metric
+units and strict bounds, and actual decoded positive/negative controls. Local
+synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
+workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
+pin admission and exact-head review remain pending; this does not close native
+installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+
+D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
+contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
+originals, timing and the schema/catalog owners remain stable. Local statistical
+Auto Match presents actual before/after samples and needs explicit reviewed clip
+Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
+video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
+accessibility. Calibrated displays, real NLE behavior and final integrating gates
+remain separate. See [the guide](docs/primary-color.md) and
+[validation](docs/validation-primary-color.md).
+
+D8 now has an unreleased local single-JSON preset candidate on its independent
+branch. Bounded closed recipes, declared license/provenance review, atomic local
+registry operations and embedded immutable look/title/Story snapshots feed
+existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
+155 tests and three Chromium journeys pass; actual strength/seek tests and
+Collect directory/ZIP relocation retain exact decoded pixels after registry and
+fixture-original deletion. Fresh review and parent-coordinated full/hosted
+integration gates remain open. See [guide](docs/local-presets.md) and
+[validation](docs/validation-local-presets.md). Executable plugin discovery and
+loading remain deferred.
+
+D5A and D5B have merged through PR74/75 asf9eaa5d/d5a286e. Strict v2 focal,
+ambient and bounded easing recipes share preparation with output; independent
+bilingual typography, bounded shadow/stroke/pills, per-run font/Collect receipts
+and shared Story/Record native-caption raster preserve the existing owners.
+Independent reviews and complete exact-head gates pass: D5A4758 tests/306 browser
+cases, D5B4819 tests/312 browser cases. The latest merged main also passes
+Verify/Windows/Pages. [Photo validation](docs/validation-photo-film-quality.md)
+and [title validation](docs/validation-title-finishing.md) retain exact identities,
+actual synthetic output and remaining physical-display/NLE gates. Stable remains
+v0.4.0; these merges do not certify a v1 release.
 
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
@@ -809,3 +839,7 @@ verified/reviewed-baseline admission, exact static Cargo link-input attribution
 and canonical external-output containment. These are engineering corrections to
 the existing M7E increment; audited target inputs, security, final candidates,
 trust and workstation checkboxes remain open. See the [contract](docs/native-installer.md#native-post-build-review-corrections--2026-10-30).
+The D5C integration also repairs the observed title-image request ABA during
+Undo/Redo. Display generations request independent images while the existing
+project/revision fences and shared raster cache remain authoritative. Scoped
+review and exact raster/browser regressions pass; new-head full gates remain open.

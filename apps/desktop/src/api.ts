@@ -1,4 +1,15 @@
 import type {
+  PresetRegistryView,
+  PresetImportReview,
+  PresetInstallInput,
+  PresetRemoveInput,
+  PresetRecoveryReview,
+  PresetRecoveryInput,
+  PresetApplyReview,
+  PresetAcceptance,
+} from "@openfilm/application";
+import type { PresetApplyInput, PresetAcceptInput } from "@openfilm/core";
+import type {
   MotionRequest,
   NativeTextOverlayRequest,
   NativeTextInspection,
@@ -73,6 +84,7 @@ import type {
   GraphicSceneAgentRequest,
   VisualQaReport,
   AudioQualityReport,
+  PrimaryColorReviewReport,
   ProjectVersionCreateInput,
   ProjectVersionRestoreInput,
   ProjectVersionRestoreResult,
@@ -637,6 +649,13 @@ export const exportProfileAudio = (
   },
   signal?: AbortSignal,
 ): Promise<AudioProfileExport> => post("/export/audio", input, signal);
+export const primaryColorReviewMediaUrl = (
+  id: string,
+  variant: "reference" | "before" | "after",
+  index: number,
+  projectId: string,
+) =>
+  `${prefix}/primary-color-reviews/${encodeURIComponent(id)}/media/${variant}/${index}?${new URLSearchParams({ projectId })}`;
 export const audioQualityMediaUrl = (
   reportId: string,
   variant: "original" | "candidate",
@@ -751,6 +770,22 @@ async function uploadFiles(
   }
 }
 export const api = {
+  localPresets: (signal?: AbortSignal) =>
+    request<PresetRegistryView>("/presets", { signal }),
+  reviewPresetImport: (document: string, signal?: AbortSignal) =>
+    post<PresetImportReview>("/presets/import/review", { document }, signal),
+  installPreset: (body: PresetInstallInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/import/accept", body, signal),
+  removePreset: (body: PresetRemoveInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/remove", body, signal),
+  reviewPresetRecovery: (signal?: AbortSignal) =>
+    post<PresetRecoveryReview>("/presets/recovery/review", {}, signal),
+  recoverPresets: (body: PresetRecoveryInput, signal?: AbortSignal) =>
+    post<PresetRegistryView>("/presets/recovery/accept", body, signal),
+  reviewPresetApplication: (body: PresetApplyInput, signal?: AbortSignal) =>
+    post<PresetApplyReview>("/presets/apply/review", body, signal),
+  acceptPresetApplication: (body: PresetAcceptInput, signal?: AbortSignal) =>
+    post<PresetAcceptance>("/presets/apply/accept", body, signal),
   collectCoverage: (body: CollectCoveragePlanInput, signal?: AbortSignal) =>
     post<{ review: CollectCoverageReview }>("/collect/coverage", body, signal),
   proxyCache: (projectId: string, offset = 0, signal?: AbortSignal) =>
@@ -1518,6 +1553,26 @@ export const api = {
       projectId,
       timelineStart,
     }),
+  primaryColorReview: (
+    compositionId: string,
+    input: {
+      projectId: string;
+      baseRevision: string;
+      targetClipId: string;
+      referenceClipId: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    post<PrimaryColorReviewReport>(
+      `/compositions/${encodeURIComponent(compositionId)}/primary-color-review`,
+      input,
+      signal,
+    ),
+  discardPrimaryColorReview: (id: string, projectId: string) =>
+    request<{ ok: true }>(
+      `/primary-color-reviews/${encodeURIComponent(id)}?${new URLSearchParams({ projectId })}`,
+      { method: "DELETE" },
+    ),
   audioQuality: (
     compositionId: string,
     clipId: string,
@@ -1791,8 +1846,10 @@ export const api = {
     }),
   compose: (storyId: string) =>
     post<{ composition: Composition }>("/compose", { storyId }),
-  editor: (id: string) =>
-    request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`),
+  editor: (id: string, signal?: AbortSignal) =>
+    request<EditorState>(`/compositions/${encodeURIComponent(id)}/editor`, {
+      signal,
+    }),
   previewDirection: (id: string, body: SceneDirectionOptions) =>
     post<DirectionReviewPlan>(
       `/compositions/${encodeURIComponent(id)}/direction/preview`,

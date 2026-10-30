@@ -1,3 +1,4 @@
+import { assertRenderQaMetric } from "../../../tests/helpers/render-qa-policy.js";
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -94,7 +95,10 @@ it("renders a saved film look into actual decoded pixels", async () => {
   );
   expect(graded.pixels).not.toEqual(original.pixels);
 });
-const look = (preset: FilmLook["preset"], strength = 1): FilmLook => ({
+const look = (
+  preset: Exclude<FilmLook["preset"], "local">,
+  strength = 1,
+): FilmLook => ({
   version: 1,
   preset,
   strength,
@@ -135,12 +139,18 @@ function transformed(rgb: number[], recipe: FilmLook, alpha = 255) {
     ),
   );
 }
-function closeChannels(actual: number[], expected: number[], tolerance = 3) {
+function closeChannels(
+  actual: number[],
+  expected: number[],
+  tolerance: 1 | 3 = 3,
+) {
   for (let i = 0; i < 3; i++)
-    expect(
+    assertRenderQaMetric(
+      tolerance === 1
+        ? "filmLook.losslessChannelError"
+        : "filmLook.channelError",
       Math.abs(actual[i]! - Math.round(expected[i]!)),
-      `channel ${i}: ${actual} vs ${expected}`,
-    ).toBeLessThanOrEqual(tolerance);
+    );
 }
 it("renders all six shared matrices with distinct pixels and correct strength", async () => {
   const { asset, composition, render } = await fixture();

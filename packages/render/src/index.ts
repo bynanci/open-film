@@ -1,3 +1,4 @@
+import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash, randomUUID } from "node:crypto";
@@ -15,6 +16,8 @@ export {
   graphicFrameRanges,
 } from "./graphic-scenes.js";
 import { photoPresentationFilters } from "./photo-filters.js";
+import { primaryColorFilters } from "./primary-color-filters.js";
+export { primaryColorFilters } from "./primary-color-filters.js";
 import { preparePhotoAmbientFills } from "./photo-ambient.js";
 export {
   preparePhotoAmbientFills,
@@ -85,6 +88,8 @@ import {
   resolveClipAudioRange,
   resolveClipGeometry,
   resolveFilmLook,
+  resolvePrimaryColor,
+  assertPrimaryColorSettings,
   validateFilmLook,
   filmLookMatrix,
   CAPTION_LIMITS,
@@ -331,6 +336,7 @@ export class FFmpegRenderer {
     options: RenderOptions = {},
   ): Promise<string> {
     checkAbort(options.signal);
+    renderPresetSnapshots(composition, options.lookOverride);
     if (
       options.maximumOutputBytes !== undefined &&
       (!Number.isSafeInteger(options.maximumOutputBytes) ||
@@ -438,6 +444,7 @@ export class FFmpegRenderer {
         )
           throw new Error(`Caption cue ${cue.id} has invalid text or timing.`);
     }
+    assertPrimaryColorSettings(composition);
     if (composition.defaultLook) validateFilmLook(composition.defaultLook);
     for (const entry of composition.beatLooks ?? [])
       validateFilmLook(entry.look);
@@ -597,6 +604,9 @@ export class FFmpegRenderer {
             preset: effective.look.preset,
             strength: effective.look.strength,
             matrix: filmLookMatrix(effective.look),
+            ...(effective.look.version === 2
+              ? { presetSnapshotSha256: effective.look.snapshot.snapshotSha256 }
+              : {}),
           });
         }
       }
@@ -841,6 +851,9 @@ export class FFmpegRenderer {
               ? []
               : [
                   ...(await previewVideoFilters(asset, options.signal)),
+                  ...primaryColorFilters(
+                    resolvePrimaryColor(composition, clip).correction,
+                  ),
                   ...filmLookFilters(resolvedLooks.get(clip)),
                 ];
             // Contain-fit the decoded display aspect, including non-square pixels.
@@ -888,6 +901,8 @@ export class FFmpegRenderer {
                   duration: displayedDuration,
                   signal: options.signal,
                   look: resolvedLooks.get(clip),
+                  primaryColor: resolvePrimaryColor(composition, clip)
+                    .correction,
                   ambient: ambient.fills.get(clip.id),
                 },
               );
@@ -1297,3 +1312,6 @@ export async function renderComposition(
 }
 
 export * from "./audio-quality.js";
+
+export * from "./primary-color-review.js";
+export type { RenderCatalogColorMetadata } from "./manifest.js";

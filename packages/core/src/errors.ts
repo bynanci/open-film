@@ -41,6 +41,7 @@ export const applicationErrorCodes = [
   "title.busy",
   "timeline.graphicRangeConflict",
   "timeline.lookLocked",
+  "timeline.primaryColorLocked",
   "render.overMaximum",
   "render.failed",
   "graphics.invalid",
@@ -89,7 +90,15 @@ export const applicationErrorCodes = [
   "review.providerUnavailable",
   "review.suggestionStale",
   "review.invalidOutput",
+  "review.cleanupFailed",
   "operation.failed",
+  "presets.invalid",
+  "presets.unsupported",
+  "presets.conflict",
+  "presets.stale",
+  "presets.storageBusy",
+  "presets.storageUnavailable",
+  "presets.recoveryUnavailable",
 ] as const;
 export type ApplicationErrorCode = (typeof applicationErrorCodes)[number];
 export interface OpenFilmError {

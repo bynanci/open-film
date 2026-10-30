@@ -191,3 +191,51 @@ passes three files / 37 tests. No new browser or hosted result is inferred from
 this documentation merge. Earlier receipts retain their source identities;
 checkpoint logs/hashes are under
 `/tmp/openfilm-finishing-integration/B-latest-base/`.
+
+## 2026-10-30 — verified PR75 merge
+
+Exact head `9351b7655c33480d48117ff81dc4acfeb5718161` passed complete
+Verify41082105730 and Windows41082105745:1183contract +3636media
+=4819tests,312browser cases (78/89/69/76), native, docs/build,
+OTIO/interchange and built CLI. The fresh whole-feature and scoped lifecycle
+fix reviews passed. PR75 merged as
+`d5a286ed9250872e8eb9b1c3e40adb926f913d34`; the merge tree preserves the
+reviewed candidate content. Actual merged-main Verify41084911055,
+Windows41084911048 and Pages41084911207 all pass. Earlier local receipts
+retain their original source identity; automated hosted output does not certify
+physical typography/display, NLE,4K or hardware QA. Stable stays0.4.0.
+
+## Actual title-preview ABA correction — 2026-10-30
+
+Hosted Verify run `41104529169`, exact candidate
+`bc0578de2eec02348bd7d7966ae1a428a684d241`, failed the existing native-title
+640-pixel raster assertion. Downloaded artifact `13000029057` has SHA-256
+`c64ebd2e9d67d65ff39dcbe1ae780d42c5de6de6b160048a64d9664c1d61539f`.
+Its network trace identifies the cause: an edited-revision image was still in
+flight when Undo made it stale and the server correctly returned 409. Redo
+returned to that same content revision, and the browser reused the pending
+image request instead of requesting a fresh image. The final image width stayed
+zero. This is not repaired by increasing a timeout or retrying the test.
+
+Native title and photo title images now have per-display-generation request
+identities. A returned revision, remount or explicit Retry gets a new image URL;
+ordinary opacity/seek clock updates keep the current URL. The query is not an
+authority field: the existing server still validates the exact project and
+revision before and after work, and the shared private raster cache remains
+unchanged. No additional renderer, timeline, provider call or automatic retry
+was added.
+
+Both real Vue-host counterexamples failed on old source. Final focused checks
+pass 103 tests in four files, with all prior opacity, Fit, raster and seek
+assertions retained. The original browser journey and a controlled delayed-409
+Undo/Redo journey pass 2/2 in 29.9 seconds, zero skipped/flaky/retries; the latter
+requires distinct requests and compares the actual successful 640×360 PNG bytes
+to the shared title raster while checking original source hashes. Both standard
+servers exited and ports 4310/1420 were confirmed closed.
+
+Fresh independent scoped review passes with no P1/P2 findings, independently
+rerunning all 103 focused cases and inspecting the immutable failed trace. Full
+TypeScript/Vue, ESLint, formatting, 2,891 i18n keys and 133 English document
+mirrors pass. This is correction-scope evidence over bc0578d; the new committed
+candidate still requires its full hosted gates. The separate historical Windows
+MP4 pixel mismatch is not claimed to be caused or repaired by this UI change.

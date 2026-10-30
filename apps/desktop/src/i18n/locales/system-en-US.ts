@@ -9,6 +9,22 @@ export default {
     technicalDetails: "Technical details",
   },
   errors: {
+    presets: {
+      invalid:
+        "This preset contains unsupported or invalid data. Review the indicated field.",
+      unsupported:
+        "This preset version is unsupported. Keep the original package and use a compatible version.",
+      conflict:
+        "The preset conflicts with an installed release or protected authored content. Review the target and its selections.",
+      stale:
+        "The recipe, project or source changed. Review the current target again.",
+      storageBusy:
+        "Another or unverified process owns preset storage. Retry when it finishes.",
+      storageUnavailable:
+        "Local preset storage could not be verified. Saved films remain usable; review backup recovery.",
+      recoveryUnavailable:
+        "A safe preset backup recovery is unavailable. Inspect or archive the existing recovery copy.",
+    },
     request: {
       invalid: "Check the entered values and try again.",
       tooLarge:
@@ -79,6 +95,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      primaryColorLocked:
+        "Changing primary color would affect {count} protected clips. Unlock the clips or sources first.",
       titleRunsConflict:
         "Update the language boundary with this text edit, or explicitly remove its independent run styling.",
       lookLocked:
@@ -188,6 +206,8 @@ export default {
         "A glossary term changed or conflicts with another entry. Reload the glossary and try again.",
     },
     review: {
+      cleanupFailed:
+        "Comparison images could not be removed. Retry cleanup, or close and reopen this project.",
       providerUnavailable:
         "A language review provider is unavailable or needs text consent. Glossary suggestions are still available.",
       suggestionStale:

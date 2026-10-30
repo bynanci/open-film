@@ -7,7 +7,12 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
-import { OpenFilmApplication } from "@openfilm/application";
+import {
+  OpenFilmApplication,
+  createPresetSnapshot,
+} from "@openfilm/application";
+import { validatePresetPackage } from "@openfilm/core";
+import { presetPackage } from "../fixtures/local-presets/package.js";
 import { hashFile, runProcess } from "@openfilm/media";
 import type { Clip, Composition, ProjectContentLocale } from "@openfilm/core";
 import { createDesktopFixture } from "./helpers.js";
@@ -39,7 +44,11 @@ async function editor(
   expect(response.ok()).toBe(true);
   return response.json();
 }
-async function fixture(request: APIRequestContext, ambient = false) {
+async function fixture(
+  request: APIRequestContext,
+  ambient = false,
+  combined = false,
+) {
   const files = await createDesktopFixture(0);
   cleanups.push(files.cleanup);
   const source = join(files.media, "00-finishing-portrait.png");
@@ -103,6 +112,22 @@ async function fixture(request: APIRequestContext, ambient = false) {
       to: { scale: 1.08, x: 6, y: 0 },
     };
     clip.look = { version: 1, preset: "retro", strength: 1 };
+    if (combined) {
+      const pkg = validatePresetPackage(presetPackage());
+      const entry = pkg.entries.find((entry) => entry.kind === "film-look")!;
+      clip.look = {
+        version: 2,
+        preset: "local",
+        strength: 1,
+        snapshot: createPresetSnapshot<"film-look">(pkg, entry),
+      };
+      clip.primaryColor = {
+        version: 1,
+        temperature: 0.3,
+        exposureEv: 0.2,
+        contrast: 0.85,
+      };
+    }
   }
   app.project.timelines.push({
     id: "photo-finishing",
@@ -448,7 +473,7 @@ test("Record Monitor bypass reuses raw ambient pixels and the diptych separator 
       writes.push(sent.url());
   });
   const compare = page.getByRole("button", {
-    name: "Hold to view original",
+    name: uiText("en-US", "cutDesk.compare.hold"),
     exact: true,
   });
   await compare.dispatchEvent("pointerdown", {
@@ -514,181 +539,196 @@ function whiteEdge(bytes: Buffer): number {
   )!;
 }
 
-test("actual Monitor and MP4 match raw ambient, grouped color and custom motion with shuffled seeks and deliberate failures", async ({
-  page,
-  request,
-}, info) => {
-  const files = await fixture(request, true);
-  await openEditor(page);
-  await page.addStyleTag({
-    content:
-      ".editor-source-screen .photo-presentation-frame{position:fixed!important;left:16px!important;top:16px!important;width:320px!important;height:180px!important;margin:0!important;border:0!important;box-sizing:content-box!important;z-index:10000!important}",
-  });
-  const frame = page.locator(".editor-source-screen .photo-presentation-frame");
-  await expect
-    .poll(() =>
-      frame
-        .locator("img")
-        .evaluateAll((images) =>
-          images.every(
-            (image) =>
-              (image as HTMLImageElement).complete &&
-              (image as HTMLImageElement).naturalWidth > 0,
-          ),
-        ),
-    )
-    .toBe(true);
-  const exported = await request.post(`${base}/api/export`, {
-    data: { format: "mp4", compositionId: "photo-finishing" },
-  });
-  expect(exported.ok(), await exported.text()).toBe(true);
-  const result = await exported.json();
-  const seek = page.locator(".photo-presentation-transport input[type=range]");
-  const samples: Record<string, unknown>[] = [];
-  const repeated = new Map<number, string>();
-  const monitorRepeated = new Map<number, string>();
-  const sample = async (n: number, suffix = "") => {
-    await seek.evaluate((element, value) => {
-      (element as HTMLInputElement).value = String(value);
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-    }, n / 30);
-    const path = info.outputPath(`monitor-${n}${suffix}.png`);
-    await frame.screenshot({ path, animations: "disabled" });
-    return { path, bytes: await rgb(path) };
-  };
-  for (const n of [0, 90, 179, 35, 140, 179, 0, 90]) {
-    const monitor = await sample(n);
-    const decoded = await rgb(result.path, n);
-    expect(monitor.bytes).toHaveLength(320 * 180 * 3);
-    const ambient = meanError(monitor.bytes, decoded, "ambient"),
-      foreground = meanError(monitor.bytes, decoded, "foreground");
-    expect(ambient).toBeLessThanOrEqual(12);
-    expect(foreground).toBeLessThanOrEqual(12);
-    expect(
-      Math.abs(whiteEdge(monitor.bytes) - whiteEdge(decoded)),
-    ).toBeLessThanOrEqual(1.5);
-    const hash = createHash("sha256").update(decoded).digest("hex");
-    if (repeated.has(n)) expect(hash).toBe(repeated.get(n));
-    repeated.set(n, hash);
-    const monitorHash = createHash("sha256")
-      .update(monitor.bytes)
-      .digest("hex");
-    if (monitorRepeated.has(n))
-      expect(monitorHash).toBe(monitorRepeated.get(n));
-    monitorRepeated.set(n, monitorHash);
-    samples.push({
-      frame: n,
-      ambientMeanRgbError: ambient,
-      foregroundMeanRgbError: foreground,
-      monitorEdge: whiteEdge(monitor.bytes),
-      decodedEdge: whiteEdge(decoded),
-      decodedSha256: hash,
-      monitorSha256: monitorHash,
+for (const combined of [false, true]) {
+  test(`actual Monitor and MP4 match raw ambient, grouped color and custom motion with shuffled seeks and deliberate failures${combined ? " with primary and local Look v2" : ""}`, async ({
+    page,
+    request,
+  }, info) => {
+    const files = await fixture(request, true, combined);
+    await openEditor(page);
+    await page.addStyleTag({
+      content:
+        ".editor-source-screen .photo-presentation-frame{position:fixed!important;left:16px!important;top:16px!important;width:320px!important;height:180px!important;margin:0!important;border:0!important;box-sizing:content-box!important;z-index:10000!important}",
     });
-  }
-  const decoded = await rgb(result.path, 90);
-  await sample(90);
-  const background = frame.locator(".photo-presentation-ambient");
-  await background.evaluate((node) => {
-    (node as HTMLElement).style.visibility = "hidden";
-  });
-  expect(
-    meanError((await sample(90, "-missing-fill")).bytes, decoded, "ambient"),
-  ).toBeGreaterThan(12);
-  await background.evaluate((node) => {
-    (node as HTMLElement).style.visibility = "";
-    (node as HTMLElement).style.opacity = "0.55";
-  });
-  expect(
-    meanError((await sample(90, "-double-dim")).bytes, decoded, "ambient"),
-  ).toBeGreaterThan(12);
-  await background.evaluate((node) => {
-    (node as HTMLElement).style.opacity = "";
-  });
-  const group = frame.locator(".photo-presentation-raw");
-  const filter = await group.evaluate(
-    (node) => (node as HTMLElement).style.filter,
-  );
-  expect(filter).toContain("url(");
-  await group.evaluate((node, filter) => {
-    (node as HTMLElement).style.filter = `${filter} ${filter}`;
-  }, filter);
-  expect(
-    meanError((await sample(90, "-double-color")).bytes, decoded, "ambient", 0),
-  ).toBeGreaterThan(12);
-  await group.evaluate((node, filter) => {
-    (node as HTMLElement).style.filter = filter;
-  }, filter);
-  const motion = frame.locator(".photo-presentation-layers");
-  await motion.evaluate((node) => {
-    (node as HTMLElement).style.transform = "translate(-6px,0) scale(1.08)";
-  });
-  expect(
-    Math.abs(
-      whiteEdge((await sample(90, "-wrong-curve")).bytes) - whiteEdge(decoded),
-    ),
-  ).toBeGreaterThan(1.5);
-  expect(await hashFile(files.source)).toBe(files.sourceHash);
-  const evidence = process.env.OPENFILM_PHOTO_FINISHING_QA_OUTPUT;
-  if (evidence) {
-    await mkdir(evidence, { recursive: true });
-    await copyFile(result.path, join(evidence, "monitor-parity.mp4"));
-    await copyFile(
-      `${result.path}.manifest.json`,
-      join(evidence, "monitor-parity.manifest.json"),
+    const frame = page.locator(
+      ".editor-source-screen .photo-presentation-frame",
     );
-    for (const n of [0, 90, 179, 35, 140]) {
-      await copyFile(
-        info.outputPath(`monitor-${n}.png`),
-        join(evidence, `monitor-frame-${n}.png`),
-      );
-      await runProcess("ffmpeg", [
-        "-v",
-        "error",
-        "-i",
-        result.path,
-        "-vf",
-        `select=eq(n\\,${n})`,
-        "-frames:v",
-        "1",
-        "-threads",
-        "1",
-        "-y",
-        join(evidence, `decoded-frame-${n}.png`),
-      ]);
-    }
-    for (const name of [
-      "missing-fill",
-      "double-dim",
-      "double-color",
-      "wrong-curve",
-    ])
-      await copyFile(
-        info.outputPath(`monitor-90-${name}.png`),
-        join(evidence, `deliberate-${name}.png`),
-      );
-    await writeFile(
-      join(evidence, "monitor-parity.json"),
-      JSON.stringify(
-        {
-          version: 1,
-          samples,
-          sourceSha256: files.sourceHash,
-          outputSha256: await hashFile(result.path),
-          chromium: await page.context().browser()?.version(),
-          viewport: page.viewportSize(),
-          capture:
-            "Actual component at320x180 CSS pixels and integer viewport position; no resampling",
-          ffmpeg: (await runProcess("ffmpeg", ["-version"])).stdout
-            .toString()
-            .split("\n")[0],
-          manifest: JSON.parse(
-            await readFile(`${result.path}.manifest.json`, "utf8"),
+    await expect
+      .poll(() =>
+        frame
+          .locator("img")
+          .evaluateAll((images) =>
+            images.every(
+              (image) =>
+                (image as HTMLImageElement).complete &&
+                (image as HTMLImageElement).naturalWidth > 0,
+            ),
           ),
-        },
-        null,
-        2,
-      ),
+      )
+      .toBe(true);
+    const exported = await request.post(`${base}/api/export`, {
+      data: { format: "mp4", compositionId: "photo-finishing" },
+    });
+    expect(exported.ok(), await exported.text()).toBe(true);
+    const result = await exported.json();
+    const seek = page.locator(
+      ".photo-presentation-transport input[type=range]",
     );
-  }
-});
+    const samples: Record<string, unknown>[] = [];
+    const repeated = new Map<number, string>();
+    const monitorRepeated = new Map<number, string>();
+    const sample = async (n: number, suffix = "") => {
+      await seek.evaluate((element, value) => {
+        (element as HTMLInputElement).value = String(value);
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+      }, n / 30);
+      const path = info.outputPath(`monitor-${n}${suffix}.png`);
+      await frame.screenshot({ path, animations: "disabled" });
+      return { path, bytes: await rgb(path) };
+    };
+    for (const n of [0, 90, 179, 35, 140, 179, 0, 90]) {
+      const monitor = await sample(n);
+      const decoded = await rgb(result.path, n);
+      expect(monitor.bytes).toHaveLength(320 * 180 * 3);
+      const ambient = meanError(monitor.bytes, decoded, "ambient"),
+        foreground = meanError(monitor.bytes, decoded, "foreground");
+      expect(ambient).toBeLessThanOrEqual(12);
+      expect(foreground).toBeLessThanOrEqual(12);
+      expect(
+        Math.abs(whiteEdge(monitor.bytes) - whiteEdge(decoded)),
+      ).toBeLessThanOrEqual(1.5);
+      const hash = createHash("sha256").update(decoded).digest("hex");
+      if (repeated.has(n)) expect(hash).toBe(repeated.get(n));
+      repeated.set(n, hash);
+      const monitorHash = createHash("sha256")
+        .update(monitor.bytes)
+        .digest("hex");
+      if (monitorRepeated.has(n))
+        expect(monitorHash).toBe(monitorRepeated.get(n));
+      monitorRepeated.set(n, monitorHash);
+      samples.push({
+        frame: n,
+        ambientMeanRgbError: ambient,
+        foregroundMeanRgbError: foreground,
+        monitorEdge: whiteEdge(monitor.bytes),
+        decodedEdge: whiteEdge(decoded),
+        decodedSha256: hash,
+        monitorSha256: monitorHash,
+      });
+    }
+    const decoded = await rgb(result.path, 90);
+    await sample(90);
+    const background = frame.locator(".photo-presentation-ambient");
+    await background.evaluate((node) => {
+      (node as HTMLElement).style.visibility = "hidden";
+    });
+    expect(
+      meanError((await sample(90, "-missing-fill")).bytes, decoded, "ambient"),
+    ).toBeGreaterThan(12);
+    await background.evaluate((node) => {
+      (node as HTMLElement).style.visibility = "";
+      (node as HTMLElement).style.opacity = "0.55";
+    });
+    expect(
+      meanError((await sample(90, "-double-dim")).bytes, decoded, "ambient"),
+    ).toBeGreaterThan(12);
+    await background.evaluate((node) => {
+      (node as HTMLElement).style.opacity = "";
+    });
+    const group = frame.locator(".photo-presentation-raw");
+    const filter = await group.evaluate(
+      (node) => (node as HTMLElement).style.filter,
+    );
+    expect(filter).toContain("url(");
+    await group.evaluate((node, filter) => {
+      (node as HTMLElement).style.filter = `${filter} ${filter}`;
+    }, filter);
+    expect(
+      meanError(
+        (await sample(90, "-double-color")).bytes,
+        decoded,
+        "ambient",
+        0,
+      ),
+    ).toBeGreaterThan(12);
+    await group.evaluate((node, filter) => {
+      (node as HTMLElement).style.filter = filter;
+    }, filter);
+    const motion = frame.locator(".photo-presentation-layers");
+    await motion.evaluate((node) => {
+      (node as HTMLElement).style.transform = "translate(-6px,0) scale(1.08)";
+    });
+    expect(
+      Math.abs(
+        whiteEdge((await sample(90, "-wrong-curve")).bytes) -
+          whiteEdge(decoded),
+      ),
+    ).toBeGreaterThan(1.5);
+    expect(await hashFile(files.source)).toBe(files.sourceHash);
+    const evidenceRoot = process.env.OPENFILM_PHOTO_FINISHING_QA_OUTPUT;
+    const evidence = evidenceRoot
+      ? join(evidenceRoot, combined ? "combined" : "look-only")
+      : undefined;
+    if (evidence) {
+      await mkdir(evidence, { recursive: true });
+      await copyFile(result.path, join(evidence, "monitor-parity.mp4"));
+      await copyFile(
+        `${result.path}.manifest.json`,
+        join(evidence, "monitor-parity.manifest.json"),
+      );
+      for (const n of [0, 90, 179, 35, 140]) {
+        await copyFile(
+          info.outputPath(`monitor-${n}.png`),
+          join(evidence, `monitor-frame-${n}.png`),
+        );
+        await runProcess("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          result.path,
+          "-vf",
+          `select=eq(n\\,${n})`,
+          "-frames:v",
+          "1",
+          "-threads",
+          "1",
+          "-y",
+          join(evidence, `decoded-frame-${n}.png`),
+        ]);
+      }
+      for (const name of [
+        "missing-fill",
+        "double-dim",
+        "double-color",
+        "wrong-curve",
+      ])
+        await copyFile(
+          info.outputPath(`monitor-90-${name}.png`),
+          join(evidence, `deliberate-${name}.png`),
+        );
+      await writeFile(
+        join(evidence, "monitor-parity.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            samples,
+            sourceSha256: files.sourceHash,
+            outputSha256: await hashFile(result.path),
+            chromium: await page.context().browser()?.version(),
+            viewport: page.viewportSize(),
+            capture:
+              "Actual component at320x180 CSS pixels and integer viewport position; no resampling",
+            ffmpeg: (await runProcess("ffmpeg", ["-version"])).stdout
+              .toString()
+              .split("\n")[0],
+            manifest: JSON.parse(
+              await readFile(`${result.path}.manifest.json`, "utf8"),
+            ),
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  });
+}

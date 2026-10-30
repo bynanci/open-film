@@ -12,6 +12,9 @@ import {
   validateGraphicScenes,
   isFilmLookActive,
   resolveFilmLook,
+  resolvePrimaryColor,
+  isPrimaryColorActive,
+  assertPrimaryColorSettings,
 } from "@openfilm/core";
 
 export type ExportFormat = "json" | "otio" | "fcpxml" | "edl";
@@ -63,10 +66,21 @@ function hasFilmLookConfig(composition: Composition): boolean {
   );
 }
 
+function hasPrimaryColorConfig(composition: Composition): boolean {
+  return (
+    composition.defaultPrimaryColor !== undefined ||
+    composition.beatPrimaryColors !== undefined ||
+    composition.tracks.some((track) =>
+      track.clips.some((clip) => clip.primaryColor !== undefined),
+    )
+  );
+}
+
 /** This report travels with the file; metadata does not recreate an NLE effect. */
 export function otioCompatibilityReport(
   composition: Composition,
 ): OtioCompatibilityReport {
+  assertPrimaryColorSettings(composition);
   const warnings: string[] = [];
   if (composition.graphicScenes?.length)
     warnings.push(
@@ -85,6 +99,11 @@ export function otioCompatibilityReport(
           ([key, value]) => value !== defaults[key as keyof typeof defaults],
         )
         .map(([key]) => key);
+      if (
+        isVisualTrack(track) &&
+        isPrimaryColorActive(resolvePrimaryColor(composition, clip).correction)
+      )
+        features.push("primary color");
       if (clip.title !== undefined || track.type === "titles")
         features.push("title");
       if (clip.layout !== undefined) features.push("photo layout");
@@ -291,6 +310,7 @@ export function exportTimeline(
   settings: ProjectSettings = { width: 1920, height: 1080, frameRate: 30 },
   options: { preserveConfiguredFrameRate?: boolean } = {},
 ): ExportResult {
+  assertPrimaryColorSettings(composition);
   if (!["json", "otio", "fcpxml", "edl"].includes(format))
     throw new Error(`Unsupported timeline export format: ${String(format)}.`);
   const byId = validate(composition, assets, settings);
@@ -323,10 +343,28 @@ export function exportTimeline(
             composition,
             assets: assets.filter((asset) => used.has(asset.id)),
             settings,
-            ...(hasFilmLookConfig(composition)
+            ...(hasFilmLookConfig(composition) ||
+            composition.defaultPrimaryColor !== undefined ||
+            composition.beatPrimaryColors !== undefined ||
+            composition.tracks.some((track) =>
+              track.clips.some((clip) => clip.primaryColor !== undefined),
+            )
               ? {
                   metadata: {
                     openfilm: {
+                      ...(hasPrimaryColorConfig(composition)
+                        ? {
+                            effectivePrimaryColors: composition.tracks.flatMap(
+                              (track) =>
+                                isVisualTrack(track)
+                                  ? track.clips.map((clip) => ({
+                                      clipId: clip.id,
+                                      ...resolvePrimaryColor(composition, clip),
+                                    }))
+                                  : [],
+                            ),
+                          }
+                        : {}),
                       effectiveLooks: composition.tracks.flatMap((track) =>
                         isVisualTrack(track)
                           ? track.clips.map((clip) => ({
@@ -422,6 +460,13 @@ export function exportTimeline(
       )
         throw new Error(
           `${format} export cannot represent look on clip ${clip.id}. Use JSON or OTIO metadata to preserve this edit and recreate color manually in the NLE.`,
+        );
+      if (
+        isVisualTrack(track) &&
+        isPrimaryColorActive(resolvePrimaryColor(composition, clip).correction)
+      )
+        throw new Error(
+          `${format} export cannot represent primary color on clip ${clip.id}. Use JSON/OTIO metadata or a fidelity handoff.`,
         );
       rejectEdits(clip, format);
       if (clip.timelineStart < end - 1e-6)
@@ -523,6 +568,11 @@ function otio(
             assetId: asset.id,
             beatId: clip.beatId,
             clip,
+            ...(isVisualTrack(track) && hasPrimaryColorConfig(composition)
+              ? {
+                  effectivePrimaryColor: resolvePrimaryColor(composition, clip),
+                }
+              : {}),
             ...(isVisualTrack(track) && hasFilmLookConfig(composition)
               ? { effectiveLook: resolveFilmLook(composition, clip) }
               : {}),

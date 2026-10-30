@@ -22,3 +22,10 @@ arbitrary plugin installer/marketplace, and the current application does not loa
 unknown community packages automatically. Plugins are trusted code, not sandboxed
 code. A discoverable registry, distribution policy, runtime compatibility checks,
 and more provider implementations need separate validated work.
+
+The D8 local preset candidate is a separate bounded data-only contract. It
+installs one closed JSON document with declared license/provenance review and
+embeds accepted recipes in saved films. It registers no executable ports and
+does not load SDK manifests as presets. Existing built-in adapters stay
+explicitly registered. See [local presets](../local-presets.md) and
+[validation](../validation-local-presets.md).
