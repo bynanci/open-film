@@ -103,6 +103,7 @@ const failedSources = ref(new Set<string>());
 const loadedSources = ref(new Set<string>());
 const titleFailed = ref(false);
 const titleRetry = ref(0);
+const titleRequestOwner = useId();
 const fillRetry = ref(0);
 const loadedFill = ref("");
 const failedFill = ref("");
@@ -269,7 +270,12 @@ const titleUrl = computed(() =>
 );
 watch(titleUrl, () => {
   titleFailed.value = false;
+  titleRetry.value++;
 });
+const titleRequestUrl = computed(
+  () =>
+    `${titleUrl.value}${titleUrl.value.includes("?") ? "&" : "?"}previewRequest=${encodeURIComponent(titleRequestOwner)}-${titleRetry.value}`,
+);
 const staticStyle = computed(() => {
   const geometry = resolveClipGeometry(props.clip.transform);
   return {
@@ -482,10 +488,10 @@ defineExpose({
       />
       <img
         v-if="clip.title"
-        :key="`${titleUrl}:${titleRetry}`"
+        :key="titleRequestUrl"
         crossorigin="anonymous"
         class="photo-presentation-title"
-        :src="titleUrl"
+        :src="titleRequestUrl"
         :alt="clip.title"
         :style="{ opacity: titleOpacity }"
         draggable="false"

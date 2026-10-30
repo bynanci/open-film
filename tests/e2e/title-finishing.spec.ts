@@ -322,6 +322,101 @@ test("independent title controls keep history/reopen and show the exact measured
   expect(await fixture.assertOriginalsUnchanged()).toBe(true);
 });
 
+test("a delayed stale title request cannot poison the same revision after Undo and Redo", async ({
+  page,
+  request,
+}) => {
+  const fixture = await createFilm(request);
+  await openEditor(page);
+  const originalRevision = (await state(request)).revision;
+  const editedRequests: string[] = [];
+  let stale: (() => Promise<void>) | undefined;
+  await page.route(
+    "**/api/compositions/bilingual-film/title/bilingual-clip.png?**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("revision") !== originalRevision) {
+        editedRequests.push(url.href);
+        if (!stale) {
+          stale = () =>
+            route.fulfill({
+              status: 409,
+              contentType: "application/json",
+              body: JSON.stringify({
+                code: "timeline.conflict",
+                error:
+                  "This text preview is stale or belongs to another project.",
+              }),
+            });
+          return;
+        }
+      }
+      await route.continue();
+    },
+  );
+  await page
+    .getByText("Secondary language typography", { exact: true })
+    .click();
+  const size = page.getByTestId("title-run-secondary-fontSize");
+  await size.fill("22.5");
+  await size.press("Tab");
+  await expect
+    .poll(
+      async () =>
+        (await state(request)).composition.tracks[0]!.clips[0]!.titleRuns
+          ?.secondary?.fontSize,
+    )
+    .toBe(22.5);
+  await expect.poll(() => stale !== undefined).toBe(true);
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.undoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(async () => (await state(request)).revision)
+    .toBe(originalRevision);
+  await page
+    .getByRole("button", {
+      name: uiText("en-US", "editor.redoLabel"),
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await state(request)).composition.tracks[0]!.clips[0]!.titleRuns
+          ?.secondary?.fontSize,
+    )
+    .toBe(22.5);
+  await stale!();
+  await expect.poll(() => editedRequests.length).toBe(2);
+  expect(editedRequests[1]).not.toBe(editedRequests[0]);
+  const image = page
+    .locator(".photo-presentation-title, .editor-title-overlay")
+    .first();
+  await expect(image).toHaveJSProperty("naturalWidth", 640);
+  const saved = await state(request),
+    clip = saved.composition.tracks[0]!.clips[0]!;
+  const raster = await createTitleOverlay(
+    clip.title!,
+    clip.titleStyle,
+    { width: 640, height: 360 },
+    join(fixture.root, "browser-returned-reference.png"),
+    { textRuns: clip.titleRuns },
+  );
+  const displayed = await image.evaluate(async (node) =>
+    Array.from(
+      new Uint8Array(
+        await (await fetch((node as HTMLImageElement).src)).arrayBuffer(),
+      ),
+    ),
+  );
+  expect(Buffer.from(displayed)).toEqual(await readFile(raster.path));
+  expect(await fixture.assertOriginalsUnchanged()).toBe(true);
+});
+
 test("Record caption boundaries and selection match the existing MP4 selector", async ({
   page,
   request,

@@ -65,6 +65,8 @@ async function mount(withPlayer = true) {
     props,
     player,
     callbacks,
+    imageSource: () =>
+      flatten(mounted.root).find((node) => node.tag === "img")!.props.src,
     opacity: () =>
       (
         flatten(mounted.root).find((node) => node.tag === "img")!.props
@@ -95,6 +97,23 @@ it("updates only the video overlay clock each frame, with trim and speed convert
   mounted.player.dispatchEvent(new Event("seeked"));
   await vue.nextTick();
   expect(mounted.opacity()).toBe(0.25);
+});
+
+it("gives a returned revision a fresh image request while clock updates keep the current request", async () => {
+  const mounted = await mount(false);
+  const first = mounted.imageSource();
+  mounted.props.src = "/shared-title.png?revision=second";
+  await vue.nextTick();
+  const second = mounted.imageSource();
+  expect(second).not.toBe(first);
+  mounted.props.src = "/shared-title.png";
+  await vue.nextTick();
+  expect(mounted.imageSource()).not.toBe(first);
+  expect(mounted.imageSource()).not.toBe(second);
+  const returned = mounted.imageSource();
+  mounted.props.sourceTime = 17;
+  await vue.nextTick();
+  expect(mounted.imageSource()).toBe(returned);
 });
 
 it("retains zero-fade legacy visibility and releases frames and event listeners on unmount", async () => {
