@@ -213,7 +213,7 @@ test("Expert Record compares the original momentarily or latched without saving 
   });
 
   const hold = page.getByRole("button", {
-    name: "Hold to view original",
+    name: uiText("en-US", "cutDesk.compare.hold"),
     exact: true,
   });
   await hold.dispatchEvent("pointerdown", {
@@ -260,7 +260,7 @@ test("Expert Record compares the original momentarily or latched without saving 
   ).toBe(true);
 
   const latch = page.getByRole("button", {
-    name: "Keep original view",
+    name: uiText("en-US", "cutDesk.compare.latch"),
     exact: true,
   });
   await latch.click();
