@@ -200,6 +200,7 @@ export default {
         titleStyle: "字卡字體與版面",
         audioAutomation: "音訊淡入淡出、音量曲線與壓低區段",
         overlayTiming: "配樂獨立編輯而不推動畫面",
+        userPins: "使用者釘選意圖（僅中繼資料）",
         clipLocks: "片段鎖定與故事段落",
         overlappingClips: "同軌重疊片段",
       },

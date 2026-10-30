@@ -32,7 +32,7 @@ beforeAll(async () => {
   factory = new Function(
     "dependencies",
     `
-    const {computed,ref,shallowRef,onMounted,onBeforeUnmount,applyTimelineCommand,api,ApiError,useI18n,errorDetail,localizeError} = dependencies;
+    const {computed,ref,shallowRef,toRaw,onMounted,onBeforeUnmount,applyTimelineCommand,api,ApiError,useI18n,errorDetail,localizeError} = dependencies;
     ${code}
     return useTimelineEditor('project', 'cut', () => {}, () => {});
   `,

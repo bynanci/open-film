@@ -3,6 +3,16 @@
 export default {
   editor: {
     pins: {
+      affected: "受影響的釘選編輯：{owners}。",
+      pinned: "已釘選編輯",
+      pin: "釘選編輯",
+      unpin: "解除使用者釘選",
+      hint: "自動調整會保留完整的釘選編輯。來源與片段鎖定為獨立保護。",
+      releaseResolve: "解除釘選並重新求解",
+      releaseHint:
+        "在一次儲存操作中解除此使用者釘選並重新求解剪輯。失敗時保留釘選，來源鎖定仍有效。",
+      saved: "已儲存釘選變更。",
+
       target: "剪輯版本",
       newCut: "新增粗剪",
       resolveCut: "重新求解所選剪輯",

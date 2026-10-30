@@ -79,6 +79,8 @@ export default {
         "The story couldn't be saved. Check its selected memories and duration limits.",
     },
     timeline: {
+      pinConflict:
+        "A pinned edit cannot fit this change. Release its user pin explicitly or adjust neighboring clips.",
       lookLocked:
         "Changing this look would affect {count} protected clips. Unlock those clips or sources first, or adjust an unlocked clip.",
       notFound:

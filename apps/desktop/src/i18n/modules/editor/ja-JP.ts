@@ -3,6 +3,16 @@
 export default {
   editor: {
     pins: {
+      affected: "対象の固定編集：{owners}。",
+      pinned: "編集を固定済み",
+      pin: "編集を固定",
+      unpin: "ユーザー固定を解除",
+      hint: "自動調整では固定した編集全体を保持します。素材とクリップのロックは別の保護です。",
+      releaseResolve: "固定解除して再構成",
+      releaseHint:
+        "このユーザー固定を解除してカットを一度に保存します。失敗時は固定を維持します。素材のロックは有効です。",
+      saved: "固定の変更を保存しました。",
+
       target: "カット",
       newCut: "新しいラフカット",
       resolveCut: "選択したカットを再構成",

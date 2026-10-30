@@ -1,6 +1,7 @@
 # OpenFilm project format
 
-An `.openfilm` project is a directory. **Project schema 1.0.0** is independent of
+An `.openfilm` project is a directory. New projects default to **schema 1.0.0**;
+user pin state uses **schema 1.1.0**. Project schemas are independent of
 OpenFilm application releases. The latest tagged application release is `v0.4.0`;
 current `main` is unreleased. A project refers to source media by
 local file URI. Native file/folder import references originals in place; browser
@@ -244,3 +245,29 @@ project directories. First-run checks use app-data working storage. Manual app
 rollback preserves projects and relies on existing project/catalog compatibility
 checks; unsupported versions are refused rather than rewritten. See
 [Native Installer](../native-installer.md).
+
+## User pins and schema 1.1.0
+
+See the [schema 1.1.0 contract](https://github.com/bynanci/open-film/blob/main/schemas/openfilm-project-1.1.0.schema.json).
+
+Direct clip and graphic edits receive a saved user pin. Automatic regeneration
+keeps the complete pinned edit, including timing, selected source range, effects
+and deliberately removed effects. A pin differs from a source or clip lock: you
+can continue editing your pinned owner directly. Existing locks still apply.
+
+The first pin-state write promotes the project from schema 1.0.0 to 1.1.0 in the
+same save. Older applications reject 1.1.0. Releasing all pins or using session
+Undo keeps the newer header. Explicit Named Version Restore can restore an older
+header and its exact pin state. Pin changes are included in version comparisons.
+
+Use **Release user pin** to release one owner without changing it. **Unlock &
+Re-solve** releases its user pin and solves the cut in one saved action; failure
+keeps the pin and cut. This action does not unlock original sources or clip/layer
+locks. Saved pin markers are distinct from those locks. Unsupported overlapping
+spines and timing that cannot fit between anchors return a conflict.
+
+Collect directory and ZIP packages retain pins and copy pinned dependencies as
+whole originals. Native reopening preserves exact source clocks. JSON/OTIO keep
+pins as metadata; an external NLE does not enforce them. New pipeline runs choose
+**New rough cut** or **Re-solve selected cut** explicitly, with the saved revision
+for the selected cut. Caption-level and selective category pins are not included.

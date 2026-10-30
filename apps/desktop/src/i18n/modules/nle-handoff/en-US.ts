@@ -43,6 +43,7 @@ export default {
       transition: "Transition",
       transform: "Geometry",
       look: "Look",
+      "user-pin": "User pin (external enforcement unsupported)",
       graphicScene: "Graphic scene / animation",
       caption: "Caption",
     },

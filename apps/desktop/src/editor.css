@@ -2916,3 +2916,9 @@ button.editor-beat-heading:hover {
     justify-content: flex-start;
   }
 }
+
+@media (pointer: coarse) {
+  .timeline-editor .editor-user-pins .editor-button {
+    min-height: 44px;
+  }
+}
