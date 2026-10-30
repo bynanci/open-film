@@ -28,19 +28,24 @@ let generation = 0,
   controller: AbortController | undefined;
 const measureButton = ref<HTMLButtonElement>();
 function cancel() {
+  if (applied.value) return;
   reset();
   void nextTick(() => measureButton.value?.focus());
 }
 const variants = ["reference", "before", "after"] as const;
-function discard(id: string) {
-  void api
-    .discardPrimaryColorReview(id, props.projectId)
-    .catch(() => undefined);
+function discard(id: string, projectId = props.projectId) {
+  void api.discardPrimaryColorReview(id, projectId).catch(() => undefined);
 }
 function reset() {
   generation++;
   controller?.abort();
-  if (report.value) discard(report.value.id);
+  // An explicit Apply may still be queued in the shared autosave owner. Retain
+  // its evidence through navigation until acknowledgement or bounded expiry.
+  if (
+    report.value &&
+    (!applied.value || props.revision !== report.value.baseRevision)
+  )
+    discard(report.value.id, report.value.projectId);
   report.value = undefined;
   busy.value = false;
   failed.value = false;
@@ -50,12 +55,12 @@ function reset() {
   loaded.value = new Set();
 }
 watch(
-  () => [
-    props.projectId,
-    props.compositionId,
-    props.revision,
-    props.clipId,
-    referenceId.value,
+  [
+    () => props.projectId,
+    () => props.compositionId,
+    () => props.revision,
+    () => props.clipId,
+    () => referenceId.value,
   ],
   reset,
 );
@@ -95,7 +100,7 @@ async function run() {
       controller.signal,
     );
     if (token === generation) report.value = result;
-    else discard(result.id);
+    else discard(result.id, result.projectId);
   } catch {
     if (token === generation) failed.value = true;
   } finally {
@@ -173,7 +178,12 @@ function accept() {
         @click="run"
       >
         {{ t("primaryColor.measure") }}</button
-      ><button v-if="busy || report" class="editor-button" @click="cancel">
+      ><button
+        v-if="busy || report"
+        class="editor-button"
+        :disabled="applied"
+        @click="cancel"
+      >
         {{ t("primaryColor.discard") }}
       </button>
     </div>
@@ -308,5 +318,11 @@ img {
   align-items: flex-start;
   gap: var(--of-space-2);
   font-size: var(--of-font-caption);
+}
+button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 </style>

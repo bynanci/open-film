@@ -143,3 +143,80 @@ it("aborts and discards late measured evidence after revision changes", async ()
     mounted.unmount();
   }
 });
+
+it("retains the review panel when optimistic Apply replaces the same clip and Composition", async () => {
+  const panel = loadComponent(
+    "apps/desktop/src/components/PrimaryColorReviewPanel.vue",
+    {
+      "vue-i18n": i18n,
+      "../api": {
+        api: { discardPrimaryColorReview: async () => ({ ok: true }) },
+        primaryColorReviewMediaUrl: () => "",
+      },
+    },
+  );
+  const component = loadComponent(
+    "apps/desktop/src/components/PrimaryColorInspector.vue",
+    {
+      "@openfilm/core": core,
+      "vue-i18n": i18n,
+      "./PrimaryColorReviewPanel.vue": panel,
+    },
+  );
+  const clip = { id: "c", assetId: "a", timelineStart: 0, timelineDuration: 1 };
+  const props = vue.reactive({
+    composition: {
+      id: "f",
+      storyId: "s",
+      duration: 2,
+      tracks: [
+        {
+          id: "v",
+          type: "video",
+          clips: [
+            clip,
+            {
+              id: "reference",
+              assetId: "b",
+              timelineStart: 1,
+              timelineDuration: 1,
+            },
+          ],
+        },
+      ],
+    },
+    clip,
+    assets: [
+      { id: "a", name: "A", mediaType: "image", state: {} },
+      { id: "b", name: "B", mediaType: "image", state: {} },
+    ],
+    projectId: "p",
+    revision: "r",
+    clipEligible: true,
+    disabled: false,
+  });
+  const mounted = mountComponent(component, props);
+  try {
+    (
+      flatten(mounted.root).find(
+        (n) => n.tag === "button" && n.props["aria-expanded"] !== undefined,
+      )!.props.onClick as () => void
+    )();
+    await vue.nextTick();
+    expect(
+      flatten(mounted.root).some(
+        (n) => n.props["data-testid"] === "primary-measure",
+      ),
+    ).toBe(true);
+    props.composition = { ...props.composition };
+    props.clip = { ...props.clip };
+    await vue.nextTick();
+    expect(
+      flatten(mounted.root).some(
+        (n) => n.props["data-testid"] === "primary-measure",
+      ),
+    ).toBe(true);
+  } finally {
+    mounted.unmount();
+  }
+});

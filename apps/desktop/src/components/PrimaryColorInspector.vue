@@ -46,11 +46,11 @@ function reset() {
         : props.composition.defaultPrimaryColor) ?? effective.value.correction),
   };
 }
-watch(() => [scope.value, props.clip.id, props.revision], reset, {
+watch([() => scope.value, () => props.clip.id, () => props.revision], reset, {
   immediate: true,
 });
 watch(
-  () => [props.projectId, props.composition.id, props.clip.id],
+  [() => props.projectId, () => props.composition.id, () => props.clip.id],
   () => {
     scope.value = "clip";
     showReview.value = false;
@@ -245,5 +245,11 @@ p {
   display: flex;
   gap: var(--of-space-2);
   flex-wrap: wrap;
+}
+button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 </style>
