@@ -39,12 +39,13 @@
     "apps/cli/**/*.ts",
     "apps/server/**/*.ts",
     "tests/**/*.ts",
-    "vitest.config.ts",
+    "vitest*.config.ts",
     "playwright.config.ts",
     "scripts/benchmark-transcript-productivity.ts",
     "scripts/photo-film-quality.ts",
     "scripts/native/**/*.ts",
-    "scripts/benchmark-review-selection.ts"
+    "scripts/benchmark-review-selection.ts",
+    "scripts/ci/**/*.ts"
   ],
   "exclude": ["node_modules", "**/dist", "apps/desktop/src-tauri"]
 }
