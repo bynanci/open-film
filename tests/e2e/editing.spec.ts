@@ -437,6 +437,10 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
       .map((clip) => clip.id),
   ).toEqual(["opening-motion", "opening-photo"]);
 
+  // The next Source trims intentionally ripple this photo. Release the direct
+  // reorder pin before those edits rather than first creating a protected gap.
+  await releaseManualPin(page, "opening-photo");
+
   await page.locator("#clip-opening-motion").click();
   await field(page, "Source in", "0.5");
   await field(page, "Source out", "2.5");
@@ -510,9 +514,6 @@ test("edits, protects, shortens, renders and reopens an actual two-beat film", a
   await expect(page.getByLabel("Photo duration", { exact: true })).toHaveValue(
     "6",
   );
-  // Automatic regeneration preserves direct edits until the author releases
-  // the specific photo; the separately locked motion remains protected.
-  await releaseManualPin(page, "opening-photo");
   const beforeRegeneration = await editorState(request);
   const endingEdits = clips(beforeRegeneration)
     .filter((clip) => clip.beatId === "ending")
