@@ -142,6 +142,13 @@ it("keeps the full Verify/browser/native commands and adds an always-evaluated t
     expect(verify).toContain(token);
 });
 
+it("runs all pull requests and main pushes without duplicate feature-branch push matrices", () => {
+  const workflow = readFileSync(".github/workflows/render-qa.yml", "utf8");
+  expect(workflow).toContain("  pull_request:");
+  expect(workflow).toContain("  workflow_dispatch:");
+  expect(workflow).toContain("  push:\n    branches: [main]");
+});
+
 it.each(["source inventory", "substituted font"])(
   "rejects aggregate reports with contradictory %s hashes",
   (mutation) => {

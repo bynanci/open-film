@@ -197,3 +197,16 @@ Evidence is isolated under `/tmp/openfilm-finishing-integration/` in
 their original candidate identities. Actual Ubuntu/Windows/macOS admission,
 execution and aggregation remain unrun until the parent publishes real CI.
 No complete suite, native benchmark, hardware/NLE or release claim follows.
+
+## 2026-10-30 — avoid duplicate feature-branch render matrices
+
+The finishing integration retains every pull-request, main-push and explicit
+manual Render QA run. A source regression reproduced one failure because the
+new matrix also ran on every feature-branch push, duplicating the same PR's
+three-OS work. Its push trigger now matches Verify's main-only push policy; no
+file-path exclusions or required matrix jobs were introduced or removed.
+The intended RED was 1 failed / 16 passed. Both changed gate suites then passed
+39 tests / two files; scoped formatting and ESLint pass. Earlier exact-clean
+2528118 media receipts remain identified by that checkpoint; this trigger-only
+follow-up changes no renderer, metric, tool/font pin or media assertion. Actual
+current-candidate hosted runs remain required before merge.
