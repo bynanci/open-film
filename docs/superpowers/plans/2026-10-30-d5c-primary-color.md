@@ -19,10 +19,19 @@ FFprobe, Vitest and Playwright. No dependency upgrades.
 
 **Spec:** `docs/superpowers/specs/2026-10-30-d5c-primary-color-design.md`
 
-Status: proposed plan, inspection base
-`e1255b1a8a83260149211d909cca8c1a50948c6b`. Product implementation starts only
-after coordinator approval of the concrete design calls. No tests or product
-changes are represented as complete by unchecked tasks below.
+**Executed handoff:** Core/editor/render/review/UI/adapters and documentation are
+implemented. The final focused selection passes 220 tests in 19 files; the
+browser-verified product head `53a23a7` passes seven cases. Three additional
+Collect/handoff cases pass. A later JSON-key-order acceptance fix has seven
+focused review/HTTP passes. Coordinator-owned D5A integration retest, fresh
+whole-branch review and complete exact-head CI remain pending; see the validation
+record for exact scope and manual gates.
+
+Status: coordinator-approved plan, inspection base
+`e1255b1a8a83260149211d909cca8c1a50948c6b`. The coordinator approved the concrete design calls before implementation.
+Execution evidence is recorded in `docs/validation-primary-color.md`; original
+unchecked steps below remain the planned acceptance inventory, with final full
+regressions/review/CI owned by the coordinator.
 
 ## Global Constraints
 

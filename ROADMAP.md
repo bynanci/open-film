@@ -124,6 +124,16 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
+contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
+originals, timing and the schema/catalog owners remain stable. Local statistical
+Auto Match presents actual before/after samples and needs explicit reviewed clip
+Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
+video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
+accessibility. Calibrated displays, real NLE behavior and final integrating gates
+remain separate. See [the guide](docs/primary-color.md) and
+[validation](docs/validation-primary-color.md).
+
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
 the existing proxy generator and keeps output on originals. Independent review

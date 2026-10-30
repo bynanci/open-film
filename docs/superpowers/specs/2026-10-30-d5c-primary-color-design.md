@@ -3,7 +3,7 @@
 Date: 2026-10-30. Inspection base:
 `e1255b1a8a83260149211d909cca8c1a50948c6b`.
 
-Status: proposed contract for coordinator approval before product changes. The
+Status: coordinator approved the concrete contract on 2026-10-30 before product changes. The
 user authorized the D work, implementation, tests and reviewed integration; this
 document supplies the independent color/threat/compatibility gate required by
 `TASKS.md` and `docs/roadmap/seven-subsystem-reconciliation.md`. No release number
@@ -49,8 +49,9 @@ highlight recovery and calibrated display certification remain outside D5C.
    Small implementation, but equations, pivot, clipping and channel semantics
    diverge. It cannot satisfy the shared-coefficient gate.
 
-These are builder recommendations pending coordinator approval, not decisions
-attributed to the user. The first approach is recommended.
+The coordinator accepted the first approach before implementation. Its precise
+formula and operational limits are builder recommendations, not decisions
+attributed to the user.
 
 ## Versioned data and scope
 
@@ -142,8 +143,9 @@ Look matrices together; that would move the clipping boundary and change pixels.
 
 Round derived slopes and offset with `Number(value.toFixed(12))`, normalize `-0`
 to `0`, and use those exact coefficients in all adapters and manifests. Authored
-numbers remain finite bounded JSON numbers; UI steps are 0.01, with temperature
-displayed as -100..100 and contrast as 50..150%. Derived gain ranges 0.1125..6.6,
+numbers remain finite bounded JSON numbers; UI steps are 0.01. Implementation
+displays normalized temperature -1..1 and contrast 0.5..1.5 with explicit labels,
+matching the authored recipe. Derived gain ranges 0.1125..6.6,
 offset -0.25..0.25. A raw 8-bit reference operation rounds each final RGB channel
 with `floor(value + 0.5)` after clamping; alpha is copied exactly.
 
@@ -330,9 +332,10 @@ explicit user need.
 Create `PrimaryColorFilter.vue` for shared SVG coefficients and a small source
 color filter composition helper so the existing video/photo/source Monitor paths
 always execute primary then Film Look. Identity produces no filter. A scoped
-filter applies to media elements/groups, never their title/canvas parent. Changes
-must not replace a media resource, seek the transport, reset playback intent or
-change composition time. Arbitrary shuffled seeks use the same static recipe.
+filter applies to media elements/groups, never their title/canvas parent. Diagnostic filter bypass must not replace a media resource, seek the transport,
+reset playback intent or change composition time. Committed edits retain the
+existing saved-revision pause/rebuild fence, as confirmed by the coordinator.
+Arbitrary shuffled seeks use the same static recipe.
 
 The inspector uses existing design tokens, labels, focus styles, native numeric
 controls and status regions. Show Film, Scene and Clip with Inherit/Reset,
@@ -395,9 +398,10 @@ Monitor ownership/seek/compare, UI/i18n/accessibility and interchange/precomp te
 Actual Auto Match after statistics must come from decoded candidate pixels and
 improve the declared metric; source/cancel/stale tests assert no project changes.
 The integrating PR runs complete serial repository gates and exact-head CI under
-coordinator scheduling. This docs-only phase runs no media suite/browser server.
+coordinator scheduling. The initial docs-only phase ran no media suite/browser
+server; executed implementation evidence is now in `docs/validation-primary-color.md`.
 
-Coordinator approval is requested for these concrete builder calls:
+The coordinator approved these concrete builder calls before implementation:
 
 1. Encoded-SDR affine v1 formula/bounds/12-decimal coefficients and generated
    FFmpeg LUT, with documented non-calibrated semantics.

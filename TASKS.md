@@ -200,9 +200,11 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
-- [ ] D5C: after an independent color/compatibility design, add versioned primary
-      correction before Film Looks. Auto Match remains reviewable measured
-      evidence, never a source mutation.
+- [x] D5C: deliver versioned film/scene/clip primary correction before Film Looks,
+      with shared bounded coefficients, locks/history and measured statistical
+      Auto Match requiring explicit reviewed clip Apply. See the
+      [contract](docs/primary-color.md) and [validation](docs/validation-primary-color.md);
+      calibrated display/real NLE and final integration gates remain explicit.
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
