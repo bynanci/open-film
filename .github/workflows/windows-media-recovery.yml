@@ -78,6 +78,7 @@ jobs:
           pnpm exec playwright install chromium
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Record candidate and actual Windows toolchain
+        id: toolchain
         run: |
           $openfilmEvidence = Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence"
           New-Item -ItemType Directory -Force $openfilmEvidence | Out-Null
@@ -99,6 +100,9 @@ jobs:
           pnpm exec vitest run tests/integration/desktop-fixture-paths.test.ts packages/application/tests/review-owner-platform.test.ts packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise the reported browser workflows on actual Windows and FFmpeg9
+        # Independent journeys still provide evidence after a unit failure;
+        # that failure continues to fail the job. Tools must first be verified.
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: |
           pnpm exec playwright test tests/e2e/export-profiles.spec.ts tests/e2e/export-review-followup.spec.ts tests/e2e/multi-source-review.spec.ts tests/e2e/interaction-performance.spec.ts --workers=1 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\browser.log")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
