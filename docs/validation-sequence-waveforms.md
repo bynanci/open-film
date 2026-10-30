@@ -136,3 +136,14 @@ high-DPI/color-managed displays, large real projects and 4K/GPU/Resolve remain
 unverified workstation observations. These raw peaks do not measure the
 rendered mix, promise sub-bin sample editing or infer musical beats. D3A2 rhythm
 evidence and D3B1 J/L mixing remain separate roadmap owners.
+
+## 2026-10-30 — verified PR72 merge
+
+PR72 exact head `06cd982bc14b0b5e991e1e3a71854302a960fe2e` passed the
+complete4668unit/integration and298browser cases plus required native,
+interchange/build/CLI/documentation gates before merge as
+`1005d381cc2000e0f991fc3e1779ebb2a61cd7ab`. Actual merged-main
+Verify41073060434, Windows41073060373 and Pages41073060227 all pass.
+The actual120decoded-frame/48kHzPCM source-bound evidence above remains
+unchanged. This records the completed automated merge gate; physical listening,
+hardware latency,4K/Resolve and other manual observations remain open.

@@ -239,3 +239,29 @@ path with POSIX semantics. The existing exact otool argument assertions remain
 unchanged, as do Linux staging and actual Windows tool paths. Both local tool
 suites pass23tests; scoped ESLint and formatting pass. These Linux results do
 not replace a fresh Windows matrix run or claim real macOS linkage execution.
+
+## 2026-10-30 — actual matrix failure diagnostics
+
+At head `5b1abaa1daf9d7a029ae40dac1e059149c61d849`, RenderQA41095794739
+passes the actual pinned Linux core117measurements/10negative-controls/17outputs
+and separate5files19finishing cases. Windows passes acquisition, unit controls
+and its core output/decoded-negative-control step, but the independent finishing
+child exits nonzero. Its raw JSON/log remain runner-local; the old runner threw
+before writing a public summary, so the failed subcase cannot yet be identified.
+The macOS runner is queued at this observation. No Windows finishing pass or
+causal repair is inferred from the Linux result.
+
+The diagnostic-only correction preserves the nonzero child/gate result and
+original successful-report validator. A failed child now emits a separate
+`openfilm.render-qa-finishing-failure` summary with `complete:false`, candidate/run/
+platform identity, bounded raw-report hash, known repository test paths, assertion
+indices, known failure categories and numeric comparisons/source coordinates.
+Arbitrary names, messages, stacks and absolute/private paths stay local. Missing
+or malformed JSON yields unavailable diagnostics and still fails. No failed
+summary is accepted as all-passed evidence; no retry, assertion or metric changes.
+
+Two missing-function RED cases became GREEN; current pure selection/CI tests
+pass42cases/2files, root TypeScript, changed ESLint/format/diff checks pass.
+ANSI Windows stack/private-text controls verify only fixed fields escape. Fresh
+scoped review and a new actual matrix remain required. This correction improves
+diagnosability; it does not fix the unidentified Windows finishing failure.

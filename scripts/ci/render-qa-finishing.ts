@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { isAbsolute, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 export const renderQaFinishingFiles = Object.freeze([
   "packages/render/tests/photo-easing.test.ts",
   "packages/render/tests/photo-ambient.test.ts",
@@ -43,6 +44,135 @@ function time(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
     invalid();
   return value;
+}
+interface FinishingFailure {
+  path: string;
+  assertionIndex: number;
+  kind:
+    | "numeric-comparison"
+    | "equality"
+    | "ffmpeg-exit"
+    | "assertion"
+    | "unclassified";
+  actual?: number;
+  operator?:
+    | "less-than-or-equal"
+    | "greater-than-or-equal"
+    | "less-than"
+    | "greater-than";
+  expected?: number;
+  location?: { line: number; column: number };
+}
+/** Failure evidence is diagnostic only. Never publish arbitrary test text/paths. */
+export function summarizeFinishingFailure(
+  value: unknown,
+  context: FinishingReportContext,
+): {
+  status: "failed" | "unavailable";
+  failures: FinishingFailure[];
+} {
+  try {
+    const report = record(value),
+      start = time(report.startTime);
+    if (
+      !isAbsolute(context.checkoutRoot) ||
+      start < time(context.startedAt) ||
+      start > time(context.endedAt) ||
+      report.success !== false ||
+      !Array.isArray(report.testResults) ||
+      report.testResults.length !== renderQaFinishingFiles.length
+    )
+      invalid();
+    const expected = new Set<string>(renderQaFinishingFiles),
+      seen = new Set<string>();
+    const failures: FinishingFailure[] = [];
+    for (const entry of report.testResults) {
+      const suite = record(entry);
+      if (typeof suite.name !== "string" || !isAbsolute(suite.name)) invalid();
+      const path = relative(
+        context.checkoutRoot,
+        resolve(suite.name),
+      ).replaceAll("\\", "/");
+      if (
+        !expected.has(path) ||
+        seen.has(path) ||
+        time(suite.startTime) < start ||
+        time(suite.endTime) < time(suite.startTime) ||
+        time(suite.endTime) > context.endedAt ||
+        !Array.isArray(suite.assertionResults) ||
+        suite.assertionResults.length > 1000
+      )
+        invalid();
+      seen.add(path);
+      for (let index = 0; index < suite.assertionResults.length; index++) {
+        const assertion = record(suite.assertionResults[index]);
+        if (
+          !["passed", "failed", "pending", "skipped", "todo"].includes(
+            String(assertion.status),
+          ) ||
+          !Array.isArray(assertion.failureMessages) ||
+          assertion.failureMessages.length > 16 ||
+          assertion.failureMessages.some(
+            (message) => typeof message !== "string" || message.length > 65536,
+          )
+        )
+          invalid();
+        if (assertion.status !== "failed") continue;
+        if (failures.length >= 50) invalid();
+        const message = stripVTControlCharacters(
+          (assertion.failureMessages as string[]).join("\n"),
+        );
+        const failure: FinishingFailure = {
+          path,
+          assertionIndex: index,
+          kind: "unclassified",
+        };
+        const numeric =
+          /^\s*(?:AssertionError:\s*)?expected\s+(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s+to be (less than or equal to|greater than or equal to|less than|greater than)\s+(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)(?:\s|$)/iu.exec(
+            message,
+          );
+        if (
+          numeric &&
+          Number.isFinite(Number(numeric[1])) &&
+          Number.isFinite(Number(numeric[3]))
+        ) {
+          failure.kind = "numeric-comparison";
+          failure.actual = Number(numeric[1]);
+          failure.expected = Number(numeric[3]);
+          const operators = {
+            "less than or equal to": "less-than-or-equal",
+            "greater than or equal to": "greater-than-or-equal",
+            "less than": "less-than",
+            "greater than": "greater-than",
+          } as const;
+          failure.operator =
+            operators[numeric[2]!.toLowerCase() as keyof typeof operators];
+        } else if (
+          /^AssertionError:.*(?:deeply equal|strictly equal|to equal)/iu.test(
+            message,
+          )
+        )
+          failure.kind = "equality";
+        else if (/Command failed:.*ffmpeg/iu.test(message))
+          failure.kind = "ffmpeg-exit";
+        else if (/^AssertionError:/u.test(message)) failure.kind = "assertion";
+        const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+        const location = new RegExp(
+          `${escapedPath}:(\\d{1,7}):(\\d{1,5})(?:\\s|\\)|$)`,
+          "u",
+        ).exec(message.replaceAll("\\", "/"));
+        if (location)
+          failure.location = {
+            line: Number(location[1]),
+            column: Number(location[2]),
+          };
+        failures.push(failure);
+      }
+    }
+    return { status: "failed", failures };
+  } catch {
+    return { status: "unavailable", failures: [] };
+  }
 }
 export function validateFinishingReport(
   value: unknown,

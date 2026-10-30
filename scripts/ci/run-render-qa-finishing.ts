@@ -11,6 +11,7 @@ import type { RenderQaToolReceipt } from "./setup-render-qa.js";
 import {
   finishingVitestArgs,
   MAX_FINISHING_REPORT_BYTES,
+  summarizeFinishingFailure,
   validateFinishingReport,
 } from "./render-qa-finishing.js";
 const execute = promisify(execFile);
@@ -57,6 +58,7 @@ async function main() {
   const rawDirectory = await mkdtemp(join(output, "raw-")),
     rawPath = join(rawDirectory, "finishing-vitest.json");
   const startedAt = Date.now();
+  let executionFailed = false;
   try {
     const result = await execute(
       process.execPath,
@@ -77,6 +79,7 @@ async function main() {
       { flag: "wx" },
     );
   } catch (cause) {
+    executionFailed = true;
     const failure = cause as { stdout?: string; stderr?: string };
     await writeFile(
       join(rawDirectory, "vitest.log"),
@@ -86,9 +89,54 @@ async function main() {
       ),
       { flag: "wx" },
     );
+  }
+  if (executionFailed) {
+    let diagnostic: ReturnType<typeof summarizeFinishingFailure> = {
+      status: "unavailable",
+      failures: [],
+    };
+    let rawReportSha256: string | undefined;
+    try {
+      const info = await lstat(rawPath);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.size < 1 ||
+        info.size > MAX_FINISHING_REPORT_BYTES
+      )
+        throw new Error("Invalid report");
+      const raw = await readFile(rawPath);
+      if (raw.length !== info.size) throw new Error("Changed report");
+      rawReportSha256 = sha(raw);
+      diagnostic = summarizeFinishingFailure(
+        JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)),
+        { checkoutRoot: process.cwd(), startedAt, endedAt: Date.now() },
+      );
+    } catch {
+      // Missing/malformed raw reports remain a failed gate with no untrusted text.
+    }
+    const summary = {
+      schemaVersion: 1,
+      format: "openfilm.render-qa-finishing-failure",
+      scope: hosted ? "hosted-pinned" : "local-observation",
+      candidateSha,
+      workingTreeDirty,
+      runId,
+      runAttempt,
+      platformId,
+      rawReportSha256,
+      ...diagnostic,
+      complete: false,
+      workstationVerified: false,
+    };
+    await writeFile(
+      join(output, `${platformId}.summary.json`),
+      JSON.stringify(summary, null, 2) + "\n",
+      { flag: "wx" },
+    );
+    process.stderr.write(JSON.stringify(summary) + "\n");
     throw new Error(
-      "Finishing Vitest failed; its bounded raw report/log remain local.",
-      { cause },
+      "Finishing Vitest failed; bounded path-free failure facts are retained; raw report/log remain local.",
     );
   }
   const endedAt = Date.now(),
