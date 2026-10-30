@@ -284,3 +284,61 @@ three combined-photo cases, plus macOS raw-ambient exactRGB, easing count and
 two HDR renders. AllthreeOS core117/10/17steps andLinux separate19cases pass.
 The newly retained failed summaries identify the concrete subcases; the full
 Windows/macOS finishing/aggregate gates remain failed pending causal repairs.
+
+## 2026-10-30 — finishing portability and HDR tool admission
+
+Actual run `41098660221` at `c4fdb0a` retained complete core reports on all three
+platforms: 117 measurements, 10 observed negative controls and 17 output hashes.
+Linux also passed the separate five-file/19-case finishing selection. Windows
+failed the easing sample count and three local-look fixtures; macOS failed the
+easing count, exact ambient RGB witness and both HDR chart cases. Those original
+receipts remain historical evidence for their own source and tool identities.
+
+The corrections preserve the finishing selection, metrics, exact comparisons,
+source hashes, endpoints, 257 easing samples and `5.1e-7` easing bound:
+
+- Local-look fixtures now use decoded native paths through `localPath` for both
+  pixel reads and source hashing. Generated Unicode/space/`#` filenames exposed
+  all three old URL-pathname failures on Linux before the correction.
+- Easing observations accept bare decimal print lines and FFmpeg 9's exact
+  evaluator prefix. Input is trimmed before evaluation, repeated lines remain
+  visible, and progress statistics are disabled. The old parser observed zero
+  FFmpeg 9 samples; enabling repeated logs without the input trim exposed 258
+  evaluations. The corrected private Linux FFmpeg 9 probe produced exactly 257
+  samples for each of six curves, with maximum error below `5.0e-7`.
+- The ambient fixture explicitly starts in RGB. Its new input witness first
+  failed with `[47,80,144]` instead of declared `#305090` / `[48,80,144]` through
+  the old implicit YUV conversion. The original dim oracle `[26,44,79]` is
+  unchanged. This changes synthetic fixture bytes; old source/output hashes are
+  not relabeled as results for the new fixture.
+
+The admitted macOS `ffmpeg` 9.0.2_1 bottle lacks `zscale`. The replacement is the
+official `ffmpeg-full` 9.0.2_1 ARM64 Sequoia bottle, with the same FFmpeg source
+version and a distinct package identity. Its curated formula commit is
+`ecffce861d0041acf03d80c0544c4acead05b052`; formula SHA-256 is
+`2cc3ffea0ad8bc1c135e3506717207d82f07fe242672dd4403ce41081ba55a8a`, bottle SHA-256 is
+`ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c`, and the exact OCI
+manifest SHA-256 is `889312d5673d64fd1e560c221cc98566aaed92f786c14d022c60632c32cdecf2`.
+
+`fixtures/render-qa/darwin-ffmpeg-full-review.json` retains the static review:
+official source/formula/manifest/bottle and included license hashes, ARM64/macOS
+15.0 headers, build flags including `libzimg`, filter names, relocation metadata,
+and all 102 build dependency versions, bottle digests and upstream SBOM license
+conclusions (47 direct dependencies). The reviewed recipe and manifest-source
+recipe match the bottle's embedded recipe after generated bottle blocks are
+removed. This is static inspection on Linux, with no macOS execution or runtime
+redistribution approval inferred.
+
+Hosted admission now requires actual `zscale` and `tonemap` video-filter rows,
+retains the bounded raw listing locally and publishes its hash plus the observed
+required rows. macOS observations follow the bounded recursive Homebrew graph
+and retain actual installed versions, metadata/license hashes and executable
+linkage. Missing filters or dependency/license observations fail admission;
+there is no fallback or HDR skip. Host, architecture, source, version, formula,
+package-hash and installed-bottle checks remain in place.
+
+Local Linux verification passes seven acquisition/unit files (129 tests), the
+unchanged five finishing files (19 tests), and the two easing tests with a private
+Linux FFmpeg 9 build. Root TypeScript, scoped lint and changed-file formatting
+are checked separately. Fresh hosted Windows/macOS finishing and actual macOS
+`ffmpeg-full` installation, filter admission and relocation remain required.

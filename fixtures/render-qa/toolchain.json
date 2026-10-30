@@ -60,15 +60,17 @@
     },
     "darwin-arm64": {
       "version": "9.0.2",
+      "formula": "ffmpeg-full",
+      "revision": 1,
       "packageVersion": "9.0.2_1",
-      "formulaCommit": "e1b76dede00f5b34ee6488722499c7de7964daf1",
-      "formulaSha256": "1f3e7264a319af3096a9487b6847cf8dc1f888c7798a66b5f91bde1459a7a421",
+      "formulaCommit": "ecffce861d0041acf03d80c0544c4acead05b052",
+      "formulaSha256": "2cc3ffea0ad8bc1c135e3506717207d82f07fe242672dd4403ce41081ba55a8a",
       "bottleTag": "arm64_sequoia",
-      "url": "https://ghcr.io/v2/homebrew/core/ffmpeg/blobs/sha256:65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
-      "sha256": "65ba8ccb4778a0554346f416cd9a64c6cce2f92c7af5effb48deb6b757f01678",
+      "url": "https://ghcr.io/v2/homebrew/core/ffmpeg-full/blobs/sha256:ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
+      "sha256": "ace8d43d3be69e4a2b1203ad584970f63a39eb38e4f842b224991a27f126573c",
       "format": "homebrew-bottle",
       "maxBytes": 134217728,
-      "licenseProvenance": "Homebrew fixed formula declares GPL-3.0-or-later; its shared dependencies remain separate recorded platform prerequisites."
+      "licenseProvenance": "Homebrew fixed ffmpeg-full formula declares GPL-3.0-or-later and enables libzimg; retained bottle GPL/LGPL texts and shared dependencies are CI prerequisites, not runtime redistribution approval."
     }
   }
 }

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { evaluatePhotoEasing, type PhotoBezierEasingV1 } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import * as render from "../src/index.js";
+import { ffmpegExpressionValues } from "../../../tests/helpers/ffmpeg-expression-log.js";
 
 it("matches bounded core easing in actual FFmpeg perspective expressions including endpoint-flat and exponent-form handles", async () => {
   const points = [
@@ -30,13 +31,15 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       [
         "-hide_banner",
         "-loglevel",
-        "info",
+        "repeat+info",
+        "-nostats",
         "-f",
         "lavfi",
         "-i",
         "color=blue:s=16x16:r=30:d=9",
         "-vf",
-        `format=gbrp,perspective=x0='print(${expression})':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic`,
+        // Bound evaluations before the output limit can prefetch another frame.
+        `format=gbrp,trim=end_frame=257,perspective=x0='print(${expression})':y0=0:x1=W:y1=0:x2=0:y2=H:x3=W:y3=H:sense=destination:eval=frame:interpolation=cubic`,
         "-frames:v",
         "257",
         "-threads",
@@ -47,9 +50,7 @@ it("matches bounded core easing in actual FFmpeg perspective expressions includi
       ],
       { timeoutMs: 15000 },
     );
-    const values = [...stderr.matchAll(/^(-?[0-9]+\.[0-9]+)\s*$/gmu)].map(
-      (match) => Number(match[1]),
-    );
+    const values = ffmpegExpressionValues(stderr);
     expect(values).toHaveLength(257);
     expect(values[0]).toBe(0);
     expect(values[256]).toBe(1);
