@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { resolveAudioInterval, type AudioMixPlan } from "./audio-policy.js";
 import type { WaveformData } from "./intelligence.js";
 import type { Clip, MediaAsset, ProjectTimebaseV1 } from "./models.js";
 import { resolveClipFrameRange, resolveClipSourceRange } from "./sequence.js";
@@ -90,6 +91,9 @@ export function resolveClipAudioRange(
 export interface ClipWaveformProjection {
   peaks: number[];
   covered: boolean[];
+  audible?: boolean[];
+  excluded?: boolean[];
+  suppressed?: boolean[];
   startFrame: number;
   endFrame: number;
   audioStart: number;
@@ -106,6 +110,7 @@ export function projectClipWaveform(input: {
   viewStartFrame: number;
   viewEndFrame: number;
   columns: number;
+  mixPlan?: AudioMixPlan;
 }): ClipWaveformProjection {
   const {
     clip,
@@ -146,7 +151,18 @@ export function projectClipWaveform(input: {
     throw new Error("Invalid bounded source waveform.");
   waveformPeakBetween(wave, 0, 0);
   const frames = resolveClipFrameRange(clip, timebase);
-  const audio = resolveClipAudioRange(clip, asset);
+  const explicit = clip.audioTiming
+    ? resolveAudioInterval(clip, asset, Number.MAX_SAFE_INTEGER / 48000)
+    : undefined;
+  const audio = explicit
+    ? {
+        sourceIn: explicit.sourceInSeconds,
+        sourceOut: explicit.sourceOutSeconds,
+        speed: explicit.speed,
+        audioStart: explicit.startSample / 48000,
+        audioEnd: explicit.endSample / 48000,
+      }
+    : resolveClipAudioRange(clip, asset);
   const audioEnd = Math.min(
     audio.audioEnd,
     audio.audioStart +
@@ -176,5 +192,49 @@ export function projectClipWaveform(input: {
       ),
     );
   }
-  return { ...frames, audioStart: audio.audioStart, audioEnd, peaks, covered };
+  if (!input.mixPlan && !explicit)
+    return {
+      ...frames,
+      audioStart: audio.audioStart,
+      audioEnd,
+      peaks,
+      covered,
+    };
+  const audible = Array<boolean>(columns).fill(false),
+    excluded = Array<boolean>(columns).fill(false),
+    suppressed = Array<boolean>(columns).fill(false);
+  const segments = input.mixPlan?.segments.filter((s) => s.clipId === clip.id);
+  const masks = input.mixPlan?.masks.filter((m) => m.clipId === clip.id) ?? [];
+  for (let column = 0; column < columns; column++) {
+    if (!covered[column]) continue;
+    const first =
+        (viewStart + ((viewEnd - viewStart) * column) / columns) * 48000,
+      last =
+        (viewStart + ((viewEnd - viewStart) * (column + 1)) / columns) * 48000;
+    audible[column] = segments
+      ? segments.some((s) => s.startSample < last && s.endSample > first)
+      : true;
+    excluded[column] = masks.some(
+      (m) =>
+        m.reason === "excluded-secondary" &&
+        m.startSample < last &&
+        m.endSample > first,
+    );
+    suppressed[column] = masks.some(
+      (m) =>
+        m.reason === "replaced-primary" &&
+        m.startSample < last &&
+        m.endSample > first,
+    );
+  }
+  return {
+    ...frames,
+    audioStart: audio.audioStart,
+    audioEnd,
+    peaks,
+    covered,
+    audible,
+    excluded,
+    suppressed,
+  };
 }

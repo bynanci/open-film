@@ -7,7 +7,9 @@ import type {
   OpenFilmProject,
   ProjectTimebaseV1,
 } from "./models.js";
-import type { resolveClipAudioRange } from "./sequence-waveform.js";
+import { resolveClipAudioRange } from "./sequence-waveform.js";
+import { resolveClipSourceRange, resolveClipFrameRange } from "./sequence.js";
+import { sequenceTimeAt, timebaseRate } from "./timebase.js";
 import { ProjectValidationError } from "./validation.js";
 
 export const AUDIO_PROJECT_SCHEMA_VERSION = "1.2.0" as const;
@@ -253,4 +255,327 @@ export function promoteAudioProject(project: OpenFilmProject): OpenFilmProject {
   )
     next.schemaVersion = AUDIO_PROJECT_SCHEMA_VERSION;
   return next;
+}
+
+/** Same first-audio-stream admission as the existing renderer. Metadata is an early gate only. */
+export function hasAudioStream(asset: MediaAsset): boolean {
+  if (asset.mediaType === "image") return false;
+  if (asset.mediaType === "audio") return true;
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    { streams?: { codec_type?: string }[] } | undefined;
+  return Boolean(
+    probe?.streams?.some((stream) => stream.codec_type === "audio"),
+  );
+}
+/** Header evidence never substitutes for the renderer's decoded source preflight. */
+export function audioSourceEndSample(asset: MediaAsset): number {
+  const probe = asset.metadata["openfilm.ffprobe"] as
+    | {
+        streams?: {
+          codec_type?: string;
+          duration?: string | number;
+          start_time?: string | number;
+        }[];
+        format?: { start_time?: string | number };
+      }
+    | undefined;
+  const stream = probe?.streams?.find(
+    (stream) => stream.codec_type === "audio",
+  );
+  const declared =
+    stream?.duration === undefined
+      ? asset.duration
+      : Number(stream.duration) +
+        Number(stream.start_time ?? probe?.format?.start_time ?? 0) -
+        Number(probe?.format?.start_time ?? 0);
+  if (
+    !hasAudioStream(asset) ||
+    declared === undefined ||
+    !Number.isFinite(declared) ||
+    declared <= 0
+  )
+    fail(
+      "audioTiming",
+      "usable audio source duration is unavailable; inspect or relink the source",
+    );
+  return sample(
+    Math.floor(declared * AUDIO_SAMPLE_RATE + 1e-7),
+    "audioTiming.sourceDuration",
+  );
+}
+export function resolveAudioInterval(
+  clip: Clip,
+  asset: MediaAsset,
+  compositionDuration: number,
+): ResolvedAudioInterval {
+  if (!Object.hasOwn(clip, "audioTiming")) {
+    const range = resolveClipAudioRange(clip, asset);
+    return {
+      clipId: clip.id,
+      assetId: asset.id,
+      clock: "legacy",
+      startSample: Math.round(range.audioStart * AUDIO_SAMPLE_RATE),
+      endSample: Math.round(range.audioEnd * AUDIO_SAMPLE_RATE),
+      sourceInSeconds: range.sourceIn,
+      sourceOutSeconds: range.sourceOut,
+      speed: range.speed,
+      automationDurationSeconds: clip.timelineDuration,
+      legacyRange: { ...range },
+    };
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(clip, "audioTiming")!;
+  if (!("value" in descriptor)) fail("audioTiming", "expected own JSON data");
+  const timing = validateAudioTiming(descriptor.value),
+    speed = clip.transform?.speed ?? 1;
+  if (!Number.isFinite(speed) || speed <= 0)
+    fail("audioTiming", "speed must be positive and finite");
+  const length = sample(
+      Math.round((timing.sourceOutSample - timing.sourceInSample) / speed),
+      "audioTiming.length",
+    ),
+    endSample = sample(timing.timelineStartSample + length, "audioTiming.end");
+  if (
+    !length ||
+    !Number.isFinite(compositionDuration) ||
+    compositionDuration <= 0 ||
+    endSample > Math.round(compositionDuration * AUDIO_SAMPLE_RATE)
+  )
+    fail("audioTiming", "sound exceeds composition bounds");
+  if (timing.sourceOutSample > audioSourceEndSample(asset))
+    fail(
+      "audioTiming",
+      "requested sound handle exceeds available source audio",
+    );
+  return {
+    clipId: clip.id,
+    assetId: asset.id,
+    clock: "samples-48000",
+    startSample: timing.timelineStartSample,
+    endSample,
+    sourceInSeconds: timing.sourceInSample / AUDIO_SAMPLE_RATE,
+    sourceOutSeconds: timing.sourceOutSample / AUDIO_SAMPLE_RATE,
+    speed,
+    automationDurationSeconds: length / AUDIO_SAMPLE_RATE,
+  };
+}
+export function audioTimingFromHandles(
+  clip: Clip,
+  asset: MediaAsset,
+  offsets: { startOffsetMs: number; endOffsetMs: number },
+): AudioTimingV1 {
+  for (const value of [offsets.startOffsetMs, offsets.endOffsetMs])
+    if (!Number.isInteger(value) || value < -60000 || value > 60000)
+      fail(
+        "audioTiming.handles",
+        "expected integer milliseconds in [-60000,60000]",
+      );
+  const source = resolveClipSourceRange(clip, asset),
+    speed = source.speed,
+    prior = clip.audioTiming;
+  const start =
+      prior?.timelineStartSample ?? Math.round(clip.timelineStart * 1000) * 48,
+    sourceIn =
+      prior?.sourceInSample ?? Math.round(source.sourceIn * AUDIO_SAMPLE_RATE);
+  const result = validateAudioTiming({
+    version: 1,
+    sampleRate: AUDIO_SAMPLE_RATE,
+    timelineStartSample: start + offsets.startOffsetMs * 48,
+    sourceInSample: sourceIn + Math.round(offsets.startOffsetMs * 48 * speed),
+    sourceOutSample: prior
+      ? prior.sourceOutSample + Math.round(offsets.endOffsetMs * 48 * speed)
+      : sourceIn +
+        Math.round(
+          (clip.timelineDuration + offsets.endOffsetMs / 1000) *
+            AUDIO_SAMPLE_RATE *
+            speed,
+        ),
+  });
+  // This conversion has no Composition argument; its owner checks the film end.
+  resolveAudioInterval(
+    { ...clip, audioTiming: result },
+    asset,
+    Number.MAX_SAFE_INTEGER / AUDIO_SAMPLE_RATE,
+  );
+  return result;
+}
+
+type Occurrence = {
+  clip: Clip;
+  asset: MediaAsset;
+  trackIndex: number;
+  clipIndex: number;
+  role: AudioAutomation["role"];
+  interval?: ResolvedAudioInterval;
+};
+function overlaps(
+  a: { startSample: number; endSample: number },
+  b: { startSample: number; endSample: number },
+): boolean {
+  return a.startSample < b.endSample && b.startSample < a.endSample;
+}
+/** Bounded sorted endpoint sweep. No timeline-sized allocation or saved coverage state. */
+export function buildAudioMixPlan(
+  composition: Composition,
+  assets: readonly MediaAsset[],
+  context: AudioMixContext,
+): AudioMixPlan {
+  timebaseRate(context.timebase);
+  const coverage = validateCoverageAudioBindings(context.coverage),
+    durationSamples = sample(
+      Math.round(composition.duration * AUDIO_SAMPLE_RATE),
+      "audioPlan.duration",
+    );
+  if (!durationSamples)
+    fail("audioPlan", "composition must have positive duration");
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset])),
+    occurrences = new Map<string, Occurrence>();
+  let explicit = false;
+  for (const [trackIndex, track] of composition.tracks.entries())
+    for (const [clipIndex, clip] of track.clips.entries()) {
+      if (occurrences.size >= MAX_AUDIO_SEGMENTS)
+        fail("audioPlan", "occurrence budget exceeded");
+      if (occurrences.has(clip.id))
+        fail("audioPlan", "duplicate occurrence identity");
+      const asset = assetMap.get(clip.assetId);
+      if (!asset) fail("audioPlan", `missing source for ${clip.id}`);
+      explicit ||= Object.hasOwn(clip, "audioTiming");
+      const playable = track.type !== "titles" && hasAudioStream(asset);
+      if (!playable && Object.hasOwn(clip, "audioTiming"))
+        fail("audioTiming", "source has no usable audio stream");
+      occurrences.set(clip.id, {
+        clip,
+        asset,
+        trackIndex,
+        clipIndex,
+        role:
+          clip.audioAutomation?.role ??
+          (track.type === "music" ? "music" : "dialogue"),
+        ...(playable
+          ? {
+              interval: resolveAudioInterval(clip, asset, composition.duration),
+            }
+          : {}),
+      });
+    }
+  const secondaries = new Map<string, CoverageAudioBindingV1[]>(),
+    replacements = new Map<string, CoverageAudioBindingV1[]>();
+  const primaries = new Set(coverage.map((b) => b.primaryClipId));
+  for (const binding of coverage) {
+    const primary = occurrences.get(binding.primaryClipId),
+      secondary = occurrences.get(binding.secondaryClipId);
+    if (
+      binding.compositionId !== composition.id ||
+      !primary?.interval ||
+      !secondary ||
+      primaries.has(binding.secondaryClipId)
+    )
+      fail("coverage", "foreign, missing or recursive occurrence relationship");
+    let secondaryInterval = secondary.interval;
+    if (!secondaryInterval && binding.policy.mode === "keep-primary") {
+      const range = resolveClipFrameRange(secondary.clip, context.timebase);
+      secondaryInterval = {
+        ...primary.interval,
+        startSample: Math.round(
+          sequenceTimeAt(range.startFrame, context.timebase) *
+            AUDIO_SAMPLE_RATE,
+        ),
+        endSample: Math.round(
+          sequenceTimeAt(range.endFrame, context.timebase) * AUDIO_SAMPLE_RATE,
+        ),
+      };
+    }
+    if (
+      !secondaryInterval ||
+      binding.startSample < primary.interval.startSample ||
+      binding.endSample > primary.interval.endSample ||
+      binding.startSample < secondaryInterval.startSample ||
+      binding.endSample > secondaryInterval.endSample ||
+      binding.endSample > durationSamples
+    )
+      fail("coverage", "window must fit both audible ranges");
+    const owned = secondaries.get(binding.secondaryClipId) ?? [];
+    if (owned.some((other) => overlaps(binding, other)))
+      fail("coverage", "overlapping secondary ownership");
+    owned.push(binding);
+    secondaries.set(binding.secondaryClipId, owned);
+    if (binding.policy.mode === "replace-primary") {
+      const suppressed = replacements.get(binding.primaryClipId) ?? [];
+      if (suppressed.some((other) => overlaps(binding, other)))
+        fail("coverage", "overlapping primary replacement");
+      suppressed.push(binding);
+      replacements.set(binding.primaryClipId, suppressed);
+    }
+  }
+  const segments: AudioMixSegment[] = [],
+    masks: AudioMixPlan["masks"][number][] = [];
+  for (const occurrence of occurrences.values()) {
+    const { clip, interval, trackIndex, clipIndex, role } = occurrence;
+    if (!interval || interval.endSample <= interval.startSample) continue;
+    const owned = secondaries.get(clip.id),
+      suppressed = replacements.get(clip.id) ?? [];
+    const endpoints = [
+      ...new Set([
+        interval.startSample,
+        interval.endSample,
+        ...(owned ?? suppressed).flatMap((b) => [b.startSample, b.endSample]),
+      ]),
+    ].sort((a, b) => a - b);
+    for (let i = 1; i < endpoints.length; i++) {
+      const startSample = endpoints[i - 1]!,
+        endSample = endpoints[i]!;
+      const binding = owned?.find(
+        (b) => b.startSample <= startSample && b.endSample >= endSample,
+      );
+      const reason = owned
+        ? !binding || binding.policy.mode === "keep-primary"
+          ? "excluded-secondary"
+          : undefined
+        : suppressed.some(
+              (b) => b.startSample <= startSample && b.endSample >= endSample,
+            )
+          ? "replaced-primary"
+          : undefined;
+      if (reason) {
+        masks.push({ clipId: clip.id, startSample, endSample, reason });
+        continue;
+      }
+      if (segments.length >= MAX_AUDIO_SEGMENTS)
+        fail("audioPlan", "segment budget exceeded");
+      const policy = binding?.policy,
+        effectiveRole =
+          policy && policy.mode !== "keep-primary" ? policy.role : role,
+        baseGain =
+          policy && policy.mode !== "keep-primary"
+            ? policy.gain
+            : (clip.transform?.volume ?? 1);
+      if (!Number.isFinite(baseGain) || baseGain < 0)
+        fail("audioPlan", "invalid base gain");
+      segments.push({
+        ...structuredClone(interval),
+        startSample,
+        endSample,
+        key: `${clip.id}:${startSample}:${endSample}:${effectiveRole}:${baseGain}`,
+        trackIndex,
+        clipIndex,
+        automationStartSample: interval.startSample,
+        role: effectiveRole,
+        baseGain,
+      });
+    }
+  }
+  segments.sort(
+    (a, b) =>
+      a.automationStartSample - b.automationStartSample ||
+      a.trackIndex - b.trackIndex ||
+      a.clipIndex - b.clipIndex ||
+      a.startSample - b.startSample,
+  );
+  return {
+    version: 1,
+    sampleRate: AUDIO_SAMPLE_RATE,
+    durationSamples,
+    legacyOnly: !explicit && coverage.length === 0,
+    segments,
+    masks,
+  };
 }
