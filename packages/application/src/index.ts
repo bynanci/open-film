@@ -910,8 +910,8 @@ export class OpenFilmApplication {
     }
   }
 
-  async save(): Promise<void> {
-    this.saveSync();
+  async save(assertCurrent?: () => void): Promise<void> {
+    this.saveSync(assertCurrent);
   }
 
   async runMotionGeneration(

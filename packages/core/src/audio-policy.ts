@@ -269,6 +269,10 @@ export function hasAudioStream(asset: MediaAsset): boolean {
 }
 /** Header evidence never substitutes for the renderer's decoded source preflight. */
 export function audioSourceEndSample(asset: MediaAsset): number {
+  const verified = asset.metadata["openfilm.audio.canonical"] as
+    { version?: number; lengthSamples?: unknown } | undefined;
+  if (verified?.version === 1)
+    return sample(verified.lengthSamples, "audioTiming.sourceDuration");
   const probe = asset.metadata["openfilm.ffprobe"] as
     | {
         streams?: {

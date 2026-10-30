@@ -557,6 +557,7 @@ function orderedAssets(plan: BeatPlan): MediaAsset[] {
 
 export {
   applyTimelineCommand,
+  applyTimelineCommandInBatch,
   suggestShortening,
   prepareShorteningPlan,
   shorteningCommands,
@@ -597,3 +598,5 @@ export type {
 export * from "./user-overrides.js";
 
 export * from "./pinned-placement.js";
+
+export { validateAudioEdit } from "./audio-timing.js";

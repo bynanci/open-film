@@ -1,3 +1,9 @@
+import {
+  inspectCanonicalAudio,
+  assertCanonicalAudioCurrent,
+  withCanonicalAudioFacts,
+  type CanonicalAudioFacts,
+} from "@openfilm/media";
 import { promotePinnedProject } from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
@@ -14,6 +20,8 @@ import {
   validateTitleStyle,
   resolveTitleStyle,
   validateAudioAutomation,
+  validateAudioTiming,
+  promoteAudioProject,
   validateFilmLook,
   MAX_TITLE_LENGTH,
   MAX_SCENE_DIRECTION_RECEIPTS,
@@ -31,6 +39,8 @@ import {
 } from "@openfilm/core";
 import {
   applyTimelineCommand,
+  applyTimelineCommandInBatch,
+  validateAudioEdit,
   applyOverridePolicy,
   directOverrideTargets,
   overrideTargetKey,
@@ -395,6 +405,11 @@ function command(value: unknown, index: number): TimelineCommand {
         finite(data.volume, `${path}.volume`, 0) > 1
       )
         invalid(`${path}.volume`, "must be between 0 and 1");
+      break;
+    case "audio.timing":
+      fields.push("timing");
+      if (data.timing !== null)
+        nested(data.timing, `${path}.timing`, validateAudioTiming);
       break;
     case "audio.configure":
       fields.push("automation");
@@ -1585,6 +1600,38 @@ export class TimelineEditor {
           assets.push(source);
         }
       }
+      const audioAware =
+        parsed.commands.some((c) => c.type === "audio.timing") ||
+        before.composition.tracks.some((t) =>
+          t.clips.some((c) => c.audioTiming),
+        );
+      const audioFacts: CanonicalAudioFacts[] = [];
+      if (audioAware) {
+        const sourceIds = new Set(
+          before.composition.tracks.flatMap((t) =>
+            t.clips
+              .filter(
+                (c) =>
+                  c.audioTiming ||
+                  parsed.commands.some(
+                    (command) =>
+                      command.type === "audio.timing" &&
+                      command.clipId === c.id &&
+                      command.timing !== null,
+                  ),
+              )
+              .map((c) => c.assetId),
+          ),
+        );
+        for (const id of sourceIds) {
+          const index = assets.findIndex((a) => a.id === id);
+          const facts = await inspectCanonicalAudio(assets[index]!);
+          audioFacts.push(facts);
+          assets[index] = withCanonicalAudioFacts(assets[index]!, facts);
+        }
+        this.current(compositionId, parsed.baseRevision);
+        assertCanonicalAudioCurrent(audioFacts);
+      }
       try {
         const directCommands = parsed.commands.filter(
           (item) => item.type !== "regenerate-beat",
@@ -1652,7 +1699,9 @@ export class TimelineEditor {
             item.type === "user-pin.resolve"
           )
             attachProvisional();
-          next = applyTimelineCommand(next, assets, compiled, {
+          next = (
+            audioAware ? applyTimelineCommandInBatch : applyTimelineCommand
+          )(next, assets, compiled, {
             timebase: resolveProjectTimebase(this.application.project.settings),
             origin: item.type === "regenerate-beat" ? "automatic" : "direct",
           });
@@ -1722,11 +1771,42 @@ export class TimelineEditor {
           error instanceof Error ? error.message : String(error),
         );
       }
+      if (audioAware) {
+        const finalSourceIds = new Set(
+          next.composition.tracks.flatMap((t) =>
+            t.clips.filter((c) => c.audioTiming).map((c) => c.assetId),
+          ),
+        );
+        for (const id of finalSourceIds)
+          if (!audioFacts.some((f) => f.assetId === id)) {
+            const index = assets.findIndex((a) => a.id === id);
+            const facts = await inspectCanonicalAudio(assets[index]!);
+            audioFacts.push(facts);
+            assets[index] = withCanonicalAudioFacts(assets[index]!, facts);
+          }
+        this.current(compositionId, parsed.baseRevision);
+        assertCanonicalAudioCurrent(audioFacts);
+      }
+      if (audioAware)
+        validateAudioEdit(document(before), next, assets, parsed.commands, {
+          timebase: resolveProjectTimebase(this.application.project.settings),
+          origin: "direct",
+        });
+      this.current(compositionId, parsed.baseRevision);
       const history = this.history(compositionId, before.revision);
-      const saved = await this.persist(compositionId, before, next, {
-        undo: [...history.undo, document(before)].slice(-HISTORY_LIMIT),
-        redo: [],
-      });
+      const saved = await this.persist(
+        compositionId,
+        before,
+        next,
+        {
+          undo: [...history.undo, document(before)].slice(-HISTORY_LIMIT),
+          redo: [],
+        },
+        undefined,
+        audioFacts.length
+          ? () => assertCanonicalAudioCurrent(audioFacts)
+          : undefined,
+      );
       if (parsed.requestId) {
         this.requests.set(parsed.requestId, {
           fingerprint,
@@ -1842,6 +1922,7 @@ export class TimelineEditor {
     next: EditorDocument,
     history: Pick<History, "undo" | "redo">,
     directionReceipt?: SceneDirectionReceipt,
+    assertCurrent?: () => void,
   ): Promise<TimelineEditorState> {
     if (
       next.composition.id !== compositionId ||
@@ -1855,23 +1936,25 @@ export class TimelineEditor {
     let candidate;
     try {
       candidate = validateProject(
-        promotePinnedProject({
-          ...previousProject,
-          ...(directionReceipt
-            ? {
-                sceneDirectionReceipts: [
-                  ...(previousProject.sceneDirectionReceipts ?? []),
-                  directionReceipt,
-                ],
-              }
-            : {}),
-          stories: previousProject.stories.map((story) =>
-            story.id === before.story.id ? next.story : story,
-          ),
-          timelines: previousProject.timelines.map((composition) =>
-            composition.id === compositionId ? next.composition : composition,
-          ),
-        }),
+        promoteAudioProject(
+          promotePinnedProject({
+            ...previousProject,
+            ...(directionReceipt
+              ? {
+                  sceneDirectionReceipts: [
+                    ...(previousProject.sceneDirectionReceipts ?? []),
+                    directionReceipt,
+                  ],
+                }
+              : {}),
+            stories: previousProject.stories.map((story) =>
+              story.id === before.story.id ? next.story : story,
+            ),
+            timelines: previousProject.timelines.map((composition) =>
+              composition.id === compositionId ? next.composition : composition,
+            ),
+          }),
+        ),
       );
     } catch (error) {
       throw new TimelineEditorError(
@@ -1880,7 +1963,7 @@ export class TimelineEditor {
     }
     this.application.project = candidate;
     try {
-      await this.application.save();
+      await this.application.save(assertCurrent);
     } catch (error) {
       // A failure after manifest publication retains the application's old
       // save baseline. Its CAS guard requires reopening; the durable direction
