@@ -1,3 +1,7 @@
+import {
+  PINNED_PROJECT_SCHEMA_VERSION,
+  validateUserOverrideState,
+} from "./user-overrides.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
@@ -1061,6 +1065,18 @@ function composition(
     array(track.clips, `${trackPath}.clips`).forEach((clipEntry, j) => {
       const clipPath = `${trackPath}.clips[${j}]`;
       const clip = object(clipEntry, clipPath);
+      optional(clip, "userOverrides", clipPath, (v, p) => {
+        try {
+          validateUserOverrideState(v, "clip");
+        } catch (error) {
+          if (error instanceof ProjectValidationError)
+            fail(
+              error.issues[0]!.path.replace("userOverrides", p),
+              error.issues[0]!.message,
+            );
+          throw error;
+        }
+      });
       const id = string(clip.id, `${clipPath}.id`);
       if (clipIds.has(id)) fail(`${clipPath}.id`, `duplicate clip ID ${id}`);
       clipIds.add(id);
@@ -1153,7 +1169,10 @@ export function validateProject(
 ): OpenFilmProject {
   const path = "project";
   const data = object(value, path);
-  if (data.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+  if (
+    data.schemaVersion !== PROJECT_SCHEMA_VERSION &&
+    data.schemaVersion !== PINNED_PROJECT_SCHEMA_VERSION
+  ) {
     string(data.schemaVersion, `${path}.schemaVersion`);
     if (!/^\d+\.\d+\.\d+$/.test(String(data.schemaVersion)))
       fail(
@@ -1164,6 +1183,34 @@ export function validateProject(
       `${path}.schemaVersion`,
       `unsupported schema version ${String(data.schemaVersion)}; this application supports ${PROJECT_SCHEMA_VERSION}. Use migrateProject for a documented older version.`,
     );
+  }
+  if (
+    data.schemaVersion === PROJECT_SCHEMA_VERSION &&
+    Array.isArray(data.timelines)
+  ) {
+    data.timelines.forEach((raw, i) => {
+      const cut = object(raw, `project.timelines[${i}]`);
+      if (Array.isArray(cut.tracks))
+        cut.tracks.forEach((raw, j) => {
+          const track = object(raw, `project.timelines[${i}].tracks[${j}]`);
+          if (Array.isArray(track.clips))
+            track.clips.forEach((raw, k) => {
+              if (Object.hasOwn(object(raw, "clip"), "userOverrides"))
+                fail(
+                  `project.timelines[${i}].tracks[${j}].clips[${k}].userOverrides`,
+                  "requires project schema 1.1.0",
+                );
+            });
+        });
+      if (Array.isArray(cut.graphicScenes))
+        cut.graphicScenes.forEach((raw, j) => {
+          if (Object.hasOwn(object(raw, "graphicScene"), "userOverrides"))
+            fail(
+              `project.timelines[${i}].graphicScenes[${j}].userOverrides`,
+              "requires project schema 1.1.0",
+            );
+        });
+    });
   }
   for (const key of ["id", "title"]) string(data[key], `${path}.${key}`);
   optional(data, "projectContentLocale", path, (v, p) =>

@@ -532,6 +532,7 @@
     "clip": {
       "type": "object",
       "properties": {
+        "userOverrides": false,
         "id": {
           "type": "string",
           "minLength": 1,
@@ -1061,6 +1062,7 @@
     "graphicScene": {
       "type": "object",
       "properties": {
+        "userOverrides": false,
         "version": {
           "const": 1
         },
