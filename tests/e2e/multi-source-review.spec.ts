@@ -45,7 +45,9 @@ async function prepareReview(page: Page, locale: ProjectContentLocale) {
     { projectContentLocale: locale },
   );
   try {
-    expect((await app.importFiles(files)).imported).toBe(2);
+    const imported = await app.importFiles(files);
+    expect(imported.job.errors).toEqual([]);
+    expect(imported.imported).toBe(2);
     const story = app.generateStory({
       title: "Reviewed story 合成故事",
       template: "blank",

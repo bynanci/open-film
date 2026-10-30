@@ -173,7 +173,7 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
-- [ ] D6B: add Collect Media trimmed-original and explicitly offline proxy modes
+- [x] D6B: add Collect Media trimmed-original and explicitly offline proxy modes
       with derivative provenance, handles, relocation/reopen, decoded
       picture/audio/time parity against the original project baseline and
       explicit quality disclosure.
@@ -192,8 +192,9 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
         regression-backed fixes. Keep warning-detail presentation as follow-up.
   - [x] Complete local full gates: 4535 unit/integration,291 Chromium, official
         OTIO18, built CLI smoke, types/lint/build/format/i18n/docs.
-  - [ ] Complete exact-head hosted gates before
-        marking D6B delivery ready to merge. Physical workstation gates stay open.
+  - [x] Complete exact-head hosted gates and merge PR65: head608377a,
+        merge5160d8f; both PR/push checks pass including4535tests,291browser,
+        23Rust and2archive tests. Physical workstation gates stay open.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.

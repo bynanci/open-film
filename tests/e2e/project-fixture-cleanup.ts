@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { rm } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
+import { isAbsolute, relative, sep } from "node:path";
+import { inspectWindowsFileOwners } from "./windows-file-owners.js";
 
 interface FixturePage {
   isClosed(): boolean;
@@ -58,11 +60,49 @@ export async function cleanupProjectFixture(input: {
     throw new Error("Fixture project is still open; fixture retained.");
   // A confirmed close can still need a short Win32 handle-release interval.
   // Persistent locks propagate as failures; no benchmark budget is retried.
-  await rm(input.root, {
-    recursive: true,
-    force: true,
-    maxRetries: 5,
-    retryDelay: 100,
-  });
+  try {
+    await rm(input.root, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
+  } catch (error) {
+    const failedPath = (error as NodeJS.ErrnoException).path;
+    if (process.platform === "win32" && typeof failedPath === "string") {
+      let stillClosed = false;
+      try {
+        const observed = await input.request.get(`${input.api}/project`, {
+          timeout: 1000,
+        });
+        const current = await observed.json();
+        stillClosed =
+          observed.ok() &&
+          Boolean(current) &&
+          typeof current === "object" &&
+          "project" in current &&
+          current.project === null;
+      } catch {
+        // Diagnostic failure never replaces or suppresses the unlink failure.
+      }
+      const child = relative(input.root, failedPath);
+      if (
+        child &&
+        !isAbsolute(child) &&
+        child !== ".." &&
+        !child.startsWith(`..${sep}`)
+      )
+        console.error(
+          JSON.stringify({
+            event: "fixture-cleanup.locked",
+            workerPid: process.pid,
+            closeAcknowledged: true,
+            stillClosed,
+            ...inspectWindowsFileOwners(failedPath),
+          }),
+        );
+    }
+    throw error;
+  }
   return { closed: true, removed: true, attempts };
 }

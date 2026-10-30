@@ -136,8 +136,8 @@ accepted offline delivery over the existing Collect owner. Bounded piecewise
 source clocks, closed manifest v2, directory/ZIP relocation and decoded MP4/PCM
 comparison protect every selected film; protected/unsupported clocks retain
 originals. Default v1 remains compatible. Independent review fixes,4535 local
-unit/integration and291 browser tests pass; final exact-head hosted gates are in
-progress. Physical workstation evidence remains separate. See
+unit/integration and291 browser tests pass. Exact-head PR/push gates pass;
+PR65 merged as5160d8f. Physical workstation evidence remains separate. See
 [delivery validation](docs/validation-collect-coverage.md).
 
 Windows workflow recovery for issues66–68 follows in a separate PR stacked on
