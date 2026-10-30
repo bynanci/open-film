@@ -3,7 +3,7 @@
 Date: 2026-10-30. PR: [#65](https://github.com/bynanci/open-film/pull/65).
 Base: `9c392b7cc8d46f4768d76f30bef30d0397cca8f8` (merged D6A #64).
 Status: derivative execution implemented; independent review findings fixed and
-full local unit suite passed. Full browser and exact-head hosted gates are in progress. No workstation certification or release claim.
+full local unit/integration and browser suites passed. Exact-head hosted gates are in progress. No workstation certification or release claim.
 
 ## State and compatibility
 
@@ -90,7 +90,9 @@ measurements, not signed third-party attestations.
 - Final source candidate `c0983a4f53af145a35c1ff6be2b958a2915eaad0` passes
   **321 files / 4,535 tests** in419.41s, exit0, including every review regression.
   Log:`/tmp/openfilm-d6b-fixed-all-tests.log`. TypeScript/Vue, lint, build and
-  formatting pass on that source; the full291-case browser run is in progress.
+  formatting pass on that source; **291/291 Chromium cases pass in22.6m**
+  (`/tmp/openfilm-d6b-fixed-e2e.log`). Official OTIO0.18.1 interchange
+  **18/18** and the built CLI smoke pass after the fixes.
   Build retains the existing large-chunk advisory. Final docs/toolchain checks
   and exact-head hosted gates are refreshed separately. Results will be bound to the final candidate below.
   Local Cargo/native prerequisites remain absent; hosted native and physical
@@ -175,8 +177,12 @@ replace these manual observations.
 
 ## Open gates
 
-Independent whole-branch review, final exact-head hosted checks and full local
-suite/browser records remain in progress. Windows/macOS filesystems, physical
+Independent whole-branch review and its four Important fixes are complete.
+Full local unit/integration/browser, format/i18n/docs/lint/types/build, official
+interchange and built CLI smoke passed. Final exact-head hosted checks remain
+in progress. Application/test/workflow sources are unchanged from verified
+`c0983a4f53af145a35c1ff6be2b958a2915eaad0`; later commits integrate research
+and validation documentation only. Windows/macOS filesystems, physical
 large-drive behavior, native FFV1 playback/proxy preparation, hardware/4K/GPU,
 real audio listening, typography and actual NLE relink/finishing remain manual.
 The Windows `popo-pc` workstation is not connected to this cloud workspace.
