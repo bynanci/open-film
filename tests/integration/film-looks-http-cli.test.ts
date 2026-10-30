@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, expect, it } from "vitest";
 import { OpenFilmApplication } from "@openfilm/application";
+import { PRIMARY_COLOR_IDENTITY } from "@openfilm/core";
 import { runProcess } from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
 
@@ -98,22 +99,37 @@ const post = (base: string, path: string, body: unknown) =>
   });
 
 it("HTTP retains the localized lock code, count and conflict status for rejected look edits", async () => {
-  const { directory } = await fixture(true);
+  const { directory, source } = await fixture(true);
   const base = await server(directory);
   const url = base + "/api/compositions/film/editor";
   const before = await (await fetch(url)).json();
-  const response = await post(base, "/api/compositions/film/edit", {
-    baseRevision: before.revision,
-    commands: [{ type: "look", scope: "clip", clipId: "clip", look: natural }],
-  });
-  expect(response.status).toBe(409);
-  expect(await response.json()).toMatchObject({
-    code: "timeline.lookLocked",
-    params: { count: 1 },
-  });
-  expect((await (await fetch(url)).json()).composition).toEqual(
-    before.composition,
-  );
+  const bytes = await readFile(source);
+  const disk = await readFile(join(directory, "project.json"));
+  for (const command of [
+    { type: "look", scope: "clip", clipId: "clip", look: natural },
+    {
+      type: "primary-color",
+      scope: "clip",
+      clipId: "clip",
+      correction: { ...PRIMARY_COLOR_IDENTITY, exposureEv: 0.5 },
+    },
+  ]) {
+    const response = await post(base, "/api/compositions/film/edit", {
+      baseRevision: before.revision,
+      commands: [command],
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code:
+        command.type === "look"
+          ? "timeline.lookLocked"
+          : "timeline.primaryColorLocked",
+      params: { count: 1 },
+    });
+    expect(await (await fetch(url)).json()).toEqual(before);
+    expect(await readFile(join(directory, "project.json"))).toEqual(disk);
+    expect(await readFile(source)).toEqual(bytes);
+  }
 });
 
 it("HTTP preview and MP4 export honor the same render-only override without saving it", async () => {

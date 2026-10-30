@@ -1011,7 +1011,14 @@ export function applyTimelineCommand(
   if (origin === "direct")
     for (const target of writes) {
       if (target.kind === "clip") {
-        if (command.type === "audio.add" || command.type === "lock") continue;
+        // Color commands own typed lock errors for the clip and both sources.
+        if (
+          command.type === "audio.add" ||
+          command.type === "lock" ||
+          command.type === "look" ||
+          command.type === "primary-color"
+        )
+          continue;
         const { clip } = findClip(document, target.clipId);
         if (
           clip.locked ||

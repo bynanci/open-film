@@ -15,6 +15,7 @@ import type { MotionGenerationProvider } from "@openfilm/plugin-sdk";
 import { localPath } from "@openfilm/media";
 import { createMotionFixture } from "../../../tests/fixtures/motion-generation.js";
 import { localMotionFixture } from "../src/motion-provider.js";
+import { automaticTimelineEdit } from "../src/editor-internal.js";
 function request(
   f: Awaited<ReturnType<typeof createMotionFixture>>,
   providerId = "local-motion-fixture",
@@ -227,8 +228,8 @@ it("retains prepared candidate bytes and their recovery journal during explicit 
   try {
     const [candidate] = await f.app.motionGeneration.preview(request(f));
     await f.app.motionGeneration.accept(candidate!.id, true);
-    const edit = f.editor.edit.bind(f.editor);
-    f.editor.edit = async () => {
+    const edit = f.editor[automaticTimelineEdit].bind(f.editor);
+    f.editor[automaticTimelineEdit] = async () => {
       throw new Error("Synthetic prepared edit failure");
     };
     try {
@@ -236,7 +237,7 @@ it("retains prepared candidate bytes and their recovery journal during explicit 
         f.app.motionGeneration.importCandidate(candidate!.id, f.editor),
       ).rejects.toThrow("Synthetic prepared edit failure");
     } finally {
-      f.editor.edit = edit;
+      f.editor[automaticTimelineEdit] = edit;
     }
     const receiptFile = join(
       f.app.directory,
@@ -551,14 +552,14 @@ it("recovers a prepared precommit import after reopen, and physically expires un
     const r = receipts[0]!,
       other = receipts[1]!;
     await f.app.motionGeneration.accept(r.id, true);
-    const edit = f.editor.edit.bind(f.editor);
-    f.editor.edit = async () => {
+    const edit = f.editor[automaticTimelineEdit].bind(f.editor);
+    f.editor[automaticTimelineEdit] = async () => {
       throw new Error("Synthetic precommit crash");
     };
     await expect(
       f.app.motionGeneration.importCandidate(r.id, f.editor),
     ).rejects.toThrow("Synthetic precommit crash");
-    f.editor.edit = edit;
+    f.editor[automaticTimelineEdit] = edit;
     expect((await f.app.motionGeneration.receipt(r.id)).state).toBe("prepared");
     const file = join(
       f.app.directory,

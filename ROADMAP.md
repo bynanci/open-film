@@ -342,6 +342,15 @@ overlay findings have a coordinated correction wave, including a reproduced
 optional-field variant constructor fix. Scoped correction review and full
 exact-head hosted gates remain pending.
 
+Actual audio integration also exposed automatic MotionGeneration and
+GraphicScene adoption using the direct-edit ingress. The follow-up candidate
+routes those producers through a package-internal capability into the same
+validated, serialized, revision-checked writer. Request IDs retain their producer
+authority, automatic adoption preserves absent or explicitly released pin state,
+and existing typed Look/primary source-lock conflicts remain authoritative.
+The correction has its own focused evidence and requires scoped review and
+complete exact-head gates before merge.
+
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.

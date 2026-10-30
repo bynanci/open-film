@@ -106,6 +106,31 @@ it("previews and accepts deterministic agent edits through the shared HTTP appli
     source: "local",
     actions: [{ nodeId: "rectangle" }],
   });
+  for (const path of [`${route}/accept`, `${origin}/compositions/film/edit`]) {
+    const injected = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        path.endsWith("/accept")
+          ? {
+              planId: plan.id,
+              baseRevision: plan.baseRevision,
+              actionIds: [plan.actions[0]!.id],
+              requestId: "http-injected-origin",
+              origin: "automatic",
+            }
+          : {
+              baseRevision: before.revision,
+              commands: [
+                { type: "graphic.scene.upsert", scene: graphicScene() },
+              ],
+              origin: "automatic",
+            },
+      ),
+    });
+    expect(injected.status).toBe(400);
+    expect(JSON.stringify(await injected.json())).toContain("unknown field");
+  }
   const accepted = await fetch(`${route}/accept`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -122,6 +147,9 @@ it("previews and accepts deterministic agent edits through the shared HTTP appli
     composition: { graphicScenes: { nodes: { x: number }[] }[] };
   };
   expect(state.composition.graphicScenes[0]!.nodes[0]!.x).toBe(24);
+  expect(state.composition.graphicScenes[0]).not.toHaveProperty(
+    "userOverrides",
+  );
   const undone = await fetch(`${origin}/compositions/film/undo`, {
     method: "POST",
     headers: { "content-type": "application/json" },

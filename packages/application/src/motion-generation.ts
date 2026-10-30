@@ -35,6 +35,7 @@ import {
   type TimelineEditorState,
 } from "./editor.js";
 import { cancellableProviderResult } from "./cancellable-provider-result.js";
+import { automaticTimelineEdit } from "./editor-internal.js";
 import { localMotionFixture, localMotionImport } from "./motion-provider.js";
 import {
   MOTION_BYTES,
@@ -850,11 +851,14 @@ export class MotionGenerationService {
           fail(
             "Prepared motion replacement conflicts with the saved document.",
           );
-        const after = await editor.edit(receipt.compositionId, {
-          baseRevision: current.revision,
-          requestId: `motion-import-${id}`,
-          commands,
-        });
+        const after = await editor[automaticTimelineEdit](
+          receipt.compositionId,
+          {
+            baseRevision: current.revision,
+            requestId: `motion-import-${id}`,
+            commands,
+          },
+        );
         return this.finishImport(record, after);
       }
       if (receipt.state !== "accepted")
@@ -932,7 +936,7 @@ export class MotionGenerationService {
       record.expectedDocument = docHash(expected);
       record.importedAssetId = full.id;
       await this.write(await this.path("motion-receipts", id), record);
-      const after = await editor.edit(receipt.compositionId, {
+      const after = await editor[automaticTimelineEdit](receipt.compositionId, {
         baseRevision: adopted.revision,
         requestId: `motion-import-${id}`,
         commands,
@@ -1029,7 +1033,7 @@ export class MotionGenerationService {
       const expected = this.simulate(state, state.assets, commands);
       record.restoredDocument = docHash(expected);
       await this.write(await this.path("motion-receipts", id), record);
-      const after = await editor.edit(receipt.compositionId, {
+      const after = await editor[automaticTimelineEdit](receipt.compositionId, {
         baseRevision: state.revision,
         requestId: `motion-restore-${id}`,
         commands,

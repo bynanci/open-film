@@ -23,6 +23,11 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         evidence. The first whole-branch review found measured-audio authority,
         same-ID candidate retention and premature overlay validation defects;
         the coordinated correction wave also preserves optional variant fields.
+        Full audio integration additionally exposed MotionGeneration and
+        GraphicScene producers entering through the direct-edit API. Their
+        candidate correction uses a package-internal automatic capability and
+        binds request replay to its authority, while preserving the shared
+        writer and typed Look/primary source-lock conflicts.
         Scoped correction review and complete exact-head hosted gates remain
         open; see [User Pin validation](docs/validation-user-pins.md).
   - [x] Selectively recover General Story-monitor clip-picture move and

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -46,138 +46,202 @@ it("makes real local candidates without adopting them and gates acceptance", asy
   }
 });
 
-it("accepts/replaces once, keeps narration and history, reopens and explicitly restores", async () => {
-  const root = await mkdtemp(join(tmpdir(), "openfilm-motion-lifecycle-"));
-  const { app, editor, image } = await createMotionFixture(root);
-  let closed = false;
-  try {
-    const { hashFile, localPath, runProcess } = await import("@openfilm/media");
-    const { OpenFilmApplication, TimelineEditor } =
-      await import("../src/index.js");
-    const sourceHash = await hashFile(localPath(image.uri));
-    const original = structuredClone(app.project.timelines[0]!);
-    const input = {
-      requestId: randomUUID(),
-      projectId: app.project.id,
-      compositionId: "film",
-      clipId: "photo",
-      baseRevision: editor.get("film").revision,
-      providerId: "local-motion-fixture",
-      count: 2,
-      prompt: "Synthetic clouds",
-      negativeConstraints: "Preserve identity",
-      consent: true,
-      containsPeople: false,
-    };
-    const receipts = await app.motionGeneration.preview(input);
-    expect(
-      (await app.motionGeneration.preview(input)).map((r) => r.id),
-    ).toEqual(receipts.map((r) => r.id));
-    expect(JSON.stringify(receipts)).not.toContain(input.prompt);
-    const candidate = receipts[0]!;
-    const path = await app.motionGeneration.media(candidate.id);
-    const decoded = await runProcess("ffmpeg", [
-      "-v",
-      "error",
-      "-i",
-      path,
-      "-f",
-      "framemd5",
-      "-",
-    ]);
-    const frameHashes = decoded.stdout
-      .toString()
-      .split("\n")
-      .filter((line) => line && !line.startsWith("#"));
-    expect(frameHashes).toHaveLength(48);
-    expect(frameHashes[0]!.split(",").at(-1)).not.toBe(
-      frameHashes[47]!.split(",").at(-1),
-    );
-    await expect(
-      app.motionGeneration.accept(candidate.id, false),
-    ).rejects.toMatchObject({ status: 400 });
-    await app.motionGeneration.accept(candidate.id, true);
-    const imported = await app.motionGeneration.importCandidate(
-      candidate.id,
-      editor,
-    );
-    const adopted = imported.composition.tracks[0]!.clips[0]!;
-    expect(adopted.assetId).not.toBe(image.id);
-    expect(imported.composition.duration).toBe(4);
-    expect(imported.composition.tracks[1]).toEqual(original.tracks[1]);
-    expect(imported.canUndo).toBe(true);
-    const repeated = await app.motionGeneration.importCandidate(
-      candidate.id,
-      editor,
-    );
-    expect(repeated.revision).toBe(imported.revision);
-    const undone = await editor.undo("film", imported.revision);
-    expect(undone.composition).toEqual(original);
-    const redone = await editor.redo("film", undone.revision);
-    expect(redone.composition.tracks[0]!.clips[0]!.assetId).toBe(
-      adopted.assetId,
-    );
-    const output = await app.render("film");
-    const proof = await runProcess("ffprobe", [
-      "-v",
-      "error",
-      "-count_frames",
-      "-show_entries",
-      "stream=codec_type,nb_read_frames:format=duration",
-      "-of",
-      "json",
-      output,
-    ]);
-    const measured = JSON.parse(proof.stdout.toString());
-    expect(
-      measured.streams.find(
-        (s: { codec_type: string }) => s.codec_type === "video",
-      ).nb_read_frames,
-    ).toBe("48");
-    expect(
-      measured.streams.some(
-        (s: { codec_type: string }) => s.codec_type === "audio",
-      ),
-    ).toBe(true);
-    expect(Number(measured.format.duration)).toBeCloseTo(4, 2);
-    expect(await hashFile(localPath(image.uri))).toBe(sourceHash);
-    await app.motionGeneration.dispose();
-    app.close();
-    closed = true;
-    const reopened = await OpenFilmApplication.open(
-      join(root, "film.openfilm"),
-    );
+it.each([false, true])(
+  "accepts/replaces once, keeps narration and history, reopens and explicitly restores (released: %s)",
+  async (released) => {
+    const root = await mkdtemp(join(tmpdir(), "openfilm-motion-lifecycle-"));
+    const { app, editor, image } = await createMotionFixture(root);
+    let closed = false;
     try {
-      const reopenedEditor = new TimelineEditor(reopened);
-      const retry = await reopened.motionGeneration.importCandidate(
-        candidate.id,
-        reopenedEditor,
+      const { hashFile, localPath, runProcess } =
+        await import("@openfilm/media");
+      const { OpenFilmApplication, TimelineEditor } =
+        await import("../src/index.js");
+      const sourceHash = await hashFile(localPath(image.uri));
+      if (released) {
+        const pinned = await editor.edit("film", {
+          baseRevision: editor.get("film").revision,
+          commands: [
+            {
+              type: "user-pin.set",
+              target: { kind: "clip", clipId: "photo" },
+              pinned: true,
+            },
+          ],
+        });
+        await editor.edit("film", {
+          baseRevision: pinned.revision,
+          commands: [
+            {
+              type: "user-pin.set",
+              target: { kind: "clip", clipId: "photo" },
+              pinned: false,
+            },
+          ],
+        });
+      }
+      const original = structuredClone(app.project.timelines[0]!);
+      const originalStory = structuredClone(app.project.stories[0]!);
+      const input = {
+        requestId: randomUUID(),
+        projectId: app.project.id,
+        compositionId: "film",
+        clipId: "photo",
+        baseRevision: editor.get("film").revision,
+        providerId: "local-motion-fixture",
+        count: 2,
+        prompt: "Synthetic clouds",
+        negativeConstraints: "Preserve identity",
+        consent: true,
+        containsPeople: false,
+      };
+      const receipts = await app.motionGeneration.preview(input);
+      expect(
+        (await app.motionGeneration.preview(input)).map((r) => r.id),
+      ).toEqual(receipts.map((r) => r.id));
+      expect(JSON.stringify(receipts)).not.toContain(input.prompt);
+      const candidate = receipts[0]!;
+      const path = await app.motionGeneration.media(candidate.id);
+      const decoded = await runProcess("ffmpeg", [
+        "-v",
+        "error",
+        "-i",
+        path,
+        "-f",
+        "framemd5",
+        "-",
+      ]);
+      const frameHashes = decoded.stdout
+        .toString()
+        .split("\n")
+        .filter((line) => line && !line.startsWith("#"));
+      expect(frameHashes).toHaveLength(48);
+      expect(frameHashes[0]!.split(",").at(-1)).not.toBe(
+        frameHashes[47]!.split(",").at(-1),
       );
-      expect(retry.composition.tracks[0]!.clips[0]!.assetId).toBe(
+      await expect(
+        app.motionGeneration.accept(candidate.id, false),
+      ).rejects.toMatchObject({ status: 400 });
+      await app.motionGeneration.accept(candidate.id, true);
+      const imported = await app.motionGeneration.importCandidate(
+        candidate.id,
+        editor,
+      );
+      const adopted = imported.composition.tracks[0]!.clips[0]!;
+      expect(adopted.assetId).not.toBe(image.id);
+      if (released)
+        expect(adopted.userOverrides).toEqual({
+          version: 1,
+          isUserPinned: false,
+          lockedAttributes: [],
+        });
+      else expect(adopted).not.toHaveProperty("userOverrides");
+      expect(imported.composition.duration).toBe(4);
+      expect(imported.composition.tracks[1]).toEqual(original.tracks[1]);
+      expect(imported.story.beats[0]!.selectedAssetIds).toEqual([
+        adopted.assetId,
+      ]);
+      expect(imported.canUndo).toBe(true);
+      const journal = JSON.parse(
+        await readFile(
+          join(app.directory, "cache/motion-receipts", `${candidate.id}.json`),
+          "utf8",
+        ),
+      );
+      const projectBeforeReplay = structuredClone(app.project);
+      const diskBeforeReplay = await readFile(
+        join(app.directory, "project.json"),
+      );
+      await expect(
+        editor.edit("film", {
+          baseRevision: journal.importRevision,
+          requestId: `motion-import-${candidate.id}`,
+          commands: journal.commands,
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(editor.get("film")).toEqual(imported);
+      expect(app.project).toEqual(projectBeforeReplay);
+      expect(await readFile(join(app.directory, "project.json"))).toEqual(
+        diskBeforeReplay,
+      );
+      const repeated = await app.motionGeneration.importCandidate(
+        candidate.id,
+        editor,
+      );
+      expect(repeated.revision).toBe(imported.revision);
+      const undone = await editor.undo("film", imported.revision);
+      expect(undone.composition).toEqual(original);
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition.tracks[0]!.clips[0]!.assetId).toBe(
         adopted.assetId,
       );
-      const restored = await reopened.motionGeneration.restore(
-        candidate.id,
-        reopenedEditor,
-      );
-      expect(restored.composition).toEqual(original);
+      const output = await app.render("film");
+      const proof = await runProcess("ffprobe", [
+        "-v",
+        "error",
+        "-count_frames",
+        "-show_entries",
+        "stream=codec_type,nb_read_frames:format=duration",
+        "-of",
+        "json",
+        output,
+      ]);
+      const measured = JSON.parse(proof.stdout.toString());
       expect(
-        (await reopened.motionGeneration.restore(candidate.id, reopenedEditor))
-          .revision,
-      ).toBe(restored.revision);
+        measured.streams.find(
+          (s: { codec_type: string }) => s.codec_type === "video",
+        ).nb_read_frames,
+      ).toBe("48");
+      expect(
+        measured.streams.some(
+          (s: { codec_type: string }) => s.codec_type === "audio",
+        ),
+      ).toBe(true);
+      expect(Number(measured.format.duration)).toBeCloseTo(4, 2);
       expect(await hashFile(localPath(image.uri))).toBe(sourceHash);
-    } finally {
-      await reopened.motionGeneration.dispose();
-      reopened.close();
-    }
-  } finally {
-    if (!closed) {
       await app.motionGeneration.dispose();
       app.close();
+      closed = true;
+      const reopened = await OpenFilmApplication.open(
+        join(root, "film.openfilm"),
+      );
+      try {
+        const reopenedEditor = new TimelineEditor(reopened);
+        const retry = await reopened.motionGeneration.importCandidate(
+          candidate.id,
+          reopenedEditor,
+        );
+        expect(retry.composition.tracks[0]!.clips[0]!.assetId).toBe(
+          adopted.assetId,
+        );
+        const restored = await reopened.motionGeneration.restore(
+          candidate.id,
+          reopenedEditor,
+        );
+        expect(restored.composition).toEqual(original);
+        expect(restored.story).toEqual(originalStory);
+        expect(
+          (
+            await reopened.motionGeneration.restore(
+              candidate.id,
+              reopenedEditor,
+            )
+          ).revision,
+        ).toBe(restored.revision);
+        expect(await hashFile(localPath(image.uri))).toBe(sourceHash);
+      } finally {
+        await reopened.motionGeneration.dispose();
+        reopened.close();
+      }
+    } finally {
+      if (!closed) {
+        await app.motionGeneration.dispose();
+        app.close();
+      }
+      await rm(root, { recursive: true, force: true });
     }
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  },
+);
 
 it("imports an explicit real external MP4, strips its audio, hashes sources and clears previews without deleting adopted media", async () => {
   const root = await mkdtemp(join(tmpdir(), "motion-external-"));
@@ -310,6 +374,42 @@ it("atomically replaces/restores the linked M8A scene and retains a Named Versio
     };
     app.project.timelines[0]!.graphicScenes = [scene];
     await app.save();
+    const unpinned = editor.get("film");
+    const pinned = await editor.edit("film", {
+      baseRevision: unpinned.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "graphic-scene", sceneId: scene.id },
+          pinned: true,
+        },
+      ],
+    });
+    const pinnedProject = structuredClone(app.project);
+    const pinnedDisk = await readFile(join(app.directory, "project.json"));
+    await expect(
+      app.motionGeneration.preview({
+        requestId: randomUUID(),
+        projectId: app.project.id,
+        compositionId: "film",
+        clipId: "photo",
+        sceneId: scene.id,
+        baseRevision: pinned.revision,
+        providerId: "local-motion-fixture",
+        prompt: "Synthetic environment",
+        negativeConstraints: "Preserve proportions",
+        consent: true,
+        containsPeople: false,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(editor.get("film")).toEqual(pinned);
+    expect(app.project).toEqual(pinnedProject);
+    expect(await readFile(join(app.directory, "project.json"))).toEqual(
+      pinnedDisk,
+    );
+    expect((await editor.undo("film", pinned.revision)).composition).toEqual(
+      unpinned.composition,
+    );
     const input = {
       requestId: randomUUID(),
       projectId: app.project.id,

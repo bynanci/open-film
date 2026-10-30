@@ -55,6 +55,7 @@ import {
   type TimelineCommand,
 } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { automaticTimelineEdit } from "./editor-internal.js";
 import { validatePresetAcceptance, type PresetAcceptance } from "./presets.js";
 import type {
   DirectionAcceptanceInput,
@@ -608,6 +609,16 @@ function digest(value: unknown): string {
     .digest("hex");
 }
 
+type EditOrigin = "direct" | "automatic";
+
+function editFingerprint(
+  compositionId: string,
+  input: TimelineEditInput,
+  origin: EditOrigin,
+): string {
+  return digest({ compositionId, input, origin });
+}
+
 function document(state: EditorDocument): EditorDocument {
   return structuredClone({
     composition: state.composition,
@@ -1099,6 +1110,12 @@ export class TimelineEditor {
         "This GraphicScene proposal is unavailable or stale. Prepare a new review.",
         409,
       );
+    if (cached.baseScene.userOverrides?.isUserPinned)
+      throw new ApplicationError(
+        "timeline.pinConflict",
+        "The scene is user pinned. Release its user pin before applying suggestions.",
+        409,
+      );
     let scene: GraphicScene;
     try {
       scene = applyGraphicSceneAgentActions(
@@ -1128,7 +1145,11 @@ export class TimelineEditor {
       requestId: parsed.requestId,
       commands: [{ type: "graphic.scene.upsert" as const, scene }],
     };
-    const fingerprint = digest({ compositionId, input: edit });
+    const fingerprint = editFingerprint(
+      compositionId,
+      editInput(edit),
+      "automatic",
+    );
     const receipt = this.requests.get(parsed.requestId);
     if (receipt) {
       if (receipt.fingerprint !== fingerprint)
@@ -1142,7 +1163,7 @@ export class TimelineEditor {
       };
     }
     this.current(compositionId, cached.plan.baseRevision);
-    return this.edit(compositionId, edit);
+    return this[automaticTimelineEdit](compositionId, edit);
   }
 
   previewDirection(
@@ -1618,10 +1639,26 @@ export class TimelineEditor {
     compositionId: string,
     input: TimelineEditInput,
   ): Promise<TimelineEditorState> {
+    return this.commitEdit(compositionId, input, "direct");
+  }
+
+  /** Internal producers retain the same parser, queue, protections and writer. */
+  async [automaticTimelineEdit](
+    compositionId: string,
+    input: TimelineEditInput,
+  ): Promise<TimelineEditorState> {
+    return this.commitEdit(compositionId, input, "automatic");
+  }
+
+  private async commitEdit(
+    compositionId: string,
+    input: TimelineEditInput,
+    origin: EditOrigin,
+  ): Promise<TimelineEditorState> {
     const parsed = editInput(input);
     nonempty(compositionId, "compositionId");
     return this.serialize(async () => {
-      const fingerprint = digest({ compositionId, input: parsed });
+      const fingerprint = editFingerprint(compositionId, parsed, origin);
       const receipt = parsed.requestId
         ? this.requests.get(parsed.requestId)
         : undefined;
@@ -1752,6 +1789,7 @@ export class TimelineEditor {
       }
       try {
         const automaticCommand = (item: TimelineCommand) =>
+          origin === "automatic" ||
           item.type === "regenerate-beat" ||
           (item.type === "volume" && !!item.audioReviewId) ||
           (item.type === "primary-color" &&
@@ -1807,9 +1845,13 @@ export class TimelineEditor {
         };
         detachTargetMetadata();
         for (const item of parsed.commands) {
-          // Client-supplied scene metadata is checked against the saved baseline by the final policy.
+          // Direct scene metadata is checked against the saved baseline by the
+          // final policy. Automatic commands retain it for per-command checks.
           const compiled = structuredClone(item);
-          if (compiled.type === "graphic.scene.upsert")
+          if (
+            compiled.type === "graphic.scene.upsert" &&
+            !automaticCommand(item)
+          )
             delete compiled.scene.userOverrides;
           if (item.type === "user-pin.resolve")
             for (const target of item.targets)
