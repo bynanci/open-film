@@ -1,6 +1,7 @@
 # Windows media workflow recovery — issues66–68
 
-Date:2026-10-30. Branch:`codex/windows-66-68`, stacked on D6B PR65.
+Date:2026-10-30. Branch:`codex/windows-66-68`, based on main after merged
+D6B PR65(5160d8f) and CI PR70(8de63ae).
 Initial code base:`c0983a4f53af145a35c1ff6be2b958a2915eaad0`;
 research-integrated base:`18f8c1f02b23a3bc015695eb8d6f47791e0364b2`.
 Status: independent source review and focused Linux regressions passed. First
@@ -55,8 +56,9 @@ after deletion starts. The measurement artifact lives outside the fixture.
 - The capability fixture uses real files, hashes, rename and reopen with an
   explicit mocked OS directory limitation. It is not Windows execution evidence.
 - Local FFmpeg7.1.5; official OpenTimelineIO0.18.1 via the existing venv.
-  Initialsource8b9c9f4 passes323files/4543tests in395.11s; full291browser
-  run is still in progress. These are predecessor evidence for the platform
+  Initialsource8b9c9f4 passes323files/4543tests in395.11s and291browser
+  in22.5m. Pre-cold-fixcadf5bc passes4544tests in437.41s and291browser
+  in22.7m. These are predecessor evidence for the platform
   fixture corrections, whose final gates are recorded separately.
 
 ## Actual Windows and FFmpeg9 gate
@@ -117,12 +119,32 @@ Single independent whole-branch review (base18f8c1f..3cab20d): no Critical or
 Important source finding. One Minor factual retention claim is corrected above;
 actual Windows/FFmpeg9 and full gates remain required. No repeated review loop.
 
+## Actual browser blockers and fixture recovery
+
+Run41036400792 at38dbcde passes107/107 focused tests on actual Windows and
+FFmpeg9; browsers6/13 pass. Run41039192203 at75da28b identifies two fixture
+problems: source seeding uses an8.3 alias rejected by the existing canonical-file
+guard, and Restart Manager identifies the benchmark **test worker itself** as
+WAL owner even though the server acknowledged closure. The retained benchmark
+artifact has **zero samples**, so it is not a passed measurement report. The
+cleanup exception concealed the earlier seeding failure.
+
+Canonicalize only the newly created, owned synthetic temporary roots. Production
+source/link/alias guards are unchanged. A real controlled aliased-parent fixture
+fails before this change, then imports two canonical synthetic sources, rejects
+an alias input, keeps exactly two assets and verifies all original bytes unchanged.
+A failed synthetic seed releases its own catalog without another save; normal
+handoff still saves/closes before the server opens. Teardown retains primary and
+secondary errors together. Three new failure-context cases RED→GREEN; original
+four close/retention assertions, metrics, budgets and one-run policy remain.
+Windows source import and benchmark results must be rerun after these changes.
+
 ## Version/research and remaining gates
 
 Main research checkpoint132cac1 is integrated; research proposals remain
 non-authoritative until reconciled with existing TASKS/ROADMAP. Latest published
 stable is stillv0.4.0; this repair creates no automatic version/release promise.
-Retarget this stacked PR to main after PR65 merges and verify its exact head.
+PR65/70 are merged and this PR now targets main; verify the final combined head.
 
 Actual Windows10/popopc rerun, native picker/installer/update/rollback, macOS,
 physical external drives, real NLE/Resolve, GPU/4K/audio/display and power-loss

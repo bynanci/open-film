@@ -96,7 +96,7 @@ jobs:
           @{ identicalBootQueries=(@($openfilmBootHashes | Select-Object -Unique).Count -eq 1); bootHashes=$openfilmBootHashes } | ConvertTo-Json | Out-File (Join-Path $openfilmEvidence "owner-scope.json") -Encoding utf8
       - name: Verify source persistence and frame-rate regressions
         run: |
-          pnpm exec vitest run packages/application/tests/review-owner-platform.test.ts packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")
+          pnpm exec vitest run tests/integration/desktop-fixture-paths.test.ts packages/application/tests/review-owner-platform.test.ts packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise the reported browser workflows on actual Windows and FFmpeg9
         run: |
