@@ -254,3 +254,27 @@ JSON/OTIO preserve recipes as metadata; third-party NLE recipe enforcement is
 not established. Fresh scoped re-review, complete parent CI and subsequent
 integration review remain open. No full Vitest, native benchmark, dependency
 change, push, PR or merge was performed by this worker; version remains 0.4.0.
+
+## 2026-10-30 — fixed preset owner on the latest finishing base
+
+Merge `2c2ccc5` places reviewed fix `a51e12f` on clean B `9351b76`, including
+A's start-admission guard and repaired documentation base `fab0a4c`. The three
+reviewed domain fixes and title-change disclosure are byte-identical to the
+reviewed fix in their owner files: the in-lock catalog fence, explicit scene
+occurrence validation, detached ordinary-compose provenance and localized
+before/after title leaves remain intact.
+
+Current targeted checks pass: eight files / 77 tests covering StoryPlan/solver
+assignments, catalog-CAS races, ordinary composition snapshots and budgets,
+existing StoryPlan behavior, title disclosure, focal admission, documentation
+links and actual bilingual ambient/Bézier/preset interoperability. Commands use
+`pnpm exec vitest run` with `packages/story/tests/preset-story-plan.test.ts`,
+`packages/application/tests/{preset-story-plan,preset-application,story-plan}.test.ts`,
+`tests/unit/{preset-apply-review,photo-focal-overlay,docs-site-validation}.test.ts`
+and `tests/integration/preset-title-finishing.test.ts`. TypeScript/Vue, scoped
+ESLint, repository formatting, 2,853 localization keys and 131 documentation
+mirrors pass. The prior four-browser receipt remains evidence for `a51e12f`;
+this checkpoint ran no browser server or full suite. Fresh synthetic artifacts
+and current byte receipts are under
+`/tmp/openfilm-finishing-integration/D8-latest-base/`. Full exact-head hosted
+gates remain coordinator-owned.
