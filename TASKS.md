@@ -190,7 +190,9 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
   - [x] Independent review: precision-preserving source validation, fresh review
         acceptance, bounded Verify cleanup, native/baked NLE offline lineage;
         regression-backed fixes. Keep warning-detail presentation as follow-up.
-  - [ ] Complete full local/hosted gates before
+  - [x] Complete local full gates: 4535 unit/integration,291 Chromium, official
+        OTIO18, built CLI smoke, types/lint/build/format/i18n/docs.
+  - [ ] Complete exact-head hosted gates before
         marking D6B delivery ready to merge. Physical workstation gates stay open.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
