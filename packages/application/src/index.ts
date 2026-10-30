@@ -1298,7 +1298,8 @@ export class OpenFilmApplication {
           (previous.mediaType === "audio" || existsSync(thumbnail)) &&
           (options.proxies === false ||
             !["video", "360-video", "audio"].includes(previous.mediaType) ||
-            (await this.proxyCache.isAvailable(previous)));
+            (!!previous.proxyUri &&
+              (await this.proxyCache.isAvailable(previous))));
         if (previous?.contentHash === originalHash && derivedComplete) {
           result.skipped++;
           return;

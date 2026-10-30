@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -77,7 +84,7 @@ async function fixture(options: { proxyGenerator?: typeof createProxy } = {}) {
   return { root, project, projectId, source, sourceHash, base, post, health };
 }
 
-it.each(["direct", "normalized-alias"])(
+it.each(["direct", "normalized-alias", "symlink-alias", "hardlink-alias"])(
   "shares queued preparation and safely rejects same-size corruption through %s paths",
   async (mode) => {
     const f = await fixture();
@@ -108,15 +115,23 @@ it.each(["direct", "normalized-alias"])(
     const path = join(f.project, job.proxyCache!.output!.uri);
     const original = await readFile(path);
     await writeFile(path, Buffer.alloc(original.length));
-    if (mode === "normalized-alias") {
+    if (mode !== "direct") {
+      const aliasUri =
+        mode === "normalized-alias"
+          ? job.proxyCache!.output!.uri.replace(
+              "cache/proxies/managed/",
+              "cache/proxies/../proxies/managed/",
+            )
+          : "cache/proxies/legacy-alias.mp4";
+      if (mode === "symlink-alias")
+        await symlink(path, join(f.project, aliasUri));
+      if (mode === "hardlink-alias")
+        await link(path, join(f.project, aliasUri));
       const writer = await OpenFilmApplication.openForExport(f.project);
       try {
         writer.catalog.upsertAsset({
           ...writer.catalog.getAsset("video")!,
-          proxyUri: job.proxyCache!.output!.uri.replace(
-            "cache/proxies/managed/",
-            "cache/proxies/../proxies/managed/",
-          ),
+          proxyUri: aliasUri,
         });
       } finally {
         writer.close();

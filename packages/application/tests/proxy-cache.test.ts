@@ -473,7 +473,7 @@ async function prepared() {
 }
 
 describe("managed proxy storage policy and cleanup", () => {
-  it.each([false, true])(
+  it.each([false, true, "directory-alias"])(
     "recovers only stopped temporary work without an original reference (protected=%s)",
     async (referenced) => {
       const f = await fixture();
@@ -502,12 +502,19 @@ describe("managed proxy storage policy and cleanup", () => {
           owner,
         }),
       );
-      if (referenced)
+      if (referenced) {
+        const alias = join(f.root, "original-through-alias");
+        if (referenced === "directory-alias") await symlink(work, alias, "dir");
         f.app.catalog.upsertAsset({
           ...f.app.catalog.getAsset("synthetic-video")!,
           id: "explicit-original-reference",
-          uri: pathToFileURL(temporary).href,
+          uri: pathToFileURL(
+            referenced === "directory-alias"
+              ? join(alias, "preview.mp4")
+              : temporary,
+          ).href,
         });
+      }
       const recovery = (
         await f.app.proxyCache.health({ projectId: f.app.project.id })
       ).recovery!;
@@ -527,6 +534,50 @@ describe("managed proxy storage policy and cleanup", () => {
       expect(await hashFile(f.source)).toBe(f.sourceHash);
     },
   );
+  it("protects originals through directory aliases from reviewed cleanup and automatic eviction", async () => {
+    const f = await prepared();
+    f.app.catalog.updateAsset("synthetic-video", { state: { locked: false } });
+    const alias = join(f.root, "imported-alias");
+    await symlink(f.app.proxyCache.store.managed, alias, "dir");
+    const source = join(alias, f.receipt.output.uri.split("/").at(-1)!);
+    f.app.catalog.upsertAsset({
+      ...f.app.catalog.getAsset("synthetic-video")!,
+      id: "alias-original",
+      uri: pathToFileURL(source).href,
+      contentHash: f.receipt.output.hash,
+      state: { locked: true },
+    });
+    expect(
+      (await f.app.proxyCache.previewCleanup({ projectId: f.app.project.id }))
+        .entries,
+    ).toEqual([]);
+    await writeFile(
+      join(f.app.proxyCache.store.managed, "unowned-full-cache.bin"),
+      Buffer.alloc(1024 ** 2),
+    );
+    await f.app.proxyCache.setPolicy({
+      projectId: f.app.project.id,
+      baseRevision: 0,
+      quotaBytes: 1024 ** 2,
+    });
+    const newSource = join(f.root, "new-preview-source.mp4");
+    await copyFile(f.source, newSource);
+    f.app.catalog.upsertAsset({
+      ...f.app.catalog.getAsset("synthetic-video")!,
+      id: "new-preview",
+      uri: pathToFileURL(newSource).href,
+    });
+    f.app.proxyCache.enqueue({
+      projectId: f.app.project.id,
+      requestId: "quota-alias",
+      assetIds: ["new-preview"],
+    });
+    expect(
+      await f.app.proxyCache.runPending({ projectId: f.app.project.id }),
+    ).toMatchObject({ failed: 1 });
+    expect(await hashFile(source)).toBe(f.receipt.output.hash);
+    expect(await hashFile(f.source)).toBe(f.sourceHash);
+  });
   it("reports actual released bytes when preference cleanup fails after file removal", async () => {
     const f = await prepared();
     f.app.catalog.updateAsset("synthetic-video", { state: { locked: false } });

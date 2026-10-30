@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { lstatSync, unlinkSync } from "node:fs";
 import { lstat, opendir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import {
   ApplicationError,
@@ -26,6 +26,8 @@ import {
   type ProxyCacheStore,
   type ProxyWorkerLease,
 } from "./proxy-cache-store.js";
+
+import { proxyPathHasOriginalReference } from "./proxy-cache-source-guard.js";
 
 interface MaintenanceContext {
   host: ProxyCacheHost;
@@ -146,15 +148,11 @@ export class ProxyCacheMaintenance {
       this.context.store.hasReaders(receipt.artifactId)
     )
       return true;
-    const output = this.context.store.outputPath(receipt);
-    for (const asset of this.context.host.catalog.iterateAssetSummaries()) {
-      try {
-        if (resolve(localPath(asset.uri)) === output) return true;
-      } catch {
-        /* Non-local sources cannot authorize deletion. */
-      }
-    }
-    return false;
+    return proxyPathHasOriginalReference(
+      this.context.host.catalog,
+      this.context.store.outputPath(receipt),
+      "file",
+    );
   }
 
   private async verifiedFile(

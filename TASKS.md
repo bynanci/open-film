@@ -33,7 +33,7 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
   - [ ] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.
         Candidate implemented in `codex/d6a-proxy-storage`; shared workflow and
-        58 regressions plus four browser tests pass. Final review/full gates
+        62 regressions plus four browser tests pass. Final review/full gates
         remain open; see [validation](docs/validation-proxy-storage.md).
 - [ ] Physical Windows/macOS keyboard/trackpad, hardware audio latency, high-DPI,
       color-managed displays and long-form workstation verification.

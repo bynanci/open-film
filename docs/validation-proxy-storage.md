@@ -30,7 +30,7 @@ ordinary editing remains available. No process is killed using a supplied PID.
 
 ## Regression evidence
 
-- Six focused suites: **58/58 passed** (contracts, application, HTTP, CLI,
+- Six focused suites: **62/62 passed** (contracts, application, HTTP, CLI,
   component and acknowledged-refresh handling).
 - Four real Chromium tests passed: actual preparation/corruption/rebuild/cleanup;
   English, Traditional Chinese and Japanese at **375/720/1280 px**; native
@@ -55,6 +55,23 @@ corruption, cross-workspace readers/Composition protection, symlinks, unsafe or
 unknown receipts, original references inside work trees and partial I/O released
 byte counts. Cleanup acceptance revalidates exact receipt/file/source identity,
 policy and current protection; CLI reviews expire after ten minutes.
+
+## Independent review and compatibility repair
+
+A fresh read-only review found two filesystem-alias failures. Real directory
+symlinks could hide original references from cleanup/stopped-work recovery;
+legacy-looking symlinks and hard links could bypass managed streaming checks.
+Both were reproduced, then fixed in one regression-backed pass. Source guards
+use canonical targets/file identities and retain uncertain originals. Legacy
+aliases cannot bypass receipt verification or managed reader ownership.
+
+The existing missing/empty-preview404 diagnostic and explicit reimport repair
+contract remain intact. Only invalid managed bytes/ineligible aliases may fall
+back to compatible original playback. Relocation recognizes strict managed
+filenames. Seven shared/legacy suites now pass **135/135**, including actual NLE
+handoff. No assertion was removed or weakened. The initial full run exposed
+these boundaries and an unselected Python environment; it is not reported as a
+pass. The final run uses the existing isolated OpenTimelineIO0.18.1 environment.
 
 ## Full-gate results
 

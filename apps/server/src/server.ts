@@ -3965,6 +3965,7 @@ export async function startServer(options: ServerOptions = {}) {
                     if (
                       !signal.aborted &&
                       ((error instanceof ApplicationError &&
+                        error.status === 409 &&
                         [
                           "media.previewUnavailable",
                           "proxy.storageUnavailable",
@@ -3982,13 +3983,12 @@ export async function startServer(options: ServerOptions = {}) {
                   ? fileURLToPath(catalogProxy)
                   : resolve(application.directory, catalogProxy)
                 : undefined;
-              const managedNamespace =
-                !!catalogPreviewPath &&
+              const inManagedNamespace = (candidate: string) =>
                 ["cache/proxies/managed", "cache/proxy-manager"].some(
                   (path) => {
                     const child = relative(
                       resolve(application.directory, path),
-                      catalogPreviewPath,
+                      candidate,
                     );
                     return (
                       !child ||
@@ -4000,6 +4000,26 @@ export async function startServer(options: ServerOptions = {}) {
                     );
                   },
                 );
+              let managedNamespace =
+                !!catalogPreviewPath && inManagedNamespace(catalogPreviewPath);
+              if (
+                !managed &&
+                catalogPreviewPath &&
+                !managedNamespace &&
+                ["video", "audio"].includes(asset.mediaType)
+              ) {
+                try {
+                  const info = await lstat(catalogPreviewPath);
+                  // Legacy aliases must not bypass managed verification or read leases.
+                  managedNamespace =
+                    !info.isFile() ||
+                    info.nlink !== 1 ||
+                    inManagedNamespace(await realpath(catalogPreviewPath));
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                    throw error;
+                }
+              }
               const derivedUri = needsImagePreview
                 ? asset.thumbnailUri
                 : ["video", "audio"].includes(asset.mediaType)

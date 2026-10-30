@@ -27,6 +27,12 @@ export function portableCacheUri(
       : asset.mediaType === "audio"
         ? ".mp3"
         : ".mp4";
+  if (
+    kind === "proxies" &&
+    /^managed\/[a-f0-9]{64}\.(?:mp4|mp3)$/u.test(suffix) &&
+    suffix.endsWith(extension)
+  )
+    return `cache/proxies/${suffix}`;
   // Only the application's generated cache filename convention is relocatable.
   if (
     !suffix ||

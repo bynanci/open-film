@@ -55,6 +55,7 @@ import {
 export { proxyInputFingerprint } from "./proxy-cache-identity.js";
 import { portableCacheUri } from "./portable-cache.js";
 import { ProxyCacheMaintenance } from "./proxy-cache-maintenance.js";
+import { proxyPathHasOriginalReference } from "./proxy-cache-source-guard.js";
 
 export interface ProxyCacheHost {
   readonly directory: string;
@@ -446,21 +447,8 @@ export class ProxyCacheService {
     this.store.cleanStoppedWork(
       (owner) =>
         proxyOwnerState(owner) === "dead" || confirmedTokens.has(owner.token),
-      (path) => {
-        for (const asset of this.host.catalog.iterateAssetSummaries()) {
-          try {
-            const rel = relative(path, localPath(asset.uri));
-            if (
-              !rel ||
-              (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`))
-            )
-              return true;
-          } catch {
-            /* A non-local source does not point into this owned work tree. */
-          }
-        }
-        return false;
-      },
+      (path) =>
+        proxyPathHasOriginalReference(this.host.catalog, path, "directory"),
     );
   }
 
@@ -1161,7 +1149,31 @@ export class ProxyCacheService {
           409,
         );
       const receipt = this.readyReceipt(current);
-      if (!receipt) return undefined;
+      if (!receipt) {
+        const id =
+          this.store.preferred(current.id) ??
+          this.store.artifactId(current.proxyUri);
+        const recorded = id && this.store.receipt(id)?.receipt;
+        if (recorded) {
+          try {
+            if (lstatSync(this.store.outputPath(recorded)).size === 0)
+              throw new ApplicationError(
+                "media.previewUnavailable",
+                "The preview cache is empty or unavailable. Rebuild its preview.",
+                404,
+              );
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT")
+              throw new ApplicationError(
+                "media.previewUnavailable",
+                "Preview proxy missing: rebuild its cached preview from the original source.",
+                404,
+              );
+            throw error;
+          }
+        }
+        return undefined;
+      }
       const release = this.store.reader(receipt.artifactId);
       try {
         const data = this.store.receipt(receipt.artifactId)!;
