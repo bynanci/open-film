@@ -35,6 +35,7 @@ export default {
       speed: "速度",
       volume: "增益／靜音",
       audioAutomation: "音量曲線",
+      audioTiming: "獨立聲音時間",
       compositing: "疊層合成",
       title: "標題",
       titleStyle: "字型與排版",

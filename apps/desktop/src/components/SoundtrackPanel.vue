@@ -42,6 +42,8 @@ const audioClips = computed(() =>
 );
 const selectedAudio = computed(() =>
   props.selectedClip &&
+  (props.selectedClip.audioTiming ||
+    audioClips.value.some((clip) => clip.id === props.selectedClip?.id)) &&
   hasAudioStream(
     props.assets.find((asset) => asset.id === props.selectedClip?.assetId) ??
       ({ mediaType: "image", metadata: {} } as MediaAsset),
@@ -322,34 +324,6 @@ function startPlayback() {
       >
       <div class="editor-field-pair">
         <label class="editor-field"
-          >{{ t("editor.sound.role")
-          }}<select
-            data-testid="selected-audio-role"
-            :value="selectedRole"
-            :aria-label="t('editor.sound.role')"
-            @change="
-              configure(
-                undefined,
-                ($event.target as HTMLSelectElement)
-                  .value as AudioAutomation['role'],
-              )
-            "
-          >
-            <option
-              v-for="value in [
-                'music',
-                'narration',
-                'ambience',
-                'dialogue',
-              ] as const"
-              :key="value"
-              :value="value"
-            >
-              {{ t(`editor.sound.roles.${value}`) }}
-            </option>
-          </select></label
-        >
-        <label v-if="selectedOverlay" class="editor-field"
           >{{ t("editor.sound.start")
           }}<input
             v-model.number="start"
@@ -463,6 +437,34 @@ function startPlayback() {
           {{ t("editor.clip.sourceProtected") }}
         </p>
         <label class="editor-field"
+          >{{ t("editor.sound.role")
+          }}<select
+            data-testid="selected-audio-role"
+            :value="selectedRole"
+            :aria-label="t('editor.sound.role')"
+            @change="
+              configure(
+                undefined,
+                ($event.target as HTMLSelectElement)
+                  .value as AudioAutomation['role'],
+              )
+            "
+          >
+            <option
+              v-for="value in [
+                'music',
+                'narration',
+                'ambience',
+                'dialogue',
+              ] as const"
+              :key="value"
+              :value="value"
+            >
+              {{ t(`editor.sound.roles.${value}`) }}
+            </option>
+          </select></label
+        >
+        <label v-if="selectedOverlay" class="editor-field"
           >{{ t("editor.sound.start")
           }}<input
             v-model.number="fields.start"

@@ -221,6 +221,7 @@ export default {
         photoMotion: "Photo motion",
         titleStyle: "Title typography and layout",
         audioAutomation: "Audio fades, gain envelopes and ducking",
+        audioTiming: "Independent sound timing",
         overlayTiming: "Non-ripple soundtrack editing",
         userPins: "User pin intent (metadata only)",
         clipLocks: "Clip locks and story beats",

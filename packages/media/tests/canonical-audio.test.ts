@@ -121,6 +121,7 @@ it.each([0.02, 0.05, 0.08, 0.15])(
       ).toBeLessThanOrEqual(1);
     }
     expect(canonical.length).toBe(96000);
+    expect(transcript.length).toBe(32000);
     expect(facts.lengthSamples).toBe(canonical.length);
     expect(await hashFile(path)).toBe(hash);
   },
@@ -169,6 +170,10 @@ it.each([
       expect(Math.abs(restored - expected * 16000)).toBeLessThanOrEqual(1);
     }
     expect(canonical.length).toBe(Math.round((2 + sourceOffset) * 48000));
+    expect(transcript.length).toBe(32000);
+    expect(canonical.length).toBe(
+      transcript.length * 3 + Math.round(sourceOffset * 48000),
+    );
     expect(facts.lengthSamples).toBe(canonical.length);
     expect(await hashFile(path)).toBe(hash);
   },

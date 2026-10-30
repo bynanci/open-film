@@ -91,3 +91,34 @@ human listening session or real NLE application QA was available in this run.
 Those remain open. D3B2 coverage persistence remains unchecked. See the
 [guide](audio-policy.md) for preview budgets, silent shuttle and split/relink
 limits.
+
+## First full-candidate gate — 804d480
+
+The first complete `pnpm test` run at clean
+`804d4806a47ee6cb95738425fcb03c460ef512e9` finished in538.23s:
+**5340 passed,26 failed,5366 total;397 passed files,9 failed files**. This is a
+failed gate, not completion evidence. The complete failing groups were:
+
+- Motion adoption/recovery:13 cases in application motion-faults,
+  application motion-generation and HTTP/CLI motion-generation. Automatic
+  preview validation and direct acceptance publication produced different pin
+  metadata. The coordinator owns the trusted automatic commit correction;
+  expected-document hashes remain strict.
+- Pipeline media adapter:8 cases. The synthetic adapter still supplied
+  `compose` rather than current `prepareComposition`, omitted catalog summary
+  iteration, and expected the retired provisional ID. The fixture now follows
+  the actual publication boundary and checks the exact saved ID while retaining
+  all media-error/cancellation/decoded-byte assertions.
+- Locked Look HTTP:1 case returned generic400 before the existing typed409
+  lock/count validator. Shared Pin/field-owner correction is coordinator-owned.
+- NLE handoff:1 case lacked `opentimelineio` on default Python PATH. The pinned
+  installed OTIO0.18.1 environment runs that same case successfully unchanged.
+- Soundtrack controls, compatibility locale and synthetic docs fixture:1 case
+  each. Restored ordinary-audio exclusion and the always-visible Add start field,
+  placed selected role/start controls with their actual selected owner, added
+  localized independent-audio labels and the newly required guide fixture.
+
+The full run retained the candidate-bound media manifests and measurements;
+canonical phase errors were `[0,0,0,0,0,0,0]` from the single239-sample baseline.
+No threshold, skip or retry policy changed. A second complete gate requires the
+new integrated producer correction and the configured pinned parser environment.

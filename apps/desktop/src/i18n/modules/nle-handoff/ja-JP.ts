@@ -35,6 +35,7 @@ export default {
       speed: "速度",
       volume: "ゲイン／ミュート",
       audioAutomation: "音量曲線",
+      audioTiming: "独立した音声タイミング",
       compositing: "合成",
       title: "タイトル",
       titleStyle: "文字組み",

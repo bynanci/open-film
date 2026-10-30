@@ -35,6 +35,7 @@ export default {
       speed: "Speed",
       volume: "Gain / mute",
       audioAutomation: "Audio envelope",
+      audioTiming: "Independent sound timing",
       compositing: "Compositing",
       title: "Title",
       titleStyle: "Typography",
