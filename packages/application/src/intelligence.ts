@@ -123,6 +123,7 @@ function transcriptionMetadata(value: unknown): TranscriptionMetadata {
 
 /** Concrete local orchestration; portable results and provider ports remain shared. */
 export class MediaIntelligence {
+  private waveformReads = 0;
   private registry = new ProviderRegistry();
   private provider: TranscriptionProvider = new LocalWhisperProvider();
   private readonly identities = new Map<
@@ -229,6 +230,7 @@ export class MediaIntelligence {
 
   async readWaveforms(
     assetIds: readonly string[],
+    options: { signal?: AbortSignal } = {},
   ): Promise<SourceWaveformEvidence[]> {
     if (
       !Array.isArray(assetIds) ||
@@ -244,38 +246,55 @@ export class MediaIntelligence {
         "Choose one to eight unique imported waveform sources.",
         400,
       );
-    const entries: SourceWaveformEvidence[] = [];
-    for (const assetId of assetIds) {
-      try {
-        const sourceHash = await this.identity(this.asset(assetId));
-        const waveform = this.catalog.intelligence.getWaveform(
-          assetId,
-          sourceHash,
-          WAVEFORM_CACHE_IDENTITY,
-        );
-        entries.push(
-          waveform
-            ? { assetId, status: "ready", sourceHash, waveform }
-            : { assetId, status: "not-cached", sourceHash },
-        );
-      } catch (error) {
-        if (
-          !(error instanceof ApplicationError) ||
-          !["media.notFound", "media.missing", "source.changed"].includes(
-            error.code,
+    checkAbort(options.signal);
+    if (this.waveformReads >= 2)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Two waveform source reads are already active.",
+        429,
+      );
+    this.waveformReads++;
+    try {
+      const entries: SourceWaveformEvidence[] = [];
+      for (const assetId of assetIds) {
+        try {
+          const sourceHash = await this.identity(
+            this.asset(assetId),
+            options.signal,
+          );
+          checkAbort(options.signal);
+          const waveform = this.catalog.intelligence.getWaveform(
+            assetId,
+            sourceHash,
+            WAVEFORM_CACHE_IDENTITY,
+          );
+          entries.push(
+            waveform
+              ? { assetId, status: "ready", sourceHash, waveform }
+              : { assetId, status: "not-cached", sourceHash },
+          );
+        } catch (error) {
+          if (
+            !(error instanceof ApplicationError) ||
+            !["media.notFound", "media.missing", "source.changed"].includes(
+              error.code,
+            )
           )
-        )
-          throw error;
-        const code = error.code as
-          "media.notFound" | "media.missing" | "source.changed";
-        entries.push({
-          assetId,
-          status: code === "source.changed" ? "source-changed" : "unavailable",
-          issue: { code },
-        });
+            throw error;
+          const code = error.code as
+            "media.notFound" | "media.missing" | "source.changed";
+          entries.push({
+            assetId,
+            status:
+              code === "source.changed" ? "source-changed" : "unavailable",
+            issue: { code },
+          });
+        }
       }
+      return entries;
+    } finally {
+      this.waveformReads--;
     }
-    return entries;
   }
 
   async read(

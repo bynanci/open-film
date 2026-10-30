@@ -801,8 +801,8 @@ export async function startServer(options: ServerOptions = {}) {
   };
   let mutationQueue = Promise.resolve();
   let closing = false;
-  const mediaStreams = new Map<AbortController, Promise<void>>();
-  const trackedMediaRead = (read: (signal: AbortSignal) => Promise<void>) => {
+  const mediaStreams = new Map<AbortController, Promise<unknown>>();
+  const trackedMediaRead = <T>(read: (signal: AbortSignal) => Promise<T>) => {
     const controller = new AbortController();
     if (closing) controller.abort();
     const task = Promise.resolve()
@@ -924,6 +924,8 @@ export async function startServer(options: ServerOptions = {}) {
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
         const nonMutatingExportPreview =
           method === "POST" && route === "/api/export/frame-preview";
+        const nonMutatingWaveformRead =
+          method === "POST" && route === "/api/intelligence/waveforms";
         const acquireMutation = async () => {
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -939,6 +941,7 @@ export async function startServer(options: ServerOptions = {}) {
           (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
           !nonMutatingGraphicAgentPreview &&
+          !nonMutatingWaveformRead &&
           route !== "/api/projects/availability"
         ) {
           if (
@@ -3613,18 +3616,41 @@ export async function startServer(options: ServerOptions = {}) {
               "project.unavailable",
             );
           let entries;
+          let readAborted = false;
+          const disconnected = new AbortController();
+          const onClose = () => {
+            if (!response.writableEnded) disconnected.abort();
+          };
+          response.once("close", onClose);
           try {
-            entries = await application.intelligence.readWaveforms(
-              data.assetIds as string[],
-            );
+            entries = await trackedMediaRead(async (projectSignal) => {
+              const signal = AbortSignal.any([
+                projectSignal,
+                disconnected.signal,
+              ]);
+              readAborted = signal.aborted;
+              signal.addEventListener(
+                "abort",
+                () => {
+                  readAborted = true;
+                },
+                { once: true },
+              );
+              return application.intelligence.readWaveforms(
+                data.assetIds as string[],
+                { signal },
+              );
+            });
           } catch (error) {
-            if (!current())
+            if (readAborted || !current())
               throw new HttpError(
                 409,
                 "Waveform project changed.",
                 "project.unavailable",
               );
             throw error;
+          } finally {
+            response.off("close", onClose);
           }
           if (!current())
             throw new HttpError(

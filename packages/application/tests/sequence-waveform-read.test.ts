@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
 import type { MediaAsset, WaveformData } from "@openfilm/core";
 import { hashFile, WAVEFORM_CACHE_IDENTITY } from "@openfilm/media";
+import * as media from "@openfilm/media";
 import { OpenFilmApplication } from "../src/index.js";
 
 const cleanup: (() => Promise<unknown> | void)[] = [];
@@ -123,4 +124,61 @@ it.each(
   await expect(app.intelligence.readWaveforms(ids)).rejects.toMatchObject({
     code: "request.invalid",
   });
+});
+
+it("bounds simultaneous source hashing and releases admission after completion", async () => {
+  const { app } = await fixture();
+  let release!: () => void, entered!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let hashing = 0;
+  const original = media.hashFile;
+  vi.spyOn(media, "hashFile").mockImplementation(async (...args) => {
+    hashing++;
+    if (hashing === 2) entered();
+    if (hashing > 2) throw new Error("A third waveform read started hashing.");
+    await held;
+    return original(...args);
+  });
+  const first = app.intelligence.readWaveforms(["source"]);
+  const second = app.intelligence.readWaveforms(["source"]);
+  try {
+    await started;
+    await expect(
+      app.intelligence.readWaveforms(["source"]),
+    ).rejects.toMatchObject({ code: "jobs.busy", status: 429 });
+  } finally {
+    release();
+    await Promise.allSettled([first, second]);
+  }
+  expect((await first)[0]?.status).toBe("ready");
+  expect((await second)[0]?.status).toBe("ready");
+  expect((await app.intelligence.readWaveforms(["source"]))[0]?.status).toBe(
+    "ready",
+  );
+});
+
+it("propagates storage errors and restores both read slots", async () => {
+  const { app } = await fixture();
+  const read = vi
+    .spyOn(app.catalog.intelligence, "getWaveform")
+    .mockImplementationOnce(() => {
+      throw new Error("Controlled storage failure");
+    });
+  await expect(app.intelligence.readWaveforms(["source"])).rejects.toThrow(
+    "Controlled storage failure",
+  );
+  read.mockRestore();
+  const results = await Promise.all([
+    app.intelligence.readWaveforms(["source"]),
+    app.intelligence.readWaveforms(["source"]),
+  ]);
+  expect(results.map((result) => result[0]?.status)).toEqual([
+    "ready",
+    "ready",
+  ]);
 });
