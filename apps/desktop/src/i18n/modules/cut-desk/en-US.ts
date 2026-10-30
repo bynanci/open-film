@@ -14,6 +14,53 @@ export default {
     dropFrame: "Drop-frame (DF)",
     nonDropFrame: "Non-drop-frame (NDF)",
     timebaseSaving: "Saving sequence timebase…",
+    waveform: {
+      title: "Sequence source waveforms",
+      rawPeaks: "Raw source peaks before gain, fades, ducking and mixing.",
+      viewport: "Waveform window",
+      windowRange: "{start}–{end}",
+      previous: "Previous window",
+      next: "Next window",
+      fit: "Fit sequence",
+      window: "30-second window",
+      seek: "Seek Record waveform",
+      outsideWindow: "The Record playhead is outside this window.",
+      noAudio: "No known source audio in this window.",
+      video: "Video",
+      audio: "Audio",
+      music: "Music",
+      sources: "Visible waveform sources",
+      sourceRange: "Sources {start}–{end} of {total}",
+      previousSources: "Previous sources",
+      nextSources: "Next sources",
+      prepare: "Prepare visible missing",
+      stop: "Stop preparation queue",
+      refresh: "Refresh / retry visible",
+      preparing: "Preparing {name} · {count} remaining",
+      protected: "Protected · read only",
+      stopped: "Queue stopped. Any active analysis continues in Activity.",
+      completed: "Visible source waveform preparation finished.",
+      status: {
+        ready: "Cached raw peaks",
+        loading: "Reading source evidence…",
+        "not-cached": "Waveform not prepared",
+        unavailable: "Source unavailable",
+        "source-changed": "Source changed · peaks hidden",
+        failed: "Waveform read failed · retry",
+      },
+      errors: {
+        "analysis-busy":
+          "Another analysis is active. Retry preparation after it finishes.",
+        "job-missing":
+          "The waveform job is unavailable. Refresh evidence and retry preparation.",
+        "job-failed":
+          "Waveform analysis failed or stopped. Retry preparation when the source is ready.",
+        "request-failed":
+          "Preparation could not continue. Refresh evidence and retry.",
+        "no-evidence":
+          "No current waveform was returned. Refresh evidence and retry preparation.",
+      },
+    },
     ribbon: {
       label: "Edit decision",
       sequence: "Sequence",

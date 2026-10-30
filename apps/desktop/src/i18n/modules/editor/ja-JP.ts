@@ -481,6 +481,32 @@ export default {
       },
     },
     presentation: {
+      setFocus: "焦点を設定",
+      finishFocus: "焦点プレビューを終了",
+      focusGroup: "写真の焦点",
+      focusPoint: "写真の焦点を移動",
+      focusHint:
+        "写真をクリックするか焦点をドラッグします。矢印キーで微調整、Shiftで大きく移動。放すと保存、Escapeで取り消します。",
+      diptychFocusHint:
+        "2枚の比較では写真全体を保ちます。焦点の切り取りを調整するには、1枚のレイアウトを選んでください。",
+      easing: "動きのペース",
+      linear: "一定のペース",
+      easeInOut: "穏やかな開始と終了",
+      customCurve: "カスタム曲線",
+      curveX1: "最初の制御点 X",
+      curveY1: "最初の制御点 Y",
+      curveX2: "2番目の制御点 X",
+      curveY2: "2番目の制御点 Y",
+      applyEasing: "ペースを適用",
+      ambientFill: "柔らかな写真の背景",
+      ambientBlur: "背景のぼかし",
+      ambientDim: "背景の暗さ",
+      applyFill: "背景を適用",
+      finishingInvalid:
+        "曲線の制御点を0から1の順序で指定し、背景の値を確認してください。",
+      fillFailed:
+        "写真の背景を更新できませんでした。保存が完了した後、再試行してください。",
+      retryFill: "写真の背景を再試行",
       heading: "写真の演出",
       description: "思い出に合う構図とテンポを選びます。いつでも調整できます。",
       layout: "写真のレイアウト",

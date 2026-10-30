@@ -27,6 +27,9 @@ type Draft = {
 export type CommitTransactionResult =
   | { status: "accepted"; revision: string }
   | { status: "conflict" | "cancelled" | "failed" };
+export interface CommitTransactionOptions {
+  expectedBaseRevision?: string;
+}
 
 /** Keep the command queue until acknowledgement, including across a reload. */
 export function useTimelineEditor(
@@ -362,6 +365,7 @@ export function useTimelineEditor(
     input: TimelineCommand | TimelineCommand[],
     referencedAssets: readonly MediaAsset[] = [],
     signal?: AbortSignal,
+    options?: CommitTransactionOptions,
   ): Promise<CommitTransactionResult> {
     if (disposed || signal?.aborted) return { status: "cancelled" };
     if (
@@ -391,6 +395,20 @@ export function useTimelineEditor(
         return { status: status.value === "conflict" ? "conflict" : "failed" };
       const before = state.value;
       assertComposition(before);
+      if (
+        options?.expectedBaseRevision !== undefined &&
+        before.revision !== options.expectedBaseRevision
+      ) {
+        status.value = "conflict";
+        reportError(
+          new ApiError(
+            "Timeline changed since this gesture began. Review the current photo and try again.",
+            409,
+            { code: "timeline.conflict" },
+          ),
+        );
+        return { status: "conflict" };
+      }
       const knownIds = new Set(before.assets.map((asset) => asset.id));
       const additions = assets.filter((asset) => {
         if (knownIds.has(asset.id)) return false;

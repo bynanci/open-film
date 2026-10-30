@@ -14,6 +14,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
       Physical desktop/workstation verification remains below.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
+  - [ ] Persist user-pinned direct edits as versioned Clip/GraphicScene hard
+        constraints through solver/pipeline, history, Named Versions, variants
+        and Collect; add visible Pin and explicit Unlock & Re-solve. Existing
+        source/clip locks do not implement this requested override contract.
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
         transaction boundaries; preserve cancellation, locks, Undo/Redo,
@@ -25,8 +29,13 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         and snap-bypass gestures without introducing a second timeline.
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
-  - [ ] D3A1: project existing source peaks into Sequence time with shared
+  - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
+        Implementation, independent review correction, 77 focused regressions
+        and 17 related browser cases are complete. Exact-candidate gates are
+        required before merging [PR72](https://github.com/bynanci/open-film/pull/72). See the
+        [guide](docs/sequence-waveforms.md) and
+        [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
   - [ ] D3B1: after an edit/audio compatibility design, add the versioned
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
@@ -168,6 +177,9 @@ and [validation](docs/validation-multi-source-analysis.md).
 ## Seven-subsystem evidence reconciliation and next stable queue
 
 Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-reconciliation.md).
+
+Delivery goal: [v1.0.0 readiness and existing owner crosswalk](docs/roadmap/v1-readiness.md).
+The published stable remains v0.4.0; release follows verified exit conditions.
 
 - [x] Reconcile Story, photo/render, Cut Desk/audio, transcript/title, color,
       catalog/portability and cross-platform claims against current source,
@@ -521,6 +533,11 @@ not retroactively rename completed project capabilities.
       4K and NLE finishing as separately recorded manual gates.
   - [ ] D5A: add focal interaction, ambient fill and a separately versioned
         bounded custom-easing contract with legacy reopen and output parity.
+        Candidate implementation now uses strict v2 recipes, one revision-pinned
+        focal transaction, verified raw ambient preparation and shared bounded
+        easing. Focused synthetic Monitor/MP4/hash/seek evidence is recorded in
+        [the validation](docs/validation-photo-film-quality.md#d5a-photo-finishing-candidate);
+        fresh whole-branch review and the complete exact-head gate remain open.
   - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
         with legacy reopen, missing-font evidence and output parity.
         Product candidate now implements canonical bilingual runs, measured

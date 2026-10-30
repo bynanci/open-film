@@ -552,6 +552,13 @@ export const nativeTextInspection = (
   signal: AbortSignal,
 ): Promise<NativeTextInspection> =>
   request<NativeTextInspection>(nativeTextPath(input, true), { signal });
+export const photoFillPreviewUrl = (
+  compositionId: string,
+  clipId: string,
+  revision: string,
+  projectId: string,
+): string =>
+  `${prefix}/compositions/${encodeURIComponent(compositionId)}/photo-fill/${encodeURIComponent(clipId)}.png?${new URLSearchParams({ projectId, revision })}`;
 export const captionDownloadUrl = (
   id: string,
   projectId: string,
@@ -960,12 +967,22 @@ export const api = {
     ),
   intelligenceProviders: (signal?: AbortSignal) =>
     request<IntelligenceProviders>("/intelligence/providers", { signal }),
+  sourceWaveforms: (
+    projectId: string,
+    assetIds: string[],
+    signal?: AbortSignal,
+  ) =>
+    post<{
+      projectId: string;
+      entries: import("@openfilm/core").SourceWaveformEvidence[];
+    }>("/intelligence/waveforms", { projectId, assetIds }, signal),
   analyzeIntelligence: (
     assetId: string,
     body: {
       operation: "transcribe" | "waveform" | "scenes";
       language?: "auto" | "zh" | "en" | "ja";
       execution?: "auto" | "cpu" | "gpu";
+      projectId?: string;
     },
   ) =>
     post<{ job: Job }>(

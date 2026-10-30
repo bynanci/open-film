@@ -483,6 +483,32 @@ export default {
       },
     },
     presentation: {
+      setFocus: "Set focus",
+      finishFocus: "Finish focus preview",
+      focusGroup: "Photo focus",
+      focusPoint: "Move photo focus",
+      focusHint:
+        "Click the photo or drag the focus. Arrows move it; Shift moves farther. Release to save, or Escape to cancel.",
+      diptychFocusHint:
+        "Two-photo comparison preserves both photos. Choose a single photo layout to adjust its focus crop.",
+      easing: "Movement pace",
+      linear: "Even pace",
+      easeInOut: "Gentle start and finish",
+      customCurve: "Custom curve",
+      curveX1: "First handle X",
+      curveY1: "First handle Y",
+      curveX2: "Second handle X",
+      curveY2: "Second handle Y",
+      applyEasing: "Apply pace",
+      ambientFill: "Soft photo background",
+      ambientBlur: "Background blur",
+      ambientDim: "Background dimming",
+      applyFill: "Apply background",
+      finishingInvalid:
+        "Keep both curve handles in order between 0 and 1, and check the background values.",
+      fillFailed:
+        "The photo background could not be updated. Wait for the edit to save, then retry.",
+      retryFill: "Retry photo background",
       heading: "Photo direction",
       description:
         "Give this memory its own framing and pace. Changes remain editable.",

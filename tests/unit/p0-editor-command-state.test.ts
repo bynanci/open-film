@@ -12,6 +12,10 @@ import {
   type TimelineEditInput,
 } from "@openfilm/application";
 import { ApiError, type EditorState } from "../../apps/desktop/src/api";
+import {
+  errorDetail,
+  translateError,
+} from "../../apps/desktop/src/i18n/errors";
 import type { CommitTransactionResult } from "../../apps/desktop/src/composables/useTimelineEditor";
 
 // Exercise the production command/autosave path rather than a second UI store.
@@ -21,6 +25,8 @@ const vue = createRequire(
 
 type Editor = {
   state: { value: EditorState | null };
+  message: { value: string };
+  messageDetail: { value: string };
   status: { value: string };
   hasPending: { value: boolean };
   transactionBusy: { readonly value: boolean };
@@ -30,6 +36,7 @@ type Editor = {
     input: TimelineCommand | TimelineCommand[],
     referencedAssets?: readonly MediaAsset[],
     signal?: AbortSignal,
+    options?: { expectedBaseRevision?: string },
   ) => Promise<CommitTransactionResult>;
   flush: () => Promise<boolean>;
   history: (direction: "undo" | "redo") => Promise<boolean>;
@@ -136,8 +143,13 @@ async function mountEditor(
     api,
     ApiError,
     useI18n: () => ({ t: (key: string) => key }),
-    errorDetail: () => "",
-    localizeError: () => "error",
+    errorDetail,
+    localizeError: (error: unknown) =>
+      translateError(
+        error,
+        (key) => key,
+        () => true,
+      ),
     changed,
     edited,
   });
@@ -179,6 +191,41 @@ const gesture: TimelineCommand[] = [
 ];
 
 describe("P0 Inspector / Timeline command-state contract", () => {
+  it("rejects a captured revision after awaited flush before publishing or posting a new transaction", async () => {
+    const flushed = deferred<EditorState>();
+    const api = {
+      editor: vi.fn(async () => initialState()),
+      edit: vi
+        .fn()
+        .mockImplementationOnce(() => flushed.promise)
+        .mockResolvedValue(savedState(11, "r3")),
+    };
+    const { editor, storage } = await mountEditor(api);
+    expect(editor.command({ type: "transform", clipId: "clip", x: 1 })).toBe(
+      true,
+    );
+    const result = editor.commitTransaction(
+      { type: "transform", clipId: "clip", x: 11 },
+      [],
+      undefined,
+      { expectedBaseRevision: "r1" },
+    );
+    await vi.waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));
+    flushed.resolve(savedState(1, "r2"));
+    expect(await result).toEqual({ status: "conflict" });
+    expect(editor.message.value).toBe("errors.timeline.conflict");
+    expect(editor.messageDetail.value).toBe(
+      "Timeline changed since this gesture began. Review the current photo and try again.",
+    );
+    expect(api.edit).toHaveBeenCalledTimes(1);
+    expect(editor.state.value?.revision).toBe("r2");
+    expect(
+      editor.state.value?.composition.tracks[0]?.clips[0]?.transform?.x,
+    ).toBe(1);
+    expect(editor.hasPending.value).toBe(false);
+    expect(storage.has(storageKey)).toBe(false);
+  });
+
   it("routes inspector transform and timeline lock through one optimistic command queue", async () => {
     const initial = initialState();
     let saved = initial;

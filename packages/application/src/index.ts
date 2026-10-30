@@ -6,6 +6,8 @@ export {
   type NativeTextInspection,
 } from "./title-overlays.js";
 import { MotionGenerationService } from "./motion-generation.js";
+import { PhotoPresentationService } from "./photo-presentation.js";
+export * from "./photo-presentation.js";
 export * from "./motion-generation.js";
 import { SourceDraftService } from "./source-draft.js";
 export * from "./source-draft.js";
@@ -368,6 +370,7 @@ function atomicJsonSync(path: string, value: unknown): void {
 export class OpenFilmApplication {
   readonly graphics: GraphicSceneService;
   readonly textOverlays: NativeTextOverlayService;
+  readonly photoPresentation: PhotoPresentationService;
   readonly catalog: ProjectCatalog;
   readonly intelligence: MediaIntelligence;
   readonly transcriptEditor: TranscriptEditor;
@@ -495,6 +498,10 @@ export class OpenFilmApplication {
         (id) => new TimelineEditor(this).get(id).revision,
       );
       this.graphics = new GraphicSceneService(
+        this,
+        (id) => new TimelineEditor(this).get(id).revision,
+      );
+      this.photoPresentation = new PhotoPresentationService(
         this,
         (id) => new TimelineEditor(this).get(id).revision,
       );
@@ -1201,6 +1208,7 @@ export class OpenFilmApplication {
     void this.motionGeneration.dispose().catch(() => undefined);
     this.graphics.close();
     this.textOverlays.close();
+    this.photoPresentation.close();
     this.catalog.close();
   }
 

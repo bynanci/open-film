@@ -31,6 +31,7 @@ import {
   type ProjectSettings,
   type ProjectTimebaseV1,
   type ProjectContentLocale,
+  type PhotoFocalPoint,
   type StoryBeat,
 } from "@openfilm/core";
 import {
@@ -49,13 +50,17 @@ import {
   type EditorState,
   type SourceStatus,
 } from "../api";
-import { useTimelineEditor } from "../composables/useTimelineEditor";
+import {
+  useTimelineEditor,
+  type CommitTransactionOptions,
+} from "../composables/useTimelineEditor";
 import { api } from "../api";
 import Icon from "./Icon.vue";
 import TimelineClip from "./TimelineClip.vue";
 import SourceDetails from "./SourceDetails.vue";
 import PrecisionEditor from "./PrecisionEditor.vue";
 import RecordMonitor from "./RecordMonitor.vue";
+import SequenceWaveform from "./SequenceWaveform.vue";
 import EditDecisionRibbon from "./EditDecisionRibbon.vue";
 import ClipTransformOverlay from "./ClipTransformOverlay.vue";
 import TimecodeField from "./TimecodeField.vue";
@@ -170,6 +175,20 @@ const clipTransformOverlay = ref<InstanceType<
 const pictureAdjusting = ref(false);
 const pictureGestureActive = ref(false);
 const pictureTransactionPending = ref(false);
+const focalEditing = ref(false);
+const focalGestureActive = ref(false);
+const focalTransactionPending = ref(false);
+const focalDraft = shallowRef<Clip | null>(null);
+let focalContext: {
+  key: string;
+  projectId: string;
+  compositionId: string;
+  clipId: string;
+  revision: string;
+  epoch: number;
+} | null = null;
+let focalAbort: AbortController | undefined;
+let focalEpoch = 0;
 const directionReview = ref<InstanceType<typeof SceneDirectionReview> | null>(
   null,
 );
@@ -207,6 +226,8 @@ const historyBusy = computed(
     compositionTransactionBusy.value ||
     pictureGestureActive.value ||
     pictureTransactionPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
     graphicAgentPending.value,
@@ -237,13 +258,20 @@ function command(
     generationImportBusy.value ||
     directionBlocked.value ||
     graphicAgentBusy.value ||
-    graphicAgentPending.value
+    graphicAgentPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value
   )
     return false;
+  if (focalEditing.value) cancelFocal();
   directionPreview.value = null;
   return compositionCommand(input, referencedAssets);
 }
-async function commitSource(input: TimelineCommand, signal?: AbortSignal) {
+async function commitSource(
+  input: TimelineCommand,
+  signal?: AbortSignal,
+  options?: CommitTransactionOptions,
+) {
   if (
     generationImportBusy.value ||
     directionBlocked.value ||
@@ -252,7 +280,7 @@ async function commitSource(input: TimelineCommand, signal?: AbortSignal) {
   )
     return { status: "failed" as const };
   directionPreview.value = null;
-  return compositionCommitTransaction(input, [], signal);
+  return compositionCommitTransaction(input, [], signal, options);
 }
 function templateCommand(
   input: TimelineCommand,
@@ -267,6 +295,8 @@ const hasPending = computed(
     compositionHasPending.value ||
     pictureGestureActive.value ||
     pictureTransactionPending.value ||
+    focalGestureActive.value ||
+    focalTransactionPending.value ||
     !!transcriptEditor.value?.hasPending ||
     !!precisionEditor.value?.hasPending ||
     directionPending.value ||
@@ -278,6 +308,8 @@ async function history(direction: "undo" | "redo") {
   return compositionHistory(direction);
 }
 async function flushInputs() {
+  if (focalTransactionPending.value) return false;
+  cancelFocal();
   clipTransformOverlay.value?.cancel();
   if (!(await flushComposition())) return false;
   if (transcriptEditor.value && !(await transcriptEditor.value.flush()))
@@ -332,6 +364,32 @@ const lastRecordFrame = computed(() =>
   ),
 );
 const recordFrame = computed(() => recordMonitor.value?.frame ?? 0);
+// The editor may publish optimistic drafts while saving. Waveform geometry
+// follows only the last acknowledged document and never becomes an edit owner.
+const savedRecordState = shallowRef<EditorState | null>(null);
+const savedRecordLastFrame = computed(() =>
+  Math.max(
+    0,
+    sequenceFrameAt(
+      savedRecordState.value?.composition.duration ?? 0,
+      projectTimebase.value,
+      "floor",
+    ) - 1,
+  ),
+);
+watch(
+  [state, status, compositionHasPending],
+  ([snapshot, saveStatus, pending]) => {
+    if (
+      snapshot &&
+      snapshot.composition.id === props.compositionId &&
+      saveStatus === "saved" &&
+      !pending
+    )
+      savedRecordState.value = snapshot;
+  },
+  { immediate: true, flush: "post" },
+);
 const recordSplitPending = ref(false);
 const recordIssue = ref("");
 let recordDisposed = false;
@@ -1960,6 +2018,7 @@ function toggleMonitorGuides() {
   showSafeFrame.value = next;
 }
 function togglePlayback() {
+  if (focalEditing.value) cancelFocal();
   if (playbackSourceInfo.value?.previewSupported === false) return;
   if (photoPresentationActive.value) {
     photoPlayer.value?.toggle();
@@ -2200,8 +2259,172 @@ const playbackClip = computed(() => {
           time >= clip.timelineStart &&
           time < clip.timelineStart + clip.timelineDuration,
       );
-  return directionPreview.value ?? fitPreviewAfter.value ?? selectedClip.value;
+  return (
+    focalDraft.value ??
+    directionPreview.value ??
+    fitPreviewAfter.value ??
+    selectedClip.value
+  );
 });
+const focalSessionKey = computed(() =>
+  JSON.stringify([
+    props.projectId,
+    props.compositionId,
+    state.value?.revision,
+    selectedClip.value?.id,
+    selectedAsset.value,
+    props.sourceVersion,
+    props.projectSettings,
+  ]),
+);
+const focalCapable = computed(
+  () =>
+    !props.expertMode &&
+    props.active &&
+    editMode.value === "story" &&
+    graphicPreviewTime.value === undefined &&
+    photoPresentationAllowed.value &&
+    selectedAsset.value?.mediaType === "image" &&
+    selectedClip.value?.layout?.preset !== "diptych" &&
+    !selectedClip.value?.locked &&
+    !clipSourceLocked.value &&
+    !selectedAsset.value?.state.rejected &&
+    !sourceUnavailable.value &&
+    !sourceError.value &&
+    selectedSourceInfo.value?.previewSupported !== false,
+);
+const focalBlocked = computed(
+  () =>
+    !focalCapable.value ||
+    compositionHistoryBusy.value ||
+    compositionTransactionBusy.value ||
+    pictureGestureActive.value ||
+    pictureTransactionPending.value ||
+    directionBlocked.value ||
+    graphicAgentBusy.value ||
+    graphicAgentPending.value ||
+    status.value !== "saved" ||
+    !!precisionEditor.value?.hasPending,
+);
+function cancelFocal() {
+  const wasEditing = focalEditing.value;
+  focalEditing.value = false;
+  focalDraft.value = null;
+  focalContext = null;
+  focalGestureActive.value = false;
+  focalTransactionPending.value = false;
+  focalEpoch++;
+  focalAbort?.abort();
+  focalAbort = undefined;
+  if (wasEditing) photoPlayer.value?.cancelFocus();
+}
+function toggleFocal() {
+  if (focalEditing.value) {
+    cancelFocal();
+    return;
+  }
+  const clip = selectedClip.value;
+  if (!clip || !state.value || focalBlocked.value) return;
+  sourcePlayer.value?.pause();
+  photoPlayer.value?.pause();
+  playing.value = false;
+  clipTransformOverlay.value?.cancel();
+  pictureAdjusting.value = false;
+  directionPreview.value = null;
+  fitPreview.value = null;
+  const detached: Clip = JSON.parse(JSON.stringify(clip));
+  detached.layout = detached.layout
+    ? {
+        ...detached.layout,
+        preset: "hero",
+        focalPoint: detached.layout.focalPoint ?? { x: 0.5, y: 0.5 },
+      }
+    : { version: 1, preset: "hero", focalPoint: { x: 0.5, y: 0.5 } };
+  focalContext = {
+    key: focalSessionKey.value,
+    projectId: props.projectId,
+    compositionId: props.compositionId,
+    clipId: clip.id,
+    revision: state.value.revision,
+    epoch: ++focalEpoch,
+  };
+  focalDraft.value = detached;
+  focalEditing.value = true;
+}
+function previewFocal(point: PhotoFocalPoint) {
+  if (
+    !focalContext ||
+    focalContext.key !== focalSessionKey.value ||
+    !focalDraft.value?.layout ||
+    focalBlocked.value
+  )
+    return;
+  focalDraft.value = {
+    ...focalDraft.value,
+    layout: { ...focalDraft.value.layout, focalPoint: { ...point } },
+  };
+}
+async function commitFocal(point: PhotoFocalPoint) {
+  const context = focalContext;
+  if (
+    !context ||
+    context.key !== focalSessionKey.value ||
+    !focalDraft.value?.layout ||
+    focalBlocked.value
+  ) {
+    cancelFocal();
+    return;
+  }
+  const layout = JSON.parse(
+    JSON.stringify({ ...focalDraft.value.layout, focalPoint: point }),
+  );
+  if (JSON.stringify(layout) === JSON.stringify(selectedClip.value?.layout)) {
+    cancelFocal();
+    return;
+  }
+  focalTransactionPending.value = true;
+  const controller = new AbortController();
+  focalAbort = controller;
+  try {
+    await commitSource(
+      { type: "presentation", clipId: context.clipId, layout },
+      controller.signal,
+      { expectedBaseRevision: context.revision },
+    );
+  } finally {
+    if (context.epoch === focalEpoch) cancelFocal();
+  }
+}
+watch(
+  () =>
+    JSON.stringify([
+      props.projectId,
+      props.compositionId,
+      selectedClip.value?.id,
+      selectedAsset.value,
+      props.sourceVersion,
+      props.projectSettings,
+      props.active,
+      props.expertMode,
+      editMode.value,
+      selectedClip.value?.locked,
+      clipSourceLocked.value,
+    ]),
+  () => {
+    if (focalEditing.value) cancelFocal();
+  },
+);
+watch(
+  () => state.value?.revision,
+  () => {
+    if (focalEditing.value && !focalTransactionPending.value) cancelFocal();
+  },
+);
+watch(focalBlocked, (blocked) => {
+  if (blocked && focalEditing.value && !focalTransactionPending.value)
+    cancelFocal();
+});
+onBeforeUnmount(cancelFocal);
 function toggleFit() {
   showFit.value = !showFit.value;
   skippedClipIds.value = [];
@@ -3158,6 +3381,22 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </div>
+              <SequenceWaveform
+                v-if="savedRecordState"
+                :project-id="projectId"
+                :composition="savedRecordState.composition"
+                :assets="savedRecordState.assets"
+                :revision="savedRecordState.revision"
+                :timebase="projectTimebase"
+                :frame="recordFrame"
+                :max-frame="savedRecordLastFrame"
+                :source-statuses="sourceStatuses"
+                :source-version="sourceVersion"
+                :active="recordActive"
+                :disabled="cutDeskBlocked"
+                v-bind="cutDeskControls.seek"
+                @activity="emit('activity')"
+              />
               <p
                 v-if="
                   recordIssue &&
@@ -3237,6 +3476,13 @@ onBeforeUnmount(() => {
                   :source-version="sourceVersion"
                   :active="active && editMode === 'story'"
                   :look="playbackLook"
+                  :focal-editing="focalEditing"
+                  :focal-disabled="focalBlocked || focalTransactionPending"
+                  :focal-session-key="focalSessionKey"
+                  @focal-preview="previewFocal"
+                  @focal-commit="commitFocal"
+                  @focal-activity="focalGestureActive = $event"
+                  @focal-cancelled="cancelFocal"
                   ><template #default="slot"
                     ><NativeCaptionPreview
                       v-if="state.composition.captionTracks?.length"
@@ -4431,7 +4677,10 @@ onBeforeUnmount(() => {
                   :assets="state.assets"
                   :frame="projectSettings"
                   :allow-photo-presentation="photoPresentationAllowed"
+                  :focal-editing="focalEditing"
+                  :focal-disabled="focalBlocked"
                   @command="command"
+                  @focus="toggleFocal"
                 />
                 <NativeTextFontStatus
                   v-if="selectedClip.title"

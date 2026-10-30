@@ -223,6 +223,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow-y: auto;
   background: var(--editor-inset);
 }
 
@@ -237,6 +238,10 @@
 .cut-desk-record .record-frame {
   height: 100%;
   max-width: 100%;
+}
+
+.cut-desk-record:has(.sequence-waveform) .record-monitor {
+  min-height: 6rem;
 }
 
 .cut-desk-monitor-actions {
@@ -1097,12 +1102,27 @@ button.editor-beat-heading:hover {
   transform-origin: center;
 }
 
-.editor-source-screen .photo-presentation-layers > img {
+.editor-source-screen .photo-presentation-layers > img,
+.editor-source-screen .photo-presentation-raw > img {
   position: absolute;
   max-width: none;
   max-height: none;
   object-fit: fill;
   border: 0;
+}
+
+.photo-easing-curve {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: var(--of-space-2) 0;
+  color: var(--of-accent);
+}
+
+.photo-easing-curve path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
 .editor-source-screen .photo-presentation-title,
