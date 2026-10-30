@@ -177,6 +177,11 @@ Verify34m39s→12m55s; PR71 merged into PR69 before main so the known Pages fix
 ships with Windows recovery. Final integration/main Verify and Pages outcomes
 are recorded on PR69; see [validation](docs/validation-ci-pages-e2e.md).
 
+The later documentation reorganization `71858cd` introduced three links outside
+the website build root and two research-format failures. Its content and locales
+are retained; repository-source links and focused regressions restore the same
+strict website/format gates. Follow-up evidence is appended to that record.
+
 ## Released 0.4.0 source integration
 
 Release `v0.4.0` retains project schema 1.0.0. This maintenance pass hardens
