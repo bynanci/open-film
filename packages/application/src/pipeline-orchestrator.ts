@@ -331,10 +331,10 @@ export class PipelineService {
       customParams: options.customParams,
     };
 
-    const inputSnapshot: PipelineInputSnapshot = {
+    const inputSnapshot: PipelineInputSnapshot = structuredClone({
       ...rawSnapshot,
       inputDigest: computeInputSnapshotDigest(rawSnapshot),
-    };
+    });
 
     const runId = `run_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const now = new Date().toISOString();
@@ -1443,7 +1443,7 @@ export class PipelineService {
             version: 1 as const,
             mode: "new-cut" as const,
           };
-          const adoptedId = `pipeline:${run.id}:${step.id}`;
+          const adoptedId = `pipeline:${run.id}:${createHash("sha256").update(step.id).digest("hex").slice(0, 16)}`;
           const existing =
             target.mode === "new-cut"
               ? this.app.project.timelines.find((c) => c.id === adoptedId)
@@ -1455,7 +1455,9 @@ export class PipelineService {
           const baseRevision =
             target.mode === "resolve"
               ? target.baseRevision
-              : String(run.expectedRevision);
+              : createHash("sha256")
+                  .update(String(run.expectedRevision))
+                  .digest("hex");
           let composition;
           if (target.mode === "resolve") {
             if (run.inputSnapshot.customParams?.subtitleText)
@@ -1555,7 +1557,8 @@ export class PipelineService {
               targetMode: target.mode,
               compositionId: composition.id,
               baseRevision,
-              producedRevision: newRev,
+              producedRevision: new TimelineEditor(this.app).get(composition.id)
+                .revision,
               pinDigest: this.pinDigest(composition.id),
               duration: composition.duration,
             },

@@ -47,11 +47,18 @@ export function validateUserOverrideState(
     if (!descriptor.enumerable || !("value" in descriptor))
       fail(`.${String(key)}`, "expected enumerable JSON data");
   }
+  for (const key of ["version", "isUserPinned", "lockedAttributes"])
+    if (!Object.hasOwn(data, key))
+      fail(`.${key}`, "expected an own JSON field");
   if (data.version !== 1) fail(".version", "unsupported override version");
   if (typeof data.isUserPinned !== "boolean")
     fail(".isUserPinned", "expected a boolean");
   const list = data.lockedAttributes;
-  if (!Array.isArray(list) || list.length > 4)
+  if (
+    !Array.isArray(list) ||
+    Object.getPrototypeOf(list) !== Array.prototype ||
+    list.length > 4
+  )
     fail(".lockedAttributes", "expected at most four attributes");
   const values = list as unknown[];
   for (const key of Reflect.ownKeys(values)) {

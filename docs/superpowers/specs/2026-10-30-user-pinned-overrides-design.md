@@ -1,6 +1,6 @@
 # User-Pinned Overrides / Immutable Direct Edits
 
-Date: 2026-10-30. Design candidate for coordinator audit; no product implementation.
+Date: 2026-10-30. Coordinator-approved implementation contract.
 Inspected exact base: `e1255b1a8a83260149211d909cca8c1a50948c6b`.
 The user authorized the feature and subagent-driven roadmap work. The decisions
 below are engineering proposals within that scope, not claims of prior implementation.
@@ -127,23 +127,24 @@ original incoming transition only on the left as today. Scene photoDepth retains
 its scene/node/recipe IDs and original/mask/background references and hashes.
 No synthesized scene-to-clip relationship is added when one does not exist.
 
-| Operation                                                                                                | Pin state and permitted change                                                                                                                                            |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Direct trim                                                                                              | Authorize target range/duration edit; add inOutRange+timing. Existing source/edit guards still run.                                                                       |
-| Direct speed                                                                                             | Authorize speed/duration edit; add inOutRange+timing; retain exact resolved source window.                                                                                |
-| Split                                                                                                    | Authorize both halves; add inOutRange+timing to each, preserve other categories.                                                                                          |
-| Photo duration / reorder / audio.move                                                                    | Pin timing on explicit target; neighbors may move only if unpinned. Reorder must not move a pinned neighbor to make room.                                                 |
-| Direct motion or explicit removal                                                                        | Add motionPreset+timing. Full recipe including easing/endpoints/absence is preserved.                                                                                     |
-| Direct photo-depth create/update/removal                                                                 | Pin GraphicScene with photoDepth+timing, including linked nodes and resources.                                                                                            |
-| Other direct Clip/GraphicScene presentation, transforms, look, title, node edits                         | Pin timing and retain complete payload against automation. UI describes the object as pinned, not just position.                                                          |
-| Parent film/beat look or future color change                                                             | Direct scope is not permission to change pinned descendants through inheritance. Reject effective changes; a prior explicit per-clip edit can establish a local override. |
-| Delete / replace explicit target                                                                         | Permit target replacement/removal under existing lock/required-source rules; replacement pins its new payload. A pin is not a lock against its author.                    |
-| Automatic suggestions / direction acceptance / shortening / regeneration                                 | Never clear pins; preserve pinned payload/effective rendering. Reviewed suggestions remain automatic for this purpose.                                                    |
-| Pin command                                                                                              | Pin current full object at its exact saved coordinates; timing plus present supported categories.                                                                         |
-| Unpin command                                                                                            | Clear only selected owner's pin state, retain payload and all source/clip/node locks. Does not re-solve.                                                                  |
-| Unlock & Re-solve                                                                                        | Clear selected pins and solve selected Composition/beat in one detached transaction. Failure rolls back the unpin too. Label text explains it releases only user pins.    |
-| Undo / Redo                                                                                              | Restore prior/pending document including pin metadata atomically. History stays session-local as today; reopen retains latest saved state, not old session undo stacks.   |
-| Named Version Restore                                                                                    | Explicit snapshot replacement intentionally restores/removes pin state and values exactly. Existing source/clip Restore lock checks must not be weakened; do not invent   |
+| Operation                                                                                                | Pin state and permitted change                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Direct trim                                                                                              | Authorize target range/duration edit; add inOutRange+timing. Existing source/edit guards still run.                                                                                                                                                                            |
+| Direct speed                                                                                             | Authorize speed/duration edit; add inOutRange+timing; retain exact resolved source window.                                                                                                                                                                                     |
+| Split                                                                                                    | Authorize both halves; add inOutRange+timing to each, preserve other categories.                                                                                                                                                                                               |
+| Photo duration / reorder / audio.move                                                                    | Pin timing on explicit target; neighbors may move only if unpinned. Reorder must not move a pinned neighbor to make room.                                                                                                                                                      |
+| Direct motion or explicit removal                                                                        | Add motionPreset+timing. Full recipe including easing/endpoints/absence is preserved.                                                                                                                                                                                          |
+| Direct photo-depth create/update/removal                                                                 | Pin GraphicScene with photoDepth+timing, including linked nodes and resources.                                                                                                                                                                                                 |
+| Other direct Clip/GraphicScene presentation, transforms, look, title, node edits                         | Pin timing and retain complete payload against automation. UI describes the object as pinned, not just position.                                                                                                                                                               |
+| Parent film/beat look or future color change                                                             | Direct scope is not permission to change pinned descendants through inheritance. Reject effective changes; a prior explicit per-clip edit can establish a local override.                                                                                                      |
+| Delete / replace explicit target                                                                         | Permit target replacement/removal under existing lock/required-source rules; replacement pins its new payload. A pin is not a lock against its author.                                                                                                                         |
+| Automatic server suggestions / direction acceptance / regenerate-beat shortening / regeneration          | Never clear pins; preserve pinned payload/effective rendering. Server-owned automatic writers retain automatic origin.                                                                                                                                                         |
+| Explicit acceptance of selected existing Fit-to-target commands                                          | Existing Fit ingress submits exact reviewed trim/duration/delete commands through generic edit. These acknowledged user edits may pin newly edited unpinned targets; previews skip existing pinned owners and use the authoritative clock. No client origin field is accepted. |
+| Pin command                                                                                              | Pin current full object at its exact saved coordinates; timing plus present supported categories.                                                                                                                                                                              |
+| Unpin command                                                                                            | Clear only selected owner's pin state, retain payload and all source/clip/node locks. Does not re-solve.                                                                                                                                                                       |
+| Unlock & Re-solve                                                                                        | Clear selected pins and solve selected Composition/beat in one detached transaction. Failure rolls back the unpin too. Label text explains it releases only user pins.                                                                                                         |
+| Undo / Redo                                                                                              | Restore prior/pending document including pin metadata atomically. History stays session-local as today; reopen retains latest saved state, not old session undo stacks.                                                                                                        |
+| Named Version Restore                                                                                    | Explicit snapshot replacement intentionally restores/removes pin state and values exactly. Existing source/clip Restore lock checks must not be weakened; do not invent                                                                                                        |
 | an existing GraphicScene-node Restore lock gate absent from this base. No auto-unpin path is introduced. |
 
 Mutation origin is server-owned context, never a client/provider field:
@@ -165,8 +166,7 @@ and explicit origin. Helpers may use `Required<TimelineEditContext>` after
 validation; do not add a competing fourth-argument contract for D2B. Generic POST bodies cannot
 claim history/restore to bypass constraints. Explicit reviewed operations that
 should supersede a pin require the actual typed unpin action; preview approval
-alone is insufficient. Batch direct edits authorize only their named targets;
-side effects on other pinned objects remain conflicts.
+alone is insufficient. Batch direct edits authorize only their named targets across the complete explicit transaction; side effects on untouched pinned objects remain conflicts. Pins attach to the final acknowledged batch. Automatic commands inside a batch preserve earlier direct intent as provisional anchors.
 
 ## Bounded incremental constraints and unsatisfied results
 
@@ -385,3 +385,18 @@ objects after each transaction; do not assert UI flags alone. Browser verificati
 is a later coordinator-leased step; ports 4310/1420 and full Vitest/native benchmarks
 are not used during design. No implementation or test completion claim follows
 from this document.
+
+## Coordinator rulings during implementation
+
+- Fit-to-target retains its existing typed generic-edit ingress. Accepted selected
+  commands are explicit acknowledged user edits and may create pins on formerly
+  mutable targets. The cost is additional anchors on later re-solve. Preview or
+  provider work cannot overwrite existing pins; no origin payload or invented
+  acceptance receipt is introduced.
+- Pin promotion only upgrades schema 1.0.0 to 1.1.0. It never rewrites a newer
+  validated version; a future capability owner must extend schema dispatch.
+- Current composition-scope incremental placement retains authored gaps and beat
+  boundaries. Feasible redistributions requiring a moved beat boundary fail
+  explicitly instead of moving a pin. Resolve cannot replace captions without
+  explicit caption editing intent. Ambiguous resolve retries may require a fresh
+  preparation; deterministic new-cut retry preserves the already accepted cut.

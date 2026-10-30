@@ -172,6 +172,12 @@ describe("PipelineService Integration", () => {
       targetMode: "new-cut",
       compositionId: app.project.timelines.at(-1)?.id,
     });
+    expect(result.artifacts[0]?.metadata?.baseRevision).toMatch(
+      /^[a-f0-9]{64}$/u,
+    );
+    expect(result.artifacts[0]?.metadata?.producedRevision).toMatch(
+      /^[a-f0-9]{64}$/u,
+    );
     save.mockRestore();
   });
   it("pin_after_async_prepare_invalidates_adoption", async () => {
@@ -202,6 +208,19 @@ describe("PipelineService Integration", () => {
     expect(app.project.timelines).toHaveLength(0);
   });
 
+  it("new run input snapshot is detached from caller-owned preparation options", async () => {
+    const options = {
+      storyId: "story_pipeline_1",
+      compositionTarget: { version: 1 as const, mode: "new-cut" as const },
+      assetIds: ["asset_a"],
+      customParams: { subtitleText: "Before" },
+    };
+    const run = await app.pipeline.createRun("guided-story-to-video", options);
+    options.assetIds.push("asset_b");
+    options.customParams.subtitleText = "After";
+    expect(run.inputSnapshot.assetIds).toEqual(["asset_a"]);
+    expect(run.inputSnapshot.customParams?.subtitleText).toBe("Before");
+  });
   it("same_story_multiple_cuts_never_guess", async () => {
     const selected = app.compose("story_pipeline_1"),
       other = app.compose("story_pipeline_1");

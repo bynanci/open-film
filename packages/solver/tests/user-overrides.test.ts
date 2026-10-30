@@ -103,6 +103,22 @@ describe("user pin mutation policy", () => {
       ).sourceOut,
     ).toBe(3);
   });
+  it("explicit pin includes an already present source range category", () => {
+    const after = applyTimelineCommand(
+      doc(),
+      assets,
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "a" },
+        pinned: true,
+      },
+      context,
+    );
+    expect(clip(after).userOverrides?.lockedAttributes).toEqual([
+      "inOutRange",
+      "timing",
+    ]);
+  });
   it("split pins both ranges and retains the left identity", () => {
     const after = applyTimelineCommand(
       doc(),
@@ -265,6 +281,44 @@ describe("user pin mutation policy", () => {
     expect(
       after.composition.tracks.at(-1)!.clips[0]!.userOverrides?.isUserPinned,
     ).toBe(true);
+  });
+  it("explicit clip lock toggles preserve their own pin without pinning unrelated legacy locks", () => {
+    const d = applyTimelineCommand(
+      doc(),
+      assets,
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "a" },
+        pinned: true,
+      },
+      context,
+    );
+    const locked = applyTimelineCommand(
+      d,
+      assets,
+      { type: "lock", clipId: "a", locked: true },
+      context,
+    );
+    expect(clip(locked).locked).toBe(true);
+    expect(clip(locked).userOverrides).toEqual(clip(d).userOverrides);
+    const unlocked = applyTimelineCommand(
+      locked,
+      assets,
+      { type: "lock", clipId: "a", locked: false },
+      context,
+    );
+    expect(clip(unlocked).locked).toBe(false);
+    expect(clip(unlocked).userOverrides).toEqual(clip(d).userOverrides);
+    expect(
+      clip(
+        applyTimelineCommand(
+          doc(),
+          assets,
+          { type: "lock", clipId: "a", locked: true },
+          context,
+        ),
+      ).userOverrides,
+    ).toBeUndefined();
   });
   it("scene upsert rejects injected metadata", () => {
     const scene = {

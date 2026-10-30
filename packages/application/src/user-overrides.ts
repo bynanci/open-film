@@ -8,7 +8,7 @@ export function promotePinnedProject(
   project: OpenFilmProject,
 ): OpenFilmProject {
   const candidate = structuredClone(project);
-  if (hasUserOverrideState(candidate))
+  if (candidate.schemaVersion === "1.0.0" && hasUserOverrideState(candidate))
     candidate.schemaVersion = PINNED_PROJECT_SCHEMA_VERSION;
   return candidate;
 }

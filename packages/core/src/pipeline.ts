@@ -106,6 +106,15 @@ export function validatePipelineCompositionTarget(
   )
     throw new Error("An explicit composition target is required.");
   const data = value as Record<string, unknown>;
+  for (const key of Reflect.ownKeys(data)) {
+    const descriptor = Object.getOwnPropertyDescriptor(data, key)!;
+    if (
+      typeof key !== "string" ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    )
+      throw new Error("Invalid composition target JSON data.");
+  }
   const allowed =
     data.mode === "new-cut"
       ? ["version", "mode"]

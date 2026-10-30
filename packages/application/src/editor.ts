@@ -235,7 +235,7 @@ function command(value: unknown, index: number): TimelineCommand {
     const seen = new Set<string>();
     for (let i = 0; i < data.targets.length; i++) {
       const target = overrideTarget(data.targets[i], `${path}.targets[${i}]`);
-      const key = JSON.stringify(target);
+      const key = overrideTargetKey(target);
       if (seen.has(key)) invalid(`${path}.targets`, "duplicate target");
       seen.add(key);
     }
@@ -1603,6 +1603,25 @@ export class TimelineEditor {
         for (const scene of before.composition.graphicScenes ?? [])
           if (scene.userOverrides)
             metadata.set(`graphic-scene:${scene.id}`, scene.userOverrides);
+        const provisional = new Map(metadata);
+        const moveOffsets = new Map<string, number>();
+        const attachProvisional = () => {
+          for (const track of next.composition.tracks)
+            for (const clip of track.clips) {
+              const pin = provisional.get(`clip:${clip.id}`);
+              if (pin)
+                clip.userOverrides = structuredClone(pin) as NonNullable<
+                  typeof clip.userOverrides
+                >;
+            }
+          for (const scene of next.composition.graphicScenes ?? []) {
+            const pin = provisional.get(`graphic-scene:${scene.id}`);
+            if (pin)
+              scene.userOverrides = structuredClone(pin) as NonNullable<
+                typeof scene.userOverrides
+              >;
+          }
+        };
         const detachTargetMetadata = () => {
           for (const track of next.composition.tracks)
             for (const clip of track.clips)
@@ -1621,10 +1640,54 @@ export class TimelineEditor {
           const compiled = structuredClone(item);
           if (compiled.type === "graphic.scene.upsert")
             delete compiled.scene.userOverrides;
+          if (item.type === "user-pin.resolve")
+            for (const target of item.targets)
+              provisional.set(overrideTargetKey(target), {
+                version: 1,
+                isUserPinned: false,
+                lockedAttributes: [],
+              });
+          if (
+            item.type === "regenerate-beat" ||
+            item.type === "user-pin.resolve"
+          )
+            attachProvisional();
           next = applyTimelineCommand(next, assets, compiled, {
             timebase: resolveProjectTimebase(this.application.project.settings),
             origin: item.type === "regenerate-beat" ? "automatic" : "direct",
           });
+          if (item.type !== "regenerate-beat") {
+            const written = new Set(
+              directOverrideTargets([item]).map(overrideTargetKey),
+            );
+            for (const track of next.composition.tracks)
+              for (const clip of track.clips)
+                if (
+                  (written.has(`clip:${clip.id}`) ||
+                    !originalClipIds.has(clip.id)) &&
+                  clip.userOverrides
+                ) {
+                  provisional.set(
+                    `clip:${clip.id}`,
+                    structuredClone(clip.userOverrides),
+                  );
+                  if (
+                    (item.type === "reorder" || item.type === "audio.move") &&
+                    clip.id === item.clipId &&
+                    clip.userOverrides.manualOffset !== undefined
+                  )
+                    moveOffsets.set(clip.id, clip.userOverrides.manualOffset);
+                }
+            for (const scene of next.composition.graphicScenes ?? [])
+              if (
+                written.has(`graphic-scene:${scene.id}`) &&
+                scene.userOverrides
+              )
+                provisional.set(
+                  `graphic-scene:${scene.id}`,
+                  structuredClone(scene.userOverrides),
+                );
+          }
           detachTargetMetadata();
         }
         // Accumulate categories and offsets from the authoritative pre-gesture metadata.
@@ -1647,6 +1710,12 @@ export class TimelineEditor {
           timebase: resolveProjectTimebase(this.application.project.settings),
           origin: "direct",
         });
+        for (const track of next.composition.tracks)
+          for (const clip of track.clips) {
+            const offset = moveOffsets.get(clip.id);
+            if (offset !== undefined && clip.userOverrides?.isUserPinned)
+              clip.userOverrides.manualOffset = offset;
+          }
       } catch (error) {
         if (error instanceof ApplicationError) throw error;
         throw new TimelineEditorError(

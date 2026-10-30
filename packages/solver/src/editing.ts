@@ -375,6 +375,7 @@ function protectedClip(
   clip: Clip,
 ): boolean {
   return (
+    !!clip.userOverrides?.isUserPinned ||
     !!clip.locked ||
     !!findAsset(assets, clip.assetId).state.locked ||
     !!(
@@ -872,7 +873,7 @@ export function applyTimelineCommand(
   if (origin === "direct")
     for (const target of writes) {
       if (target.kind === "clip") {
-        if (command.type === "audio.add") continue;
+        if (command.type === "audio.add" || command.type === "lock") continue;
         const { clip } = findClip(document, target.clipId);
         if (
           clip.locked ||
@@ -916,7 +917,7 @@ export function applyTimelineCommand(
       scope: { kind: "beat", beatId: command.beatId },
       mode: command.mode,
     });
-    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     return result.document;
   }
   let next = command.type.startsWith("user-pin.")
@@ -939,7 +940,7 @@ export function applyTimelineCommand(
       context.timebase,
       writes,
     );
-    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     next = result.document;
   }
   next = applyOverridePolicy(document, next, [command], {
@@ -956,7 +957,7 @@ export function applyTimelineCommand(
       scope: command.scope,
       mode: command.mode,
     });
-    if (!result.ok) pinConflict(result.conflicts[0]?.message);
+    if (!result.ok) pinConflict(result.conflicts[0]?.message, result.conflicts);
     return result.document;
   }
   return next;
@@ -1573,9 +1574,17 @@ export function suggestShortening(
   document: EditorDocument,
   assets: MediaAsset[],
   targetDuration: number,
+  context: TimelineEditContext = {},
 ): ShorteningSuggestion[] {
   finite(targetDuration, "Target duration", 0, true);
-  return shorteningPlan(document, assets, targetDuration);
+  return shorteningPlan(
+    document,
+    assets,
+    targetDuration,
+    undefined,
+    [],
+    context,
+  );
 }
 
 function shorteningState(
@@ -1583,6 +1592,7 @@ function shorteningState(
   assets: MediaAsset[],
   targetDuration: number,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): string {
   return JSON.stringify({
     composition: document.composition,
@@ -1591,6 +1601,7 @@ function shorteningState(
     assets,
     targetDuration,
     excludedClipIds,
+    ...(context.timebase ? { timebase: context.timebase } : {}),
   });
 }
 
@@ -1598,6 +1609,7 @@ function applyShorteningCommands(
   document: EditorDocument,
   assets: MediaAsset[],
   commands: TimelineCommand[],
+  context: TimelineEditContext = {},
 ): EditorDocument {
   let current = document;
   for (const command of commands) {
@@ -1612,7 +1624,10 @@ function applyShorteningCommands(
     const clip = findClip(current, command.clipId).clip;
     if (protectedClip(current, assets, clip))
       fail("This shortening suggestion would change locked or required media.");
-    const next = applyTimelineCommand(current, assets, command);
+    const next = applyTimelineCommand(current, assets, command, {
+      ...context,
+      origin: "automatic",
+    });
     if (
       command.type !== "delete" &&
       findClip(next, clip.id).clip.timelineDuration >
@@ -1633,6 +1648,7 @@ export function prepareShorteningPlan(
   assets: MediaAsset[],
   targetDuration: number,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): PreparedShorteningPlan {
   finite(targetDuration, "Target duration", 0, true);
   const excluded = [...new Set(excludedClipIds)].sort();
@@ -1642,8 +1658,15 @@ export function prepareShorteningPlan(
     targetDuration,
     undefined,
     excluded,
+    context,
   );
-  const baseState = shorteningState(document, assets, targetDuration, excluded);
+  const baseState = shorteningState(
+    document,
+    assets,
+    targetDuration,
+    excluded,
+    context,
+  );
   const beforeDuration = document.composition.duration;
   const prepare = (
     commands: TimelineCommand[],
@@ -1661,7 +1684,7 @@ export function prepareShorteningPlan(
   const suggestions = steps.flatMap((step) => {
     let next: EditorDocument;
     try {
-      next = applyShorteningCommands(document, assets, [step.command]);
+      next = applyShorteningCommands(document, assets, [step.command], context);
     } catch (error) {
       if (error instanceof TimelineEditingError) return [];
       throw error;
@@ -1703,11 +1726,12 @@ export function shorteningCommands(
   targetDuration: number,
   preview: PreparedShorteningPlan | ShorteningSuggestionPreview,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): TimelineCommand[] {
   const excluded = [...new Set(excludedClipIds)].sort();
   if (
     preview.baseState !==
-      shorteningState(document, assets, targetDuration, excluded) ||
+      shorteningState(document, assets, targetDuration, excluded, context) ||
     JSON.stringify(preview.excludedClipIds) !== JSON.stringify(excluded) ||
     preview.commandFingerprint !== JSON.stringify(preview.commands) ||
     preview.commands.some(
@@ -1717,7 +1741,12 @@ export function shorteningCommands(
     fail(
       "This shortening suggestion is stale. Review the suggestions for the current cut and try again.",
     );
-  const next = applyShorteningCommands(document, assets, preview.commands);
+  const next = applyShorteningCommands(
+    document,
+    assets,
+    preview.commands,
+    context,
+  );
   if (
     Math.abs(
       document.composition.duration -
@@ -1737,6 +1766,7 @@ function shorteningPlan(
   targetDuration: number,
   onlyBeat?: string,
   excludedClipIds: string[] = [],
+  context: TimelineEditContext = {},
 ): ShorteningSuggestion[] {
   let current = document;
   const suggestions: ShorteningSuggestion[] = [];
@@ -1758,9 +1788,17 @@ function shorteningPlan(
   function offer(command: TimelineCommand, reason: string): boolean {
     let next: EditorDocument;
     try {
-      next = applyTimelineCommand(current, assets, command);
+      next = applyTimelineCommand(current, assets, command, {
+        ...context,
+        origin: "automatic",
+      });
     } catch (error) {
-      if (error instanceof TimelineEditingError) return false;
+      if (
+        error instanceof TimelineEditingError ||
+        (error instanceof ApplicationError &&
+          error.code === "timeline.pinConflict")
+      )
+        return false;
       throw error;
     }
     const secondsSaved =

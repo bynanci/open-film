@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyTimelineCommand,
   solveIncremental,
+  prepareShorteningPlan,
+  shorteningCommands,
   placeDirectEdit,
   type EditorDocument,
 } from "../src/index.js";
@@ -111,6 +113,28 @@ describe("bounded pinned placement", () => {
     ).toThrow(/pin/iu);
     expect(d).toEqual(copy);
   });
+  it("pin conflicts expose bounded owner identities without source paths", () => {
+    try {
+      applyTimelineCommand(
+        doc(),
+        assets,
+        { type: "duration", clipId: "a", duration: 4 },
+        { timebase: clock, origin: "direct" },
+      );
+      throw new Error("Expected pin conflict");
+    } catch (error) {
+      const conflict = error as {
+        code: string;
+        params?: { pinTargets?: string };
+      };
+      expect(conflict.code).toBe("timeline.pinConflict");
+      expect(JSON.parse(conflict.params?.pinTargets ?? "[]")).toContainEqual({
+        kind: "clip",
+        clipId: "b",
+      });
+      expect(conflict.params?.pinTargets).not.toContain("file:");
+    }
+  });
   it("regenerate_fills_only_mutable_intervals", () => {
     const d = doc();
     const result = solveIncremental({
@@ -153,6 +177,128 @@ describe("bounded pinned placement", () => {
           .sort((a, b) => a.timelineStart - b.timelineStart)
           .map((c) => c.assetId),
       ).toEqual(["c", "b", "a"]);
+  });
+  it("backtracks independent required orders across multiple anchors", () => {
+    const d = doc();
+    d.composition.duration = 13;
+    d.composition.tracks[0]!.clips.push(
+      {
+        id: "d",
+        assetId: "d",
+        beatId: "beat",
+        timelineStart: 8,
+        timelineDuration: 2,
+        userOverrides: pin,
+      },
+      {
+        id: "e",
+        assetId: "e",
+        beatId: "beat",
+        timelineStart: 10,
+        timelineDuration: 3,
+      },
+    );
+    d.story.beats[0]!.candidateAssetIds = ["a", "b", "c", "d", "e"];
+    d.story.beats[0]!.constraints = [
+      { type: "asset-order", assetIds: ["e", "d"] },
+      { type: "asset-order", assetIds: ["a", "b"] },
+    ];
+    const more = [
+      ...assets,
+      ...["d", "e"].map((id) => ({ ...assets[0]!, id })),
+    ];
+    const result = solveIncremental({
+      baseline: d,
+      assets: more,
+      timebase: clock,
+      scope: { kind: "composition" },
+      mode: "regenerate",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(get(result.document, "b")).toEqual(get(d, "b"));
+      expect(get(result.document, "d")).toEqual(get(d, "d"));
+      const order = result.document.composition.tracks
+        .flatMap((t) => t.clips)
+        .sort((a, b) => a.timelineStart - b.timelineStart)
+        .map((c) => c.assetId);
+      expect(order.indexOf("a")).toBeLessThan(order.indexOf("b"));
+      expect(order.indexOf("e")).toBeLessThan(order.indexOf("d"));
+    }
+  });
+  it("allocates integer frame budgets across gaps to meet a hard beat minimum", () => {
+    const d = doc();
+    Object.assign(d.story.beats[0]!, {
+      minDuration: 8,
+      targetDuration: 8,
+      maxDuration: 8,
+    });
+    const result = solveIncremental({
+      baseline: d,
+      assets,
+      timebase: clock,
+      scope: { kind: "beat", beatId: "beat" },
+      mode: "regenerate",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(get(result.document, "b")).toEqual(get(d, "b"));
+      expect(
+        result.document.composition.tracks
+          .flatMap((t) => t.clips)
+          .reduce((sum, c) => sum + c.timelineDuration, 0),
+      ).toBeCloseTo(8, 9);
+    }
+  });
+  it("fractional off-grid anchors retain exact bytes while new clips fit both clocks", () => {
+    const d = doc();
+    const fractional = {
+      version: 1 as const,
+      rateNumerator: 30000,
+      rateDenominator: 1001,
+      dropFrame: false,
+    };
+    Object.assign(get(d, "b"), {
+      timelineStart: 3.001,
+      timelineDuration: 1.998,
+      sourceIn: 0.00013,
+      sourceOut: 1.99813,
+    });
+    Object.assign(d.story.beats[0]!, {
+      minDuration: 7.9,
+      targetDuration: 8,
+      maxDuration: 8,
+    });
+    const result = solveIncremental({
+      baseline: d,
+      assets,
+      timebase: fractional,
+      scope: { kind: "composition" },
+      mode: "regenerate",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(get(result.document, "b")).toEqual(get(d, "b"));
+      expect(
+        resolveClipFrameRange(get(result.document, "b"), fractional),
+      ).toEqual(resolveClipFrameRange(get(d, "b"), fractional));
+    }
+  });
+  it("shortening previews use the shared authoritative clock and never target pins", () => {
+    const d = doc();
+    const context = { timebase: clock, origin: "automatic" as const };
+    const plan = prepareShorteningPlan(d, assets, 7, [], context);
+    expect(plan.secondsSaved).toBeGreaterThan(0);
+    const commands = shorteningCommands(d, assets, 7, plan, [], context);
+    expect(
+      commands.every(
+        (command) => !("clipId" in command) || command.clipId !== "b",
+      ),
+    ).toBe(true);
+    let after = d;
+    for (const command of commands)
+      after = applyTimelineCommand(after, assets, command, context);
+    expect(get(after, "b")).toEqual(get(d, "b"));
   });
   it("outside beat is unchanged", () => {
     const d = doc();

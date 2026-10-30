@@ -1,3 +1,4 @@
+import type { PinConflict } from "./pinned-placement.js";
 import {
   ApplicationError,
   filmLookMatrix,
@@ -18,8 +19,21 @@ export interface TimelineEditContext {
 }
 export function pinConflict(
   message = "The edit conflicts with a user pin.",
+  conflicts: readonly PinConflict[] = [],
 ): never {
-  throw new ApplicationError("timeline.pinConflict", message, 409);
+  const targets = conflicts
+    .flatMap((c) => c.targets)
+    .filter(
+      (target) =>
+        (target.kind === "clip" ? target.clipId : target.sceneId).length <= 256,
+    )
+    .slice(0, 20);
+  throw new ApplicationError(
+    "timeline.pinConflict",
+    message,
+    409,
+    targets.length ? { pinTargets: JSON.stringify(targets) } : undefined,
+  );
 }
 /** Compare full JSON payloads, including future fields, independent of key order. */
 export function sameOverridePayload(a: unknown, b: unknown): boolean {
@@ -58,8 +72,7 @@ export function directOverrideTargets(
       return [{ kind: "graphic-scene", sceneId: command.scene.id }];
     if (command.type === "graphic.scene.remove")
       return [{ kind: "graphic-scene", sceneId: command.sceneId }];
-    if ("clipId" in command && command.type !== "lock")
-      return [{ kind: "clip", clipId: command.clipId }];
+    if ("clipId" in command) return [{ kind: "clip", clipId: command.clipId }];
     return [];
   });
 }
@@ -124,7 +137,22 @@ export function applyOverridePolicy(
   const authorized = new Set(
     direct ? directOverrideTargets(commands).map(overrideTargetKey) : [],
   );
+  const released = new Set<string>();
+  for (const command of commands) {
+    if (command.type === "delete") released.add(`clip:${command.clipId}`);
+    if (command.type === "graphic.scene.remove")
+      released.add(`graphic-scene:${command.sceneId}`);
+    if (command.type === "user-pin.set" && !command.pinned)
+      released.add(overrideTargetKey(command.target));
+    if (command.type === "user-pin.resolve")
+      for (const target of command.targets)
+        released.add(overrideTargetKey(target));
+  }
   for (const [key, previous] of old) {
+    if (authorized.has(key) && !current.has(key) && !released.has(key))
+      pinConflict(
+        "Only an explicit delete or user-pin release may remove the named owner.",
+      );
     if (!previous.owner.userOverrides?.isUserPinned || authorized.has(key))
       continue;
     const candidate = current.get(key);
@@ -133,7 +161,21 @@ export function applyOverridePolicy(
       previous.trackId !== candidate.trackId ||
       !sameOverridePayload(previous.owner, candidate.owner)
     )
-      pinConflict();
+      pinConflict(undefined, [
+        {
+          code: "capacity",
+          targets: [
+            "timelineStart" in previous.owner
+              ? { kind: "clip", clipId: previous.owner.id }
+              : { kind: "graphic-scene", sceneId: previous.owner.id },
+          ],
+          beatIds:
+            "beatId" in previous.owner && previous.owner.beatId
+              ? [previous.owner.beatId]
+              : [],
+          message: "The edit conflicts with a user pin.",
+        },
+      ]);
     if (
       key.startsWith("clip:") &&
       !sameOverridePayload(
@@ -149,6 +191,7 @@ export function applyOverridePolicy(
   }
   if (!direct) return next;
   for (const command of commands) {
+    if (command.type === "lock") continue;
     if (
       command.type === "user-pin.set" ||
       command.type === "user-pin.resolve"
@@ -159,7 +202,7 @@ export function applyOverridePolicy(
         const item = current.get(overrideTargetKey(target));
         if (!item) {
           if (
-            command.type === "user-pin.resolve" &&
+            released.has(overrideTargetKey(target)) &&
             old.has(overrideTargetKey(target))
           )
             continue;
@@ -175,6 +218,10 @@ export function applyOverridePolicy(
           const o = item.owner;
           item.owner.userOverrides = state(o, [
             "timing",
+            ...("timelineStart" in o &&
+            (o.sourceIn !== undefined || o.sourceOut !== undefined)
+              ? ["inOutRange" as const]
+              : []),
             ...("timelineStart" in o
               ? o.motion
                 ? ["motionPreset" as const]

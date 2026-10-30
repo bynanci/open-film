@@ -360,19 +360,11 @@ export function solveIncremental(
           (e) => e.clip.id === clip.id && e.clip.userOverrides?.isUserPinned,
         ),
     );
-    const ordering =
-      beat.constraints
-        ?.filter((c) => c.type === "asset-order")
-        .flatMap((c) => (c.type === "asset-order" ? c.assetIds : [])) ?? [];
-    if (ordering.length)
-      candidates.sort((a, b) => {
-        const left = ordering.indexOf(a.clip.assetId),
-          right = ordering.indexOf(b.clip.assetId);
-        return (
-          (left < 0 ? Infinity : left) - (right < 0 ? Infinity : right) ||
-          a.clip.timelineStart - b.clip.timelineStart
-        );
-      });
+    if (candidates.length > 2000)
+      return conflict(
+        "search-limit",
+        "The generated candidate cut exceeds the incremental clip limit.",
+      );
     const intervals: {
       start: number;
       end: number;
@@ -394,32 +386,66 @@ export function solveIncremental(
     }
     const assigned: { clip: Clip; track: Track }[] = [];
     const memo = new Set<string>();
-    function allocate(index: number, minGap: number): boolean {
-      if (index === candidates.length) return true;
-      const key = `${index}:${minGap}:${intervals.map((g) => g.cursor).join(",")}`;
+    function allocate(index: number): boolean {
+      if (index === candidates.length) {
+        const complete = structuredClone(next);
+        for (const track of complete.composition.tracks)
+          if (
+            track.timing !== "overlay" &&
+            ["video", "audio", "music"].includes(track.type)
+          )
+            track.clips = track.clips.filter(
+              (c) => c.beatId !== beat.id || c.userOverrides?.isUserPinned,
+            );
+        for (const entry of assigned) {
+          let track = complete.composition.tracks.find(
+            (t) => t.id === entry.track.id,
+          );
+          if (!track) {
+            track = { ...structuredClone(entry.track), clips: [] };
+            complete.composition.tracks.push(track);
+          }
+          track.clips.push(structuredClone(entry.clip));
+        }
+        return constraints(complete, assets);
+      }
+      const key = `${index}:${intervals.map((g) => g.cursor).join(",")}:${assigned.map((e) => `${e.clip.id}@${e.clip.timelineStart}`).join(",")}`;
       if (memo.has(key)) return false;
       const candidate = candidates[index]!,
         prior = original.find((e) => e.clip.id === candidate.clip.id);
-      for (let i = minGap; i < intervals.length; i++) {
+      for (let i = 0; i < intervals.length; i++) {
         if (++expansions >= MAX_EXPANSIONS) {
           exhausted = true;
           return false;
         }
-        const gap = intervals[i]!,
-          startFrame = sequenceFrameAt(gap.cursor, timebase, "nearest"),
-          endFrame = sequenceFrameAt(gap.end, timebase, "nearest");
+        const gap = intervals[i]!;
+        let startFrame = sequenceFrameAt(gap.cursor, timebase, "floor");
+        if (sequenceTimeAt(startFrame, timebase) < gap.cursor) startFrame++;
+        let endFrame = sequenceFrameAt(gap.end, timebase, "floor");
+        if (sequenceTimeAt(endFrame, timebase) > gap.end) endFrame--;
+        // Reserve both the saved-second boundary and every fixed anchor's resolved frames.
+        for (const fixed of spine(baseline).filter(
+          ({ clip }) => clip.userOverrides?.isUserPinned || !inScope(clip),
+        )) {
+          const range = resolveClipFrameRange(fixed.clip, timebase);
+          if (
+            fixed.clip.timelineStart + fixed.clip.timelineDuration <=
+            gap.start + 1e-9
+          )
+            startFrame = Math.max(startFrame, range.endFrame);
+          if (fixed.clip.timelineStart >= gap.end - 1e-9)
+            endFrame = Math.min(endFrame, range.startFrame);
+        }
         const clip = structuredClone(prior ? prior.clip : candidate.clip);
         const fixed = !!prior;
         const capacity = endFrame - startFrame;
-        const desired = resolveClipFrameRange(
-          { ...clip, timelineStart: 0 },
-          timebase,
-        ).endFrame;
+        const desired = fixed
+          ? resolveClipFrameRange({ ...clip, timelineStart: 0 }, timebase)
+              .endFrame
+          : sequenceFrameAt(clip.timelineDuration, timebase, "floor");
         const frames = fixed ? desired : Math.min(desired, capacity);
         if (frames <= 0 || frames > capacity) continue;
-        clip.timelineStart = fixed
-          ? gap.cursor
-          : sequenceTimeAt(startFrame, timebase);
+        clip.timelineStart = sequenceTimeAt(startFrame, timebase);
         if (!fixed) {
           clip.timelineDuration = sequenceTimeAt(frames, timebase);
           if (byId.get(clip.assetId)?.mediaType !== "image")
@@ -435,7 +461,7 @@ export function solveIncremental(
         const cursor = gap.cursor;
         gap.cursor = clip.timelineStart + clip.timelineDuration;
         assigned.push({ clip, track: prior?.track ?? candidate.track });
-        if (allocate(index + 1, i)) return true;
+        if (allocate(index + 1)) return true;
         assigned.pop();
         gap.cursor = cursor;
         if (exhausted) return false;
@@ -443,7 +469,7 @@ export function solveIncremental(
       memo.add(key);
       return false;
     }
-    if (!allocate(0, 0))
+    if (!allocate(0))
       return conflict(
         exhausted ? "search-limit" : "capacity",
         exhausted
@@ -472,5 +498,11 @@ export function solveIncremental(
       track.clips.sort((a, b) => a.timelineStart - b.timelineStart);
     }
   }
+  next.composition.duration = Math.max(
+    0,
+    ...spine(next).map(
+      ({ clip }) => clip.timelineStart + clip.timelineDuration,
+    ),
+  );
   return finish(baseline, next, assets, timebase);
 }

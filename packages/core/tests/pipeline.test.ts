@@ -254,6 +254,18 @@ describe("pin-aware pipeline targets", () => {
     ])
       expect(() => validatePipelineCompositionTarget(input)).toThrow();
   });
+  it("rejects target accessors without invoking them", () => {
+    let reads = 0;
+    const target = Object.defineProperty({ version: 1 }, "mode", {
+      enumerable: true,
+      get() {
+        reads++;
+        return "new-cut";
+      },
+    });
+    expect(() => validatePipelineCompositionTarget(target)).toThrow();
+    expect(reads).toBe(0);
+  });
   it("composition targets participate in immutable input signatures", () => {
     const base = {
       projectRevision: "rev",

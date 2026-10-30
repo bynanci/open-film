@@ -68,6 +68,7 @@ describe("portable user overrides", () => {
     expect(migrateProject(value)).toEqual(value);
   });
   it.each([
+    { ...pinned, lockedAttributes: Object.setPrototypeOf(["timing"], null) },
     null,
     { ...pinned, version: 2 },
     { ...pinned, extra: true },

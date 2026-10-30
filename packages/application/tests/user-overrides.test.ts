@@ -81,6 +81,40 @@ describe("transactional user pins", () => {
     expect(promotePinnedProject(legacy)).toEqual(legacy);
     expect(promotePinnedProject(legacy)).not.toBe(legacy);
   });
+  it("promotion never downgrades a future validated project version", () => {
+    const project = {
+      ...createProject("Future"),
+      schemaVersion: "1.2.0",
+      stories: [{ id: "s", title: "Story", beats: [] }],
+      timelines: [
+        {
+          id: "c",
+          storyId: "s",
+          duration: 1,
+          tracks: [
+            {
+              id: "v",
+              type: "video",
+              clips: [
+                {
+                  id: "a",
+                  assetId: "a",
+                  timelineStart: 0,
+                  timelineDuration: 1,
+                  userOverrides: {
+                    version: 1,
+                    isUserPinned: true,
+                    lockedAttributes: ["timing"],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as unknown as ReturnType<typeof createProject>;
+    expect(promotePinnedProject(project).schemaVersion).toBe("1.2.0");
+  });
   it("first direct edit promotes atomically and save/reopen retains pins", async () => {
     const { app, editor, file } = await fixture();
     const before = editor.get("cut");
@@ -195,6 +229,77 @@ describe("transactional user pins", () => {
     expect((await editor.undo("cut", after.revision)).composition).toEqual(
       pinned.composition,
     );
+  });
+  it("a named presentation edit cannot authorize automatic removal of its existing pin", async () => {
+    const { app, editor } = await fixture();
+    const initial = editor.get("cut");
+    const pinned = await editor.edit("cut", {
+      baseRevision: initial.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: "a" },
+          pinned: true,
+        },
+      ],
+    });
+    const after = await editor.edit("cut", {
+      baseRevision: pinned.revision,
+      commands: [
+        { type: "volume", clipId: "a", volume: 0.5 },
+        { type: "regenerate-beat", beatId: "beat", mode: "regenerate" },
+      ],
+    });
+    expect(
+      after.composition.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === "a"),
+    ).toMatchObject({
+      id: "a",
+      assetId: "a",
+      timelineStart: 0,
+      timelineDuration: 3,
+      transform: { volume: 0.5 },
+      userOverrides: { isUserPinned: true },
+    });
+    expect(app.project.schemaVersion).toBe("1.1.0");
+  });
+  it("manual offset records only the latest explicit move inside an atomic gesture", async () => {
+    const { editor } = await fixture();
+    const before = editor.get("cut");
+    const after = await editor.edit("cut", {
+      baseRevision: before.revision,
+      commands: [
+        { type: "reorder", clipId: "a", toIndex: 1 },
+        { type: "reorder", clipId: "a", toIndex: 0 },
+      ],
+    });
+    const owner = after.composition.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === "a")!;
+    expect(owner.timelineStart).toBe(0);
+    expect(owner.userOverrides?.manualOffset).toBe(-90);
+  });
+  it("release targets are unique by owner regardless of JSON key order", async () => {
+    const { editor } = await fixture();
+    const before = editor.get("cut");
+    await expect(
+      editor.edit("cut", {
+        baseRevision: before.revision,
+        commands: [
+          {
+            type: "user-pin.resolve",
+            targets: [
+              { kind: "clip", clipId: "a" },
+              { clipId: "a", kind: "clip" },
+            ],
+            scope: { kind: "composition" },
+            mode: "regenerate",
+          },
+        ],
+      }),
+    ).rejects.toThrow("duplicate target");
+    expect(editor.get("cut").revision).toBe(before.revision);
   });
   it("queued stale edit fails after preceding pin publication", async () => {
     const { editor } = await fixture();
