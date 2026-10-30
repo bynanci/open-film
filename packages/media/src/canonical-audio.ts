@@ -4,7 +4,9 @@ import { createHash } from "node:crypto";
 import type { MediaAsset } from "@openfilm/core";
 import { hashFile, localPath, runProcess } from "./index.js";
 import { localMediaInputOptions } from "./input-policy.js";
-export const CANONICAL_AUDIO_FILTER = "aresample=48000:async=1:first_pts=0";
+/** Keep source-local initial PTS and fill even sub-100ms internal packet gaps. */
+export const CANONICAL_AUDIO_FILTER =
+  "aresample=48000:async=1:min_hard_comp=0:first_pts=0";
 export interface CanonicalAudioFacts {
   assetId: string;
   sourcePath: string;

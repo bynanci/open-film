@@ -135,7 +135,9 @@ describe("shared audio graph", () => {
         ]),
       ),
       text = graph.filters.join(";");
-    expect(text.match(/aresample=48000:async=1:first_pts=0/g)).toHaveLength(1);
+    expect(
+      text.match(/aresample=48000:async=1:min_hard_comp=0:first_pts=0/g),
+    ).toHaveLength(1);
     expect(text.match(/atempo=1/g)).toHaveLength(2);
     expect(text.match(/afade=t=in/g)).toHaveLength(1);
     expect(text).toContain("atrim=start_sample=0:end_sample=480000");
