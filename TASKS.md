@@ -1374,6 +1374,25 @@ candidate. [Combined validation](docs/validation-stable-release.md) owns final
 full-suite, browser, interchange, native CI and merge/release evidence; feature
 validation records retain their original branch identities and historical runs.
 
+### 2026-10-30 M7E runtime closure/attribution increment
+
+The existing M7E audit and installer checkboxes remain open. Bounded staging now
+supports owned, hash-pinned loader-relative support files, full notices and
+architecture checks; explicit target-tool import receipts reject missing or
+unreviewed OS/ABI closure. Emitted esbuild/Vite contributions, copied npm source
+identities, full license/source obligations and artifact-bound SPDX are recorded.
+Final compiled Rust/shell attribution is a separate post-build receipt because
+the shell embeds the runtime-manifest digest. Missing native/source/security,
+all-target inputs, trust, installer and physical workstation evidence still
+blocks distribution. See the [updated contract](docs/native-installer.md#explicit-support-files-and-emitted-attribution)
+and [dated validation](docs/validation-native-installer.md#2026-10-30-runtime-closure-and-emitted-attribution).
+
+2026-10-30 independent runtime review corrections add separate native-shell
+verified/reviewed-baseline admission, exact static Cargo link-input attribution
+and canonical external-output containment. These are engineering corrections to
+the existing M7E increment; audited target inputs, security, final candidates,
+trust and workstation checkboxes remain open. See the [contract](docs/native-installer.md#native-post-build-review-corrections--2026-10-30).
+
 - [x] Repair the observed D5C native-title Undo/Redo image-request ABA failure;
       preserve exact raster assertions and stale-revision guards. Fresh scoped review,
       103 focused cases and two actual browser journeys pass; final hosted gates

@@ -25,18 +25,29 @@ it("builds the desktop with the pinned Node toolchain when no pnpm executable is
       "apps/server/src",
       "apps/desktop",
       "packages/provider-whisper/src",
+      "packages/application/src",
     ])
       await mkdir(join(root, path), { recursive: true });
-    await copyFile(
-      resolve("scripts/build.mjs"),
-      join(root, "scripts/build.mjs"),
+    for (const path of [
+      "scripts/build.mjs",
+      "scripts/build-attribution.mjs",
+      "pnpm-lock.yaml",
+      "package.json",
+      "packages/application/package.json",
+      "packages/application/src/exclusive-directory-rename.ts",
+    ])
+      await copyFile(resolve(path), join(root, path));
+    await writeFile(
+      join(root, "apps/desktop/vite.config.mjs"),
+      `import {buildContributionPlugin} from '../../scripts/build-attribution.mjs';
+      import {fileURLToPath} from 'node:url';
+      export default {plugins:[buildContributionPlugin(fileURLToPath(new URL('../..',import.meta.url)))]};`,
     );
     await symlink(
       resolve("node_modules"),
       join(root, "node_modules"),
       process.platform === "win32" ? "junction" : "dir",
     );
-    await writeFile(join(root, "package.json"), '{"type":"module"}');
     for (const path of [
       "apps/cli/src/index.ts",
       "apps/server/src/index.ts",
@@ -44,7 +55,7 @@ it("builds the desktop with the pinned Node toolchain when no pnpm executable is
     ])
       await writeFile(
         join(root, path),
-        `import {getExclusiveDirectoryRenamer} from ${JSON.stringify(resolve("packages/application/src/exclusive-directory-rename.ts"))};
+        `import {getExclusiveDirectoryRenamer} from ${JSON.stringify(join(root, "packages/application/src/exclusive-directory-rename.ts"))};
         if (process.argv[2]) {
           const rename = await getExclusiveDirectoryRenamer();
           try { rename(process.argv[2],process.argv[3]); }

@@ -164,7 +164,12 @@ export function validateRuntimeManifest(input: unknown): RuntimeManifest {
     keys(component, ["id", "version", "license", "licenseFile"]);
     if (
       typeof component.id !== "string" ||
-      !/^[a-z0-9@/._-]{1,100}$/u.test(component.id) ||
+      !(
+        /^[a-z0-9@/._-]{1,100}$/u.test(component.id) ||
+        /^tool:(?:node|ffmpeg|ffprobe):[a-z0-9][a-z0-9._-]{0,39}$/u.test(
+          component.id,
+        )
+      ) ||
       components.has(component.id) ||
       typeof component.version !== "string" ||
       !/^[a-zA-Z0-9.+_-]{1,100}$/u.test(component.version) ||
