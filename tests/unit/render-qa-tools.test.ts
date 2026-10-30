@@ -174,6 +174,16 @@ it("admits the exact Homebrew formula/bottle and installed identity", () => {
     expect(() => admitBrewFormula(data, true)).toThrow(/Homebrew/u);
   }
 });
+
+it("installs the admitted Homebrew formula rather than treating its cache path as a formula", () => {
+  const setup = readFileSync("scripts/ci/setup-render-qa.ts", "utf8");
+  expect(setup).toContain(
+    'await run("brew", ["install", "--force-bottle", "ffmpeg"]);',
+  );
+  expect(setup).not.toContain(
+    'await run("brew", ["install", "--force-bottle", cache]);',
+  );
+});
 it("centralizes the Windows pins while preserving its complete recovery/browser selection", () => {
   const workflow = readFileSync(
     ".github/workflows/windows-media-recovery.yml",

@@ -287,7 +287,14 @@ export async function setupRenderQa(options: {
           JSON.parse(await run("brew", ["info", "--json=v2", "ffmpeg"])),
           false,
         );
-        await run("brew", ["install", "--force-bottle", cache]);
+        // Homebrew resolves bottle installation through the admitted formula;
+        // a cached archive path is treated as a formula name by current brew.
+        await run("brew", ["install", "--force-bottle", "ffmpeg"]);
+        verifyPinnedBytes(
+          await boundedFile(cache, pin.maxBytes),
+          pin.sha256,
+          pin.maxBytes,
+        );
         const after = JSON.parse(
           await run("brew", ["info", "--json=v2", "ffmpeg"]),
         );

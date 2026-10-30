@@ -210,3 +210,21 @@ The intended RED was 1 failed / 16 passed. Both changed gate suites then passed
 2528118 media receipts remain identified by that checkpoint; this trigger-only
 follow-up changes no renderer, metric, tool/font pin or media assertion. Actual
 current-candidate hosted runs remain required before merge.
+
+## 2026-10-30 — first actual macOS tool-admission result
+
+PR78 head `29ac4010b37a057f705bc7adc0dd181a8f002b7d` started the actual
+three-OS workflow41085354644. macOS job124164958496 failed before rendering:
+Homebrew parsed the verified cache archive path passed to `brew install` as a
+formula name. No macOS render, finishing or workstation result was produced.
+The required missing-artifact failures remain visible; they are not ignored.
+
+The install now names the already admitted `ffmpeg` formula with
+`--force-bottle`. Formula/version/bottle metadata admission still occurs both
+before and after installation; the cached bottle SHA is also checked again
+after installation, and actual executable/configuration/dependency observations
+remain mandatory. Auto-update remains disabled by the workflow. No version,
+bottle/font hash or metric limit changed. A focused command regression failed
+1/22 before the fix; the tool/aggregate/finishing suites then passed61tests in
+three files. Scoped ESLint and formatting pass. Linux-only source tests do not
+validate Homebrew execution: the next exact-head hosted macOS run must pass.
