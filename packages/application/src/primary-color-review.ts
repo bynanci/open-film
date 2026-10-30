@@ -524,13 +524,17 @@ export class PrimaryColorReviewService {
     correction: PrimaryColorCorrection,
   ): Promise<void> {
     const cached = this.reports.get(id),
-      parsed = validatePrimaryColorCorrection(correction);
+      parsed = validatePrimaryColorCorrection(correction),
+      suggested = cached?.report.suggestedCorrection;
     if (
       !cached?.report.canApply ||
       cached.report.compositionId !== compositionId ||
       cached.report.baseRevision !== baseRevision ||
       cached.report.targetClipId !== clipId ||
-      digest(cached.report.suggestedCorrection) !== digest(parsed)
+      !suggested ||
+      (["temperature", "exposureEv", "contrast"] as const).some(
+        (field) => suggested[field] !== parsed[field],
+      )
     )
       throw stale();
     await this.verify(cached);

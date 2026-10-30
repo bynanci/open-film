@@ -123,6 +123,21 @@ it("publishes actual before/after evidence and applies only through explicit rev
       primaryColorReviewId: report.id,
     },
   ];
+  const suggested = report.suggestedCorrection!;
+  await expect(
+    app.primaryColorReview.validateAcceptance(
+      report.id,
+      "f",
+      before.revision,
+      "target",
+      {
+        contrast: suggested.contrast,
+        exposureEv: suggested.exposureEv,
+        temperature: suggested.temperature,
+        version: 1,
+      },
+    ),
+  ).resolves.toBeUndefined();
   const saved = await editor.edit("f", {
     baseRevision: before.revision,
     requestId: "accept-primary",
