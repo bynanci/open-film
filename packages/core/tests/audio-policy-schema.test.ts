@@ -105,6 +105,23 @@ describe("independent sound capability", () => {
     delete promoted.timelines[0]!.tracks[0]!.clips[0]!.audioTiming;
     expect(promoteAudioProject(promoted).schemaVersion).toBe("1.2.0");
   });
+  it("audio_promotion_is_a_floor_and_never_a_future_schema_import", () => {
+    for (const version of ["1.0.0", "1.1.0", "1.2.0"] as const) {
+      const input = { ...validateProject(project()), schemaVersion: version };
+      expect(promoteAudioProject(input).schemaVersion).toBe("1.2.0");
+      expect(input.schemaVersion).toBe(version);
+    }
+    // The promoter receives application-validated projects. This future-header
+    // stand-in tests its floor independently of the intentionally closed importer.
+    const future = { ...validateProject(project()), schemaVersion: "1.3.0" };
+    expect(() => validateProject(future)).toThrow(/schemaVersion/);
+    const promoted = promoteAudioProject(
+      future as ReturnType<typeof validateProject>,
+    );
+    expect(promoted.schemaVersion).toBe("1.3.0");
+    expect(promoted.timelines).toEqual(future.timelines);
+    expect(promoted).not.toBe(future);
+  });
   it("closed_audio_values", () => {
     expect(validateAudioTiming(timing)).toEqual(timing);
     expect(validateAudioTiming(timing)).not.toBe(timing);

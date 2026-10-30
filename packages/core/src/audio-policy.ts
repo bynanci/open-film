@@ -247,6 +247,7 @@ export function validateCoverageAudioBindings(
 export function promoteAudioProject(project: OpenFilmProject): OpenFilmProject {
   const next = structuredClone(project);
   if (
+    (next.schemaVersion === "1.0.0" || next.schemaVersion === "1.1.0") &&
     next.timelines.some((c) =>
       c.tracks.some((t) =>
         t.clips.some((clip) => Object.hasOwn(clip, "audioTiming")),
