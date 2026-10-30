@@ -338,6 +338,7 @@ interface Resource {
   failed: boolean;
   running: boolean;
   playGeneration: number;
+  pcmSeekTarget?: number;
 }
 const pictures = new Map<string, Resource>();
 const sounds = new Map<string, Resource>();
@@ -634,8 +635,17 @@ function syncPosition(resource: Resource, force: boolean) {
     frameRate && Number.isFinite(frameRate) && frameRate > 0
       ? 0.5 / frameRate
       : Infinity;
-  if (force || Math.abs(element.currentTime - target) > tolerance)
+  if (force || Math.abs(element.currentTime - target) > tolerance) {
+    resource.pcmSeekTarget =
+      !force &&
+      pcmEnabled.value &&
+      pcmState.value === "playing" &&
+      transport.shuttleRate.value === 1 &&
+      layers.value.includes(resource)
+        ? target
+        : undefined;
     element.currentTime = target;
+  }
 }
 function run(resource: Resource, running: boolean) {
   const element = media(resource);
@@ -725,6 +735,7 @@ function bind(resource: Resource, element: unknown) {
 }
 function ready(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  resource.pcmSeekTarget = undefined;
   resource.ready = true;
   resource.failed = false;
   // Native canplay also follows a seek. Do not turn a satisfied seek into
@@ -734,6 +745,7 @@ function ready(resource: Resource, event: Event) {
 }
 function failed(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  resource.pcmSeekTarget = undefined;
   resource.ready = false;
   resource.failed = true;
   if (banks.value[0] === resource) reconcile();
@@ -744,6 +756,26 @@ function failed(resource: Resource, event: Event) {
 }
 function waiting(resource: Resource, event: Event) {
   if (!valid(resource, event)) return;
+  const element = media(resource),
+    target = resource.pcmSeekTarget;
+  if (
+    event.type === "waiting" &&
+    target !== undefined &&
+    element?.seeking &&
+    pcmEnabled.value &&
+    pcmState.value === "playing" &&
+    transport.shuttleRate.value === 1
+  ) {
+    // A buffered corrective picture seek must not restart its master PCM clock.
+    // Cold/unbuffered media and real stalled/error events retain the hold path.
+    for (let i = 0; i < element.buffered.length; i++)
+      if (
+        element.buffered.start(i) <= target &&
+        target < element.buffered.end(i)
+      )
+        return;
+  }
+  resource.pcmSeekTarget = undefined;
   resource.ready = false;
   if (banks.value[0] === resource) reconcile();
 }

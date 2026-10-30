@@ -1596,3 +1596,81 @@ it("synchronizes policy pictures from continuous sound time inside the resolved 
   expect(monitor.transport().frame).toBe(2);
   expect(picture.currentTime).toBeCloseTo(1.267, 6);
 });
+
+it.each([
+  ["buffered correction", "waiting", true, false],
+  ["unbuffered picture", "waiting", false, true],
+  ["stalled source", "stalled", true, true],
+] as const)(
+  "keeps the canonical sound clock for a %s and retains genuine media holds",
+  async (_name, nativeEvent, buffered, shouldHold) => {
+    const saved = cut();
+    saved.tracks[0]!.clips[0]!.audioTiming = {
+      version: 1,
+      sampleRate: 48000,
+      timelineStartSample: 0,
+      sourceInSample: 48000,
+      sourceOutSample: 96000,
+    };
+    const context = new PolicyAudioContext();
+    let preparations = 0;
+    const monitor = await mount(saved, undefined, undefined, {
+      context: context as unknown as AudioContext,
+      prepare: async (_id, revision) => {
+        preparations++;
+        return {
+          version: 1,
+          id: "12345678-1234-1234-1234-123456789abc",
+          revision,
+          sourceKeyDigest: "a".repeat(64),
+          sampleRate: 48000,
+          channels: 2,
+          format: "pcm_s24le",
+          lengthSamples: 288000,
+        };
+      },
+    });
+    const picture = await monitor.ready("a");
+    let pictureTime = picture.currentTime;
+    Object.assign(picture, {
+      seeking: false,
+      buffered: {
+        length: 1,
+        start: () => (buffered ? 0 : 10),
+        end: () => 20,
+      },
+    });
+    Object.defineProperty(picture, "currentTime", {
+      configurable: true,
+      get: () => pictureTime,
+      set: (time: number) => {
+        pictureTime = time;
+        Object.assign(picture, { seeking: true });
+        queueMicrotask(() => {
+          (
+            picture.props[
+              nativeEvent === "waiting" ? "onWaiting" : "onStalled"
+            ] as (event: unknown) => void
+          )({
+            type: nativeEvent,
+            currentTarget: picture,
+            target: picture,
+          });
+        });
+      },
+    });
+    monitor.transport().play();
+    await monitor.pcmTick(0);
+    await monitor.pcmTick(0.517);
+    expect(pictureTime).toBeCloseTo(1.267, 6);
+    expect(preparations).toBe(1);
+    expect(monitor.transport().buffering).toBe(shouldHold);
+    expect(context.nodes[0]!.stopped).toBe(shouldHold);
+    expect(
+      monitor
+        .nodes()
+        .some((node) => node.props["data-record-audio-state"] === "playing"),
+    ).toBe(!shouldHold);
+    expect(monitor.audio()).toHaveLength(0);
+  },
+);
