@@ -119,3 +119,34 @@ including existing standard title/caption output and export crop/font fences.
 TypeScript/Vue, changed-file lint, three-locale i18n (2,695 keys), synchronized
 English references and whitespace checks pass locally. No full Vitest suite,
 native benchmark, push or PR was run by this worker.
+
+## Cancellation retry correction
+
+The final review found that an immediate same-cue request could inherit the
+last subscriber's cancellation while abandoned work was still draining. The
+service now admits a fresh operation through the existing queue when the
+shared controller is aborted. Abandoned work retains its active slot until it
+settles, and its cleanup removes a shared entry only while it still owns that
+entry. Temporary raster files remain unique to each operation.
+
+Two controlled regressions failed against the reviewed source: active and
+queued immediate retries both rejected. All six service tests pass after the
+correction. They retain a live second subscriber after the first cancels,
+cancel the last subscriber during actual raster work, check replacement
+sharing after old cleanup, and cancel 32 queued requests before admitting a
+fresh retry. One active/eight queued admission, the ninth queued request's 429,
+actual PNG output and temporary-file cleanup are asserted. Temporarily removing
+only the entry-identity cleanup guard makes both retry regressions fail again.
+The reviewer's isolated real-application cancel/immediate-retry probe now gives
+`AbortError` for the cancelled request and a PNG for the fresh request.
+
+The final fix run passes 12 tests across five files: service, title and existing
+photo HTTP routes on port 0, NativeCaptionPreview, and both actual pinned-font
+bilingual MP4 cases. The MP4 cases retain their existing font receipts,
+styled-output checks, exact caption text/timing, source SHA, baseline PCM and
+decoded negative controls. No existing assertion, legacy test, font input or
+shared renderer metric changed. The supplied OTIO Python environment remains
+on PATH.
+TypeScript/Vue, changed-file lint, document mirrors and whitespace checks pass.
+The integrating parent owns the fresh scoped review and full exact-head gate;
+this fix wave ran no shared browser service, native benchmark or full suite.

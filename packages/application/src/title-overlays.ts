@@ -294,7 +294,8 @@ export class NativeTextOverlayService {
     const captured = this.capture(input);
     const identity = JSON.stringify([input, captured.settings]);
     let entry = this.images.get(identity);
-    if (!entry) {
+    // Cancelled work retains its queue slot while draining, but cannot be shared.
+    if (!entry || entry.controller.signal.aborted) {
       const controller = new AbortController();
       this.controllers.add(controller);
       const promise = this.enqueue(async () => {
@@ -395,7 +396,7 @@ export class NativeTextOverlayService {
         captured.assertCurrent();
         return path;
       }, controller.signal).finally(() => {
-        this.images.delete(identity);
+        if (this.images.get(identity) === entry) this.images.delete(identity);
         this.controllers.delete(controller);
       });
       entry = { promise, controller, users: 0 };
