@@ -87,7 +87,60 @@ export type PipelineNarrationOption =
   | NarrationOptionVoiceImport
   | NarrationOptionConfiguredTts;
 
+export type PipelineCompositionTarget =
+  | { version: 1; mode: "new-cut" }
+  | {
+      version: 1;
+      mode: "resolve";
+      compositionId: string;
+      baseRevision: string;
+    };
+export function validatePipelineCompositionTarget(
+  value: unknown,
+): PipelineCompositionTarget {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
+    throw new Error("An explicit composition target is required.");
+  const data = value as Record<string, unknown>;
+  const allowed =
+    data.mode === "new-cut"
+      ? ["version", "mode"]
+      : ["version", "mode", "compositionId", "baseRevision"];
+  for (const key of Reflect.ownKeys(data)) {
+    const d = Object.getOwnPropertyDescriptor(data, key)!;
+    if (
+      typeof key !== "string" ||
+      !allowed.includes(key) ||
+      !d.enumerable ||
+      !("value" in d)
+    )
+      throw new Error("Invalid composition target field.");
+  }
+  if (
+    data.version !== 1 ||
+    (data.mode !== "new-cut" && data.mode !== "resolve")
+  )
+    throw new Error("Unsupported composition target version or mode.");
+  if (
+    data.mode === "resolve" &&
+    (typeof data.compositionId !== "string" ||
+      !data.compositionId.trim() ||
+      data.compositionId.length > 256 ||
+      typeof data.baseRevision !== "string" ||
+      !/^[a-f0-9]{64}$/.test(data.baseRevision))
+  )
+    throw new Error(
+      "Resolve target requires an exact composition identity and revision.",
+    );
+  return structuredClone(data) as PipelineCompositionTarget;
+}
+
 export interface PipelineInputSnapshot {
+  compositionTarget?: PipelineCompositionTarget;
   projectRevision: string | number;
   storyId?: string;
   storyPlanId?: string;
@@ -270,6 +323,13 @@ export function computeInputSnapshotDigest(
   snapshot: Omit<PipelineInputSnapshot, "inputDigest">,
 ): string {
   const normalized = JSON.stringify({
+    ...(snapshot.compositionTarget
+      ? {
+          compositionTarget: validatePipelineCompositionTarget(
+            snapshot.compositionTarget,
+          ),
+        }
+      : {}),
     projectRevision: snapshot.projectRevision,
     storyId: snapshot.storyId ?? null,
     storyPlanId: snapshot.storyPlanId ?? null,
@@ -446,6 +506,10 @@ export function validatePipelineRun(raw: unknown): PipelineRun {
     throw new Error("PipelineRun.artifacts must be an array.");
   }
 
+  if (Object.hasOwn(obj.inputSnapshot, "compositionTarget"))
+    validatePipelineCompositionTarget(
+      (obj.inputSnapshot as Record<string, unknown>).compositionTarget,
+    );
   return raw as PipelineRun;
 }
 

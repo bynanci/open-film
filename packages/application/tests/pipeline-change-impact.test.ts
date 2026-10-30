@@ -142,6 +142,7 @@ describe(
 
     it("completes an initial base run and stamps input signatures on step attempts and artifacts", async () => {
       const run = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a", "asset_b"],
         narration: { type: "none" },
@@ -177,6 +178,7 @@ describe(
 
     it("Impact Matrix Case 1 & 2: canvas pan/zoom and unconsumed notes result in 0 media calls and 100% reuse", async () => {
       const baseRun = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a", "asset_b"],
         narration: { type: "none" },
@@ -219,6 +221,7 @@ describe(
       const incRun = await app.pipeline.createIncrementalRun(
         "guided-story-to-video",
         {
+          compositionTarget: { version: 1, mode: "new-cut" },
           baseRunId: baseRun.id,
           storyId: "story_m11a",
           assetIds: ["asset_a", "asset_b"],
@@ -236,6 +239,7 @@ describe(
     it("Impact Matrix Case 3 & A/B verification: modifying only subtitles reuses narration & visuals (TTS/motion calls = 0) and updates output", async () => {
       // 1. Initial run with subtitle "Scene Alpha"
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a", "asset_b"],
         narration: {
@@ -314,6 +318,7 @@ describe(
       const runB = await app.pipeline.createIncrementalRun(
         "guided-story-to-video",
         {
+          compositionTarget: { version: 1, mode: "new-cut" },
           baseRunId: runA.id,
           storyId: "story_m11a",
           assetIds: ["asset_a", "asset_b"],
@@ -362,6 +367,7 @@ describe(
 
     it("Impact Matrix Case 4: modifying narration script reuses scene visual prep while rerunning voice & downstream", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a", "asset_b"],
         narration: {
@@ -435,6 +441,7 @@ describe(
       app.catalog.upsertAsset(photoC);
 
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: {
@@ -474,6 +481,7 @@ describe(
 
     it("Impact Matrix Case 7: source bytes change invalidates consumers", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: { type: "none" },
@@ -505,6 +513,7 @@ describe(
 
     it("Impact Matrix Case 8: revoking consent prevents unauthorized remote dispatch", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: {
@@ -537,6 +546,7 @@ describe(
 
     it("detects disk tampering/corruption and triggers cache miss fallback", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: { type: "none" },
@@ -570,6 +580,7 @@ describe(
 
     it("rejects stale impact reports when project revision changes before confirmation", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: { type: "none" },
@@ -593,6 +604,7 @@ describe(
 
       await expect(
         app.pipeline.createIncrementalRun("guided-story-to-video", {
+          compositionTarget: { version: 1, mode: "new-cut" },
           baseRunId: runA.id,
           storyId: "story_m11a",
           assetIds: ["asset_a"],
@@ -604,6 +616,7 @@ describe(
 
     it("preserves base run receipts and previous runs immutably", async () => {
       const runA = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: { type: "none" },
@@ -618,6 +631,7 @@ describe(
       const runB = await app.pipeline.createIncrementalRun(
         "guided-story-to-video",
         {
+          compositionTarget: { version: 1, mode: "new-cut" },
           baseRunId: runA.id,
           storyId: "story_m11a",
           assetIds: ["asset_a"],
@@ -639,6 +653,7 @@ describe(
 
       // Create run referencing asset_a
       app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: "story_m11a",
         assetIds: ["asset_a"],
         narration: { type: "none" },

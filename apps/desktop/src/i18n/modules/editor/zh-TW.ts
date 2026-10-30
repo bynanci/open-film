@@ -2,6 +2,12 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      target: "剪輯版本",
+      newCut: "新增粗剪",
+      resolveCut: "重新求解所選剪輯",
+      selectCut: "請選擇已儲存的剪輯後重試。",
+    },
     picture: {
       toggle: "調整畫面",
       group: "畫面變形",

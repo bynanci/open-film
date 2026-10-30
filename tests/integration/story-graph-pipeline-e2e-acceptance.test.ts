@@ -513,6 +513,7 @@ describe(
 
       // 1. Initial Guided Pipeline Run
       const run = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: story.id,
         assetIds: photoAssets.map((p) => p.id),
         narration: {
@@ -607,6 +608,7 @@ describe(
       const incrementalRun = await app.pipeline.createIncrementalRun(
         "guided-story-to-video",
         {
+          compositionTarget: { version: 1, mode: "new-cut" },
           storyId: story.id,
           assetIds: photoAssets.map((p) => p.id),
           narration: {
@@ -669,6 +671,7 @@ describe(
 
       // Baseline Run with initial narration
       const run1 = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: story.id,
         assetIds: photoAssets.map((p) => p.id),
         narration: {
@@ -752,6 +755,7 @@ describe(
 
       // 1. CANCEL INJECTION
       const run = await app.pipeline.createRun("guided-story-to-video", {
+        compositionTarget: { version: 1, mode: "new-cut" },
         storyId: story.id,
         assetIds: ["photo_1", "photo_2", "photo_3"],
         narration: { type: "none" },

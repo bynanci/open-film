@@ -97,6 +97,7 @@ export class TimelineEditorError extends Error {
   }
 }
 
+const editorQueues = new WeakMap<OpenFilmApplication, Promise<void>>();
 const HISTORY_LIMIT = 100;
 const REQUEST_LIMIT = 200;
 const COMMAND_LIMIT = 100;
@@ -799,7 +800,6 @@ export class TimelineEditor {
     string,
     CachedGraphicSceneAgentPlan
   >();
-  private pending: Promise<void> = Promise.resolve();
 
   constructor(private readonly application: OpenFilmApplication) {}
 
@@ -1712,10 +1712,15 @@ export class TimelineEditor {
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.pending.then(operation);
-    this.pending = result.then(
-      () => undefined,
-      () => undefined,
+    const result = (
+      editorQueues.get(this.application) ?? Promise.resolve()
+    ).then(operation);
+    editorQueues.set(
+      this.application,
+      result.then(
+        () => undefined,
+        () => undefined,
+      ),
     );
     return result;
   }

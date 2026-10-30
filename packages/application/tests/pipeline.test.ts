@@ -1,12 +1,12 @@
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
-import { rm, mkdtemp, mkdir } from "node:fs/promises";
+import { rm, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { OpenFilmApplication } from "../src/index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OpenFilmApplication, TimelineEditor } from "../src/index.js";
 import type { MediaAsset, Story } from "@openfilm/core";
 
 const exec = promisify(execFile);
@@ -119,6 +119,207 @@ describe("PipelineService Integration", () => {
     );
   });
 
+  it("new_run_requires_explicit_target", async () => {
+    await expect(
+      app.pipeline.createRun("guided-story-to-video"),
+    ).rejects.toThrow(/target/iu);
+  });
+  it("resolve_requires_exact_target_revision", async () => {
+    const cut = app.compose("story_pipeline_1");
+    await expect(
+      app.pipeline.createRun("guided-story-to-video", {
+        storyId: "story_pipeline_1",
+        compositionTarget: {
+          version: 1,
+          mode: "resolve",
+          compositionId: cut.id,
+          baseRevision: "stale",
+        },
+      }),
+    ).rejects.toThrow(/revision|changed/iu);
+  });
+  it("subtitle_and_composition_publish_once", async () => {
+    app.pipeline.registerRecipe({
+      schemaVersion: "1.0.0",
+      id: "adopt-only",
+      version: "1.0.0",
+      name: "Adopt",
+      steps: [
+        {
+          id: "adopt",
+          type: "composition-adopt",
+          name: "Adopt",
+          inputs: [],
+          outputs: [{ name: "compositionId", type: "composition" }],
+        },
+      ],
+    });
+    const run = await app.pipeline.createRun("adopt-only", {
+      storyId: "story_pipeline_1",
+      compositionTarget: { version: 1, mode: "new-cut" },
+      customParams: { subtitleText: "Saved together" },
+    });
+    const before = app.project.timelines.length;
+    const save = vi.spyOn(app, "save");
+    const result = await app.pipeline.startRun(run.id);
+    expect(result.status).toBe("succeeded");
+    expect(app.project.timelines.length).toBe(before + 1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(
+      app.project.timelines.at(-1)?.captionTracks?.[0]?.cues[0]?.text,
+    ).toBe("Saved together");
+    expect(result.artifacts[0]?.metadata).toMatchObject({
+      targetMode: "new-cut",
+      compositionId: app.project.timelines.at(-1)?.id,
+    });
+    save.mockRestore();
+  });
+  it("pin_after_async_prepare_invalidates_adoption", async () => {
+    app.pipeline.registerRecipe({
+      schemaVersion: "1.0.0",
+      id: "adopt-stale",
+      version: "1.0.0",
+      name: "Adopt",
+      steps: [
+        {
+          id: "adopt",
+          type: "composition-adopt",
+          name: "Adopt",
+          inputs: [],
+          outputs: [{ name: "compositionId", type: "composition" }],
+        },
+      ],
+    });
+    const run = await app.pipeline.createRun("adopt-stale", {
+      storyId: "story_pipeline_1",
+      compositionTarget: { version: 1, mode: "new-cut" },
+    });
+    app.project.title = "Changed after prepare";
+    await app.save();
+    const result = await app.pipeline.startRun(run.id);
+    expect(result.status).toBe("failed");
+    expect(result.artifacts).toEqual([]);
+    expect(app.project.timelines).toHaveLength(0);
+  });
+
+  it("same_story_multiple_cuts_never_guess", async () => {
+    const selected = app.compose("story_pipeline_1"),
+      other = app.compose("story_pipeline_1");
+    const before = structuredClone(other);
+    const revision = new TimelineEditor(app).get(selected.id).revision;
+    app.pipeline.registerRecipe({
+      schemaVersion: "1.0.0",
+      id: "resolve-only",
+      version: "1.0.0",
+      name: "Resolve",
+      steps: [
+        {
+          id: "adopt",
+          type: "composition-adopt",
+          name: "Adopt",
+          inputs: [],
+          outputs: [{ name: "compositionId", type: "composition" }],
+        },
+      ],
+    });
+    const run = await app.pipeline.createRun("resolve-only", {
+      storyId: "story_pipeline_1",
+      compositionTarget: {
+        version: 1,
+        mode: "resolve",
+        compositionId: selected.id,
+        baseRevision: revision,
+      },
+    });
+    const result = await app.pipeline.startRun(run.id);
+    expect(result.status).toBe("succeeded");
+    expect(app.project.timelines).toHaveLength(2);
+    expect(app.project.timelines.find((c) => c.id === other.id)).toEqual(
+      before,
+    );
+    expect(result.artifacts[0]?.metadata?.compositionId).toBe(selected.id);
+  });
+  it("retry_after_ambiguous_commit_does_not_duplicate_or_erase_later_pins", async () => {
+    const recipe = {
+      schemaVersion: "1.0.0" as const,
+      id: "retry-adopt",
+      version: "1.0.0",
+      name: "Adopt",
+      steps: [
+        {
+          id: "adopt",
+          type: "composition-adopt" as const,
+          name: "Adopt",
+          inputs: [],
+          outputs: [{ name: "compositionId", type: "composition" as const }],
+        },
+      ],
+    };
+    app.pipeline.registerRecipe(recipe);
+    const run = await app.pipeline.createRun(recipe.id, {
+      storyId: "story_pipeline_1",
+      compositionTarget: { version: 1, mode: "new-cut" },
+    });
+    const failure = vi
+      .spyOn(app.catalog, "withProjectWrite")
+      .mockImplementationOnce((operation) => {
+        operation();
+        throw new Error("ambiguous publication after manifest write");
+      });
+    expect((await app.pipeline.startRun(run.id)).status).toBe("failed");
+    failure.mockRestore();
+    app.close({ requireSave: false });
+    app = await OpenFilmApplication.open(projectDir);
+    app.pipeline.registerRecipe(recipe);
+    const accepted = app.project.timelines[0]!;
+    const editor = new TimelineEditor(app),
+      state = editor.get(accepted.id);
+    await editor.edit(accepted.id, {
+      baseRevision: state.revision,
+      commands: [
+        {
+          type: "user-pin.set",
+          target: { kind: "clip", clipId: accepted.tracks[0]!.clips[0]!.id },
+          pinned: true,
+        },
+      ],
+    });
+    const pinned = structuredClone(app.project.timelines[0]);
+    const result = await app.pipeline.retryRun(run.id);
+    expect(result.status).toBe("succeeded");
+    expect(app.project.timelines).toHaveLength(1);
+    expect(app.project.timelines[0]).toEqual(pinned);
+  });
+  it("legacy_run_remains_new_cut", async () => {
+    const recipe = {
+      schemaVersion: "1.0.0" as const,
+      id: "legacy-adopt",
+      version: "1.0.0",
+      name: "Adopt",
+      steps: [
+        {
+          id: "adopt",
+          type: "composition-adopt" as const,
+          name: "Adopt",
+          inputs: [],
+          outputs: [{ name: "compositionId", type: "composition" as const }],
+        },
+      ],
+    };
+    app.pipeline.registerRecipe(recipe);
+    const run = await app.pipeline.createRun(recipe.id, {
+      storyId: "story_pipeline_1",
+      compositionTarget: { version: 1, mode: "new-cut" },
+    });
+    const file = join(projectDir, "cache", "pipeline-runs.json");
+    const records = JSON.parse(await readFile(file, "utf8"));
+    delete records[0].inputSnapshot.compositionTarget;
+    await writeFile(file, JSON.stringify(records));
+    await app.pipeline.init();
+    expect((await app.pipeline.startRun(run.id)).status).toBe("succeeded");
+    expect(app.project.timelines).toHaveLength(1);
+  });
+
   it("lists registered recipes including the canonical guided recipe", () => {
     const recipes = app.pipeline.listRecipes();
     expect(recipes.length).toBeGreaterThanOrEqual(1);
@@ -129,6 +330,7 @@ describe("PipelineService Integration", () => {
 
   it("rejects tone mock from masquerading as speech narration", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: {
         type: "configured-tts",
@@ -150,6 +352,7 @@ describe("PipelineService Integration", () => {
 
   it("completes full pipeline with no-narration and marks remote motion unavailable", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       assetIds: ["asset_a", "asset_b"],
       narration: { type: "none" },
@@ -220,6 +423,7 @@ describe("PipelineService Integration", () => {
     app.catalog.upsertAsset(voiceAsset);
 
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: {
         type: "voice-import",
@@ -256,6 +460,7 @@ describe("PipelineService Integration", () => {
 
   it("handles cancellation cleanly without importing late results", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: { type: "none" },
     });
@@ -271,6 +476,7 @@ describe("PipelineService Integration", () => {
 
   it("detects external modifications and marks run as outdated", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: { type: "none" },
     });
@@ -291,6 +497,7 @@ describe("PipelineService Integration", () => {
 
   it("persists runs across project close and reopen without falsely killing live tasks", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: { type: "none" },
     });
@@ -318,6 +525,7 @@ describe("PipelineService Integration", () => {
   it("retryRun retains identical input snapshot and increments attempt number", async () => {
     // Create a run that will fail due to tone mock
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: {
         type: "configured-tts",
@@ -340,6 +548,7 @@ describe("PipelineService Integration", () => {
 
   it("rejects review submissions when the step is not waiting review", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: { type: "none" },
     });
@@ -352,6 +561,7 @@ describe("PipelineService Integration", () => {
 
   it("returns succeeded run idempotently without executing duplicate side effects", async () => {
     const run = await app.pipeline.createRun("guided-story-to-video", {
+      compositionTarget: { version: 1, mode: "new-cut" },
       storyId: "story_pipeline_1",
       narration: { type: "none" },
     });

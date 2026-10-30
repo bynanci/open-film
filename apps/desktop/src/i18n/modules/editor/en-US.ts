@@ -2,6 +2,12 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      target: "Cut",
+      newCut: "New rough cut",
+      resolveCut: "Re-solve selected cut",
+      selectCut: "Select a saved cut and retry.",
+    },
     picture: {
       toggle: "Adjust picture",
       group: "Picture transform",

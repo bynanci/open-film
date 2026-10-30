@@ -1,5 +1,6 @@
+import { TimelineEditor } from "./editor.js";
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
@@ -14,6 +15,9 @@ import {
   type StepChangeImpact,
   type PipelineChangeImpactReport,
   validatePipelineRecipe,
+  validateProject,
+  validatePipelineCompositionTarget,
+  type PipelineCompositionTarget,
   validatePipelineRun,
   validateChangeImpactReport,
   computeInputSnapshotDigest,
@@ -117,6 +121,7 @@ export const guidedStoryToVideoRecipe: PipelineRecipe = {
 };
 
 export interface CreatePipelineRunOptions {
+  compositionTarget?: PipelineCompositionTarget;
   storyId?: string;
   storyPlanId?: string;
   assetIds?: string[];
@@ -296,10 +301,26 @@ export class PipelineService {
     recipeId: string,
     options: CreatePipelineRunOptions = {},
   ): Promise<PipelineRun> {
+    const compositionTarget = validatePipelineCompositionTarget(
+      options.compositionTarget,
+    );
+    if (compositionTarget.mode === "resolve") {
+      const state = new TimelineEditor(this.app).get(
+        compositionTarget.compositionId,
+      );
+      if (
+        state.revision !== compositionTarget.baseRevision ||
+        state.story.id !== (options.storyId ?? this.app.project.stories[0]?.id)
+      )
+        throw new Error("The resolve target revision or story changed.");
+    }
     const recipe = this.getRecipe(recipeId);
     const projectRev = this.getCurrentProjectRevision();
 
     const rawSnapshot: Omit<PipelineInputSnapshot, "inputDigest"> = {
+      compositionTarget: validatePipelineCompositionTarget(
+        options.compositionTarget ?? { version: 1, mode: "new-cut" },
+      ),
       projectRevision: projectRev,
       storyId: options.storyId ?? this.app.project.stories[0]?.id,
       storyPlanId: options.storyPlanId,
@@ -480,6 +501,17 @@ export class PipelineService {
           subtitleText,
           assetIds: [...runInputs.assetIds].sort(),
           compositionRules: "solver-v1",
+          compositionTarget: runInputs.compositionTarget ?? {
+            version: 1,
+            mode: "new-cut",
+          },
+          ...(runInputs.compositionTarget?.mode === "resolve"
+            ? {
+                pinDigest: this.pinDigest(
+                  runInputs.compositionTarget.compositionId,
+                ),
+              }
+            : {}),
         };
       }
 
@@ -667,6 +699,9 @@ export class PipelineService {
     }
 
     const rawSnapshot: Omit<PipelineInputSnapshot, "inputDigest"> = {
+      compositionTarget: validatePipelineCompositionTarget(
+        options.compositionTarget ?? { version: 1, mode: "new-cut" },
+      ),
       projectRevision: projectRev,
       storyId: options.storyId ?? this.app.project.stories[0]?.id,
       storyPlanId: options.storyPlanId,
@@ -1156,6 +1191,31 @@ export class PipelineService {
     return this.startRun(runId);
   }
 
+  private pinDigest(compositionId: string): string {
+    const composition = this.app.project.timelines.find(
+      (c) => c.id === compositionId,
+    );
+    return createHash("sha256")
+      .update(
+        JSON.stringify(
+          composition
+            ? {
+                clips: composition.tracks.flatMap((t) =>
+                  t.clips
+                    .filter((c) => c.userOverrides?.isUserPinned)
+                    .map((c) => ({ trackId: t.id, clip: c })),
+                ),
+                scenes:
+                  composition.graphicScenes?.filter(
+                    (s) => s.userOverrides?.isUserPinned,
+                  ) ?? [],
+              }
+            : null,
+        ),
+      )
+      .digest("hex");
+  }
+
   /** Step execution engine implementing the 8 canonical steps. */
   private async executeStep(
     step: PipelineStepDefinition,
@@ -1379,10 +1439,50 @@ export class PipelineService {
             throw new Error("Story not found for composition adoption.");
           }
 
-          const composition = this.app.compose(story.id);
+          const target = run.inputSnapshot.compositionTarget ?? {
+            version: 1 as const,
+            mode: "new-cut" as const,
+          };
+          const adoptedId = `pipeline:${run.id}:${step.id}`;
+          const existing =
+            target.mode === "new-cut"
+              ? this.app.project.timelines.find((c) => c.id === adoptedId)
+              : undefined;
+          if (!existing && String(oldRev) !== String(run.expectedRevision))
+            throw new Error(
+              "The project changed after pipeline preparation. Prepare a new run.",
+            );
+          const baseRevision =
+            target.mode === "resolve"
+              ? target.baseRevision
+              : String(run.expectedRevision);
+          let composition;
+          if (target.mode === "resolve") {
+            if (run.inputSnapshot.customParams?.subtitleText)
+              throw new Error(
+                "Resolve cannot replace saved captions automatically. Edit captions explicitly.",
+              );
+            const state = await new TimelineEditor(this.app).resolve(
+              target.compositionId,
+              {
+                baseRevision: target.baseRevision,
+                requestId: `pipeline:${run.id}:${step.id}`,
+                scope: { kind: "composition" },
+                mode: "regenerate",
+              },
+            );
+            if (state.story.id !== story.id)
+              throw new Error("The resolve target belongs to another story.");
+            composition = state.composition;
+          } else {
+            composition = existing
+              ? structuredClone(existing)
+              : this.app.prepareComposition(story.id);
+            if (!existing) composition.id = adoptedId;
+          }
           const subtitleText = run.inputSnapshot.customParams?.subtitleText as
             string | undefined;
-          if (subtitleText) {
+          if (subtitleText && !existing && target.mode === "new-cut") {
             const endMs = Math.max(1, Math.floor(composition.duration * 1000));
             composition.captionTracks = [
               {
@@ -1419,15 +1519,22 @@ export class PipelineService {
               },
             ];
           }
-          const timelineIndex = this.app.project.timelines.findIndex(
-            (t) => t.id === composition.id,
-          );
-          if (timelineIndex >= 0) {
-            this.app.project.timelines[timelineIndex] = composition;
-          } else {
-            this.app.project.timelines.push(composition);
+          if (target.mode === "new-cut" && !existing) {
+            const previous = this.app.project;
+            const candidate = validateProject({
+              ...previous,
+              timelines: [...previous.timelines, composition],
+            });
+            if (String(this.getCurrentProjectRevision()) !== String(oldRev))
+              throw new Error("The project changed before pipeline adoption.");
+            this.app.project = candidate;
+            try {
+              await this.app.save();
+            } catch (error) {
+              this.app.project = previous;
+              throw error;
+            }
           }
-          await this.app.save();
 
           const newRev = this.getCurrentProjectRevision();
 
@@ -1445,7 +1552,11 @@ export class PipelineService {
             kind: "rough-cut-composition",
             uri: `composition://${composition.id}`,
             metadata: {
+              targetMode: target.mode,
               compositionId: composition.id,
+              baseRevision,
+              producedRevision: newRev,
+              pinDigest: this.pinDigest(composition.id),
               duration: composition.duration,
             },
           };

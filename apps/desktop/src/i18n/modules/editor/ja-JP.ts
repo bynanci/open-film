@@ -2,6 +2,12 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 export default {
   editor: {
+    pins: {
+      target: "カット",
+      newCut: "新しいラフカット",
+      resolveCut: "選択したカットを再構成",
+      selectCut: "保存済みのカットを選択して再試行してください。",
+    },
     picture: {
       toggle: "画面を調整",
       group: "画面の変形",
