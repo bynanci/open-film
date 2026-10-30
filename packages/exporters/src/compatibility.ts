@@ -21,6 +21,7 @@ export type NleFeatureId =
   | "photoMotion"
   | "titleStyle"
   | "audioAutomation"
+  | "audioTiming"
   | "overlayTiming"
   | "clipLocks"
   | "userPins"
@@ -98,6 +99,14 @@ export const resolveCompatibility = {
       realNleVerified: false,
       manualRecreation: true,
     })),
+    {
+      id: "audioTiming",
+      implementation: "metadata-only",
+      schemaValidated: true,
+      parserValidated: false,
+      realNleVerified: false,
+      manualRecreation: true,
+    } satisfies NleFeatureCompatibility,
     {
       id: "primaryColor",
       implementation: "metadata-only",

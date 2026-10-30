@@ -116,7 +116,10 @@ function identifier(value: unknown, path: string): string {
     typeof value !== "string" ||
     !value.trim() ||
     value.length > 256 ||
-    /[\u0000-\u001f\u007f]/u.test(value)
+    [...value].some((character) => {
+      const code = character.codePointAt(0)!;
+      return code <= 31 || code === 127;
+    })
   )
     fail(path, "expected a 1–256 character identifier");
   return value;

@@ -117,6 +117,7 @@ export function planCollectCoverage(
     evidence = flags(input.evidenceBoundAssetIds);
   const uses = new Map<string, CollectSourceUse[]>(),
     invalidRanges = new Set<string>(),
+    independentAudioAssets = new Set<string>(),
     lockedAssets = new Set<string>(),
     pinnedAssets = new Set<string>();
   const compositionIds = new Set<string>();
@@ -155,6 +156,7 @@ export function planCollectCoverage(
         id(clip.id);
         if (clipIds.has(clip.id)) invalid();
         clipIds.add(clip.id);
+        if (clip.audioTiming) independentAudioAssets.add(clip.assetId);
         if (clip.userOverrides?.isUserPinned) {
           pinnedAssets.add(clip.assetId);
           if (clip.layout?.secondary)
@@ -196,6 +198,8 @@ export function planCollectCoverage(
     .sort((a, b) => compare(a.id, b.id))
     .map((asset) => {
       const reasons = new Set<CollectCoverageReason>();
+      if (independentAudioAssets.has(asset.id))
+        reasons.add("source.independent-audio");
       if (pinnedAssets.has(asset.id)) reasons.add("source.user-pinned");
       const sourceHash =
         typeof asset.contentHash === "string" &&

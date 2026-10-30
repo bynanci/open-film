@@ -44,10 +44,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
         or implicit/double mix in this slice.
-        Candidate Tasks 1–6 now cover strict schema/timing, atomic edits, shared
+        Candidate Tasks 1–7 now cover strict schema/timing, atomic edits, shared
         render/PCM preparation and Record/Inspector controls (156 focused Task 6
-        checks plus typecheck/i18n pass). Whole-project retention, independent
-        clock adversaries, actual browser PCM parity and exact-candidate gates
+        checks plus typecheck/i18n pass), whole-project/Collect retention and
+        independent short-gap/origin clock proof. Actual browser PCM parity and exact-candidate gates
         remain open; this checkbox stays unchecked.
   - [x] D6A: add bounded proxy queue, cancel/resume, stale-hash fencing,
         quota/eviction, rebuild and health UI through the existing generator.

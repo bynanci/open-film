@@ -60,6 +60,7 @@ const reasons: Record<CollectCoverageReason, string> = {
   "source.user-pinned": "userPinned",
   "source.opaque-reference": "opaqueReference",
   "source.evidence-bound": "evidenceBound",
+  "source.independent-audio": "independentAudio",
   "source.range-invalid": "rangeInvalid",
   "source.unused": "unused",
 };

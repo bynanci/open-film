@@ -1,4 +1,4 @@
-import { placeDirectEdit } from "@openfilm/solver";
+import { placeDirectEdit, validateAudioEdit } from "@openfilm/solver";
 // Modified by OpenFilm contributors on 2026-10-23. See LICENSE and NOTICE.
 
 import { randomUUID } from "node:crypto";
@@ -580,6 +580,17 @@ export class CreativeVariantService {
         );
       derivedComp = structuredClone(solved.document.composition);
     }
+
+    validateAudioEdit(
+      canonical,
+      { story: derivedStory, composition: derivedComp },
+      this.app.catalog.listAssets(),
+      [],
+      {
+        timebase: resolveProjectTimebase(this.app.project.settings),
+        origin: "automatic",
+      },
+    );
 
     const variantRecord: CreativeVariant = {
       schemaVersion: "1.0.0",

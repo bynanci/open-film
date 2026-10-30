@@ -61,6 +61,8 @@ export default {
       opaqueReference: "A scene or layout dependency requires the full source.",
       evidenceBound:
         "Transcript, provenance or extension data needs the original source clock.",
+      independentAudio:
+        "Independent sound timing keeps the complete original source and its audio clock.",
       rangeInvalid: "The saved source range needs review before consolidation.",
       unused: "No bounded clip range was found for this referenced source.",
     },

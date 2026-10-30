@@ -30,6 +30,12 @@ candidate/main gates are recorded on [PR72](https://github.com/bynanci/open-film
 and must pass before merge. Rhythm analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
 and [validation](docs/validation-sequence-waveforms.md).
 
+D3B1's candidate now carries strict independent sound timing, one shared
+render/Record PCM mix, editing controls and exact project/Collect retention.
+Focused persistence, media and transport evidence is recorded during execution;
+actual browser PCM parity and final candidate review remain open. D3B2 coverage
+persistence remains a separate, unchecked task.
+
 A bounded Phase 1B gesture slice now gives General-mode editors direct
 clip-picture move and proportional corner resize in the existing Story monitor.
 It uses the shared frame-pixel geometry and one acknowledged transform
