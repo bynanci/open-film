@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -396,6 +396,17 @@ it.each([
         "pipe:1",
       ]).then((result) => result.stdout);
     expect(await pcm(output)).toEqual(await pcm(baseline));
+    const evidence = process.env.OPENFILM_TITLE_FINISHING_QA_OUTPUT;
+    if (evidence) {
+      await mkdir(evidence, { recursive: true });
+      await cp(
+        root,
+        join(evidence, `${frameRate}-${attached ? "attached" : "standalone"}`),
+        {
+          recursive: true,
+        },
+      );
+    }
   },
   90_000,
 );
