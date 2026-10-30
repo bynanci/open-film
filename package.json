@@ -33,7 +33,9 @@
     "test:docs-i18n": "node scripts/check-doc-locales.mjs",
     "test:contracts": "vitest run --config vitest.contract.config.ts",
     "test:media": "vitest run --config vitest.media.config.ts",
-    "test:ci-partition": "tsx scripts/ci/check-test-partition.ts"
+    "test:ci-partition": "tsx scripts/ci/check-test-partition.ts",
+    "test:browser-partition": "tsx scripts/ci/check-browser-shards.ts partition",
+    "test:browser-results": "tsx scripts/ci/check-browser-shards.ts results"
   },
   "dependencies": {
     "@openfilm/analysis": "workspace:*",

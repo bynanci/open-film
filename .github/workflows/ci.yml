@@ -1,6 +1,7 @@
 name: Verify
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -27,11 +28,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test:ci-partition
+      - run: pnpm test:browser-partition
       - run: pnpm test:contracts
   heavy-media-qa:
     runs-on: ubuntu-24.04
-    # Hosted regression runs with full Story Graph × Pipeline E2E acceptance take
-    # about 38 minutes. Keep every browser and actual-media gate with safe timeout margin.
+    # Actual-media tests keep their existing budgets; browsers use isolated VMs below.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -71,22 +72,77 @@ jobs:
           path: ${{ runner.temp }}/resolve-qa-reference/
           if-no-files-found: error
       - run: node scripts/smoke-built-cli.mjs
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install native media tools and independent timeline parser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-noto-cjk
+          python -m pip install opentimelineio==0.18.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      # Each VM owns its fixed ports and project; retain one worker and serial files.
+      - run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --reporter=list,github,json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-test-results
+          name: browser-test-results-${{ matrix.shard }}
           path: test-results/
           if-no-files-found: ignore
-  # Preserve the historical required-check identity; neither lane may be skipped.
-  typescript-and-media:
-    needs: [fast-contract-check, heavy-media-qa]
-    if: always()
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-report-${{ matrix.shard }}
+          path: ${{ runner.temp }}/e2e-result-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+  docs-site:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+        working-directory: docs
+      - run: npm run build
+        working-directory: docs
+  # Preserve the historical required-check identity; every lane and case is mandatory.
+  typescript-and-media:
+    needs: [fast-contract-check, heavy-media-qa, browser-e2e, docs-site]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24.14.0
@@ -94,6 +150,17 @@ jobs:
         env:
           FAST_RESULT: ${{ needs.fast-contract-check.result }}
           MEDIA_RESULT: ${{ needs.heavy-media-qa.result }}
+          BROWSER_RESULT: ${{ needs.browser-e2e.result }}
+          DOCS_RESULT: ${{ needs.docs-site.result }}
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: browser-report-*
+          path: ${{ runner.temp }}/browser-reports
+          merge-multiple: true
+      - run: pnpm test:browser-results "${{ runner.temp }}/browser-reports"
+        env:
+          OPENFILM_QA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   native-shell:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
