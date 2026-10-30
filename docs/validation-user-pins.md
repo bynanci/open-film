@@ -292,3 +292,38 @@ placement33 cases remain unchanged and pass. TypeScript/Vue, full ESLint, full
 Prettier,2,909 semantic locale keys and135 English documentation mirrors pass.
 This remains focused regression evidence; complete hosted browser/media gates
 and independent scoped review are still required before merge.
+
+## Final direct-edit UI integration — 2026-10-30
+
+The completed producer/source-lock correction `767329a2bca6636d6bf866f531a099e8e62252e5`
+has a fresh independent scoped PASS (186 cases, all 22 source/51 artifact hashes
+verified). Complete author checks pass 452 cases plus 33 placement controls and
+two unchanged source-lock browser journeys. The server-only origin capability,
+request replay fencing and operation-specific source-lock matrix remain intact.
+
+The remaining hosted primary Auto Match failure was a real Vue boundary defect:
+its reactive suggested correction could not be cloned by the editor. A real
+Vue-host regression reproduced DataCloneError. The existing closed correction
+validator now emits an owned plain command; later review-draft mutation cannot
+change it. Original clipping/selection/CAS/Pin guards remain server-owned.
+
+Legacy browser journeys now explicitly release a direct Pin when handing that
+owner back to automatic editing. They assert the new exact Pin payload instead
+of removing metadata from comparisons. All original font, geometry, source,
+history, duration and render assertions remain. The intended Source ripple
+releases its photo before trimming, so the test does not first create an authored
+gap and then ask Fit to silently remove it. The intermediate 7/8 result and its
+strict target-duration failure are retained.
+
+Final clean `7d562ea47f90ff87f90a1914c47e710f16843d36` passes all eight affected
+real browser journeys in 1.3 minutes, zero skipped/flaky/retries, including native
+text, motion adoption, GraphicScene review, explicit Fit and Auto Match. Ports
+4310/1420 are closed after execution. Four focused files pass 77 cases, including
+the actual pipeline fail-closed/export adapter with its original failure/cancel
+assertions and stronger published Composition ID checks. Full types, lint,
+format, i18n and docs pass. The private ignored handoff README was renamed REVIEW
+without changing bytes or the document checker.
+
+These are checkpoint-scoped checks; final correction review and exact-head
+hosted full gates remain required. No stable version or physical/hardware
+verification is claimed.

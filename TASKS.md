@@ -1393,3 +1393,8 @@ validation records retain their original branch identities and historical runs.
       preserve exact raster assertions and stale-revision guards. Fresh scoped review,
       103 focused cases and two actual browser journeys pass; final hosted gates
       remain required before merge.
+
+- [x] Repair the measured-color reactive command boundary and adapt existing
+      browser journeys to explicit Pin release; all eight affected journeys retain
+      their exact target/source/history/render assertions and pass at7d562ea.
+      Final correction review and full hosted gates remain open.

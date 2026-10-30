@@ -857,3 +857,8 @@ The D5C integration also repairs the observed title-image request ABA during
 Undo/Redo. Display generations request independent images while the existing
 project/revision fences and shared raster cache remain authoritative. Scoped
 review and exact raster/browser regressions pass; new-head full gates remain open.
+
+The Pin integration now covers real Motion/GraphicScene automatic writers and
+existing source-lock workflows. Measured Auto Match emits a detached validated
+command; explicit Pin release governs subsequent automatic edits. Final eight
+browser journeys pass, with complete hosted verification still required.
