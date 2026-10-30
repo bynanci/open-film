@@ -327,3 +327,9 @@ without changing bytes or the document checker.
 These are checkpoint-scoped checks; final correction review and exact-head
 hosted full gates remain required. No stable version or physical/hardware
 verification is claimed.
+
+### 2026-10-30 — remaining legacy journey integration
+
+Exact candidate `c260deaa502ccb2a0f76e64bdb334f381ea45803` passed hosted contract/media/native-shell and three-platform render QA, but Verify `41113963947` failed three legacy journeys: conflicting draft reapply, Proposal Film regeneration and moved-project reopen. All three failures were reproduced locally with their original assertions. The fixtures manually pinned a later clip, then expected automatic ripple/regeneration to move it; the absolute user pin correctly fenced those operations.
+
+The fixtures now explicitly release only those placement pins before their intentional automatic steps. Source locks and all original source/timing/history/reopen/real-render assertions remain. Proposal Film first proves a locked source cannot release its pin, explicitly removes that source lock, releases its manual pin, then restores the source lock. The moved-project case also asserts the five-second photo duration from the server before relocation. All three journeys pass together in 43.5 seconds with the existing official OTIO 0.18.1 environment; no product changes, assertion relaxation, retries or skips. Intermediate failures, including one local command missing the existing OTIO environment, remain recorded separately. Fresh narrow test-integrity review and new-head full CI are required. Windows `41113964221` separately failed strict font assignment pixel equality; its diagnosis remains open.
