@@ -108,3 +108,35 @@ current v6 snapshots, immutable old payloads and explicit1.0/1.1 pin restoration
 First whole-branch review, final reviewed parent recovery integrations and complete
 exact-head hosted gates remain coordinator-owned. No full suite, native benchmark,
 hosted OS result, physical presentation/NLE claim or merge readiness is inferred.
+
+## 2026-10-30 — clean integration proof and reviewed dependency recovery
+
+At clean `0e7ff67750a40d8f7276dfd6263c428c38091dc8`, the corrected combined
+selection passes all24 actual files /410 tests in50.60s, with every assertion
+passed and zero skipped/todo in the actual JSON report. This includes full
+primary review, preset catalog-CAS, Pin policy/placement, core contracts, actual
+Named Version SQLite v5/v6/1.1 restore, creative variants and Collect suites.
+The existing55-case TimelineClip host also passes within its separate5-file/
+105-test run. Existing pipeline/automatic writers pass7files/166tests. The new
+schema passes35tests and34 concrete fixtures against the unchanged official
+Draft2020-12 schema. Types, scoped lint, full formatting,2905 localization keys
+and135 English documentation mirrors pass. No failed checkpoint is rewritten.
+
+Merge `eeb0419` then consumes reviewed D7 `a9995f1`, including C `df60370` and
+its separately reviewed cleanup privacy/UI corrections. Cleanup failures now
+expose only a stable typed503/path-free error; actual HTTP media and edit routes
+retain the real EACCES negative controls. The append-only test conflict retains
+both that HTTP regression and the new pinned Auto Match journey. The real
+TimelineClip host is byte-identical to the reviewed incoming host, with primary
+source-color and local-presets bindings each present exactly once. Pin context,
+schema floor, primary automatic-origin guard, whole payload/scene policy and
+variant/source provenance corrections remain intact.
+
+The final integrated candidate's local checks and fresh actual source/artifact
+receipt are retained separately under
+`/tmp/openfilm-finishing-integration/Pin-final/`. The preceding clean checkpoint
+receipt remains `Pin-checkpoint/` (source261/artifacts43, receiptSHA256
+`00573af0366a5200638410b2d7fd64da6339de63f7969835c6b84611db16854c`).
+Intermediate browser/failed fixtures retain their own identities. First whole
+review and complete exact-head hosted gates remain pending with the coordinator;
+this entry does not mark the feature merge-ready or claim hosted OS evidence.
