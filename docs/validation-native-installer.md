@@ -506,3 +506,9 @@ reproduction, full Tauri build, signing, installer, workstation observation or
 release occurred. The actual Node/import and standalone Rust smoke observations
 above keep their original hashes and limits. Both M7E checkboxes and all
 source-security, target-input, trust and physical gates remain open.
+
+### 2026-10-30 clean-checkout fixture correction and merged foundations
+
+Hosted Verify run `41110757757` at `ec8e43fc6fed30f8ccbf0802cfbb2f68ac6929d5` failed three media tests because the fixtures required a pre-existing repository `dist/`. The other 3715 media tests passed. The correction supplies owned temporary repositories, real generated contribution inputs and explicit staging entries; it retains the attribution, permission and hash assertions. A fresh detached checkout at `1d54764bb88fd3ae18065431b1964f469340aa55` passed all 59 affected tests with no `dist/` before or after execution. The identical test correction was independently reviewed at `b0d3f43050c8f94b7ed3392653bb0312f4a18f35`.
+
+The integration checkpoint `9aec7aecbea3633cefda1c5a86ff510897460bb8` includes merged main `6cdaa4fa46f83c2b41ffc4ee34eee586134a8532`; 83 native attribution/support/Cargo/distribution/linkage/build-launcher cases, type checking, the actual desktop/server/CLI build and documentation locale checks passed locally. These results do not establish native source admission, installer trust or workstation verification. The published successor requires fresh hosted gates.
