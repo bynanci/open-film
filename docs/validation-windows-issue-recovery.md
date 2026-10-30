@@ -181,7 +181,7 @@ samples with2000assets/500clips/10000segments/100000words and the explicitly
 recorded500-link copy banks. Original thresholds remain. No primaryFailure.
 
 That source passes326files/4573 full local tests in424.91s and all291 Chromium
-cases in22.7m. Hosted push41047483094 also passes49files/1124contracts plus
+cases in22.7m. Hosted PR Verify41047483094 also passes49files/1124contracts plus
 277files/3449media, all291 Chromium(23.4m),23Rust/2archive,18officialOTIO,
 build/CLI/format/locales/lint/types. These are successful source gates, not a claim
 that a superseded PR attempt later completed.
