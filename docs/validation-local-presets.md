@@ -278,3 +278,21 @@ this checkpoint ran no browser server or full suite. Fresh synthetic artifacts
 and current byte receipts are under
 `/tmp/openfilm-finishing-integration/D8-latest-base/`. Full exact-head hosted
 gates remain coordinator-owned.
+
+## 2026-10-30 — exact-head CI browser compatibility repair
+
+Initial PR76 head `77c9ea03b33796d0e9aac2fe068dec3ea39aafc1` failed
+browser shard4 in Verify41083838628. The legacy graph-cancel case directly read
+`story.graph.edges` from the saved manifest before any graph edit. D8 deliberately
+makes GET graph/view read-only, so an absent graph is valid until explicit
+acceptance. The same failure reproduced locally in the isolated browser case.
+
+The corrected test retains the cancelled-edge=false assertion through the typed
+effective graph GET, additionally requires the saved graph to remain absent and
+the entire project to remain byte-equivalent as JSON across cancellation, then
+retains the original confirmed-edge=true and selected-asset persistence checks.
+No optional chaining, assertion removal, production change or read-side write was
+added. All seven story-workflow browser cases pass in19.7s, including CJK/layout
+and keyboard flows. Scoped ESLint, formatting and diff whitespace checks pass.
+This is focused repair evidence; complete new-head CI is still required and the
+initial failed run remains part of the record.
