@@ -162,7 +162,7 @@ export interface PhotoProtectedRegion extends PhotoFocalPoint {
   width: number;
   height: number;
 }
-export interface PhotoLayout {
+export interface PhotoLayoutV1 {
   version: 1;
   preset: "contain" | "hero" | "diptych";
   focalPoint?: PhotoFocalPoint;
@@ -175,6 +175,19 @@ export interface PhotoLayout {
   /** Space between diptych cells, in composition pixels. */
   gap?: number;
 }
+export interface PhotoAmbientFillV1 {
+  version: 1;
+  kind: "ambient";
+  /** Gaussian sigma relative to the composition's shorter edge; 0..0.05. */
+  blurSigma: number;
+  /** Encoded SDR RGB is multiplied by 1 - dim; 0..0.85. */
+  dim: number;
+}
+export interface PhotoLayoutV2 extends Omit<PhotoLayoutV1, "version"> {
+  version: 2;
+  fill: PhotoAmbientFillV1;
+}
+export type PhotoLayout = PhotoLayoutV1 | PhotoLayoutV2;
 export interface PhotoMotionTransform {
   /** Supported zoom range is 1–10, matching the deterministic renderer adapter. */
   scale: number;
@@ -182,13 +195,30 @@ export interface PhotoMotionTransform {
   x: number;
   y: number;
 }
-export interface PhotoMotion {
+export interface PhotoMotionV1 {
   version: 1;
   preset: "hold" | "push-in" | "pull-out" | "pan";
   easing: "linear" | "ease-in-out";
   from: PhotoMotionTransform;
   to: PhotoMotionTransform;
 }
+export interface PhotoBezierEasingV1 {
+  version: 1;
+  kind: "cubic-bezier";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+export interface PhotoMotionV2 extends Omit<
+  PhotoMotionV1,
+  "version" | "easing"
+> {
+  version: 2;
+  easing: PhotoBezierEasingV1;
+}
+export type PhotoMotion = PhotoMotionV1 | PhotoMotionV2;
+export type PhotoEasing = PhotoMotion["easing"];
 
 /** Accepted direction evidence is retained in a bounded project history. */
 export const MAX_SCENE_DIRECTION_RECEIPTS = 100;

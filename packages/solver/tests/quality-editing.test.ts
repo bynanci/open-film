@@ -90,6 +90,53 @@ const addMusic: TimelineCommand = {
   volume: 0.5,
 };
 
+it("retains complete versioned photo finishing on protected regeneration and resets it on explicit source replacement", () => {
+  const layout: Clip["layout"] = {
+    version: 2,
+    preset: "contain",
+    fill: { version: 1, kind: "ambient", blurSigma: 0.02, dim: 0.45 },
+  };
+  const motion: Clip["motion"] = {
+    version: 2,
+    preset: "pan",
+    easing: {
+      version: 1,
+      kind: "cubic-bezier",
+      x1: 0.42,
+      y1: 0,
+      x2: 0.58,
+      y2: 1,
+    },
+    from: { scale: 1.1, x: -5, y: 0 },
+    to: { scale: 1.1, x: 5, y: 0 },
+  };
+  let before = edit(document(), {
+    type: "presentation",
+    clipId: "first",
+    layout,
+    motion,
+  });
+  before = edit(before, { type: "lock", clipId: "first", locked: true });
+  const next = edit(before, {
+    type: "regenerate-beat",
+    beatId: "beat",
+    mode: "more-photos",
+  });
+  expect(clip(next, "first")).toMatchObject({ layout, motion, locked: true });
+  expect(() =>
+    edit(next, { type: "presentation", clipId: "first", motion: null }),
+  ).toThrow(/locked/iu);
+  const unlocked = edit(next, { type: "lock", clipId: "first", locked: false });
+  const replaced = edit(unlocked, {
+    type: "replace",
+    clipId: "first",
+    assetId: "landscape",
+  });
+  expect(clip(replaced, "first")).not.toHaveProperty("layout");
+  expect(clip(replaced, "first")).not.toHaveProperty("motion");
+  expect(clip(before, "first")).toMatchObject({ layout, motion });
+});
+
 const videoSources: MediaAsset[] = [
   ["audible", 20, true],
   ["audible-next", 6, true],
