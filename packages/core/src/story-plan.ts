@@ -2,6 +2,7 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
 import { ApplicationError } from "./errors.js";
+import { validatePresetStoryPlanContext } from "./presets.js";
 import type { IdeaSource } from "./story-graph.js";
 
 export type StoryPlanAssetRole = "hero" | "supporting" | "echo";
@@ -66,6 +67,7 @@ export interface StoryPlan {
   acceptanceMapping?: StoryPlanAcceptanceMapping;
   transition: "cut" | "crossfade";
   createdAt: string;
+  presetContext?: import("./presets.js").PresetStoryPlanContext;
 }
 
 export interface StoryPlanOptions {
@@ -234,5 +236,7 @@ export function validateStoryPlan(value: unknown): StoryPlan {
     );
   }
 
+  if (raw.presetContext !== undefined)
+    validatePresetStoryPlanContext(raw.presetContext);
   return raw as unknown as StoryPlan;
 }

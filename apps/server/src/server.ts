@@ -34,6 +34,10 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
   OpenFilmApplication,
+  LocalPresetRegistry,
+  type PresetInstallInput,
+  type PresetRemoveInput,
+  type PresetRecoveryInput,
   TimelineEditor,
   TimelineEditorError,
   parseGpxTrack,
@@ -66,6 +70,8 @@ import type {
 } from "@openfilm/application";
 import {
   validateProject,
+  type PresetApplyInput,
+  type PresetAcceptInput,
   validateFilmLook,
   validateExportProfile,
   timebaseRate,
@@ -660,6 +666,9 @@ export async function startServer(options: ServerOptions = {}) {
     visionSampleProviders: options.visionSampleProviders,
     proxyGenerator: options.proxyGenerator,
   };
+  const presetRegistry = new LocalPresetRegistry(
+    runtimeOptions.userDataDirectory,
+  );
   const configure = (application: OpenFilmApplication) => {
     if (options.transcriptionProvider)
       application.intelligence.registerTranscriptionProvider(
@@ -801,8 +810,8 @@ export async function startServer(options: ServerOptions = {}) {
   };
   let mutationQueue = Promise.resolve();
   let closing = false;
-  const mediaStreams = new Map<AbortController, Promise<void>>();
-  const trackedMediaRead = (read: (signal: AbortSignal) => Promise<void>) => {
+  const mediaStreams = new Map<AbortController, Promise<unknown>>();
+  const trackedMediaRead = <T>(read: (signal: AbortSignal) => Promise<T>) => {
     const controller = new AbortController();
     if (closing) controller.abort();
     const task = Promise.resolve()
@@ -924,6 +933,8 @@ export async function startServer(options: ServerOptions = {}) {
           /^\/api\/compositions\/[^/]+\/graphic-agent\/preview$/.test(route);
         const nonMutatingExportPreview =
           method === "POST" && route === "/api/export/frame-preview";
+        const nonMutatingWaveformRead =
+          method === "POST" && route === "/api/intelligence/waveforms";
         const acquireMutation = async () => {
           const previousMutation = mutationQueue;
           mutationQueue = new Promise<void>((accept) => {
@@ -939,6 +950,7 @@ export async function startServer(options: ServerOptions = {}) {
           (method === "POST" || method === "PATCH" || method === "DELETE") &&
           !cancellation &&
           !nonMutatingGraphicAgentPreview &&
+          !nonMutatingWaveformRead &&
           route !== "/api/projects/availability"
         ) {
           if (
@@ -1036,6 +1048,96 @@ export async function startServer(options: ServerOptions = {}) {
         };
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
+          return;
+        }
+        if (method === "GET" && route === "/api/presets") {
+          json(response, 200, presetRegistry.list());
+          return;
+        }
+        if (
+          method === "POST" &&
+          [
+            "/api/presets/import/review",
+            "/api/presets/import/accept",
+            "/api/presets/remove",
+            "/api/presets/recovery/review",
+            "/api/presets/recovery/accept",
+            "/api/presets/apply/review",
+            "/api/presets/apply/accept",
+          ].includes(route)
+        ) {
+          const data = await body(request);
+          const controller = new AbortController();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          if (response.destroyed) controller.abort();
+          try {
+            controller.signal.throwIfAborted();
+            if (route === "/api/presets/import/review") {
+              keys(data, ["document"]);
+              json(
+                response,
+                200,
+                presetRegistry.reviewImport(text(data, "document")),
+              );
+            } else if (route === "/api/presets/import/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.install(
+                  data as unknown as PresetInstallInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/remove") {
+              json(
+                response,
+                200,
+                await presetRegistry.remove(
+                  data as unknown as PresetRemoveInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/recovery/review") {
+              keys(data, []);
+              json(response, 200, presetRegistry.reviewRecovery());
+            } else if (route === "/api/presets/recovery/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.recover(
+                  data as unknown as PresetRecoveryInput,
+                  controller.signal,
+                ),
+              );
+            } else {
+              const application = current(),
+                editor = editorFor(application);
+              if (route === "/api/presets/apply/review")
+                json(
+                  response,
+                  200,
+                  application.presets.review(
+                    data as unknown as PresetApplyInput,
+                    editor,
+                  ),
+                );
+              else
+                json(
+                  response,
+                  200,
+                  await application.presets.accept(
+                    data as unknown as PresetAcceptInput,
+                    editor,
+                    controller.signal,
+                  ),
+                );
+            }
+          } finally {
+            response.off("close", disconnected);
+          }
           return;
         }
         if (method === "GET" && route === "/api/workspace") {
@@ -3600,6 +3702,64 @@ export async function startServer(options: ServerOptions = {}) {
           json(response, 200, await application.intelligence.providers());
           return;
         }
+        if (method === "POST" && route === "/api/intelligence/waveforms") {
+          const data = await body(request);
+          keys(data, ["projectId", "assetIds"]);
+          const projectId = text(data, "projectId");
+          const current = () =>
+            app === application && projectId === application.project.id;
+          if (!current())
+            throw new HttpError(
+              409,
+              "Waveform project changed.",
+              "project.unavailable",
+            );
+          let entries;
+          let readAborted = false;
+          const disconnected = new AbortController();
+          const onClose = () => {
+            if (!response.writableEnded) disconnected.abort();
+          };
+          response.once("close", onClose);
+          try {
+            entries = await trackedMediaRead(async (projectSignal) => {
+              const signal = AbortSignal.any([
+                projectSignal,
+                disconnected.signal,
+              ]);
+              readAborted = signal.aborted;
+              signal.addEventListener(
+                "abort",
+                () => {
+                  readAborted = true;
+                },
+                { once: true },
+              );
+              return application.intelligence.readWaveforms(
+                data.assetIds as string[],
+                { signal },
+              );
+            });
+          } catch (error) {
+            if (readAborted || !current())
+              throw new HttpError(
+                409,
+                "Waveform project changed.",
+                "project.unavailable",
+              );
+            throw error;
+          } finally {
+            response.off("close", onClose);
+          }
+          if (!current())
+            throw new HttpError(
+              409,
+              "Waveform project changed.",
+              "project.unavailable",
+            );
+          json(response, 200, { projectId, entries });
+          return;
+        }
         const analysisRecovery =
           /^\/api\/intelligence\/jobs\/([^/]+)\/(recovery|recover)$/.exec(
             route,
@@ -3689,10 +3849,22 @@ export async function startServer(options: ServerOptions = {}) {
             throw new HttpError(400, "Choose transcribe, waveform or scenes.");
           if (
             Object.keys(data).some(
-              (key) => !["operation", "language", "execution"].includes(key),
+              (key) =>
+                !["operation", "language", "execution", "projectId"].includes(
+                  key,
+                ),
             )
           )
             throw new HttpError(400, "Unsupported media analysis setting.");
+          if (
+            data.projectId !== undefined &&
+            (app !== application || data.projectId !== application.project.id)
+          )
+            throw new HttpError(
+              409,
+              "Analysis project changed.",
+              "project.unavailable",
+            );
           if (
             data.language !== undefined &&
             (typeof data.language !== "string" ||
@@ -4458,6 +4630,100 @@ export async function startServer(options: ServerOptions = {}) {
             return;
           }
         }
+        const primaryReview =
+          /^\/api\/compositions\/([^/]+)\/primary-color-review$/.exec(route);
+        if (method === "POST" && primaryReview) {
+          if (hasActiveProjectWork())
+            throw new HttpError(409, "Wait for the active project job.");
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "targetClipId",
+            "referenceClipId",
+          ]);
+          if (data.projectId !== application.project.id)
+            throw new HttpError(
+              409,
+              "Primary color review belongs to another project.",
+            );
+          const compositionId = decodeURIComponent(primaryReview[1]!);
+          const input = {
+            baseRevision: text(data, "baseRevision"),
+            targetClipId: text(data, "targetClipId"),
+            referenceClipId: text(data, "referenceClipId"),
+          };
+          const controller = new AbortController(),
+            jobId = randomUUID();
+          active.set(jobId, controller);
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const report = await application.runPrimaryColorReview(
+              compositionId,
+              input,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !==
+                input.baseRevision
+            )
+              throw new HttpError(
+                409,
+                "Primary color review is stale or cancelled.",
+              );
+            json(response, 200, report);
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const primaryReviewMedia =
+          /^\/api\/primary-color-reviews\/([a-f0-9-]{36})\/media\/(reference|before|after)\/([0-2])$/.exec(
+            route,
+          );
+        const primaryReviewDelete =
+          /^\/api\/primary-color-reviews\/([a-f0-9-]{36})$/.exec(route);
+        if (
+          (method === "GET" && primaryReviewMedia) ||
+          (method === "DELETE" && primaryReviewDelete)
+        ) {
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(
+              409,
+              "Primary color review belongs to another project.",
+            );
+          if (primaryReviewDelete) {
+            await application.primaryColorReview.discard(
+              primaryReviewDelete[1]!,
+            );
+            json(response, 200, { ok: true });
+          } else
+            await trackedMediaRead(async (signal) => {
+              const path = await application.primaryColorReview.media(
+                primaryReviewMedia![1]!,
+                primaryReviewMedia![2] as "reference" | "before" | "after",
+                Number(primaryReviewMedia![3]),
+              );
+              signal.throwIfAborted();
+              await streamFile(
+                request,
+                response,
+                path,
+                join(application.directory, "cache"),
+                "image/png",
+              );
+            });
+          return;
+        }
         const audioQualityMatch =
           /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
         if (method === "POST" && audioQualityMatch) {
@@ -4521,27 +4787,115 @@ export async function startServer(options: ServerOptions = {}) {
           );
           return;
         }
+        const photoFill =
+          /^\/api\/compositions\/([^/]+)\/photo-fill\/([^/]+)\.png$/.exec(
+            route,
+          );
+        if (method === "GET" && photoFill) {
+          for (const key of url.searchParams.keys())
+            if (
+              !["projectId", "revision"].includes(key) ||
+              url.searchParams.getAll(key).length !== 1
+            )
+              throw new HttpError(400, "Unsupported photo preview field.");
+          const compositionId = decodeURIComponent(photoFill[1]!);
+          const clipId = decodeURIComponent(photoFill[2]!);
+          const projectId = url.searchParams.get("projectId") ?? "";
+          const revision = url.searchParams.get("revision") ?? "";
+          const controller = new AbortController();
+          const requestId = randomUUID();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          active.set(requestId, controller);
+          try {
+            const png = await application.photoPresentation.ambient(
+              compositionId,
+              clipId,
+              { projectId, baseRevision: revision, signal: controller.signal },
+            );
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(409, "Photo preview is stale or cancelled.");
+            response.writeHead(200, {
+              "Content-Type": "image/png",
+              "Content-Length": png.byteLength,
+              "Cache-Control": "no-store",
+            });
+            response.end(png);
+          } finally {
+            active.delete(requestId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
         const titlePreview =
-          /^\/api\/compositions\/([^/]+)\/title\/([^/]+)\.png$/.exec(route);
-        if (method === "GET" && titlePreview) {
-          const compositionId = decodeURIComponent(titlePreview[1]!);
-          const clipId = decodeURIComponent(titlePreview[2]!);
-          if (url.searchParams.get("projectId") !== application.project.id)
-            throw new HttpError(409, "This title belongs to another project.");
-          const state = editorFor(application).get(compositionId);
-          if (url.searchParams.get("revision") !== state.revision)
+          /^\/api\/compositions\/([^/]+)\/title\/([^/]+)(?:\.png|\/inspection)$/.exec(
+            route,
+          );
+        const captionPreview =
+          /^\/api\/compositions\/([^/]+)\/caption\/([^/]+)\/([^/]+)(?:\.png|\/inspection)$/.exec(
+            route,
+          );
+        if (method === "GET" && (titlePreview || captionPreview)) {
+          const match = titlePreview ?? captionPreview!;
+          const compositionId = decodeURIComponent(match[1]!);
+          const projectId = url.searchParams.get("projectId") ?? "";
+          const revision = url.searchParams.get("revision") ?? "";
+          if (
+            projectId !== application.project.id ||
+            revision !== editorFor(application).get(compositionId).revision
+          )
             throw new HttpError(
               409,
-              "This title preview is stale. Wait for the current edit to save.",
+              "This text preview is stale or belongs to another project.",
             );
-          const path = await application.titleOverlay(compositionId, clipId);
-          await streamFile(
-            request,
-            response,
-            path,
-            join(application.directory, "cache"),
-            "image/png",
-          );
+          const reference = titlePreview
+            ? { kind: "title" as const, clipId: decodeURIComponent(match[2]!) }
+            : {
+                kind: "caption" as const,
+                trackId: decodeURIComponent(match[2]!),
+                cueId: decodeURIComponent(match[3]!),
+              };
+          const input = { projectId, compositionId, revision, reference };
+          const controller = new AbortController();
+          const abort = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", abort);
+          try {
+            const inspection = route.endsWith("/inspection");
+            const result = inspection
+              ? await application.textOverlays.inspect(input, {
+                  signal: controller.signal,
+                })
+              : await application.textOverlays.image(input, {
+                  signal: controller.signal,
+                });
+            if (
+              app !== application ||
+              editorFor(application).get(compositionId).revision !== revision
+            )
+              throw new HttpError(
+                409,
+                "This text preview changed while loading.",
+              );
+            if (inspection) json(response, 200, result);
+            else
+              await streamFile(
+                request,
+                response,
+                result as string,
+                join(application.directory, "cache"),
+                "image/png",
+              );
+          } finally {
+            response.off("close", abort);
+          }
           return;
         }
         const editorMatch =
@@ -5130,7 +5484,7 @@ export async function startServer(options: ServerOptions = {}) {
         if (storyGraphMatch) {
           const storyId = decodeURIComponent(storyGraphMatch[1]!);
           if (method === "GET") {
-            const graph = application.storyGraph.getGraph(storyId);
+            const graph = application.storyGraph.previewGraph(storyId);
             json(response, 200, { graph });
             return;
           }

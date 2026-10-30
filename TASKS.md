@@ -14,6 +14,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
 - [x] Hosted Linux Rust/Tauri/archive/build gate passes; local Cargo remains unavailable.
       Physical desktop/workstation verification remains below.
 - [ ] Phase 1B: monitor layout, Edit Decision Ribbon, compare and precision gestures.
+  - [ ] Persist user-pinned direct edits as versioned Clip/GraphicScene hard
+        constraints through solver/pipeline, history, Named Versions, variants
+        and Collect; add visible Pin and explicit Unlock & Re-solve. Existing
+        source/clip locks do not implement this requested override contract.
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
         transaction boundaries; preserve cancellation, locks, Undo/Redo,
@@ -25,8 +29,13 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         and snap-bypass gestures without introducing a second timeline.
 - [ ] Phase 1C: complete responsive/resizable workspace and accessibility program.
 - [ ] Phase 2–4: new edit semantics, tracks/proxies/audio control and finishing tools.
-  - [ ] D3A1: project existing source peaks into Sequence time with shared
+  - [x] D3A1: project existing source peaks into Sequence time with shared
         source-range and rational-frame resolvers, including trim/speed/clamps.
+        Implementation, independent review correction, 77 focused regressions
+        and 17 related browser cases are complete. Exact-candidate gates are
+        required before merging [PR72](https://github.com/bynanci/open-film/pull/72). See the
+        [guide](docs/sequence-waveforms.md) and
+        [decoded MP4 evidence](docs/validation-sequence-waveforms.md).
   - [ ] D3B1: after an edit/audio compatibility design, add the versioned
         audio-policy primitive/evaluator for J/L mechanics; default B-roll to
         `keep-primary`, with explicit role/gain modes and no coverage persistence
@@ -80,6 +89,9 @@ Scope: [design](docs/superpowers/specs/2026-10-30-ci-pages-e2e-design.md),
 
 - [x] Reproduce main Pages dead links; fix both architecture links and require
       the actual VitePress build on every PR/main candidate.
+      Follow-up on documentation reorganization `71858cd`: retain the new
+      locales/research, repair all three contribution-guide links and normalize
+      two translated research tables; evidence is appended to the same record.
 - [x] Run complete E2E on four isolated single-worker VMs alongside media QA;
       reject discovery omissions/overlaps and skipped/flaky/missing actual results.
 - [x] Bind browser receipts to the exact candidate and require every lane in the
@@ -169,6 +181,9 @@ and [validation](docs/validation-multi-source-analysis.md).
 
 Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-reconciliation.md).
 
+Delivery goal: [v1.0.0 readiness and existing owner crosswalk](docs/roadmap/v1-readiness.md).
+The published stable remains v0.4.0; release follows verified exit conditions.
+
 - [x] Reconcile Story, photo/render, Cut Desk/audio, transcript/title, color,
       catalog/portability and cross-platform claims against current source,
       contracts, regressions and Git history.
@@ -200,9 +215,11 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
-- [ ] D5C: after an independent color/compatibility design, add versioned primary
-      correction before Film Looks. Auto Match remains reviewable measured
-      evidence, never a source mutation.
+- [x] D5C: deliver versioned film/scene/clip primary correction before Film Looks,
+      with shared bounded coefficients, locks/history and measured statistical
+      Auto Match requiring explicit reviewed clip Apply. See the
+      [contract](docs/primary-color.md) and [validation](docs/validation-primary-color.md);
+      calibrated display/real NLE and final integration gates remain explicit.
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
@@ -236,6 +253,20 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
   signing/notarization, clean-machine install, update, rollback and uninstall.
 - [ ] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
+  - [x] Independently inspected threat/compatibility design and parent-approved
+        single-JSON schema, bounds, immutable snapshots and authored StoryPlan
+        interfaces. Preserve TitleStyle and Film Look owner contracts.
+  - [x] Closed bounded packages, explicit license/provenance acceptance, atomic
+        install/remove/recovery, exact review/registry CAS, protected StoryPlan
+        adoption and durable retry receipts through shared CLI/API/Desktop.
+  - [x] Embedded look/title/story recipes survive Undo/reopen/Named Version,
+        JSON/OTIO and existing Collect directory/ZIP relocation after deleting
+        the registry and fixture originals. Node/app/render verify actual hashes.
+  - [x] Focused155 tests, three real Chromium journeys, synthetic strength/seek
+        negative controls and exact relocated decoded hashes. See
+        [validation](docs/validation-local-presets.md).
+  - [ ] Fresh independent review, parent-coordinated full integration/hosted
+        gates and independent PR/merge; physical workstation gates stay open.
 
 Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
 D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
@@ -521,8 +552,20 @@ not retroactively rename completed project capabilities.
       4K and NLE finishing as separately recorded manual gates.
   - [ ] D5A: add focal interaction, ambient fill and a separately versioned
         bounded custom-easing contract with legacy reopen and output parity.
+        Candidate implementation now uses strict v2 recipes, one revision-pinned
+        focal transaction, verified raw ambient preparation and shared bounded
+        easing. Focused synthetic Monitor/MP4/hash/seek evidence is recorded in
+        [the validation](docs/validation-photo-film-quality.md#d5a-photo-finishing-candidate);
+        fresh whole-branch review and the complete exact-head gate remain open.
   - [ ] D5B: add separately versioned bilingual runs and bounded title finishing
         with legacy reopen, missing-font evidence and output parity.
+        Product candidate now implements canonical bilingual runs, measured
+        shadow/stroke/per-line pills, per-run font receipts/Collect bindings and
+        Story/Record caption raster parity through existing owners. Focused
+        contracts, recovery, PNG/HTTP and actual pinned-font MP4/SRT/VTT checks
+        and six actual browser cases pass; independent review and exact-head
+        gates remain.
+        [D5B validation](docs/validation-title-finishing.md).
   - [ ] D7A: complete reproducible cross-platform render QA.
     - [x] Share licensed immutable font/tool provenance, explicit test-font root,
           exact metric units/comparators and real decoded failure controls;

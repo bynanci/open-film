@@ -6,6 +6,9 @@ import {
   graphicSceneAssetIds,
   isFilmLookActive,
   resolveFilmLook,
+  resolvePrimaryColor,
+  isPrimaryColorActive,
+  assertPrimaryColorSettings,
   type Composition,
 } from "@openfilm/core";
 export type HandoffMode = "preserve-editability" | "preserve-visual-fidelity";
@@ -49,6 +52,7 @@ export function createHandoffPlan(
   frameRate: number,
   options: HandoffOptions = {},
 ): HandoffPlan {
+  assertPrimaryColorSettings(composition);
   keys(options, ["mode", "bakeAudio", "captionTrackId"]);
   if (
     composition.tracks.length > 128 ||
@@ -110,9 +114,12 @@ export function createHandoffPlan(
   keys(composition, [
     "id",
     "storyId",
+    "storyPresetSnapshot",
     "duration",
     "tracks",
     "defaultLook",
+    "defaultPrimaryColor",
+    "beatPrimaryColors",
     "beatLooks",
     "captionTracks",
     "graphicScenes",
@@ -216,8 +223,11 @@ export function createHandoffPlan(
         "layout",
         "motion",
         "titleStyle",
+        "titlePresetSnapshot",
+        "titleRuns",
         "audioAutomation",
         "look",
+        "primaryColor",
         "locked",
         "transition",
       ]);
@@ -309,7 +319,13 @@ export function createHandoffPlan(
           "visual",
           "Track compositing semantics require manual recreation",
         );
-      for (const field of ["title", "titleStyle", "layout", "motion"] as const)
+      for (const field of [
+        "title",
+        "titleStyle",
+        "titleRuns",
+        "layout",
+        "motion",
+      ] as const)
         if (clip[field] !== undefined)
           add(
             clip.id,
@@ -343,6 +359,17 @@ export function createHandoffPlan(
           "visual",
           "Geometry is metadata; NLE does not reconstruct it",
         );
+      if (
+        isPrimaryColorActive(resolvePrimaryColor(composition, clip).correction)
+      )
+        add(
+          clip.id,
+          "primaryColor",
+          start,
+          stop,
+          "visual",
+          "Primary color is metadata; recreate manually or use a rendered precomp",
+        );
       if (isFilmLookActive(resolveFilmLook(composition, clip).look))
         add(
           clip.id,
@@ -370,7 +397,7 @@ export function createHandoffPlan(
       let kind: "visual" | "manual" =
         track.id === captionTrackId ? "visual" : "manual";
       let reason =
-        "SRT/VTT carry text/timing; style and unselected languages require manual NLE import";
+        "SRT/VTT carry literal bilingual text/timing; typography, shadow, stroke, pills and unselected languages require manual NLE recreation/import";
       if (fidelity && kind === "visual") {
         if (cue.endMs > composition.duration * 1000 + 1e-7)
           throw new Error(

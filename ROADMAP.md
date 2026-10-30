@@ -1,5 +1,9 @@
 ## Professional Cut Desk — Phase 1A foundation
 
+The accepted delivery goal is [v1.0.0](docs/roadmap/v1-readiness.md). That
+crosswalk retains the existing D task owners and explicit native/manual gates;
+the currently published stable remains v0.4.0.
+
 Expert Source/Record now presents one saved Composition with rational/DF
 timecode, continuous integer-frame Record transport, staged Source I/O and
 acknowledged one-gesture transactions. General retains Story/Precision over the
@@ -16,6 +20,15 @@ tracks/proxies/audio and Phase 4 finishing remain incomplete. Chromium and
 synthetic FFmpeg evidence do not close physical Windows/macOS,
 high-DPI/color-managed display, hardware audio latency or long-form performance
 gates. Unrelated roadmap work remains open.
+
+D3A1 now projects the existing raw source peaks into saved Sequence time under
+Expert Record, with bounded current-source reads, explicit preparation and
+guarded seeking. Trim/speed/short-source behavior is verified against decoded
+synthetic MP4 pulses; playback does not refetch peaks. This is read-only source
+evidence before mixing. Independent review corrections are complete; exact
+candidate/main gates are recorded on [PR72](https://github.com/bynanci/open-film/pull/72)
+and must pass before merge. Rhythm analysis and J/L policy stay separate. See the [waveform guide](docs/sequence-waveforms.md)
+and [validation](docs/validation-sequence-waveforms.md).
 
 A bounded Phase 1B gesture slice now gives General-mode editors direct
 clip-picture move and proportional corner resize in the existing Story monitor.
@@ -131,6 +144,36 @@ workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
 pin admission and exact-head review remain pending; this does not close native
 installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
 
+D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
+contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
+originals, timing and the schema/catalog owners remain stable. Local statistical
+Auto Match presents actual before/after samples and needs explicit reviewed clip
+Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
+video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
+accessibility. Calibrated displays, real NLE behavior and final integrating gates
+remain separate. See [the guide](docs/primary-color.md) and
+[validation](docs/validation-primary-color.md).
+
+D8 now has an unreleased local single-JSON preset candidate on its independent
+branch. Bounded closed recipes, declared license/provenance review, atomic local
+registry operations and embedded immutable look/title/Story snapshots feed
+existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
+155 tests and three Chromium journeys pass; actual strength/seek tests and
+Collect directory/ZIP relocation retain exact decoded pixels after registry and
+fixture-original deletion. Fresh review and parent-coordinated full/hosted
+integration gates remain open. See [guide](docs/local-presets.md) and
+[validation](docs/validation-local-presets.md). Executable plugin discovery and
+loading remain deferred.
+
+D5B now has a separately reviewable title-finishing candidate over the existing
+measured raster: independent bilingual typography, bounded shadow/stroke/pills,
+per-run font evidence and Collect bindings, and actual Story/Record caption
+preview using the MP4 caption selection. Legacy pixels and canonical text/time
+remain compatible. Focused synthetic MP4, SRT/VTT, recovery and UI evidence is in
+[validation](docs/validation-title-finishing.md); six actual browser cases pass,
+while independent review and exact-head integration remain pending. The existing nested F05 item is
+still authoritative and no stable release is implied.
+
 D6A managed preview storage (PR #64) implements a shared
 Library/API/CLI queue, source/provenance fencing and reviewed cleanup. It reuses
 the existing proxy generator and keeps output on originals. Independent review
@@ -170,6 +213,11 @@ source gates pass:4591tests and291actual browsers. Observed E2E23m24s→11m18s,
 Verify34m39s→12m55s; PR71 merged into PR69 before main so the known Pages fix
 ships with Windows recovery. Final integration/main Verify and Pages outcomes
 are recorded on PR69; see [validation](docs/validation-ci-pages-e2e.md).
+
+The later documentation reorganization `71858cd` introduced three links outside
+the website build root and two research-format failures. Its content and locales
+are retained; repository-source links and focused regressions restore the same
+strict website/format gates. Follow-up evidence is appended to that record.
 
 ## Released 0.4.0 source integration
 

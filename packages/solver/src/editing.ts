@@ -2,12 +2,21 @@
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  canonicalPresetJson,
+  type PresetSnapshot,
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
   validateTitleStyle,
+  validateTitleTextRuns,
+  type TitleTextRuns,
   validateAudioAutomation,
   validateFilmLook,
+  validatePrimaryColorCorrection,
+  primaryColorCoefficients,
+  resolvePrimaryColor,
+  type PrimaryColorCorrection,
   validateGraphicScenes,
   validateGraphicSceneTemplates,
   graphicSceneAssetIds,
@@ -35,6 +44,24 @@ import { compose } from "./index.js";
 
 export type TimelineCommand =
   | {
+      type: "primary-color";
+      scope: "film";
+      correction: PrimaryColorCorrection | null;
+    }
+  | {
+      type: "primary-color";
+      scope: "beat";
+      beatId: string;
+      correction: PrimaryColorCorrection | null;
+    }
+  | {
+      type: "primary-color";
+      scope: "clip";
+      clipId: string;
+      correction: PrimaryColorCorrection | null;
+      primaryColorReviewId?: string;
+    }
+  | {
       type: "graphic.scene.upsert";
       scene: GraphicScene;
       templateRecord?: GraphicSceneTemplateRecord | null;
@@ -50,6 +77,8 @@ export type TimelineCommand =
       motion?: PhotoMotion | null;
       title?: string | null;
       titleStyle?: TitleStyle | null;
+      titlePresetSnapshot?: PresetSnapshot<"title"> | null;
+      titleRuns?: TitleTextRuns | null;
     }
   | {
       type: "audio.add";
@@ -95,7 +124,12 @@ export type TimelineCommand =
       type: "caption.cue.update";
       trackId: string;
       cueId: string;
-      patch: { text?: string; startMs?: number; endMs?: number };
+      patch: {
+        text?: string;
+        startMs?: number;
+        endMs?: number;
+        textRuns?: TitleTextRuns | null;
+      };
     }
   | { type: "caption.cue.delete"; trackId: string; cueId: string }
   | {
@@ -744,6 +778,91 @@ function applyLookCommand(
   return next;
 }
 
+function applyPrimaryColorCommand(
+  next: EditorDocument,
+  assets: MediaAsset[],
+  command: Extract<TimelineCommand, { type: "primary-color" }>,
+): EditorDocument {
+  if (!["film", "beat", "clip"].includes(command.scope))
+    fail("Unknown primary color scope.");
+  const allowed = [
+    "type",
+    "scope",
+    "correction",
+    ...(command.scope === "clip"
+      ? ["clipId", "primaryColorReviewId"]
+      : command.scope === "beat"
+        ? ["beatId"]
+        : []),
+  ];
+  if (Object.keys(command).some((key) => !allowed.includes(key)))
+    fail("Unsupported primary color field.");
+  const correction =
+    command.correction === null
+      ? null
+      : validatePrimaryColorCorrection(command.correction);
+  if (command.scope === "clip") {
+    const { clip, track } = findClip(next, command.clipId);
+    const sources = lookSources(clip, assets);
+    if (!visualLookClip(track, sources[0]!))
+      fail("Primary color requires a flat photo or video clip.");
+    if (clip.locked || sources.some((source) => source.state.locked))
+      throw new ApplicationError(
+        "timeline.primaryColorLocked",
+        "Unlock the clip and its source media before changing primary color.",
+        409,
+        { count: 1 },
+      );
+    if (sources.some((source) => source.state.rejected || !renderable(source)))
+      fail("Primary color requires supported, non-rejected sources.");
+    if (correction === null) delete clip.primaryColor;
+    else clip.primaryColor = correction;
+    return next;
+  }
+  if (command.scope === "beat") findBeat(next, command.beatId);
+  const before = structuredClone(next.composition);
+  if (command.scope === "film") {
+    if (correction === null) delete next.composition.defaultPrimaryColor;
+    else next.composition.defaultPrimaryColor = correction;
+  } else {
+    const entries = (next.composition.beatPrimaryColors ?? []).filter(
+      (entry) => entry.beatId !== command.beatId,
+    );
+    if (correction !== null)
+      entries.push({ beatId: command.beatId, correction });
+    if (entries.length > 1000)
+      fail("At most 1000 scene primary color overrides are supported.");
+    if (entries.length) next.composition.beatPrimaryColors = entries;
+    else delete next.composition.beatPrimaryColors;
+  }
+  let count = 0;
+  for (const track of next.composition.tracks)
+    for (const clip of track.clips) {
+      if (command.scope === "beat" && clip.beatId !== command.beatId) continue;
+      const sources = lookSources(clip, assets);
+      if (
+        !visualLookClip(track, sources[0]!) ||
+        !(clip.locked || sources.some((source) => source.state.locked))
+      )
+        continue;
+      const previous = primaryColorCoefficients(
+        resolvePrimaryColor(before, clip).correction,
+      ).matrix;
+      const changed = primaryColorCoefficients(
+        resolvePrimaryColor(next.composition, clip).correction,
+      ).matrix;
+      if (previous.some((value, i) => value !== changed[i])) count++;
+    }
+  if (count)
+    throw new ApplicationError(
+      "timeline.primaryColorLocked",
+      "This primary color change would alter protected clips. Unlock them or retain a clip override first.",
+      409,
+      { count },
+    );
+  return next;
+}
+
 type CaptionTimelineCommand = Extract<
   TimelineCommand,
   { type: `caption.${string}` }
@@ -818,10 +937,28 @@ function applyCaptionCommand(
   const fields = Object.keys(command.patch);
   if (
     !fields.length ||
-    fields.some((field) => !["text", "startMs", "endMs"].includes(field))
+    fields.some(
+      (field) => !["text", "startMs", "endMs", "textRuns"].includes(field),
+    )
   )
     fail("Caption cue edits require text, startMs or endMs.");
+  if (
+    cue.textRuns &&
+    command.patch.text !== undefined &&
+    command.patch.text !== cue.text &&
+    !Object.hasOwn(command.patch, "textRuns")
+  )
+    throw new ApplicationError(
+      "timeline.titleRunsConflict",
+      "Update the bilingual text boundary or explicitly remove its run styling with this text edit.",
+      409,
+    );
   if (Object.hasOwn(command.patch, "text")) cue.text = command.patch.text!;
+  if (Object.hasOwn(command.patch, "textRuns")) {
+    if (command.patch.textRuns === null) delete cue.textRuns;
+    else cue.textRuns = validateTitleTextRuns(command.patch.textRuns, cue.text);
+  }
+  if (cue.textRuns) validateTitleTextRuns(cue.textRuns, cue.text);
   if (Object.hasOwn(command.patch, "startMs"))
     cue.startMs = command.patch.startMs!;
   if (Object.hasOwn(command.patch, "endMs")) cue.endMs = command.patch.endMs!;
@@ -942,6 +1079,8 @@ export function applyTimelineCommand(
     return next;
   }
   if (command.type === "look") return applyLookCommand(next, assets, command);
+  if (command.type === "primary-color")
+    return applyPrimaryColorCommand(next, assets, command);
   if (isCaptionCommand(command)) return applyCaptionCommand(next, command);
   if (command.type === "audio.add") {
     if (
@@ -1074,7 +1213,14 @@ export function applyTimelineCommand(
         fail(
           "The paired photo is locked. Unlock it before changing presentation.",
         );
-      const fields = ["layout", "motion", "title", "titleStyle"] as const;
+      const fields = [
+        "layout",
+        "motion",
+        "title",
+        "titleStyle",
+        "titlePresetSnapshot",
+        "titleRuns",
+      ] as const;
       if (!fields.some((key) => Object.hasOwn(command, key)))
         fail("Provide a presentation field to change.");
       if (
@@ -1126,9 +1272,29 @@ export function applyTimelineCommand(
         if (command.motion === null) delete clip.motion;
         else clip.motion = validatePhotoMotion(command.motion);
       }
+      if (
+        clip.titleRuns &&
+        command.title !== undefined &&
+        command.title !== null &&
+        command.title !== clip.title &&
+        !Object.hasOwn(command, "titleRuns")
+      )
+        throw new ApplicationError(
+          "timeline.titleRunsConflict",
+          "Update the bilingual text boundary or explicitly remove its run styling with this text edit.",
+          409,
+        );
+      if (
+        command.title === null &&
+        command.titleRuns !== undefined &&
+        command.titleRuns !== null
+      )
+        fail("A removed title cannot retain bilingual runs.");
       if (command.title !== undefined) {
-        if (command.title === null) delete clip.title;
-        else {
+        if (command.title === null) {
+          delete clip.title;
+          delete clip.titleRuns;
+        } else {
           if (
             typeof command.title !== "string" ||
             !command.title.trim() ||
@@ -1140,6 +1306,32 @@ export function applyTimelineCommand(
           clip.title = command.title;
         }
       }
+      if (command.titlePresetSnapshot !== undefined) {
+        if (command.titlePresetSnapshot === null)
+          delete clip.titlePresetSnapshot;
+        else {
+          const snapshot = validatePresetSnapshot(
+            command.titlePresetSnapshot,
+            "title",
+          );
+          if (
+            !command.titleStyle ||
+            canonicalPresetJson(snapshot.recipe) !==
+              canonicalPresetJson(command.titleStyle)
+          )
+            fail("Preset title style does not match its recipe snapshot.");
+          clip.titlePresetSnapshot = snapshot;
+        }
+      }
+      if (Object.hasOwn(command, "titleRuns")) {
+        if (command.titleRuns === null) delete clip.titleRuns;
+        else
+          clip.titleRuns = validateTitleTextRuns(
+            command.titleRuns,
+            clip.title!,
+          );
+      }
+      if (clip.titleRuns) validateTitleTextRuns(clip.titleRuns, clip.title!);
       if (command.titleStyle !== undefined) {
         if (command.titleStyle === null) delete clip.titleStyle;
         else clip.titleStyle = validateTitleStyle(command.titleStyle);

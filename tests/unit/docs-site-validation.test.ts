@@ -11,6 +11,21 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expect, it } from "vitest";
 
+it.each([
+  ["docs/i18n.md", "CONTRIBUTING.zh-TW.md"],
+  ["docs/en/i18n.md", "CONTRIBUTING.md"],
+  ["docs/ja/i18n.md", "CONTRIBUTING.ja.md"],
+])("links %s to the actual repository contribution guide", (page, guide) => {
+  const markdown = readFileSync(page!, "utf8");
+  const targets = [...markdown.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)]
+    .map((match) => match[1]!)
+    .filter((target) => /(?:^|\/)CONTRIBUTING(?:\.[\w-]+)?\.md$/u.test(target));
+  expect(targets).toEqual([
+    `https://github.com/bynanci/open-film/blob/main/${guide}`,
+  ]);
+  expect(readFileSync(guide!, "utf8").length).toBeGreaterThan(100);
+});
+
 it("ignores installed documentation dependencies while still requiring every owned mirror", () => {
   const root = mkdtempSync(join(tmpdir(), "openfilm-docs-gate-"));
   const script = resolve("scripts/check-doc-locales.mjs");

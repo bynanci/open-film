@@ -1,3 +1,4 @@
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { existsSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 import * as core from "@openfilm/core";
@@ -142,6 +143,10 @@ async function mount(
   const look = loadComponent("apps/desktop/src/components/FilmLookFilter.vue", {
     "@openfilm/core": core,
   });
+  const primary = loadComponent(
+    "apps/desktop/src/components/PrimaryColorFilter.vue",
+    { "@openfilm/core": core },
+  );
   const title = loadComponent(
     "apps/desktop/src/components/NativeTitlePreview.vue",
     { "@openfilm/core": core },
@@ -154,6 +159,8 @@ async function mount(
       "vue-i18n": { useI18n: () => ({ t: String }) },
       "../i18n": { formatDuration: String },
       "./FilmLookFilter.vue": look,
+      "./PrimaryColorFilter.vue": primary,
+      "../source-color": { sourceColorStyle },
     },
   );
   const graphics = loadComponent(
@@ -173,6 +180,8 @@ async function mount(
     "./NativeTitlePreview.vue": title,
     "./GraphicScenePreview.vue": graphics,
     "./FilmLookFilter.vue": look,
+    "./PrimaryColorFilter.vue": primary,
+    "../source-color": { sourceColorStyle },
   });
   let transport: MonitorHandle;
   const frames: number[] = [];
@@ -598,6 +607,48 @@ it("bypasses the effective look in place without changing media identity or save
     "record-look-",
   );
   expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("keeps primary before Film Look and preserves it during look-only comparison", async () => {
+  const saved = cut();
+  saved.defaultPrimaryColor = {
+    ...core.PRIMARY_COLOR_IDENTITY,
+    exposureEv: 0.4,
+  };
+  saved.defaultLook = { version: 1, preset: "retro", strength: 0.5 };
+  const before = JSON.stringify(saved),
+    m = await mount(saved);
+  const player = m.banks().find((n) => n.props["data-clip-id"] === "a")!;
+  expect((player.props.style as { filter: string }).filter).toMatch(
+    /record-primary-.*record-look-/,
+  );
+  m.props.bypassLook = true;
+  await settle();
+  expect((player.props.style as { filter: string }).filter).toContain(
+    "record-primary-",
+  );
+  expect((player.props.style as { filter: string }).filter).not.toContain(
+    "record-look-",
+  );
+  expect(m.banks().find((n) => n.props["data-clip-id"] === "a")).toBe(player);
+  expect(JSON.stringify(saved)).toBe(before);
+});
+
+it("uses generated color filter IDs even when a valid project clip ID contains CSS punctuation", async () => {
+  const saved = cut(),
+    clipId = "clip (記憶) #1";
+  saved.tracks[0]!.clips[0]!.id = clipId;
+  saved.defaultPrimaryColor = {
+    ...core.PRIMARY_COLOR_IDENTITY,
+    exposureEv: 0.1,
+  };
+  const m = await mount(saved),
+    player = m.banks().find((n) => n.props["data-clip-id"] === clipId)!;
+  const filter = (player.props.style as { filter: string }).filter;
+  expect(filter).toContain("record-primary-");
+  expect(filter).not.toContain(clipId);
+  for (const node of m.nodes().filter((n) => n.tag === "filter"))
+    expect(node.props.id).toMatch(/^[a-zA-Z][a-zA-Z0-9_:.-]*$/);
 });
 
 it("bypasses PhotoPresentation layers without rebuilding the controlled photo", async () => {

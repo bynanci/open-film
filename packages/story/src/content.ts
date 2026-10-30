@@ -161,8 +161,17 @@ export function localizeProjectContent(
     const template = templates.find((entry) => entry.id === story.template);
     for (const beat of story.beats) {
       if (!beat.templateBeatKey) continue;
+      const recipeBeat = story.presetSnapshot?.recipe.beats.find(
+        (entry) => entry.key === beat.templateBeatKey,
+      );
+      const savedText =
+        recipeBeat && story.presetSnapshot
+          ? (recipeBeat.text[contentLocale] ??
+            recipeBeat.text[story.presetSnapshot.recipe.defaultLocale])
+          : undefined;
       const text =
-        !story.template || story.template === "blank"
+        savedText ??
+        (!story.template || story.template === "blank"
           ? genericBeatText(beat.templateBeatKey, contentLocale)
           : (template?.getBeatText?.(beat.templateBeatKey, contentLocale) ??
             beatResolvers.reduce<TemplateBeatText | undefined>(
@@ -170,7 +179,7 @@ export function localizeProjectContent(
                 resolved ??
                 resolver(story.template, beat.templateBeatKey!, contentLocale),
               undefined,
-            ));
+            )));
       if (!text) continue;
       if (beat.titleSource === "template") beat.title = text.title;
       if (beat.intentSource === "template") {

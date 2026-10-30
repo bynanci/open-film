@@ -3,8 +3,10 @@
 import {
   assetDisplayDimensions,
   resolvePhotoPlan,
+  photoAmbientGaps,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type FrameSize,
   type MediaAsset,
 } from "@openfilm/core";
@@ -13,7 +15,9 @@ import {
   localPath,
   previewVideoFilters,
 } from "@openfilm/media";
+import { primaryColorFilters } from "./primary-color-filters.js";
 import { filmLookFilters } from "./look-filters.js";
+import { photoEasingExpression } from "./photo-easing.js";
 
 const n = (value: number) => String(Number(value.toFixed(8)));
 /** Adapter expressions use the endpoints and safety decisions of the shared plan. */
@@ -28,6 +32,8 @@ export async function photoPresentationFilters(
     duration: number;
     signal?: AbortSignal;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
+    ambient?: { path: string; sha256: string };
   },
 ): Promise<{
   args: string[];
@@ -49,6 +55,23 @@ export async function photoPresentationFilters(
   ];
   let label = `photo-base${options.suffix}`;
   let addedInputs = 0;
+  if (plan.ambient) {
+    if (!options.ambient)
+      throw new Error("Photo ambient fill was not prepared.");
+    const input = options.nextInput + addedInputs++;
+    args.push(
+      "-loop",
+      "1",
+      "-framerate",
+      n(frame.frameRate),
+      "-threads",
+      "1",
+      ...(await localMediaInputOptions(options.ambient.path, options.signal)),
+      "-i",
+      options.ambient.path,
+    );
+    filters[0] = `[${input}:v]setpts=PTS-STARTPTS,format=rgba[${label}]`;
+  }
   for (const [index, layer] of plan.layers.entries()) {
     const asset = assets.get(layer.assetId);
     if (!asset || asset.mediaType !== "image")
@@ -72,12 +95,33 @@ export async function photoPresentationFilters(
     const merged = `photo-merged${options.suffix}-${index}`;
     const decode = await previewVideoFilters(asset, options.signal);
     filters.push(
-      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...filmLookFilters(options.look), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
+      `[${input}:v]setpts=PTS-STARTPTS,${[...decode, ...(plan.ambient ? [] : [...primaryColorFilters(options.primaryColor), ...filmLookFilters(options.look)]), `scale=${Math.max(1, Math.round(layer.width))}:${Math.max(1, Math.round(layer.height))}`, "setsar=1", "format=rgba"].join(",")}[${source}]`,
     );
     filters.push(
       `[${label}][${source}]overlay=x=${Math.round(layer.x)}:y=${Math.round(layer.y)}:format=rgb:eval=init:shortest=1[${merged}]`,
     );
     label = merged;
+  }
+  // Grade the verified raw foreground and ambient together, with separate
+  // primary and Film Look clamps. The separator is restored below this group.
+  const groupedLook = plan.ambient
+    ? [
+        ...primaryColorFilters(options.primaryColor),
+        ...filmLookFilters(options.look),
+      ]
+    : [];
+  if (groupedLook.length) {
+    const output = `photo-color${options.suffix}`;
+    filters.push(`[${label}]${groupedLook.join(",")}[${output}]`);
+    label = output;
+  }
+  const gaps = photoAmbientGaps(plan.ambient);
+  if (gaps.length) {
+    const output = `photo-gap${options.suffix}`;
+    filters.push(
+      `[${label}]${gaps.map((gap) => `drawbox=x=${gap.x}:y=${gap.y}:w=${gap.width}:h=${gap.height}:color=black:t=fill`).join(",")}[${output}]`,
+    );
+    label = output;
   }
   const { from, to, easing } = plan.motion;
   const stationary =
@@ -86,7 +130,7 @@ export async function photoPresentationFilters(
     return { args, filters, addedInputs, label, warnings: plan.warnings };
   // Perspective's output count starts at one; the shared timeline starts at zero.
   const p = `min(1,max(0,(on-1)/${n(frame.frameRate)}/${n(clip.timelineDuration)}))`;
-  const e = easing === "ease-in-out" ? `((${p})*(${p})*(3-2*(${p})))` : p;
+  const e = photoEasingExpression(easing, p);
   const interpolate = (key: "scale" | "x" | "y") =>
     stationary
       ? n(from[key])

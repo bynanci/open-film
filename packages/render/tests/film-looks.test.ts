@@ -95,7 +95,10 @@ it("renders a saved film look into actual decoded pixels", async () => {
   );
   expect(graded.pixels).not.toEqual(original.pixels);
 });
-const look = (preset: FilmLook["preset"], strength = 1): FilmLook => ({
+const look = (
+  preset: Exclude<FilmLook["preset"], "local">,
+  strength = 1,
+): FilmLook => ({
   version: 1,
   preset,
   strength,
