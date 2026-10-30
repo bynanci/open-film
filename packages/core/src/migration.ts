@@ -31,7 +31,7 @@ export function migrateProject(value: unknown): OpenFilmProject {
 
 /** Reject malformed version declarations separately for migration UI callers. */
 export function supportedProjectVersions(): readonly string[] {
-  return ["0.1.0", PROJECT_SCHEMA_VERSION, "1.1.0"];
+  return ["0.1.0", PROJECT_SCHEMA_VERSION, "1.1.0", "1.2.0"];
 }
 
 export { ProjectValidationError };
