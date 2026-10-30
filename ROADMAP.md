@@ -359,6 +359,14 @@ and existing typed Look/primary source-lock conflicts remain authoritative.
 The correction has its own focused evidence and requires scoped review and
 complete exact-head gates before merge.
 
+The same hosted checkpoint also exposed the new pin precheck blocking existing
+primary clip-local editing on Library-locked sources. The correction retains
+full source protection for explicit pin changes and the unchanged automatic
+allocator, while ordinary edits use their existing operation-specific owners.
+Clip and overlay locks, split, presentation, identity replacement and typed
+Look/primary protections remain active. Focused application and actual HTTP
+evidence cover the permitted edits, blocked operations and atomic history.
+
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged
 and **Automated Verified**; actual workstation behavior remains a separate gate.

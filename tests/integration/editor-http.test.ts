@@ -25,7 +25,7 @@ afterEach(async () => {
   for (const action of cleanup.splice(0).reverse()) await action();
 });
 
-async function openEditor() {
+async function openEditor(sourceLocked = false) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-editor-http-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   await generateSampleMedia(root);
@@ -43,7 +43,7 @@ async function openEditor() {
       mediaType,
       ...(mediaType === "video" ? { duration: 3 } : {}),
       tags: [],
-      state: {},
+      state: { locked: sourceLocked },
       metadata: {},
     });
   }
@@ -109,6 +109,116 @@ async function openEditor() {
 }
 
 describe("real timeline HTTP editing", () => {
+  it("keeps source-locked primary clip edits available while split, presentation, replacement and pin release remain protected", async () => {
+    const { root, directory, post, state } = await openEditor(true);
+    const before = await state();
+    const sources = await Promise.all(
+      ["01-photo.png", "04-motion.mp4"].map((name) =>
+        readFile(join(root, name)),
+      ),
+    );
+    const input = {
+      baseRevision: before.revision,
+      requestId: "source-locked-primary-gesture",
+      commands: [
+        { type: "duration", clipId: "photo", duration: 3 },
+        { type: "transform", clipId: "photo", rotation: 7 },
+        {
+          type: "transition",
+          clipId: "photo",
+          transition: "crossfade",
+          duration: 0.25,
+        },
+        { type: "trim", clipId: "motion", sourceIn: 0.25, sourceOut: 2.75 },
+        { type: "speed", clipId: "motion", speed: 1.25 },
+        { type: "volume", clipId: "motion", volume: 0.75 },
+      ],
+    };
+    const response = await post("/api/compositions/composition/edit", input);
+    expect(response.status).toBe(200);
+    const after = (await response.json()) as EditorState;
+    expect(after.composition.duration).toBe(5);
+    expect(after.composition.tracks[0]!.clips).toMatchObject([
+      {
+        id: "photo",
+        assetId: "photo-asset",
+        timelineDuration: 3,
+        transform: { rotation: 7 },
+        transition: { type: "crossfade", duration: 0.25 },
+        userOverrides: { isUserPinned: true },
+      },
+      {
+        id: "motion",
+        assetId: "motion-asset",
+        timelineStart: 3,
+        timelineDuration: 2,
+        sourceIn: 0.25,
+        sourceOut: 2.75,
+        transform: { speed: 1.25, volume: 0.75 },
+        userOverrides: { isUserPinned: true },
+      },
+    ]);
+    expect(after.assets).toEqual(before.assets);
+    const replay = await post("/api/compositions/composition/edit", input);
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as EditorState).acknowledgedRevision).toBe(
+      after.revision,
+    );
+    const current = await state();
+    const disk = await readFile(join(directory, "project.json"));
+    for (const command of [
+      { type: "clip.split", clipId: "motion", sourceTime: 1 },
+      { type: "presentation", clipId: "photo", title: "Protected source" },
+      { type: "presentation", clipId: "photo", motion: null },
+      {
+        type: "presentation",
+        clipId: "photo",
+        layout: { version: 1, preset: "cover" },
+      },
+      { type: "replace", clipId: "photo", assetId: "motion-asset" },
+      { type: "delete", clipId: "photo" },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "photo" },
+        pinned: false,
+      },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "motion" },
+        pinned: true,
+      },
+      {
+        type: "user-pin.resolve",
+        targets: [{ kind: "clip", clipId: "photo" }],
+        scope: { kind: "beat", beatId: "beat" },
+        mode: "regenerate",
+      },
+    ]) {
+      const rejected = await post("/api/compositions/composition/edit", {
+        baseRevision: current.revision,
+        commands: [command],
+      });
+      expect(rejected.status).toBe(400);
+      expect(await state()).toEqual(current);
+      expect(await readFile(join(directory, "project.json"))).toEqual(disk);
+    }
+    const undone = await post("/api/compositions/composition/undo", {
+      baseRevision: current.revision,
+    });
+    expect(undone.status).toBe(200);
+    const restored = (await undone.json()) as EditorState;
+    expect(restored.composition).toEqual(before.composition);
+    expect(restored.canUndo).toBe(false);
+    expect(restored.assets).toEqual(before.assets);
+    expect(
+      await Promise.all(
+        ["01-photo.png", "04-motion.mp4"].map((name) =>
+          readFile(join(root, name)),
+        ),
+      ),
+    ).toEqual(sources);
+  });
+
   it("forwards edit cancellation and acknowledges a professional batch once without duplicating Undo", async () => {
     const { base, post, state } = await openEditor();
     const initial = await state();

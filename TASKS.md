@@ -28,6 +28,9 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         candidate correction uses a package-internal automatic capability and
         binds request replay to its authority, while preserving the shared
         writer and typed Look/primary source-lock conflicts.
+        The subsequent hosted source-lock regression is reproduced and corrected
+        at the solver ingress: explicit pin changes check every owner/source;
+        ordinary edits retain the existing operation-specific Cut Desk matrix.
         Scoped correction review and complete exact-head hosted gates remain
         open; see [User Pin validation](docs/validation-user-pins.md).
   - [x] Selectively recover General Story-monitor clip-picture move and

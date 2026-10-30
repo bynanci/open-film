@@ -1050,17 +1050,12 @@ function applyTimelineCommandInternal(
         "User pin edits require an authoritative project timebase clock.",
       );
   }
-  if (origin === "direct")
+  // Explicit pin changes protect the complete owner and all source identities.
+  // Ordinary edits retain their operation-specific locks in the raw command
+  // owner: a library lock still permits primary clip-local trim and transforms.
+  if (origin === "direct" && command.type.startsWith("user-pin."))
     for (const target of writes) {
       if (target.kind === "clip") {
-        // Color commands own typed lock errors for the clip and both sources.
-        if (
-          command.type === "audio.add" ||
-          command.type === "lock" ||
-          command.type === "look" ||
-          command.type === "primary-color"
-        )
-          continue;
         const { clip } = findClip(document, target.clipId);
         if (
           clip.locked ||
@@ -1076,7 +1071,6 @@ function applyTimelineCommandInternal(
         );
         if (
           scene &&
-          command.type.startsWith("user-pin.") &&
           (hasLockedGraphicNode(scene) ||
             graphicSceneAssetIds([scene]).some(
               (id) => assets.find((a) => a.id === id)?.state.locked,

@@ -109,6 +109,118 @@ const pullOut: PhotoMotion = {
 };
 
 describe("durable quality editing", () => {
+  it.each([
+    { type: "duration", clipId: "photo", duration: 12 },
+    { type: "transform", clipId: "photo", rotation: 7, x: 0.25 },
+    {
+      type: "transition",
+      clipId: "photo",
+      transition: "crossfade",
+      duration: 0.5,
+    },
+    { type: "trim", clipId: "photo", sourceIn: 1, sourceOut: 12 },
+    { type: "speed", clipId: "photo", speed: 2 },
+    { type: "volume", clipId: "photo", volume: 0.5 },
+  ] satisfies TimelineCommand[])(
+    "retains primary source-locked clip-local $type and one history entry",
+    async (command) => {
+      const { app, editor } = await fixture();
+      const source = app.catalog.getAsset("portrait")!;
+      if (["trim", "speed", "volume"].includes(command.type)) {
+        source.mediaType = "video";
+        source.duration = 40;
+      }
+      source.state.locked = true;
+      app.catalog.upsertAsset(source);
+      await app.save();
+      const before = editor.get("film");
+      const sources = app.catalog.listAssets({ limit: 20 });
+      const input = {
+        baseRevision: before.revision,
+        requestId: `source-locked-${command.type}`,
+        commands: [command],
+      };
+      const after = await editor.edit("film", input);
+      expect(after.revision).not.toBe(before.revision);
+      expect(after.composition.tracks[0]!.clips[0]!.assetId).toBe("portrait");
+      expect(
+        after.composition.tracks[0]!.clips[0]!.userOverrides,
+      ).toMatchObject({
+        version: 1,
+        isUserPinned: true,
+      });
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      expect(
+        JSON.parse(await readFile(join(app.directory, "project.json"), "utf8"))
+          .timelines[0],
+      ).toEqual(after.composition);
+      expect((await editor.edit("film", input)).acknowledgedRevision).toBe(
+        after.revision,
+      );
+      const undone = await editor.undo("film", after.revision);
+      expect(undone.composition).toEqual(before.composition);
+      expect(undone.canUndo).toBe(false);
+      const redone = await editor.redo("film", undone.revision);
+      expect(redone.composition).toEqual(after.composition);
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      const reopened = await OpenFilmApplication.open(app.directory);
+      applications.add(reopened);
+      expect(new TimelineEditor(reopened).get("film").composition).toEqual(
+        after.composition,
+      );
+    },
+  );
+
+  it("keeps clip and overlay source locks authoritative for direct edits and explicit pin changes", async () => {
+    const { app, editor } = await fixture();
+    await editor.edit("film", {
+      baseRevision: editor.get("film").revision,
+      commands: [addMusic],
+    });
+    const photo = app.project.timelines[0]!.tracks[0]!.clips[0]!;
+    photo.locked = true;
+    const source = app.catalog.getAsset("music")!;
+    source.state.locked = true;
+    app.catalog.upsertAsset(source);
+    await app.save();
+    const before = editor.get("film");
+    const disk = await readFile(join(app.directory, "project.json"));
+    const project = structuredClone(app.project);
+    const sources = app.catalog.listAssets({ limit: 20 });
+    for (const command of [
+      { type: "duration", clipId: "photo", duration: 12 },
+      { type: "transform", clipId: "photo", rotation: 7 },
+      { type: "transition", clipId: "photo", transition: "crossfade" },
+      { type: "trim", clipId: "soundtrack", sourceIn: 2, sourceOut: 20 },
+      { type: "speed", clipId: "soundtrack", speed: 2 },
+      { type: "volume", clipId: "soundtrack", volume: 0.25 },
+      { type: "audio.move", clipId: "soundtrack", timelineStart: 0 },
+      { type: "audio.configure", clipId: "soundtrack", automation },
+      { type: "delete", clipId: "soundtrack" },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "photo" },
+        pinned: false,
+      },
+      {
+        type: "user-pin.set",
+        target: { kind: "clip", clipId: "soundtrack" },
+        pinned: false,
+      },
+    ] satisfies TimelineCommand[]) {
+      await expect(
+        editor.edit("film", {
+          baseRevision: before.revision,
+          commands: [command],
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(editor.get("film")).toEqual(before);
+      expect(app.project).toEqual(project);
+      expect(app.catalog.listAssets({ limit: 20 })).toEqual(sources);
+      expect(await readFile(join(app.directory, "project.json"))).toEqual(disk);
+    }
+  });
+
   it.each(
     (["look", "primary-color"] as const).flatMap((type) =>
       (["clip", "primary", "secondary"] as const).map((locked) => ({
