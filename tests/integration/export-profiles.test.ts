@@ -931,9 +931,42 @@ describe("professional profile exports", () => {
                 }
                 files[`render-${index}.mp4`] = await readFile(output);
                 files[`render-${index}.rgb`] = await decodedRgbFrame(output, 3);
+                // Repeat the identical owned render inputs to locate a
+                // process-level drift, rather than retrying a failed result.
+                // Every observation must still match the first exact frame.
+                const parityProbes = [];
+                const control = join(dirname(output), "parity-probe.mp4");
+                for (let repeat = 0; repeat < 16; repeat++) {
+                  await actualRunProcess(
+                    command,
+                    [...args.slice(0, -1), control],
+                    options,
+                  );
+                  const pixels = await decodedRgbFrame(control, 3);
+                  const difference = rgbPixelDifference(
+                    files[`render-${index}.rgb`]!,
+                    pixels,
+                    90,
+                  );
+                  parityProbes.push({
+                    repeat,
+                    difference,
+                    encodedSha256: await hashFile(control),
+                  });
+                  if (
+                    difference.differentChannels ||
+                    repeat === 0 ||
+                    repeat === 15
+                  ) {
+                    files[`render-${index}-probe-${repeat}.mp4`] =
+                      await readFile(control);
+                    files[`render-${index}-probe-${repeat}.rgb`] = pixels;
+                  }
+                }
                 renders.push({
                   args: args.map((arg) => scope!.redact(arg)),
                   inputs,
+                  parityProbes,
                   probe: await fontPixelProbe(output),
                 });
               }
@@ -1032,6 +1065,19 @@ describe("professional profile exports", () => {
           console.info("Retained synthetic font-assignment pixel observation.");
         }
         expect(deliveredRgb).toEqual(reviewed);
+        if (qaDirectory) {
+          for (const render of renders) {
+            for (const observation of render.parityProbes as Array<{
+              repeat: number;
+              difference: ReturnType<typeof rgbPixelDifference>;
+            }>) {
+              expect(
+                observation.difference.differentChannels,
+                `Identical render process ${observation.repeat} changed its exact decoded frame`,
+              ).toBe(0);
+            }
+          }
+        }
         if (format === "png")
           await expect(
             app.exportStill({ ...request, cropPreviewToken: changed.token }),
