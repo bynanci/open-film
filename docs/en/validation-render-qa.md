@@ -39,6 +39,11 @@ tone expectations, a lossless PCM diagnostic, PhotoDepth source/mask/background
 and four real title rasters. It observes **117 distinct required samples** and
 **10 named deliberate failures**, binding **17 actual output hashes** to their
 logical identities. It never compares encoded MP4 hashes between operating systems.
+Every `source.<id>` measurement's actual and expected hashes must match that
+source's inventory digest. Source/font substitution failures must match their
+encoded output receipt, with the original output-inventory and expected-baseline
+joins preserved. Decoded-lossless hashes remain in their separate decoded-byte
+domain; they are never equated with encoded output hashes.
 
 ## Observed local evidence
 
@@ -72,6 +77,12 @@ hosted admission validator.
   README locale sets and 125 English reference mirrors. Actual test discovery
   partitioned 335 root files into 49 contract + 286 media files with exact,
   disjoint coverage; the new dedicated render suite has its separate owner.
+- The final review's evidence consistency mutations first reproduced 11 accepted
+  contradictions, then failed closed after the joins were added. Final focused
+  verification passed **7 files / 122 tests**, including all seven source
+  identities, substitution/aggregate mutations and synthetic macOS dependency
+  observations. TypeScript/Vue, changed-file ESLint and formatting also passed.
+  macOS command fixtures are synthetic and do not represent a macOS execution.
 - The complete actual suite passed, including a repeat through
   `pnpm test:render-qa` in 9.85s. It retains every failed measurement's actual value,
   unit and comparator, and verifies that a matching valid sample passed first.
@@ -108,6 +119,14 @@ images are not validated by local schema tests.** macOS must actually admit and
 execute the pinned bottle on ARM64. Unavailable/changed packages or unsupported
 Homebrew admission fail; there is no alternate-version or source-build fallback.
 Shared library versions are recorded, not claimed to be a portable runtime closure.
+The macOS setup now requires `brew info --json=v2` for FFmpeg and its declared
+installed formula dependencies, plus `otool -L` for both selected executables.
+It retains raw metadata/library observations and their hashes only in the local
+setup root. Published receipts contain validated dependency names/versions,
+observation digests and library counts, without local paths. Each command has a
+30-second/256 KiB bound, with at most 64 dependencies and 4 MiB total observations.
+Missing commands, malformed or changing inventories, and absent installed
+metadata fail admission. Actual hosted macOS observation remains pending.
 
 The always-evaluated `render-qa-complete` rejects missing, duplicated, stale,
 failed, cancelled or skipped prerequisites/reports. It requires all three reports

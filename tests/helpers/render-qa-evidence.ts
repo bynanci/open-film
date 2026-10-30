@@ -338,6 +338,17 @@ export function validateRenderQaEvidence(
           throw new Error("Invalid decoded lossless identity");
         continue;
       }
+      if (kind === "sourceHash") {
+        const source = evidence.sources.find(
+          (entry) => metric.sampleId === `source.${entry.id}`,
+        );
+        if (
+          !source ||
+          metric.actual !== source.sha256 ||
+          metric.expected !== source.sha256
+        )
+          throw new Error("Invalid render QA source measurement binding");
+      }
       checked = assertRenderQaIdentity(
         kind as "sourceHash" | "fontHash" | "frameCount",
         metric.actual,
@@ -391,7 +402,10 @@ export function validateRenderQaEvidence(
     if (
       !failed ||
       failed.id !== spec.metricId ||
-      failed.expected !== valid.expected
+      failed.expected !== valid.expected ||
+      ((spec.metricId === "identity.sourceHash" ||
+        spec.metricId === "identity.fontHash") &&
+        failed.actual !== control.outputSha256)
     )
       throw new Error("Invalid render QA failed measurement binding");
     if (spec.metricId === "identity.decodedLossless") {

@@ -141,3 +141,17 @@ it("keeps the full Verify/browser/native commands and adds an always-evaluated t
   ])
     expect(verify).toContain(token);
 });
+
+it.each(["source inventory", "substituted font"])(
+  "rejects aggregate reports with contradictory %s hashes",
+  (mutation) => {
+    const data = reports();
+    if (mutation === "source inventory")
+      data[0]!.sources[0]!.sha256 = "c".repeat(64);
+    else
+      data[0]!.controls.find(
+        (control) => control.id === "fontSubstitution",
+      )!.failedMeasurement.actual = "c".repeat(64);
+    expect(() => validateRenderQaResults(data, expected)).toThrow();
+  },
+);

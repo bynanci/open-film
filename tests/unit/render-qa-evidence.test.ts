@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, it } from "vitest";
+import { renderQaSourceIds } from "../helpers/render-qa-contract.js";
 import { syntheticRenderQaEvidence } from "../fixtures/render-qa-evidence.js";
 import type { RenderQaEvidence } from "../helpers/render-qa-evidence.js";
 import { assertRenderQaMetric } from "../helpers/render-qa-policy.js";
@@ -186,3 +187,71 @@ it.each([
   mutate(evidence);
   expect(() => validateRenderQaEvidence(evidence)).toThrow();
 });
+
+// Changing only an inventory digest must invalidate the claimed source observation.
+it.each(renderQaSourceIds)(
+  "rejects contradictory source inventory hash %s",
+  (sourceId) => {
+    const evidence = syntheticRenderQaEvidence();
+    evidence.sources.find((source) => source.id === sourceId)!.sha256 =
+      "c".repeat(64);
+    expect(() => validateRenderQaEvidence(evidence)).toThrow(
+      /source.*binding/iu,
+    );
+  },
+);
+it.each(["fontSubstitution", "sourceMutation"] as const)(
+  "rejects %s measurements detached from their encoded output receipt",
+  (controlId) => {
+    const evidence = syntheticRenderQaEvidence();
+    evidence.controls.find(
+      (control) => control.id === controlId,
+    )!.failedMeasurement.actual = "c".repeat(64);
+    expect(() => validateRenderQaEvidence(evidence)).toThrow(
+      /failed measurement binding/u,
+    );
+  },
+);
+it("keeps decoded lossless hashes distinct from encoded output hashes", () => {
+  const evidence = syntheticRenderQaEvidence();
+  const control = evidence.controls.find(
+    (control) => control.id === "losslessPixels",
+  )!;
+  expect(control.failedMeasurement.actual).not.toBe(control.outputSha256);
+  expect(() => validateRenderQaEvidence(evidence)).not.toThrow();
+});
+
+it.each(renderQaSourceIds)(
+  "rejects jointly changed source actual/expected %s",
+  (sourceId) => {
+    const evidence = syntheticRenderQaEvidence();
+    Object.assign(
+      evidence.metrics.find(
+        (metric) => metric.sampleId === `source.${sourceId}`,
+      )!,
+      { actual: "c".repeat(64), expected: "c".repeat(64) },
+    );
+    expect(() => validateRenderQaEvidence(evidence)).toThrow(
+      /source.*binding/iu,
+    );
+  },
+);
+it.each(["fontSubstitution", "sourceMutation"] as const)(
+  "retains %s output inventory and expected-baseline joins",
+  (controlId) => {
+    const outputMismatch = syntheticRenderQaEvidence();
+    outputMismatch.controls.find(
+      (control) => control.id === controlId,
+    )!.outputSha256 = "c".repeat(64);
+    expect(() => validateRenderQaEvidence(outputMismatch)).toThrow(
+      /deliberate failure evidence/u,
+    );
+    const baselineMismatch = syntheticRenderQaEvidence();
+    baselineMismatch.controls.find(
+      (control) => control.id === controlId,
+    )!.failedMeasurement.expected = "c".repeat(64);
+    expect(() => validateRenderQaEvidence(baselineMismatch)).toThrow(
+      /failed measurement binding/u,
+    );
+  },
+);

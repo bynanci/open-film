@@ -92,7 +92,11 @@ export function syntheticRenderQaEvidence(
       kind: control.kind,
       validSampleId: control.baseline,
       observedFailure: true as const,
-      outputSha256: hash,
+      outputSha256:
+        control.metricId === "identity.sourceHash" ||
+        control.metricId === "identity.fontHash"
+          ? String(failedMeasurement.actual)
+          : hash,
       failedMeasurement,
     };
   });
@@ -130,7 +134,12 @@ export function syntheticRenderQaEvidence(
     },
     observedTools,
     sources: renderQaSourceIds.map((id) => ({ id, sha256: hash })),
-    outputs: renderQaOutputIds.map((id) => ({ id, sha256: hash })),
+    outputs: renderQaOutputIds.map((id) => ({
+      id,
+      sha256:
+        controls.find((control) => renderQaControls[control.id].output === id)
+          ?.outputSha256 ?? hash,
+    })),
     metrics,
     controls,
     complete: true,

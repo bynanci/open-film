@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   admitBrewFormula,
+  observeMacQaDependencies,
   admitToolVersion,
   downloadPinnedBytes,
   verifyPinnedBytes,
@@ -194,4 +195,137 @@ it("centralizes the Windows pins while preserving its complete recovery/browser 
     "tests/e2e/interaction-performance.spec.ts",
   ])
     expect(workflow).toContain(file);
+});
+
+function macObservationFixture() {
+  const metadata = { ...formula(), casks: [] };
+  Object.assign(metadata.formulae[0]!, { dependencies: ["libvpx"] });
+  const calls: Array<[string, string[]]> = [];
+  return {
+    metadata,
+    calls,
+    run: async (command: string, args: string[]) => {
+      calls.push([command, args]);
+      if (command === "otool")
+        return `${args[1]}:\n\t/opt/homebrew/lib/libfixture.dylib (compatibility version 1.0.0, current version 1.2.3)`;
+      if (args[2] === "ffmpeg") return JSON.stringify(metadata);
+      return JSON.stringify({
+        formulae: [
+          {
+            name: "libvpx",
+            tap: "homebrew/core",
+            installed: [{ version: "1.15.2" }],
+          },
+        ],
+        casks: [],
+      });
+    },
+  };
+}
+it("retains bounded local Homebrew JSON and actual otool observations with path-free hashed summaries", async () => {
+  const fixture = macObservationFixture();
+  const result = await observeMacQaDependencies(
+    fixture.metadata,
+    "/opt/homebrew/opt/ffmpeg/bin",
+    fixture.run,
+  );
+  expect(fixture.calls).toEqual([
+    ["brew", ["info", "--json=v2", "ffmpeg"]],
+    ["brew", ["info", "--json=v2", "libvpx"]],
+    ["otool", ["-L", "/opt/homebrew/opt/ffmpeg/bin/ffmpeg"]],
+    ["otool", ["-L", "/opt/homebrew/opt/ffmpeg/bin/ffprobe"]],
+  ]);
+  expect(result.local.metadata.map((item) => item.name)).toEqual([
+    "ffmpeg",
+    "libvpx",
+  ]);
+  for (const item of [...result.local.metadata, ...result.local.libraries])
+    expect(item.sha256).toBe(
+      createHash("sha256").update(item.stdout).digest("hex"),
+    );
+  expect(result.local.libraries[0]!.stdout).toContain("/opt/homebrew/");
+  expect(result.summary).toContain("brew:libvpx=1.15.2");
+  expect(JSON.stringify(result.summary)).not.toMatch(/\/opt|\/Users|\.dylib/u);
+  expect(
+    result.summary.some(
+      (item) =>
+        item ===
+        `otool:ffmpeg:sha256=${result.local.libraries[0]!.sha256}:libraries=1`,
+    ),
+  ).toBe(true);
+});
+it.each([
+  "missing dependencies",
+  "empty dependencies",
+  "changed dependency inventory",
+  "option-shaped dependency",
+  "duplicate dependencies",
+  "oversized dependency inventory",
+  "missing installed metadata",
+  "wrong dependency",
+  "oversized JSON",
+  "empty libraries",
+  "malformed libraries",
+  "missing command",
+])("fails macOS observations closed on %s", async (mutation) => {
+  const fixture = macObservationFixture();
+  if (mutation === "missing dependencies")
+    delete (fixture.metadata.formulae[0] as { dependencies?: string[] })
+      .dependencies;
+  if (mutation === "empty dependencies")
+    Object.assign(fixture.metadata.formulae[0]!, { dependencies: [] });
+  if (mutation === "option-shaped dependency")
+    Object.assign(fixture.metadata.formulae[0]!, { dependencies: ["--help"] });
+  if (mutation === "duplicate dependencies")
+    Object.assign(fixture.metadata.formulae[0]!, {
+      dependencies: ["libvpx", "libvpx"],
+    });
+  if (mutation === "oversized dependency inventory")
+    Object.assign(fixture.metadata.formulae[0]!, {
+      dependencies: Array.from({ length: 65 }, (_, i) => `dep${i}`),
+    });
+  const run = async (command: string, args: string[]) => {
+    if (
+      mutation === "changed dependency inventory" &&
+      command === "brew" &&
+      args[2] === "ffmpeg"
+    ) {
+      const changed = structuredClone(fixture.metadata);
+      Object.assign(changed.formulae[0]!, { dependencies: ["other"] });
+      return JSON.stringify(changed);
+    }
+    if (mutation === "missing command" && command === "otool")
+      throw new Error("otool missing");
+    if (command === "otool" && mutation === "empty libraries")
+      return `${args[1]}:`;
+    if (command === "otool" && mutation === "malformed libraries")
+      return `${args[1]}:\nnot a library record`;
+    if (command === "brew" && args[2] === "libvpx") {
+      if (mutation === "missing installed metadata")
+        return JSON.stringify({
+          formulae: [{ name: "libvpx", tap: "homebrew/core", installed: [] }],
+        });
+      if (mutation === "wrong dependency")
+        return JSON.stringify({
+          formulae: [
+            {
+              name: "impostor",
+              tap: "homebrew/core",
+              installed: [{ version: "1" }],
+            },
+          ],
+        });
+      if (mutation === "oversized JSON") return " ".repeat(256 * 1024 + 1);
+    }
+    return fixture.run(command, args);
+  };
+  await expect(
+    observeMacQaDependencies(
+      fixture.metadata,
+      "/opt/homebrew/opt/ffmpeg/bin",
+      run,
+    ),
+  ).rejects.toThrow(/Homebrew|otool|macOS/u);
+  if (mutation === "option-shaped dependency")
+    expect(fixture.calls).toEqual([]);
 });

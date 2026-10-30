@@ -174,3 +174,120 @@ export function admitBrewFormula(input: unknown, installed: boolean): void {
       "Homebrew formula, bottle or installed identity is unreviewed",
     );
 }
+
+/** Raw paths stay in the local setup root; only validated identities/hashes travel. */
+export async function observeMacQaDependencies(
+  installedFormula: unknown,
+  bin: string,
+  run: (command: string, args: string[]) => Promise<string>,
+) {
+  admitBrewFormula(installedFormula, true);
+  const dependencies = (
+    installedFormula as { formulae: Array<{ dependencies?: unknown }> }
+  ).formulae[0]!.dependencies;
+  if (
+    !Array.isArray(dependencies) ||
+    dependencies.length < 1 ||
+    dependencies.length > 64 ||
+    dependencies.some(
+      (name) =>
+        typeof name !== "string" ||
+        !/^[a-z0-9][a-z0-9+@._-]{0,99}$/u.test(name) ||
+        name === "ffmpeg",
+    ) ||
+    new Set(dependencies).size !== dependencies.length
+  )
+    throw new Error("Missing or invalid Homebrew dependency inventory");
+  const local = {
+    metadata: [] as Array<{ name: string; stdout: string; sha256: string }>,
+    libraries: [] as Array<{ name: string; stdout: string; sha256: string }>,
+  };
+  const summary: string[] = [];
+  let totalBytes = 0;
+  async function observation(command: string, args: string[]) {
+    let stdout: string;
+    try {
+      stdout = await run(command, args);
+    } catch (error) {
+      throw new Error(`Required macOS ${command} observation failed`, {
+        cause: error,
+      });
+    }
+    const bytes = Buffer.byteLength(stdout, "utf8");
+    totalBytes += bytes;
+    if (!bytes || bytes > 256 * 1024 || totalBytes > 4 * 1024 ** 2)
+      throw new Error("Invalid bounded macOS dependency observation");
+    return { stdout, sha256: qaSha256(stdout) };
+  }
+  for (const name of ["ffmpeg", ...dependencies]) {
+    const observed = await observation("brew", ["info", "--json=v2", name]);
+    let data;
+    try {
+      data = JSON.parse(observed.stdout) as {
+        formulae?: Array<{
+          name?: string;
+          tap?: string;
+          installed?: Array<{ version?: string }>;
+          dependencies?: unknown;
+        }>;
+        casks?: unknown[];
+      };
+    } catch (error) {
+      throw new Error("Invalid Homebrew dependency JSON", { cause: error });
+    }
+    const formula = data?.formulae?.[0];
+    const version = formula?.installed?.[0]?.version;
+    if (
+      data?.formulae?.length !== 1 ||
+      (data.casks !== undefined &&
+        (!Array.isArray(data.casks) || data.casks.length !== 0)) ||
+      !formula ||
+      formula.name !== name ||
+      formula.tap !== "homebrew/core" ||
+      formula.installed?.length !== 1 ||
+      typeof version !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9.+_:-]{0,99}$/u.test(version)
+    )
+      throw new Error(
+        "Missing or invalid installed Homebrew dependency identity",
+      );
+    if (name === "ffmpeg") {
+      admitBrewFormula(data, true);
+      if (
+        !Array.isArray(formula.dependencies) ||
+        JSON.stringify([...formula.dependencies].sort()) !==
+          JSON.stringify([...dependencies].sort())
+      )
+        throw new Error(
+          "Homebrew dependency inventory changed during observation",
+        );
+    }
+    local.metadata.push({ name, ...observed });
+    summary.push(
+      `brew:${name}=${version}`,
+      `brew-info:${name}:sha256=${observed.sha256}`,
+    );
+  }
+  for (const name of ["ffmpeg", "ffprobe"]) {
+    const path = join(bin, name);
+    const observed = await observation("otool", ["-L", path]);
+    const [header, ...libraries] = observed.stdout.split(/\r?\n/u);
+    if (
+      header !== `${path}:` ||
+      libraries.length < 1 ||
+      libraries.length > 256 ||
+      libraries.some(
+        (line) =>
+          !/^\s+(?:\/|@(?:rpath|loader_path|executable_path)\/)[^\r\n]+ \(compatibility version \d+(?:\.\d+){0,2}, current version \d+(?:\.\d+){0,2}\)$/u.test(
+            line,
+          ),
+      )
+    )
+      throw new Error("Missing or invalid otool library observation");
+    local.libraries.push({ name, ...observed });
+    summary.push(
+      `otool:${name}:sha256=${observed.sha256}:libraries=${libraries.length}`,
+    );
+  }
+  return { local, summary };
+}

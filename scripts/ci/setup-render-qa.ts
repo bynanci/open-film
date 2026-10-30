@@ -24,6 +24,7 @@ import {
   admitBrewFormula,
   admitToolVersion,
   downloadPinnedBytes,
+  observeMacQaDependencies,
   qaSha256,
   stageLinuxQaBin,
   verifyPinnedBytes,
@@ -31,11 +32,14 @@ import {
 
 const execute = promisify(execFile);
 const repository = fileURLToPath(new URL("../..", import.meta.url));
-async function run(command: string, args: string[]) {
+async function run(
+  command: string,
+  args: string[],
+  limits = { timeout: 900_000, maxBuffer: 4 * 1024 ** 2 },
+) {
   const result = await execute(command, args, {
     encoding: "utf8",
-    timeout: 900_000,
-    maxBuffer: 4 * 1024 ** 2,
+    ...limits,
     windowsHide: true,
   });
   return result.stdout.trim();
@@ -292,16 +296,18 @@ export async function setupRenderQa(options: {
         if (!isAbsolute(prefix) || /[\r\n]/u.test(prefix))
           throw new Error("Unexpected Homebrew prefix");
         bin = join(prefix, "bin");
-        for (const dependency of [
-          "ffmpeg",
-          ...((after.formulae?.[0]?.dependencies ?? []) as string[]),
-        ]) {
-          if (!/^[a-z0-9+@._-]+$/u.test(dependency))
-            throw new Error("Unexpected Homebrew dependency identity");
-          receipt.dependencies.push(
-            await run("brew", ["list", "--versions", dependency]),
-          );
-        }
+        const observations = await observeMacQaDependencies(
+          after,
+          bin,
+          (command, args) =>
+            run(command, args, { timeout: 30_000, maxBuffer: 256 * 1024 }),
+        );
+        await writeFile(
+          join(root, "macos-dependency-observations.json"),
+          JSON.stringify(observations.local, null, 2) + "\n",
+          { mode: 0o600 },
+        );
+        receipt.dependencies = observations.summary;
         receipt.admittedPackageSha256 = pin.sha256;
       }
       const pin = pins.tools[platformId as keyof typeof pins.tools];
