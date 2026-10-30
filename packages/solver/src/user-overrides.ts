@@ -157,7 +157,14 @@ export function applyOverridePolicy(
         command.type === "user-pin.set" ? [command.target] : command.targets;
       for (const target of targets) {
         const item = current.get(overrideTargetKey(target));
-        if (!item) pinConflict("The user pin owner no longer exists.");
+        if (!item) {
+          if (
+            command.type === "user-pin.resolve" &&
+            old.has(overrideTargetKey(target))
+          )
+            continue;
+          pinConflict("The user pin owner no longer exists.");
+        }
         if (command.type === "user-pin.resolve" || !command.pinned)
           item.owner.userOverrides = {
             version: 1,

@@ -19,7 +19,7 @@ import type {
   GraphicSceneTemplateRecord,
   MediaAsset,
 } from "@openfilm/core";
-import { graphicSceneAssetIds } from "@openfilm/core";
+import { graphicSceneAssetIds, resolveProjectTimebase } from "@openfilm/core";
 import { ProviderRegistry } from "@openfilm/analysis";
 import type { MotionGenerationProvider } from "@openfilm/plugin-sdk";
 import {
@@ -343,7 +343,10 @@ export class MotionGenerationService {
     let next = document(before);
     try {
       for (const command of commands)
-        next = applyTimelineCommand(next, assets, command);
+        next = applyTimelineCommand(next, assets, command, {
+          origin: "automatic",
+          timebase: resolveProjectTimebase(this.app.project.settings),
+        });
     } catch {
       fail(
         "Motion replacement conflicts with source/scene locks or required selection.",
