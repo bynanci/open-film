@@ -18,7 +18,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -36,6 +36,14 @@ import * as titleModule from "../../packages/render/src/titles.js";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
 import * as mediaModule from "@openfilm/media";
 import { startServer } from "../../apps/server/src/server.js";
+import {
+  expectPrivateStorage,
+  testCjkFont,
+} from "../helpers/platform-storage.js";
+import {
+  createReviewOwner,
+  reviewOwnerState,
+} from "../../packages/application/src/review-owner.js";
 
 const cleanup: Array<() => Promise<unknown> | void> = [];
 const exec = promisify(execFile);
@@ -736,8 +744,8 @@ describe("professional profile exports", () => {
     "rejects a %s crop when two fonts swap across title, caption and nested-scene uses",
     async (format) => {
       const { app, composition, root } = await fixture(1);
-      const sans = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
-      const serif = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc";
+      const sans = testCjkFont("Sans");
+      const serif = testCjkFont("Serif");
       let fontA = join(root, "synthetic-title-candidate.ttc");
       let fontB = join(root, "synthetic-caption-candidate.ttc");
       await copyFile(sans, fontA);
@@ -1000,12 +1008,10 @@ describe("professional profile exports", () => {
         (
           await Promise.all(
             [
-              "NotoSansCJK-Regular.ttc",
-              "NotoSerifCJK-Regular.ttc",
-              "NotoSerifCJK-Bold.ttc",
-            ].map((name) =>
-              hashFile(join("/usr/share/fonts/opentype/noto", name)),
-            ),
+              testCjkFont("Sans"),
+              testCjkFont("Serif"),
+              testCjkFont("Serif", "Bold"),
+            ].map((path) => hashFile(path)),
           )
         ).sort(),
       );
@@ -1097,6 +1103,22 @@ describe("professional profile exports", () => {
           : undefined;
       child.kill("SIGKILL");
       await exited;
+      const lockDirectory = join(app.directory, "cache", "export-requests");
+      const locks = (await readdir(lockDirectory)).filter((name) =>
+        name.endsWith(".lock"),
+      );
+      expect(locks).toHaveLength(1);
+      const crashedLock = JSON.parse(
+        await readFile(join(lockDirectory, locks[0]!), "utf8"),
+      );
+      expect(
+        reviewOwnerState(crashedLock.owner),
+        JSON.stringify({
+          scopeMatches: crashedLock.owner.host === createReviewOwner().host,
+          platform: process.platform,
+          ownerHost: crashedLock.owner.host,
+        }),
+      ).toBe("dead");
       const reopened = await OpenFilmApplication.openForExport(projectPath);
       cleanup.push(() => reopened.close());
       const result = await reopened.exportProfileAudio(input);
@@ -1257,7 +1279,7 @@ describe("professional profile exports", () => {
       expect(await readFile(recovery.recoveryPaths[0]!, "utf8")).toBe(
         "prior output bytes",
       );
-      expect((await stat(recovery.workDirectory)).mode & 0o777).toBe(0o700);
+      await expectPrivateStorage(recovery.workDirectory, 0o700);
     },
   );
 
@@ -1302,7 +1324,7 @@ describe("professional profile exports", () => {
         `stems-${input.requestId}`,
         "manifest.json",
       );
-      expect((await stat(manifest)).mode & 0o777).toBe(0o600);
+      await expectPrivateStorage(manifest, 0o600);
       if (emptyFirst) {
         expect(
           await readdir(
@@ -1336,8 +1358,8 @@ describe("professional profile exports", () => {
       composition.tracks[0]!.clips[0]!.title = "A";
       await app.save();
       close();
-      const sans = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
-      const serif = "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc";
+      const sans = testCjkFont("Sans");
+      const serif = testCjkFont("Serif");
       const cli = async (font: string, args: string[]) =>
         JSON.parse(
           (
@@ -2557,10 +2579,10 @@ describe("professional profile exports", () => {
       await audioRms(musicStem.path, 3),
     );
     expect(
-      stems.files.every((file) =>
-        file.path.startsWith(
-          `${app.directory}/exports/stems-audio-stems-receipt-001/`,
-        ),
+      stems.files.every(
+        (file) =>
+          dirname(file.path) ===
+          join(app.directory, "exports", "stems-audio-stems-receipt-001"),
       ),
     ).toBe(true);
   }, 120_000);
@@ -2622,14 +2644,15 @@ describe("professional profile exports", () => {
       time: 0.5,
     });
     const previewPath = await app.exportProfiles.previewPath(preview.token);
-    expect(previewPath.startsWith(`${app.directory}/cache/`)).toBe(true);
-    expect((await stat(previewPath)).mode & 0o777).toBe(0o600);
-    expect(
-      (await stat(join(app.directory, "cache", "export-preview"))).mode & 0o777,
-    ).toBe(0o700);
-    expect((await stat(join(app.directory, "exports"))).mode & 0o777).toBe(
+    expect(dirname(previewPath)).toBe(
+      join(app.directory, "cache", "export-preview"),
+    );
+    await expectPrivateStorage(previewPath, 0o600);
+    await expectPrivateStorage(
+      join(app.directory, "cache", "export-preview"),
       0o700,
     );
+    await expectPrivateStorage(join(app.directory, "exports"), 0o700);
     await writeFile(
       imagePath,
       Buffer.concat([await readFile(imagePath), Buffer.from("changed")]),

@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Stage hash-pinned FFmpeg9 and licensed CJK test font
+      - name: Stage hash-pinned FFmpeg9 and licensed CJK test fonts
         run: |
           $openfilmToolRoot = Join-Path $env:RUNNER_TEMP "openfilm-tools"
           New-Item -ItemType Directory -Force $openfilmToolRoot | Out-Null
@@ -50,10 +50,20 @@ jobs:
           $openfilmExecutables = @(Get-ChildItem (Join-Path $openfilmToolRoot "ffmpeg") -Recurse -Filter ffmpeg.exe)
           if ($openfilmExecutables.Count -ne 1) { throw "Expected one pinned FFmpeg executable" }
           $openfilmExecutables[0].Directory.FullName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
-          $env:OPENFILM_TITLE_FONT = Join-Path $openfilmToolRoot "NotoSansCJKtc-Regular.otf"
+          $openfilmFonts = @(
+            @{ family="Sans"; weight="Regular"; sha="dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4" },
+            @{ family="Sans"; weight="Bold"; sha="3ee160e5015106e3ec1a394301df54fa9bbbf8a251519984aec5c0abc50840c0" },
+            @{ family="Serif"; weight="Regular"; sha="360778af67c4591d03997312ee33d7354727637faf8a7f57f705a380c7b81fa3" },
+            @{ family="Serif"; weight="Bold"; sha="6fc7c0854585330a09c0ae48638a48aa5b8f4bd3f30f63cdb0a3927206b14874" }
+          )
+          foreach ($openfilmFont in $openfilmFonts) {
+            $openfilmFontName = "Noto$($openfilmFont.family)CJKtc-$($openfilmFont.weight).otf"
+            $openfilmFontPath = Join-Path $env:WINDIR "Fonts\$openfilmFontName"
+            Invoke-WebRequest "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/$($openfilmFont.family)/OTF/TraditionalChinese/$openfilmFontName" -OutFile $openfilmFontPath
+            if ((Get-FileHash $openfilmFontPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $openfilmFont.sha) { throw "Noto font integrity mismatch" }
+          }
+          $env:OPENFILM_TITLE_FONT = Join-Path $env:WINDIR "Fonts\NotoSansCJKtc-Regular.otf"
           "OPENFILM_TITLE_FONT=$env:OPENFILM_TITLE_FONT" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          Invoke-WebRequest "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf" -OutFile $env:OPENFILM_TITLE_FONT
-          if ((Get-FileHash $env:OPENFILM_TITLE_FONT -Algorithm SHA256).Hash.ToLowerInvariant() -ne "dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4") { throw "Noto font integrity mismatch" }
           $openfilmLicense = Join-Path $openfilmToolRoot "Noto-SIL-OFL.txt"
           Invoke-WebRequest "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/LICENSE" -OutFile $openfilmLicense
           if ((Get-FileHash $openfilmLicense -Algorithm SHA256).Hash.ToLowerInvariant() -ne "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2") { throw "Font license integrity mismatch" }
@@ -78,6 +88,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not ((Get-Content (Join-Path $openfilmEvidence "ffmpeg.txt") -Raw).StartsWith("ffmpeg version 9.0.2"))) { throw "Expected the pinned FFmpeg9 runtime" }
           Copy-Item (Join-Path $env:RUNNER_TEMP "openfilm-tools\Noto-SIL-OFL.txt") $openfilmEvidence
+          # Compare independently queried boot identity without publishing a machine ID.
+          $openfilmBootHashes = @(1..3 | ForEach-Object {
+            $openfilmBoot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('O')
+            [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($openfilmBoot))).ToLowerInvariant()
+          })
+          @{ identicalBootQueries=(@($openfilmBootHashes | Select-Object -Unique).Count -eq 1); bootHashes=$openfilmBootHashes } | ConvertTo-Json | Out-File (Join-Path $openfilmEvidence "owner-scope.json") -Encoding utf8
       - name: Verify source persistence and frame-rate regressions
         run: |
           pnpm exec vitest run packages/application/tests/windows-source-persistence.test.ts packages/application/tests/source-discovery.test.ts packages/application/tests/source-batch.test.ts tests/unit/project-fixture-cleanup.test.ts tests/integration/export-profiles.test.ts tests/integration/low-fps-export.test.ts packages/render/tests/low-fps-profile.test.ts 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP "openfilm-windows-evidence\regressions.log")

@@ -77,6 +77,11 @@ function candidates(style: {
     `/usr/share/fonts/truetype/noto/${noto}`,
     "/System/Library/Fonts/PingFang.ttc",
     "/System/Library/Fonts/Supplemental/Songti.ttc",
+    join(
+      windows,
+      "Fonts",
+      `Noto${serif ? "Serif" : "Sans"}CJKtc-${bold ? "Bold" : "Regular"}.otf`,
+    ),
     join(windows, "Fonts", bold ? "msjhbd.ttc" : "msjh.ttc"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   ];

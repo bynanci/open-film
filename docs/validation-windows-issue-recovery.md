@@ -3,16 +3,17 @@
 Date:2026-10-30. Branch:`codex/windows-66-68`, stacked on D6B PR65.
 Initial code base:`c0983a4f53af145a35c1ff6be2b958a2915eaad0`;
 research-integrated base:`18f8c1f02b23a3bc015695eb8d6f47791e0364b2`.
-Status: implementation and focused Linux regressions passed; independent review,
-full gates and actual Windows/FFmpeg9 CI are pending. No release certification.
+Status: independent source review and focused Linux regressions passed. First
+actual Windows/FFmpeg9 run exposed17 failures (75passed), now under repair;
+full final gates remain pending. No release certification.
 
 ## Reports and root causes
 
-| Issue                                                | Observed boundary                                                                                                                        | Change and regression                                                                                                                                                                                                                                                                                                  |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [66](https://github.com/bynanci/open-film/issues/66) | User reports Windows10 build19045 / FFmpeg9.0.2 rejects retired `-vsync` during crop/frame preview.                                      | Use per-stream `-fps_mode passthrough` in frame extraction and independent low-fps decoding fixtures. A negative process-boundary fixture rejects the old option while executing actual FFmpeg for PNG/crop and24fps MP4; no assertions relaxed.                                                                       |
-| [67](https://github.com/bynanci/open-film/issues/67) | Browser scan writes/flushed receipt successfully, then directory fsync returns EPERM on Windows, preventing staging.                     | One private directory-sync capability owner across scan receipt creation/removal and all three native/browser stage/index publication paths. Actual file data flushes and atomic rename/link remain; Node/Win32 directory fsync is explicitly unsupported. POSIX errors and Windows file-flush errors still propagate. |
-| [68](https://github.com/bynanci/open-film/issues/68) | Benchmark ignores project-close response then removes SQLite fixture; a guarded/busy close can leave it open and cause EBUSY on Windows. | After all measurement/budget/artifact steps, quiesce the page, wait boundedly for HTTP200 close, verify no open project, then remove fixture with bounded OS handle-release retries. Persistent close/lock failures retain fixture and propagate; benchmark thresholds and samples remain unchanged.                   |
+| Issue                                                | Observed boundary                                                                                                                        | Change and regression                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [66](https://github.com/bynanci/open-film/issues/66) | User reports Windows10 build19045 / FFmpeg9.0.2 rejects retired `-vsync` during crop/frame preview.                                      | Use per-stream `-fps_mode passthrough` in frame extraction and independent low-fps decoding fixtures. A negative process-boundary fixture rejects the old option while executing actual FFmpeg for PNG/crop and24fps MP4; no assertions relaxed.                                                                                                                                           |
+| [67](https://github.com/bynanci/open-film/issues/67) | Browser scan writes/flushed receipt successfully, then directory fsync returns EPERM on Windows, preventing staging.                     | One private directory-sync capability owner across scan receipt creation/removal and all three native/browser stage/index publication paths. Actual file data flushes and atomic rename/link remain; Node/Win32 directory fsync is explicitly unsupported. POSIX errors and Windows file-flush errors still propagate.                                                                     |
+| [68](https://github.com/bynanci/open-film/issues/68) | Benchmark ignores project-close response then removes SQLite fixture; a guarded/busy close can leave it open and cause EBUSY on Windows. | After all measurement/budget/artifact steps, quiesce the page, wait boundedly for HTTP200 close, verify no open project, then remove fixture with bounded OS handle-release retries. Unresolved closure preserves the fixture. Removal failures propagate and may leave a partially removed fixture; benchmark artifacts are preserved separately and thresholds/samples remain unchanged. |
 
 User-provided workstation log paths are not mounted here. Their reports are
 external failure evidence, not a claim that these logs or the workstation were
@@ -34,6 +35,9 @@ with bounded network calls. Other HTTP errors fail immediately. Its measurement
 artifact is written/attached before cleanup; a separate cleanup acknowledgement
 is attached afterward. File removal retries at most5 times/100ms backoff after
 confirmed closure; no performance assertion or failed benchmark is retried.
+A close failure preserves the complete fixture. A later recursive-removal failure
+can already have removed unlocked siblings, so complete retention is not promised
+after deletion starts. The measurement artifact lives outside the fixture.
 
 ## Actual local evidence
 
@@ -50,7 +54,9 @@ confirmed closure; no performance assertion or failed benchmark is retried.
 - The capability fixture uses real files, hashes, rename and reopen with an
   explicit mocked OS directory limitation. It is not Windows execution evidence.
 - Local FFmpeg7.1.5; official OpenTimelineIO0.18.1 via the existing venv.
-  Type/lint/build/full-suite/browser/CI results are recorded after source freeze.
+  Initialsource8b9c9f4 passes323files/4543tests in395.11s; full291browser
+  run is still in progress. These are predecessor evidence for the platform
+  fixture corrections, whose final gates are recorded separately.
 
 ## Actual Windows and FFmpeg9 gate
 
@@ -73,6 +79,26 @@ Source URLs are fixed in the workflow. FFmpeg remains a separate test executable
 Apache-2.0/NOTICE and distribution contracts are unchanged. The font license is
 preserved in evidence; the font is temporary CI input, not committed or bundled.
 The existing D7A fixed-font/metric program remains broader than this narrow gate.
+
+## First actual Windows result and follow-up
+
+Run [41029892847](https://github.com/bynanci/open-film/actions/runs/41029892847)
+checked out exact source8b9c9f48aad1ca6cb2fd3ea0e6fe496bcb724a80 on
+Windows Server2022 build20348, Node24.14.0, pnpm11.11.0 and hash-pinned
+FFmpeg9.0.2. Scan/stage/source persistence passed. Overall75/92 passed;
+the dependent browser step did not run. Preserve this failure, not a Windows pass.
+
+The failures expose Linux font paths, raw URL pathname conversion, POSIX mode
+expectations, slash-only containment and unverified cross-process owner recovery.
+Follow-up keeps exact source hashes and all rendering/layout assertions, uses
+independent fixed Sans/Serif/weight fixtures, checks actual Windows DACLs rather
+than ignoring permissions, strengthens containment to the expected parent path,
+and records boot-scope diagnostics before changing recovery policy. Unknown
+owners remain protected; no PID-only or guessed boot-time recovery is authorized.
+
+Single independent whole-branch review (base18f8c1f..3cab20d): no Critical or
+Important source finding. One Minor factual retention claim is corrected above;
+actual Windows/FFmpeg9 and full gates remain required. No repeated review loop.
 
 ## Version/research and remaining gates
 

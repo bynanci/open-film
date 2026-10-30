@@ -2,7 +2,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { createExportProfile, type Composition } from "@openfilm/core";
 import { hashFile, inspectMedia, runProcess } from "@openfilm/media";
@@ -128,7 +128,7 @@ it.each([0.25, 0.5, 1, 12])(
     const settings = { width: 160, height: 90, frameRate: savedRate };
     const before = structuredClone({ composition, settings });
     const sourceHashes = await Promise.all(
-      assets.map((asset) => hashFile(new URL(asset.uri).pathname)),
+      assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
     );
     const path = join(root, "delivered.mp4");
     const profile = createExportProfile({
@@ -163,7 +163,7 @@ it.each([0.25, 0.5, 1, 12])(
     expect({ composition, settings }).toEqual(before);
     expect(
       await Promise.all(
-        assets.map((asset) => hashFile(new URL(asset.uri).pathname)),
+        assets.map((asset) => hashFile(fileURLToPath(asset.uri))),
       ),
     ).toEqual(sourceHashes);
   },
