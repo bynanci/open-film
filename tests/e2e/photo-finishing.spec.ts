@@ -332,7 +332,7 @@ test("Record Monitor bypass reuses raw ambient pixels and the diptych separator 
   page,
   request,
 }, info) => {
-  const files = await fixture(request, true, combined);
+  const files = await fixture(request, true);
   const state = await editor(request);
   const updated = await request.post(
     `${base}/api/compositions/photo-finishing/edit`,
