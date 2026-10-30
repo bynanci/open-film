@@ -266,6 +266,53 @@ describe("Collect Media review regressions", () => {
     },
   );
 
+  it("retains both run font bindings for an unselected caption in a later Composition", async () => {
+    const { app, directory } = await fixture();
+    const later = structuredClone(app.project.timelines[0]!);
+    later.id = "bilingual-later";
+    later.captionTracks = [
+      {
+        version: 1,
+        id: "unselected",
+        name: "Bilingual",
+        style: { version: 1, role: "subtitle", fontSize: 12 },
+        cues: [
+          {
+            version: 1,
+            id: "bilingual",
+            startMs: 0,
+            endMs: 900,
+            text: "繁體標題\nOur story",
+            textRuns: {
+              version: 1,
+              splitAt: 4,
+              secondary: { fontWeight: 700, fontSize: 10 },
+            },
+            source: { kind: "manual" },
+            manualRevision: 0,
+          },
+        ],
+      },
+    ];
+    app.project.timelines.push(later);
+    const path = await collect(app, join(directory, "bilingual.openfilm"));
+    const manifest = await manifestAt(path);
+    expect(
+      manifest.fonts
+        .flatMap((font) => font.bindings.map((binding) => binding.weight))
+        .sort(),
+    ).toEqual([400, 700]);
+    const relocated = await OpenFilmApplication.openForExport(path);
+    applications.add(relocated);
+    const caption = relocated.project.timelines[1]!.captionTracks![0]!;
+    expect(
+      relocated.titleFontPath({
+        ...caption.style,
+        ...caption.cues[0]!.textRuns!.secondary,
+      }),
+    ).toBeTruthy();
+  });
+
   it.each(["title", "caption", "graphic"] as const)(
     "requires a packaged font binding for persisted %s text in a later Composition",
     async (kind) => {
