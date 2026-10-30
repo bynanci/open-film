@@ -2715,6 +2715,10 @@ export async function startServer(options: ServerOptions = {}) {
                 "planId",
                 "baseRevision",
                 "format",
+                "delivery",
+                "coverageId",
+                "projectId",
+                "acceptDelivery",
               ]);
               const format =
                 data.format === "zip"

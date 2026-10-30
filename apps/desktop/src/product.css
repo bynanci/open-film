@@ -3386,6 +3386,19 @@ label.ui-language {
   font-size: var(--of-font-small);
   color: var(--of-text-muted);
 }
+.collect-delivery-accept {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--of-space-3);
+  padding-block: var(--of-space-3);
+  min-height: 44px;
+  font-size: var(--of-font-small);
+  overflow-wrap: anywhere;
+}
+.collect-delivery-accept input {
+  flex: 0 0 auto;
+  margin-block-start: var(--of-space-1);
+}
 .collect-delivery-controls {
   display: flex;
   align-items: end;

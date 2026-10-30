@@ -5,7 +5,21 @@ export default {
     description:
       "Review the source ranges used by this film and the extra material to keep around each cut.",
     planningOnly:
-      "This is a planning review. Package creation currently includes full original media. Derived delivery becomes available after source timing and output validation.",
+      "Review first, then explicitly accept to create a package. Protected sources stay complete. Lossless range files can be larger than compressed originals.",
+    format: "Package format",
+    directory: "Folder",
+    acceptLossless:
+      "I reviewed these ranges and accept lossless delivery with output validation. File size may increase.",
+    acceptOffline:
+      "I accept lower-resolution, compressed review media. This package cannot produce original-quality masters.",
+    acceptOriginals:
+      "I reviewed and accept the complete original-media package.",
+    create: "Accept and create package",
+    validating: "Creating media and validating the delivered film…",
+    rightsFirst:
+      "Review and confirm all source and font rights in Collect before creating.",
+    offlineOutput:
+      "This project uses offline review media. Exports cannot restore the quality of the original sources.",
     mode: "Delivery option to review",
     originals: "Full originals",
     trimmed: "Original ranges with handles",

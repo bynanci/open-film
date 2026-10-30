@@ -4867,6 +4867,15 @@ onUnmounted(() => {
             </div>
             <ExportWorkspace
               v-if="tab === 'export'"
+              :offline-media="
+                assets.some(
+                  (asset) =>
+                    (
+                      asset.metadata['openfilm.collectDelivery'] as
+                        { quality?: unknown } | undefined
+                    )?.quality === 'offline-only',
+                )
+              "
               :project-id="project.id"
               :composition="activeComposition"
               :busy="!!busy"

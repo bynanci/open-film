@@ -25,6 +25,7 @@ function response(
 ): { review: CollectCoverageReview } {
   return {
     review: {
+      coverageId: "c".repeat(64),
       baseline: {
         id: "b".repeat(64),
         projectId,
@@ -138,6 +139,30 @@ it("requests a read-only range review with default two-second handles and never 
   expect(text(f.root)).toContain("collectDelivery.planningOnly");
   expect(f.create).not.toHaveBeenCalled();
   expect(f.busy.mock.calls).toEqual([[true], [false]]);
+});
+it("requires an explicit quality acceptance and clears it when the delivery changes", async () => {
+  const f = await fixture(
+    vi.fn(async () => {
+      const result = response("Synthetic");
+      result.review.baseline.complete = true;
+      return result;
+    }),
+  );
+  await f.click("collectDelivery.review");
+  expect(f.button("collectDelivery.create")!.props.disabled).toBe(true);
+  const checkbox = flatten(f.root).find(
+    (node) => node.tag === "input" && node.props.type === "checkbox",
+  );
+  expect(checkbox).toBeDefined();
+  (checkbox!.props.onChange as (event: unknown) => void)({
+    target: { checked: true },
+  });
+  await vue.nextTick();
+  expect(f.button("collectDelivery.create")!.props.disabled).toBe(false);
+  f.props.request = { ...f.props.request, projectId: "two" };
+  await vue.nextTick();
+  expect(f.button("collectDelivery.create")).toBeUndefined();
+  expect(f.create).not.toHaveBeenCalled();
 });
 it("aborts and discards a late review after the project changes", async () => {
   let finish!: (value: { review: CollectCoverageReview }) => void;

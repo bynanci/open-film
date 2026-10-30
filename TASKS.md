@@ -162,12 +162,16 @@ Scope: [current-state evidence and dependency map](docs/roadmap/seven-subsystem-
       explicit quality disclosure.
   - [x] Read-only delivery/coverage contract, saved baseline/hash/revision capture,
         portable-clock protection and shared CLI/API/three-locale review UI.
-        [Checkpoint evidence](docs/validation-collect-coverage.md); Create remains
-        full-original v1.
-  - [ ] Generate/verify actual derivatives, piecewise clock receipts and v2
-        directory/ZIP relocation against the original decoded baseline.
-  - [ ] Complete explicit offline acceptance/output disclosure, full gates and
-        independent review before marking D6B delivery complete.
+        [Delivery evidence](docs/validation-collect-coverage.md).
+  - [x] Generate/verify bounded lossless derivatives, piecewise clock receipts and
+        v2 directory/ZIP relocation against every selected original decoded baseline;
+        retain protected/VFR/unsupported clocks on originals. Preserve default v1.
+  - [x] Explicit revision-bound CLI/API/Desktop acceptance and persistent offline
+        quality disclosure; source/project/catalog/locks/captions remain unchanged.
+  - [x] Reproduce/fix ready-preview hard-link cleanup race found in checkpoint CI;
+        preserve full hash, alias and corruption assertions.
+  - [ ] Complete full local/hosted gates and independent whole-branch review before
+        marking D6B delivery ready to merge. Physical workstation gates stay open.
 - D7A crosswalk: the nested open F13 item is authoritative for a licensed
   fixed test font/tool record, metric-specific tolerances, deliberate failure
   controls and focused Windows/macOS render evidence.

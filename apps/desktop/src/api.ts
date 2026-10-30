@@ -848,6 +848,10 @@ export const api = {
       planId: string;
       baseRevision: string;
       format: "directory" | "zip";
+      delivery?: CollectCoveragePlanInput["delivery"];
+      coverageId?: string;
+      projectId?: string;
+      acceptDelivery?: true;
     },
     signal?: AbortSignal,
   ) =>

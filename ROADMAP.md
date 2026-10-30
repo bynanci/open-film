@@ -126,11 +126,13 @@ corrections and 4464 local tests pass; exact Chromium/hosted merge gates are
 tracked in [validation](docs/validation-proxy-storage.md). D6B trimmed
 original/offline packages and physical installer gates remain separate.
 
-D6B has a separate read-only source coverage implementation checkpoint: bounded
-handles/interval union, immutable clock protection and shared CLI/API/three-locale
-review. It cannot execute a derived package; actual consolidation, v2 receipts,
-offline acceptance and original-baseline render parity remain open. See
-[coverage validation](docs/validation-collect-coverage.md).
+D6B PR #65 now implements reviewed lossless range consolidation and explicitly
+accepted offline delivery over the existing Collect owner. Bounded piecewise
+source clocks, closed manifest v2, directory/ZIP relocation and decoded MP4/PCM
+comparison protect every selected film; protected/unsupported clocks retain
+originals. Default v1 remains compatible. Final branch gates/review are in progress;
+physical workstation evidence remains separate. See
+[delivery validation](docs/validation-collect-coverage.md).
 
 ## Released 0.4.0 source integration
 

@@ -103,8 +103,8 @@ Usage:
   openfilm versions delete <version-id> --project <film.openfilm> --base-revision <sha256> --confirm
   openfilm versions restore <version-id> --project <film.openfilm> --base-revision <sha256> --request-id <uuid> --confirm
   openfilm collect plan --project <film.openfilm> --scope current-film|entire-project [--composition <id>] [--rights <declarations.json>]
-  openfilm collect coverage --project <film.openfilm> --scope current-film|entire-project [--composition <id> --delivery-mode originals|trimmed-originals|offline-proxies --handles 2 --base-revision <sha256>] (read-only planning)
-  openfilm collect create --project <film.openfilm> --scope current-film|entire-project --plan-id <sha256> --base-revision <sha256> --format directory|zip --destination <new-path> [--composition <id>] [--rights <declarations.json>]
+  openfilm collect coverage --project <film.openfilm> --scope current-film|entire-project [--composition <id> --delivery-mode originals|trimmed-originals|offline-proxies --handles 2 --base-revision <sha256>] (read-only review; returns coverageId for explicit acceptance)
+  openfilm collect create --project <film.openfilm> --scope current-film|entire-project --plan-id <sha256> --base-revision <sha256> --format directory|zip --destination <new-path> [--composition <id>] [--rights <declarations.json>] [--delivery-mode trimmed-originals|offline-proxies --handles 2 --coverage-id <sha256> --accept-delivery]
   openfilm collect verify --project <film.openfilm> --package <directory-or-zip>
   openfilm serve [--project <film.openfilm>] [--port 4310]
 
@@ -156,6 +156,7 @@ function parse(args: string[]) {
 
     "confirm-crop",
     "preview",
+    "accept-delivery",
   ]);
   const values = new Set([
     "project",
@@ -244,6 +245,7 @@ function parse(args: string[]) {
     "fingerprint",
     "delivery-mode",
     "handles",
+    "coverage-id",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -456,11 +458,29 @@ async function main() {
   if (
     (Object.hasOwn(options, "delivery-mode") ||
       Object.hasOwn(options, "handles")) &&
-    !(command === "collect" && positional[1] === "coverage")
+    !(
+      command === "collect" &&
+      (positional[1] === "coverage" ||
+        (positional[1] === "create" &&
+          options["accept-delivery"] === true &&
+          value(options, "coverage-id")))
+    )
   )
     throw new ApplicationError(
       "request.invalid",
-      "Delivery options require read-only collect coverage; package creation still includes full originals.",
+      "Delivery options require read-only collect coverage or reviewed collect create with --coverage-id and --accept-delivery.",
+    );
+  if (
+    (options["accept-delivery"] || value(options, "coverage-id")) &&
+    !(
+      command === "collect" &&
+      positional[1] === "create" &&
+      value(options, "delivery-mode")
+    )
+  )
+    throw new ApplicationError(
+      "request.invalid",
+      "Delivery acceptance requires an explicit collect create delivery mode.",
     );
   if (options.version) {
     console.log(`OpenFilm ${packageInfo.version}`);
@@ -532,7 +552,7 @@ async function main() {
   // Deriving exports must not save the source project or recover other jobs.
   const app =
     command === "proxy" ||
-    (command === "collect" && positional[1] === "coverage") ||
+    command === "collect" ||
     command === "captions" ||
     command === "handoff" ||
     command === "export" ||
@@ -707,6 +727,19 @@ async function main() {
           print(
             await app.collectMedia.create({
               ...base,
+              ...(value(options, "delivery-mode")
+                ? {
+                    delivery: validateCollectDeliveryOptions({
+                      version: 1,
+                      mode: value(options, "delivery-mode"),
+                      handlesSeconds: Number(value(options, "handles") ?? 2),
+                    }),
+                    projectId: app.project.id,
+                    coverageId: value(options, "coverage-id"),
+                    acceptDelivery:
+                      options["accept-delivery"] === true ? true : undefined,
+                  }
+                : {}),
               planId,
               baseRevision,
               destination: resolve(destination),

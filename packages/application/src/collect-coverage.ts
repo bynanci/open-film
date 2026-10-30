@@ -128,6 +128,12 @@ export function planCollectCoverage(
     )
       invalid();
     compositionIds.add(composition.id);
+    for (const track of composition.captionTracks ?? [])
+      for (const cue of track.cues)
+        if (cue.source.kind === "transcript") {
+          if (!assets.has(cue.source.assetId)) invalid();
+          evidence.add(cue.source.assetId);
+        }
     for (const assetId of graphicSceneAssetIds(
       composition.graphicScenes ?? [],
     )) {

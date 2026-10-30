@@ -1,81 +1,139 @@
-# D6B source coverage review — implementation checkpoint
+# D6B — reviewed derived Collect delivery
 
-Date:2026-10-30. Branch:`codex/d6b-collect-storage`.
-Integration base: merged D6A PR #64,
-`9c392b7cc8d46f4768d76f30bef30d0397cca8f8`.
-Status:**read-only review implemented; actual derived delivery remains incomplete**.
-This checkpoint extends the existing Collect owner. It does not enable trimmed
-or offline Create, change project schema1/Catalogv6, or publish a release.
+Date: 2026-10-30. PR: [#65](https://github.com/bynanci/open-film/pull/65).
+Base: `9c392b7cc8d46f4768d76f30bef30d0397cca8f8` (merged D6A #64).
+Status: derivative execution implemented; final branch-wide gates and independent
+review are in progress. No workstation certification or release claim.
 
-## Implemented contracts and workflow
+## State and compatibility
 
-Version1 delivery options recognize `originals`, `trimmed-originals` and
-`offline-proxies`, with default2s handles bounded0–10s. The application projects
-existing `resolveClipSourceRange` results, including speed/default source bounds,
-unions overlapping/adjacent handles and preserves disjoint intervals. Results
-are explicitly `review-only`, `executable:false`; no byte saving or finishing
-quality is guessed from retained seconds.
+The existing Collect service owns review, capture, rights, cancellation,
+publication and verification for SDK/API/CLI/Desktop. Source coverage is a
+read-only `review-only`/`executable:false` projection, with a SHA-256 `coverageId`
+binding normalized delivery options, source hashes, saved revision and baseline
+plan. Creation separately requires that ID, `projectId`, `acceptDelivery:true`,
+`planId` and `baseRevision`. Changed options, sources or project identity invalidate
+acceptance. Server project switching remains fenced through cleanup.
 
-`CollectMediaService.coverage` binds the result to the existing Collect baseline
-plan ID, saved project/catalog revision and actually inspected original hashes.
-Foreign/stale requests and unknown delivery fields fail before publication.
-Changed/unavailable source bytes cannot become trim candidates. No job, source,
-asset, Composition, project file or editing history is written.
+No source media, canonical asset, project file, Undo/Redo, job, autosave or schema
+is changed. Conversion applies only to a private captured package. Source IDs,
+Composition timing, speed, locks and manually revised captions are preserved;
+only source-clock offsets in the portable copy change. Full-original creation
+without delivery options retains manifest v1; v1 verification remains supported.
+Project schema remains 1.0.0 and Catalog v6; no dependency or license changes.
 
-The catalog adapter inspects a private validated snapshot for selected
-asset-bearing portable semantic/provenance owners. Immutable transcript clocks
-and related revisions remain on complete originals. Disposable caches and
-operational jobs are excluded from this classification. Authentic v5 snapshot
-bytes remain unchanged. Source/clip locks, unknown metadata extensions and opaque
-graph/scene/layout dependencies conservatively retain originals.
+## Recipes, clocks and bounds
 
-API:`POST /api/collect/coverage` and passive CLI:
+- `trimmed-originals`: measured zero-origin CFR SDR yuv420p video becomes FFV1 +
+  float PCM AVI; audio becomes float PCM WAV. These are newly encoded lossless
+  derivatives, not unchanged originals. They can be larger than compressed source
+  files. No byte saving is inferred from retained seconds.
+- Handles default to 2 seconds, bounded 0–10. Windows expand outward to measured
+  frame/sample boundaries, merge overlaps and preserve disjoint intervals. Each
+  receipt records original/derived hashes and monotonic piecewise source/offset
+  windows. A clip crossing an unmapped interval fails closed.
+- Locked sources/clips, images/360, immutable catalog evidence, detached
+  transcript-caption clocks, opaque graph/layout references and unknown metadata
+  retain full originals. VFR, offset/HDR/rotated/non-square-pixel sources and clocks
+  that cannot be represented exactly retain originals with typed reasons.
+- `offline-proxies` reuses the existing proxy generator on private captured
+  sources. It retains full source clocks and explicitly acknowledges lower
+  resolution/compression. Metadata, reopened Export UI and renderer warnings
+  (`collect.offline-quality`) preserve that disclosure; output cannot recover
+  original master quality. No private cache receipt/file is packaged implicitly.
+- Limits: existing ZIP32/source/package bounds, at most 128 windows per derived
+  source, 600-second/36,000-frame source inspection, 2 GiB per derivative/private
+  render, ZIP32 working-source bound, and at most 100 five-minute 1080p/60
+  Compositions for derived validation. Larger requests fail explicitly. Private
+  paired render files are deleted after each comparison.
 
-```sh
-pnpm cli collect coverage --project ./film.openfilm --scope current-film \
-  --composition <saved-id> --delivery-mode trimmed-originals --handles 2
-```
+Lossless AVI may require preparing a fresh local preview through the existing
+Library proxy controls on a new workstation. The package does not include a
+private playback cache. FFmpeg output continues to read the portable source.
 
-The same owner serves the progressively disclosed Export → Collect review, with
-three locales, native labels/keyboard, 50-source pages, cancellation/retry and
-project/signature fencing. Full-original v1 package creation remains separate.
-CLI delivery flags used on Create fail explicitly instead of silently producing
-a different package.
+## Actual output and relocation
 
-## Actual evidence
+Every selected Composition is rendered twice before publication: captured
+originals and the converted package. Both real MP4s are decoded to per-frame
+SHA-256 records and float PCM audio hashes. Frame count, duration, picture and
+samples must match exactly for trimmed delivery; no epsilon or weakened assertion
+is used. Offline delivery records both signatures and requires complete timing,
+without claiming master parity. Cancellation, source rehash/revision changes or
+failed parity abort the private stage before no-replace publication.
 
-- **138/138** focused new/existing regressions across10 files: closed options,
-  source windows, shared Sequence/timebase behavior, saved capture, transcript
-  preservation, v5/current snapshots, HTTP/CLI equality, passive CLI, cancellation,
-  changed-source/stale scope, source/clip locks, opaque graph metadata and original
-  Collect directory/ZIP/source-safety behavior.
-- **3/3** actual Chromium workflows: English, Traditional Chinese and Japanese;
-  source-window review and offline disclosure,375/720/1280px overflow checks,
-  keyboard controls and scoped WCAG2/2.1AA axe. Synthetic screenshots were
-  inspected. No Create request or original/project-file mutation occurs.
-- TypeScript/Vue, ESLint and i18n2647 semantic keys pass at this checkpoint;
-  final branch-wide gates and independent review remain Task4.
-- Browser validation found nested-select label text prevented an exact native
-  label lookup. The original failing browser trace and a failing unit assertion
-  were retained; separate explicit labels now pass both without selector or
-  assertion weakening.
+Manifest v2 has closed delivery, recipe, lineage, retained-source and parity
+records. Unknown versions/fields, invalid/overlapping clocks, identity/quality
+mismatches and malformed parity fail before relocation rendering. Directory and
+stored ZIP reuse the existing exclusive destination and path/hash safety owners.
+Verification privately relocates/reopens and re-renders every selected Composition
+against the recorded delivered signature. Creator baseline receipts are local
+measurements, not signed third-party attestations.
 
-The isolated browser harness uses a separate Vite port and ephemeral backend,
-so it cannot interfere with D6A's full browser fixture. Its first launch had an
-incorrect scratch-config working directory; that setup failure is not a passed
-test. New production code does not change host/origin/native-session guards.
+## Local evidence inspected
 
-## Decisions and correctness gates
+- Prior D6A logs really contain 314 files / 4,464 tests and 288 Chromium passes;
+  those are predecessor evidence, not a D6B full-gate claim.
+- Task2 checkpoint: 11 focused suites / 140 tests; 3 read-only browser workflows.
+- Task3: 11 real derivative regressions pass (`/tmp/openfilm-d6b-final-derivatives.log`):
+  synthetic 8-second long-GOP H.264/AAC, two disjoint uses, speeds 0.5/1.5/2, quarter-second
+  handles, real ZIP/directory relocation, unchanged original hash/project/catalog,
+  locked transcript identity, manually revised Traditional Chinese captions,
+  strict v2 errors, offline output warnings, cancellation, VFR fallback and a
+  source changed after copy. Forty decoded output frames and PCM compare exactly.
+- Shared source review/acceptance/UI/transport focused suites pass; actual CLI
+  and HTTP create the same reviewed delivery through the application owner.
+- Three actual Chromium workflows pass in 20 seconds (`en-US`, `zh-TW`, `ja-JP`),
+  covering rights → explicit quality accept → create → verify, reset on option
+  changes, keyboard/native labels, scoped axe and 375/720/1280px layout.
+- Full Vitest, format/i18n/docs, lint/type/build/CLI/interchange and full browser
+  runs are being refreshed. Results will be bound to the final candidate below.
+  Local Cargo/native prerequisites remain absent; hosted native and physical
+  Windows/macOS evidence must be reported separately.
 
-Unknown metadata/opaque graph clocks retain full originals until a typed mapping
-exists. This may reduce consolidation opportunities, while avoiding timestamp
-fiction or loss of immutable evidence. Cache rows follow the existing portability
-policy; no second snapshot, scheduler or timeline is introduced.
+### Retained synthetic FFmpeg proof
 
-**Not implemented:** derivative generation, piecewise original→derivative clock
-receipts, manifest-v2 execution/publication, compacted package reopen and actual
-original-baseline decoded picture/audio/time parity. Offline-quality acceptance
-and finishing-output disclosure must also be complete before enabling that mode.
-The D6B parent task and those execution checkboxes stay unchecked. This review
-cannot authorize a package, certify render parity, or replace manual workstation
-and large-drive/NLE evidence.
+FFmpeg 7.1.5 (Debian), 160×90 at 20 fps, 8-second moving testsrc2 plus 880 Hz
+tone, long GOP160/B-frames. Windows `[0.75,2.25)` and `[4.75,7.25)` compact to
+`[0,1.5)` and `[1.5,4)`. The existing 2-second Composition remains unchanged.
+
+| Evidence                       | SHA-256 / result                                                   |
+| ------------------------------ | ------------------------------------------------------------------ |
+| Original source                | `1962b344a4a598e4f9c0a03014a40c5143233b6365834c0af41dc147c8775146` |
+| Lossless derivative            | `78d0ff3f51c409761c6142bdb410427af4038c9a6aa2a59373362a656f9e0bd9` |
+| Original MP4                   | `f8be3a6a582476b9bd29e9000df64d0fa363eff03c77fe12853c897ad3634c91` |
+| Delivered MP4                  | `f8be3a6a582476b9bd29e9000df64d0fa363eff03c77fe12853c897ad3634c91` |
+| Decoded video records          | `528ce5dc2856c970b3e9d09cd060e120d8d8d96bba652c83ff110a17b551c7db` |
+| Decoded float PCM              | `624a9cbcd9706de5a45b4444eb901b2da5fde5f3785fb80af36a5baf6c4b919a` |
+| Stream evidence                | `40 frames · 2 seconds · H.264/AAC mono48k`                        |
+| Original project/catalog/asset | `all unchanged`                                                    |
+
+Both real MP4s, original/derived media, directory/ZIP packages and JSON receipts
+remain in private temporary evidence storage; no media is committed or uploaded.
+The local locator is `/tmp/openfilm-d6b-evidence-location.txt`, with command log
+`/tmp/openfilm-d6b-ffmpeg-evidence.log`. CI regenerates synthetic inputs.
+
+## Bugs found and regression evidence
+
+The lossless test exposed input-timebase-dependent speed sampling: AVI's frame
+clock truncated fractional PTS that MP4's finer clock represented. The shared
+renderer now applies `settb=AVTB` before speed scaling. Before/after decoded
+picture/audio equality passes, with the Composition unchanged.
+
+The old PR65 checkpoint CI failed `proxy-cache-http` (409 after ready). A controlled
+real-file cleanup barrier reproduced the cause: the worker published a hard-linked
+preview as ready, then scratch cleanup changed its ctime/link identity while a
+reader hashed it. The owned scratch alias is now removed before ready identity is
+recorded. The regression requires one link, unchanged ctime through cleanup and
+exact HTTP bytes; existing corruption/alias defenses remain asserted. RED:
+`/tmp/openfilm-proxy-publication-red.log`; GREEN: 39 tests across 2 suites in
+`/tmp/openfilm-proxy-publication-green.log`. No retries, sleeps or assertion
+weakening mask the race.
+
+## Open gates
+
+Independent whole-branch review, final exact-head hosted checks and full local
+suite/browser records remain in progress. Windows/macOS filesystems, physical
+large-drive behavior, native FFV1 playback/proxy preparation, hardware/4K/GPU,
+real audio listening, typography and actual NLE relink/finishing remain manual.
+The Windows `popo-pc` workstation is not connected to this cloud workspace.
+No manual gate, installer issue or release is closed by synthetic Linux evidence.

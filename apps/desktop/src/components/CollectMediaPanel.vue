@@ -398,6 +398,10 @@ onBeforeUnmount(() => {
       }"
       :disabled="disabled || operation !== ''"
       @busy="coverageActivity"
+      @created="
+        created = $event;
+        verified = undefined;
+      "
     />
     <p v-if="error" class="collect-error" role="alert">{{ error }}</p>
 

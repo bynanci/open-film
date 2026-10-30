@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -169,6 +169,63 @@ it("shares the same source-clock review through API and passive CLI with no orig
         .status,
     ).toBe(400);
     expect((await post({ ...body, destination: source })).status).toBe(400);
+    const rights = [
+      { resourceId: "asset:source", basis: "owned", confirmed: true },
+    ];
+    const acceptedReview = (
+      await (await post({ ...body, rightsDeclarations: rights })).json()
+    ).review as CollectCoverageReview;
+    const accepted = {
+      ...body,
+      rightsDeclarations: rights,
+      planId: acceptedReview.baseline.id,
+      baseRevision: acceptedReview.baseline.revision,
+      coverageId: acceptedReview.coverageId,
+      acceptDelivery: true,
+      format: "zip",
+    };
+    const createResponse = await fetch(
+      `http://127.0.0.1:${server.port}/api/collect/create`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accepted),
+      },
+    );
+    expect(createResponse.status).toBe(200);
+    const created = (await createResponse.json()).result;
+    expect(created.projectId).toBe(projectId);
+    const rightsFile = join(root, "synthetic-rights.json");
+    await writeFile(rightsFile, JSON.stringify(rights));
+    const cliResult = await runProcess(process.execPath, [
+      cli,
+      "collect",
+      "create",
+      "--project",
+      path,
+      "--scope",
+      "current-film",
+      "--composition",
+      "film",
+      "--rights",
+      rightsFile,
+      "--plan-id",
+      accepted.planId,
+      "--base-revision",
+      accepted.baseRevision,
+      "--delivery-mode",
+      "trimmed-originals",
+      "--handles",
+      "0.25",
+      "--coverage-id",
+      accepted.coverageId,
+      "--accept-delivery",
+      "--format",
+      "zip",
+      "--destination",
+      join(root, "cli-delivery.zip"),
+    ]);
+    expect(JSON.parse(cliResult.stdout.toString()).sourceCount).toBe(1);
     expect(await readFile(join(path, "project.json"))).toEqual(originalProject);
     expect(await hashFile(source)).toBe(hash);
   } finally {

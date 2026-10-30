@@ -187,6 +187,54 @@ for (const locale of ["en-US", "zh-TW", "ja-JP"] as const) {
       ),
     ).toEqual([]);
     expect(creates).toBe(0);
+    // The same UI must be able to deliver only after rights and quality review.
+    await page.getByTestId("collect-review").click();
+    await expect(page.locator(".collect-rights")).toHaveCount(1);
+    await page.locator(".collect-confirm input").check();
+    await page.locator(".collect-rights select").selectOption("owned");
+    await panel
+      .getByRole("button", {
+        name: uiText(locale, "collectDelivery.review"),
+        exact: true,
+      })
+      .click();
+    const create = panel.getByRole("button", {
+      name: uiText(locale, "collectDelivery.create"),
+      exact: true,
+    });
+    await expect(create).toBeDisabled();
+    await panel
+      .getByLabel(uiText(locale, "collectDelivery.acceptOffline"), {
+        exact: true,
+      })
+      .check();
+    await expect(create).toBeEnabled();
+    // Editing an option invalidates the prior explicit acceptance.
+    await panel
+      .getByLabel(uiText(locale, "collectDelivery.format"), { exact: true })
+      .selectOption("directory");
+    await expect(create).toHaveCount(0);
+    await panel
+      .getByRole("button", {
+        name: uiText(locale, "collectDelivery.review"),
+        exact: true,
+      })
+      .click();
+    await expect(create).toBeDisabled();
+    await panel
+      .getByLabel(uiText(locale, "collectDelivery.acceptOffline"), {
+        exact: true,
+      })
+      .check();
+    await create.click();
+    await expect(page.getByTestId("collect-result")).toBeVisible({
+      timeout: 60_000,
+    });
+    expect(creates).toBe(1);
+    await page.getByTestId("collect-verify").click();
+    await expect(page.getByTestId("collect-verified")).toBeVisible({
+      timeout: 60_000,
+    });
     expect(await readFile(join(path, "project.json"))).toEqual(project);
     expect(await hashFile(source)).toBe(hash);
   });

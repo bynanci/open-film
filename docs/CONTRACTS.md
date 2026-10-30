@@ -297,7 +297,7 @@ changed media cannot publish a success. See [NLE handoff](nle-handoff.md).
 
 ## M7D Collect Media
 
-`app.collectMedia` exposes shared `plan`, `create` and `verify` operations.
+`app.collectMedia` exposes shared `plan`, `coverage`, `create` and `verify` operations.
 Plans select one saved Composition (`current-film`) or all saved
 Stories/Compositions (`entire-project`), and report only referenced assets and
 resolved fonts. Every resource needs a confirmed rights declaration before a
@@ -314,7 +314,21 @@ unique destination inside the open project's `exports/` directory.
 Request cancellation aborts staged work, and server project switching remains
 blocked until the operation's cleanup completes.
 
-The CLI uses `collect plan|create|verify --project <path>`; create requires
+`POST /api/collect/coverage` accepts the scope/rights plus `projectId`,
+`delivery:{version:1,mode,handlesSeconds}` and optional `expectedRevision`.
+It returns a non-executable source projection and SHA-256 `coverageId`. Derived
+Create additionally requires the exact `delivery`, `coverageId`, `projectId` and
+`acceptDelivery:true`. Unknown options, changed hashes/revision or changed handles
+invalidate acceptance before write. Default Create still produces compatible v1.
+V2 packages carry closed original/derivative hash and piecewise clock receipts,
+retained-original reasons and decoded MP4/PCM signatures. Lossless output must
+match every selected original Composition; offline output preserves full clocks
+and persistent `collect.offline-quality` warnings. Immutable transcript/graph
+clocks, source locks and unproven conversions keep originals. Only private capture
+bytes are converted; project schema and edit/history contracts do not change.
+See [limits, threat boundaries and evidence](validation-collect-coverage.md).
+
+The CLI uses `collect plan|coverage|create|verify --project <path>`; create requires
 `--plan-id`, `--base-revision`, `--format`, `--destination`, and the same scope
 and optional rights JSON used for planning. Verify accepts a local directory or
 ZIP path. Both entry points call the same application service.

@@ -108,7 +108,13 @@ const requiresVerification = resolveCompatibility.features.some(
         class="export-report-warnings"
         :aria-label="t('media.report.warnings')"
       >
-        <li v-for="(warning, index) in warnings" :key="index">{{ warning }}</li>
+        <li v-for="(warning, index) in warnings" :key="index">
+          {{
+            warning === "collect.offline-quality"
+              ? t("collectDelivery.offlineOutput")
+              : warning
+          }}
+        </li>
       </ul>
     </details>
   </section>

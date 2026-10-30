@@ -1,7 +1,7 @@
 # D6B — Reviewable derived Collect Media packages
 
-Status: design and first implementation slice; D6B remains incomplete until
-actual derived packages pass the original-baseline parity and relocation gates.
+Status: actual delivery candidate implemented; final full branch gates and
+independent review remain required before D6B is marked ready to merge.
 Initial design base: D6A candidate `c8273bcdf6a6dcbcc9a1f6ab9bc84a6ffb1e5ceb`.
 Current integration base: merged PR #64,
 `9c392b7cc8d46f4768d76f30bef30d0397cca8f8`.
@@ -86,3 +86,18 @@ relocation and real original-baseline MP4 comparison. Synthetic long-GOP video,
 audio, overlapping/disjoint uses, rational-speed clips, manual captions,
 transcript-bearing assets, locks and cancellation are required. Physical large
 external drives, Windows/macOS/NLE finishing remain separate evidence gates.
+
+## Implemented bounded recipe decision (2026-10-30)
+
+Lossless eligible CFR SDR video uses FFV1/float PCM AVI and audio uses float PCM
+WAV, within existing allowed demuxers. Frame/sample windows expand outward and
+compact disjoint intervals; clock/protection uncertainty retains originals. AVI
+is a derived source, not an interoperable browser codec; new-machine playback
+may require the existing local proxy preparation. Lossless files may be larger.
+
+Every selected Composition receives actual original/delivered MP4 picture/PCM
+comparison before publication; v2 verification re-renders every delivered film.
+Private render output is bounded, then deleted per comparison. Limits and the
+unsupported-clock policy are recorded in validation and the execution ledger.
+Preview-only projection remains non-executable; separate explicit acceptance is
+bound by coverageId, project/revision and options, with offline disclosure.

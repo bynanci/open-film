@@ -58,13 +58,13 @@ and evidence-bound asset IDs; captured classification belongs to Task2.
 
 ## Task 3 — Actual derivatives and portable v2 publication
 
-- [ ] Generate bounded, hash/probe-verified synthetic derivatives with explicit
+- [x] Generate bounded, hash/probe-verified synthetic derivatives with explicit
       interval/offset lineage; preserve original project and v1 behavior.
-- [ ] Convert only the private captured package; preserve all Composition timing,
+- [x] Convert only the private captured package; preserve all Composition timing,
       locks, caption/transcript/source-map and reopen semantics.
-- [ ] Publish manifest v2 through the current destination/ZIP safety boundary;
+- [x] Publish manifest v2 through the current destination/ZIP safety boundary;
       handle cancellation, stale sources/revision and disk failure atomically.
-- [ ] Compare decoded trimmed output to the original baseline; disclose offline
+- [x] Compare decoded trimmed output to the original baseline; disclose offline
       quality and require explicit acceptance for review-only output.
 
 ## Task 4 — Review, full validation and PR

@@ -8,6 +8,7 @@ import {
   opendir,
   rm,
   statfs,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -942,7 +943,11 @@ export class ProxyCacheService {
           "The linked proxy identity changed.",
           409,
         );
-      const publishedIdentity = fileIdentity(published);
+      // Finish the owned hard-link transition before recording ready identity.
+      // Removing the scratch alias later changes ctime/nlink while a concurrent
+      // reader is hashing, incorrectly fencing unchanged published bytes.
+      await unlink(output);
+      const publishedIdentity = fileIdentity(lstatSync(readyPath));
       this.store.saveReceipt(receipt);
       this.host.catalog.withProjectWrite(() => {
         const current = this.currentTask(jobId, task, lease, signal);

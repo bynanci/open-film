@@ -25,6 +25,42 @@ const clip = (id: string, sourceIn: number, sourceOut: number) => ({
   timelineStart: 0,
   timelineDuration: sourceOut - sourceIn,
 });
+it("retains detached transcript-derived caption clocks even without catalog evidence rows", () => {
+  const input = fixture();
+  input.compositions[0]!.captionTracks = [
+    {
+      version: 1,
+      id: "captions",
+      name: "Synthetic",
+      style: { version: 1, role: "subtitle" },
+      cues: [
+        {
+          version: 1,
+          id: "cue",
+          startMs: 0,
+          endMs: 1000,
+          text: "Synthetic",
+          manualRevision: 1,
+          source: {
+            kind: "transcript",
+            assetId: "video",
+            transcriptId: "transcript",
+            transcriptRevisionId: "revision",
+            segmentId: "segment",
+            clipId: "first",
+            alignment: "segment",
+            sourceIn: 3,
+            sourceOut: 4,
+          },
+        },
+      ],
+    },
+  ];
+  expect(planCollectCoverage(input).entries[0]).toMatchObject({
+    action: "copy-original",
+    reasons: ["source.evidence-bound"],
+  });
+});
 function fixture(
   overrides: Partial<Parameters<typeof planCollectCoverage>[0]> = {},
 ) {

@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import type {
   CollectCoveragePlanInput,
   CollectCoverageReview,
+  CollectMediaCreateResult,
 } from "@openfilm/application";
 import type {
   CollectCoverageReason,
@@ -15,11 +16,17 @@ const props = defineProps<{
   request: Omit<CollectCoveragePlanInput, "delivery">;
   disabled: boolean;
 }>();
-const emit = defineEmits<{ busy: [value: boolean] }>();
+const emit = defineEmits<{
+  busy: [value: boolean];
+  created: [value: CollectMediaCreateResult];
+}>();
 const { t, locale } = useI18n();
 const uid = useId();
 const mode = ref<CollectDeliveryMode>("trimmed-originals");
 const handles = ref(2);
+const format = ref<"directory" | "zip">("zip"),
+  accepted = ref(false);
+const creating = ref(false);
 const reviewState = ref<CollectCoverageReview>();
 const busy = ref(false),
   error = ref("");
@@ -27,7 +34,7 @@ const offset = ref(0);
 let generation = 0;
 let controller: AbortController | undefined;
 const signature = computed(() =>
-  JSON.stringify([props.request, mode.value, handles.value]),
+  JSON.stringify([props.request, mode.value, handles.value, format.value]),
 );
 const entries = computed(
   () =>
@@ -65,6 +72,8 @@ function reset() {
   controller?.abort();
   controller = undefined;
   busy.value = false;
+  accepted.value = false;
+  creating.value = false;
   reviewState.value = undefined;
   offset.value = 0;
   error.value = "";
@@ -108,6 +117,74 @@ async function review() {
     if (controller === current && generation === owner) {
       controller = undefined;
       busy.value = false;
+      emit("busy", false);
+    }
+  }
+}
+async function createPackage() {
+  const reviewed = reviewState.value;
+  if (
+    busy.value ||
+    props.disabled ||
+    !accepted.value ||
+    !reviewed?.baseline.complete
+  )
+    return;
+  const owner = ++generation,
+    inputSignature = signature.value,
+    current = new AbortController();
+  controller = current;
+  busy.value = true;
+  creating.value = true;
+  error.value = "";
+  emit("busy", true);
+  try {
+    const response = await api.createCollectedMedia(
+      {
+        scope: props.request.scope,
+        ...(props.request.compositionId
+          ? { compositionId: props.request.compositionId }
+          : {}),
+        rightsDeclarations: props.request.rightsDeclarations,
+        projectId: props.request.projectId,
+        planId: reviewed.baseline.id,
+        baseRevision: reviewed.baseline.revision,
+        delivery: {
+          version: 1,
+          mode: mode.value,
+          handlesSeconds: handles.value,
+        },
+        coverageId: reviewed.coverageId,
+        acceptDelivery: true,
+        format: format.value,
+      },
+      current.signal,
+    );
+    if (
+      current.signal.aborted ||
+      controller !== current ||
+      generation !== owner ||
+      signature.value !== inputSignature ||
+      response.result.projectId !== props.request.projectId
+    )
+      return;
+    accepted.value = false;
+    emit("created", response.result);
+  } catch (cause) {
+    if (
+      !current.signal.aborted &&
+      controller === current &&
+      generation === owner
+    ) {
+      error.value = localizeError(cause);
+      accepted.value = false;
+      reviewState.value = undefined;
+    }
+  } finally {
+    if (controller === current && generation === owner) {
+      controller = undefined;
+      busy.value = false;
+      creating.value = false;
       emit("busy", false);
     }
   }
@@ -157,6 +234,21 @@ onBeforeUnmount(reset);
             :disabled="disabled || busy || mode !== 'trimmed-originals'"
           />
         </div>
+        <div class="field">
+          <label :for="`${uid}-format`">{{
+            t("collectDelivery.format")
+          }}</label>
+          <select
+            :id="`${uid}-format`"
+            v-model="format"
+            :disabled="disabled || busy"
+          >
+            <option value="zip">ZIP</option>
+            <option value="directory">
+              {{ t("collectDelivery.directory") }}
+            </option>
+          </select>
+        </div>
         <button type="submit" class="secondary" :disabled="disabled || busy">
           {{ t("collectDelivery.review") }}
         </button>
@@ -164,13 +256,51 @@ onBeforeUnmount(reset);
           {{ t("collectDelivery.cancel") }}
         </button>
       </form>
-      <p v-if="busy" role="status">{{ t("collectDelivery.preparing") }}</p>
+      <p v-if="busy" role="status">
+        {{
+          t(
+            creating
+              ? "collectDelivery.validating"
+              : "collectDelivery.preparing",
+          )
+        }}
+      </p>
       <p v-if="error" role="alert">{{ error }}</p>
       <section v-if="reviewState" :aria-label="t('collectDelivery.results')">
         <h3>{{ t("collectDelivery.results") }}</h3>
         <p>
           {{ t(`collectDelivery.quality.${reviewState.coverage.quality}`) }}
         </p>
+        <label class="collect-delivery-accept">
+          <input
+            type="checkbox"
+            :checked="accepted"
+            :disabled="disabled || busy || !reviewState.baseline.complete"
+            @change="accepted = ($event.target as HTMLInputElement).checked"
+          />
+          {{
+            t(
+              mode === "offline-proxies"
+                ? "collectDelivery.acceptOffline"
+                : mode === "originals"
+                  ? "collectDelivery.acceptOriginals"
+                  : "collectDelivery.acceptLossless",
+            )
+          }}
+        </label>
+        <p v-if="!reviewState.baseline.complete" role="status">
+          {{ t("collectDelivery.rightsFirst") }}
+        </p>
+        <button
+          type="button"
+          class="primary"
+          :disabled="
+            disabled || busy || !accepted || !reviewState.baseline.complete
+          "
+          @click="createPackage"
+        >
+          {{ t("collectDelivery.create") }}
+        </button>
         <ul class="collect-delivery-sources">
           <li v-for="entry in entries" :key="entry.assetId">
             <strong>{{

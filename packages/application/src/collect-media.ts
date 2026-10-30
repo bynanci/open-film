@@ -17,8 +17,10 @@ import {
   readdir,
   realpath,
   rm,
+  rename,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import {
   basename,
   dirname,
@@ -69,6 +71,19 @@ import {
 } from "./collect-archive.js";
 import type { OpenFilmApplication } from "./index.js";
 import { planCollectCoverage } from "./collect-coverage.js";
+import {
+  validateDerivedCollectManifest,
+  validateDerivedProjectClocks,
+  sameCollectSignature,
+} from "./collect-derived-contract.js";
+import {
+  createCollectDerivative,
+  remapCollectProject,
+  renderCollectParity,
+  collectDecodedSignature,
+  type CollectDerivativeReceipt,
+  type CollectParityReceipt,
+} from "./collect-derived-media.js";
 import {
   DirectoryPublicationRecoveryError,
   directoryPublicationUnavailable,
@@ -140,11 +155,17 @@ export interface CollectCoveragePlanInput extends CollectPlanInput {
   expectedRevision?: string;
 }
 export interface CollectCoverageReview {
+  coverageId: string;
   baseline: CollectMediaPlan;
   coverage: CollectCoveragePlanV1;
 }
 
 export interface CollectMediaCreateInput extends CollectPlanInput {
+  /** Supplied only after reviewing this exact delivery projection. */
+  delivery?: CollectDeliveryOptionsV1;
+  coverageId?: string;
+  projectId?: string;
+  acceptDelivery?: true;
   planId: string;
   baseRevision: string;
   destination: string;
@@ -219,7 +240,11 @@ interface CollectManifestFile {
 
 interface CollectManifest {
   format: typeof MANIFEST_FORMAT;
-  version: typeof MANIFEST_VERSION;
+  version: 1 | 2;
+  delivery?: CollectDeliveryOptionsV1;
+  derivatives?: CollectDerivativeReceipt[];
+  parity?: CollectParityReceipt[];
+  retained?: { assetId: string; reason: string }[];
   projectId: string;
   projectRevision: string;
   createdAt: string;
@@ -1117,6 +1142,9 @@ function validateManifest(value: unknown): CollectManifest {
     "rights",
     "versionsIncluded",
     "pathPrivacy",
+    ...(data.version === 2
+      ? ["delivery", "derivatives", "parity", "retained"]
+      : []),
   ];
   if (Object.keys(data).some((key) => !allowed.includes(key)))
     fail(
@@ -1125,7 +1153,8 @@ function validateManifest(value: unknown): CollectManifest {
     );
   if (
     data.format !== MANIFEST_FORMAT ||
-    data.version !== MANIFEST_VERSION ||
+    ![1, 2].includes(Number(data.version)) ||
+    typeof data.version !== "number" ||
     typeof data.projectId !== "string" ||
     !SHA_PATTERN.test(String(data.projectRevision)) ||
     !["current-film", "entire-project"].includes(String(data.scope)) ||
@@ -1387,6 +1416,7 @@ function validateManifest(value: unknown): CollectManifest {
       "request.invalid",
       "Collect Media manifest is missing a rights declaration.",
     );
+  if (manifest.version === 2) validateDerivedCollectManifest(data);
   return manifest;
 }
 
@@ -1676,19 +1706,17 @@ export class CollectMediaService {
             : item?.sha256,
         };
       });
-    return {
-      baseline,
-      coverage: planCollectCoverage({
-        projectId,
-        revision: baseline.revision,
-        baselinePlanId: baseline.id,
-        options: delivery,
-        assets,
-        compositions: selected.project.timelines,
-        opaqueAssetIds: opaqueGraph ? selected.assetIds : [],
-        evidenceBoundAssetIds: [...evidence],
-      }),
-    };
+    const coverage = planCollectCoverage({
+      projectId,
+      revision: baseline.revision,
+      baselinePlanId: baseline.id,
+      options: delivery,
+      assets,
+      compositions: selected.project.timelines,
+      opaqueAssetIds: opaqueGraph ? selected.assetIds : [],
+      evidenceBoundAssetIds: [...evidence],
+    });
+    return { baseline, coverage, coverageId: digest(JSON.stringify(coverage)) };
   }
 
   private capture(): CapturedProject {
@@ -2197,6 +2225,65 @@ export class CollectMediaService {
       !["directory", "zip"].includes(input.format)
     )
       fail("request.invalid", "Collect Media request is invalid.");
+    if (
+      Object.keys(input).some(
+        (key) =>
+          ![
+            "scope",
+            "compositionId",
+            "rightsDeclarations",
+            "planId",
+            "baseRevision",
+            "destination",
+            "format",
+            "signal",
+            "onProgress",
+            "delivery",
+            "coverageId",
+            "projectId",
+            "acceptDelivery",
+          ].includes(key),
+      )
+    )
+      fail("request.invalid", "Collect request contains an unknown field.");
+    const delivery =
+      input.delivery === undefined
+        ? undefined
+        : validateCollectDeliveryOptions(input.delivery);
+    let deliveryReview: CollectCoverageReview | undefined;
+    if (delivery) {
+      if (
+        input.acceptDelivery !== true ||
+        !SHA_PATTERN.test(String(input.coverageId))
+      )
+        fail(
+          "request.invalid",
+          "Review and explicitly accept the exact delivery projection before creating it.",
+        );
+      deliveryReview = await this.coverage(
+        {
+          ...planInput,
+          projectId: input.projectId!,
+          delivery,
+          expectedRevision: input.baseRevision,
+        },
+        input.signal,
+      );
+      if (deliveryReview.coverageId !== input.coverageId)
+        fail(
+          "story.planStale",
+          "Delivery options or source coverage changed after review.",
+          409,
+        );
+    } else if (
+      input.coverageId !== undefined ||
+      input.acceptDelivery !== undefined ||
+      input.projectId !== undefined
+    )
+      fail(
+        "request.invalid",
+        "Delivery acceptance requires versioned delivery options.",
+      );
     const destination = await safeOutputDestination(input.destination);
     const plan = await this.plan(planInput, input.signal);
     if (plan.revision !== input.baseRevision || plan.id !== input.planId)
@@ -2373,6 +2460,141 @@ export class CollectMediaService {
           warnings: [...identity.warnings],
         });
       }
+      const derivatives: CollectDerivativeReceipt[] = [],
+        retained: { assetId: string; reason: string }[] = [];
+      const originalAssets = [...sourcePlans.values()].map((source) => ({
+        ...source.asset,
+        uri: pathToFileURL(manifestPath(stage, source.relativePath)).href,
+      }));
+      let convertedProject = selected.project;
+      let parity: CollectParityReceipt[] = [];
+      if (delivery && delivery.mode !== "originals") {
+        if (
+          selected.project.timelines.length > 100 ||
+          selected.project.timelines.some((c) => c.duration > 300) ||
+          selected.project.settings.width > 1920 ||
+          selected.project.settings.height > 1080 ||
+          selected.project.settings.frameRate > 60
+        )
+          fail(
+            "request.tooLarge",
+            "Derived Collect validation supports at most 100 five-minute 1080p/60 Compositions per package.",
+            413,
+          );
+        let stagedBytes = plan.uniqueMediaBytes;
+        const work = join(temp, "derived-work");
+        await mkdir(work, { mode: 0o700 });
+        for (const [index, source] of [...sourcePlans.values()].entries()) {
+          checkAbortAndStatus(input.signal);
+          const entry = deliveryReview!.coverage.entries.find(
+            (e) => e.assetId === source.asset.id,
+          )!;
+          if (entry.action === "copy-original") {
+            retained.push({
+              assetId: source.asset.id,
+              reason: entry.reasons[0] ?? "source.protected",
+            });
+            continue;
+          }
+          const extension =
+            delivery.mode === "offline-proxies"
+              ? source.asset.mediaType === "audio"
+                ? ".mp3"
+                : ".mp4"
+              : source.asset.mediaType === "audio"
+                ? ".wav"
+                : ".avi";
+          const derivativePath = join(work, `source-${index}${extension}`);
+          const result = await createCollectDerivative(
+            source.asset,
+            manifestPath(stage, source.relativePath),
+            derivativePath,
+            entry,
+            delivery,
+            input.signal,
+          );
+          if ("retainedReason" in result) {
+            retained.push({
+              assetId: source.asset.id,
+              reason: result.retainedReason,
+            });
+            continue;
+          }
+          stagedBytes += result.size;
+          if (stagedBytes > MAX_PACKAGE_BYTES)
+            fail(
+              "request.tooLarge",
+              "Private source and derivative staging exceeds the ZIP32 working bound.",
+              413,
+            );
+          const relativePath = packageSourcePath(
+            result.receipt.derivedSha256,
+            extension,
+          );
+          if (!uniqueSourcePaths.has(result.receipt.derivedSha256)) {
+            await mkdir(dirname(manifestPath(stage, relativePath)), {
+              recursive: true,
+              mode: 0o700,
+            });
+            await rename(derivativePath, manifestPath(stage, relativePath));
+            uniqueSourcePaths.set(result.receipt.derivedSha256, relativePath);
+          } else await rm(derivativePath);
+          derivatives.push(result.receipt);
+          source.asset = result.asset;
+          source.sha256 = result.receipt.derivedSha256;
+          source.size = result.size;
+          source.relativePath = uniqueSourcePaths.get(source.sha256)!;
+        }
+        convertedProject = remapCollectProject(
+          selected.project,
+          originalAssets,
+          derivatives,
+        );
+        const derivedAssets = [...sourcePlans.values()].map((source) => ({
+          ...source.asset,
+          uri: pathToFileURL(manifestPath(stage, source.relativePath)).href,
+        }));
+        parity = await renderCollectParity(
+          selected.project,
+          convertedProject,
+          originalAssets,
+          derivedAssets,
+          work,
+          {
+            signal: input.signal,
+            fontPathForStyle: (style) =>
+              collectFontPathForStyle(
+                new Map(
+                  [...fonts.values()].flatMap((font) =>
+                    font.bindings.map((binding) => [
+                      fontBindingKey(binding.family, binding.weight),
+                      manifestPath(stage, font.relativePath),
+                    ]),
+                  ),
+                ),
+                style,
+                selected.project.settings,
+              ),
+          },
+        );
+        if (
+          delivery.mode === "trimmed-originals" &&
+          parity.some((p) => !p.matched)
+        )
+          fail(
+            "export.failed",
+            "Derived package failed decoded picture/audio/time parity with the original film.",
+            422,
+          );
+        const referenced = new Set(
+          [...sourcePlans.values()].map((s) => s.relativePath),
+        );
+        for (const [hash, path] of uniqueSourcePaths)
+          if (!referenced.has(path)) {
+            await rm(manifestPath(stage, path));
+            uniqueSourcePaths.delete(hash);
+          }
+      }
       const packageAssets = selected.assetIds.map((id) => {
         const source = sourcePlans.get(id)!;
         return packagedAsset(
@@ -2382,7 +2604,7 @@ export class CollectMediaService {
           source.relativePath,
         );
       });
-      const packagedProject = validateProject(selected.project);
+      const packagedProject = validateProject(convertedProject);
       const catalog = createPortableCatalogSnapshot(
         captured.catalog,
         CATALOG_SCHEMA_VERSION,
@@ -2403,7 +2625,8 @@ export class CollectMediaService {
       const files = await hashAllPackageFiles(stage);
       const manifest: CollectManifest = {
         format: MANIFEST_FORMAT,
-        version: MANIFEST_VERSION,
+        version: delivery ? 2 : MANIFEST_VERSION,
+        ...(delivery ? { delivery, derivatives, parity, retained } : {}),
         projectId: captured.project.id,
         projectRevision: captured.revision,
         createdAt: new Date().toISOString(),
@@ -2437,6 +2660,7 @@ export class CollectMediaService {
         versionsIncluded: false,
         pathPrivacy: "original-uri-sha256-only",
       };
+      validateManifest(manifest);
       await writeJson(join(stage, MANIFEST_FILE), manifest);
       const manifestBytes = await readFile(join(stage, MANIFEST_FILE));
       const manifestSha256 = digest(manifestBytes);
@@ -2455,6 +2679,13 @@ export class CollectMediaService {
             409,
           );
       };
+      const finalPlan = await this.plan(planInput, input.signal);
+      if (finalPlan.id !== plan.id || finalPlan.revision !== plan.revision)
+        fail(
+          "story.planStale",
+          "Project or source changed during derived validation.",
+          409,
+        );
       assertCurrent();
       if (input.format === "zip") {
         await writeStoredZip(stage, zipStage, input.signal);
@@ -2612,6 +2843,8 @@ export class CollectMediaService {
       const expectedIds = manifest.assets.map((asset) => asset.id).sort();
       const actualIds = catalogSnapshot.assets.map((asset) => asset.id).sort();
       const project = validateProject(projectData, { assetIds: actualIds });
+      if (manifest.version === 2)
+        validateDerivedProjectClocks(project, manifest.derivatives!);
       if (project.id !== manifest.projectId)
         fail(
           "request.invalid",
@@ -2628,6 +2861,29 @@ export class CollectMediaService {
           { uri?: unknown; relativePath?: unknown } | undefined;
         const reference = asset.metadata["openfilm.reference"] as
           Record<string, unknown> | undefined;
+        const derivative = manifest.derivatives?.find(
+          (item) => item.assetId === asset.id,
+        );
+        const deliveryMetadata = asset.metadata["openfilm.collectDelivery"] as
+          | {
+              version?: unknown;
+              mode?: unknown;
+              originalSha256?: unknown;
+              quality?: unknown;
+            }
+          | undefined;
+        if (
+          derivative &&
+          (asset.duration !== derivative.derivedDuration ||
+            deliveryMetadata?.version !== 1 ||
+            deliveryMetadata.mode !== manifest.delivery?.mode ||
+            deliveryMetadata.originalSha256 !== derivative.originalSha256 ||
+            deliveryMetadata.quality !== derivative.quality)
+        )
+          fail(
+            "request.invalid",
+            "Packaged source lineage does not match its catalog identity.",
+          );
         const digestValue = receipt?.originalUriDigest;
         const expectedUri = receipt ? packageAssetUri(asset.id) : "";
         if (
@@ -2863,6 +3119,21 @@ export class CollectMediaService {
           "render.failed",
           "Collected MP4 failed its decoded stream inspection.",
         );
+      if (manifest.version === 2) {
+        for (const evidence of manifest.parity!) {
+          const output =
+            evidence.compositionId === firstComposition.id
+              ? exported
+              : await application.exportMp4(evidence.compositionId, { signal });
+          const decoded = await collectDecodedSignature(output.path, signal);
+          if (!sameCollectSignature(decoded, evidence.derived))
+            fail(
+              "source.changed",
+              "Relocated output no longer matches the package's decoded delivery receipt.",
+              422,
+            );
+        }
+      }
       const packageWarnings = [...exported.report.warnings];
       return {
         verified: true,
