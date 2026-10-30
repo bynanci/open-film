@@ -213,9 +213,9 @@ export function assertPresetJsonData(
   let tokens = 0,
     text = 0;
   const ancestors = new WeakSet<object>();
-  const walk = (v: unknown, depth: number): void => {
+  const walk = (v: unknown, depth: number, path: string): void => {
     if (++tokens > (limits.tokens ?? PRESET_LIMITS.tokens))
-      presetInvalid("data", "token budget exceeded");
+      presetInvalid(path, "token budget exceeded");
     if (typeof v === "string") {
       text += v.length;
       if (
@@ -224,24 +224,24 @@ export function assertPresetJsonData(
           v,
         )
       )
-        presetInvalid("data", "invalid or oversized Unicode text");
+        presetInvalid(path, "invalid or oversized Unicode text");
       return;
     }
     if (v === null || typeof v === "boolean") return;
     if (typeof v === "number") {
-      if (!Number.isFinite(v)) presetInvalid("data", "expected finite number");
+      if (!Number.isFinite(v)) presetInvalid(path, "expected finite number");
       return;
     }
-    if (typeof v !== "object") presetInvalid("data", "expected JSON data");
+    if (typeof v !== "object") presetInvalid(path, "expected JSON data");
     if (depth > (limits.depth ?? PRESET_LIMITS.depth) || ancestors.has(v))
-      presetInvalid("data", "depth budget exceeded or cyclic data");
+      presetInvalid(path, "depth budget exceeded or cyclic data");
     ancestors.add(v);
     if (Array.isArray(v)) {
       if (
         Object.getPrototypeOf(v) !== Array.prototype ||
         v.length > (limits.tokens ?? PRESET_LIMITS.tokens)
       )
-        presetInvalid("data", "invalid array data");
+        presetInvalid(path, "invalid array data");
       if (
         Reflect.ownKeys(v).some(
           (k) =>
@@ -249,34 +249,34 @@ export function assertPresetJsonData(
             (k !== "length" && !/^(0|[1-9]\d*)$/.test(k)),
         )
       )
-        presetInvalid("data", "decorated array data");
+        presetInvalid(path, "decorated array data");
       for (let i = 0; i < v.length; i++) {
         const d = Object.getOwnPropertyDescriptor(v, String(i));
         if (!d || !("value" in d) || !d.enumerable)
-          presetInvalid("data", "expected dense data array");
-        walk(d.value, depth + 1);
+          presetInvalid(path, "expected dense data array");
+        walk(d.value, depth + 1, `${path}[${i}]`);
       }
     } else {
       if (![Object.prototype, null].includes(Object.getPrototypeOf(v)))
-        presetInvalid("data", "expected plain JSON data");
+        presetInvalid(path, "expected plain JSON data");
       for (const key of Reflect.ownKeys(v)) {
         if (
           typeof key !== "string" ||
           key.length > 64 ||
           ["__proto__", "prototype", "constructor"].includes(key)
         )
-          presetInvalid("data", "unsafe object key");
+          presetInvalid(path, "unsafe object key");
         const d = Object.getOwnPropertyDescriptor(v, key)!;
         if (!("value" in d) || !d.enumerable)
-          presetInvalid("data", "expected data, not an accessor");
+          presetInvalid(path, "expected data, not an accessor");
         if (++tokens > (limits.tokens ?? PRESET_LIMITS.tokens))
-          presetInvalid("data", "token budget exceeded");
-        walk(d.value, depth + 1);
+          presetInvalid(path, "token budget exceeded");
+        walk(d.value, depth + 1, `${path}.${key}`);
       }
     }
     ancestors.delete(v);
   };
-  walk(value, 1);
+  walk(value, 1, "data");
 }
 /** Called only after the bounded descriptor walk; Vue wrappers are copied as data. */
 function copyValidatedPresetData(value: unknown): unknown {

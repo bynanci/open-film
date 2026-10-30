@@ -42,6 +42,21 @@ const composition = (): Composition => ({
 const identity = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
 
 describe("portable film look recipes", () => {
+  it("retains strength diagnostics while rejecting getters before invocation", () => {
+    expect(() => validateFilmLook(look("retro", Number.NaN))).toThrow(
+      /strength/iu,
+    );
+    let calls = 0;
+    const accessor = Object.defineProperty(look("retro"), "strength", {
+      enumerable: true,
+      get() {
+        calls++;
+        return 0.5;
+      },
+    });
+    expect(() => validateFilmLook(accessor)).toThrow(/accessor/iu);
+    expect(calls).toBe(0);
+  });
   it("publishes original recipe licensing and an encoded-SDR working-domain contract", () => {
     expect(FILM_LOOK_MATRIX_DOMAIN).toBe("encoded-sdr-rgb");
     expect(FILM_LOOK_RECIPE_ORIGIN).toBe("openfilm-original");
