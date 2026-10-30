@@ -150,3 +150,31 @@ on PATH.
 TypeScript/Vue, changed-file lint, document mirrors and whitespace checks pass.
 The integrating parent owns the fresh scoped review and full exact-head gate;
 this fix wave ran no shared browser service, native benchmark or full suite.
+
+## D3 → D5A → D5B integration checkpoint
+
+Reviewed D5B `cde2b8a` now consumes clean A stack `add3ba6` through merge
+`33ced46`. Additive API, application-service and Inspector conflicts preserve
+both owners, PhotoLayout/Motion v2 and the captured-revision transaction barrier.
+Caption rasters remain above opaque GraphicScenes and outside source grading.
+The shared font helper is byte-identical to `11595f33`, and the shared metric
+policy is byte-identical to `3683b1c`; no duplicate font policy was introduced.
+
+The first six-case title browser run exposed a combined layout regression:
+the waveform row reduced Record picture height to 96 pixels, and the unchanged
+caption glyph check counted 34 bright pixels against its required >100. A new
+picture-height regression failed at 96 versus 192 pixels. Raising only the
+existing Record-with-waveform minimum from 6rem to 12rem preserves its existing
+vertical scrolling and aspect-fit ownership. Final measured bounds are
+341.328125 × 192 pixels. The unchanged glyph check passes above the opaque
+GraphicScene. The cost on short screens is additional existing vertical scroll.
+
+Current checks passed: 28 focused files / 439 tests; both actual bilingual
+MP4 cases at 30 and 30000/1001 fps; three handoff/export/Record files / 157 tests;
+all six title journeys plus all six Record Monitor browser cases in one 12-case
+run; and both narrow CJK waveform journeys. TypeScript/Vue, scoped lint/format,
+2,753 localization keys and 129 documentation mirrors passed. Actual synthetic
+media, source hashes, picture screenshot and current byte receipts are retained
+under `/tmp/openfilm-finishing-integration/B-current/`. Historical evidence is
+retained separately. Full exact-head hosted gates and fresh integrated review
+remain coordinator-owned.

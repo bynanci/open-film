@@ -241,7 +241,7 @@
 }
 
 .cut-desk-record:has(.sequence-waveform) .record-monitor {
-  min-height: 6rem;
+  min-height: 12rem;
 }
 
 .cut-desk-monitor-actions {

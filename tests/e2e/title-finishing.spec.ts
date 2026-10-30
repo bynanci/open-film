@@ -341,7 +341,14 @@ test("Record caption boundaries and selection match the existing MP4 selector", 
   ).toHaveJSProperty("naturalWidth", 640);
   const record = page.locator(".record-frame"),
     shot = join(fixture.root, "record-caption.png");
+  const recordBounds = (await record.boundingBox())!;
+  console.info("Bilingual Record picture bounds", recordBounds);
+  expect(recordBounds.height).toBeGreaterThanOrEqual(192);
   await writeFile(shot, await record.screenshot());
+  await test.info().attach("record-caption", {
+    path: shot,
+    contentType: "image/png",
+  });
   const raw = (
     await runProcess("ffmpeg", [
       "-v",
