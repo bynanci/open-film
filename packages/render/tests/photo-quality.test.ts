@@ -1,3 +1,4 @@
+import { assertRenderQaMetric } from "../../../tests/helpers/render-qa-policy.js";
 import { link, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -174,9 +175,10 @@ it("renders a pull-out from close to wide framing without changing film timing, 
       { [source.id]: { width: 160, height: 90 } },
       settings,
     );
-    expect(
+    assertRenderQaMetric(
+      "photo.subjectEdgeError",
       Math.abs(left - (80 + (10 - 80) * expected.transform.scale)),
-    ).toBeLessThanOrEqual(1.5);
+    );
     subjectEdges.push(left);
     // The procedural blue photo fills the complete output throughout the
     // decrease in scale. No black canvas is exposed at the visible corners.
@@ -215,9 +217,11 @@ it("renders a pull-out from close to wide framing without changing film timing, 
     "json",
     output,
   ]);
-  expect(
+  assertRenderQaMetric(
+    "photo.tightDuration",
     Number(JSON.parse(probe.stdout.toString()).format.duration),
-  ).toBeCloseTo(2, 3);
+    2,
+  );
   expect(composition).toEqual(before);
   expect(await readFile(join(root, "pull-out-subject.png"))).toEqual(original);
 });
@@ -355,9 +359,10 @@ it("starts photo motion at the authored first-frame position", async () => {
     }
     return weighted / total;
   };
-  expect(
+  assertRenderQaMetric(
+    "photo.firstFrameCenterError",
     Math.abs(center(await pixels(moving)) - center(await pixels(held))),
-  ).toBeLessThan(0.12);
+  );
 });
 it.each(["x", "y"] as const)(
   "keeps a slow %s pan continuous between adjacent output frames",
@@ -415,11 +420,11 @@ it.each(["x", "y"] as const)(
       }
       return weighted / total;
     });
-    expect(centers.at(-1)! - centers[0]!).toBeGreaterThan(1.5);
+    assertRenderQaMetric("photo.panTravel", centers.at(-1)! - centers[0]!);
     const steps = centers.slice(1).map((center, i) => center - centers[i]!);
     // The authored camera advances only 1/30 px per frame. Crop rounding used
     // to hold it in place, then jump by about half a pixel in either axis.
-    expect(Math.max(...steps.map(Math.abs))).toBeLessThan(0.18);
+    assertRenderQaMetric("photo.panStep", Math.max(...steps.map(Math.abs)));
   },
 );
 it("preserves an original when an output aliases it through a hard link", async () => {
@@ -511,9 +516,10 @@ it.each([1, 2])(
         { [source.id]: { width: 160, height: 90 } },
         settings,
       );
-      expect(
+      assertRenderQaMetric(
+        "photo.subjectEdgeError",
         Math.abs(left - (80 + (20 - 80) * evaluated.transform.scale)),
-      ).toBeLessThanOrEqual(1.5);
+      );
     }
   },
 );
@@ -592,8 +598,14 @@ it("renders manual ducking and fades into the actual mixed audio without extendi
       square += data.readFloatLE(offset) ** 2;
     return Math.sqrt(square / (data.length / 4));
   };
-  expect((await rms(0.96)) / (await rms(0.4))).toBeLessThan(0.2);
-  expect((await rms(0.02)) / (await rms(0.4))).toBeLessThan(0.5);
+  assertRenderQaMetric(
+    "photo.fadeOutRmsRatio",
+    (await rms(0.96)) / (await rms(0.4)),
+  );
+  assertRenderQaMetric(
+    "photo.fadeInRmsRatio",
+    (await rms(0.02)) / (await rms(0.4)),
+  );
   const probe = await runProcess("ffprobe", [
     "-v",
     "error",
@@ -603,7 +615,9 @@ it("renders manual ducking and fades into the actual mixed audio without extendi
     "json",
     output,
   ]);
-  expect(
+  assertRenderQaMetric(
+    "photo.duration",
     Number(JSON.parse(probe.stdout.toString()).format.duration),
-  ).toBeCloseTo(2, 1);
+    2,
+  );
 });

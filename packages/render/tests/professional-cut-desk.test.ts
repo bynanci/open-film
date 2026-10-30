@@ -1,3 +1,7 @@
+import {
+  assertRenderQaMetric,
+  renderQaPolicy,
+} from "../../../tests/helpers/render-qa-policy.js";
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -76,10 +80,10 @@ async function verifyProfessionalRender(reversed: boolean) {
     ];
     const closePixel = (actual: number[], expected: number[]) =>
       actual.forEach((value, channel) =>
-        expect(
+        assertRenderQaMetric(
+          "cutDesk.channelError",
           Math.abs(value - expected[channel]!),
-          `pixel ${actual} expected ${expected}, channel ${channel}`,
-        ).toBeLessThanOrEqual(12),
+        ),
       );
     // Explicit hand-derived frame PTS and RGB. Incoming fade alpha = local/15;
     // frame 60 retains red, 67 is 8/15 red + 7/15 green, 75 is green.
@@ -95,9 +99,11 @@ async function verifyProfessionalRender(reversed: boolean) {
       { frame: 179, timestamp: 5.972633, color: [0, 0, 255] },
     ];
     for (const sample of samples) {
-      expect(
+      assertRenderQaMetric(
+        "cutDesk.pts",
         Number(probe.frames[sample.frame].best_effort_timestamp_time),
-      ).toBeCloseTo(sample.timestamp, 6);
+        sample.timestamp,
+      );
       closePixel(pixel(sample.frame, 145, 10), sample.color);
     }
     for (const [frame, shapeX, graphicX] of [
@@ -189,14 +195,21 @@ async function verifyProfessionalRender(reversed: boolean) {
       overlayMeasured: amplitude(window.start, 1100),
     }));
     for (const window of tones) {
-      expect(Math.abs(window.measured - window.peak)).toBeLessThan(0.006);
-      expect(
+      assertRenderQaMetric(
+        "cutDesk.primaryAmplitudeError",
+        Math.abs(window.measured - window.peak),
+      );
+      assertRenderQaMetric(
+        "cutDesk.overlayAmplitudeError",
         Math.abs(window.overlayMeasured - (window.overlay ? 0.032895 : 0)),
-      ).toBeLessThan(0.004);
+      );
       for (const absent of [440, 660, 880].filter(
         (frequency) => frequency !== window.primary,
       ))
-        expect(amplitude(window.start, absent)).toBeLessThan(0.003);
+        assertRenderQaMetric(
+          "cutDesk.absentAmplitude",
+          amplitude(window.start, absent),
+        );
     }
     // Fifty-millisecond windows contain integer cycles of every fixture tone.
     // A 25ms guard on either side catches a one-frame (33.37ms) timing shift.
@@ -267,22 +280,31 @@ async function verifyProfessionalRender(reversed: boolean) {
     };
     for (const window of toneEdges) {
       if (window.frequency === 1100) {
-        expect(Math.abs(window.measured - window.peak)).toBeLessThan(0.004);
+        assertRenderQaMetric(
+          "cutDesk.overlayAmplitudeError",
+          Math.abs(window.measured - window.peak),
+        );
       } else {
         // AAC re-encoding overshoots at an abrupt tone change. The same real
         // renderer's lossless mix proves steady gain; AAC must retain >90% of
         // expected tone and exclude the old/new primary (<0.003), catching a
         // one-frame edit shift without treating onset amplitude as steady state.
-        expect(
+        assertRenderQaMetric(
+          "cutDesk.primaryAmplitudeError",
           Math.abs(
             amplitude(window.start, window.frequency, 0.05, pcm) - window.peak,
           ),
-        ).toBeLessThan(0.006);
-        expect(window.measured).toBeGreaterThan(window.peak * 0.9);
+        );
+        expect(window.measured).toBeGreaterThan(
+          window.peak * renderQaPolicy["cutDesk.onsetGainRatio"].limit,
+        );
         for (const absent of [440, 660, 880].filter(
           (frequency) => frequency !== window.frequency,
         ))
-          expect(amplitude(window.start, absent, 0.05)).toBeLessThan(0.003);
+          assertRenderQaMetric(
+            "cutDesk.absentAmplitude",
+            amplitude(window.start, absent, 0.05),
+          );
       }
     }
     const manifest = JSON.parse(

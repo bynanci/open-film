@@ -1,4 +1,5 @@
 import * as recordAudioPlayback from "../../apps/desktop/src/recordAudioPlayback";
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -8,6 +9,7 @@ import * as core from "@openfilm/core";
 import * as solver from "@openfilm/solver";
 import * as analysis from "@openfilm/analysis";
 import * as sourceMarks from "../../apps/desktop/src/sourceMarks";
+import * as localPresets from "../../apps/desktop/src/local-presets";
 import * as sequenceWaveformCache from "../../apps/desktop/src/sequenceWaveformCache";
 import * as sequenceWaveformPreparation from "../../apps/desktop/src/sequenceWaveformPreparation";
 import { waveformPath } from "../../apps/desktop/src/waveform";
@@ -367,11 +369,13 @@ async function mountTimeline(
     vue,
     "vue-i18n": { useI18n },
     "@openfilm/core": core,
+    "../source-color": { sourceColorStyle },
     "@openfilm/story": {},
     "@openfilm/solver": solver,
     "@openfilm/analysis": analysis,
     "../sourceMarks": sourceMarks,
     "../recordAudioPlayback": recordAudioPlayback,
+    "../local-presets": localPresets,
     "../sequenceWaveformCache": sequenceWaveformCache,
     "../sequenceWaveformPreparation": sequenceWaveformPreparation,
     "../waveform": { waveformPath },

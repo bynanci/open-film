@@ -25,7 +25,12 @@ import {
   validateAudioTiming,
   promoteAudioProject,
   validateFilmLook,
+  validatePrimaryColorCorrection,
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  type PresetAcceptInput,
+  type PresetApplicationReceipt,
+  type PresetSelection,
   MAX_SCENE_DIRECTION_RECEIPTS,
   isCaptionTextValid,
   validateGraphicScenes,
@@ -60,6 +65,7 @@ import {
   type TimelineCommand,
 } from "@openfilm/solver";
 import type { OpenFilmApplication } from "./index.js";
+import { validatePresetAcceptance, type PresetAcceptance } from "./presets.js";
 import type {
   DirectionAcceptanceInput,
   DirectionReviewPlan,
@@ -280,6 +286,37 @@ function command(value: unknown, index: number): TimelineCommand {
     return structuredClone(data) as TimelineCommand;
   }
   const type = nonempty(data.type, `${path}.type`);
+  if (type === "primary-color") {
+    const scope = data.scope;
+    if (scope !== "film" && scope !== "beat" && scope !== "clip")
+      invalid(`${path}.scope`, "expected film, beat or clip");
+    const allowed = ["type", "scope", "correction"];
+    if (scope !== "film") {
+      const id = scope === "beat" ? "beatId" : "clipId";
+      nonempty(data[id], `${path}.${id}`);
+      allowed.push(id);
+    }
+    if (scope === "clip") {
+      allowed.push("primaryColorReviewId");
+      if (data.primaryColorReviewId !== undefined) {
+        nonempty(
+          data.primaryColorReviewId,
+          `${path}.primaryColorReviewId`,
+          128,
+        );
+        if (data.correction === null)
+          invalid(path, "a reviewed correction cannot be null");
+      }
+    }
+    keys(data, allowed, path);
+    if (data.correction !== null)
+      nested(
+        data.correction,
+        `${path}.correction`,
+        validatePrimaryColorCorrection,
+      );
+    return structuredClone(data) as TimelineCommand;
+  }
   if (type === "look") {
     const scope = data.scope;
     if (scope !== "film" && scope !== "beat" && scope !== "clip")
@@ -375,8 +412,11 @@ function command(value: unknown, index: number): TimelineCommand {
         "motion",
         "title",
         "titleStyle",
+        "titlePresetSnapshot",
         "titleRuns",
       ];
+      if (data.titlePresetSnapshot != null)
+        validatePresetSnapshot(data.titlePresetSnapshot, "title");
       fields.push(...presentationFields);
       if (!presentationFields.some((field) => Object.hasOwn(data, field)))
         invalid(path, "provide a presentation field to change");
@@ -861,6 +901,20 @@ export class TimelineEditor {
         `Timeline story not found: ${composition.storyId}`,
         404,
       );
+    const assets = this.documentAssets({ composition, story });
+    const revision = revisionFor({ composition, story }, assets);
+    const history = this.histories.get(compositionId);
+    return structuredClone({
+      composition,
+      story,
+      assets,
+      revision,
+      canUndo: history?.revision === revision && history.undo.length > 0,
+      canRedo: history?.revision === revision && history.redo.length > 0,
+    });
+  }
+
+  private documentAssets({ composition, story }: EditorDocument): MediaAsset[] {
     const ids = new Set([
       ...graphicSceneAssetIds(composition.graphicScenes ?? []),
       ...composition.tracks
@@ -894,16 +948,11 @@ export class TimelineEditor {
         );
       return asset;
     });
-    const revision = revisionFor({ composition, story }, assets);
-    const history = this.histories.get(compositionId);
-    return structuredClone({
-      composition,
-      story,
-      assets,
-      revision,
-      canUndo: history?.revision === revision && history.undo.length > 0,
-      canRedo: history?.revision === revision && history.redo.length > 0,
-    });
+    return assets;
+  }
+
+  revisionForDocument(document: EditorDocument): string {
+    return revisionFor(document, this.documentAssets(document));
   }
 
   async previewGraphicSceneAgent(
@@ -1605,6 +1654,59 @@ export class TimelineEditor {
     }
   }
 
+  async acceptPresetApplication(
+    compositionId: string,
+    value: PresetAcceptInput,
+    signal?: AbortSignal,
+  ): Promise<PresetAcceptance> {
+    const input = validatePresetAcceptance(value);
+    return this.serialize(async () => {
+      signal?.throwIfAborted();
+      const prior = this.application.presets.accepted(input, this);
+      if (prior) return prior;
+      const review = this.application.presets.review(input.request, this);
+      if (
+        input.request.target.kind === "story" ||
+        input.request.target.compositionId !== compositionId ||
+        review.reviewSha256 !== input.reviewSha256 ||
+        !review.document ||
+        review.conflicts.length
+      )
+        throw new ApplicationError(
+          "presets.stale",
+          "The exact preset review changed before acceptance.",
+          409,
+        );
+      const before = this.current(compositionId, input.request.baseRevision);
+      const history = this.history(compositionId, before.revision);
+      const receipt = this.application.presets.receipt(
+        input,
+        review,
+        { storyId: before.story.id, compositionId },
+        revisionFor(review.document, before.assets),
+      );
+      const state = await this.persist(
+        compositionId,
+        before,
+        review.document,
+        {
+          undo: [...history.undo, document(before)].slice(-HISTORY_LIMIT),
+          redo: [],
+        },
+        undefined,
+        receipt,
+        input.request.selection,
+      );
+      return {
+        version: 1,
+        receipt,
+        state,
+        alreadyAccepted: false,
+        result: receipt.result,
+      };
+    });
+  }
+
   async edit(
     compositionId: string,
     input: TimelineEditInput,
@@ -1627,7 +1729,31 @@ export class TimelineEditor {
           acknowledgedRevision: receipt.revision,
         };
       }
+      if (
+        parsed.commands.length !== 1 &&
+        parsed.commands.some(
+          (item) =>
+            item.type === "primary-color" &&
+            item.scope === "clip" &&
+            item.primaryColorReviewId,
+        )
+      )
+        throw new TimelineEditorError(
+          "A reviewed primary color Apply requires a single-command transaction.",
+        );
       for (const item of parsed.commands) {
+        if (
+          item.type === "primary-color" &&
+          item.scope === "clip" &&
+          item.primaryColorReviewId
+        )
+          await this.application.primaryColorReview.validateAcceptance(
+            item.primaryColorReviewId,
+            compositionId,
+            parsed.baseRevision,
+            item.clipId,
+            item.correction!,
+          );
         if (item.type === "audio.add" && item.generationId)
           await this.application.audioGeneration.validateImport(
             item.generationId,
@@ -1741,8 +1867,13 @@ export class TimelineEditor {
         assertCanonicalAudioCurrent(audioFacts);
       }
       try {
+        const automaticCommand = (item: TimelineCommand) =>
+          item.type === "regenerate-beat" ||
+          (item.type === "primary-color" &&
+            item.scope === "clip" &&
+            !!item.primaryColorReviewId);
         const directCommands = parsed.commands.filter(
-          (item) => item.type !== "regenerate-beat",
+          (item) => !automaticCommand(item),
         );
         const targets = new Set(
           directOverrideTargets(directCommands).map(overrideTargetKey),
@@ -1811,9 +1942,9 @@ export class TimelineEditor {
             audioAware ? applyTimelineCommandInBatch : applyTimelineCommand
           )(next, assets, compiled, {
             timebase: resolveProjectTimebase(this.application.project.settings),
-            origin: item.type === "regenerate-beat" ? "automatic" : "direct",
+            origin: automaticCommand(item) ? "automatic" : "direct",
           });
-          if (item.type !== "regenerate-beat") {
+          if (!automaticCommand(item)) {
             const written = new Set(
               directOverrideTargets([item]).map(overrideTargetKey),
             );
@@ -1938,6 +2069,8 @@ export class TimelineEditor {
           redo: [],
         },
         undefined,
+        undefined,
+        undefined,
         audioFacts.length
           ? () => assertCanonicalAudioCurrent(audioFacts)
           : undefined,
@@ -2057,6 +2190,8 @@ export class TimelineEditor {
     next: EditorDocument,
     history: Pick<History, "undo" | "redo">,
     directionReceipt?: SceneDirectionReceipt,
+    presetReceipt?: PresetApplicationReceipt,
+    presetSelection?: PresetSelection,
     assertCurrent?: () => void,
   ): Promise<TimelineEditorState> {
     if (
@@ -2074,6 +2209,15 @@ export class TimelineEditor {
         promoteAudioProject(
           promotePinnedProject({
             ...previousProject,
+            ...(presetReceipt
+              ? {
+                  presetApplicationReceipts:
+                    this.application.presets.appendReceipt(
+                      previousProject,
+                      presetReceipt,
+                    ),
+                }
+              : {}),
             ...(directionReceipt
               ? {
                   sceneDirectionReceipts: [
@@ -2098,7 +2242,25 @@ export class TimelineEditor {
     }
     this.application.project = candidate;
     try {
-      await this.application.save(assertCurrent);
+      if (presetReceipt && presetSelection)
+        this.application.presets.commit(candidate, presetSelection, () => {
+          // The candidate is already staged in application.project. Re-read
+          // catalog editing facts against the captured pre-edit document while
+          // holding the existing project transaction; no source-file I/O here.
+          let currentRevision: string | undefined;
+          try {
+            currentRevision = this.revisionForDocument(document(before));
+          } catch {
+            // A removed source is stale just like changed protection/hash facts.
+          }
+          if (currentRevision !== before.revision)
+            throw new ApplicationError(
+              "presets.stale",
+              "Timeline sources changed before preset publication.",
+              409,
+            );
+        });
+      else await this.application.save(assertCurrent);
     } catch (error) {
       // A failure after manifest publication retains the application's old
       // save baseline. Its CAS guard requires reopening; the durable direction

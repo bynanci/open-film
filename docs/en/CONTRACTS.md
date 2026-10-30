@@ -43,7 +43,7 @@ color-managed display parity are not claimed. See the
   `dimensions?`, `frameRate?`, `codec?`, `contentHash?`, `perceptualHash?`,
   `tags: string[]`, `rating?: number` (0–5), `state: {favorite?,rejected?,locked?}`,
   `metadata: Record<string, unknown>`, `thumbnailUri?`, `proxyUri?`, `gps?`.
-- `OpenFilmProject`: `schemaVersion: '1.0.0'`, `id`, `title`, `createdAt`,
+- `OpenFilmProject`: `schemaVersion: '1.0.0' | '1.1.0'`, `id`, `title`, `createdAt`,
   `updatedAt`, `mediaLibraries`, `stories: Story[]`, `timelines: Composition[]`,
   `settings: {width,height,frameRate,timebase?}`. `MediaLibrary` has `id`, `uri`, `name`.
 - `Story`: `id,title,template?,targetDuration?,maxDuration?,beats: StoryBeat[]`.
@@ -729,6 +729,82 @@ Phase M9A–M11B product acceptance verifies the complete creative workflow acro
 - Quota applies to managed preview artifacts; legacy and temporary usage are
   disclosed separately. No original-source deletion or export from proxies.
 
+## Durable user pins
+
+`Clip.userOverrides?` and `GraphicScene.userOverrides?` are closed inline v1
+objects: `{version:1,isUserPinned:boolean,lockedAttributes,manualOffset?}`.
+The four categories are `inOutRange`, `photoDepth`, `motionPreset`, and `timing`;
+owner validation limits their combinations. Every pinned owner is a whole-instance
+automatic immutability boundary, including authored absence, saved seconds,
+source windows, occurrence identity, owning track/beat and effective inherited
+film look. `manualOffset` is a signed integer frame diagnostic from the latest
+explicit move; solvers never add it to the saved start.
+
+Legacy projects remain schema 1.0.0 without materialized defaults. The first
+pin-state write atomically promotes a 1.0.0 project to 1.1.0; unpin and session
+Undo do not downgrade it. Old applications reject the 1.1.0 version before
+editing. The JSON schemas are versioned separately from application release
+0.4.0 and catalog v6. Explicit Named Version Restore can intentionally restore
+an older project's header and pin state. Historical v5/v6 snapshots remain
+immutable; derived diff data includes `pinChangedCount`.
+
+`applyTimelineCommand` has one optional fourth `TimelineEditContext` containing
+an authoritative project timebase and server-owned direct/automatic/history/
+restore origin. Omitted origin is automatic. HTTP bodies cannot provide origin
+or a clock. The editor attaches pin categories to the final acknowledged direct
+batch; only named owners are authorized. An automatic operation inside a batch
+preserves earlier direct intent as a provisional anchor. Existing source, clip,
+node and required-media protections still apply. Existing Fit-to-target previews
+skip pins and use the authoritative clock. Accepting its selected typed commands
+through generic edit is an explicit acknowledged user edit and may pin previously
+mutable targets, adding anchors for later re-solve. No client origin field or new
+Fit receipt protocol is introduced. Explicit lock toggles preserve
+the owner's existing pin; locking a legacy owner alone does not create a pin.
+
+`user-pin.set {target,pinned}` releases or pins one saved owner.
+`user-pin.resolve {targets,scope,mode}` releases the named user pins and solves
+in one detached transaction. Failure retains the saved cut, pins, history and
+revision. `TimelineEditor.resolve` uses the same serialization, CAS and history.
+Incremental solve bounds are 2,000 clips, 1,000 beats, 10,000 candidate/gap
+expansions and 20 conflict targets. Unsupported overlapping spines, missing
+sources, exact-seconds/frame disagreement and exhausted search fail with
+`timeline.pinConflict`; anchors are never silently retimed. Current composition
+scope retains authored gaps and beat boundaries, so some whole-cut timing
+redistributions require explicit editing.
+
+New pipeline runs require an explicit v1 `compositionTarget`: `new-cut`, or
+`resolve` with exact composition ID and base revision. Persisted legacy runs
+without a target retain new-cut behavior. Fresh adoption prepares captions
+before one project publication. Resolve never replaces saved captions implicitly.
+New-cut retries use the existing run/step namespace to find the accepted cut;
+resolve retries retain their revision fence and may require re-preparation after
+an ambiguous publication. Artifact revision/pin evidence is bounded hash data.
+
+Collect retains the whole original for every pinned primary, paired and depth
+resource (`source.user-pinned`), including mixed use of the same asset. Defensive
+remapping rejects pinned dependencies. Native directory/ZIP projects preserve
+schema 1.1.0 and exact owner payloads. JSON and OTIO retain inline pin metadata;
+foreign NLEs do not enforce OpenFilm pins. The JSON export envelope keeps its own
+format version 1.0.0. Caption-level pins and selective category unlock are outside
+this v1 contract.
+
+## D5C primary color
+
+Optional version-1 `Composition.defaultPrimaryColor`, `beatPrimaryColors` and
+`Clip.primaryColor` use clip → beat → film → identity resolution. Core owns the
+bounded encoded-SDR affine coefficients, rounded to 12 decimals. Decode/HDR tone
+map and raw photographic preparation precede primary; its clamp precedes the
+separate shared Film Look. Alpha, source identity and timing are preserved.
+
+Typed `primary-color` commands use the existing editor revision/history/save
+boundary. Effective inherited changes to locked sources/clips are rejected as a
+batch. Local statistical Auto Match produces measured before/after proposals;
+explicit clip Apply validates its exact recipe and full source/artifact hashes
+inside editor serialization. Proposals expire on reopen; accepted authored values
+persist. Unknown recipe versions fail. There is no catalog migration, provider,
+source overwrite or second timeline. See [primary color](primary-color.md) and
+[validation](validation-primary-color.md).
+
 ## Bilingual native text finishing
 
 Optional `Clip.titleRuns` and `CaptionCue.textRuns` are closed version-1
@@ -745,3 +821,19 @@ path-free inspection routes use bounded work and stale-owner fencing. MP4 and
 Monitor share the measured local raster; render receipts bind actual primary/
 secondary fonts. SRT/VTT retain both literal texts/times and exclude finishing.
 See [title finishing](title-finishing.md) for exact bounds and interchange limits.
+
+## User Pin finishing integration (2026-10-30)
+
+Whole-instance automatic protection includes the actual PhotoLayout/Motion v2,
+bilingual/title finishing, primary correction and local Film Look v2 snapshot
+payloads. Untouched pinned clips also retain effective inherited primary and
+Look matrices through the shared resolvers. Statistical primary review Apply
+and D8 reviewed preset acceptance keep automatic origin; direct manual inspector
+commands retain explicit named-owner authority. Pinned Auto Match targets are
+ineligible until release and a fresh measurement. Preset provenance/receipts,
+source guards, CAS and exact retry owners remain unchanged. Creative variants
+map inherited primary beat scopes and preset target-beat bindings to derived
+identities while retaining original source identities/hashes and immutable
+snapshots. Schema1.1 explicitly defines these supported portable shapes; default
+projects remain1.0 and first-pin promotion never downgrades a newer validated
+header. See [User Pin validation](validation-user-pins.md).

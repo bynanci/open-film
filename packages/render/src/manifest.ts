@@ -1,8 +1,11 @@
+import { renderPresetSnapshots } from "./preset-integrity.js";
 // Modified by OpenFilm contributors on 2026-10-18. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import { createHash } from "node:crypto";
 import { stat, writeFile } from "node:fs/promises";
 import {
+  resolvePrimaryColor,
+  primaryColorCoefficients,
   FILM_LOOK_PRESETS,
   FILM_LOOK_RECIPE_VERSION,
   FILM_LOOK_MATRIX_DOMAIN,
@@ -27,6 +30,7 @@ export interface RenderLookEvidence {
   preset: FilmLook["preset"];
   strength: number;
   matrix: readonly number[];
+  presetSnapshotSha256?: string;
 }
 export interface RenderPhotoPresentationEvidence {
   version: 1;
@@ -246,7 +250,27 @@ export async function writeRenderManifest(
     project: project ?? null,
     compositionSha256: createHash("sha256").update(json).digest("hex"),
     settings,
+    primaryColor: {
+      version: 1,
+      domain: "encoded-sdr-rgb",
+      formula: "encoded-sdr-affine-v1",
+      precision: 12,
+      clamp: "primary-then-look",
+      clips: looks.clips.map(({ clipId, assetIds }) => {
+        const clip = composition.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === clipId)!;
+        const effective = resolvePrimaryColor(composition, clip);
+        return {
+          clipId,
+          assetIds,
+          ...effective,
+          coefficients: primaryColorCoefficients(effective.correction),
+        };
+      }),
+    },
     looks: {
+      registryScope: "builtins",
       registryVersion: FILM_LOOK_RECIPE_VERSION,
       matrixSpace: FILM_LOOK_MATRIX_DOMAIN,
       recipeOrigin: FILM_LOOK_RECIPE_ORIGIN,
@@ -275,6 +299,7 @@ export async function writeRenderManifest(
     ...(outputConfig.audioPolicy
       ? { audioPolicy: outputConfig.audioPolicy }
       : {}),
+    presetSnapshots: renderPresetSnapshots(composition, looks.override),
     exportProfile: outputConfig.exportProfile ?? null,
     output: {
       format: outputConfig.format,

@@ -2,7 +2,7 @@
 // Modified by OpenFilm contributors on 2026-10-22. Preexisting portions retain
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type {
   Composition,
@@ -18,6 +18,12 @@ const props = defineProps<{
   storyId: string;
   story: Story;
   show: boolean;
+  presetPreview?: { plan: StoryPlan; compositionPreview: Composition };
+  presetAccept?: () => Promise<{
+    story: Story;
+    composition: Composition;
+    acceptanceMapping: StoryPlanAcceptanceMapping;
+  }>;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +38,12 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const dialog = ref<HTMLElement | null>(null);
+let previousFocus: HTMLElement | null = null;
+function restoreFocus() {
+  if (previousFocus?.isConnected) previousFocus.focus();
+}
+onBeforeUnmount(restoreFocus);
 
 const loading = ref(false);
 const adopting = ref(false);
@@ -43,6 +55,7 @@ const selectedSceneId = ref<string | null>(null);
 
 const canAdopt = computed(() => {
   if (!plan.value) return false;
+  if (plan.value.presetContext && !props.presetAccept) return false;
   if (adopting.value || loading.value) return false;
   if (plan.value.path.isAmbiguous) return false;
   if (
@@ -66,7 +79,8 @@ async function loadPreview() {
       targetDuration: props.story.targetDuration ?? 30,
       maxDuration: props.story.maxDuration ?? 30,
     };
-    const res = await api.storyPlanPreview(props.storyId, opts);
+    const res =
+      props.presetPreview ?? (await api.storyPlanPreview(props.storyId, opts));
     plan.value = res.plan;
     compositionPreview.value = res.compositionPreview;
     if (res.plan.scenes.length > 0) {
@@ -85,7 +99,9 @@ async function handleAdopt() {
   error.value = null;
 
   try {
-    const res = await api.storyPlanAccept(props.storyId, plan.value);
+    const res = props.presetAccept
+      ? await props.presetAccept()
+      : await api.storyPlanAccept(props.storyId, plan.value);
     successMessage.value = t("app.storyPlan.adoptSuccess", {
       title: res.story.title,
     });
@@ -99,7 +115,27 @@ async function handleAdopt() {
 
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
     emit("close");
+    return;
+  }
+  if (e.key === "Tab") {
+    e.stopPropagation();
+    const nodes = Array.from(
+      dialog.value?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+      ) ?? [],
+    );
+    const first = nodes[0],
+      last = nodes.at(-1);
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last?.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first?.focus();
+    }
   }
 }
 
@@ -107,8 +143,16 @@ watch(
   () => props.show,
   (val) => {
     if (val) {
+      previousFocus =
+        typeof document === "undefined"
+          ? null
+          : (document.activeElement as HTMLElement | null);
+      void nextTick(() =>
+        dialog.value?.querySelector<HTMLElement>("button")?.focus(),
+      );
       loadPreview();
     } else {
+      restoreFocus();
       plan.value = null;
       error.value = null;
       successMessage.value = null;
@@ -121,6 +165,7 @@ watch(
 <template>
   <div
     v-if="show"
+    ref="dialog"
     class="modal-backdrop"
     role="dialog"
     aria-modal="true"

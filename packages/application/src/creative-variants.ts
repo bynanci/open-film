@@ -387,6 +387,12 @@ export class CreativeVariantService {
     const beatIdMap = new Map(
       beatMappings.map((m) => [m.baselineBeatId, m.variantBeatId]),
     );
+    if (derivedStory.presetPlanSource)
+      derivedStory.presetPlanSource.bindings =
+        derivedStory.presetPlanSource.bindings.map((binding) => ({
+          ...binding,
+          beatId: beatIdMap.get(binding.beatId) ?? binding.beatId,
+        }));
 
     let cursorOffset = 0;
     const newTracks: Track[] = baselineComp.tracks.map((oldTrack) => {
@@ -398,8 +404,7 @@ export class CreativeVariantService {
           trackId: oldTrack.id,
         });
 
-        // LOCK PRESERVATION: Cloned clip strictly preserves lock!
-        const isLocked = oldClip.locked === true;
+        // The spread preserves an absent lock as well as explicit false/true.
         const mappedBeatId = oldClip.beatId
           ? (beatIdMap.get(oldClip.beatId) ?? oldClip.beatId)
           : undefined;
@@ -433,7 +438,6 @@ export class CreativeVariantService {
                 oldClip.sourceIn !== undefined
                   ? Number(((oldClip.sourceIn ?? 0) + targetDur).toFixed(3))
                   : oldClip.sourceOut,
-              locked: isLocked,
             };
           } else {
             // PROVABLY UNCHANGED NON-TARGET CLIP: Exact media asset, filters, transforms, and locks
@@ -449,7 +453,6 @@ export class CreativeVariantService {
               timelineStart: Number(
                 (oldClip.timelineStart + cursorOffset).toFixed(3),
               ),
-              locked: isLocked,
             };
           }
         } else {
@@ -469,7 +472,6 @@ export class CreativeVariantService {
               oldClip.sourceIn !== undefined
                 ? Number(((oldClip.sourceIn ?? 0) + scaledDur).toFixed(3))
                 : oldClip.sourceOut,
-            locked: isLocked,
           };
         }
       });
@@ -497,6 +499,14 @@ export class CreativeVariantService {
         ...bl,
         beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
       })),
+      ...(baselineComp.beatPrimaryColors === undefined
+        ? {}
+        : {
+            beatPrimaryColors: baselineComp.beatPrimaryColors.map((entry) => ({
+              ...entry,
+              beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+            })),
+          }),
     });
 
     const canonical: import("@openfilm/solver").EditorDocument =
@@ -510,6 +520,16 @@ export class CreativeVariantService {
             ...bl,
             beatId: beatIdMap.get(bl.beatId) ?? bl.beatId,
           })),
+          ...(baselineComp.beatPrimaryColors === undefined
+            ? {}
+            : {
+                beatPrimaryColors: baselineComp.beatPrimaryColors.map(
+                  (entry) => ({
+                    ...entry,
+                    beatId: beatIdMap.get(entry.beatId) ?? entry.beatId,
+                  }),
+                ),
+              }),
           tracks: baselineComp.tracks.map((track) => ({
             ...track,
             clips: track.clips.map((clip) => ({

@@ -340,3 +340,148 @@ describe("transactional user pins", () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 });
+
+it("protects complete current photo/title/color/local-preset and scene payloads from automatic substitution", async () => {
+  const { app, editor, file } = await fixture();
+  const { createPresetSnapshot } = await import("../src/index.js");
+  const { validatePresetPackage, resolveProjectTimebase } =
+    await import("@openfilm/core");
+  const { applyOverridePolicy } = await import("@openfilm/solver");
+  const { presetPackage } =
+    await import("../../../tests/fixtures/local-presets/package.js");
+  const pkg = validatePresetPackage(presetPackage());
+  const entry = pkg.entries.find((entry) => entry.kind === "film-look")!;
+  const before = editor.get("cut");
+  const pinned = await editor.edit("cut", {
+    baseRevision: before.revision,
+    commands: [
+      {
+        type: "presentation",
+        clipId: "a",
+        layout: {
+          version: 2,
+          preset: "diptych",
+          secondary: { assetId: "b" },
+          gap: 8,
+          fill: { version: 1, kind: "ambient", blurSigma: 0.03, dim: 0.4 },
+        },
+        motion: {
+          version: 2,
+          preset: "pan",
+          easing: {
+            version: 1,
+            kind: "cubic-bezier",
+            x1: 0.2,
+            y1: 0.1,
+            x2: 0.8,
+            y2: 0.9,
+          },
+          from: { scale: 1, x: 0, y: 0 },
+          to: { scale: 1, x: 2, y: 0 },
+        },
+        title: "記憶\nMemories",
+        titleRuns: { version: 1, splitAt: 2, gap: 8 },
+        titleStyle: {
+          version: 1,
+          role: "film-title",
+          finishing: { version: 1, stroke: { color: "#000000", width: 1 } },
+        },
+      },
+      {
+        type: "look",
+        scope: "clip",
+        clipId: "a",
+        look: {
+          version: 2,
+          preset: "local",
+          strength: 0.8,
+          snapshot: createPresetSnapshot<"film-look">(pkg, entry),
+        },
+      },
+      {
+        type: "primary-color",
+        scope: "clip",
+        clipId: "a",
+        correction: {
+          version: 1,
+          temperature: 0.2,
+          exposureEv: 0.4,
+          contrast: 0.9,
+        },
+      },
+      {
+        type: "graphic.scene.upsert",
+        scene: {
+          version: 1,
+          id: "scene",
+          name: "Authored",
+          start: 0,
+          duration: 1,
+          zIndex: 0,
+          nodes: [],
+        },
+      },
+    ],
+  });
+  const baseline = { composition: pinned.composition, story: pinned.story };
+  const unchanged = structuredClone(baseline),
+    disk = await readFile(file);
+  const mutations: ((candidate: typeof baseline) => void)[] = [
+    (d) => {
+      const layout = d.composition.tracks[0]!.clips[0]!.layout!;
+      if (layout.version === 2) layout.fill.dim = 0.5;
+    },
+    (d) => {
+      const motion = d.composition.tracks[0]!.clips[0]!.motion!;
+      if (motion.version === 2) motion.easing.x1 = 0.3;
+    },
+    (d) => {
+      d.composition.tracks[0]!.clips[0]!.titleRuns!.gap = 12;
+    },
+    (d) => {
+      d.composition.tracks[0]!.clips[0]!.titleStyle!.finishing!.stroke!.width = 2;
+    },
+    (d) => {
+      const look = d.composition.tracks[0]!.clips[0]!.look!;
+      if (look.version === 2)
+        look.snapshot.provenance.source = "Different authored provenance";
+    },
+    (d) => {
+      d.composition.tracks[0]!.clips[0]!.primaryColor!.exposureEv = 0.6;
+    },
+    (d) => {
+      delete d.composition.tracks[0]!.clips[0]!.primaryColor;
+    },
+    (d) => {
+      d.composition.graphicScenes![0]!.duration = 0.9;
+    },
+  ];
+  for (const mutate of mutations) {
+    const candidate = structuredClone(baseline);
+    mutate(candidate);
+    expect(() =>
+      applyOverridePolicy(baseline, candidate, [], {
+        origin: "automatic",
+        timebase: resolveProjectTimebase(app.project.settings),
+      }),
+    ).toThrow(/pin/iu);
+    expect(baseline).toEqual(unchanged);
+  }
+  expect(editor.get("cut")).toEqual(pinned);
+  expect(await readFile(file)).toEqual(disk);
+  const paired = app.catalog.getAsset("b")!;
+  app.catalog.upsertAsset({
+    ...paired,
+    state: { ...paired.state, locked: true },
+  });
+  const current = editor.get("cut");
+  await expect(
+    editor.edit("cut", {
+      baseRevision: current.revision,
+      commands: [
+        { type: "primary-color", scope: "clip", clipId: "a", correction: null },
+      ],
+    }),
+  ).rejects.toThrow(/locked/iu);
+  expect(await readFile(file)).toEqual(disk);
+});

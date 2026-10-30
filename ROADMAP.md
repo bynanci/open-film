@@ -137,6 +137,34 @@ registry. Each is a separate reviewable PR with explicit acceptance and manual
 gates only when implemented; the owner crosswalk does not create duplicate
 checklists. None creates a second timeline or silently uploads media.
 
+D7A render QA now has shared immutable font/tool provenance, preserved metric
+units and strict bounds, and actual decoded positive/negative controls. Local
+synthetic evidence records 117 samples and 10 deliberate failures; a separate three-OS
+workflow rejects incomplete or stale reports. Hosted Ubuntu/Windows/macOS ARM64
+pin admission and exact-head review remain pending; this does not close native
+installer or physical workstation gates. See [validation](docs/validation-render-qa.md).
+
+D5C primary color adds bounded film/scene/clip warm/cool, encoded-SDR gain/EV and
+contrast before the existing Film Look. Shared coefficients drive SVG and FFmpeg;
+originals, timing and the schema/catalog owners remain stable. Local statistical
+Auto Match presents actual before/after samples and needs explicit reviewed clip
+Apply. Seven focused Chromium cases cover history/reopen, real pixel comparison,
+video seeking and English/Traditional Chinese/Japanese/pseudo-locale reflow and
+accessibility. Calibrated displays, real NLE behavior and final integrating gates
+remain separate. See [the guide](docs/primary-color.md) and
+[validation](docs/validation-primary-color.md).
+
+D8 now has an unreleased local single-JSON preset candidate on its independent
+branch. Bounded closed recipes, declared license/provenance review, atomic local
+registry operations and embedded immutable look/title/Story snapshots feed
+existing editor and authored StoryPlan owners through CLI/API/Desktop. Focused
+155 tests and three Chromium journeys pass; actual strength/seek tests and
+Collect directory/ZIP relocation retain exact decoded pixels after registry and
+fixture-original deletion. Fresh review and parent-coordinated full/hosted
+integration gates remain open. See [guide](docs/local-presets.md) and
+[validation](docs/validation-local-presets.md). Executable plugin discovery and
+loading remain deferred.
+
 D5B now has a separately reviewable title-finishing candidate over the existing
 measured raster: independent bilingual typography, bounded shadow/stroke/pills,
 per-run font evidence and Collect bindings, and actual Story/Record caption
@@ -298,6 +326,16 @@ explicit media status and image/intent/timing hierarchy. Runtime shot-level
 integration remains a separate follow-up requiring a reviewed scene/shot ID
 adapter and revision-fenced sidecar storage. No improvised StoryPlan fields or
 unimplemented shot-level behavior are claimed.
+
+User Pin now has a candidate inline schema1.1 implementation across the shared
+solver/editor, pipeline, history, Named Versions, variants and Collect. The
+finishing integration protects current photo/title/primary/local-Look payloads
+and effective inherited primary/Look matrices. Reviewed automatic suggestions
+require explicit release where they change a pin; ordinary direct named-owner
+edits remain available. Re-solve retains authored beat boundaries and existing
+mutable gaps, so a bounded conflict is not a global infeasibility proof. Focused
+local evidence is recorded in [validation](docs/validation-user-pins.md); first
+whole-branch review and full exact-head hosted gates remain pending.
 
 Current priorities and evidence are tracked by [user pain point](docs/product-pain-points.md).
 Shared geometry (PR #5) and workstation evidence/review recovery (PR #6) are merged

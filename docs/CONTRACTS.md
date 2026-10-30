@@ -788,6 +788,23 @@ foreign NLEs do not enforce OpenFilm pins. The JSON export envelope keeps its ow
 format version 1.0.0. Caption-level pins and selective category unlock are outside
 this v1 contract.
 
+## D5C primary color
+
+Optional version-1 `Composition.defaultPrimaryColor`, `beatPrimaryColors` and
+`Clip.primaryColor` use clip → beat → film → identity resolution. Core owns the
+bounded encoded-SDR affine coefficients, rounded to 12 decimals. Decode/HDR tone
+map and raw photographic preparation precede primary; its clamp precedes the
+separate shared Film Look. Alpha, source identity and timing are preserved.
+
+Typed `primary-color` commands use the existing editor revision/history/save
+boundary. Effective inherited changes to locked sources/clips are rejected as a
+batch. Local statistical Auto Match produces measured before/after proposals;
+explicit clip Apply validates its exact recipe and full source/artifact hashes
+inside editor serialization. Proposals expire on reopen; accepted authored values
+persist. Unknown recipe versions fail. There is no catalog migration, provider,
+source overwrite or second timeline. See [primary color](primary-color.md) and
+[validation](validation-primary-color.md).
+
 ## Bilingual native text finishing
 
 Optional `Clip.titleRuns` and `CaptionCue.textRuns` are closed version-1
@@ -804,3 +821,19 @@ path-free inspection routes use bounded work and stale-owner fencing. MP4 and
 Monitor share the measured local raster; render receipts bind actual primary/
 secondary fonts. SRT/VTT retain both literal texts/times and exclude finishing.
 See [title finishing](title-finishing.md) for exact bounds and interchange limits.
+
+## User Pin finishing integration (2026-10-30)
+
+Whole-instance automatic protection includes the actual PhotoLayout/Motion v2,
+bilingual/title finishing, primary correction and local Film Look v2 snapshot
+payloads. Untouched pinned clips also retain effective inherited primary and
+Look matrices through the shared resolvers. Statistical primary review Apply
+and D8 reviewed preset acceptance keep automatic origin; direct manual inspector
+commands retain explicit named-owner authority. Pinned Auto Match targets are
+ineligible until release and a fresh measurement. Preset provenance/receipts,
+source guards, CAS and exact retry owners remain unchanged. Creative variants
+map inherited primary beat scopes and preset target-beat bindings to derived
+identities while retaining original source identities/hashes and immutable
+snapshots. Schema1.1 explicitly defines these supported portable shapes; default
+projects remain1.0 and first-pin promotion never downgrades a newer validated
+header. See [User Pin validation](validation-user-pins.md).

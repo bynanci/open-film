@@ -1,3 +1,7 @@
+import {
+  assertRenderQaMetric,
+  renderQaPolicy,
+} from "../../../tests/helpers/render-qa-policy.js";
 import { createHash } from "node:crypto";
 import {
   copyFile,
@@ -299,9 +303,10 @@ describe("PhotoDepth rendering", () => {
     expect(samples[1]!.monitor[1]).toBeGreaterThan(samples[1]!.monitor[2]!);
     for (const sample of samples)
       for (let channel = 0; channel < 3; channel++)
-        expect(
+        assertRenderQaMetric(
+          "photoDepth.edgeChannelError",
           Math.abs(sample.monitor[channel]! - sample.decoded[channel]!),
-        ).toBeLessThanOrEqual(8);
+        );
     const frameCount = await runProcess("ffprobe", [
       "-v",
       "error",
@@ -463,7 +468,10 @@ describe("PhotoDepth rendering", () => {
     ]);
     for (const [index, sample] of samples.entries())
       for (const channel of decodedRgb[index]!)
-        expect(Math.abs(channel - sample.alpha)).toBeLessThanOrEqual(8);
+        assertRenderQaMetric(
+          "photoDepth.alphaChannelError",
+          Math.abs(channel - sample.alpha),
+        );
     const manifest = JSON.parse(
       await readFile(`${output}.manifest.json`, "utf8"),
     );
@@ -968,7 +976,7 @@ describe("PhotoDepth rendering", () => {
       for (let index = 0; index < actual.length; index++)
         absoluteError += Math.abs(actual[index]! - expected[index]!);
       parityErrors[frame] = absoluteError / actual.length;
-      expect(parityErrors[frame]).toBeLessThan(12);
+      assertRenderQaMetric("photoDepth.rgbMae", parityErrors[frame]!);
     }
 
     const manifest = JSON.parse(
@@ -1057,7 +1065,10 @@ describe("PhotoDepth rendering", () => {
             fallbackDiffersFromParallaxDecodedFrames:
               fallbackDiffersFromParallaxFrames,
             monitorOutputMeanRgbAbsoluteErrors: parityErrors,
-            monitorOutputMeanRgbAbsoluteErrorMaximum: 12,
+            monitorOutputMeanRgbAbsoluteErrorMaximum:
+              renderQaPolicy["photoDepth.rgbMae"].limit,
+            monitorOutputMeanRgbAbsoluteErrorComparator:
+              renderQaPolicy["photoDepth.rgbMae"].op,
             decodedFrames: [0, 90, 179],
             shuffledDecodeOrder: [0, 90, 179, 35, 140, 179, 0, 90],
           },

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  mkdir,
+  copyFile,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -13,7 +20,7 @@ const stops: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
   for (const stop of stops.splice(0).reverse()) await stop();
 });
-async function fixture() {
+async function fixture(primary = false) {
   const root = await mkdtemp(join(tmpdir(), "openfilm-collect-derived-"));
   stops.push(() => rm(root, { recursive: true, force: true }));
   const source = join(root, "synthetic-long-gop.mp4");
@@ -109,6 +116,13 @@ async function fixture() {
       ],
     },
   ];
+  if (primary)
+    app.project.timelines[0]!.defaultPrimaryColor = {
+      version: 1,
+      temperature: 0.2,
+      exposureEv: 0.3,
+      contrast: 1.1,
+    };
   await app.save();
   const base = {
     scope: "current-film" as const,
@@ -151,7 +165,7 @@ async function fixture() {
 }
 
 it("publishes actual lossless disjoint source windows with original-baseline decoded parity and immutable originals", async () => {
-  const f = await fixture(),
+  const f = await fixture(true),
     destination = join(f.root, "delivery.zip");
   const result = await f.app.collectMedia.create({
     ...f.input,
@@ -204,6 +218,12 @@ it("publishes actual lossless disjoint source windows with original-baseline dec
     [0.25, 1.25],
     [1.75, 3.75],
   ]);
+  expect(packed.timelines[0].defaultPrimaryColor).toEqual({
+    version: 1,
+    temperature: 0.2,
+    exposureEv: 0.3,
+    contrast: 1.1,
+  });
   expect(packed.timelines[0].duration).toBe(2);
   const verified = await f.app.collectMedia.verify(relocated);
   expect(verified.verified).toBe(true);
@@ -248,7 +268,7 @@ it("requires explicit version-bound delivery acceptance before writing a package
 });
 
 it("labels offline delivery and every reopened export as lower-quality review media", async () => {
-  const f = await fixture(),
+  const f = await fixture(true),
     delivery = { ...f.delivery, mode: "offline-proxies" as const };
   const review = await f.app.collectMedia.coverage({
     ...f.base,
@@ -272,6 +292,15 @@ it("labels offline delivery and every reopened export as lower-quality review me
     sourceDuration: 8,
     derivedDuration: 8,
     windows: [{ sourceStart: 0, sourceEnd: 8, derivedStart: 0, derivedEnd: 8 }],
+  });
+  const offlineProject = JSON.parse(
+    await readFile(join(destination, "project.json"), "utf8"),
+  );
+  expect(offlineProject.timelines[0].defaultPrimaryColor).toEqual({
+    version: 1,
+    temperature: 0.2,
+    exposureEv: 0.3,
+    contrast: 1.1,
   });
   expect(manifest.parity[0].matched).toBe(false);
   expect(manifest.parity[0].derived.videoFrames).toBe(40);
@@ -794,80 +823,180 @@ it("rejects any supplied derivative mapping for a pinned dependency before remap
   expect(f.app.project).toEqual(before);
 });
 
-it("an actual MP4 retains its edited frames and PCM through direct pinning and automatic neighbor solve", async () => {
-  const f = await fixture();
-  const { TimelineEditor } = await import("../src/editor.js");
-  const { applyTimelineCommand } = await import("@openfilm/solver");
-  const { collectDecodedSignature } =
-    await import("../src/collect-derived-media.js");
-  const commands: import("@openfilm/solver").TimelineCommand[] = [
-    { type: "trim", clipId: "first", sourceIn: 1, sourceOut: 1.8 },
-    { type: "transform", clipId: "first", x: 0.1, scale: 1.1 },
-    { type: "volume", clipId: "first", volume: 0.35 },
-  ];
-  let reference = {
-    composition: structuredClone(f.app.project.timelines[0]!),
-    story: structuredClone(f.app.project.stories[0]!),
-  };
-  for (const command of commands)
-    reference = applyTimelineCommand(reference, [f.asset], command);
-  const isolate = (composition: import("@openfilm/core").Composition) => {
-    const result = structuredClone(composition);
-    const clip = result.tracks[0]!.clips.find((c) => c.id === "first")!;
-    result.tracks[0]!.clips = [clip];
-    result.duration = clip.timelineStart + clip.timelineDuration;
-    return result;
-  };
-  const originalReference = isolate(reference.composition),
-    referencePath = join(f.root, "pre-pin-reference.mp4");
-  await new FFmpegRenderer().render(
-    originalReference,
-    [f.asset],
-    referencePath,
-    f.app.project.settings,
-  );
-  const editor = new TimelineEditor(f.app),
-    before = editor.get("film");
-  const pinned = await editor.edit("film", {
-    baseRevision: before.revision,
-    commands,
-  });
-  const pinnedClip = structuredClone(pinned.composition.tracks[0]!.clips[0]!);
-  expect(pinnedClip.userOverrides?.isUserPinned).toBe(true);
-  const after = await editor.resolve("film", {
-    baseRevision: pinned.revision,
-    scope: { kind: "beat", beatId: "beat" },
-    mode: "regenerate",
-  });
-  expect(
-    after.composition.tracks[0]!.clips.find((c) => c.id === "first"),
-  ).toEqual(pinnedClip);
-  const protectedPath = join(f.root, "post-solve-pinned.mp4");
-  await new FFmpegRenderer().render(
-    isolate(after.composition),
-    [f.asset],
-    protectedPath,
-    f.app.project.settings,
-  );
-  const referenceSignature = await collectDecodedSignature(referencePath),
-    protectedSignature = await collectDecodedSignature(protectedPath);
-  expect(protectedSignature).toEqual(referenceSignature);
-  expect(protectedSignature.videoFrames).toBe(16);
-  expect(protectedSignature.audioSha256).toMatch(/^[a-f0-9]{64}$/u);
-  const neutral = isolate(after.composition);
-  delete neutral.tracks[0]!.clips[0]!.transform;
-  const neutralPath = join(f.root, "neutral-control.mp4");
-  await new FFmpegRenderer().render(
-    neutral,
-    [f.asset],
-    neutralPath,
-    f.app.project.settings,
-  );
-  const neutralSignature = await collectDecodedSignature(neutralPath);
-  expect(protectedSignature.videoSha256).not.toBe(neutralSignature.videoSha256);
-  expect(protectedSignature.audioSha256).not.toBe(neutralSignature.audioSha256);
-  expect(await hashFile(f.source)).toBe(f.before.hash);
-}, 120000);
+it.each([false, true])(
+  "an actual MP4 retains edited frames and PCM through direct pinning and automatic neighbor solve (finishing: %s)",
+  async (finishing) => {
+    const f = await fixture();
+    const { TimelineEditor } = await import("../src/editor.js");
+    const { applyTimelineCommand } = await import("@openfilm/solver");
+    const { collectDecodedSignature } =
+      await import("../src/collect-derived-media.js");
+    const commands: import("@openfilm/solver").TimelineCommand[] = [
+      { type: "trim", clipId: "first", sourceIn: 1, sourceOut: 1.8 },
+      { type: "transform", clipId: "first", x: 0.1, scale: 1.1 },
+      { type: "volume", clipId: "first", volume: 0.35 },
+    ];
+    if (finishing) {
+      const { createPresetSnapshot } = await import("../src/index.js");
+      const { validatePresetPackage } = await import("@openfilm/core");
+      const { presetPackage } =
+        await import("../../../tests/fixtures/local-presets/package.js");
+      const pkg = validatePresetPackage(presetPackage());
+      const entry = pkg.entries.find((entry) => entry.kind === "film-look")!;
+      commands.push(
+        {
+          type: "primary-color",
+          scope: "clip",
+          clipId: "first",
+          correction: {
+            version: 1,
+            temperature: 0.4,
+            exposureEv: 0.5,
+            contrast: 0.9,
+          },
+        },
+        {
+          type: "look",
+          scope: "clip",
+          clipId: "first",
+          look: {
+            version: 2,
+            preset: "local",
+            strength: 0.8,
+            snapshot: createPresetSnapshot<"film-look">(pkg, entry),
+          },
+        },
+        {
+          type: "presentation",
+          clipId: "first",
+          title: "記憶\nMemories",
+          titleRuns: {
+            version: 1,
+            splitAt: 2,
+            primary: { fontSize: 12 },
+            secondary: { fontSize: 10 },
+          },
+          titleStyle: {
+            version: 1,
+            role: "film-title",
+            finishing: { version: 1, stroke: { color: "#000000", width: 1 } },
+          },
+        },
+      );
+    }
+    let reference = {
+      composition: structuredClone(f.app.project.timelines[0]!),
+      story: structuredClone(f.app.project.stories[0]!),
+    };
+    for (const command of commands)
+      reference = applyTimelineCommand(reference, [f.asset], command);
+    const isolate = (composition: import("@openfilm/core").Composition) => {
+      const result = structuredClone(composition);
+      const clip = result.tracks[0]!.clips.find((c) => c.id === "first")!;
+      result.tracks[0]!.clips = [clip];
+      result.duration = clip.timelineStart + clip.timelineDuration;
+      return result;
+    };
+    const originalReference = isolate(reference.composition),
+      referencePath = join(f.root, "pre-pin-reference.mp4");
+    await new FFmpegRenderer().render(
+      originalReference,
+      [f.asset],
+      referencePath,
+      f.app.project.settings,
+    );
+    const editor = new TimelineEditor(f.app),
+      before = editor.get("film");
+    const pinned = await editor.edit("film", {
+      baseRevision: before.revision,
+      commands,
+    });
+    const pinnedClip = structuredClone(pinned.composition.tracks[0]!.clips[0]!);
+    expect(pinnedClip.userOverrides?.isUserPinned).toBe(true);
+    const after = await editor.resolve("film", {
+      baseRevision: pinned.revision,
+      scope: { kind: "beat", beatId: "beat" },
+      mode: "regenerate",
+    });
+    expect(
+      after.composition.tracks[0]!.clips.find((c) => c.id === "first"),
+    ).toEqual(pinnedClip);
+    const protectedPath = join(f.root, "post-solve-pinned.mp4");
+    await new FFmpegRenderer().render(
+      isolate(after.composition),
+      [f.asset],
+      protectedPath,
+      f.app.project.settings,
+    );
+    const referenceSignature = await collectDecodedSignature(referencePath),
+      protectedSignature = await collectDecodedSignature(protectedPath);
+    expect(protectedSignature).toEqual(referenceSignature);
+    expect(protectedSignature.videoFrames).toBe(16);
+    expect(protectedSignature.audioSha256).toMatch(/^[a-f0-9]{64}$/u);
+    const neutral = isolate(after.composition);
+    delete neutral.tracks[0]!.clips[0]!.transform;
+    const neutralPath = join(f.root, "neutral-control.mp4");
+    await new FFmpegRenderer().render(
+      neutral,
+      [f.asset],
+      neutralPath,
+      f.app.project.settings,
+    );
+    const neutralSignature = await collectDecodedSignature(neutralPath);
+    expect(protectedSignature.videoSha256).not.toBe(
+      neutralSignature.videoSha256,
+    );
+    expect(protectedSignature.audioSha256).not.toBe(
+      neutralSignature.audioSha256,
+    );
+    if (finishing) {
+      const noColor = isolate(after.composition);
+      delete noColor.tracks[0]!.clips[0]!.primaryColor;
+      delete noColor.tracks[0]!.clips[0]!.look;
+      const noColorPath = join(f.root, "without-finishing-color.mp4");
+      await new FFmpegRenderer().render(
+        noColor,
+        [f.asset],
+        noColorPath,
+        f.app.project.settings,
+      );
+      const control = await collectDecodedSignature(noColorPath);
+      expect(control.videoSha256).not.toBe(protectedSignature.videoSha256);
+      expect(control.audioSha256).toBe(protectedSignature.audioSha256);
+      const evidence = process.env.OPENFILM_PIN_FINISHING_QA_OUTPUT;
+      if (evidence) {
+        await mkdir(evidence, { recursive: true });
+        for (const [path, name] of [
+          [f.source, "source.mp4"],
+          [referencePath, "reference.mp4"],
+          [protectedPath, "protected.mp4"],
+          [neutralPath, "neutral-control.mp4"],
+          [noColorPath, "without-color-control.mp4"],
+        ])
+          await copyFile(path!, join(evidence, name!));
+        await writeFile(
+          join(evidence, "observations.json"),
+          JSON.stringify(
+            {
+              pinnedClip,
+              settings: f.app.project.settings,
+              originalSourceSha256: f.before.hash,
+              sourceSha256: await hashFile(f.source),
+              referenceSignature,
+              protectedSignature,
+              neutralSignature,
+              noColorSignature: control,
+            },
+            null,
+            2,
+          ),
+        );
+      }
+    }
+    expect(await hashFile(f.source)).toBe(f.before.hash);
+  },
+  120000,
+);
 
 it("entire-project directory collection retains pinned depth resources and scene payload exactly", async () => {
   const f = await fixture();

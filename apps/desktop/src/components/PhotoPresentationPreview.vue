@@ -12,12 +12,15 @@ import {
   photoAmbientGaps,
   type Clip,
   type FilmLook,
+  type PrimaryColorCorrection,
   type MediaAsset,
   type ProjectSettings,
   type FrameSize,
   type PhotoFocalPoint,
 } from "@openfilm/core";
 import { sourceUrl, titlePreviewUrl, photoFillPreviewUrl } from "../api";
+import PrimaryColorFilter from "./PrimaryColorFilter.vue";
+import { sourceColorStyle } from "../source-color";
 import FilmLookFilter from "./FilmLookFilter.vue";
 import PhotoFocalOverlay from "./PhotoFocalOverlay.vue";
 import { resolvePhotoFocalGeometry } from "../photoFocalInteraction";
@@ -36,6 +39,7 @@ const props = withDefaults(
     active: boolean;
     sourceVersion?: number;
     look?: FilmLook;
+    primaryColor?: PrimaryColorCorrection;
     externalTime?: number;
     externalPlaying?: boolean;
     focalEditing?: boolean;
@@ -45,6 +49,7 @@ const props = withDefaults(
   {
     sourceVersion: undefined,
     look: undefined,
+    primaryColor: undefined,
     externalTime: undefined,
     externalPlaying: undefined,
     focalSessionKey: undefined,
@@ -59,10 +64,12 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const lookFilterId = `photo-look-${useId().replaceAll(":", "")}`;
+const primaryFilterId = `photo-primary-${useId().replaceAll(":", "")}`;
 const lookStyle = computed(() =>
-  props.look && props.look.preset !== "none" && props.look.strength > 0
-    ? { filter: `url(#${lookFilterId})` }
-    : {},
+  sourceColorStyle(props.primaryColor, props.look, {
+    primary: primaryFilterId,
+    look: lookFilterId,
+  }),
 );
 const ownedTime = ref(0);
 const controlled = computed(
@@ -384,6 +391,11 @@ defineExpose({
     class="photo-presentation-preview"
     :class="{ 'photo-presentation-controlled': controlled }"
   >
+    <PrimaryColorFilter
+      v-if="primaryColor"
+      :id="primaryFilterId"
+      :correction="primaryColor"
+    />
     <FilmLookFilter v-if="look" :id="lookFilterId" :look="look" />
     <div
       ref="frameElement"

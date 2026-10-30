@@ -1,5 +1,11 @@
 import { RecordAudioPreviewService } from "./record-audio-preview.js";
 export * from "./record-audio-preview.js";
+import { PrimaryColorReviewService } from "./primary-color-review.js";
+export {
+  PrimaryColorReviewService,
+  type PrimaryColorReviewReport,
+  type PrimaryColorReviewInput,
+} from "./primary-color-review.js";
 import { NativeTextOverlayService } from "./title-overlays.js";
 export {
   NativeTextOverlayService,
@@ -11,6 +17,14 @@ import { MotionGenerationService } from "./motion-generation.js";
 import { PhotoPresentationService } from "./photo-presentation.js";
 export * from "./photo-presentation.js";
 export * from "./motion-generation.js";
+export * from "./local-preset-registry.js";
+export * from "./presets.js";
+import { LocalPresetRegistry } from "./local-preset-registry.js";
+import { PresetApplicationService } from "./presets.js";
+import { assertProjectPresetIntegrity } from "./preset-integrity.js";
+import { resolveUserDataDirectory } from "./user-data.js";
+export * from "./preset-integrity.js";
+export { readLocalPresetDocument } from "./local-preset-storage.js";
 import { SourceDraftService } from "./source-draft.js";
 export * from "./source-draft.js";
 import { SourceDiscoveryService } from "./source-discovery.js";
@@ -372,6 +386,7 @@ function atomicJsonSync(path: string, value: unknown): void {
 /** Application boundary shared by CLI and desktop; media runtime stays outside core. */
 export class OpenFilmApplication {
   readonly graphics: GraphicSceneService;
+  readonly presets: PresetApplicationService;
   readonly textOverlays: NativeTextOverlayService;
   readonly photoPresentation: PhotoPresentationService;
   readonly catalog: ProjectCatalog;
@@ -384,6 +399,7 @@ export class OpenFilmApplication {
   readonly handoff: NleHandoffService;
   readonly audioQuality: AudioQualityService;
   readonly recordAudioPreview: RecordAudioPreviewService;
+  readonly primaryColorReview: PrimaryColorReviewService;
   readonly audioGeneration: AudioGenerationService;
   readonly motionGeneration: MotionGenerationService;
   readonly versions: ProjectVersionService;
@@ -469,6 +485,13 @@ export class OpenFilmApplication {
       );
       this.sourceAnalysisReview = new SourceAnalysisReviewService(this);
       this.versions = new ProjectVersionService(this);
+      this.presets = new PresetApplicationService(
+        this,
+        new LocalPresetRegistry(
+          resolveUserDataDirectory(runtime.userDataDirectory),
+        ),
+        (next, assertCurrent) => this.publishProject(next, assertCurrent),
+      );
       this.collectMedia = new CollectMediaService(this);
 
       this.exportProfiles = new ExportProfileService({
@@ -515,8 +538,8 @@ export class OpenFilmApplication {
       this.transcriptEditor = new TranscriptEditor(this);
       this.captions = new CaptionService(this);
       this.storyGraph = new StoryGraphService(this, this.directory);
-      this.storyPlan = new StoryPlanService(this, (next) =>
-        this.publishProject(next),
+      this.storyPlan = new StoryPlanService(this, (next, assertCurrent) =>
+        this.publishProject(next, assertCurrent),
       );
       this.pipeline = new PipelineService(this);
       this.creativeVariants = new CreativeVariantService(this, (next) =>
@@ -544,6 +567,7 @@ export class OpenFilmApplication {
         runtime.motionGenerationProvider,
         runtime.motionGenerationTimeoutMs,
       );
+      this.primaryColorReview = new PrimaryColorReviewService(this);
       this.audioQuality = new AudioQualityService(
         this,
         (composition, outputPath, signal) =>
@@ -670,6 +694,7 @@ export class OpenFilmApplication {
     const project = migrateProject(
       JSON.parse(await readFile(join(path, "project.json"), "utf8")),
     );
+    assertProjectPresetIntegrity(project);
     const canonical = await realpath(path);
     const packageFontBindings = await loadCollectedFontBindings(
       canonical,
@@ -936,6 +961,7 @@ export class OpenFilmApplication {
           ...this.project,
           updatedAt: new Date().toISOString(),
         });
+        assertProjectPresetIntegrity(project);
         atomicJsonSync(join(this.directory, "project.json"), project);
         return project;
       });
@@ -994,6 +1020,25 @@ export class OpenFilmApplication {
     this.activeJobs++;
     try {
       return await this.audioGeneration.preview(input, signal);
+    } finally {
+      this.activeJobs--;
+    }
+  }
+
+  async runPrimaryColorReview(
+    compositionId: string,
+    input: Parameters<PrimaryColorReviewService["run"]>[1],
+    signal?: AbortSignal,
+  ) {
+    if (this.activeJobs)
+      throw new ApplicationError(
+        "jobs.busy",
+        "Wait for the active project job.",
+        409,
+      );
+    this.activeJobs++;
+    try {
+      return await this.primaryColorReview.run(compositionId, input, signal);
     } finally {
       this.activeJobs--;
     }
@@ -1126,6 +1171,7 @@ export class OpenFilmApplication {
   }
 
   acceptRestoredProject(project: OpenFilmProject): void {
+    assertProjectPresetIntegrity(project);
     this.project = validateProject(project);
     this.persistedProject = savedScriptProjectIdentity(this.project);
     this.persistenceConflict = false;
@@ -1283,6 +1329,9 @@ export class OpenFilmApplication {
     } catch (error) {
       if (options.requireSave || !this.persistenceConflict) throw error;
     }
+    void this.primaryColorReview.dispose().catch((error: unknown) => {
+      console.error("Primary color review close cleanup failed.", error);
+    });
     void this.motionGeneration.dispose().catch(() => undefined);
     this.recordAudioPreview.dispose();
     this.graphics.close();
@@ -2360,6 +2409,7 @@ export class OpenFilmApplication {
     format: "json" | "otio" | "fcpxml" | "edl",
     compositionId?: string,
   ): Promise<{ path: string; report: ExportReport }> {
+    assertProjectPresetIntegrity(this.project);
     const composition = this.composition(compositionId);
     const assets = this.compositionAssets(composition, true);
     const exported = exportTimeline(

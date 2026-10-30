@@ -76,6 +76,7 @@ export class RenderQaMetricError extends Error {
   constructor(
     public readonly metricId: string,
     public readonly reason: "invalid" | "threshold",
+    public readonly measurement?: Omit<RenderQaMeasurement, "passed">,
   ) {
     super(`Render QA ${metricId}: ${reason} measurement`);
     this.name = "RenderQaMetricError";
@@ -92,6 +93,21 @@ export function assertRenderQaMetric(
 ): RenderQaMeasurement {
   const policy: Rule = renderQaPolicy[id];
   if (!policy || !Number.isFinite(actual)) invalid(id);
+  const nonnegative =
+    [
+      "rgb-channel-units",
+      "linear-peak-amplitude",
+      "output-pixels",
+      "output-pixels-per-frame",
+    ].includes(policy.unit) ||
+    id === "photoFilm.durationError" ||
+    id === "photo.fadeInRmsRatio" ||
+    id === "photo.fadeOutRmsRatio";
+  if (
+    (nonnegative && actual < 0) ||
+    (policy.unit === "rgb-channel-units" && actual > 255)
+  )
+    invalid(id);
   if (context && Object.keys(context).some((key) => key !== "frameRate"))
     invalid(id);
   let rule: Rule | Bound = policy;
@@ -120,7 +136,14 @@ export function assertRenderQaMetric(
       passed = actual > rule.lower && actual < rule.upper;
     else invalid(id);
   }
-  if (!passed) throw new RenderQaMetricError(id, "threshold");
+  if (!passed)
+    throw new RenderQaMetricError(id, "threshold", {
+      id,
+      unit: rule.unit,
+      rule: { ...rule },
+      actual,
+      ...(expected === undefined ? {} : { expected }),
+    });
   return {
     id,
     unit: rule.unit,
@@ -173,7 +196,14 @@ export function assertRenderQaIdentity(
     b = expected;
     unit = "sha256";
   }
-  if (a !== b) throw new RenderQaMetricError(id, "threshold");
+  if (a !== b)
+    throw new RenderQaMetricError(id, "threshold", {
+      id,
+      unit,
+      rule: { kind: "exact" },
+      actual: a,
+      expected: b,
+    });
   return {
     id,
     unit,

@@ -1,3 +1,5 @@
+import primaryColor from "../modules/primary-color/ja-JP";
+import presets from "../modules/presets/ja-JP";
 import collectDelivery from "../modules/collect-delivery/ja-JP";
 import proxyStorage from "../modules/proxy-storage/ja-JP";
 import nleHandoff from "../modules/nle-handoff/ja-JP";
@@ -16,6 +18,8 @@ import system from "./system-ja-JP";
 import motion from "../modules/motion/ja-JP";
 
 export default {
+  ...primaryColor,
+  ...presets,
   ...collectDelivery,
   ...proxyStorage,
   ...cutDesk,

@@ -1,3 +1,4 @@
+import { validatePresetSnapshot } from "@openfilm/core";
 import type {
   Clip,
   Composition,
@@ -488,6 +489,14 @@ export function compose(
   return {
     id: compositionId,
     storyId: story.id,
+    ...(story.presetSnapshot
+      ? {
+          storyPresetSnapshot: validatePresetSnapshot(
+            story.presetSnapshot,
+            "story",
+          ),
+        }
+      : {}),
     duration: position,
     tracks: [
       ...(video.length

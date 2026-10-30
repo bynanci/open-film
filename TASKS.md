@@ -18,6 +18,10 @@ Scope: [approved design](docs/superpowers/specs/2026-10-26-professional-cut-desk
         constraints through solver/pipeline, history, Named Versions, variants
         and Collect; add visible Pin and explicit Unlock & Re-solve. Existing
         source/clip locks do not implement this requested override contract.
+        Candidate Tasks1–8 and the current finishing-owner integration are
+        implemented, with focused solver/application/schema/actual-media
+        evidence. First whole-branch review and complete exact-head hosted gates
+        remain open; see [User Pin validation](docs/validation-user-pins.md).
   - [x] Selectively recover General Story-monitor clip-picture move and
         proportional corner resize through the current geometry and atomic
         transaction boundaries; preserve cancellation, locks, Undo/Redo,
@@ -220,9 +224,11 @@ The published stable remains v0.4.0; release follows verified exit conditions.
 - D5A/D5B crosswalk: the nested open F05 photo/title items are authoritative for
   focal interaction, ambient fill, versioned bounded custom easing and bounded
   bilingual title finishing.
-- [ ] D5C: after an independent color/compatibility design, add versioned primary
-      correction before Film Looks. Auto Match remains reviewable measured
-      evidence, never a source mutation.
+- [x] D5C: deliver versioned film/scene/clip primary correction before Film Looks,
+      with shared bounded coefficients, locks/history and measured statistical
+      Auto Match requiring explicit reviewed clip Apply. See the
+      [contract](docs/primary-color.md) and [validation](docs/validation-primary-color.md);
+      calibrated display/real NLE and final integration gates remain explicit.
 - D6A crosswalk: the nested Professional Cut Desk Phase 3 item remains authoritative for proxy
   lifecycle; use the existing generator and add cancel/resume, stale fencing,
   quota/eviction, rebuild and health acceptance there.
@@ -256,6 +262,20 @@ The published stable remains v0.4.0; release follows verified exit conditions.
   signing/notarization, clean-machine install, update, rollback and uninstall.
 - [ ] D8: add a strict local data-only preset registry without enabling project
       JavaScript, HTML, remote URLs or an unreviewed executable marketplace.
+  - [x] Independently inspected threat/compatibility design and parent-approved
+        single-JSON schema, bounds, immutable snapshots and authored StoryPlan
+        interfaces. Preserve TitleStyle and Film Look owner contracts.
+  - [x] Closed bounded packages, explicit license/provenance acceptance, atomic
+        install/remove/recovery, exact review/registry CAS, protected StoryPlan
+        adoption and durable retry receipts through shared CLI/API/Desktop.
+  - [x] Embedded look/title/story recipes survive Undo/reopen/Named Version,
+        JSON/OTIO and existing Collect directory/ZIP relocation after deleting
+        the registry and fixture originals. Node/app/render verify actual hashes.
+  - [x] Focused155 tests, three real Chromium journeys, synthetic strength/seek
+        negative controls and exact relocated decoded hashes. See
+        [validation](docs/validation-local-presets.md).
+  - [ ] Fresh independent review, parent-coordinated full integration/hosted
+        gates and independent PR/merge; physical workstation gates stay open.
 
 Before product-code changes, D2B transition semantics, D3A2 analysis evidence,
 D3B1 audio semantics, D3B2 Story coverage, D4 transcript ripple, D5A photo
@@ -555,8 +575,15 @@ not retroactively rename completed project capabilities.
         and six actual browser cases pass; independent review and exact-head
         gates remain.
         [D5B validation](docs/validation-title-finishing.md).
-  - [ ] D7A: pin a licensed test font/tool record, centralize metric-specific
-        tolerance policy and add deliberate failures plus focused OS evidence.
+  - [ ] D7A: complete reproducible cross-platform render QA.
+    - [x] Share licensed immutable font/tool provenance, explicit test-font root,
+          exact metric units/comparators and real decoded failure controls;
+          bounded local receipt of 117 samples and 10 controls. [Evidence](docs/validation-render-qa.md).
+    - [x] Add three-OS current-candidate/run/attempt report validation while
+          preserving full Verify/browser/native and Windows recovery selection.
+    - [ ] Demonstrate actual Ubuntu/Windows/macOS ARM64 pinned-tool admission,
+          complete exact-head automated gates and fresh independent final review.
+          Local FFmpeg7.1.5 and synthetic schema fixtures do not close this gate.
 
 The candidate for each milestone requires its complete exact-head automated gate
 before merge. Synthetic media proves bounded behavior only; it does not certify

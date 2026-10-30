@@ -13,6 +13,9 @@ import {
 // Apache-2.0 grants; current OpenFilm first-party code is Apache-2.0. See LICENSE/NOTICE.
 import {
   MAX_TITLE_LENGTH,
+  validatePresetSnapshot,
+  canonicalPresetJson,
+  type PresetSnapshot,
   validateComposition,
   validatePhotoLayout,
   validatePhotoMotion,
@@ -24,6 +27,10 @@ import {
   resolveAudioInterval,
   type AudioTimingV1,
   validateFilmLook,
+  validatePrimaryColorCorrection,
+  primaryColorCoefficients,
+  resolvePrimaryColor,
+  type PrimaryColorCorrection,
   validateGraphicScenes,
   validateGraphicSceneTemplates,
   graphicSceneAssetIds,
@@ -65,6 +72,24 @@ export type TimelineCommand =
         | "remove-repetition";
     }
   | {
+      type: "primary-color";
+      scope: "film";
+      correction: PrimaryColorCorrection | null;
+    }
+  | {
+      type: "primary-color";
+      scope: "beat";
+      beatId: string;
+      correction: PrimaryColorCorrection | null;
+    }
+  | {
+      type: "primary-color";
+      scope: "clip";
+      clipId: string;
+      correction: PrimaryColorCorrection | null;
+      primaryColorReviewId?: string;
+    }
+  | {
       type: "graphic.scene.upsert";
       scene: GraphicScene;
       templateRecord?: GraphicSceneTemplateRecord | null;
@@ -80,6 +105,7 @@ export type TimelineCommand =
       motion?: PhotoMotion | null;
       title?: string | null;
       titleStyle?: TitleStyle | null;
+      titlePresetSnapshot?: PresetSnapshot<"title"> | null;
       titleRuns?: TitleTextRuns | null;
     }
   | {
@@ -788,6 +814,91 @@ function applyLookCommand(
   return next;
 }
 
+function applyPrimaryColorCommand(
+  next: EditorDocument,
+  assets: MediaAsset[],
+  command: Extract<TimelineCommand, { type: "primary-color" }>,
+): EditorDocument {
+  if (!["film", "beat", "clip"].includes(command.scope))
+    fail("Unknown primary color scope.");
+  const allowed = [
+    "type",
+    "scope",
+    "correction",
+    ...(command.scope === "clip"
+      ? ["clipId", "primaryColorReviewId"]
+      : command.scope === "beat"
+        ? ["beatId"]
+        : []),
+  ];
+  if (Object.keys(command).some((key) => !allowed.includes(key)))
+    fail("Unsupported primary color field.");
+  const correction =
+    command.correction === null
+      ? null
+      : validatePrimaryColorCorrection(command.correction);
+  if (command.scope === "clip") {
+    const { clip, track } = findClip(next, command.clipId);
+    const sources = lookSources(clip, assets);
+    if (!visualLookClip(track, sources[0]!))
+      fail("Primary color requires a flat photo or video clip.");
+    if (clip.locked || sources.some((source) => source.state.locked))
+      throw new ApplicationError(
+        "timeline.primaryColorLocked",
+        "Unlock the clip and its source media before changing primary color.",
+        409,
+        { count: 1 },
+      );
+    if (sources.some((source) => source.state.rejected || !renderable(source)))
+      fail("Primary color requires supported, non-rejected sources.");
+    if (correction === null) delete clip.primaryColor;
+    else clip.primaryColor = correction;
+    return next;
+  }
+  if (command.scope === "beat") findBeat(next, command.beatId);
+  const before = structuredClone(next.composition);
+  if (command.scope === "film") {
+    if (correction === null) delete next.composition.defaultPrimaryColor;
+    else next.composition.defaultPrimaryColor = correction;
+  } else {
+    const entries = (next.composition.beatPrimaryColors ?? []).filter(
+      (entry) => entry.beatId !== command.beatId,
+    );
+    if (correction !== null)
+      entries.push({ beatId: command.beatId, correction });
+    if (entries.length > 1000)
+      fail("At most 1000 scene primary color overrides are supported.");
+    if (entries.length) next.composition.beatPrimaryColors = entries;
+    else delete next.composition.beatPrimaryColors;
+  }
+  let count = 0;
+  for (const track of next.composition.tracks)
+    for (const clip of track.clips) {
+      if (command.scope === "beat" && clip.beatId !== command.beatId) continue;
+      const sources = lookSources(clip, assets);
+      if (
+        !visualLookClip(track, sources[0]!) ||
+        !(clip.locked || sources.some((source) => source.state.locked))
+      )
+        continue;
+      const previous = primaryColorCoefficients(
+        resolvePrimaryColor(before, clip).correction,
+      ).matrix;
+      const changed = primaryColorCoefficients(
+        resolvePrimaryColor(next.composition, clip).correction,
+      ).matrix;
+      if (previous.some((value, i) => value !== changed[i])) count++;
+    }
+  if (count)
+    throw new ApplicationError(
+      "timeline.primaryColorLocked",
+      "This primary color change would alter protected clips. Unlock them or retain a clip override first.",
+      409,
+      { count },
+    );
+  return next;
+}
+
 type CaptionTimelineCommand = Extract<
   TimelineCommand,
   { type: `caption.${string}` }
@@ -1157,6 +1268,8 @@ function applyTimelineCommandRaw(
     return next;
   }
   if (command.type === "look") return applyLookCommand(next, assets, command);
+  if (command.type === "primary-color")
+    return applyPrimaryColorCommand(next, assets, command);
   if (isCaptionCommand(command))
     return applyCaptionCommand(next, command, deferred);
   if (command.type === "audio.add") {
@@ -1297,6 +1410,7 @@ function applyTimelineCommandRaw(
         "motion",
         "title",
         "titleStyle",
+        "titlePresetSnapshot",
         "titleRuns",
       ] as const;
       if (!fields.some((key) => Object.hasOwn(command, key)))
@@ -1382,6 +1496,23 @@ function applyTimelineCommandRaw(
               `Title must be text of at most ${MAX_TITLE_LENGTH} characters.`,
             );
           clip.title = command.title;
+        }
+      }
+      if (command.titlePresetSnapshot !== undefined) {
+        if (command.titlePresetSnapshot === null)
+          delete clip.titlePresetSnapshot;
+        else {
+          const snapshot = validatePresetSnapshot(
+            command.titlePresetSnapshot,
+            "title",
+          );
+          if (
+            !command.titleStyle ||
+            canonicalPresetJson(snapshot.recipe) !==
+              canonicalPresetJson(command.titleStyle)
+          )
+            fail("Preset title style does not match its recipe snapshot.");
+          clip.titlePresetSnapshot = snapshot;
         }
       }
       if (Object.hasOwn(command, "titleRuns")) {

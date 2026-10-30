@@ -1,3 +1,4 @@
+import { sourceColorStyle } from "../../apps/desktop/src/source-color";
 import { afterEach, expect, it, vi } from "vitest";
 import * as core from "@openfilm/core";
 import {
@@ -27,6 +28,7 @@ async function mountPhoto(diptych = false, text = false) {
     "apps/desktop/src/components/PhotoPresentationPreview.vue",
     {
       "@openfilm/core": core,
+      "../source-color": { sourceColorStyle },
       "vue-i18n": { useI18n: () => ({ t: (key: string) => key }) },
       "../api": {
         sourceUrl: (id: string, version?: string | number) =>

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -7,7 +14,9 @@ import { readPinnedTestFonts } from "../helpers/render-qa-fonts.js";
 
 const roots: string[] = [];
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "openfilm-qa-fonts-"));
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "openfilm-qa-fonts-")),
+  );
   roots.push(root);
   return root;
 }

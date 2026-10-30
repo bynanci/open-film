@@ -34,6 +34,10 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
   OpenFilmApplication,
+  LocalPresetRegistry,
+  type PresetInstallInput,
+  type PresetRemoveInput,
+  type PresetRecoveryInput,
   TimelineEditor,
   TimelineEditorError,
   parseGpxTrack,
@@ -66,6 +70,8 @@ import type {
 } from "@openfilm/application";
 import {
   validateProject,
+  type PresetApplyInput,
+  type PresetAcceptInput,
   validateFilmLook,
   validateExportProfile,
   timebaseRate,
@@ -660,6 +666,9 @@ export async function startServer(options: ServerOptions = {}) {
     visionSampleProviders: options.visionSampleProviders,
     proxyGenerator: options.proxyGenerator,
   };
+  const presetRegistry = new LocalPresetRegistry(
+    runtimeOptions.userDataDirectory,
+  );
   const configure = (application: OpenFilmApplication) => {
     if (options.transcriptionProvider)
       application.intelligence.registerTranscriptionProvider(
@@ -1039,6 +1048,96 @@ export async function startServer(options: ServerOptions = {}) {
         };
         if (method === "GET" && route === "/api/health") {
           json(response, 200, { ok: true });
+          return;
+        }
+        if (method === "GET" && route === "/api/presets") {
+          json(response, 200, presetRegistry.list());
+          return;
+        }
+        if (
+          method === "POST" &&
+          [
+            "/api/presets/import/review",
+            "/api/presets/import/accept",
+            "/api/presets/remove",
+            "/api/presets/recovery/review",
+            "/api/presets/recovery/accept",
+            "/api/presets/apply/review",
+            "/api/presets/apply/accept",
+          ].includes(route)
+        ) {
+          const data = await body(request);
+          const controller = new AbortController();
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          if (response.destroyed) controller.abort();
+          try {
+            controller.signal.throwIfAborted();
+            if (route === "/api/presets/import/review") {
+              keys(data, ["document"]);
+              json(
+                response,
+                200,
+                presetRegistry.reviewImport(text(data, "document")),
+              );
+            } else if (route === "/api/presets/import/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.install(
+                  data as unknown as PresetInstallInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/remove") {
+              json(
+                response,
+                200,
+                await presetRegistry.remove(
+                  data as unknown as PresetRemoveInput,
+                  controller.signal,
+                ),
+              );
+            } else if (route === "/api/presets/recovery/review") {
+              keys(data, []);
+              json(response, 200, presetRegistry.reviewRecovery());
+            } else if (route === "/api/presets/recovery/accept") {
+              json(
+                response,
+                200,
+                await presetRegistry.recover(
+                  data as unknown as PresetRecoveryInput,
+                  controller.signal,
+                ),
+              );
+            } else {
+              const application = current(),
+                editor = editorFor(application);
+              if (route === "/api/presets/apply/review")
+                json(
+                  response,
+                  200,
+                  application.presets.review(
+                    data as unknown as PresetApplyInput,
+                    editor,
+                  ),
+                );
+              else
+                json(
+                  response,
+                  200,
+                  await application.presets.accept(
+                    data as unknown as PresetAcceptInput,
+                    editor,
+                    controller.signal,
+                  ),
+                );
+            }
+          } finally {
+            response.off("close", disconnected);
+          }
           return;
         }
         if (method === "GET" && route === "/api/workspace") {
@@ -4657,6 +4756,100 @@ export async function startServer(options: ServerOptions = {}) {
           response.end(bytes);
           return;
         }
+        const primaryReview =
+          /^\/api\/compositions\/([^/]+)\/primary-color-review$/.exec(route);
+        if (method === "POST" && primaryReview) {
+          if (hasActiveProjectWork())
+            throw new HttpError(409, "Wait for the active project job.");
+          const data = await body(request);
+          keys(data, [
+            "projectId",
+            "baseRevision",
+            "targetClipId",
+            "referenceClipId",
+          ]);
+          if (data.projectId !== application.project.id)
+            throw new HttpError(
+              409,
+              "Primary color review belongs to another project.",
+            );
+          const compositionId = decodeURIComponent(primaryReview[1]!);
+          const input = {
+            baseRevision: text(data, "baseRevision"),
+            targetClipId: text(data, "targetClipId"),
+            referenceClipId: text(data, "referenceClipId"),
+          };
+          const controller = new AbortController(),
+            jobId = randomUUID();
+          active.set(jobId, controller);
+          const disconnected = () => {
+            if (!response.writableEnded) controller.abort();
+          };
+          response.once("close", disconnected);
+          releaseMutation?.();
+          releaseMutation = undefined;
+          try {
+            const report = await application.runPrimaryColorReview(
+              compositionId,
+              input,
+              controller.signal,
+            );
+            await acquireMutation();
+            if (
+              controller.signal.aborted ||
+              app !== application ||
+              editorFor(application).get(compositionId).revision !==
+                input.baseRevision
+            )
+              throw new HttpError(
+                409,
+                "Primary color review is stale or cancelled.",
+              );
+            json(response, 200, report);
+          } finally {
+            active.delete(jobId);
+            response.off("close", disconnected);
+          }
+          return;
+        }
+        const primaryReviewMedia =
+          /^\/api\/primary-color-reviews\/([a-f0-9-]{36})\/media\/(reference|before|after)\/([0-2])$/.exec(
+            route,
+          );
+        const primaryReviewDelete =
+          /^\/api\/primary-color-reviews\/([a-f0-9-]{36})$/.exec(route);
+        if (
+          (method === "GET" && primaryReviewMedia) ||
+          (method === "DELETE" && primaryReviewDelete)
+        ) {
+          if (url.searchParams.get("projectId") !== application.project.id)
+            throw new HttpError(
+              409,
+              "Primary color review belongs to another project.",
+            );
+          if (primaryReviewDelete) {
+            await application.primaryColorReview.discard(
+              primaryReviewDelete[1]!,
+            );
+            json(response, 200, { ok: true });
+          } else
+            await trackedMediaRead(async (signal) => {
+              const path = await application.primaryColorReview.media(
+                primaryReviewMedia![1]!,
+                primaryReviewMedia![2] as "reference" | "before" | "after",
+                Number(primaryReviewMedia![3]),
+              );
+              signal.throwIfAborted();
+              await streamFile(
+                request,
+                response,
+                path,
+                join(application.directory, "cache"),
+                "image/png",
+              );
+            });
+          return;
+        }
         const audioQualityMatch =
           /^\/api\/compositions\/([^/]+)\/audio-quality$/.exec(route);
         if (method === "POST" && audioQualityMatch) {
@@ -5427,7 +5620,7 @@ export async function startServer(options: ServerOptions = {}) {
         if (storyGraphMatch) {
           const storyId = decodeURIComponent(storyGraphMatch[1]!);
           if (method === "GET") {
-            const graph = application.storyGraph.getGraph(storyId);
+            const graph = application.storyGraph.previewGraph(storyId);
             json(response, 200, { graph });
             return;
           }
